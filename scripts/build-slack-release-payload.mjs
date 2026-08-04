@@ -52,9 +52,22 @@ function escapeSlackText(text) {
  * @returns {string} mrkdwn-formatted equivalent.
  */
 export function githubMarkdownToSlackMrkdwn(markdown) {
-  // Strip HTML comments first: the beta cadence embeds an internal
+  // Strip the Downloads table desktop-release.yml renders into the body —
+  // CONTENT included, which the comment-strip below can't do (it only
+  // removes the marker lines, leaving the table itself; Slack mrkdwn has no
+  // tables, so it would render as pipe soup). Simplified variant of
+  // render-release-downloads.mjs's stripDownloadsBlock (inlined because this
+  // script is fetched standalone in workflows): the `\n?` boundary anchors
+  // and `'\n'` replacement are deliberately omitted — only the upsert path
+  // needs byte-stable strip→re-append; the `\n{3,}` collapse below absorbs
+  // the residue here. Each side's tests pin its own behavior.
+  const withoutDownloads = markdown.replace(
+    /<!-- ok-downloads:start -->[\s\S]*?<!-- ok-downloads:end -->/g,
+    '',
+  );
+  // Strip HTML comments next: the beta cadence embeds an internal
   // `<!-- ok-consumed-set: … -->` marker that must never reach the channel.
-  const withoutComments = markdown.replace(/<!--[\s\S]*?-->/g, '');
+  const withoutComments = withoutDownloads.replace(/<!--[\s\S]*?-->/g, '');
 
   let inFence = false;
   const lines = withoutComments.split('\n').map((rawLine) => {

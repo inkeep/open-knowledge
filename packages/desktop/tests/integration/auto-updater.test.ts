@@ -182,6 +182,13 @@ function makeRig(
   overrides?: Partial<AppState> & {
     appVersion?: string;
     isPackaged?: boolean;
+    /**
+     * Injected platform. Defaults to 'darwin' — NOT the host's — so the
+     * suite asserts one deterministic platform's behavior on every CI
+     * runner (this file runs on ubuntu, where inheriting `process.platform`
+     * would silently flip the Linux install-on-quit carve-out on).
+     */
+    platform?: NodeJS.Platform;
     forceDevBypass?: boolean;
     feedUrl?: string;
     proxyFeed?: { base: string; channels: ReadonlySet<'latest' | 'beta'> };
@@ -224,6 +231,7 @@ function makeRig(
   const {
     appVersion = '0.3.1',
     isPackaged = true,
+    platform = 'darwin',
     forceDevBypass,
     feedUrl,
     proxyFeed,
@@ -273,6 +281,7 @@ function makeRig(
     getAllWindows: extraWindowCount > 0 ? () => fanOutTargets : undefined,
     getAppVersion: () => appVersion,
     isPackaged,
+    platform,
     forceDevBypass,
     feedUrl,
     proxyFeed,
@@ -330,6 +339,49 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     expect(rig.updater.autoInstallOnAppQuit).toBe(true);
     handle.suppressAutoInstallOnQuit();
     expect(rig.updater.autoInstallOnAppQuit).toBe(false);
+  });
+
+  test('Linux carve-out: autoInstallOnAppQuit is OFF on linux', () => {
+    // electron-updater's quit handler fires after every window is gone, and
+    // the Linux installers run a BLOCKING pkexec install right there — a
+    // staged update would pop a windowless polkit password prompt on an
+    // ordinary quit. Linux keeps only the explicit "Relaunch now" path.
+    const { rig } = makeRig({ platform: 'linux' });
+    expect(rig.updater.autoInstallOnAppQuit).toBe(false);
+    // The rest of the configuration lock-down is platform-independent.
+    expect(rig.updater.autoDownload).toBe(false);
+  });
+
+  test('win32 keeps install-on-quit (NSIS installs silently, like Squirrel.Mac)', () => {
+    const { rig } = makeRig({ platform: 'win32' });
+    expect(rig.updater.autoInstallOnAppQuit).toBe(true);
+  });
+
+  test('linux: update-downloaded arms the banner but NOT attemptedInstall (no install commit on plain quit)', () => {
+    // With install-on-quit off, downloading is not an install attempt — a
+    // user who downloads and simply quits must not get a false "Update
+    // didn't install" notice on the next boot.
+    const { rig } = makeRig({ platform: 'linux' });
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    expect(rig.state.attemptedInstall).toBeNull();
+  });
+
+  test('linux: relaunch-now is the install-commit point — it arms attemptedInstall', () => {
+    // The click is Linux's commitment; arming here keeps the boot-time
+    // silent-failure detection working for the path the user actually took.
+    const { rig } = makeRig({ platform: 'linux' });
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(rig.state.attemptedInstall).toBe('0.3.2');
+    expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
+  });
+
+  test('darwin: update-downloaded still arms attemptedInstall at download time', () => {
+    const { rig } = makeRig({ platform: 'darwin' });
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    expect(rig.state.attemptedInstall).toBe('0.3.2');
   });
 
   // smoke plumbing regression. Added when manual `bun run dev` revealed that
@@ -2149,6 +2201,40 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
     expect(rig.dispatches).not.toContain('relaunch-watchdog-fired' as DispatchKind);
   });
 
+  test('error dispatched SYNCHRONOUSLY inside quitAndInstall (Linux pkexec cancel) fast-fails with the real cause, not the watchdog timeout', async () => {
+    // electron-updater's DebUpdater/RpmUpdater spawnSync the package manager
+    // inside quitAndInstall and dispatch failures through the `error` event
+    // BEFORE it returns (no throw). The in-flight gate must already be armed
+    // at that point — armed-after would leave this path unreachable and the
+    // user waiting out the watchdog for a misleading "the update timed out".
+    const { rig } = makeRig({
+      platform: 'linux',
+      versionPendingInstall: '0.3.2',
+      extraWindowCount: 1,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(rig.clock.lastMs).toBe(UPDATE_CHECK_INTERVAL_MS);
+    rig.updater.quitAndInstall = vi.fn(() => {
+      rig.updater.emit('error', new Error('pkexec: authorization could not be obtained'));
+    });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    for (const win of rig.windows) {
+      const failed = win.filter((c) => c.channel === 'ok:update:relaunch-failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toEqual({
+        version: '0.3.2',
+        message: 'pkexec: authorization could not be obtained',
+      });
+    }
+    expect(rig.dispatches.filter((d) => d === 'relaunch-error-event')).toHaveLength(1);
+    // failRelaunch cleared the just-armed watchdog — no later fire can
+    // double-report the same failure as a timeout.
+    expect(rig.clock.lastCallback).toBeNull();
+    expect(rig.dispatches).not.toContain('relaunch-watchdog-fired' as DispatchKind);
+  });
+
   test('CLASSIFIED error while in flight → additive error-classified + relaunch-error-event', async () => {
     // Pins the additive invariant on the classified branch too: a future
     // refactor that calls failRelaunch only from the unclassified else-arm
@@ -3100,6 +3186,11 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
         getPrimaryWindow: () => null,
         getAppVersion: () => '0.3.1',
         isPackaged: true,
+        // Pinned so the install-on-quit assertion below is deterministic on
+        // every runner — this test's subject is module-shape resolution;
+        // without the pin, ubuntu CI inherits linux and the Linux carve-out
+        // flips autoInstallOnAppQuit off.
+        platform: 'darwin',
         clock: makeFakeClock(),
         now: () => new Date(),
       },

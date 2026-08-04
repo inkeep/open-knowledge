@@ -43,8 +43,8 @@ name: Point release
 #
 # Cascade. On a real run the script tags, creates a DRAFT Release, and dispatches
 # the same three consumers the ordinary promotion does — release.yml (npm
-# publish), desktop-release.yml (signed DMG, which also flips the draft to
-# published), and main-reset on agents-private (changeset consolidation). Their
+# publish), desktop-release.yml (every platform's signed installers, which also flips
+# the draft to published), and main-reset on agents-private (changeset consolidation). Their
 # input contracts are untouched: this is a different way to reach the existing
 # cascade, not a second one.
 #

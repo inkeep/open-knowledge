@@ -498,7 +498,7 @@ jobs:
       # `workflow_dispatch`), which DO cascade even when fired via
       # GITHUB_TOKEN. Same-repo dispatch needs no PAT or App token —
       # the default `contents: write` token is enough.
-      - name: Trigger desktop-release.yml to build + upload DMG
+      - name: Trigger desktop-release.yml to build + upload the desktop installers
         if: steps.compute-beta.outputs.run_beta == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -510,7 +510,7 @@ jobs:
             --arg ref "$TAG" \
             '{event_type: "desktop-release", client_payload: {release_tag: $tag, ref: $ref}}')
           gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
-          echo "Dispatched desktop-release for ${TAG}; desktop-release.yml will build the signed DMG and upload it + beta-mac.yml to the prerelease."
+          echo "Dispatched desktop-release for ${TAG}; desktop-release.yml will build every platform installer and upload them + the beta channel manifests to the prerelease."
 
       # --- STABLE DISPATCH PATH ---
 

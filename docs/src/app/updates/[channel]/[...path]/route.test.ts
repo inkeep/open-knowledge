@@ -18,7 +18,7 @@ vi.doMock('../../../../lib/track.ts', () => ({
 const BETA_DMG_URL =
   'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-arm64.dmg';
 // Mutable so a test can flip the beta resolver from a fresh tag to a fallback.
-type BetaRedirect = { kind: string; url: string; cause?: string };
+type BetaRedirect = { kind: string; url: string; cause?: string; refreshError?: string };
 let _betaRedirect: BetaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
 vi.doMock('../../../../lib/download-links.ts', () => ({
   createBetaResolver: () => () => Promise.resolve(_betaRedirect),
@@ -147,5 +147,87 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(_lastCapture).toBeNull();
     _betaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
+  });
+
+  test('stale-lkg resolver still 302s (graceful degradation during a GitHub outage)', async () => {
+    // The LKG design exists precisely for the API-outage window: a stale
+    // last-known-good tag must serve the redirect, never harden into the
+    // fallback's 503 — that would take every beta updater down exactly when
+    // degradation matters most.
+    _betaRedirect = { kind: 'stale-lkg', url: BETA_DMG_URL, refreshError: 'API timeout' };
+    _lastCapture = null;
+    const res = await call('beta', ['beta-mac.yml']);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${REL}/download/v0.20.0-beta.4/beta-mac.yml`);
+    expect(_lastCapture).toBeNull();
+    _betaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
+  });
+
+  test('Windows stable manifest (latest.yml) 302s to the latest alias, NOT counted', async () => {
+    _lastCapture = null;
+    const res = await call('stable', ['latest.yml']);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${REL}/latest/download/latest.yml`);
+    expect(_lastCapture).toBeNull();
+  });
+
+  test('Windows beta manifest (beta.yml) 302s to the resolved beta tag, NOT counted', async () => {
+    _lastCapture = null;
+    const res = await call('beta', ['beta.yml']);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${REL}/download/v0.20.0-beta.4/beta.yml`);
+    expect(_lastCapture).toBeNull();
+  });
+
+  test('Linux manifests (x64 + arm64-suffixed, both channels) 302 and are NOT counted', async () => {
+    _lastCapture = null;
+    const stable = await call('stable', ['latest-linux-arm64.yml']);
+    expect(stable.status).toBe(302);
+    expect(stable.headers.get('location')).toBe(`${REL}/latest/download/latest-linux-arm64.yml`);
+    const beta = await call('beta', ['beta-linux.yml']);
+    expect(beta.status).toBe(302);
+    expect(beta.headers.get('location')).toBe(`${REL}/download/v0.20.0-beta.4/beta-linux.yml`);
+    expect(_lastCapture).toBeNull();
+  });
+
+  test('Windows stable exe counts with artifact_type=exe and no to_version (versionless name)', async () => {
+    _lastCapture = null;
+    const file = 'OpenKnowledge-Setup-x64.exe';
+    const res = await call('stable', [file], { 'x-ok-from-version': '0.19.1' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${REL}/latest/download/${file}`);
+    expect(_lastCapture?.event).toBe('app_update_downloaded');
+    expect(_lastCapture?.properties?.artifact_type).toBe('exe');
+    expect(_lastCapture?.properties?.to_version).toBeUndefined();
+    expect(_lastCapture?.properties?.from_version).toBe('0.19.1');
+  });
+
+  test('Linux beta deb counts with to_version derived from the resolved beta tag', async () => {
+    _lastCapture = null;
+    const file = 'OpenKnowledge-arm64.deb';
+    const res = await call('beta', [file]);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${REL}/download/v0.20.0-beta.4/${file}`);
+    expect(_lastCapture?.event).toBe('app_update_downloaded');
+    expect(_lastCapture?.properties?.artifact_type).toBe('deb');
+    expect(_lastCapture?.properties?.to_version).toBe('0.20.0-beta.4');
+  });
+
+  test('Linux stable rpm counts with artifact_type=rpm and no to_version (versionless name)', async () => {
+    _lastCapture = null;
+    const file = 'OpenKnowledge-x86_64.rpm';
+    const res = await call('stable', [file]);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${REL}/latest/download/${file}`);
+    expect(_lastCapture?.properties?.artifact_type).toBe('rpm');
+    // Symmetric with the beta deb's resolved-tag assertion: the stable alias
+    // resolves no tag, so a regression that propagates one must fail here.
+    expect(_lastCapture?.properties?.to_version).toBeUndefined();
+  });
+
+  test('a manifest-lookalike name that is not a real channel file → 404', async () => {
+    expect((await call('stable', ['nightly-mac.yml'])).status).toBe(404);
+    expect((await call('stable', ['latest-windows.yml'])).status).toBe(404);
+    expect((await call('stable', ['builder-debug.yml'])).status).toBe(404);
   });
 });

@@ -468,12 +468,15 @@ linux:
   # FUSE 2 (`libfuse.so.2` + fuse2 `fusermount`), which no current
   # mainstream distro ships — stock Debian 13 fails on BOTH arches
   # (arm64 additionally on libz.so.1), verified in real-VM QA. Fixing it
-  # means maintaining custom launcher-swapping build machinery for a
-  # secondary artifact whose auto-update role the apt repo covers better.
-  # Updates on Linux are the system package manager's job — see the
-  # platform gate at the bootAutoUpdater wiring site in
-  # `src/main/index.ts`. The no-sudo niche AppImage served is covered by
-  # the npm CLI / web app.
+  # would mean maintaining custom launcher-swapping build machinery for a
+  # secondary artifact whose one distinguishing role — self-update — the
+  # deb/rpm now cover in-app: electron-builder stamps
+  # `resources/package-type` into fpm builds, which routes electron-updater
+  # to its DebUpdater/RpmUpdater classes (download from the release feed,
+  # install via pkexec — the user authenticates the swap; no apt/rpm
+  # repository involved). See RELEASES.md § "Linux updates (no package
+  # repository)". The no-sudo niche AppImage served is covered by the
+  # npm CLI / web app.
   #
   # The arm64 deb is built on a NATIVE arm64 runner (the `build-linux` matrix
   # in .github/workflows/desktop-build-win-linux.yml), never cross-compiled:

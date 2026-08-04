@@ -3,9 +3,9 @@ name: Desktop build (manual, Windows/Linux)
 # Manual, artifact-only Windows + Linux desktop builds (spec
 # 2026-07-16-desktop-windows-linux-port, D6): nothing here publishes,
 # tags, or touches the release cadence — the operator downloads the
-# installers from the run's artifacts for VM/hardware QA. Cadence wiring
-# (desktop-release.yml jobs, updates-proxy widening, download surfaces)
-# is deferred to P4 after QA sign-off.
+# installers from the run's artifacts for VM/hardware QA. The release
+# path is desktop-release.yml, which builds these same targets signed
+# and publishes them; this workflow stays the unsigned QA lane.
 #
 # Topology: one `prepare` job on ubuntu builds the workspace (the CLI
 # build chain uses `cp -r`/`mkdir -p` bash-isms that don't survive a
@@ -220,8 +220,13 @@ jobs:
       # Signing is optional (see header). Secrets: AZURE_TENANT_ID /
       # AZURE_CLIENT_ID / AZURE_CLIENT_SECRET; repo variables:
       # AZURE_SIGNING_ENDPOINT / AZURE_SIGNING_ACCOUNT / AZURE_SIGNING_PROFILE
-      # (Azure Artifact Signing endpoint URL, code-signing account name,
-      # certificate profile name — procurement outputs).
+      # / AZURE_SIGNING_PUBLISHER (Azure Trusted Signing endpoint URL,
+      # code-signing account name, certificate profile name, certificate
+      # subject CN — procurement outputs). All FOUR azureSignOptions fields
+      # are schema-required (app-builder-lib WindowsAzureSigningConfiguration
+      # .required) — passing a subset fails validateConfig before packaging,
+      # so the signed branch requires the full set and PUBLISHER joins the
+      # presence check.
       - name: Package NSIS installers (x64 + arm64)
         working-directory: packages/desktop
         env:
@@ -231,18 +236,20 @@ jobs:
           AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
           AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
         run: |
           set -euo pipefail
           extra=()
-          if [[ -n "${AZURE_CLIENT_SECRET:-}" && -n "${AZURE_SIGNING_ENDPOINT:-}" ]]; then
-            echo "::notice::Azure Artifact Signing credentials present — building SIGNED installers."
+          if [[ -n "${AZURE_CLIENT_SECRET:-}" && -n "${AZURE_SIGNING_ENDPOINT:-}" && -n "${AZURE_SIGNING_PUBLISHER:-}" ]]; then
+            echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
             extra+=(
               "--config.win.azureSignOptions.endpoint=${AZURE_SIGNING_ENDPOINT}"
               "--config.win.azureSignOptions.codeSigningAccountName=${AZURE_SIGNING_ACCOUNT}"
               "--config.win.azureSignOptions.certificateProfileName=${AZURE_SIGNING_PROFILE}"
+              "--config.win.azureSignOptions.publisherName=${AZURE_SIGNING_PUBLISHER}"
             )
           else
-            echo "::warning::No Azure signing credentials — building UNSIGNED installers (internal QA only; never distribute)."
+            echo "::warning::No (complete) Azure signing config — building UNSIGNED installers (internal QA only; never distribute)."
           fi
           pnpm exec electron-builder --win --publish never "${extra[@]}"
 
@@ -450,7 +457,8 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      # No Linux update-metadata upload: electron-updater is platform-gated
-      # off on Linux (the bootAutoUpdater wiring site in src/main/index.ts) —
-      # updates arrive via the system package manager, so no
-      # `latest-linux.yml` feed exists to publish.
+      # No Linux update-metadata upload: these are unsigned QA artifacts,
+      # never published, so their `latest-linux*.yml` files have no consumer.
+      # The release path (desktop-release.yml) uploads the Linux manifests —
+      # electron-updater's DebUpdater/RpmUpdater consume them since the
+      # auto-updater was un-gated on Linux.

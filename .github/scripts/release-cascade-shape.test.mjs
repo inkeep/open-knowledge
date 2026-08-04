@@ -10,6 +10,7 @@
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,8 +26,11 @@ const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
 
 /**
- * Ordered step names from a workflow's single-job flat step list. Fails loud
- * rather than silently returning [] if the shape ever changes.
+ * Ordered step names across the workflow, in FILE order. Under the fan-out
+ * topology file order equals execution order only WITHIN a job; cross-job
+ * ordering is enforced by the `needs:` DAG, which the dedicated describe
+ * below pins directly. Fails loud rather than silently returning [] if the
+ * shape ever changes.
  */
 function stepNames(source) {
   const names = [...source.matchAll(/^ {6}- name: (.+)$/gm)].map((m) => m[1].trim());
@@ -44,9 +48,10 @@ describe('the stable gate is upstream of everything that ships', () => {
   const names = stepNames(desktopRelease);
 
   test('the smoke gate runs after the DMG is built', () => {
-    expect(indexOfStep(names, 'Smoke the packaged DMG')).toBeGreaterThan(
-      indexOfStep(names, 'Build + sign + notarize + publish DMG/ZIP'),
-    );
+    // Both steps live in build-macos, so file order is execution order here.
+    const build = indexOfStep(names, 'Build + sign + notarize DMG/ZIP');
+    expect(build).toBeGreaterThan(-1);
+    expect(indexOfStep(names, 'Smoke the packaged DMG')).toBeGreaterThan(build);
   });
 
   test('the smoke gate runs before the draft is promoted to published', () => {
@@ -90,17 +95,19 @@ describe('the stable gate is upstream of everything that ships', () => {
     // declare one and you own the whole predicate. A shipping step whose `if:`
     // omits `success()` fires on a job that already failed — which is a gate
     // that does not gate. This escaped review once: the npm dispatch shipped
-    // with `if: steps.channel... && github.event_name...` and no `success()`,
-    // so a refused DMG would still have published to npm.
+    // with a channel-and-event `if:` and no `success()`, so a refused DMG
+    // would still have published to npm.
     const afterGate = desktopRelease.slice(
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
     const shipping = afterGate.slice(0, afterGate.indexOf('- name: Alert on a blocked release'));
     const conditions = [...shipping.matchAll(/^\s*if: (.+)$/gm)].map((m) => m[1].trim());
-    // The gate itself is channel-scoped and runs before anything can have
-    // failed; everything after it is shipping and must be success()-gated.
+    // Two conditions in this span are gates, not shipping: the smoke gate's
+    // own channel scope, and the alert JOB's failure() header (the span ends
+    // at the alert step's name, which sits after its job header). Everything
+    // else ships and must be success()-gated.
     const shippingConditions = conditions.filter(
-      (c) => c !== "steps.channel.outputs.channel == 'latest'",
+      (c) => c !== "steps.channel.outputs.channel == 'latest'" && c !== 'failure()',
     );
     expect(shippingConditions.length).toBeGreaterThan(0);
     for (const condition of shippingConditions) {
@@ -108,6 +115,70 @@ describe('the stable gate is upstream of everything that ships', () => {
         'success()',
       );
     }
+  });
+});
+
+describe('the Azure signing flag set satisfies the schema', () => {
+  test('every schema-required azureSignOptions field is passed by both Windows packagers', () => {
+    // app-builder-lib's validateConfig rejects a PARTIAL azureSignOptions
+    // before packaging anything ("should be one of these: null"), and the
+    // fan-in topology turns that one-job failure into a zero-platform
+    // release. The required set is data (scheme.json), so pin the workflows'
+    // flag sets against it — this is exactly the check that would have
+    // caught the three-of-four-fields shape without a live Azure account.
+    // Resolution goes through electron-builder's own tree because pnpm's
+    // isolated layout hides transitive deps from the workspace packages.
+    const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const desktopRequire = createRequire(join(repoRoot, 'packages/desktop/package.json'));
+    const ebMain = desktopRequire.resolve('electron-builder');
+    const ablRequire = createRequire(ebMain);
+    const ablMain = ablRequire.resolve('app-builder-lib');
+    const scheme = JSON.parse(readFileSync(join(dirname(ablMain), '..', 'scheme.json'), 'utf8'));
+    const required = scheme.definitions.WindowsAzureSigningConfiguration.required;
+    expect(required.length).toBeGreaterThanOrEqual(3); // schema sanity, not vacuous
+
+    for (const workflow of [desktopRelease, read('desktop-build-win-linux.yml')]) {
+      const passed = [...workflow.matchAll(/--config\.win\.azureSignOptions\.([A-Za-z]+)=/g)].map(
+        (m) => m[1],
+      );
+      for (const field of required) {
+        expect(passed, `workflow is missing schema-required azureSignOptions.${field}`).toContain(
+          field,
+        );
+      }
+    }
+  });
+});
+
+describe('the fan-in publication DAG gates every platform', () => {
+  test('publish-assets waits on all four build jobs', () => {
+    // The single publication point must sit downstream of EVERY packaging
+    // job — dropping one from `needs` publishes a release that platform
+    // never built for.
+    expect(desktopRelease).toContain(
+      'needs: [prepare, build-macos, build-windows, build-linux]',
+    );
+  });
+
+  test('finalize waits on publish-assets (and the smoke via build-macos)', () => {
+    expect(desktopRelease).toContain('needs: [prepare, build-macos, publish-assets]');
+  });
+
+  test('no electron-builder invocation publishes; only the fan-in touches the Release', () => {
+    expect(desktopRelease).not.toContain('--publish always');
+    const invocations = [...desktopRelease.matchAll(/electron-builder --\w+/g)];
+    expect(invocations.length).toBeGreaterThanOrEqual(3);
+    expect(desktopRelease).toContain('gh release upload "$RELEASE_TAG"');
+  });
+
+  test('the inventory is asserted before upload and re-verified after', () => {
+    const names = stepNames(desktopRelease);
+    const assert = indexOfStep(names, 'Assert the complete cross-platform inventory');
+    const upload = indexOfStep(names, 'Upload assets to the GitHub Release');
+    const verify = indexOfStep(names, 'Verify the Release carries the full inventory');
+    expect(assert).toBeGreaterThan(-1);
+    expect(assert).toBeLessThan(upload);
+    expect(upload).toBeLessThan(verify);
   });
 });
 
@@ -141,7 +212,7 @@ describe('the moved dispatch keeps the contract release.yml consumes', () => {
       desktopRelease.indexOf('- name: Trigger release.yml to publish stable to npm'),
       desktopRelease.indexOf('# The on-site changelog'),
     );
-    expect(dispatch).toContain("steps.channel.outputs.channel == 'latest'");
+    expect(dispatch).toContain("needs.prepare.outputs.channel == 'latest'");
     expect(dispatch).toContain("github.event_name != 'workflow_dispatch'");
   });
 });
@@ -278,14 +349,19 @@ describe('the stable gate does not touch the beta cadence', () => {
   });
 
   test('the alert is stable-only too, so a beta hiccup does not page', () => {
+    // The failure() half of the old combined predicate moved to the alert
+    // JOB header (pinned by build-smoke-alert-payload.test.mjs); the step
+    // keeps the channel scope.
     expect(scoped('- name: Alert on a blocked release (FR5c)')).toContain(
-      "if: failure() && steps.channel.outputs.channel == 'latest'",
+      "if: needs.prepare.outputs.channel == 'latest'",
     );
   });
 
   test('the beta path keeps its existing stuck-draft warning', () => {
+    // No step-level channel gate: the warning fires for BOTH channels (the
+    // alert job's failure() header is what conditions it on a broken run).
     const warn = scoped('- name: Warn on stuck draft');
-    expect(warn).toContain('if: failure()');
-    expect(warn).not.toContain("channel == 'latest'");
+    expect(warn).toContain('RECOVERY="gh release edit');
+    expect(warn).not.toContain("if: needs.prepare.outputs.channel == 'latest'");
   });
 });

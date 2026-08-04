@@ -1,5 +1,13 @@
 # Linux package repository (apt + rpm)
 
+> **Status: PARKED, not wired into the release cadence.** Linux updates ship
+> in-app instead: electron-updater's `DebUpdater`/`RpmUpdater` download the
+> new package from the GitHub release feed and install it via `pkexec` (see
+> `RELEASES.md` § "Linux updates (no package repository)"). This repo
+> machinery is kept for a possible future repo-based channel; none of its
+> operator setup (GPG key, R2 bucket, `packages.openknowledge.ai`) was
+> provisioned.
+
 Self-hosted apt/dnf repository for the OpenKnowledge Linux desktop packages,
 served as **static files** from an R2 bucket behind
 `packages.openknowledge.ai`. There is no server component: `apt` and `dnf` do

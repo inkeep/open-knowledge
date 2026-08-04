@@ -48,6 +48,18 @@ const LEVEL_HEADING = /^#{2,4} (Major|Minor|Patch) Changes\s*$/;
 const STRIP_LINE =
   /^(?:<!-- ok-consumed-set:.*-->|Delta since previous beta\b.*|First beta of the cycle\b.*)\s*$/;
 
+// The multi-line Downloads table desktop-release.yml renders into every
+// release body (delimited so it can be removed exactly). Stripped up front —
+// the line parser below cannot handle it: with a bullet block open, every
+// non-heading line accrues onto that block, so the table would silently leak
+// into the final Patch bullet of the aggregated changelog. Simplified variant
+// of render-release-downloads.mjs's stripDownloadsBlock (inlined because this
+// script runs standalone in workflows): the `\n?` boundary anchors and `'\n'`
+// replacement are deliberately omitted — only the upsert path needs
+// byte-stable strip→re-append; here the parser's own blank-line handling
+// absorbs the residue. Each side's tests pin its own behavior.
+const STRIP_DOWNLOADS_BLOCK = /<!-- ok-downloads:start -->[\s\S]*?<!-- ok-downloads:end -->/g;
+
 /**
  * @param {string} input Concatenated raw beta release bodies.
  * @returns {string} Merged changelog: `### <Level> Changes` sections (Major →
@@ -55,6 +67,7 @@ const STRIP_LINE =
  *   empty string when no level sections were found.
  */
 export function aggregateStableChangelog(input) {
+  const withoutDownloads = input.replace(STRIP_DOWNLOADS_BLOCK, '');
   const buckets = { Major: [], Minor: [], Patch: [] };
   let level = null;
   let block = null;
@@ -68,7 +81,7 @@ export function aggregateStableChangelog(input) {
     block = null;
   };
 
-  for (const line of input.split('\n')) {
+  for (const line of withoutDownloads.split('\n')) {
     if (STRIP_LINE.test(line)) continue;
     const heading = LEVEL_HEADING.exec(line);
     if (heading) {

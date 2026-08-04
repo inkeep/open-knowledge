@@ -130,20 +130,35 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
-  test('the alert step is failure-conditioned, not success-conditioned', () => {
-    expect(alertStep()).toContain('if: failure()');
+  test('the alert job is failure-conditioned, not success-conditioned', () => {
+    // Under the fan-out topology the failure() lives at the ALERT JOB level
+    // (a failed packaging job skips finalize, so a failure()-step inside it
+    // could never fire); the step keeps only the stable-only channel gate.
+    const alertJob = desktopRelease.slice(
+      desktopRelease.indexOf('\n  alert:'),
+      desktopRelease.indexOf('- name: Alert on a blocked release'),
+    );
+    expect(alertJob).toContain('if: failure()');
+    expect(alertJob).not.toContain('if: success()');
     expect(alertStep()).not.toContain('if: success()');
   });
 
   test('the alert reads its builder from the workflow commit, not the release tag', () => {
     // On repository_dispatch the workflow runs from the default branch while
-    // the job checks out client_payload.ref — a tag that can predate this
-    // script. v0.41.0 lost its Slack announcement to exactly that.
-    const step = alertStep();
-    expect(step).toContain('git fetch --depth=1 origin "$GITHUB_SHA"');
-    expect(step).toContain(
-      'git show "${GITHUB_SHA}:.github/scripts/build-smoke-alert-payload.mjs"',
+    // the packaging jobs check out client_payload.ref — a tag that can predate
+    // this script. v0.41.0 lost its Slack announcement to exactly that. The
+    // alert job therefore checks out $GITHUB_SHA (a bare checkout, no `ref:`
+    // override) and reads the builder from the working tree, degrading to the
+    // plain-text payload when even that copy is missing.
+    const alertJob = desktopRelease.slice(
+      desktopRelease.indexOf('\n  alert:'),
+      desktopRelease.indexOf('- name: Alert on a blocked release'),
     );
+    expect(alertJob).toContain('actions/checkout');
+    expect(alertJob).not.toContain('ref: ${{ github.event.client_payload.ref');
+    const step = alertStep();
+    expect(step).toContain('-f .github/scripts/build-smoke-alert-payload.mjs');
+    expect(step).toContain('node .github/scripts/build-smoke-alert-payload.mjs --tag');
   });
 
   test('the alert reuses the existing webhook secret and introduces none', () => {

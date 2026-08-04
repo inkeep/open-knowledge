@@ -81,6 +81,28 @@ describe('aggregateStableChangelog', () => {
     expect(out).not.toContain('First beta of the cycle');
   });
 
+  test('strips the Downloads block even when a bullet block is still open above it', () => {
+    // The line parser accrues every non-heading line onto an open bullet
+    // block, so without the up-front strip the table would leak INTO the
+    // final Patch bullet — this pins the pre-filter, not just the output.
+    const downloads = [
+      '<!-- ok-downloads:start -->',
+      '## Downloads',
+      '',
+      '| Platform | Architecture | Download |',
+      '| --- | --- | --- |',
+      '| Windows | x64 | [OpenKnowledge-Setup-x64.exe](https://example.invalid/x) |',
+      '<!-- ok-downloads:end -->',
+    ].join('\n');
+    const out = aggregateStableChangelog(
+      `Delta since previous beta (v1.0.0-beta.0)\n\n### Patch Changes\n\n- A patch\n\n<!-- ok-consumed-set: ["x"] -->\n\n${downloads}\n`,
+    );
+    expect(out).toContain('- A patch');
+    expect(out).not.toContain('Downloads');
+    expect(out).not.toContain('|');
+    expect(out).not.toContain('ok-downloads');
+  });
+
   test('preserves a bullet body verbatim, including indented continuation paragraphs', () => {
     const bullet = [
       '- Report a bug from inside the app. Opens from Help → Report a Bug…',

@@ -56,6 +56,24 @@ describe('githubMarkdownToSlackMrkdwn', () => {
     expect(out).not.toContain('ok-consumed-set');
   });
 
+  test('strips the Downloads block CONTENT, not just its marker comments', () => {
+    const body = [
+      '- a change',
+      '',
+      '<!-- ok-downloads:start -->',
+      '## Downloads',
+      '',
+      '| Platform | Architecture | Download |',
+      '| --- | --- | --- |',
+      '| Windows | x64 | [OpenKnowledge-Setup-x64.exe](https://example.invalid/x) |',
+      '<!-- ok-downloads:end -->',
+    ].join('\n');
+    const out = githubMarkdownToSlackMrkdwn(body);
+    expect(out).toBe('• a change');
+    expect(out).not.toContain('Downloads');
+    expect(out).not.toContain('|');
+  });
+
   test('passes fenced code through without list or bold rewriting', () => {
     const md = '```js\nconst a = **x**;\n- not a bullet\n```';
     const out = githubMarkdownToSlackMrkdwn(md);

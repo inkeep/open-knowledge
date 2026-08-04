@@ -20,6 +20,12 @@
 
 name: publish-linux-repo
 
+# PARKED — not wired into the release cadence. Linux updates ship in-app via
+# electron-updater's deb/rpm installers (see RELEASES.md, "Linux updates (no
+# package repository)"). Kept dispatchable for a possible future repo-based
+# channel; its operator setup (GPG key, R2 bucket, custom domain) was never
+# provisioned, so a dispatch today fails at the secrets preflight.
+
 on:
   workflow_dispatch:
     inputs:

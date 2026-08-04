@@ -170,6 +170,14 @@ interface StartAutoUpdaterOpts {
   getAllWindows?: () => readonly { webContents: SendableWebContents }[];
   getAppVersion: () => string;
   isPackaged: boolean;
+  /**
+   * Host platform, injected so the platform-agnostic unit suite (which runs
+   * on ubuntu CI) can pin any platform's behavior deterministically instead
+   * of inheriting the runner's. Production omits it (`process.platform`).
+   * Drives the Linux install-on-quit carve-out — see the
+   * `autoInstallOnAppQuit` assignment.
+   */
+  platform?: NodeJS.Platform;
   /** True when `OK_UPDATER_FORCE_DEV=1` — lets smoke harness opt in. */
   forceDevBypass?: boolean;
   /**
@@ -583,6 +591,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     getAllWindows,
     getAppVersion,
     isPackaged,
+    platform = process.platform,
     forceDevBypass = false,
     feedUrl,
     proxyFeed,
@@ -603,7 +612,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // true, electron-updater would download + stage + fire `update-downloaded`
   // before our `update-available` handler could veto, defeating the gate.
   updater.autoDownload = false;
-  updater.autoInstallOnAppQuit = true;
+  // Install-on-quit everywhere EXCEPT Linux. electron-updater's quit handler
+  // fires from `app.once('quit')` — after every window is gone — and the
+  // Linux installers (DebUpdater/RpmUpdater) run a BLOCKING pkexec install
+  // right there, so a staged update would pop a windowless polkit password
+  // prompt on an ordinary quit with nothing on screen to explain it.
+  // Squirrel.Mac and NSIS install silently, so install-on-quit stays right
+  // for them; Linux keeps only the explicit "Relaunch now" path, where the
+  // user just clicked the button the prompt answers for.
+  updater.autoInstallOnAppQuit = platform !== 'linux';
   // Channel = the build's self-identified channel from `app.getVersion()`.
   // No persisted preference, no IPC mutator — install-time-sticky: a beta
   // DMG only auto-updates to a newer beta DMG, a stable DMG only to a newer
@@ -869,9 +886,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
    * learn the relaunch failed even on a failing disk.
    *
    * Not self-guarding — single-fire per attempt is the callers' contract:
-   * the sync-throw path runs before the in-flight gate arms, `onError`
-   * gates on `relaunchInFlight`, and the first failure clears both the
-   * watchdog and the gate so neither async trigger can re-enter. A new
+   * the gate arms BEFORE `quitAndInstall()` (so even a synchronously
+   * dispatched Linux install error finds it armed), `onError` gates on
+   * `relaunchInFlight`, and the first failure — any trigger — clears both
+   * the watchdog and the gate so no other trigger can re-enter. A new
    * failure trigger must preserve that gate.
    */
   const failRelaunch = (
@@ -1080,24 +1098,38 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // user-visible toast with no state to prevent re-emission on the next
     // update-downloaded event. If persist fails, skip dispatch — electron-
     // updater will re-fire from its on-disk cache and we get another shot.
-    // Arm BOTH the banner gate (`versionPendingInstall`) and the boot-time
-    // failure-detection record (`attemptedInstall`). With `autoInstallOnAppQuit`
-    // the staged update is now committed to install on the next quit (whether
-    // via "Relaunch now" or a plain quit), so this is the point the install is
-    // "attempted". `attemptedInstall` survives the `relaunch-now` clear of
+    // Arm BOTH the banner gate (`versionPendingInstall`) and — where a plain
+    // quit commits the install — the boot-time failure-detection record
+    // (`attemptedInstall`). With `autoInstallOnAppQuit` the staged update is
+    // committed to install on the next quit (whether via "Relaunch now" or a
+    // plain quit), so download time IS the point the install is "attempted".
+    // `attemptedInstall` survives the `relaunch-now` clear of
     // `versionPendingInstall`, letting the next boot tell success from a
     // silently-failed install.
+    //
+    // NOT on Linux: install-on-quit is off there (see the
+    // `autoInstallOnAppQuit` assignment), so a user who downloads and then
+    // simply quits never committed to an install — arming here would make
+    // the next boot surface a false "Update didn't install" notice (up to
+    // the surfacing cap) for that most-common path. Linux arms the record at
+    // its actual commit point, the `relaunch-now` handler.
+    const installCommittedAtDownload = platform !== 'linux';
     if (
       !persistSafely(
         {
           ...state,
           versionPendingInstall: version,
-          attemptedInstall: version,
-          // Fresh failure budget for a newly-attempted version; preserved when
-          // the same version re-arms (e.g. a re-download after `relaunch-now`
-          // cleared `versionPendingInstall`) so the boot-nag cap isn't reset.
-          attemptedInstallSurfacedCount:
-            state.attemptedInstall === version ? state.attemptedInstallSurfacedCount : 0,
+          ...(installCommittedAtDownload
+            ? {
+                attemptedInstall: version,
+                // Fresh failure budget for a newly-attempted version; preserved
+                // when the same version re-arms (e.g. a re-download after
+                // `relaunch-now` cleared `versionPendingInstall`) so the
+                // boot-nag cap isn't reset.
+                attemptedInstallSurfacedCount:
+                  state.attemptedInstall === version ? state.attemptedInstallSurfacedCount : 0,
+              }
+            : {}),
         },
         'update-downloaded',
       )
@@ -1241,7 +1273,30 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // persist fails, skip the call entirely — better to leave the toast
     // visible and let the user click again (with a healthy disk) than to
     // fire a non-idempotent operation on unreliable state.
-    if (!persistSafely({ ...snapshot, versionPendingInstall: null }, 'relaunch-now'))
+    //
+    // On Linux this persist ALSO arms the boot-time failure-detection record:
+    // the click on "Relaunch now" is Linux's actual install-commit point
+    // (install-on-quit is off there, so `onUpdateDownloaded` deliberately did
+    // not arm it — see that handler). Same fresh-budget semantics as the
+    // download-time arming on the other platforms.
+    if (
+      !persistSafely(
+        {
+          ...snapshot,
+          versionPendingInstall: null,
+          ...(platform === 'linux'
+            ? {
+                attemptedInstall: pending,
+                attemptedInstallSurfacedCount:
+                  snapshot.attemptedInstall === pending
+                    ? snapshot.attemptedInstallSurfacedCount
+                    : 0,
+              }
+            : {}),
+        },
+        'relaunch-now',
+      )
+    )
       return undefined;
     // Tell EVERY window the relaunch is underway BEFORE the teardown await:
     // each renderer swaps its "…ready to install [Relaunch]" banner to the
@@ -1272,26 +1327,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     }
     logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', { pending });
     onDispatch?.('relaunch-now');
-    try {
-      updater.quitAndInstall();
-    } catch (err) {
-      // quitAndInstall threw — the app is NOT quitting. `failRelaunch`
-      // recovers every window (restore gate + re-arm + failure notice);
-      // rethrow so the clicked window's invoke also rejects and its
-      // rejection-path notice lands (idempotent with the broadcast — same
-      // version-keyed id).
-      failRelaunch(
-        pending,
-        err instanceof Error ? err.message : String(err),
-        'relaunch-failed-rearm',
-      );
-      throw err;
-    }
-    // quitAndInstall returned cleanly, but that proves nothing on
-    // Squirrel.Mac — its failures surface asynchronously via the updater's
-    // `error` event (handled in onError while in flight), or as a silent
-    // no-quit. Arm the watchdog backstop for the latter: if this process is
-    // still alive when the timer fires, the relaunch failed. Packaged builds
+    // Arm the in-flight gate BEFORE the call, not after it returns. On
+    // Squirrel.Mac failures surface asynchronously (the `error` event, or a
+    // silent no-quit the watchdog backstops), but the Linux installers run a
+    // BLOCKING pkexec install inside quitAndInstall and dispatch their
+    // failure through the `error` event BEFORE it returns — armed-after
+    // would leave onError's in-flight path unreachable there, and a
+    // cancelled password prompt would surface 15s later as a misleading
+    // "the update timed out" instead of the real cause. Packaged builds
     // only — in dev, quitAndInstall is a DOCUMENTED silent no-op (MacUpdater
     // can't replace an unpackaged .app), not a failure.
     if (isPackaged) {
@@ -1301,6 +1344,21 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         failRelaunch(pending, 'the update timed out', 'relaunch-watchdog-fired');
       }, RELAUNCH_WATCHDOG_MS);
       relaunchInFlight = { version: pending, watchdog };
+    }
+    try {
+      updater.quitAndInstall();
+    } catch (err) {
+      // quitAndInstall threw — the app is NOT quitting. `failRelaunch`
+      // clears the just-armed gate + watchdog and recovers every window
+      // (restore gate + re-arm + failure notice); rethrow so the clicked
+      // window's invoke also rejects and its rejection-path notice lands
+      // (idempotent with the broadcast — same version-keyed id).
+      failRelaunch(
+        pending,
+        err instanceof Error ? err.message : String(err),
+        'relaunch-failed-rearm',
+      );
+      throw err;
     }
     return undefined;
   });
@@ -1342,7 +1400,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   // Boot-time stale-pending reconciliation. `versionPendingInstall` is cleared
   // by exactly one site (`ok:update:relaunch-now` IPC, the "Relaunch" button).
-  // The other install path — `autoInstallOnAppQuit = true` — installs the
+  // The other install path — `autoInstallOnAppQuit` (non-Linux; Linux keeps
+  // only the explicit Relaunch path, see the assignment) — installs the
   // staged update when the user simply quits the app, but never touches the
   // state field. Next launch, `main/index.ts`'s `browser-window-created`
   // re-broadcast surfaces the stale value as a phantom "Version X ready to

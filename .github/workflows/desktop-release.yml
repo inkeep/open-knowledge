@@ -1,53 +1,85 @@
 name: Desktop release
 
-# Builds + signs + notarizes + publishes the macOS DMG/ZIP for an
-# Open Knowledge release. After upload, promotes the GitHub Release
-# from draft → published so it appears in the .atom feed.
+# Builds + signs + publishes EVERY desktop installer for an Open Knowledge
+# release — macOS DMG/ZIP, Windows NSIS x64/arm64, Linux deb/rpm x64/arm64 —
+# then promotes the GitHub Release from draft → published so it appears in
+# the .atom feed.
+#
+# Topology (fan-out / fan-in, one publication point):
+#
+#   prepare ── channel/version resolution + platform-neutral workspace build
+#      │
+#      ├────────────┬──────────────┐
+#   build-macos  build-windows  build-linux (x64 + arm64 matrix)
+#   sign+notarize  Azure-sign     deb+rpm on native runners
+#   + DMG smoke    NSIS x64+arm64
+#      │            │              │
+#      └────────────┴──────────────┘
+#                    │
+#             publish-assets ── inventory assert → gh release upload → verify
+#                    │
+#                finalize ── Downloads table → draft flip → npm dispatch
+#                            → Slack/Discord announcements
+#                    │
+#                  alert ── pages the release channel on any upstream failure
+#
+# Every packaging job runs `electron-builder --publish never` and stages its
+# outputs as run artifacts; only `publish-assets` talks to the GitHub Release.
+# That gives one place that asserts the full cross-platform inventory before
+# anything becomes visible, and makes upload retries cheap (re-running
+# `publish-assets` never re-runs a 30-minute signed build). electron-builder
+# writes the electron-updater channel manifests (latest-mac.yml / latest.yml /
+# latest-linux[-arm64].yml, or their beta-* siblings) locally regardless of
+# publish mode, so the fan-in uploads those alongside the installers.
 #
 # Triggers (2):
 #   - repository_dispatch (event_type: desktop-release) — primary cascade
 #     from release.yml (beta) and promote-stable.yml (stable). The
 #     upstream creates the GitHub Release as --draft (so it stays out
-#     of the .atom feed until the channel manifest is uploaded) and
-#     dispatches this workflow with client_payload.{release_tag, ref}.
-#     We do not use `release: published` for the cascade because the
-#     upstream gh release create runs as GITHUB_TOKEN, and GitHub
-#     suppresses workflow runs from GITHUB_TOKEN-authored release
-#     events. repository_dispatch is the documented exemption.
+#     of the .atom feed until every installer + channel manifest is
+#     uploaded) and dispatches this workflow with
+#     client_payload.{release_tag, ref}. We do not use `release: published`
+#     for the cascade because the upstream gh release create runs as
+#     GITHUB_TOKEN, and GitHub suppresses workflow runs from
+#     GITHUB_TOKEN-authored release events. repository_dispatch is the
+#     documented exemption.
 #     See https://docs.github.com/en/actions/concepts/security/github_token.
-#   - workflow_dispatch — manual recovery path for re-uploading a DMG
-#     to an existing Release after a transient failure (e.g., a CI-only
-#     fix landed after the tag was cut). Builds from the chosen ref
-#     and uploads to the Release matching release_tag.
+#   - workflow_dispatch — manual recovery path for re-building + re-uploading
+#     assets to an EXISTING Release after a transient failure (e.g., a
+#     CI-only fix landed after the tag was cut). Builds from the chosen ref
+#     and uploads to the Release matching release_tag. Unlike the
+#     electron-builder-publisher era this path no longer creates a missing
+#     Release — the Release must already exist (cut by release.yml /
+#     promote-stable.yml / point-release.yml).
 #
-# What this workflow does: downloads the tagged ref, builds a signed +
-# notarized + stapled + fuse-verified Universal DMG + Universal ZIP,
-# and uploads `.dmg`, `.dmg.blockmap`, `.zip`, `.zip.blockmap`, and the
-# channel-appropriate manifest (`latest-mac.yml` for stable releases,
-# `beta-mac.yml` for `*-beta.*` prereleases) to the GitHub Release
-# matching the tag. The channel is detected from the package version's
-# prerelease tag in a step below. The upload is driven by
-# `electron-builder --publish always` reading the
-# `publish: [{ provider: github, owner: inkeep, repo: open-knowledge }]`
-# block from `packages/desktop/electron-builder.yml`. After upload,
-# the Promote step flips draft → published (and re-stamps --latest for
-# the stable channel on the normal flow) via a single combined
-# gh release edit PATCH — empirically atomic; GitHub evaluates the
-# make_latest constraint against post-request state.
-#
-# Required secrets (identical shape to desktop-build.yml):
-#   CSC_LINK / CSC_KEY_PASSWORD
-#   APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
-#     OR APPLE_API_KEY + APPLE_API_KEY_ID [+ APPLE_API_ISSUER]
+# Required secrets:
+#   macOS (identical shape to desktop-build.yml):
+#     CSC_LINK / CSC_KEY_PASSWORD
+#     APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+#       OR APPLE_API_KEY + APPLE_API_KEY_ID [+ APPLE_API_ISSUER]
+#   Windows (Azure Trusted Signing — same names as desktop-build-win-linux.yml):
+#     secrets: AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET
+#     repo variables: AZURE_SIGNING_ENDPOINT / AZURE_SIGNING_ACCOUNT /
+#       AZURE_SIGNING_PROFILE / AZURE_SIGNING_PUBLISHER (the certificate
+#       subject CN, e.g. "Inkeep, Inc." — azureSignOptions.publisherName is
+#       schema-REQUIRED by app-builder-lib, distinct from the optional
+#       win.publisherName update-verification knob)
 #   GITHUB_TOKEN (auto-provided, contents:write scope) — used as GH_TOKEN
-#     for electron-builder's GitHub publish.
+#     for the fan-in `gh release upload` + the finalize/alert steps.
 #
-# Unsigned mode is explicitly REJECTED here. auto-update refuses unsigned
-# upgrades (Squirrel.Mac signature-verifies every update against the
-# installed app's cert), so publishing unsigned would silently break
-# real-world update cycles. Without CSC_LINK present, this workflow
-# fails loudly in the signmode-detection step rather than building an
-# unpublishable artifact.
+# Unsigned mode is explicitly REJECTED on macOS AND Windows. On macOS,
+# auto-update refuses unsigned upgrades (Squirrel.Mac signature-verifies every
+# update against the installed app's cert). On Windows nothing technically
+# blocks unsigned updates, but publishing unsigned would (a) train users
+# through SmartScreen "unrecognized app" warnings, (b) forfeit signer
+# reputation the beta cadence exists to accrue, and (c) make a later
+# `win.publisherName` verification rollout impossible to sequence — once any
+# signature-verifying build is in the field, every future installer on that
+# channel must be signed. Both platforms fail loudly in their
+# signing-detection steps rather than building an unpublishable artifact.
+# Linux needs no signing: the deb/rpm updaters install with signature checks
+# disabled by design (no apt/rpm repo in the loop — electron-updater downloads
+# from the release feed and installs via pkexec).
 
 on:
   # Primary cascade from release.yml (beta) and promote-stable.yml (stable).
@@ -58,26 +90,28 @@ on:
   # release events; repository_dispatch is the documented exemption.
   repository_dispatch:
     types: [desktop-release]
-  # Manual re-publish path: lets an operator upload a DMG to an existing
-  # Release when the original cascade-triggered run failed (e.g., a
+  # Manual re-publish path: lets an operator rebuild + re-upload assets for an
+  # existing Release when the original cascade-triggered run failed (e.g., a
   # CI-only fix landed on `main` after the tag was cut). Builds from
   # the chosen ref (typically `main` with the fix) and uploads to the
   # Release matching release_tag. The dispatcher must ensure
   # `packages/desktop/package.json#version` at the chosen ref matches
-  # release_tag (without the `v` prefix) — electron-builder picks the
-  # upload target from package.json, not from this input.
+  # release_tag (without the `v` prefix) — the version override below derives
+  # everything from the tag, so a mismatched ref ships mismatched code, not
+  # mismatched metadata.
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing release tag to upload DMG to (e.g. v0.3.0)"
+        description: "Existing release tag to upload assets to (e.g. v0.3.0)"
         required: true
         type: string
 
 permissions:
-  # contents:write is required for electron-builder to upload release assets
-  # via the GitHub API. The auto-provided GITHUB_TOKEN gets write scope with
-  # this declaration; no separate PAT or App-token required.
-  contents: write
+  # Least-privilege default: the packaging jobs only read the repo. The two
+  # jobs that touch the Release (publish-assets: asset upload; finalize:
+  # body edit + draft flip + repository_dispatch) each declare their own
+  # `contents: write`. No separate PAT or App-token required.
+  contents: read
 
 # Concurrency mirrors desktop-build.yml's rationale — a mid-notarize cancel
 # is costly (Apple's notary round-trip is 1-5 min and doesn't resume cleanly).
@@ -88,19 +122,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-publish-macos:
-    # macos-26 = Apple Silicon (Tahoe) with Xcode 26.x preinstalled. Apple
-    # Silicon is required for the Universal DMG lipo merge (arm64 + x64 →
-    # universal) per parent SPEC D29. Xcode 26+ is required because
-    # electron-builder compiles `build/okglass.icon` → `Assets.car` via
-    # `actool`, which only ships with Xcode 26+.
-    runs-on: macos-26
-    # 75 min budget. A signed build + notary round-trip is ~20-30 min; the
-    # build+publish step retries once on a transient failure (see below), so
-    # the worst case is two full signed builds back-to-back. 75 min covers
-    # that plus cold caches and notary queue spikes. desktop-build.yml has no
-    # retry and stays at 45.
-    timeout-minutes: 75
+  # Resolves the channel/version from the tag and builds the platform-neutral
+  # workspace ONCE for the Windows/Linux packagers. The CLI build chain uses
+  # `cp -r`/`mkdir -p` bash-isms that don't survive a Windows runner's default
+  # shell, and the packaging jobs would otherwise redundantly rebuild identical
+  # platform-neutral JS — same topology as desktop-build-win-linux.yml.
+  # (build-macos deliberately does NOT consume this bundle: the mac job's
+  # self-contained build is the proven signed-DMG path and stays byte-for-byte
+  # as it was; unifying it onto the bundle is a separate, QA-able change.)
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # write, not read, for one reason: the "Assert the target Release
+      # exists" step must SEE the draft Release the upstream just created,
+      # and GitHub's releases API only returns drafts to push-level tokens
+      # (contents: read gets a 404 and the assert would block every release).
+      contents: write
+      # A job-level permissions block REPLACES the default token scopes, so
+      # the native-config staging step's `gh run list/view/download` needs
+      # its scope restated or it 403s (beta degrades to host-only; stable
+      # hard-fails the cut).
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
     steps:
       - name: Link to triggering run
         # Back-link: promote-stable forwards its run URL in
@@ -120,13 +169,304 @@ jobs:
       # the bundled version + any CHANGELOG artifacts match the Release.
       #
       # On `workflow_dispatch`, check out the workflow ref the user dispatched
-      # against (typically `main` with a CI fix). The dispatcher is responsible
-      # for ensuring the resulting `packages/desktop/package.json#version`
-      # matches `release_tag` (electron-builder uploads to the Release matching
-      # package.json, not to `release_tag` directly).
+      # against (typically `main` with a CI fix).
+      #
+      # fetch-depth: 0 — the native-config staging step's provenance check
+      # (`git merge-base --is-ancestor`) needs full history.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
+          fetch-depth: 0
+
+      # Detect channel from the release TAG (not package.json#version). Under
+      # the zero-commit-bump cadence (release.yml header lines 7-10), the
+      # tag is the only source of truth for the release's version — legacy
+      # commits at the tagged SHA carry the cycle-base version (e.g.
+      # `0.5.0-beta.5`), not the tag's version. Tag also drives manifest
+      # selection (beta-* vs latest-* channel files) for the stable-promotion
+      # case where tag (`v0.4.0`) and on-disk package.json (`0.4.0-beta.N`)
+      # diverge.
+      #
+      # Fail-fast on anything other than `-beta.*` or plain semver —
+      # `-rc.*` / `-canary.*` etc. would ship manifests with a channel
+      # name that electron-updater's provider treats as exact-match-
+      # only (no cascade walk), producing a release that can't be picked up
+      # by any client subscribed to a recognized channel.
+      - name: Detect channel from release tag
+        id: channel
+        env:
+          # repository_dispatch carries client_payload.release_tag; the
+          # workflow_dispatch fallback supplies inputs.release_tag.
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_TAG:-}" ]]; then
+            echo "::error::No release tag available (neither client_payload.release_tag nor inputs.release_tag is set). desktop-release.yml requires a tag to derive the version."
+            exit 1
+          fi
+          # Strip leading `v` (electron-builder + npm want bare semver).
+          VERSION="${RELEASE_TAG#v}"
+          if [[ "$VERSION" == *-beta.* ]]; then
+            {
+              echo "channel=beta"
+              echo "version=$VERSION"
+            } >> "$GITHUB_OUTPUT"
+            echo "::notice::Building BETA channel from tag $RELEASE_TAG"
+          elif [[ "$VERSION" == *-beta ]]; then
+            # The `*-beta.*` glob above requires a dot after `beta` (i.e.
+            # `0.4.0-beta.0`, not `0.4.0-beta`). Trap the dotless form here
+            # with a targeted message rather than letting it fall through
+            # to the generic catch-all below — Changesets prerelease mode
+            # always emits `-beta.N`, but a hand-edited tag could land here.
+            echo "::error::Tag $RELEASE_TAG is missing the .N suffix — beta releases must be tagged -beta.N (e.g. -beta.0, -beta.1) so electron-updater's cascade walk can order them. See packages/desktop/README.md beta-channel runbook."
+            exit 1
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported. See packages/desktop/README.md beta-channel runbook for the supported lifecycle."
+            exit 1
+          else
+            {
+              echo "channel=latest"
+              echo "version=$VERSION"
+            } >> "$GITHUB_OUTPUT"
+            echo "::notice::Building LATEST channel from tag $RELEASE_TAG"
+          fi
+
+      # The manual recovery path uploads to an existing Release; the cascade
+      # path's Release was just created by the upstream. Either way, failing
+      # here — before three platforms spend 30+ runner-minutes building — beats
+      # failing in publish-assets. `gh release view` resolves drafts too.
+      - name: Assert the target Release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft >/dev/null 2>&1; then
+            echo "::error::No GitHub Release exists for ${RELEASE_TAG}. This workflow uploads to a Release created by release.yml / promote-stable.yml / point-release.yml — create it first (as --draft), then re-dispatch."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
+
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-desktop-release-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-desktop-release-
+            ${{ runner.os }}-turbo-desktop-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The cross-platform native-config `.node` binaries are produced by the
+      # standalone native-config-prebuild workflow. Stage the latest successful
+      # run's bundle into packages/native-config/ so the cli `build:native`
+      # step copies all eight platforms into dist/native/ — the Windows/Linux
+      # installers packaged from this bundle then carry their own arch's
+      # toml_edit addon. Provenance + degrade-vs-fail semantics mirror
+      # release.yml's step: beta warns and ships host-only (non-host platforms
+      # use the non-destructive smol-toml fallback), stable hard-fails rather
+      # than silently shipping degraded native fidelity to the default install
+      # channel.
+      - name: Stage native-config prebuilt binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IS_STABLE: ${{ steps.channel.outputs.channel == 'latest' }}
+        run: |
+          summarize() {
+            echo "Staged native-config binaries: $1" >> "$GITHUB_STEP_SUMMARY"
+          }
+          degrade_or_fail() {
+            # $1: human-readable reason, $2: staged-count label for the summary
+            summarize "$2 — $1"
+            if [ "$IS_STABLE" = "true" ]; then
+              echo "::error::$1; refusing to cut a stable release with an incomplete native-config binary set"
+              exit 1
+            fi
+            echo "::warning::$1; installers ship the host binary only (other platforms use the smol-toml fallback)"
+            exit 0
+          }
+
+          # Scope to runs on `main` triggered by `push` only. The prebuild also
+          # runs on `pull_request` (including from the public mirror's external
+          # PRs), so without this filter the latest-green run could be an
+          # unmerged branch whose Rust source is not what shipped to main — a
+          # supply-chain gap for native code executed on every CLI invocation.
+          run_id=$(gh run list --workflow=native-config-prebuild.yml --branch main --event push \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          if [ -z "$run_id" ]; then
+            degrade_or_fail "no successful native-config-prebuild run on main found" "0/8"
+          fi
+
+          # Provenance: the prebuild run's head commit must be an ancestor of
+          # the release commit, so the binaries staged were built from source
+          # that is actually in this release. fetch-depth:0 in checkout has
+          # full history.
+          head_sha=$(gh run view "$run_id" --json headSha -q .headSha 2>/dev/null || true)
+          if [ -z "$head_sha" ]; then
+            degrade_or_fail "could not resolve head commit of native-config-prebuild run $run_id" "0/8"
+          fi
+          if ! git merge-base --is-ancestor "$head_sha" HEAD 2>/dev/null; then
+            degrade_or_fail "native-config-prebuild run $run_id (commit $head_sha) is not an ancestor of the release commit" "0/8"
+          fi
+
+          if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
+            degrade_or_fail "could not download native-config-bindings-all from run $run_id" "0/8"
+          fi
+          find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
+          count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
+          echo "staged $count native-config prebuilt binaries from run $run_id (commit $head_sha)"
+          if [ "$count" -lt 8 ]; then
+            degrade_or_fail "staged only $count/8 native-config binaries" "$count/8"
+          fi
+          summarize "$count/8 from run $run_id (commit $head_sha)"
+
+      # The workspace build produces native-config's host `.node` via `napi
+      # build` (turbo dep of the cli build), which needs a Rust toolchain —
+      # mirror release.yml's explicit pin.
+      - name: Setup Rust toolchain for the native-config build
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      # PRD-6650: under the zero-commit-bump cadence (release.yml header
+      # lines 7-10), workspace package.json files on disk at the tagged SHA
+      # always lag the release tag. `tsdown` inlines
+      # `import pkgJson from "../package.json"` into
+      # `packages/cli/dist/constants-*.mjs` at build time, and
+      # `packages/cli/build:skill-asset` composes + copies both
+      # `packages/server/assets/skills/{project,discovery}/SKILL.md` into
+      # `packages/cli/dist/assets/...`. Both bake in during the workspace
+      # build below, so the override has to land here first.
+      #
+      # Mirrors release.yml (same `jq` loop over the five fixed-group packages
+      # + same `sed` regex against SKILL.md) so the workflows stay in lockstep.
+      - name: Override fixed-group versions on disk (zero-commit-bump cadence)
+        env:
+          VERSION: ${{ steps.channel.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pkg in cli core server app desktop; do
+            f="packages/${pkg}/package.json"
+            jq --arg v "$VERSION" '.version=$v' "$f" > "${f}.tmp"
+            mv "${f}.tmp" "$f"
+          done
+          for skill in packages/server/assets/skills/project/SKILL.md \
+                       packages/server/assets/skills/discovery/SKILL.md; do
+            sed -i'.bak' -E "s/^([[:space:]]+version:[[:space:]]+\")[^\"]+(\".*)$/\1${VERSION}\2/" "$skill"
+            rm -f "${skill}.bak"
+          done
+          echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
+
+      # Same two-filter sequencing as the mac job: app must build before cli's
+      # build:assets copies app/dist into cli/dist/public.
+      - name: Build workspace (produces packages/cli/dist for extraResources)
+        run: |
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge
+
+      # Hand the platform-neutral build products to the Windows/Linux packaging
+      # jobs: the full bundled CLI tree + core/server dist + the native-config
+      # addon dir the electron-builder `../native-config` extraResources rule
+      # reads (index.js loader + package.json + every staged .node).
+      #
+      # core/server dist are load-bearing: `build:desktop` (electron-vite) in
+      # the packaging jobs bundles the desktop main process + app renderer
+      # source, which import `@inkeep/open-knowledge-core` and
+      # `@inkeep/open-knowledge-server`. Those resolve via `exports` to
+      # `./dist/index.mjs`; without the built dist here, electron-vite fails
+      # with "Rolldown failed to resolve import @inkeep/open-knowledge-core".
+      # The packaging jobs can't rebuild them (the Windows job's default shell
+      # can't run the CLI build chain's `cp -r` bash-isms), so prepare builds
+      # everything once and ships the dist forward.
+      - name: Upload workspace bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workspace-bundle
+          path: |
+            packages/cli/dist/
+            packages/core/dist/
+            packages/server/dist/
+            packages/native-config/index.js
+            packages/native-config/index.d.ts
+            packages/native-config/*.node
+          retention-days: 3
+          if-no-files-found: error
+
+  # Deliberately does NOT `needs: prepare` — the mac job is self-contained
+  # (own workspace build, no bundle consumption) and is the longest job in
+  # the pipeline, so serializing it behind prepare would add prepare's whole
+  # runtime to every cut. It re-runs the cheap channel detection itself; the
+  # two copies of that step live in one file and must stay in lockstep.
+  build-macos:
+    # macos-26 = Apple Silicon (Tahoe) with Xcode 26.x preinstalled. Apple
+    # Silicon is required for the Universal DMG lipo merge (arm64 + x64 →
+    # universal) per parent SPEC D29. Xcode 26+ is required because
+    # electron-builder compiles `build/okglass.icon` → `Assets.car` via
+    # `actool`, which only ships with Xcode 26+.
+    runs-on: macos-26
+    # 75 min budget. A signed build + notary round-trip is ~20-30 min; the
+    # build step retries once on a transient failure (see below), so
+    # the worst case is two full signed builds back-to-back. 75 min covers
+    # that plus cold caches and notary queue spikes. desktop-build.yml has no
+    # retry and stays at 45.
+    timeout-minutes: 75
+    permissions:
+      # Explicit so a future step needing more fails at review, not with a
+      # silent runtime 403 (the packaging jobs never touch the Release).
+      contents: read
+    outputs:
+      # Consumed by the alert job's FR5c payload — the smoke verdict must
+      # survive this job failing, which step outputs on a failed job do
+      # (job outputs from non-skipped steps are still exported).
+      smoke_verdict: ${{ steps.dmg_smoke.outputs.verdict }}
+      smoke_reason: ${{ steps.dmg_smoke.outputs.reason }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.client_payload.ref || github.ref }}
+
+      # Lockstep twin of the prepare job's step (see this job's header for why
+      # it exists twice) — same tag → same outputs, so `steps.channel.*` here
+      # and `needs.prepare.outputs.*` elsewhere always agree.
+      - name: Detect channel from release tag
+        id: channel
+        env:
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_TAG:-}" ]]; then
+            echo "::error::No release tag available (neither client_payload.release_tag nor inputs.release_tag is set). desktop-release.yml requires a tag to derive the version."
+            exit 1
+          fi
+          VERSION="${RELEASE_TAG#v}"
+          if [[ "$VERSION" == *-beta.* ]]; then
+            {
+              echo "channel=beta"
+              echo "version=$VERSION"
+            } >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported (prepare's twin step carries the full diagnostics)."
+            exit 1
+          else
+            {
+              echo "channel=latest"
+              echo "version=$VERSION"
+            } >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -158,108 +498,10 @@ jobs:
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
 
-      # electron-builder.yml's `extraResources` rule copies from
-      # `packages/cli/dist/public/`, which the CLI's `build:assets` populates
-      # via `cp -r ../app/dist dist/public`. The CLI does not declare the
-      # app as a workspace dep (app is private, and the CLI ships the
-      # compiled bundle — not a package reference), so turbo's `^build`
-      # runs them in parallel by default. Without explicit sequencing, cli's
-      # `build:assets` races app's vite build and can fail (no `app/dist`
-      # yet) or copy stale content. Use turbo's `--filter=@inkeep/...`
-      # which DOES respect the `^build` graph (so server + core build
-      # before app), and run the two filters in sequence to enforce
-      # app → cli ordering.
-      #
-      # A bare per-package `--filter` run was the previous approach; it does
-      # not honor turbo's dep graph (only runs the named package's `build`
-      # script in isolation). After the workspace started shipping
-      # `.mjs` builds for `@inkeep/open-knowledge-server` and
-      # `@inkeep/open-knowledge-core` (specs/2026-04-24-desktop-packaging-
-      # first-boot/), Vite's config loader in app-build resolves those
-      # workspace deps via `exports.default → ./dist/index.mjs`. Without
-      # an upstream `^build`, the `dist/` doesn't exist yet → "Failed to
-      # resolve entry for package @inkeep/open-knowledge-server".
-      # Detect channel from the release TAG (not package.json#version). Under
-      # the zero-commit-bump cadence (release.yml header lines 7-10), the
-      # tag is the only source of truth for the release's version — legacy
-      # commits at the tagged SHA carry the cycle-base version (e.g.
-      # `0.5.0-beta.5`), not the tag's version. Tag also drives manifest
-      # selection (beta-mac.yml vs latest-mac.yml) for the stable-promotion
-      # case where tag (`v0.4.0`) and on-disk package.json (`0.4.0-beta.N`)
-      # diverge.
-      #
-      # Maps the version's prerelease tag to electron-builder's
-      # `--config.publish.channel` (writes beta-mac.yml vs latest-mac.yml)
-      # and `--config.publish.releaseType` (sets the GitHub Release
-      # `prerelease` flag). Also emits `version` — used both by the on-disk
-      # version override step below AND by the `--config.extraMetadata.version`
-      # override on the electron-builder invocation.
-      #
-      # Fail-fast on anything other than `-beta.*` or plain semver —
-      # `-rc.*` / `-canary.*` etc. would ship a manifest with a channel
-      # name that electron-updater's GitHub provider treats as exact-match-
-      # only (no cascade walk), producing a release that can't be picked up
-      # by any client subscribed to a recognized channel.
-      - name: Detect channel from release tag
-        id: channel
-        env:
-          # repository_dispatch carries client_payload.release_tag; the
-          # workflow_dispatch fallback supplies inputs.release_tag.
-          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${RELEASE_TAG:-}" ]]; then
-            echo "::error::No release tag available (neither client_payload.release_tag nor inputs.release_tag is set). desktop-release.yml requires a tag to derive the version."
-            exit 1
-          fi
-          # Strip leading `v` (electron-builder + npm want bare semver).
-          VERSION="${RELEASE_TAG#v}"
-          if [[ "$VERSION" == *-beta.* ]]; then
-            {
-              echo "channel=beta"
-              echo "release_type=prerelease"
-              echo "version=$VERSION"
-            } >> "$GITHUB_OUTPUT"
-            echo "::notice::Building BETA channel from tag $RELEASE_TAG"
-          elif [[ "$VERSION" == *-beta ]]; then
-            # The `*-beta.*` glob above requires a dot after `beta` (i.e.
-            # `0.4.0-beta.0`, not `0.4.0-beta`). Trap the dotless form here
-            # with a targeted message rather than letting it fall through
-            # to the generic catch-all below — Changesets prerelease mode
-            # always emits `-beta.N`, but a hand-edited tag could land here.
-            echo "::error::Tag $RELEASE_TAG is missing the .N suffix — beta releases must be tagged -beta.N (e.g. -beta.0, -beta.1) so electron-updater's cascade walk can order them. See packages/desktop/README.md beta-channel runbook."
-            exit 1
-          elif [[ "$VERSION" == *-* ]]; then
-            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported. See packages/desktop/README.md beta-channel runbook for the supported lifecycle."
-            exit 1
-          else
-            {
-              echo "channel=latest"
-              echo "release_type=release"
-              echo "version=$VERSION"
-            } >> "$GITHUB_OUTPUT"
-            echo "::notice::Building LATEST channel from tag $RELEASE_TAG"
-          fi
-
-      # PRD-6650: under the zero-commit-bump cadence (release.yml header
-      # lines 7-10), workspace package.json files on disk at the tagged SHA
-      # always lag the release tag — agents-private mirrors a cycle-base
-      # version (e.g. `0.5.0-beta.5`) that `release.yml` overrides
-      # transiently via `jq` before `pnpm exec changeset publish`. The Desktop
-      # pipeline needs the same primitive: `tsdown` inlines
-      # `import pkgJson from "../package.json"` into
-      # `packages/cli/dist/constants-*.mjs` at Build time, and
-      # `packages/cli/build:skill-asset` composes + copies both
-      # `packages/server/assets/skills/{project,discovery}/SKILL.md` into
-      # `packages/cli/dist/assets/...`. Both bake in BEFORE
-      # `electron-builder --config.extraMetadata.version` runs, so the
-      # runtime override cannot reach them; the override has to land here,
-      # before Build.
-      #
-      # Mirrors release.yml:191-216 exactly (same `jq` loop over the five
-      # fixed-group packages + same `sed` regex against SKILL.md) so the
-      # two workflows stay in lockstep — future cadence changes touch both
-      # places the same way.
+      # PRD-6650: same override as prepare, for the workspace build THIS job
+      # does (the mac job stays self-contained on the proven signed-DMG path
+      # rather than consuming the ubuntu-built bundle — see the prepare job's
+      # header). Mirrors release.yml exactly so the workflows stay in lockstep.
       - name: Override fixed-group versions on disk (zero-commit-bump cadence)
         env:
           VERSION: ${{ steps.channel.outputs.version }}
@@ -277,6 +519,17 @@ jobs:
           done
           echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
 
+      # electron-builder.yml's `extraResources` rule copies from
+      # `packages/cli/dist/public/`, which the CLI's `build:assets` populates
+      # via `cp -r ../app/dist dist/public`. The CLI does not declare the
+      # app as a workspace dep (app is private, and the CLI ships the
+      # compiled bundle — not a package reference), so turbo's `^build`
+      # runs them in parallel by default. Without explicit sequencing, cli's
+      # `build:assets` races app's vite build and can fail (no `app/dist`
+      # yet) or copy stale content. Use turbo's `--filter=@inkeep/...`
+      # which DOES respect the `^build` graph (so server + core build
+      # before app), and run the two filters in sequence to enforce
+      # app → cli ordering.
       - name: Build workspace (produces packages/cli/dist/public for extraResources)
         run: |
           pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
@@ -293,7 +546,7 @@ jobs:
         run: |
           if [[ -n "${CSC_LINK}" ]]; then
             echo "mode=signed" >> "$GITHUB_OUTPUT"
-            echo "::notice::Signing creds present — running signed build with electron-builder --publish always."
+            echo "::notice::Signing creds present — running signed build."
           else
             echo "::error::Cannot publish unsigned release — CSC_LINK is not set. auto-update requires signed DMGs."
             exit 1
@@ -350,16 +603,21 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/stage-parcel-watcher.mjs
 
-      - name: Build + sign + notarize + publish DMG/ZIP
+      - name: Build + sign + notarize DMG/ZIP
         # electron-builder picks up CSC_LINK / CSC_KEY_PASSWORD from env +
         # signs. afterSign.mjs picks up APPLE_* + notarizes + staples +
-        # fuse-verifies. `--publish always` makes electron-builder upload
-        # the artifacts (.dmg, .dmg.blockmap, .zip, .zip.blockmap, and the
-        # channel-appropriate manifest — `latest-mac.yml` or `beta-mac.yml`
-        # depending on `--config.publish.channel` set below from the
-        # detected channel) to the GitHub Release matching the current tag
-        # — via the publish block in electron-builder.yml (A1) + GH_TOKEN
-        # in env. No separate `gh release upload` step needed.
+        # fuse-verifies. `--publish never`: the fan-in publish-assets job is
+        # the only publication point — this job stages its outputs as a run
+        # artifact below. electron-builder still writes the channel manifest
+        # (`latest-mac.yml` or `beta-mac.yml`, per `--config.publish.channel`)
+        # into dist-desktop locally (proven by desktop-build.yml, whose
+        # --publish never build uploads that same file).
+        #
+        # `--config.publish.releaseType` is gone from this invocation on
+        # purpose: it only ever configured the electron-builder GitHub
+        # PUBLISHER's release-creation call, which no longer runs — the
+        # Release's prerelease flag is set by the upstream
+        # `gh release create --prerelease`.
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -373,30 +631,27 @@ jobs:
           # and break @electron/notarize's path-based contract.
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          # GH_TOKEN is what electron-builder's GitHub publisher reads.
-          # The auto-provided GITHUB_TOKEN with contents:write scope
-          # (declared above) is sufficient for uploading assets to a
-          # Release that already exists (created by release.yml's
-          # `gh release create`). F14 audit: no App-token required.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # env, not `${{ }}`-in-script — the tag these derive from arrives
+          # via client_payload (see the Windows job's twin comment).
+          BUILD_VERSION: ${{ steps.channel.outputs.version }}
+          BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
         working-directory: packages/desktop
         run: |
           # extraMetadata.version override: kept as defense-in-depth so the
           # Desktop's app.getVersion() / Info.plist / DMG filename / manifest
           # `version` all agree with the tag even if the on-disk override
           # step above is skipped, dropped, or partially applied. Under the
-          # zero-commit-bump cadence (release.yml header lines 7-10) the
-          # on-disk versions ALWAYS lag the release tag — agents-private
-          # never commits a bumped version — so this override is never a
-          # no-op for the Desktop's own metadata. But it does NOT reach
-          # the CLI bundle's compile-time-inlined PACKAGE_VERSION or the
-          # bundled SKILL.md asset's metadata.version; those are baked in
-          # at Build time, so the workspace-wide on-disk override step
-          # above is what makes them match the tag. See PRD-6650.
+          # zero-commit-bump cadence the on-disk versions ALWAYS lag the
+          # release tag, so this override is never a no-op for the Desktop's
+          # own metadata. But it does NOT reach the CLI bundle's
+          # compile-time-inlined PACKAGE_VERSION or the bundled SKILL.md
+          # asset's metadata.version; those are baked in at Build time, so
+          # the workspace-wide on-disk override step above is what makes
+          # them match the tag. See PRD-6650.
           #
-          # Retry the build+publish on TRANSIENT signing/notarize/upload/download
-          # failures only. All of these are infrastructure flakes outside our
-          # control that leave no durable artifact and clear on a re-run:
+          # Retry the build on TRANSIENT signing/notarize/download failures
+          # only. All of these are infrastructure flakes outside our control
+          # that leave no durable artifact and clear on a re-run:
           #   - codesign's timestamp step calling Apple's TSA (timestamp.apple.com)
           #     returning "A timestamp was expected but was not found" or the TSA
           #     being unavailable. This is the class that stuck v0.30.2 as a draft
@@ -410,20 +665,17 @@ jobs:
           #     same run before the TSA flake killed attempt 2.
           #   - a bare EOF fetching the Electron runtime zip during packaging
           #     (app-builder's DownloadNoRetry path aborts on one dropped connection).
-          #   - GitHub upload throttling (5xx / secondary-rate-limit) from
-          #     uploads.github.com mid-publish after a successful sign+notarize.
-          # Re-running the whole invocation is idempotent: electron-builder deletes
-          # then re-uploads same-named assets on republish, so a partial asset set
-          # left by a failed attempt is overwritten, not duplicated.
+          # (The GitHub-upload signatures that used to sit alongside these are
+          # kept in the allowlist for the day uploads ever return here, but
+          # can no longer match — this invocation performs no uploads; the
+          # fan-in publish-assets job owns upload retries now.)
           #
           # CRITICAL: retry is gated on a transient-signature allowlist matched
           # against the captured build output. Anything NOT on the allowlist — an
           # expired/invalid cert, a notarization REJECTION (status Invalid), an
           # entitlements error, an Apple developer-agreement 403, or a real
           # build/compile error — is a hard failure that fails LOUD on the first
-          # attempt and is never masked by a blind retry. A persistent transient
-          # class that exhausts all attempts still exits non-zero and lands in the
-          # Warn-on-stuck-draft path + the scheduled draft-release janitor.
+          # attempt and is never masked by a blind retry.
           set -uo pipefail
           # Extended-regex allowlist of transient infra-flake signatures (matched
           # case-insensitively against combined stdout+stderr). Keep this list
@@ -433,15 +685,14 @@ jobs:
           attempt=1
           max_attempts=3
           while true; do
-            echo "::group::electron-builder publish attempt ${attempt}/${max_attempts}"
+            echo "::group::electron-builder attempt ${attempt}/${max_attempts}"
             attempt_log="${RUNNER_TEMP:-/tmp}/electron-builder-attempt-${attempt}.log"
             # `pipefail` (set above) makes the `if` see the electron-builder exit
             # code through `tee`; tee mirrors output to the CI log AND captures it
             # for the transient-vs-real classification below.
-            if { pnpm run build:desktop && pnpm exec electron-builder --mac --publish always \
-              --config.extraMetadata.version=${{ steps.channel.outputs.version }} \
-              --config.publish.channel=${{ steps.channel.outputs.channel }} \
-              --config.publish.releaseType=${{ steps.channel.outputs.release_type }} ; } 2>&1 | tee "${attempt_log}"; then
+            if { pnpm run build:desktop && pnpm exec electron-builder --mac --publish never \
+              --config.extraMetadata.version="${BUILD_VERSION}" \
+              --config.publish.channel="${BUILD_CHANNEL}" ; } 2>&1 | tee "${attempt_log}"; then
               echo "::endgroup::"
               echo "electron-builder succeeded on attempt ${attempt}."
               break
@@ -454,7 +705,7 @@ jobs:
               exit 1
             fi
             if [ "${attempt}" -ge "${max_attempts}" ]; then
-              echo "::error::electron-builder failed after ${max_attempts} attempts; the last failure matched a transient signing/notarize/upload signature but retries are exhausted."
+              echo "::error::electron-builder failed after ${max_attempts} attempts; the last failure matched a transient signing/notarize signature but retries are exhausted."
               exit 1
             fi
             backoff=$((attempt * 30))
@@ -464,17 +715,11 @@ jobs:
           done
 
       # FR5b — smoke the signed DMG before anything about this release becomes
-      # visible or installable. This is the only point in the cascade where the
-      # artifact exists AND nothing has shipped yet: the Release is still a
-      # draft, npm has not moved, and the announcements have not posted. A
-      # failure here leaves all three exactly as they are.
-      #
-      # A failure here suppresses the promote, the moved npm dispatch, and both
-      # announcements. Note the mechanism, because it is easy to get wrong:
-      # Actions injects the implicit `if: success()` only on steps that declare
-      # NO `if:`. The promote step relies on that. Every step below that DOES
-      # declare an `if:` must spell `success() &&` itself — omitting it is how
-      # a gated step fires anyway on a job that already failed.
+      # visible or installable. Under the fan-in topology this job failing on
+      # a smoke verdict means publish-assets never runs: no asset reaches the
+      # Release, the draft never flips, npm never moves, and the announcements
+      # never post. (That's strictly stronger than the pre-fan-in behavior,
+      # where the mac assets were already uploaded before the smoke ran.)
       #
       # The gate is skipped when the checked-out ref predates it. On the
       # cascade path this job checks out `client_payload.ref` — a tag pointing
@@ -506,16 +751,17 @@ jobs:
           fi
           # The harness is CI tooling, not release content, so take it from the
           # workflow's own SHA rather than the release checkout — same reasoning
-          # as the two payload builders further down. Without this, a fix to the
-          # copy logic only reaches tags cut AFTER it lands, so every tag
-          # already cut stays permanently unreleasable: promote-stable tags the
-          # stable at the beta's SHA, and a soaked beta is by definition older
-          # than the fix. Overlaying only these two files keeps the config and
-          # the smoke tests themselves pinned to the release, which is right —
-          # they assert the app's behavior. Deliberately AFTER the absent-gate
-          # check above, so a ref predating the harness still releases ungated
-          # rather than being newly gated by a file it never carried.
-          # Best-effort: on failure keep the tag's copy rather than block.
+          # as the finalize/alert jobs, which check out $GITHUB_SHA outright.
+          # Without this, a fix to the copy logic only reaches tags cut AFTER it
+          # lands, so every tag already cut stays permanently unreleasable:
+          # promote-stable tags the stable at the beta's SHA, and a soaked beta
+          # is by definition older than the fix. Overlaying only these two files
+          # keeps the config and the smoke tests themselves pinned to the
+          # release, which is right — they assert the app's behavior.
+          # Deliberately AFTER the absent-gate check above, so a ref predating
+          # the harness still releases ungated rather than being newly gated by
+          # a file it never carried. Best-effort: on failure keep the tag's
+          # copy rather than block.
           if git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
              git checkout "$GITHUB_SHA" -- "$DRIVER" .github/scripts/dmg-mount.mjs 2>/dev/null; then
             echo "::notice::Smoke harness taken from ${GITHUB_SHA} rather than ${RELEASE_TAG}."
@@ -538,17 +784,649 @@ jobs:
           # on both non-pass verdicts without any branching here.
           node "$DRIVER" "$DMG"
 
+      # Stage the smoked outputs for the fan-in publisher. The channel
+      # manifest glob (`*-mac.yml`) matches exactly the file the channel flag
+      # produced (latest-mac.yml or beta-mac.yml) — electron-builder writes no
+      # other `-mac.yml` into dist-desktop. This artifact doubles as the
+      # 14-day audit trail the old flow kept a separate upload for.
+      - name: Upload macOS release assets for the fan-in publisher
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-release-assets
+          path: |
+            packages/desktop/dist-desktop/*.dmg
+            packages/desktop/dist-desktop/*.dmg.blockmap
+            packages/desktop/dist-desktop/*-mac.zip
+            packages/desktop/dist-desktop/*-mac.zip.blockmap
+            packages/desktop/dist-desktop/*-mac.yml
+          retention-days: 14
+          if-no-files-found: error
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      # See build-macos — packaging jobs are read-only by design.
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.client_payload.ref || github.ref }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
+
+      - name: Install dependencies
+        env:
+          # Rebuild native modules against Electron's Node ABI — mirrors the
+          # mac job.
+          ELECTRON_SKIP_REBUILD: "0"
+        run: pnpm install --frozen-lockfile
+
+      - name: Download workspace bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
+        with:
+          name: workspace-bundle
+          path: packages/
+
+      # Defense-in-depth alongside `--config.extraMetadata.version`: keeps any
+      # on-disk package.json read during electron-vite's build in agreement
+      # with the tag. The cli/dist inside the workspace bundle already carries
+      # prepare's override.
+      - name: Override fixed-group versions on disk (zero-commit-bump cadence)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pkg in cli core server app desktop; do
+            f="packages/${pkg}/package.json"
+            jq --arg v "$VERSION" '.version=$v' "$f" > "${f}.tmp"
+            mv "${f}.tmp" "$f"
+          done
+          echo "All fixed-group package.json files now at ${VERSION} (in-memory only)."
+
+      # Both keyring arch prebuilds (x64 + arm64) must be present in the
+      # hoisted node_modules before electron-builder copies them into
+      # cli/node_modules (win.extraResources) — pnpm installed only the
+      # host-matching one.
+      - name: Prepare cross-arch keyring prebuilds
+        working-directory: packages/desktop
+        run: node scripts/prepare-platform-natives.mjs
+
+      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
+      # invokes electron-builder directly (not the build:win npm script, which
+      # DOES run this), so the step must be explicit here or the packaged app
+      # ships without @parcel/watcher on the CLI path and the server degrades
+      # to chokidar (#760). Stages only the host-arch binary today; the
+      # other-arch artifact uses the (subfolder-correct) chokidar fallback —
+      # see scripts/stage-parcel-watcher.mjs.
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
+
+      - name: Build desktop main/preload/renderer
+        working-directory: packages/desktop
+        run: pnpm run build:desktop
+
+      # Signing is REQUIRED here, unlike desktop-build-win-linux.yml's
+      # optional-signing QA builds — see the workflow header for why unsigned
+      # Windows installers are never published. Secrets: AZURE_TENANT_ID /
+      # AZURE_CLIENT_ID / AZURE_CLIENT_SECRET; repo variables:
+      # AZURE_SIGNING_ENDPOINT / AZURE_SIGNING_ACCOUNT / AZURE_SIGNING_PROFILE
+      # / AZURE_SIGNING_PUBLISHER (Azure Trusted Signing endpoint URL,
+      # code-signing account name, certificate profile name, certificate
+      # subject CN — procurement outputs). electron-builder's Azure path reads
+      # the three AZURE_* env vars via @azure/identity's EnvironmentCredential;
+      # the four azureSignOptions fields address the signing account. All FOUR
+      # fields are schema-required (app-builder-lib scheme.json,
+      # WindowsAzureSigningConfiguration.required) — omit one and
+      # validateConfig rejects the whole configuration before packaging;
+      # release-cascade-shape.test.mjs pins this flag set against the schema.
+      #
+      # BUILD_VERSION / BUILD_CHANNEL ride in as env rather than being
+      # interpolated into the script text: the tag they derive from arrives via
+      # client_payload, and env-var expansion cannot become shell syntax the
+      # way `${{ }}` textual splicing can (GitHub's security-hardening
+      # guidance).
+      - name: Package NSIS installers (x64 + arm64, signed)
+        working-directory: packages/desktop
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
+          BUILD_VERSION: ${{ needs.prepare.outputs.version }}
+          BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${AZURE_TENANT_ID:-}" ]] || missing+=(AZURE_TENANT_ID)
+          [[ -n "${AZURE_CLIENT_ID:-}" ]] || missing+=(AZURE_CLIENT_ID)
+          [[ -n "${AZURE_CLIENT_SECRET:-}" ]] || missing+=(AZURE_CLIENT_SECRET)
+          [[ -n "${AZURE_SIGNING_ENDPOINT:-}" ]] || missing+=(AZURE_SIGNING_ENDPOINT)
+          [[ -n "${AZURE_SIGNING_ACCOUNT:-}" ]] || missing+=(AZURE_SIGNING_ACCOUNT)
+          [[ -n "${AZURE_SIGNING_PROFILE:-}" ]] || missing+=(AZURE_SIGNING_PROFILE)
+          [[ -n "${AZURE_SIGNING_PUBLISHER:-}" ]] || missing+=(AZURE_SIGNING_PUBLISHER)
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Cannot publish unsigned Windows installers — missing Azure Trusted Signing config: ${missing[*]}. Set the AZURE_* secrets + AZURE_SIGNING_* repo variables (see the workflow header), or use desktop-build-win-linux.yml for unsigned internal-QA builds."
+            exit 1
+          fi
+          echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
+          pnpm exec electron-builder --win --publish never \
+            --config.extraMetadata.version="${BUILD_VERSION}" \
+            --config.publish.channel="${BUILD_CHANNEL}" \
+            --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" \
+            --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" \
+            --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" \
+            --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"
+
+      # Fail before staging an installer that cannot start. An asar packed
+      # without `node_modules` produces a binary that dies on its first bare
+      # import, before `app.ready` — no window, no dialog.
+      - name: Assert the packaged asar carries its dependencies
+        working-directory: packages/desktop
+        run: node scripts/assert-asar-complete.mjs dist-desktop "windows installers"
+
+      # Both arch payloads must carry the updater config, with the channel the
+      # tag dictates. A missing app-update.yml ships an installer whose app
+      # can never self-update (electron-updater fails its config load, once
+      # per boot, forever); a wrong channel violates the channel-mirror
+      # invariant (a beta install auto-updating onto stable or vice versa).
+      # Verified here at the staging dirs electron-builder packed from.
+      - name: Assert app-update.yml is present and channel-correct
+        working-directory: packages/desktop
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+        run: |
+          set -euo pipefail
+          for dir in dist-desktop/win-unpacked dist-desktop/win-arm64-unpacked; do
+            f="${dir}/resources/app-update.yml"
+            if [[ ! -f "$f" ]]; then
+              echo "::error::${f} is missing — the packaged app would never self-update. electron-builder writes it from the publish config; check the publish block + channel flag."
+              exit 1
+            fi
+            if ! grep -q "channel: ${CHANNEL}" "$f"; then
+              echo "::error::${f} does not carry 'channel: ${CHANNEL}' — channel-mirror invariant violated. Contents:"
+              cat "$f"
+              exit 1
+            fi
+          done
+          echo "app-update.yml present + channel=${CHANNEL} in both arch payloads."
+
+      # electron-updater's Windows manifest covers BOTH arches in one file
+      # (the updater picks the entry whose filename embeds process.arch).
+      # `nsis.differentialPackage: false` means no `.exe.blockmap` exists —
+      # the exact-glob keeps `if-no-files-found: error` honest about that.
+      - name: Upload Windows release assets for the fan-in publisher
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-release-assets
+          path: |
+            packages/desktop/dist-desktop/*Setup-x64.exe
+            packages/desktop/dist-desktop/*Setup-arm64.exe
+            packages/desktop/dist-desktop/${{ needs.prepare.outputs.channel }}.yml
+          retention-days: 14
+          if-no-files-found: error
+
+  # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
+  # native deps from an x64 host is impractical (pnpm installs only the
+  # host-matching `@parcel/watcher-*` prebuild, and the Linux build skips
+  # @electron/rebuild by design — see electron-builder.linux.yml), so the
+  # arm64 installers are built on GitHub's arm64 Linux runner where pnpm
+  # installs the arm64 prebuilds directly.
+  build-linux:
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      # See build-macos — packaging jobs are read-only by design.
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      # One arch failing must not cancel the other: the arch that built still
+      # lands in its run artifact, so a re-run (or manual recovery) only has
+      # to repeat the arch that failed. publish-assets still requires BOTH.
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x64
+            targets: deb:x64 rpm:x64
+            unpacked_dir: linux-unpacked
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            targets: deb:arm64 rpm:arm64
+            unpacked_dir: linux-arm64-unpacked
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.client_payload.ref || github.ref }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      # `runner.arch` is part of the key: both Linux cells report
+      # `runner.os == 'Linux'`, and a store populated on x64 carries none of the
+      # arm64 prebuilds (and vice versa), so a shared key would thrash the cache
+      # between cells on every run.
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-
+
+      - name: Install dependencies
+        env:
+          # Rebuild native modules against Electron's Node ABI — mirrors the
+          # mac job. (The packaging pass itself skips @electron/rebuild via
+          # the Linux overlay config; this install-time rebuild is what
+          # provides the ABI-correct prebuilds the overlay's rationale
+          # depends on.)
+          ELECTRON_SKIP_REBUILD: "0"
+        run: pnpm install --frozen-lockfile
+
+      - name: Download workspace bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
+        with:
+          name: workspace-bundle
+          path: packages/
+
+      # Defense-in-depth alongside `extraMetadata.version` — see the Windows
+      # job's twin step.
+      - name: Override fixed-group versions on disk (zero-commit-bump cadence)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pkg in cli core server app desktop; do
+            f="packages/${pkg}/package.json"
+            jq --arg v "$VERSION" '.version=$v' "$f" > "${f}.tmp"
+            mv "${f}.tmp" "$f"
+          done
+          echo "All fixed-group package.json files now at ${VERSION} (in-memory only)."
+
+      - name: Prepare cross-arch keyring prebuilds
+        working-directory: packages/desktop
+        run: node scripts/prepare-platform-natives.mjs
+
+      # Stage @parcel/watcher onto the bundled CLI's module path — see the
+      # Windows job's twin step for the full rationale (#760).
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
+
+      - name: Build desktop main/preload/renderer
+        working-directory: packages/desktop
+        run: pnpm run build:desktop
+
+      # electron-builder downloads its own `fpm`, but fpm shells out to the
+      # host's `rpmbuild` to assemble an `.rpm` — and an Ubuntu runner has no
+      # rpm tooling preinstalled, so the rpm target dies with "Can't find
+      # rpmbuild". Ubuntu's `rpm` package carries /usr/bin/rpmbuild. The deb
+      # target needs nothing extra, so this is the only apt step in the job.
+      - name: Install rpmbuild (fpm's rpm backend)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      # The Linux packaging pass needs THREE config inputs at once: the
+      # `npmRebuild: false` overlay (electron-builder.linux.yml — a top-level
+      # option that CANNOT be passed as a CLI flag, because yargs leaves
+      # `-c.npmRebuild=false` as the string "false" and the packager's strict
+      # `=== false` ignores it), the channel, and the version override.
+      # Mixing a `--config <file>` with `--config.dot=flags` on one command
+      # line is yargs-merge territory nobody should trust a release to, so
+      # compose them the deterministic way: generate a release overlay that
+      # `extends` the Linux overlay (which itself extends the base config)
+      # and carries the channel + version inline. A broken extends chain
+      # fails LOUD (the node-liblzma -Werror explosion the Linux overlay's
+      # header documents), never silently.
+      #
+      # The `publish` block must restate the full provider entry — `extends`
+      # replaces list-valued keys wholesale rather than merging them.
+      - name: Generate the release overlay config (channel + version)
+        working-directory: packages/desktop
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          cat > electron-builder.release-linux.yml <<EOF
+          extends: file:./electron-builder.linux.yml
+          extraMetadata:
+            version: ${VERSION}
+          publish:
+            - provider: github
+              owner: inkeep
+              repo: open-knowledge
+              channel: ${CHANNEL}
+          EOF
+          cat electron-builder.release-linux.yml
+
+      # Each cell packages only its own arch, on a runner of that arch — so the
+      # `.deb` / `.rpm` ship the matching `@parcel/watcher` / `@napi-rs/keyring`
+      # prebuilds rather than degrading file-watching to chokidar. The deb and
+      # rpm targets need `fpm`; electron-builder 26 downloads a native
+      # `linux-arm64v8` build of it (see app-builder-lib's `getFpmPath`), so no
+      # emulation or system fpm is involved.
+      - name: Package ${{ matrix.targets }}
+        working-directory: packages/desktop
+        run: |
+          pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never \
+            --config electron-builder.release-linux.yml
+
+      # Fail before staging an installer that cannot start (see the Windows
+      # step for the full rationale). This is the control that would have
+      # caught the 0.42.2 arm64 deb, which installed cleanly and then died on
+      # `Cannot find package 'pino'` with no user-visible signal at all.
+      - name: Assert the packaged asar carries its dependencies
+        working-directory: packages/desktop
+        run: node scripts/assert-asar-complete.mjs dist-desktop "linux ${{ matrix.arch }} installers"
+
+      # Same guard as the Windows job, plus Linux's package-type stamp:
+      # electron-updater's Linux entry point picks DebUpdater/RpmUpdater by
+      # reading `resources/package-type` (written per-target by
+      # electron-builder's FpmTarget). Without it the updater falls back to
+      # the AppImage path and error-logs a doomed feed check on every boot.
+      # package-type in the shared staging dir holds whichever target packed
+      # LAST — each package's own archive captured its correct value at pack
+      # time — so assert existence, not content.
+      - name: Assert app-update.yml + package-type are present and channel-correct
+        working-directory: packages/desktop
+        env:
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          UNPACKED_DIR: ${{ matrix.unpacked_dir }}
+        run: |
+          set -euo pipefail
+          f="dist-desktop/${UNPACKED_DIR}/resources/app-update.yml"
+          if [[ ! -f "$f" ]]; then
+            echo "::error::${f} is missing — the packaged app would never self-update. electron-builder writes it from the publish config; check the release overlay."
+            exit 1
+          fi
+          if ! grep -q "channel: ${CHANNEL}" "$f"; then
+            echo "::error::${f} does not carry 'channel: ${CHANNEL}' — channel-mirror invariant violated. Contents:"
+            cat "$f"
+            exit 1
+          fi
+          pt="dist-desktop/${UNPACKED_DIR}/resources/package-type"
+          if [[ ! -f "$pt" ]]; then
+            echo "::error::${pt} is missing — electron-updater cannot select its deb/rpm installer class without it and falls back to the (dead) AppImage path."
+            exit 1
+          fi
+          echo "app-update.yml (channel=${CHANNEL}) + package-type present in ${UNPACKED_DIR}."
+
+      # deb + rpm + the per-arch channel manifest. electron-builder names the
+      # Linux manifest by arch: `latest-linux.yml` (x64) /
+      # `latest-linux-arm64.yml` (arm64), or beta-* on the beta channel —
+      # which is exactly the name electron-updater's provider computes from
+      # process.arch on the client, and why each cell uploads a distinct
+      # manifest with no collision. The deb and rpm entries share one
+      # manifest per arch (the updater picks by file extension).
+      - name: Upload Linux ${{ matrix.arch }} release assets for the fan-in publisher
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-${{ matrix.arch }}-release-assets
+          path: |
+            packages/desktop/dist-desktop/*.deb
+            packages/desktop/dist-desktop/*.rpm
+            packages/desktop/dist-desktop/${{ needs.prepare.outputs.channel }}-linux*.yml
+          retention-days: 14
+          if-no-files-found: error
+
+  # The single publication point: nothing above this job touches the GitHub
+  # Release. Downloads every platform's staged assets, asserts the complete
+  # cross-platform inventory, uploads, then re-queries the Release and
+  # verifies what actually landed. Re-running just this job (via a workflow
+  # re-run of failed jobs) retries a flaky upload without re-running any
+  # 30-minute signed build; `--clobber` makes the retry idempotent.
+  publish-assets:
+    needs: [prepare, build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    # Sized to the upload retry envelope: 3 bounded 300s attempts + backoffs
+    # (see the upload step) plus download/verify overhead.
+    timeout-minutes: 20
+    permissions:
+      # gh release upload needs write; the workflow default is read-only.
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # No checkout in this job — GH_REPO tells gh which repo the release
+      # lives in.
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Download all platform release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
+        with:
+          pattern: "*-release-assets"
+          merge-multiple: true
+          path: release-assets
+
+      # The full expected inventory, by exact filename — defined ONCE, here,
+      # and consumed by both the pre-upload assert and the post-upload verify
+      # (a drift between the two would either confuse-fail the assert or let
+      # the verify silently check a different set than was asserted; this
+      # single definition is the enforcement point for "never publish a
+      # partial cross-platform release"). Blockmaps exist ONLY for the mac
+      # artifacts: Windows has `nsis.differentialPackage: false` (no
+      # .exe.blockmap — see electron-builder.yml for the Nsis7z-on-ARM
+      # rationale) and deb/rpm never produce them. Expecting them generically
+      # would fail every run; expecting too little would let a partial release
+      # publish. The mac zip is the one versioned filename (the updater's
+      # swap artifact); everything user-facing is versionless so
+      # `releases/latest/download/...` URLs stay stable.
+      - name: Define the expected asset inventory
+        run: |
+          set -euo pipefail
+          {
+            echo "EXPECTED_ASSETS<<OK_INVENTORY_EOF"
+            echo "OpenKnowledge-arm64.dmg"
+            echo "OpenKnowledge-arm64.dmg.blockmap"
+            echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
+            echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
+            echo "${CHANNEL}-mac.yml"
+            echo "OpenKnowledge-Setup-x64.exe"
+            echo "OpenKnowledge-Setup-arm64.exe"
+            echo "${CHANNEL}.yml"
+            echo "OpenKnowledge-amd64.deb"
+            echo "OpenKnowledge-arm64.deb"
+            echo "OpenKnowledge-x86_64.rpm"
+            echo "OpenKnowledge-aarch64.rpm"
+            echo "${CHANNEL}-linux.yml"
+            echo "${CHANNEL}-linux-arm64.yml"
+          } >> "$GITHUB_ENV"
+
+      - name: Assert the complete cross-platform inventory
+        run: |
+          set -euo pipefail
+          mapfile -t expected <<<"$EXPECTED_ASSETS"
+          echo "Staged files:"
+          ls -la release-assets/
+          missing=()
+          for f in "${expected[@]}"; do
+            [[ -f "release-assets/${f}" ]] || missing+=("$f")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Refusing to publish an incomplete release — missing from the staged assets: ${missing[*]}"
+            exit 1
+          fi
+          # Unexpected extras are an error too: a stray builder-debug.yml or
+          # half-renamed artifact reaching the Release would be served to
+          # real update clients.
+          for f in release-assets/*; do
+            base="$(basename "$f")"
+            found=0
+            for e in "${expected[@]}"; do
+              [[ "$base" == "$e" ]] && found=1 && break
+            done
+            if [[ "$found" -eq 0 ]]; then
+              echo "::error::Unexpected file staged for release upload: ${base}. Add it to the expected inventory or fix the packaging job's upload globs."
+              exit 1
+            fi
+          done
+          echo "All ${#expected[@]} expected assets staged, no extras."
+
+      # Idempotent by construction: `--clobber` replaces same-named assets, so
+      # a retry after a partial upload converges instead of duplicating or
+      # erroring. Bounded retry for GitHub's occasional 5xx / secondary-rate-
+      # limit moods — the same class the old electron-builder publisher hit.
+      # Backoff starts at 60s because GitHub documents the secondary-rate-
+      # limit cooldown as 60–120s; a shorter retry lands inside the cooldown
+      # and burns the attempt. Retry is unconditional (no transient-signature
+      # allowlist like the mac build's): the upload is idempotent and cheap,
+      # so the worst a non-retriable failure costs is ~3 minutes of sleeps
+      # before the same loud exit — against which an allowlist would risk
+      # fast-failing a retriable error it didn't anticipate.
+      - name: Upload assets to the GitHub Release
+        run: |
+          # -e deliberately omitted: the while/if retry loop owns every exit
+          # code explicitly; adding -e would abort the step on the first
+          # failed attempt instead of retrying it.
+          set -uo pipefail
+          attempt=1
+          max_attempts=3
+          while true; do
+            # `timeout` bounds a hung upload (headers accepted, body stalled)
+            # so it becomes a retryable failure instead of silently eating
+            # the whole job budget: 3×300s attempts + 60s+120s backoffs fit
+            # the 20-minute job timeout with headroom.
+            if timeout 300 gh release upload "$RELEASE_TAG" release-assets/* --clobber; then
+              echo "Uploaded all assets to ${RELEASE_TAG} on attempt ${attempt}."
+              break
+            fi
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+              echo "::error::gh release upload failed after ${max_attempts} attempts."
+              exit 1
+            fi
+            backoff=$((attempt * 60))
+            echo "::warning::gh release upload attempt ${attempt} failed; retrying in ${backoff}s (secondary-rate-limit cooldown is 60-120s)."
+            sleep "${backoff}"
+            attempt=$((attempt + 1))
+          done
+
+      # Trust, then verify: re-query the Release and assert every expected
+      # asset is actually attached. Catches the failure the upload's exit
+      # code can't — an upload that "succeeded" onto the wrong release, or an
+      # asset GitHub accepted and then dropped. Consumes the SAME
+      # EXPECTED_ASSETS definition as the assert step above.
+      - name: Verify the Release carries the full inventory
+        run: |
+          set -euo pipefail
+          uploaded="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          mapfile -t expected <<<"$EXPECTED_ASSETS"
+          missing=()
+          for f in "${expected[@]}"; do
+            grep -qxF "$f" <<<"$uploaded" || missing+=("$f")
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Post-upload verification failed — the Release is missing: ${missing[*]}"
+            exit 1
+          fi
+          echo "Verified: all ${#expected[@]} assets attached to ${RELEASE_TAG}."
+
+  # Everything after the assets are verified on the Release: the Downloads
+  # table, the draft → published flip, the stable npm dispatch, and the
+  # announcements. Runs from the workflow's own commit ($GITHUB_SHA), not the
+  # release ref — every script here is CI tooling, not release content, and
+  # a stable tag points at the promoted beta's commit, which can predate any
+  # script this job references (v0.41.0 lost its announcement to exactly
+  # that).
+  finalize:
+    needs: [prepare, build-macos, publish-assets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Body edit, draft→published flip, and the repository_dispatch POST all
+      # need write; the workflow default is read-only.
+      contents: write
+      # The best-effort forward-link to the dispatched release.yml run calls
+      # `gh run list` — same replace-semantics gap as prepare's staging: an
+      # explicit permissions block drops the default actions scope, and
+      # without it the link silently degrades to "(run link unresolved)".
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Marker-delimited (`<!-- ok-downloads:start/end -->`) so re-renders are
+      # idempotent and the rest of the body — the changelog and the beta
+      # cadence's hidden consumed-set marker, which compute-next-beta.mjs
+      # reads back from the previous beta's body — passes through
+      # byte-identical. The announcement steps below and
+      # aggregate-stable-changelog.mjs each strip the block on their side.
+      # Best-effort: a release with assets but no Downloads table is a
+      # cosmetic gap, not a reason to strand the release as a draft.
+      - name: Render the Downloads table into the release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          RENDERER="scripts/render-release-downloads.mjs"
+          if [[ ! -f "$RENDERER" ]]; then
+            echo "::warning::${RENDERER} not found at ${GITHUB_SHA}; skipping the Downloads table."
+            exit 0
+          fi
+          if ! gh release view "$RELEASE_TAG" --json body,assets > "$RUNNER_TEMP/release.json"; then
+            echo "::warning::Could not fetch the release body for ${RELEASE_TAG}; skipping the Downloads table."
+            exit 0
+          fi
+          if node "$RENDERER" --tag "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+               < "$RUNNER_TEMP/release.json" > "$RUNNER_TEMP/body.md"; then
+            if gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/body.md"; then
+              echo "Rendered the Downloads table into ${RELEASE_TAG}."
+            else
+              echo "::warning::gh release edit failed for ${RELEASE_TAG}; the release keeps its previous body."
+            fi
+          else
+            echo "::warning::render-release-downloads.mjs failed for ${RELEASE_TAG}; the release keeps its previous body."
+          fi
+
       # Closes the publish-window race: release.yml / promote-stable.yml
       # create the GitHub Release as --draft so it stays out of the .atom
-      # feed until the channel manifest (beta-mac.yml / latest-mac.yml) is
-      # uploaded. This step flips the draft to published once the upload
-      # above has succeeded. Channel-mirror invariant: see
+      # feed until every installer + channel manifest is attached. This step
+      # flips the draft to published once publish-assets has verified the
+      # full inventory. Channel-mirror invariant: see
       # packages/desktop/src/main/auto-updater.ts:336-356.
       - name: Promote draft release to published
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          CHANNEL: ${{ steps.channel.outputs.channel }}
         run: |
           set -euo pipefail
           # --latest is gated on the trigger event. On the cascade flow
@@ -556,7 +1434,7 @@ jobs:
           # this run is for the freshly-published stable, so re-stamping
           # --latest is correct. On the manual recovery flow
           # (workflow_dispatch), the operator may be re-running for an
-          # OLDER tag (e.g., re-uploading a DMG for v0.4.0 after a later
+          # OLDER tag (e.g., re-uploading assets for v0.4.0 after a later
           # v0.5.0 already became Latest). Unconditional --latest there
           # silently steals the Latest badge from the newer release.
           # Skip --latest on workflow_dispatch; the operator can
@@ -579,19 +1457,10 @@ jobs:
             echo "Promoted ${RELEASE_TAG} to published (draft=false, latest=false; channel=${CHANNEL})."
           fi
 
-      # FR5b — the npm stable publish, moved here from promote-stable.yml so it
-      # sits downstream of the DMG smoke gate. promote-stable dispatched this
-      # before desktop-release even started, which meant npm `latest` could move
-      # for a release whose DMG later failed to build at all. Here it fires only
-      # after the DMG is built, smoked, and the Release has left draft.
-      #
-      # The payload shape is unchanged — same event type, same three field names
-      # — so release.yml's input contract is untouched. Only `dispatched_by`
-      # differs in value: it now names this run rather than the promote-stable
-      # run. `contents: write` (declared at the job) is the scope
-      # POST /repos/{}/dispatches needs, and repository_dispatch is GitHub's
-      # documented exemption to the rule that GITHUB_TOKEN-triggered events do
-      # not create workflow runs.
+      # FR5b — the npm stable publish sits downstream of the DMG smoke gate
+      # (build-macos fails on a bad verdict, which skips this whole job) AND
+      # the full-inventory verification, so npm `latest` can only move for a
+      # release every platform can actually install.
       #
       # Gated the same way the --latest flip above is: beta cuts flow through
       # this same job on channel=beta and must never publish an npm stable, and
@@ -600,26 +1469,24 @@ jobs:
       #
       # `success() &&` is load-bearing, not decoration. Actions injects the
       # implicit `success()` only on steps with NO `if:`; write one and you own
-      # the whole predicate. Without it this step would fire after the smoke
-      # gate refused the release — publishing to npm exactly the artifact the
-      # gate rejected, which is the failure FR5b exists to prevent.
+      # the whole predicate. Without it this step would fire even after an
+      # earlier step in this job failed.
       - name: Trigger release.yml to publish stable to npm
-        if: success() && steps.channel.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
+        if: success() && needs.prepare.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STABLE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          STABLE_VERSION: ${{ steps.channel.outputs.version }}
+          SMOKE_VERDICT: ${{ needs.build-macos.outputs.smoke_verdict }}
         run: |
           set -euo pipefail
           SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           payload=$(jq -nc \
-            --arg ref "$STABLE_TAG" \
-            --arg version "$STABLE_VERSION" \
+            --arg ref "$RELEASE_TAG" \
+            --arg version "$VERSION" \
             --arg by "$SELF_URL" \
             '{event_type: "publish-stable", client_payload: {ref: $ref, version: $version, dispatched_by: $by}}')
           gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
-          echo "Dispatched publish-stable to release.yml (ref=${STABLE_TAG}, version=${STABLE_VERSION}) after the DMG smoke gate passed."
+          echo "Dispatched publish-stable to release.yml (ref=${RELEASE_TAG}, version=${VERSION}) after the smoke gate + full-inventory verification passed."
           # Best-effort forward-link to the release.yml run we just triggered.
           CHILD=""
           for _ in 1 2 3 4 5 6; do
@@ -630,7 +1497,7 @@ jobs:
           done
           {
             echo "### Dispatched release.yml (npm publish)"
-            echo "- Gated on the DMG smoke verdict: \`${{ steps.dmg_smoke.outputs.verdict }}\`"
+            echo "- Gated on the DMG smoke verdict: \`${SMOKE_VERDICT}\`"
             if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open release.yml)"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -643,11 +1510,11 @@ jobs:
 
       # Announce STABLE releases to Slack. Gated on channel=latest so betas
       # stay silent — every *-beta.N cut also flows through this job (on
-      # channel=beta) and must not post (see Detect channel step above).
-      # Placed AFTER the promote step and gated on success() so we only
-      # announce a release that is actually published (draft=false), never a
-      # stuck draft. Skipped on the workflow_dispatch recovery flow so a
-      # manual DMG re-upload for an older tag does not re-announce it.
+      # channel=beta) and must not post. Placed AFTER the promote step and
+      # gated on success() so we only announce a release that is actually
+      # published (draft=false), never a stuck draft. Skipped on the
+      # workflow_dispatch recovery flow so a manual asset re-upload for an
+      # older tag does not re-announce it.
       #
       # The webhook URL lives in the SLACK_WEBHOOK_URL secret on
       # inkeep/open-knowledge. When it is absent (a fork, or before the
@@ -656,12 +1523,10 @@ jobs:
       # published, so the announcement is strictly best-effort and must
       # never fail an otherwise-successful release.
       - name: Announce stable release to Slack
-        if: success() && steps.channel.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
+        if: success() && needs.prepare.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          VERSION: ${{ steps.channel.outputs.version }}
         run: |
           set -euo pipefail
           if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
@@ -671,7 +1536,8 @@ jobs:
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
           # Inline the notes so the channel reads what shipped without clicking
           # through. A failed fetch is not fatal: the builder degrades to the
-          # header + link message on empty input.
+          # header + link message on empty input. The builder strips the
+          # Downloads block + consumed-set marker on its side.
           NOTES="$(gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null || true)"
           # The builder emits the whole Block Kit payload as JSON (so $VERSION /
           # $RELEASE_URL are JSON-escaped — a stray quote in a tag would
@@ -679,32 +1545,15 @@ jobs:
           # to Slack mrkdwn, and keeps every section under Slack's 3000-char cap.
           # `text` is the notification/a11y fallback Slack recommends alongside
           # blocks. Unit-tested in scripts/build-slack-release-payload.test.mjs.
-          # Take the builder from the same commit as this workflow file, NOT
-          # from the checked-out release tag. On repository_dispatch GitHub
-          # runs the workflow from the default branch while the job checks out
-          # client_payload.ref, and a stable tag points at the promoted beta's
-          # commit, which can predate any script the workflow references.
-          # v0.41.0 hit exactly that: the tag was older than the builder, node
-          # failed with "Cannot find module", and the announcement was lost.
-          # Reading the blob at $GITHUB_SHA keeps tool and workflow in lockstep
-          # for any tag age. Fetched into RUNNER_TEMP so the release checkout
-          # this job just published from stays untouched. Do not swap this for
-          # a second actions/checkout: a `path` input re-homes knip's analysis
-          # of this workflow to that directory, and every binary the file
-          # invokes (electron-builder) then fails to resolve against a
-          # workspace, which fails `pnpm run knip`.
-          BUILDER="${RUNNER_TEMP}/build-slack-release-payload.mjs"
-          if ! git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 ||
-             ! git show "${GITHUB_SHA}:scripts/build-slack-release-payload.mjs" > "$BUILDER" 2>/dev/null; then
-            rm -f "$BUILDER"
-          fi
+          # This job checked out $GITHUB_SHA, so the builder is always the
+          # workflow's own copy — no tag-age dance needed here.
           payload="$(printf '%s' "$NOTES" \
-            | node "$BUILDER" --version "$VERSION" --url "$RELEASE_URL" \
+            | node scripts/build-slack-release-payload.mjs --version "$VERSION" --url "$RELEASE_URL" \
             || true)"
-          # Never go silent. If the builder is missing or fails, post the
-          # link-only message instead of nothing: losing the notes is a
-          # degradation, losing the whole announcement is an outage, and the
-          # step exiting 0 makes that outage invisible.
+          # Never go silent. If the builder fails, post the link-only message
+          # instead of nothing: losing the notes is a degradation, losing the
+          # whole announcement is an outage, and the step exiting 0 makes that
+          # outage invisible.
           if [[ -z "$payload" ]]; then
             echo "::warning::Slack notes builder unavailable for ${RELEASE_TAG}; falling back to the link-only announcement."
             payload="$(jq -n \
@@ -732,12 +1581,10 @@ jobs:
 
       # Announce STABLE releases to Discord
       - name: Announce stable release to Discord
-        if: success() && steps.channel.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
+        if: success() && needs.prepare.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          VERSION: ${{ steps.channel.outputs.version }}
         run: |
           set -euo pipefail
           if [[ -z "${DISCORD_WEBHOOK_URL:-}" ]]; then
@@ -746,6 +1593,10 @@ jobs:
           fi
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
           NOTES="$(gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null || true)"
+          # Discord renders no markdown tables; strip the marker-delimited
+          # Downloads block (the release page keeps it — the embed links
+          # there).
+          NOTES="$(printf '%s' "$NOTES" | sed '/<!-- ok-downloads:start -->/,/<!-- ok-downloads:end -->/d')"
           NOTES_LIMIT=3500
           if [[ "${#NOTES}" -gt "$NOTES_LIMIT" ]]; then
             NOTES="${NOTES:0:$NOTES_LIMIT}…"
@@ -774,71 +1625,69 @@ jobs:
             echo "::warning::Discord announcement failed for ${RELEASE_TAG} (release is published; notification is best-effort)."
           fi
 
-      # Lightweight discoverability for stuck-draft state when the promote
-      # step (or the build/upload step before it) fails. NOT a substitute
-      # for the full paging-design observability deferred in the PR body —
-      # this is a zero-cost log marker that makes stuck drafts findable via
-      # GitHub Actions log search using the STUCK-DRAFT tag. Operators
-      # bisecting a missing release can grep workflow logs for the tag,
-      # then run the recovery command in the message.
-      # FR5c — page the release channel when the gate refuses a release.
-      # Without this a blocked release is silent: the Release simply never
-      # appears and nobody learns why until someone goes looking. The alert is
-      # deliberately loud and visually unlike the routine
+  # Fires precisely when the rest of the pipeline did not finish. FR5c — page
+  # the release channel when a stable release is blocked; the STUCK-DRAFT
+  # marker keeps failed betas findable via log search. Lives in its own job
+  # (not a `failure()` step inside finalize) because a packaging job failing
+  # SKIPS finalize entirely — skipped steps can't alert.
+  alert:
+    needs: [prepare, build-macos, build-windows, build-linux, publish-assets, finalize]
+    # Job-level failure() is true when any job in `needs` failed. prepare
+    # failing before channel detection leaves the channel output empty; the
+    # steps below treat that as "not stable" (FR5c skips, STUCK-DRAFT still
+    # logs).
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Reads scripts from the checkout, posts to a webhook — nothing more.
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+    steps:
+      # $GITHUB_SHA — CI tooling, not release content (see finalize's header).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # FR5c — page the release channel when the gate refuses a stable
+      # release. Without this a blocked release is silent: the Release simply
+      # never appears and nobody learns why until someone goes looking. The
+      # alert is deliberately loud and visually unlike the routine
       # "🎉 OpenKnowledge X.Y.Z released" post that lands in the same channel.
       #
-      # `if: failure()` (not `success()`) — this is the one step that must run
-      # precisely when the rest of the job did not. It fires for ANY job
-      # failure at or after the smoke gate; the payload reports the smoke
-      # verdict when there is one and falls back to `error` when the failure
-      # came from elsewhere, which is the honest reading (the gate never
-      # returned a product verdict).
+      # Stable only, matching the smoke gate's own scope. A failed beta cut
+      # keeps the STUCK-DRAFT warning below; paging the release channel for
+      # every beta hiccup would train readers to ignore the alert.
       #
       # No new secret: SLACK_WEBHOOK_URL already exists and is consumed by the
-      # announcement step above with the same unset -> ::notice:: -> skip
-      # tolerance.
+      # announcement step with the same unset -> ::notice:: -> skip tolerance.
       #
       # Slack only, deliberately — rationale lives in the module docstring of
       # .github/scripts/build-smoke-alert-payload.mjs. Ratcheted by
       # build-smoke-alert-payload.test.mjs so this cannot drift back.
       - name: Alert on a blocked release (FR5c)
-        # Stable only, matching the gate's own scope. A failed beta cut keeps
-        # its existing STUCK-DRAFT warning below; paging the release channel for
-        # every beta hiccup would train readers to ignore the alert.
-        if: failure() && steps.channel.outputs.channel == 'latest'
+        if: needs.prepare.outputs.channel == 'latest'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          SMOKE_VERDICT: ${{ steps.dmg_smoke.outputs.verdict }}
-          SMOKE_REASON: ${{ steps.dmg_smoke.outputs.reason }}
+          SMOKE_VERDICT: ${{ needs.build-macos.outputs.smoke_verdict }}
+          SMOKE_REASON: ${{ needs.build-macos.outputs.smoke_reason }}
         run: |
           set -uo pipefail
           # A skipped gate (ref predates the harness) is not a blocked release,
-          # and neither is a failure before the DMG was even built. Both leave
-          # the verdict empty or 'skipped'; report those as `error` so the
-          # message never implies the app itself failed a test it never ran.
+          # and neither is a failure before the DMG was even built — or a
+          # Windows/Linux packaging failure, where the smoke never speaks at
+          # all. All of those leave the verdict empty or 'skipped'; report
+          # them as `error` so the message never implies the app itself
+          # failed a test it never ran.
           VERDICT="${SMOKE_VERDICT:-}"
           if [[ "$VERDICT" != "fail" ]]; then
             VERDICT="error"
           fi
-          REASON="${SMOKE_REASON:-the release job failed before the smoke gate reached a verdict}"
+          REASON="${SMOKE_REASON:-the release pipeline failed before completing — see the run}"
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          # Take the builder from the same commit as this workflow file, NOT
-          # from the checked-out release tag. On repository_dispatch GitHub runs
-          # the workflow from the default branch while the job checks out
-          # client_payload.ref, and a stable tag points at the promoted beta's
-          # commit, which can predate any script the workflow references.
-          # v0.41.0 hit exactly that and lost its announcement to
-          # "Cannot find module". Fetched into RUNNER_TEMP so the release
-          # checkout stays untouched.
-          BUILDER="${RUNNER_TEMP}/build-smoke-alert-payload.mjs"
-          if ! git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 ||
-             ! git show "${GITHUB_SHA}:.github/scripts/build-smoke-alert-payload.mjs" > "$BUILDER" 2>/dev/null; then
-            rm -f "$BUILDER"
-          fi
-
-          # `${var^}` (bash 4) is deliberately avoided: macOS runners ship
-          # bash 3.2, so the label is passed in already-cased instead.
           post() {
             local webhook="$1" label="$2"
             if [[ -z "$webhook" ]]; then
@@ -846,18 +1695,20 @@ jobs:
               return 0
             fi
             local payload=""
-            if [[ -f "$BUILDER" ]]; then
-              payload="$(node "$BUILDER" --tag "$RELEASE_TAG" \
+            # This job checked out $GITHUB_SHA, so the builder is the
+            # workflow's own copy when it exists at all.
+            if [[ -f .github/scripts/build-smoke-alert-payload.mjs ]]; then
+              payload="$(node .github/scripts/build-smoke-alert-payload.mjs --tag "$RELEASE_TAG" \
                 --verdict "$VERDICT" --reason "$REASON" --run-url "$RUN_URL" || true)"
             fi
             if [[ -z "$payload" ]]; then
               # Never go silent. Losing the formatting is a degradation; losing
               # the page is the outage this step exists to prevent.
               echo "::warning::Smoke-alert payload builder unavailable for ${RELEASE_TAG}; sending the plain-text alert."
-              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — nothing shipped. ${REASON} ${RUN_URL}" '{text: $t}')"
+              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} pipeline ${VERDICT} — nothing shipped. ${REASON} ${RUN_URL}" '{text: $t}')"
             fi
             # The failing curl sits in an `if` condition, so a webhook outage
-            # routes to the warning instead of masking the smoke failure.
+            # routes to the warning instead of masking the failure.
             if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$webhook"; then
               echo "Posted the ${label} smoke alert for ${RELEASE_TAG}."
             else
@@ -868,13 +1719,16 @@ jobs:
           post "${SLACK_WEBHOOK_URL:-}" Slack
           # The annotation is emitted IN ADDITION to the page, so the run page
           # tells the same story as the channel.
-          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — ${REASON}. The Release stays a draft and npm latest is untouched."
+          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} pipeline ${VERDICT} — ${REASON}. The Release stays a draft and npm latest is untouched."
 
+      # Lightweight discoverability for stuck-draft state. NOT a substitute
+      # for full paging observability — this is a zero-cost log marker that
+      # makes stuck drafts findable via GitHub Actions log search using the
+      # STUCK-DRAFT tag. Operators bisecting a missing release can grep
+      # workflow logs for the tag, then run the recovery command in the
+      # message. (Recovery re-publishes nothing by itself — re-run the failed
+      # jobs first so publish-assets has verified the inventory.)
       - name: Warn on stuck draft
-        if: failure()
-        env:
-          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          CHANNEL: ${{ steps.channel.outputs.channel }}
         run: |
           # Recovery command mirrors the Promote step's combined PATCH shape
           # (--draft=false [--latest]) — empirically atomic per GitHub's
@@ -884,23 +1738,4 @@ jobs:
           else
             RECOVERY="gh release edit ${RELEASE_TAG} --draft=false"
           fi
-          echo "::warning::STUCK-DRAFT: Release ${RELEASE_TAG} may be stuck as draft (channel=${CHANNEL}). Recovery: ${RECOVERY}"
-
-      # Defense-in-depth: even though electron-builder --publish always
-      # does the upload, upload the artifacts to the workflow's run log
-      # too for a 14-day audit trail. Downstream consumers can download
-      # the signed artifacts from either the Release itself or this
-      # workflow artifact — useful when bisecting a botched upload.
-      - name: Upload DMG/ZIP audit artifact
-        if: success()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: open-knowledge-macos-release-${{ github.event.client_payload.release_tag || inputs.release_tag }}
-          path: |
-            packages/desktop/dist-desktop/*.dmg
-            packages/desktop/dist-desktop/*.dmg.blockmap
-            packages/desktop/dist-desktop/*-mac.zip
-            packages/desktop/dist-desktop/*-mac.zip.blockmap
-            packages/desktop/dist-desktop/*-mac.yml
-          retention-days: 14
-          if-no-files-found: error
+          echo "::warning::STUCK-DRAFT: Release ${RELEASE_TAG} may be stuck as draft (channel=${CHANNEL:-unknown}). Recovery after the failed jobs are re-run green: ${RECOVERY}"
