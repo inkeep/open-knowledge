@@ -8,6 +8,9 @@
  *     vendor crash SDKs).
  *   - `render-process-gone` / `child-process-gone` signals, filtered to
  *     genuine crash reasons, invite a report while the app is still running.
+ *     GPU deaths are filtered twice: Chromium replaces that process on its
+ *     own, so an isolated one is presumed recovered and stays a log line —
+ *     only a repeat inside the window is worth asking the user about.
  *   - A boot-time scan pairs a dirty-shutdown sentinel (written each boot,
  *     removed on clean quit) with a minidump-freshness check to catch
  *     main-process/native crashes that leave no live-session signal.
@@ -70,6 +73,33 @@ import {
  * report prompt for each would nag.
  */
 const CRASH_REASONS = new Set(['crashed', 'oom', 'launch-failed', 'integrity-failure']);
+
+/** Electron's `details.type` for the GPU child process. */
+const GPU_PROCESS_TYPE = 'GPU';
+
+/**
+ * How many GPU deaths inside the window it takes before one is worth a prompt.
+ *
+ * The GPU process is the one child Chromium replaces on its own: it relaunches
+ * a dead one and re-issues the lost graphics context in about a second, so an
+ * isolated death leaves the user with nothing to describe. Inviting anyway
+ * produces a report whose author saw no failure, and costs a triage cycle to
+ * conclude "recovered" — the reason this threshold exists.
+ *
+ * Repetition is the opposite signal. A GPU process that will not stay up
+ * degrades every window and eventually drops the app to software rendering,
+ * which the user does feel, so the prompt is delayed rather than removed. The
+ * reason is deliberately not consulted: `crashed` and `oom` recover by the same
+ * mechanism, and a genuinely broken GPU reaches the threshold either way.
+ */
+const GPU_CRASH_INVITE_THRESHOLD = 3;
+
+/**
+ * Deaths only compound while they are related. Spread across a long session
+ * they are independent blips that each recovered, so the count is taken over a
+ * trailing window rather than for the life of the process.
+ */
+const GPU_CRASH_WINDOW_MS = 5 * 60_000;
 
 /**
  * Acked ids older than the store's minidump baseline can never fire again,
@@ -201,6 +231,12 @@ export interface CrashDetection {
   noteSuspend(): void;
   noteResume(): void;
   handleRenderProcessGone(details: { reason: string; exitCode?: number }): void;
+  /**
+   * Every child death still logs; only GPU deaths are held back from the
+   * prompt, and only until they repeat inside the window — Chromium replaces
+   * that one process transparently, so an isolated death is invisible to the
+   * user being asked about it.
+   */
   handleChildProcessGone(details: {
     type: string;
     reason: string;
@@ -315,6 +351,13 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
   let active: { event: OkBugReportCrashDetectedEvent; delivered: boolean } | null = null;
   let runtimeSeq = 0;
 
+  /**
+   * GPU-death timestamps still inside the trailing window, oldest first. In
+   * memory only: the counter asks whether the GPU is failing to stay up *right
+   * now*, and a fresh process means a fresh GPU that has not yet failed.
+   */
+  let recentGpuCrashes: number[] = [];
+
   /** This session's sentinel; null until `detectBootCrash` writes the first version. */
   let sentinel: SentinelState | null = null;
   /** Freezes every sentinel writer once the file was removed by an orderly quit. */
@@ -411,6 +454,21 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     }
     active = { event, delivered: false };
     return true;
+  }
+
+  /**
+   * Record a GPU death and decide whether it is still the recoverable kind.
+   * Returns the in-window count too, so the log line carries the number the
+   * decision was made on rather than leaving it to be inferred.
+   */
+  function noteGpuCrash(): { countInWindow: number; suppressInvite: boolean } {
+    const nowMs = deps.now().getTime();
+    recentGpuCrashes = recentGpuCrashes.filter((at) => nowMs - at < GPU_CRASH_WINDOW_MS);
+    recentGpuCrashes.push(nowMs);
+    return {
+      countInWindow: recentGpuCrashes.length,
+      suppressInvite: recentGpuCrashes.length < GPU_CRASH_INVITE_THRESHOLD,
+    };
   }
 
   function classifyDump(path: string): MinidumpOwnership {
@@ -795,6 +853,10 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     handleChildProcessGone(details): void {
       if (!CRASH_REASONS.has(details.reason)) return;
       const owned = newestOwnedMinidump();
+      const gpu = details.type === GPU_PROCESS_TYPE ? noteGpuCrash() : null;
+      // Logged at warn even when the prompt is held back: this line is the only
+      // record that the GPU died at all, and a suppressed death that left no
+      // breadcrumb is indistinguishable from one that never happened.
       deps.logger.warn(
         {
           event: 'crash-detection.child-process-gone',
@@ -803,9 +865,12 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           exitCode: details.exitCode,
           foreignDumpsIgnored: owned.foreignSkipped,
           unreadableDumpsSkipped: owned.unknownSkipped,
+          ...(gpu === null ? {} : { gpuCrashesInWindow: gpu.countInWindow }),
+          ...(gpu?.suppressInvite === true ? { invitationSuppressed: 'gpu-recoverable' } : {}),
         },
         'child process died abnormally',
       );
+      if (gpu?.suppressInvite === true) return;
       if (
         armInvite({
           eventId: `crash:child:${deps.now().getTime()}:${runtimeSeq++}`,

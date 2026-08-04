@@ -1,4 +1,3 @@
-
 export interface ValidationSourceCounts {
   errorCount: number;
   warningCount: number;

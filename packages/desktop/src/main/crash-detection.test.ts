@@ -34,11 +34,6 @@ afterEach(() => {
   }
 });
 
-const silentLogger = {
-  info: () => {},
-  warn: () => {},
-};
-
 /** A third-party GUI app that inherited our exception handler and aborted. */
 const FOREIGN_DUMP = buildMinidump([
   '/Applications/LibreOffice.app/Contents/MacOS/soffice',
@@ -59,6 +54,8 @@ const DETECTING_VERSION = '0.46.1';
 interface Rig {
   deps: CrashDetectionDeps;
   emitted: OkBugReportCrashDetectedEvent[];
+  /** Structured payloads the detection logged at warn level, in order. */
+  warnings: Record<string, unknown>[];
   /** A dump naming one of this rig's own executables as its main module. */
   ownDump: Buffer;
   /** The same dump, plus the Crashpad annotations a real one carries. */
@@ -71,6 +68,8 @@ interface Rig {
   setAppVersion(version: string): void;
   /** Advance and return the fake clock (10s per tick). */
   tick(): Date;
+  /** Jump the fake clock forward, for windows measured in minutes. */
+  advance(ms: number): void;
   dir: string;
 }
 
@@ -78,6 +77,7 @@ function makeRig(): Rig {
   const dir = mkdtempSync(resolve(tmpdir(), 'ok-crash-detection-'));
   tmpDirs.push(dir);
   const emitted: OkBugReportCrashDetectedEvent[] = [];
+  const warnings: Record<string, unknown>[] = [];
   let rendererAvailable = true;
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
@@ -99,6 +99,7 @@ function makeRig(): Rig {
   const rig: Rig = {
     dir,
     emitted,
+    warnings,
     ownDump: buildMinidump(ownModules),
     ownDumpStamped: (version: string) =>
       buildMinidump(ownModules, {
@@ -117,6 +118,9 @@ function makeRig(): Rig {
       clockMs += 10_000;
       return new Date(clockMs);
     },
+    advance(ms: number) {
+      clockMs += ms;
+    },
     deps: {
       sentinelPath: join(dir, 'user-data', 'bug-report-dirty-shutdown.json'),
       ackStorePath: join(dir, 'user-data', 'bug-report-crash-acks.json'),
@@ -133,7 +137,12 @@ function makeRig(): Rig {
         return new Date(clockMs);
       },
       currentBootSessionUuid: () => bootSessionUuid,
-      logger: silentLogger,
+      logger: {
+        info: () => {},
+        warn: (payload) => {
+          warnings.push(payload);
+        },
+      },
     },
   };
   return rig;
@@ -216,13 +225,13 @@ describe('runtime process-gone invitations', () => {
     const rig = makeRig();
     const detection = createCrashDetection(rig.deps);
 
-    detection.handleChildProcessGone({ type: 'GPU', reason: 'oom', exitCode: 1 });
+    detection.handleChildProcessGone({ type: 'Utility', reason: 'oom', exitCode: 1 });
 
     expect(rig.emitted).toHaveLength(1);
     const event = rig.emitted[0];
     expect(event?.kind).toBe('child-process-gone');
     if (event?.kind === 'child-process-gone') {
-      expect(event.context.processType).toBe('GPU');
+      expect(event.context.processType).toBe('Utility');
       expect(event.context.reason).toBe('oom');
     }
   });
@@ -258,6 +267,124 @@ describe('runtime process-gone invitations', () => {
 
     detection.notifyRendererReady();
     expect(rig.emitted).toHaveLength(1);
+  });
+});
+
+/**
+ * Chromium replaces a dead GPU process on its own, so the death the user is
+ * being asked about is one they never saw. These pin the carve-out that holds
+ * the prompt back, and the repeat that earns it anyway.
+ */
+describe('recoverable GPU crashes', () => {
+  /** The payload of the one line every child death logs, suppressed or not. */
+  function childGoneLog(rig: Rig): Record<string, unknown> | undefined {
+    return rig.warnings.find((w) => w.event === 'crash-detection.child-process-gone');
+  }
+
+  test('an isolated GPU death never reaches the user', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed', exitCode: 5 });
+
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('a suppressed GPU death still leaves a breadcrumb naming why', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed', exitCode: 5 });
+
+    expect(childGoneLog(rig)).toMatchObject({
+      processType: 'GPU',
+      reason: 'crashed',
+      exitCode: 5,
+      gpuCrashesInWindow: 1,
+      invitationSuppressed: 'gpu-recoverable',
+    });
+  });
+
+  test('a GPU that will not stay up invites once the deaths repeat in the window', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    expect(rig.emitted).toHaveLength(0);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(1);
+    const event = rig.emitted[0];
+    expect(event?.kind).toBe('child-process-gone');
+    if (event?.kind === 'child-process-gone') {
+      expect(event.context.processType).toBe('GPU');
+    }
+    // The line that finally invited names the count it decided on, and drops
+    // the suppression marker — otherwise the two outcomes read alike in a log.
+    const invited = rig.warnings
+      .filter((w) => w.event === 'crash-detection.child-process-gone')
+      .at(-1);
+    expect(invited).toMatchObject({ gpuCrashesInWindow: 3 });
+    expect(invited).not.toHaveProperty('invitationSuppressed');
+  });
+
+  test('deaths spread beyond the window are independent blips, not a pattern', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    rig.advance(6 * 60_000);
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('the reason does not change the carve-out — an oom GPU recovers the same way', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'oom' });
+
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('routine GPU teardown does not count toward the window', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    // Ordering guard: the crash-reason gate runs before the GPU counter, so an
+    // ordinary teardown must not fill the window. Were it counted, the second
+    // real death below would land third and invite.
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'clean-exit' });
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'killed' });
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('every other child process still invites on its first death', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'Utility', reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(1);
+    expect(childGoneLog(rig)).not.toHaveProperty('gpuCrashesInWindow');
+  });
+
+  test('a renderer crash still invites while GPU deaths are being held back', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(1);
+    expect(rig.emitted[0]?.kind).toBe('render-process-gone');
   });
 });
 
