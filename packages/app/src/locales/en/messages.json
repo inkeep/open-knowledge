@@ -44,7 +44,6 @@
     "-zA2E7": ["Couldn't create the worktree. Try a different name."],
     "-zy2Nq": ["Type"],
     "0-31GV": ["Removing"],
-    "00c7t0": ["Ask AI about this code block"],
     "02P3hL": ["Upload failed: ", ["message"]],
     "03wKPg": ["A report helps us find the cause. Nothing is sent until you review it."],
     "04RA0-": ["Failed to enable sync — ", ["detail"]],
@@ -1533,6 +1532,7 @@
     "OdmsFg": ["Failed to delete item"],
     "OeAl1e": ["e.g. assets/uploads"],
     "OfhWJH": ["Reset"],
+    "Ohpzub": ["Comment or ask AI about this code block"],
     "Oi56Cu": ["Cleanup log"],
     "OiHJdA": [
       "Move through slash, wiki-link, tag, and path suggestions; accept or dismiss the active suggestion."

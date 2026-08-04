@@ -52,11 +52,71 @@ const LINK_TAIL = /^\]\([^)]*\)/;
 /** Bounds the slice `LINK_TAIL` runs on. Generous — targets can be long URLs. */
 const LINK_TAIL_WINDOW = 512;
 
-/** Heading, blockquote, bullet, and ordered-list markers — line-leading only. */
-const BLOCK_MARKER = /^(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/;
+/**
+ * Heading, blockquote, bullet, and ordered-list markers — line-leading only.
+ *
+ * A bullet's optional `[ ]` / `[x]` goes with it: a task item renders as a
+ * checkbox widget, so the brackets carry no text a selection could contain.
+ */
+const BLOCK_MARKER = /^(?:#{1,6}[ \t]+|>[ \t]?|(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)/;
 
 /** Widest block marker worth considering; bounds the slice the regex runs on. */
 const BLOCK_MARKER_WINDOW = 32;
+
+/**
+ * Table cell boundaries render as the gap between cells, never as a character.
+ * Elastic for the same reason a bullet's `- ` is: a selection crossing two
+ * cells arrives with the cell texts run together.
+ */
+const TABLE_PIPE = '|';
+
+/**
+ * Source lines that render as no text whatsoever, matched whole.
+ *
+ * Unlike a bullet's `- `, these are not a marker in front of content — the
+ * entire line is invisible to anyone selecting rendered text, so skipping one
+ * character at a time cannot get past them. A code fence is the case that
+ * reached users: the delimiter's backticks were already elastic, but the info
+ * string after them (```` ```ts ````) was not, so every selection that crossed
+ * into or out of a language-tagged code block failed to anchor.
+ *
+ * Each alternative must match to end-of-line, so a line carrying real content
+ * can never be swallowed: `***bold***` is not a thematic break, and a paragraph
+ * opening `-- ` is not a table rule.
+ */
+const INVISIBLE_LINE =
+  // Fenced-code delimiter: opener plus its info string, or the closer.
+  /^(?:`{3,}[^`\n]*|~{3,}[^\n]*)$/;
+
+/** Thematic break, setext heading underline, and table delimiter row. */
+const INVISIBLE_RULE_LINE = /^(?:(?:[-*_][ \t]*){3,}|=+[ \t]*|[|\-: \t]*-[|\-: \t]*)$/;
+
+/**
+ * Longest line still worth testing against the whole-line patterns. Past this a
+ * line is prose or minified data, not a fence or a rule, and the scan should not
+ * pay for the slice.
+ */
+const INVISIBLE_LINE_WINDOW = 1024;
+
+/**
+ * Length of the whole-line construct starting at `i`, or 0 when the line
+ * renders as something. Caller must have established that `i` is a line start.
+ */
+function invisibleLineRunAt(text: string, i: number): number {
+  const brk = text.indexOf('\n', i);
+  let end = brk === -1 ? text.length : brk;
+  // A CRLF document leaves the `\r` on this slice, and none of the rule
+  // patterns' character classes admit it — `$` could never match, so a
+  // thematic break or table rule stayed non-elastic on Windows line endings.
+  // Trimmed rather than admitted, so the run stops before the `\r` and the
+  // whitespace rule consumes it like any other space.
+  if (end > i && text[end - 1] === '\r') end -= 1;
+  if (end - i > INVISIBLE_LINE_WINDOW) return 0;
+  const line = text.slice(i, end);
+  if (line.length === 0) return 0;
+  if (!INVISIBLE_LINE.test(line) && !INVISIBLE_RULE_LINE.test(line)) return 0;
+  return line.length;
+}
 
 function isSpace(ch: string): boolean {
   return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f' || ch === '\v';
@@ -76,6 +136,14 @@ function isLineStart(text: string, i: number): boolean {
 function syntaxRunAt(text: string, i: number): number {
   const ch = text[i];
   if (ch === undefined) return 0;
+  // Whole-line constructs first: a fence and a thematic break both open with a
+  // character that is also inline syntax, and consuming it one at a time leaves
+  // the rest of the line (`ts`, `- - -`) looking like content.
+  if (isLineStart(text, i)) {
+    const line = invisibleLineRunAt(text, i);
+    if (line > 0) return line;
+  }
+  if (ch === TABLE_PIPE) return 1;
   if (INLINE_SYNTAX.has(ch)) return 1;
   // `[label](target)` and `[[target]]` both render as their label alone, so the
   // brackets and the whole `](target)` tail are invisible to a caller working

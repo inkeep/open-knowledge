@@ -65,6 +65,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getFindReplaceState } from '../find-replace/tiptap-find-replace-extension';
+import { handleAnchorCellPos, selectTableAxis } from './table-axis-selection';
 import { useTableDragReorder } from './useTableDragReorder';
 
 type Axis = 'column' | 'row';
@@ -154,13 +155,18 @@ function computeActiveCell(editor: Editor): ActiveCell | null {
   if (getFindReplaceState(editor.state).query) return null;
 
   const { state, view } = editor;
-  const $from = state.selection.$from;
-  let cellPos = -1;
-  for (let depth = $from.depth; depth > 0; depth--) {
-    const role = $from.node(depth).type.spec.tableRole;
-    if (role === 'cell' || role === 'header_cell') {
-      cellPos = $from.before(depth);
-      break;
+  // A table selection anchors both handles to its top-left cell; `$from` is the
+  // far corner of a selected axis and would fling the sibling handle across the
+  // table. Everything else walks up from the caret as before.
+  let cellPos = handleAnchorCellPos(state.selection) ?? -1;
+  if (cellPos < 0) {
+    const $from = state.selection.$from;
+    for (let depth = $from.depth; depth > 0; depth--) {
+      const role = $from.node(depth).type.spec.tableRole;
+      if (role === 'cell' || role === 'header_cell') {
+        cellPos = $from.before(depth);
+        break;
+      }
     }
   }
   if (cellPos < 0) return null;
@@ -210,7 +216,14 @@ function CellHandle({
     editor,
     axis,
     anchor,
-    onClickGesture: () => setOpen(true),
+    // Select before opening: the menu's items all act on this row / column, so
+    // the selection is what the menu is ABOUT — and it leaves the axis
+    // highlighted for the selection-scoped surfaces (copy, comment) that the
+    // handle was previously invisible to.
+    onClickGesture: () => {
+      selectTableAxis(editor, anchor, axis);
+      setOpen(true);
+    },
   });
 
   useEffect(() => {

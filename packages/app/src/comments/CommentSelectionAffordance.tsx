@@ -35,6 +35,7 @@ import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { setCommentDraftRange } from './anchor-decorations';
 import { captureSelectionContext } from './anchor-search';
 import { appendQueueToOpenSession } from './append-to-open-session';
+import { selectedSpan } from './selected-span';
 import { createThread, emitStartComment, subscribeStartComment } from './store';
 
 interface Captured {
@@ -85,8 +86,10 @@ export function CommentSelectionAffordance({
   // live selection at that moment (no continuous tracking needed).
   useEffect(() => {
     return subscribeStartComment(() => {
-      const { from, to, empty } = editor.state.selection;
-      if (empty || to - from < 1) return;
+      const { selection } = editor.state;
+      if (selection.empty) return;
+      const { from, to } = selectedSpan(selection);
+      if (to - from < 1) return;
       // The rendered text, deliberately — NOT the selection serialized back to
       // markdown. A serialized partial selection carries the block marker of
       // whatever block it sits in, so picking mid-bullet yields

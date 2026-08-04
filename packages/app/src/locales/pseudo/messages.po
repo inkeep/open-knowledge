@@ -1483,10 +1483,6 @@ msgstr ""
 msgid "Ask AI (from selection)"
 msgstr ""
 
-#: src/editor/extensions/CodeBlockView.tsx
-msgid "Ask AI about this code block"
-msgstr ""
-
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
 msgstr ""
@@ -2343,6 +2339,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Comment on selection"
+msgstr ""
+
+#: src/editor/extensions/CodeBlockView.tsx
+msgid "Comment or ask AI about this code block"
 msgstr ""
 
 #: src/comments/comment-chips.tsx

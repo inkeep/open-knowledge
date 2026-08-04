@@ -181,6 +181,44 @@ describe('CommentService — create / read / list', () => {
     );
   });
 
+  test('anchors a selection dragged across a language-tagged code block', async () => {
+    // The reported 400: a fence's backticks were already elastic but the info
+    // string after them was not, so every selection crossing into or out of a
+    // tagged code block died on the `ts`.
+    bodies.set(
+      'specs/language',
+      'Add `appearance.language` to `ConfigSchema`:\n\n```ts\nlanguage: z\n  .optional(),\n```\n\nAcceptance: the leaf validates.',
+    );
+    const meta = await svc.createThread({
+      docName: 'specs/language',
+      quote: 'to ConfigSchema:\nlanguage: z\n  .optional(),\nAcceptance: the leaf validates.',
+      author: 'principal-abc',
+      body: 'is this the right scope?',
+    });
+    expect(meta.state).toBe('anchored');
+    const body = bodies.get('specs/language') ?? '';
+    // The stored range covers the real source, fence and all.
+    expect(body.slice(meta.anchor.start, meta.anchor.end)).toContain('```ts');
+  });
+
+  test('anchors a selected table row', async () => {
+    // Picking a row hands over the cell texts with the pipes and padding gone,
+    // so the row is not a literal substring of the source line.
+    bodies.set(
+      'notes/freezing',
+      '| Method | Temperature | Hold time |\n| --- | --- | --- |\n| 1 | -4F or below | >= 168 hours |\n| 2 | -31F or below | >= 15 hours |',
+    );
+    const meta = await svc.createThread({
+      docName: 'notes/freezing',
+      quote: '2\n-31F or below\n>= 15 hours',
+      author: 'principal-abc',
+      body: 'is this still current?',
+    });
+    expect(meta.state).toBe('anchored');
+    const body = bodies.get('notes/freezing') ?? '';
+    expect(body.slice(meta.anchor.start, meta.anchor.end)).toBe('2 | -31F or below | >= 15 hours');
+  });
+
   test('relaxed matching still refuses different words', async () => {
     bodies.set('notes/steps', '## Steps\n\n1. Heat oven to 425F.');
     await expect(

@@ -12,26 +12,10 @@
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
-import { afterEach, describe, expect, test, vi } from 'vitest';
-import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
-import {
-  type ActiveTerminalInputDetail,
-  subscribeToActiveTerminalInput,
-} from '@/components/handoff/terminal-input-events';
+import { afterEach, describe, expect, test } from 'vitest';
+import { subscribeStartComment } from '@/comments/store';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
-
-// The Ask AI click handler routes through `serializeWysiwygSelection`, which
-// runs the full markdown pipeline against the selected slice. Testing that
-// pipeline end-to-end is the fidelity suite's job; this file tests the
-// click→dispatch contract, so stub the serializer to a fixed fenced body.
-vi.doMock('../edit-with-ai-selection', () => ({
-  serializeWysiwygSelection: () => '```json\n{ "name": "sample" }\n```',
-}));
-
-// Import the NodeView AFTER the mock registers so its `../edit-with-ai-selection`
-// import binds to the stub serializer rather than the real markdown pipeline.
-const { CodeBlockView } = await import('./CodeBlockView');
-const { setEditorDocName } = await import('./doc-context');
+import { CodeBlockView } from './CodeBlockView';
 
 function makeConfigValue(merged: Config | null): ConfigContextValue {
   return {
@@ -232,16 +216,17 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
 });
 
 /**
- * Pins the click→dispatch contract for the code-block chrome's Ask AI button.
- * The button drives the block through `setNodeSelection` → serialize →
- * `composeSelectionPrompt` → `requestActiveTerminalInput`; `TerminalSessionsHost`
- * either pastes into a live PTY or launches a fresh Claude tab. This file
- * exercises the button's own decisions (guarded position lookup, doc-grounded
- * dispatch, composer fallback for the empty / no-doc branches); the serializer
- * is stubbed above and the pipeline is covered by the fidelity suite.
+ * Pins the click→compose contract for the code-block chrome's Ask AI button.
+ *
+ * The button opens the same comment composer the text bubble menu's Ask AI
+ * opens — which offers both filing the note for a later batch and handing it
+ * to an agent now. Before that it establishes what the comment is ABOUT: a
+ * pick already inside this block stands, and only an empty or outside
+ * selection gets replaced by a NodeSelection over the whole fence.
  */
-describe('CodeBlockView Ask AI dispatch', () => {
-  // rAF is used to defer the dispatch a frame; polyfill for jsdom under bun.
+describe('CodeBlockView Ask AI composer', () => {
+  // rAF defers the emit a frame so the selection transaction lands first;
+  // polyfill for jsdom.
   if (typeof globalThis.requestAnimationFrame === 'undefined') {
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       queueMicrotask(() => cb(0));
@@ -249,47 +234,44 @@ describe('CodeBlockView Ask AI dispatch', () => {
     }) as typeof globalThis.requestAnimationFrame;
   }
 
-  let terminalInputs: ActiveTerminalInputDetail[] = [];
-  let composerOpens = 0;
-  let unsubscribeTerminal: (() => void) | null = null;
-  let unsubscribeComposer: (() => void) | null = null;
+  let starts = 0;
+  let nodeSelections: number[] = [];
+  let unsubscribeStart: (() => void) | null = null;
 
   afterEach(() => {
-    unsubscribeTerminal?.();
-    unsubscribeTerminal = null;
-    unsubscribeComposer?.();
-    unsubscribeComposer = null;
-    terminalInputs = [];
-    composerOpens = 0;
+    unsubscribeStart?.();
+    unsubscribeStart = null;
+    starts = 0;
+    nodeSelections = [];
     cleanup();
   });
 
-  function subscribeAll() {
-    unsubscribeTerminal = subscribeToActiveTerminalInput((detail) => {
-      terminalInputs.push(detail);
-    });
-    unsubscribeComposer = subscribeToOpenAskAiComposer(() => {
-      composerOpens += 1;
+  function subscribeStart() {
+    unsubscribeStart = subscribeStartComment(() => {
+      starts += 1;
     });
   }
 
   interface EditorMockOverrides {
     setNodeSelectionThrows?: 'range' | 'other';
+    /** Live selection, in document positions. */
+    selection?: { from: number; to: number };
   }
 
-  // Fake editor shaped enough for the click handler: `.commands.setNodeSelection`
-  // is a spy that either records the pos or throws, and `state.selection.empty`
-  // reads false (my code doesn't check it, but leaving a NodeSelection-ish
-  // shape here matches production). `serializeWysiwygSelection` is stubbed at
-  // module load so it never touches `state` directly.
+  /**
+   * Fake editor shaped enough for the click handler: `setNodeSelection` records
+   * the position it was handed (or throws), and `state.selection` is whatever
+   * the case under test needs the live pick to be.
+   */
   function makeEditorWithCommands(overrides: EditorMockOverrides = {}) {
-    const setNodeSelection = (_pos: number) => {
+    const setNodeSelection = (pos: number) => {
       if (overrides.setNodeSelectionThrows === 'range') {
         throw new RangeError('Position 5 out of range');
       }
       if (overrides.setNodeSelectionThrows === 'other') {
         throw new Error('unrelated failure');
       }
+      nodeSelections.push(pos);
     };
     return {
       isEditable: true,
@@ -297,7 +279,7 @@ describe('CodeBlockView Ask AI dispatch', () => {
       commands: { setNodeSelection },
       state: {
         doc: { nodeAt: () => ({ nodeSize: 10 }) },
-        selection: { from: 0, to: 0, empty: false },
+        selection: overrides.selection ?? { from: 0, to: 0, empty: true },
       },
       on: () => {},
       off: () => {},
@@ -310,6 +292,7 @@ describe('CodeBlockView Ask AI dispatch', () => {
       node: {
         attrs: { language: 'json', meta: null },
         textContent: '{ "name": "sample" }',
+        nodeSize: 10,
       },
       getPos: pos === undefined ? undefined : () => pos,
       selected: false,
@@ -317,93 +300,71 @@ describe('CodeBlockView Ask AI dispatch', () => {
     } as unknown as NodeViewProps;
   }
 
-  function renderAskAi(props: NodeViewProps) {
-    return render(
+  function clickAskAi(props: NodeViewProps): HTMLButtonElement {
+    render(
       <ConfigContext value={makeConfigValue(null)}>
         <CodeBlockView {...props} />
       </ConfigContext>,
     );
-  }
-
-  test('click with a grounded doc dispatches a composed prompt to the terminal input channel', async () => {
-    subscribeAll();
-    const props = makeAskAiProps();
-    setEditorDocName(props.editor, 'specs/foo/SPEC');
-    const { container } = renderAskAi(props);
-
-    const askBtn = container.querySelector(
-      '[data-testid="ok-codeblock-ask-ai-btn"]',
-    ) as HTMLButtonElement | null;
-    expect(askBtn).toBeTruthy();
-    fireEvent.click(askBtn as HTMLButtonElement);
-
-    await waitFor(() => expect(terminalInputs).toHaveLength(1));
-    const [detail] = terminalInputs;
-    // Doc named as an @-mention (grounding contract from composeSelectionPrompt).
-    expect(detail.text).toContain('@specs/foo/SPEC.md');
-    // Stubbed fenced body survives verbatim into the composed prompt.
-    expect(detail.text).toContain('```json');
-    expect(detail.text).toContain('{ "name": "sample" }');
-    // A composed Ask AI instruction RUNS on a fresh session (submit).
-    expect(detail.submit).toBe(true);
-    // Terminal-input branch does NOT open the composer.
-    expect(composerOpens).toBe(0);
-  });
-
-  test('click with no registered doc name opens the composer instead of dispatching', async () => {
-    subscribeAll();
-    const props = makeAskAiProps();
-    // No setEditorDocName — getEditorDocName returns null.
-    renderAskAi(props);
     const askBtn = document.querySelector(
       '[data-testid="ok-codeblock-ask-ai-btn"]',
     ) as HTMLButtonElement | null;
     expect(askBtn).toBeTruthy();
-    fireEvent.click(askBtn as HTMLButtonElement);
+    return askBtn as HTMLButtonElement;
+  }
 
-    await waitFor(() => expect(composerOpens).toBe(1));
-    expect(terminalInputs).toEqual([]);
+  test('with nothing picked, selects the whole block and opens the composer', async () => {
+    subscribeStart();
+    fireEvent.click(clickAskAi(makeAskAiProps()));
+
+    await waitFor(() => expect(starts).toBe(1));
+    expect(nodeSelections).toEqual([5]);
   });
 
-  test('click with a stale position (setNodeSelection throws RangeError) neither crashes nor dispatches', async () => {
-    subscribeAll();
-    const props = makeAskAiProps({ setNodeSelectionThrows: 'range' });
-    setEditorDocName(props.editor, 'specs/foo/SPEC');
-    // Silence the classified warn so the test log stays clean; the classification
-    // itself is what we're asserting via the no-dispatch + no-throw combo.
+  test('a pick inside this block stands — the comment is about those lines', async () => {
+    subscribeStart();
+    // The block occupies [5, 15); this selection sits within its content.
+    fireEvent.click(clickAskAi(makeAskAiProps({ selection: { from: 7, to: 11 } })));
+
+    await waitFor(() => expect(starts).toBe(1));
+    expect(nodeSelections).toEqual([]);
+  });
+
+  test('a pick in a DIFFERENT block does not stop this one selecting itself', async () => {
+    subscribeStart();
+    // `editor.isActive('codeBlock')` would answer "yes, some code block" here
+    // and wrongly leave the other block's selection in place.
+    fireEvent.click(clickAskAi(makeAskAiProps({ selection: { from: 40, to: 46 } })));
+
+    await waitFor(() => expect(starts).toBe(1));
+    expect(nodeSelections).toEqual([5]);
+  });
+
+  test('a stale position (setNodeSelection throws RangeError) neither crashes nor composes', async () => {
+    subscribeStart();
+    // Silence the classified warn so the test log stays clean; the
+    // classification itself is what the no-emit + no-throw combo asserts.
     const originalWarn = console.warn;
     console.warn = () => {};
     try {
-      renderAskAi(props);
-      const askBtn = document.querySelector(
-        '[data-testid="ok-codeblock-ask-ai-btn"]',
-      ) as HTMLButtonElement | null;
-      expect(askBtn).toBeTruthy();
-      expect(() => fireEvent.click(askBtn as HTMLButtonElement)).not.toThrow();
-      // Give any deferred rAF a chance to fire before asserting nothing landed.
+      const btn = clickAskAi(makeAskAiProps({ setNodeSelectionThrows: 'range' }));
+      expect(() => fireEvent.click(btn)).not.toThrow();
       await new Promise((resolve) => queueMicrotask(() => resolve(null)));
-      expect(terminalInputs).toEqual([]);
-      expect(composerOpens).toBe(0);
+      expect(starts).toBe(0);
     } finally {
       console.warn = originalWarn;
     }
   });
 
   test('a non-RangeError from setNodeSelection is re-thrown (guard does not swallow real bugs)', async () => {
-    subscribeAll();
-    const props = makeAskAiProps({ setNodeSelectionThrows: 'other' });
-    setEditorDocName(props.editor, 'specs/foo/SPEC');
-    renderAskAi(props);
-    const askBtn = document.querySelector(
-      '[data-testid="ok-codeblock-ask-ai-btn"]',
-    ) as HTMLButtonElement | null;
-    expect(askBtn).toBeTruthy();
+    subscribeStart();
+    const btn = clickAskAi(makeAskAiProps({ setNodeSelectionThrows: 'other' }));
     // A throw from a React 19 event handler is not caught by RTL's fireEvent
     // under jsdom; the runtime reports the uncaught error to the window 'error'
     // event instead of rethrowing synchronously. Capture it (preventDefault so
     // the report does not fail the test) and assert the message, proving the
-    // guard only class-catches RangeError and lets a real bug escape rather than
-    // swallowing every throw.
+    // guard only class-catches RangeError and lets a real bug escape rather
+    // than swallowing every throw.
     const uncaught: string[] = [];
     const onError = (event: ErrorEvent) => {
       event.preventDefault();
@@ -411,7 +372,7 @@ describe('CodeBlockView Ask AI dispatch', () => {
     };
     window.addEventListener('error', onError);
     try {
-      fireEvent.click(askBtn as HTMLButtonElement);
+      fireEvent.click(btn);
     } finally {
       window.removeEventListener('error', onError);
     }
@@ -419,17 +380,10 @@ describe('CodeBlockView Ask AI dispatch', () => {
   });
 
   test('click with getPos absent (unrenderable NodeView) is a no-op', async () => {
-    subscribeAll();
-    const props = makeAskAiProps({}, /* pos */ undefined);
-    setEditorDocName(props.editor, 'specs/foo/SPEC');
-    renderAskAi(props);
-    const askBtn = document.querySelector(
-      '[data-testid="ok-codeblock-ask-ai-btn"]',
-    ) as HTMLButtonElement | null;
-    expect(askBtn).toBeTruthy();
-    expect(() => fireEvent.click(askBtn as HTMLButtonElement)).not.toThrow();
+    subscribeStart();
+    const btn = clickAskAi(makeAskAiProps({}, /* pos */ undefined));
+    expect(() => fireEvent.click(btn)).not.toThrow();
     await new Promise((resolve) => queueMicrotask(() => resolve(null)));
-    expect(terminalInputs).toEqual([]);
-    expect(composerOpens).toBe(0);
+    expect(starts).toBe(0);
   });
 });

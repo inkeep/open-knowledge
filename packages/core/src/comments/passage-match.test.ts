@@ -155,3 +155,178 @@ describe('links', () => {
     expect(findPassage(prose, 'array[0] value', { syntaxIn: 'haystack' })).not.toBeNull();
   });
 });
+
+describe('lines that render as nothing', () => {
+  // The reported failure: dragging a selection across a code block returned a
+  // bare 400. The fence's backticks were already elastic, but the info string
+  // after them was not, so the match died on the `ts` in ```` ```ts ````.
+  const BODY = `Add \`appearance.language\` to \`ConfigSchema\`:
+
+\`\`\`ts
+language: z
+  .enum(['system', 'en', 'es'])
+\`\`\`
+
+Acceptance: the leaf validates.`;
+
+  /** What the editor hands over: rendered text, blocks joined by a newline. */
+  const rendered = (...lines: string[]): string => lines.join('\n');
+
+  test('a selection running from prose into a tagged code block', () => {
+    const hit = findPassage(
+      BODY,
+      rendered('Add appearance.language to ConfigSchema:', 'language: z'),
+      { syntaxIn: 'haystack' },
+    );
+    expect(BODY.slice(hit?.start, hit?.end)).toContain('```ts');
+  });
+
+  test('a selection running out of a code block back into prose', () => {
+    expect(
+      findPassage(BODY, rendered("  .enum(['system', 'en', 'es'])", 'Acceptance: the leaf'), {
+        syntaxIn: 'haystack',
+      }),
+    ).not.toBeNull();
+  });
+
+  test('a selection swallowing the whole block', () => {
+    expect(
+      findPassage(
+        BODY,
+        rendered(
+          'to ConfigSchema:',
+          'language: z',
+          "  .enum(['system', 'en', 'es'])",
+          'Acceptance:',
+        ),
+        { syntaxIn: 'haystack' },
+      ),
+    ).not.toBeNull();
+  });
+
+  test('a code block selected on its own is still an exact substring', () => {
+    const hit = findPassage(BODY, "language: z\n  .enum(['system', 'en', 'es'])", {
+      syntaxIn: 'haystack',
+    });
+    expect(BODY.slice(hit?.start, hit?.end)).toBe("language: z\n  .enum(['system', 'en', 'es'])");
+  });
+
+  test('a tilde fence carries an info string too', () => {
+    expect(
+      findPassage('before\n\n~~~ts\ncode here\n~~~\n\nafter', rendered('before', 'code here'), {
+        syntaxIn: 'haystack',
+      }),
+    ).not.toBeNull();
+  });
+
+  test('the mirror direction: a stored quote carrying a fence', () => {
+    // The server stores the body slice, fence and all; the editor then re-finds
+    // it against rendered text, so the same line has to be elastic both ways.
+    const editorText = 'to ConfigSchema:language: z';
+    expect(
+      findPassage(editorText, 'to `ConfigSchema`:\n\n```ts\nlanguage: z', { syntaxIn: 'needle' }),
+    ).not.toBeNull();
+  });
+
+  test('crosses a thematic break', () => {
+    expect(
+      findPassage('before\n\n---\n\nafter', rendered('before', 'after'), { syntaxIn: 'haystack' }),
+    ).not.toBeNull();
+  });
+
+  test('crosses a setext heading underline', () => {
+    expect(
+      findPassage('Title\n=====\n\nbody text', rendered('Title', 'body text'), {
+        syntaxIn: 'haystack',
+      }),
+    ).not.toBeNull();
+  });
+
+  test('crosses a table delimiter row and its cell boundaries', () => {
+    expect(
+      findPassage('| a | b |\n| --- | --- |\n| 1 | 2 |', rendered('a b', '1 2'), {
+        syntaxIn: 'haystack',
+      }),
+    ).not.toBeNull();
+  });
+
+  test('crosses task-list checkboxes', () => {
+    expect(
+      findPassage('- [ ] todo one\n- [x] todo two', rendered('todo one', 'todo two'), {
+        syntaxIn: 'haystack',
+      }),
+    ).not.toBeNull();
+  });
+
+  test('a line carrying content is never swallowed whole', () => {
+    // `***bold***` opens like a thematic break, so the needle has to STRADDLE
+    // it: fragments either side, nothing naming the line itself. Treating the
+    // line as invisible would bridge them. A real break is the control — same
+    // shape, same needle, and it must match.
+    const straddle = rendered('head', 'tail');
+    expect(
+      findPassage('head\n\n***bold***\n\ntail', straddle, { syntaxIn: 'haystack' }),
+    ).toBeNull();
+    expect(findPassage('head\n\n---\n\ntail', straddle, { syntaxIn: 'haystack' })).not.toBeNull();
+
+    // Same pair for the table-rule pattern, which `-- dashes` opens like.
+    expect(findPassage('head\n\n-- dashes\n\ntail', straddle, { syntaxIn: 'haystack' })).toBeNull();
+    expect(findPassage('head\n\n-- --\n\ntail', straddle, { syntaxIn: 'haystack' })).not.toBeNull();
+  });
+
+  test('elasticity across a fence still cannot bridge different words', () => {
+    expect(findPassage(BODY, 'ConfigSchema: gochujang', { syntaxIn: 'haystack' })).toBeNull();
+  });
+
+  describe('CRLF documents', () => {
+    // The line slice runs to the `\n`, so on CRLF it carries a trailing `\r`.
+    // The rule patterns' character classes do not admit one, so `$` could not
+    // match and every rule line stayed non-elastic on Windows line endings.
+    const crlf = (...lines: string[]): string => lines.join('\r\n');
+    const straddle = rendered('head', 'tail');
+
+    test('a thematic break', () => {
+      expect(
+        findPassage(crlf('head', '', '---', '', 'tail'), straddle, {
+          syntaxIn: 'haystack',
+        }),
+      ).not.toBeNull();
+    });
+
+    test('a setext heading underline', () => {
+      expect(
+        findPassage(crlf('Title', '=====', '', 'tail'), rendered('Title', 'tail'), {
+          syntaxIn: 'haystack',
+        }),
+      ).not.toBeNull();
+    });
+
+    test('a table delimiter row and its cell boundaries', () => {
+      expect(
+        findPassage(crlf('| a | b |', '| --- | --- |', '| 1 | 2 |'), rendered('a b', '1 2'), {
+          syntaxIn: 'haystack',
+        }),
+      ).not.toBeNull();
+    });
+
+    test('a fenced code block with an info string', () => {
+      expect(
+        findPassage(
+          crlf('before', '', '```ts', 'code here', '```', '', 'after'),
+          rendered('before', 'code here', 'after'),
+          {
+            syntaxIn: 'haystack',
+          },
+        ),
+      ).not.toBeNull();
+    });
+
+    test('a content line is still not swallowed', () => {
+      expect(
+        findPassage(crlf('head', '', '***bold***', '', 'tail'), straddle, {
+          syntaxIn: 'haystack',
+        }),
+      ).toBeNull();
+    });
+  });
+});

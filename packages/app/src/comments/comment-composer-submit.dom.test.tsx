@@ -114,7 +114,16 @@ function fakeEditor() {
   return {
     isDestroyed: false,
     state: {
-      selection: { from: 4, to: 12, empty: false },
+      selection: {
+        from: 4,
+        to: 12,
+        empty: false,
+        // The composer takes its span from `ranges`, not `from`/`to` — those
+        // report the first range only, which on a table CellSelection is one
+        // cell. A real Selection always carries `ranges`, so the double does
+        // too; a single range is the TextSelection case this file covers.
+        ranges: [{ $from: { pos: 4 }, $to: { pos: 12 } }],
+      },
       // `content.size` bounds the selection-context capture — a real PM node
       // always carries it, so the double has to as well.
       doc: { textBetween: () => 'the tofu', content: { size: 40 } },
