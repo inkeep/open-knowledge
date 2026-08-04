@@ -1,10 +1,16 @@
-import { skillFileLiveDocName, skillLiveDocName } from '@inkeep/open-knowledge-core';
+import {
+  type SkillsListEntry,
+  skillFileLiveDocName,
+  skillLiveDocName,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { skillFileTabId, skillPreviewTabId } from '@/editor/editor-tabs';
 import {
   computeSkillTabReconcile,
   parseSkillTabDocName,
+  skillFileForDocName,
   tabIdsForSkill,
+  tabIdsForSkillFile,
 } from './use-reconcile-skill-tabs';
 
 /**
@@ -72,6 +78,81 @@ describe('tabIdsForSkill', () => {
     expect(
       tabIdsForSkill([mainTab, fileTab, otherSkillTab, pluginPreviewTab], 'global', 'demo'),
     ).toEqual([mainTab, fileTab]);
+  });
+});
+
+describe('tabIdsForSkillFile', () => {
+  test('selects both tab shapes for the deleted file, and only that file', () => {
+    const skill = { scope: 'project', name: 'demo', path: '.agents/skills/demo/SKILL.md' } as const;
+    // A script opens as a dedicated skill-file tab; an editable `.md` reference
+    // opens as an ordinary doc tab at its ext-less live doc name.
+    const scriptTab = skillFileTabId({
+      scope: 'project',
+      name: 'demo',
+      path: 'scripts/run.sh',
+    });
+    const refDocTab = '.agents/skills/demo/references/notes';
+    const siblingRefTab = '.agents/skills/demo/references/other';
+    const skillTab = '.agents/skills/demo/SKILL';
+
+    expect(
+      tabIdsForSkillFile([scriptTab, refDocTab, siblingRefTab, skillTab], skill, 'scripts/run.sh'),
+    ).toEqual([scriptTab]);
+    expect(
+      tabIdsForSkillFile(
+        [scriptTab, refDocTab, siblingRefTab, skillTab],
+        skill,
+        'references/notes.md',
+      ),
+    ).toEqual([refDocTab]);
+  });
+});
+
+describe('skillFileForDocName', () => {
+  const demo: SkillsListEntry = {
+    scope: 'project',
+    name: 'demo',
+    path: '.agents/skills/demo/SKILL.md',
+    installed: true,
+    hosts: [],
+  };
+
+  test('resolves an editable reference doc tab back to its skill and bundle path', () => {
+    expect(skillFileForDocName('.agents/skills/demo/references/notes', [demo], '.md')).toEqual({
+      skill: demo,
+      filePath: 'references/notes.md',
+    });
+  });
+
+  test('carries a .mdx extension through, from the SAME doc name', () => {
+    // Both extensions strip to this one doc name, so the round-trip guard cannot
+    // separate them — whichever extension the caller supplies is the one acted
+    // on. Pinned because it is the whole reason a delete miss has to report
+    // failure rather than success.
+    expect(skillFileForDocName('.agents/skills/demo/references/notes', [demo], '.mdx')).toEqual({
+      skill: demo,
+      filePath: 'references/notes.mdx',
+    });
+  });
+
+  test('declines the SKILL doc, an unknown skill, and a plain page', () => {
+    expect(skillFileForDocName('.agents/skills/demo/SKILL', [demo], '.md')).toBeNull();
+    expect(skillFileForDocName('.agents/skills/other/references/notes', [demo], '.md')).toBeNull();
+    expect(skillFileForDocName('notes/standup', [demo], '.md')).toBeNull();
+  });
+
+  test('declines a managed built-in (read-only, no mutate menu)', () => {
+    const builtin: SkillsListEntry = { ...demo, managed: true };
+    expect(
+      skillFileForDocName('.agents/skills/demo/references/notes', [builtin], '.md'),
+    ).toBeNull();
+  });
+
+  test('declines when the skill dir does not round-trip to the doc name', () => {
+    // Same skill NAME, different on-disk dir — reconstructing against it would
+    // address a file in the wrong folder.
+    const moved: SkillsListEntry = { ...demo, path: '.claude/skills/demo/SKILL.md' };
+    expect(skillFileForDocName('.agents/skills/demo/references/notes', [moved], '.md')).toBeNull();
   });
 });
 

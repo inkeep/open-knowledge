@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react';
 import { useManagedArtifactRetarget } from '@/components/ManagedArtifactProperties';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { parseEditorTabId } from '@/editor/editor-tabs';
-import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
+import { skillEntryFileLiveDocName, skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { useSkills } from './use-skills';
 
 /**
@@ -41,6 +41,58 @@ export function tabIdsForSkill(
     const skillTab = parseSkillTabDocName(tab.docName);
     return skillTab?.scope === scope && skillTab.name === name;
   });
+}
+
+/**
+ * Return every open tab backed by ONE bundle file. A file opens either as a
+ * dedicated `skill-file` tab (scripts, binaries, built-ins) or — for an
+ * editable `.md`/`.mdx` reference — as an ordinary doc tab at its live doc
+ * name, so a delete has to evict both shapes.
+ */
+export function tabIdsForSkillFile(
+  openTabIds: ReadonlyArray<string>,
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path'>,
+  filePath: string,
+): string[] {
+  const liveDocName = skillEntryFileLiveDocName(skill, filePath);
+  return openTabIds.filter((tabId) => {
+    const tab = parseEditorTabId(tabId);
+    if (tab.kind === 'skill-file')
+      return tab.scope === skill.scope && tab.name === skill.name && tab.path === filePath;
+    return tab.kind === 'doc' && tab.docName === liveDocName;
+  });
+}
+
+/**
+ * Resolve an editable bundle-FILE doc tab back to its owning skill and its
+ * on-disk bundle path — the inverse of `skillEntryFileLiveDocName`, which is
+ * what the Skills sidebar calls to open one. Without this a `references/*.md`
+ * tab carried NO skill actions at all (the skill-level map is keyed by the
+ * SKILL doc), so the same file offered Rename/Delete in the sidebar and nothing
+ * on its own tab.
+ *
+ * Live doc names are ext-less by design, so the caller supplies the extension
+ * (the page index's `docExt`, `.md` when unknown). `.md` and `.mdx` strip to the
+ * SAME doc name, so the round-trip below cannot tell them apart — an `.mdx`
+ * reference whose extension the page index doesn't carry resolves to a path
+ * that isn't on disk. Every writer reports that as a miss rather than a silent
+ * success, so it surfaces as "no longer in this skill" instead of deleting the
+ * wrong file.
+ */
+export function skillFileForDocName(
+  docName: string,
+  skills: ReadonlyArray<SkillsListEntry>,
+  docExt: string,
+): { skill: SkillsListEntry; filePath: string } | null {
+  const parsed = parseSkillTabDocName(docName);
+  if (!parsed || parsed.rel === null) return null;
+  const skill = skills.find((s) => s.scope === parsed.scope && s.name === parsed.name);
+  if (!skill || skill.managed) return null;
+  const filePath = `references/${parsed.rel}${docExt}`;
+  // Only trust the reconstruction when it round-trips to the doc name we were
+  // handed — a skill whose entry sits under a different dir than the tab's
+  // would otherwise address a file in the wrong folder.
+  return skillEntryFileLiveDocName(skill, filePath) === docName ? { skill, filePath } : null;
 }
 
 export type SkillTabReconcileAction =

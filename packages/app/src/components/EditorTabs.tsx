@@ -53,6 +53,7 @@ import {
   tabParts,
 } from '@/editor/editor-tabs';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
+import { skillFileForDocName } from '@/hooks/use-reconcile-skill-tabs';
 import { useSkills } from '@/hooks/use-skills';
 import { emitFileTreeMenuActionRename } from '@/lib/file-tree-menu-action-events';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
@@ -1275,6 +1276,13 @@ export function EditorTabs({
                 const docName = tab.docName;
                 const skill = editableSkillsByTabId.get(docName);
                 const docExt = pageMeta.get(docName)?.docExt ?? '.md';
+                // An editable `.md`/`.mdx` reference opens as an ordinary doc
+                // tab, not a `skill-file` one, so its bundle-file actions have
+                // to be resolved back from the doc name to reach parity with
+                // the same file's row in the Skills sidebar.
+                const bundleFile = skill
+                  ? null
+                  : skillFileForDocName(docName, editableSkills, docExt);
                 const { baseName, extension, label, prefix } = tabParts(docName, docExt);
                 const accessibleLabel = `${prefix}${label}`;
                 const hideDocExtension = docExt === '.md' || docExt === '.mdx';
@@ -1313,6 +1321,13 @@ export function EditorTabs({
                           existingNames={skillNamesByScope.get(skill.scope) ?? EMPTY_SKILL_NAME_SET}
                           menuKind="context"
                           skill={skill}
+                        />
+                      ) : bundleFile ? (
+                        <SkillFileContextMenuItems
+                          actions={skillActions}
+                          filePath={bundleFile.filePath}
+                          menuKind="context"
+                          skill={bundleFile.skill}
                         />
                       ) : undefined
                     }

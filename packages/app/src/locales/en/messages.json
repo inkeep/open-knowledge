@@ -782,6 +782,7 @@
     "C62P6b": ["Editor selection"],
     "C9TBvF": ["No Outgoing"],
     "CB7c0Z": ["Save queued message"],
+    "CBT70t": ["Couldn't delete file: ", ["0"]],
     "CBsdhe": ["The agent isn't stopping. Force stop closes this thread and quits the agent."],
     "CCTop_": ["Recent"],
     "CD8lBW": ["Tidying up…"],
@@ -2630,6 +2631,7 @@
     "gL_sdV": ["Popular"],
     "gN3JX8": ["skills.sh"],
     "gOD68k": ["Open a single markdown file — no project setup."],
+    "gOmloS": ["Deleted ", ["filePath"]],
     "gQV-9w": [
       "Branch switched but the ",
       ["targetNoun"],
@@ -3276,6 +3278,15 @@
     "pkAft1": ["Search failed."],
     "pmUArF": ["Workspace"],
     "ppDgFi": ["Restart with this app's version"],
+    "ppzof_": [
+      "This permanently removes ",
+      ["0"],
+      "/",
+      ["1"],
+      " from the \"",
+      ["2"],
+      "\" skill. Anything in SKILL.md that points at it will break until it's recreated."
+    ],
     "psfGPX": ["MCP connections"],
     "psl2Sj": ["Your change is still being saved — run the test again in a moment."],
     "ptQ3_N": ["unlink"],
@@ -3285,6 +3296,7 @@
     "q3TWG7": ["Move to Trash"],
     "q3W2nd": ["Couldn't add that comment: ", ["0"]],
     "q4YJl_": ["The terminal session ended (exit code ", ["0"], ")."],
+    "q4efaG": [["filePath"], " is no longer in this skill"],
     "q6-JVU": ["Loading pages"],
     "q7F5am": ["title"],
     "q8aCbb": ["Two versions of \"", ["0"], "\" — source vs ", ["editor"]],
@@ -3672,6 +3684,7 @@
       ["projectName"],
       "\" from recent projects. Its folder no longer exists."
     ],
+    "wZPUJx": ["\"", ["0"], "\""],
     "w_Sphq": ["Attachments"],
     "wbv9xO": ["Create new project"],
     "wc54KE": ["Trying it out…"],

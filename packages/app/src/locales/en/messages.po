@@ -49,6 +49,11 @@ msgstr ".ok/skills is back to Only me."
 msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
 msgstr ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
 
+#. placeholder {0}: target.filePath
+#: src/components/SkillFileDeleteDialog.tsx
+msgid "\"{0}\""
+msgstr "\"{0}\""
+
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(result.hosts)
 #: src/components/skill-actions.tsx
@@ -535,6 +540,10 @@ msgstr "{fileCount, plural, one {# file} other {# files}}"
 #: src/components/CreatedItemsList.tsx
 msgid "{fileCount, plural, one {file} other {files}}"
 msgstr "{fileCount, plural, one {file} other {files}}"
+
+#: src/components/SkillFileDeleteDialog.tsx
+msgid "{filePath} is no longer in this skill"
+msgstr "{filePath} is no longer in this skill"
 
 #: src/components/CreatedItemsList.tsx
 msgid "{folderCount, plural, one {folder} other {folders}}"
@@ -2983,6 +2992,11 @@ msgstr "Couldn't create the report"
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "Couldn't create the worktree. Try a different name."
 
+#. placeholder {0}: result.error
+#: src/components/SkillFileDeleteDialog.tsx
+msgid "Couldn't delete file: {0}"
+msgstr "Couldn't delete file: {0}"
+
 #: src/components/SkillDeleteDialog.tsx
 msgid "Couldn't delete skill: {error}"
 msgstr "Couldn't delete skill: {error}"
@@ -3638,6 +3652,10 @@ msgstr "Delete this conversation?"
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "Deleted {file}"
+
+#: src/components/SkillFileDeleteDialog.tsx
+msgid "Deleted {filePath}"
+msgstr "Deleted {filePath}"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
@@ -11113,6 +11131,13 @@ msgstr "This permanently removes {0}. Agents that invoke this skill by name will
 #: src/components/SkillDeleteDialog.tsx
 msgid "This permanently removes {0}. The plugin it was copied from is untouched — its read-only version will show up as detected again."
 msgstr "This permanently removes {0}. The plugin it was copied from is untouched — its read-only version will show up as detected again."
+
+#. placeholder {0}: skillDir(target.skill.path)
+#. placeholder {1}: target.filePath
+#. placeholder {2}: target.skill.name
+#: src/components/SkillFileDeleteDialog.tsx
+msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
+msgstr "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."

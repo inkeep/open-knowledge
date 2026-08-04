@@ -18797,7 +18797,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // removing the file so its persistence branch can't resurrect it. The
         // doc name derives from the REAL dir (a minted store shape closed
         // nothing for an in-place skill).
-        if (isProjectMdReference(scope, kind, rel)) {
+        //
+        // Gated on the file actually being there: the teardown closes
+        // connections, marks the doc `deleted-upstream` and unloads it, and the
+        // doc name is ext-less — so `references/x.md` and `references/x.mdx`
+        // name the SAME doc. Deleting a path that isn't on disk would otherwise
+        // tear down the live doc of a same-stem sibling that survives the
+        // no-op unlink below.
+        const bundleAbs = resolve(realDir ?? join(skillsRoot, name), rel);
+        if (existsSync(bundleAbs) && isProjectMdReference(scope, kind, rel)) {
           const extLess = rel.replace(/\.md$/i, '');
           const refDoc =
             realDir !== null

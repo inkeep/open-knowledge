@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { createTestServer, pollUntil, type TestServer } from './test-harness.ts';
+import {
+  createTestClient,
+  createTestServer,
+  getServerState,
+  pollUntil,
+  type TestServer,
+} from './test-harness.ts';
 
 /**
  * End-to-end proof through the real server that the skill BUNDLE-FILE surface
@@ -290,6 +296,48 @@ ${String(err)}`,
     const payload = (await del.json()) as { existed: boolean };
     expect(payload.existed).toBe(true);
     expect(existsSync(abs)).toBe(false);
+  });
+
+  /**
+   * A DELETE for a path that is not on disk must not tear anything down. Bundle
+   * doc names are ext-less, so `references/x.md` and `references/x.mdx` name the
+   * SAME live doc: deleting the absent one used to close connections, mark the
+   * doc `deleted-upstream` and unload it, killing the surviving sibling's live
+   * doc while the unlink itself no-opped.
+   */
+  test('DELETE of an absent path leaves a same-stem sibling doc intact', async () => {
+    const dirRel = await putSkill('stem-clash', 'stem pin', '# Body\n');
+    expect((await putSkillFile('stem-clash', 'references/notes.mdx', '# Notes\n')).status).toBe(
+      200,
+    );
+    const survivor = resolve(server.contentDir, dirRel, 'references', 'notes.mdx');
+    expect(existsSync(survivor)).toBe(true);
+
+    // Open the survivor so there IS a live doc to tear down — the bug is
+    // invisible against an unloaded doc. Its name is ext-less, so the absent
+    // `.md` sibling below addresses this exact doc.
+    const docName = `${dirRel}/references/notes`;
+    const client = await createTestClient(server.port, docName);
+    await pollUntil(() => getServerState(server, docName) !== null);
+
+    const del = await fetch(
+      `${base()}/api/skill-file?name=stem-clash&scope=project&path=${encodeURIComponent('references/notes.md')}`,
+      { method: 'DELETE' },
+    );
+    expect(del.status).toBe(200);
+    expect(((await del.json()) as { existed: boolean }).existed).toBe(false);
+
+    // The no-op delete must not have unloaded the doc, marked it
+    // deleted-upstream, or dropped the client's connection.
+    const state = getServerState(server, docName);
+    expect(state).not.toBeNull();
+    expect(state?.connectionCount).toBeGreaterThan(0);
+    expect(
+      server.instance.hocuspocus.documents.get(docName)?.getMap('lifecycle').get('status'),
+    ).toBeUndefined();
+    expect(existsSync(survivor)).toBe(true);
+
+    await client.cleanup();
   });
 
   /**

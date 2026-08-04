@@ -30,6 +30,10 @@ import {
   type SkillFileCreateTarget,
 } from '@/components/SkillFileCreateDialog';
 import {
+  SkillFileDeleteDialog,
+  type SkillFileDeleteTarget,
+} from '@/components/SkillFileDeleteDialog';
+import {
   SkillFileRenameDialog,
   type SkillFileRenameTarget,
 } from '@/components/SkillFileRenameDialog';
@@ -112,6 +116,8 @@ export interface SkillActions {
   requestScopeMove: (skill: SkillsListEntry, toScope: SkillScope) => void;
   /** Open the bundle-FILE rename/move dialog (§8.9). */
   requestFileRename: (skill: SkillsListEntry, filePath: string) => void;
+  /** Open the delete-confirm dialog for ONE bundle file. */
+  requestFileDelete: (skill: SkillsListEntry, filePath: string) => void;
   /** Open the new-bundle-file dialog (optionally seeded with a dir prefix). */
   requestFileCreate: (skill: SkillsListEntry, prefix?: string) => void;
   /** Open the fork-resolution dialog for a conflicted editor copy. */
@@ -130,6 +136,7 @@ export function useSkillActions(): SkillActions {
   } | null>(null);
   const [scopeMoveTarget, setScopeMoveTarget] = useState<SkillScopeMoveTarget | null>(null);
   const [fileRenameTarget, setFileRenameTarget] = useState<SkillFileRenameTarget | null>(null);
+  const [fileDeleteTarget, setFileDeleteTarget] = useState<SkillFileDeleteTarget | null>(null);
   const [fileCreateTarget, setFileCreateTarget] = useState<SkillFileCreateTarget | null>(null);
   const [forkTarget, setForkTarget] = useState<SkillForkTarget | null>(null);
   const [installingName, setInstallingName] = useState<string | null>(null);
@@ -290,6 +297,12 @@ export function useSkillActions(): SkillActions {
           if (!open) setFileRenameTarget(null);
         }}
       />
+      <SkillFileDeleteDialog
+        target={fileDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setFileDeleteTarget(null);
+        }}
+      />
       <SkillFileCreateDialog
         target={fileCreateTarget}
         onOpenChange={(open) => {
@@ -316,6 +329,7 @@ export function useSkillActions(): SkillActions {
     requestScopeMove: (skill, toScope) =>
       setScopeMoveTarget({ scope: skill.scope, name: skill.name, toScope }),
     requestFileRename: (skill, filePath) => setFileRenameTarget({ skill, filePath }),
+    requestFileDelete: (skill, filePath) => setFileDeleteTarget({ skill, filePath }),
     requestFileCreate: (skill, prefix) =>
       setFileCreateTarget(prefix !== undefined ? { skill, prefix } : { skill }),
     requestForkResolve: (skill, editor) => setForkTarget({ skill, editor }),
@@ -357,42 +371,55 @@ export function SkillFileContextMenuItems({
   }
 
   return (
-    <SkillMenuGroup menuKind={menuKind}>
-      <SkillMenuItem
-        menuKind={menuKind}
-        onSelect={() => actions.requestFileRename(skill, filePath)}
-      >
-        <PencilLine aria-hidden />
-        <Trans>Rename</Trans>
-      </SkillMenuItem>
-      {bridge && absoluteFile ? (
+    <>
+      <SkillMenuGroup menuKind={menuKind}>
         <SkillMenuItem
           menuKind={menuKind}
-          onSelect={() => void bridge.shell.showItemInFolder(absoluteFile)}
+          onSelect={() => actions.requestFileRename(skill, filePath)}
         >
-          <FolderOpen aria-hidden />
-          <Trans>Reveal in Finder</Trans>
+          <PencilLine aria-hidden />
+          <Trans>Rename</Trans>
         </SkillMenuItem>
-      ) : null}
-      <SkillMenuSub menuKind={menuKind}>
-        <SkillMenuSubTrigger menuKind={menuKind}>
-          <Copy aria-hidden />
-          <Trans>Copy Path</Trans>
-        </SkillMenuSubTrigger>
-        <SkillMenuSubContent menuKind={menuKind}>
-          <SkillMenuGroup menuKind={menuKind}>
-            {absoluteFile ? (
-              <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(absoluteFile)}>
-                <Trans>Full Path</Trans>
+        {bridge && absoluteFile ? (
+          <SkillMenuItem
+            menuKind={menuKind}
+            onSelect={() => void bridge.shell.showItemInFolder(absoluteFile)}
+          >
+            <FolderOpen aria-hidden />
+            <Trans>Reveal in Finder</Trans>
+          </SkillMenuItem>
+        ) : null}
+        <SkillMenuSub menuKind={menuKind}>
+          <SkillMenuSubTrigger menuKind={menuKind}>
+            <Copy aria-hidden />
+            <Trans>Copy Path</Trans>
+          </SkillMenuSubTrigger>
+          <SkillMenuSubContent menuKind={menuKind}>
+            <SkillMenuGroup menuKind={menuKind}>
+              {absoluteFile ? (
+                <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(absoluteFile)}>
+                  <Trans>Full Path</Trans>
+                </SkillMenuItem>
+              ) : null}
+              <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(relativeFile)}>
+                <Trans>Relative Path</Trans>
               </SkillMenuItem>
-            ) : null}
-            <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(relativeFile)}>
-              <Trans>Relative Path</Trans>
-            </SkillMenuItem>
-          </SkillMenuGroup>
-        </SkillMenuSubContent>
-      </SkillMenuSub>
-    </SkillMenuGroup>
+            </SkillMenuGroup>
+          </SkillMenuSubContent>
+        </SkillMenuSub>
+      </SkillMenuGroup>
+      <SkillMenuSeparator menuKind={menuKind} />
+      <SkillMenuGroup menuKind={menuKind}>
+        <SkillMenuItem
+          menuKind={menuKind}
+          variant="destructive"
+          onSelect={() => actions.requestFileDelete(skill, filePath)}
+        >
+          <Trash2 aria-hidden />
+          <Trans>Delete</Trans>
+        </SkillMenuItem>
+      </SkillMenuGroup>
+    </>
   );
 }
 

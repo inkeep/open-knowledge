@@ -647,6 +647,30 @@ export async function renameSkillFile(input: {
   }
 }
 
+/** DELETE `/api/skill-file` — remove ONE bundle file inside a skill. The server
+ *  closes a project `.md` reference's live doc before unlinking, so the caller
+ *  only has to evict the tab. */
+export async function deleteSkillFile(input: {
+  scope: SkillScope;
+  name: string;
+  path: string;
+}): Promise<WriteResult<{ existed: boolean }>> {
+  try {
+    const params = new URLSearchParams({
+      scope: input.scope,
+      name: input.name,
+      path: input.path,
+    });
+    const res = await fetch(`/api/skill-file?${params.toString()}`, { method: 'DELETE' });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as { existed?: boolean } | null;
+    emitSkillsChanged();
+    return { ok: true, existed: payload?.existed ?? false };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** One bundled file beside a skill's `SKILL.md`, with inline read-only text. */
 export interface SkillBundledFile {
   path: string;

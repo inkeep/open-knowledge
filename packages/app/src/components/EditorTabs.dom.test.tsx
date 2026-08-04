@@ -621,6 +621,36 @@ describe('EditorTabs runtime behavior', () => {
     expect(requestSkillFileRename).toHaveBeenCalledWith(skill, filePath);
   });
 
+  test('reuses the sidebar file actions for an editable reference DOC tab', async () => {
+    // A `.md` reference opens as an ordinary doc tab, not a `skill-file` one —
+    // it carried no skill actions at all until its bundle path was resolved
+    // back from the doc name.
+    const skill = {
+      scope: 'project',
+      name: 'ask-matt',
+      path: '.agents/skills/ask-matt/SKILL.md',
+      hosts: ['agents'],
+      managed: false,
+    };
+    const docName = '.agents/skills/ask-matt/references/notes';
+    activeDocName = docName;
+    activeTabId = docName;
+    openTabs = [docName];
+    visibleTabIds = [docName];
+    newTabIds = [];
+    skillsState = { status: 'ready', data: [skill] };
+
+    await renderEditorTabs();
+
+    const renameItem = screen.getByRole('menuitem', {
+      name: 'Rename skill file references/notes.md',
+    });
+    expect(renameItem.getAttribute('data-menu-kind')).toBe('context');
+
+    fireEvent.click(renameItem);
+    expect(requestSkillFileRename).toHaveBeenCalledWith(skill, 'references/notes.md');
+  });
+
   test('uses the host-qualified owner for an editable skill-file tab', async () => {
     const agentsSkill = {
       scope: 'global',
