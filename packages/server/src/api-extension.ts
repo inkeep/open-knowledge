@@ -3869,7 +3869,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           admitted.add(`${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${skill.name}`);
         }
       }
-      for (const tpl of resolveProjectTemplates(resolve(contentDir)).templates) {
+      for (const tpl of (await resolveProjectTemplates(resolve(contentDir))).templates) {
         admitted.add(templateDocNameFor(tpl.source_folder, tpl.name));
       }
     } catch (err) {
@@ -15331,7 +15331,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     catchErrors(
       async (_req, res) => {
         const resolvedContentDir = resolve(contentDir);
-        const result = resolveProjectTemplates(resolvedContentDir);
+        const result = await resolveProjectTemplates(resolvedContentDir);
         // Drop `scope` from each entry — every flat-enumeration entry is
         // implicitly `scope: 'local'` to its own `source_folder`, so the
         // field carries no information here. `TemplatesListEntrySchema` is

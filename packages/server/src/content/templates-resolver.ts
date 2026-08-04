@@ -17,10 +17,16 @@
  * frontmatter. `title` is required at template-write time; a stored
  * template always has one. `description` is optional.
  *
- * Synchronous I/O; matches the pattern in `nested-folder-rules.ts`.
+ * `resolveTemplatesAvailable` uses synchronous I/O; matches the pattern in
+ * `nested-folder-rules.ts`. Its walk is bounded by the target folder's path
+ * depth, so it stays cheap regardless of project size.
+ *
+ * `resolveProjectTemplates` walks the WHOLE project and is async for that
+ * reason — see its doc comment.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { parseTemplateFile } from '@inkeep/open-knowledge-core';
 import { errnoCode } from '../http/handler-utils.ts';
@@ -113,8 +119,22 @@ export interface ProjectTemplatesResult {
  *
  * Scope is always `'local'` here. Bounded by `PROJECT_TEMPLATE_SCAN_CAP`
  * directories visited; `truncated: true` in the result signals the cap hit.
+ *
+ * Async because this walks the entire project: on a large repo the walk
+ * reaches the cap, and doing that synchronously stalls the same event loop
+ * that services CRDT sync — which readers feel as keystroke lag. Awaiting
+ * per directory lets sync messages interleave.
+ *
+ * Every call re-walks, deliberately. Templates reach disk through two
+ * unrelated substrates (the filesystem writers in `templates-write.ts` and
+ * the CRDT managed-artifact persistence path behind `PUT /api/template`) as
+ * well as plain external edits, so any memo here has to be invalidated from
+ * each of them — a completeness obligation that is easy to violate silently,
+ * and whose failure mode is a template the user just created not appearing.
+ * The async walk is what removes the latency harm; caching on top bought
+ * little and risked that.
  */
-export function resolveProjectTemplates(projectDir: string): ProjectTemplatesResult {
+export async function resolveProjectTemplates(projectDir: string): Promise<ProjectTemplatesResult> {
   const out: TemplateEntry[] = [];
   const seenPerFolder = new Map<string, Set<string>>();
 
@@ -145,14 +165,11 @@ export function resolveProjectTemplates(projectDir: string): ProjectTemplatesRes
     collectFromFolder(projectDir, folderRel, 'local', seen, out);
 
     const absDir = folderRel ? join(projectDir, folderRel) : projectDir;
-    let entries: string[];
+    let entries: Dirent[];
     try {
-      // readdirSync order is filesystem-dependent (ext4 htree hash order vs
-      // APFS), so an unsorted BFS makes which folders fall inside
-      // PROJECT_TEMPLATE_SCAN_CAP nondeterministic — a folder that survives the
-      // cap on one run can be dropped on the next. Sort so the dequeue order,
-      // and thus the cap truncation boundary, is stable across runs/platforms.
-      entries = readdirSync(absDir).sort();
+      // `withFileTypes` carries the entry kind in the readdir result, so the
+      // common case needs no per-entry stat at all.
+      entries = await readdir(absDir, { withFileTypes: true });
     } catch (err) {
       // Non-ENOENT failures (EPERM, EACCES, ENOTDIR, symlink loop) indicate
       // a real problem worth a once-per-path log so an operator can trace
@@ -171,21 +188,46 @@ export function resolveProjectTemplates(projectDir: string): ProjectTemplatesRes
       }
       continue;
     }
-    for (const name of entries) {
-      if (PROJECT_TEMPLATE_DIR_SKIP.has(name)) continue;
+    // readdir order is filesystem-dependent (ext4 htree hash order vs APFS),
+    // so an unsorted BFS makes which folders fall inside
+    // PROJECT_TEMPLATE_SCAN_CAP nondeterministic — a folder that survives the
+    // cap on one run can be dropped on the next. Sort so the dequeue order,
+    // and thus the cap truncation boundary, is stable across runs/platforms.
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      if (PROJECT_TEMPLATE_DIR_SKIP.has(entry.name)) continue;
       // Dot-prefixed dirs (other than `.ok`, already skipped) are user-
       // hidden — `.archive/`, `.private/`, etc. — and follow the same
       // visibility rule the sidebar's filterVisibleEntries uses.
-      if (name.startsWith('.')) continue;
-      const childAbs = join(absDir, name);
-      let s: ReturnType<typeof statSync>;
-      try {
-        s = statSync(childAbs);
-      } catch {
-        continue;
+      if (entry.name.startsWith('.')) continue;
+      let isDirectory = entry.isDirectory();
+      // A Dirent reports the LINK's own type, so a symlink pointing at a
+      // directory reads as not-a-directory. Resolve just those with a
+      // following stat — symlinked folders stay walkable and non-links
+      // still skip the syscall.
+      if (!isDirectory && entry.isSymbolicLink()) {
+        const linkPath = join(absDir, entry.name);
+        try {
+          isDirectory = (await stat(linkPath)).isDirectory();
+        } catch (err) {
+          // A dangling link (ENOENT) is ordinary and stays silent. Anything
+          // else — EACCES, ELOOP, EPERM — drops a whole subtree out of the
+          // list, so it earns the same once-per-path warn the readdir failure
+          // above does, sharing its dedupe set.
+          const code = errnoCode(err);
+          if (code !== 'ENOENT' && !templateMetaWarnedPaths.has(linkPath)) {
+            templateMetaWarnedPaths.add(linkPath);
+            const reason = err instanceof Error ? err.message : String(err);
+            getLogger('templates').warn(
+              { link: linkPath, reason },
+              `failed to resolve symlink ${linkPath} during project scan — skipped. Reason: ${reason}`,
+            );
+          }
+          continue;
+        }
       }
-      if (!s.isDirectory()) continue;
-      const childRel = folderRel ? posix.join(folderRel, name) : name;
+      if (!isDirectory) continue;
+      const childRel = folderRel ? posix.join(folderRel, entry.name) : entry.name;
       queue.push(childRel);
     }
   }

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -242,13 +242,13 @@ describe('resolveProjectTemplates', () => {
     return `---\ntitle: ${title}\ndescription: ${description}\n---\nbody\n`;
   }
 
-  test('returns flat list of every template across the project', () => {
+  test('returns flat list of every template across the project', async () => {
     writeTemplate('', 'daily-note', withFm('Daily note', 'Date-stamped log for today'));
     writeTemplate('meetings', 'meeting-notes', withFm('Meeting notes', 'Attendees, agenda, items'));
     writeTemplate('research', 'research-log', withFm('Research log', 'Working notes'));
     writeTemplate('specs', 'spec', withFm('Spec / RFC', 'Problem · proposal · decision'));
 
-    const result = resolveProjectTemplates(projectDir);
+    const result = await resolveProjectTemplates(projectDir);
     const byName = Object.fromEntries(result.templates.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual([
       'daily-note',
@@ -263,27 +263,27 @@ describe('resolveProjectTemplates', () => {
     expect(result.truncated).toBe(false);
   });
 
-  test('templates in nested subfolders surface with their source_folder', () => {
+  test('templates in nested subfolders surface with their source_folder', async () => {
     writeTemplate('a/b/c', 'deep', withFm('Deep template', 'Buried in a/b/c'));
-    const result = resolveProjectTemplates(projectDir);
+    const result = await resolveProjectTemplates(projectDir);
     expect(result.templates).toHaveLength(1);
     expect(result.templates[0]?.source_folder).toBe('a/b/c');
     expect(result.templates[0]?.path).toBe('a/b/c/.ok/templates/deep.md');
   });
 
-  test('skips node_modules, dist, build, and dot-prefixed dirs', () => {
+  test('skips node_modules, dist, build, and dot-prefixed dirs', async () => {
     writeTemplate('keep', 'visible', withFm('Visible', 'Should appear'));
     writeTemplate('node_modules/dep', 'hidden', withFm('Hidden', 'Should NOT appear'));
     writeTemplate('dist/output', 'hidden', withFm('Hidden', 'Should NOT appear'));
     writeTemplate('build/out', 'hidden', withFm('Hidden', 'Should NOT appear'));
     writeTemplate('.archive', 'hidden', withFm('Hidden', 'Dot-prefix excluded'));
 
-    const result = resolveProjectTemplates(projectDir);
+    const result = await resolveProjectTemplates(projectDir);
     const folders = result.templates.map((t) => t.source_folder).sort();
     expect(folders).toEqual(['keep']);
   });
 
-  test('walker terminates within PROJECT_TEMPLATE_SCAN_CAP — guards against pathological trees', () => {
+  test('walker terminates within PROJECT_TEMPLATE_SCAN_CAP — guards against pathological trees', async () => {
     // Build a wide tree exceeding the 2000-dir cap to verify the walker
     // bails out cleanly rather than hanging or stack-overflowing AND
     // collects templates queued before the cap. The `aa-` prefix makes
@@ -296,25 +296,113 @@ describe('resolveProjectTemplates', () => {
     for (let i = 0; i < 2100; i++) {
       mkdirSync(join(projectDir, `bulk-${i}`), { recursive: true });
     }
-    const result = resolveProjectTemplates(projectDir);
+    const result = await resolveProjectTemplates(projectDir);
     expect(result.templates.some((t) => t.name === 'visible-root')).toBe(true);
     expect(result.templates.some((t) => t.name === 'visible-early')).toBe(true);
     // Cap was exceeded — flag must be set so the UI / response can signal it.
     expect(result.truncated).toBe(true);
   });
 
-  test('returns empty array when no templates exist anywhere', () => {
+  test('returns empty array when no templates exist anywhere', async () => {
     mkdirSync(join(projectDir, 'docs'), { recursive: true });
-    expect(resolveProjectTemplates(projectDir)).toEqual({ templates: [], truncated: false });
+    await expect(resolveProjectTemplates(projectDir)).resolves.toEqual({
+      templates: [],
+      truncated: false,
+    });
   });
 
-  test('every entry carries scope: local (no inheritance context in flat enumeration)', () => {
+  test('every entry carries scope: local (no inheritance context in flat enumeration)', async () => {
     writeTemplate('', 'root-tpl', withFm('Root', 'At project root'));
     writeTemplate('subfolder', 'sub-tpl', withFm('Sub', 'In a subfolder'));
-    const result = resolveProjectTemplates(projectDir);
+    const result = await resolveProjectTemplates(projectDir);
     expect(result.templates).toHaveLength(2);
     for (const t of result.templates) {
       expect(t.scope).toBe('local');
     }
+  });
+
+  test('descends through a symlinked directory', async () => {
+    // A Dirent reports the link's own type, so the walker needs an explicit
+    // following stat for symlinks or symlinked folders silently stop being
+    // enumerated.
+    writeTemplate('real', 'linked-tpl', withFm('Linked', 'Behind a symlink'));
+    symlinkSync(join(projectDir, 'real'), join(projectDir, 'alias'), 'dir');
+
+    const result = await resolveProjectTemplates(projectDir);
+    const folders = result.templates.map((t) => t.source_folder).sort();
+    expect(folders).toEqual(['alias', 'real']);
+    // `path` is how a caller reaches the file, and it stays relative to the
+    // link rather than resolving through it — both spellings are valid on disk.
+    expect(result.templates.map((t) => t.path).sort()).toEqual([
+      'alias/.ok/templates/linked-tpl.md',
+      'real/.ok/templates/linked-tpl.md',
+    ]);
+  });
+
+  test('a dangling symlink is skipped without aborting the walk', async () => {
+    // The following stat throws ENOENT on a broken link. Swallowing it is what
+    // keeps one stale link from cutting the scan short and hiding every
+    // template the walker had not reached yet.
+    writeTemplate('real', 'survivor', withFm('Survivor', 'Must still surface'));
+    symlinkSync(join(projectDir, 'no-such-target'), join(projectDir, 'dangling'), 'dir');
+
+    const result = await resolveProjectTemplates(projectDir);
+    expect(result.templates.map((t) => t.source_folder)).toEqual(['real']);
+    expect(result.truncated).toBe(false);
+  });
+
+  test('every call re-walks, so a template written between scans surfaces', async () => {
+    // Templates reach disk through the filesystem writers, the CRDT
+    // managed-artifact path, and plain external edits. Nothing here may
+    // serve a snapshot that predates the caller: a memo would have to be
+    // invalidated from all three, and a missed one hides a template the
+    // user just created.
+    writeTemplate('', 'first', withFm('First', 'Present at first scan'));
+    const before = await resolveProjectTemplates(projectDir);
+    expect(before.templates.map((t) => t.name)).toEqual(['first']);
+
+    writeTemplate('', 'second', withFm('Second', 'Added after the first scan'));
+    const after = await resolveProjectTemplates(projectDir);
+    expect(after.templates.map((t) => t.name).sort()).toEqual(['first', 'second']);
+  });
+
+  test('yields to the event loop while walking', async () => {
+    // The reason this resolver is async at all: the walk must not hold the
+    // loop that services CRDT sync, or users feel it as keystroke lag. The
+    // other tests here all still pass against a synchronous walk wrapped in
+    // an async function, because awaiting a non-promise is a no-op — so
+    // without this one, a refactor back to sync I/O lands green.
+    //
+    // A check-phase callback is the discriminator. A synchronous walk leaves
+    // the promise already settled, so the await continuation runs as a
+    // microtask, and microtasks drain before the loop ever reaches its check
+    // phase. Real async I/O suspends at the first readdir, so the loop turns
+    // and the callback runs.
+    //
+    // `setImmediate`, not `setTimeout(…, 0)`: a 0 ms timeout is clamped to
+    // 1 ms, and a walk this small can finish inside that window — the loop
+    // turned, but no timer was due to witness it. That reads as a failure.
+    for (let i = 0; i < 20; i++) {
+      mkdirSync(join(projectDir, `dir-${i}`), { recursive: true });
+    }
+    let ticked = false;
+    const pending = setImmediate(() => {
+      ticked = true;
+    });
+
+    await resolveProjectTemplates(projectDir);
+    clearImmediate(pending);
+
+    expect(ticked).toBe(true);
+  });
+
+  test('a deleted template stops surfacing on the next call', async () => {
+    writeTemplate('', 'doomed', withFm('Doomed', 'About to be removed'));
+    const before = await resolveProjectTemplates(projectDir);
+    expect(before.templates.map((t) => t.name)).toEqual(['doomed']);
+
+    rmSync(join(projectDir, '.ok', 'templates', 'doomed.md'));
+    const after = await resolveProjectTemplates(projectDir);
+    expect(after.templates).toEqual([]);
   });
 });

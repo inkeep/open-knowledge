@@ -3517,7 +3517,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       try {
         const templateFolders = new Set<string>(['']);
         try {
-          for (const t of resolveProjectTemplates(projectDir).templates) {
+          for (const t of (await resolveProjectTemplates(projectDir)).templates) {
             templateFolders.add(t.source_folder);
           }
         } catch (err) {
