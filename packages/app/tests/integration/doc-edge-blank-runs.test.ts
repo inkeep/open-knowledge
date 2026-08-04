@@ -226,13 +226,13 @@ describe('doc-edge blank runs on the CRDT path', () => {
     // not hold a doc-start run, so a run only the fragment has is precisely
     // what it was never asked to carry, and it was dropped here.
     //
-    // The concurrent Y.Text keystroke is scaffolding to force that window, and
-    // it does not reach the fragment under this gesture. That is a property of
-    // the gesture, not of the blank run: the interior arm is the identical
-    // transaction one index over, and it strands the keystroke exactly the same
-    // way while its own run survives. Both arms assert every surface byte-exact
-    // so a change to either behaviour fails loudly instead of passing over a
-    // lost run.
+    // The concurrent Y.Text keystroke is scaffolding to force that window,
+    // and the settlement's enqueued re-derive carries it back into the
+    // fragment in the same drain (the split-brain request survives the
+    // witness tautology), so every surface converges byte-exact — the run
+    // AND the keystroke on both peers and disk. Both arms assert every
+    // surface byte-exact so a change to either behaviour fails loudly
+    // instead of passing over a lost run.
     async function mergeSeam(insertAt: number, ytext: string, fragment: string): Promise<void> {
       const clients = await seedDocument('Above.\n\nBelow.\n');
       try {
@@ -262,8 +262,8 @@ describe('doc-edge blank runs on the CRDT path', () => {
       }
     }
 
-    await mergeSeam(0, '\n\nAbove.\n\nBelow.!\n', '\n\nAbove.\n\nBelow.\n');
-    await mergeSeam(1, 'Above.\n\n\n\nBelow.!\n', 'Above.\n\n\n\nBelow.\n');
+    await mergeSeam(0, '\n\nAbove.\n\nBelow.!\n', '\n\nAbove.\n\nBelow.!\n');
+    await mergeSeam(1, 'Above.\n\n\n\nBelow.!\n', 'Above.\n\n\n\nBelow.!\n');
   });
 
   test('an external write that carries a trailing run lands it in every fragment', async () => {

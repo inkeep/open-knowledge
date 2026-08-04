@@ -1722,6 +1722,32 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     cleanup();
   });
 
+  test('a merge-seam settlement converges the fragment in its own drain: the enqueued re-derive survives the witness tautology', () => {
+    // The post-merge settlement refreshes the raw witness from the ytext the
+    // enqueued same-drain Observer B fire reads, so without an explicit
+    // request flag the early-exit compares Y.Text against its own snapshot
+    // and drops the rebuild — the fragment then shows the merged keystroke
+    // only after some later drain happens to route through a repair path.
+    // Same-drain convergence is the enqueue's contract; pin it synchronously.
+    __resetBridgeWatchdogForTests();
+    resetMetrics();
+
+    const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(
+      'Above.\n\nBelow.\n',
+      'routing-seam-same-drain',
+    );
+
+    doc.transact(() => {
+      xmlFragment.insert(0, [new Y.XmlElement('paragraph'), new Y.XmlElement('paragraph')]);
+      ytext.insert(ytext.toString().length - 1, '!');
+    });
+
+    expect(ytext.toString()).toBe('\n\nAbove.\n\nBelow.!\n');
+    expect(serializeFragmentBody(xmlFragment)).toBe('\n\nAbove.\n\nBelow.!\n');
+
+    cleanup();
+  });
+
   test('consecutive in-sync fragment edits on a beyond-tolerance doc each run the residual merge: the post-merge settlement restores coherence', () => {
     // The settlement primitive (`recordSettledBaselines(md)`) at the end of a
     // residual merge re-records BOTH witnesses and re-sets coherence, so the

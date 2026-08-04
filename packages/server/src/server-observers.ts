@@ -24,6 +24,7 @@
 
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import type {
+  BridgeComposition,
   MarkdownManager,
   PmStructuralNode,
   StructuralDivergenceReason,
@@ -38,6 +39,7 @@ import {
   composeWithDerivedBody,
   createMergeBoundarySpace,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
+  docEdgeRunsDiffer,
   fnv1aDigest,
   fragmentHoldsPendingContent,
   isParseEquivalentBridge,
@@ -46,6 +48,7 @@ import {
   overMultipliedBodyLines,
   pendingContentLines,
   prependFrontmatter,
+  splitFmBoundarySlot,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
@@ -872,6 +875,13 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     // same-drain Observer B re-derive is enqueued. Mark the drain so the
     // backstop can count it toward the re-derive-loop bound.
     drainDidCorrectiveWork = true;
+    // The enqueue is an explicit request Observer B must not early-exit away.
+    // Split-brain settlements refresh the raw witness from this very ytext, so
+    // the early-exit's comparison is tautological on the enqueued drain — the
+    // request flag is what carries "the fragment needs rebuilding" across it.
+    // Cleared only when the re-derive actually runs; a defer or backstop
+    // freeze keeps it pending for the next drain.
+    pendingSplitBrainRederive = true;
     // No-throw is structural, not incidental: every call site runs inside
     // runObserverASyncImpl's try, after the state-critical witness writes and
     // the `textDirty = true` B-enqueue. A throw escaping here would route
@@ -1311,6 +1321,15 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // in the same synchronous dispatch (no keystroke can interleave), so deferring
   // it would strand the doubled fragment permanently.
   let pendingDuplicationRecovery = false;
+  // Standing request from a split-brain settlement site: the fragment does not
+  // derive from current Y.Text and Observer B must rebuild it. Set by
+  // `recordSplitBrainRederive` (every enqueue site), cleared when the
+  // re-derive actually runs. Exists because those settlements refresh the raw
+  // witness from the same ytext the enqueued B fire will read, making the
+  // early-exit comparison a tautology exactly when the rebuild matters most —
+  // the interlock that let a diverged document swallow every later
+  // source-mode edit. A stale flag costs one idempotent re-derive.
+  let pendingSplitBrainRederive = false;
 
   // Re-derive-loop fixed-point backstop. The re-derive cycle terminates
   // on a RAW-BYTE fixed point: a drain whose settled Y.Text raw-equals the
@@ -1441,6 +1460,24 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
    */
   const readCurrentFm = (): string => stripFrontmatter(ytext.toString()).frontmatter;
 
+  /**
+   * Compose a fragment-derived body into full-document bytes with the FM
+   * boundary slot restored from the CURRENT authored Y.Text bytes. Every
+   * fragment-derived compose in this observer pair MUST route through here
+   * (a direct `composeWithDerivedBody` / `prependFrontmatter` call on a
+   * fragment-derived body silently breaks slot consistency): the
+   * serializer emits the authored head run only (j empty paragraphs -> j
+   * newlines), while an FM document's authored bytes spell that run as
+   * slot + j newlines — a slot-less spelling at any one seam would disagree
+   * with the others in exactly the doc-edge dimension the gates compare,
+   * reading as a permanent phantom edge divergence. The slot is restored,
+   * never invented: a separator-less document composes without one.
+   */
+  const composeDerivedBodyMd = (frontmatter: string, derivedBody: string): BridgeComposition => {
+    const { slot } = splitFmBoundarySlot(frontmatter, stripFrontmatter(ytext.toString()).body);
+    return composeWithDerivedBody(frontmatter, slot + derivedBody);
+  };
+
   /** Parse options for THIS doc's text→tree derivations. One shape shared by
    *  Observer B's full fire, the attach-time settlement check, and the
    *  parse-equivalence canonicalizer, so every parse of this doc resolves
@@ -1516,7 +1553,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     const initialJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const initialBody = mdManager.serialize(initialJson);
     const initialFrontmatter = readCurrentFm();
-    const canonicalInit = composeWithDerivedBody(initialFrontmatter, initialBody).md;
+    const canonicalInit = composeDerivedBodyMd(initialFrontmatter, initialBody).md;
     // Observers normally attach after the persistence paired-write seed, so
     // fragment = parse(ytext) and attach is a true settlement point — the raw
     // witness then captures the seed bytes so the first fragment change on a
@@ -1748,7 +1785,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // leading rule when — and only when — the composition is genuinely
       // ambiguous. Every witness and predicate below composes the same way, or
       // the surplus line reads as pending content and defer-loops the doc.
-      const composition = composeWithDerivedBody(frontmatter, body);
+      const composition = composeDerivedBodyMd(frontmatter, body);
       const md = composition.md;
       const currentText = ytext.toString();
 
@@ -1898,9 +1935,18 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // the WYSIWYG normalizes away and this gate would certify a settlement
       // that drops it. The fragment is the authority for its own blank lines;
       // the reverse direction (source richer than the fragment) stays
-      // tolerated, since that is the container-interior case the fragment
-      // cannot represent.
-      if (normCurrent === normMd && !addsBlankLines(currentText, md)) {
+      // tolerated for the container INTERIOR, the case the fragment cannot
+      // represent. The document edges are their own dimension: a run worth
+      // carrying is representable on both sides, so an edge disagreement in
+      // EITHER direction (the fragment gained a run Y.Text lacks, or dropped
+      // one Y.Text still carries) is an ordinary un-propagated edit and the
+      // gate must not certify over it — a WYSIWYG deletion of a carried edge
+      // run read as tolerated residual would strand the bytes forever.
+      if (
+        normCurrent === normMd &&
+        !addsBlankLines(currentText, md) &&
+        !docEdgeRunsDiffer(currentText, md)
+      ) {
         // Why the gate certified, as a two-value enum. Both outcomes stamp the
         // same path, so a settlement over bytes the tolerance set swallowed is
         // indistinguishable in traces from one where the sides genuinely
@@ -1980,7 +2026,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // once Y.Text holds the guarded bytes the serializer preserves them
         // via sourceRaw, the composition is unambiguous, and the splice —
         // the more byte-preserving path — runs again.
-        (ytextInSync && residualMergeEligible) || composition.adjusted !== 'none'
+        // Doc-edge-run drains decline the splice for the same reason the
+        // guarded-respell transition does: the splice is a pure body-space
+        // rewrite computed straight off the fragment, blind to the FM
+        // boundary-slot dimension `md` carries — on a head-run deletion it
+        // would consume the separator newline along with the run. The
+        // md-based paths below spell the slot correctly, and edge-run drains
+        // are rare enough that the splice's byte-preservation is not missed.
+        (ytextInSync && residualMergeEligible) ||
+        composition.adjusted !== 'none' ||
+        docEdgeRunsDiffer(currentText, md)
           ? null
           : tryComputeMapDrivenSplice({
               currentText,
@@ -2235,7 +2290,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       try {
         const recoveryJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
         const recoveryBody = mdManager.serialize(recoveryJson);
-        const recoveryMd = composeWithDerivedBody(readCurrentFm(), recoveryBody).md;
+        const recoveryMd = composeDerivedBodyMd(readCurrentFm(), recoveryBody).md;
         if (settlesSplitBrainChecked(ytext.toString(), recoveryMd)) {
           recordSplitBrainRecoveryBaselines(recoveryMd);
           textDirty = true;
@@ -2323,6 +2378,23 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       try {
         const frontmatter = readCurrentFm();
         refreshYTextWitness();
+        // A paired write is a both-sides settlement by construction: the
+        // primitive landed fragment = parse(md) and Y.Text = md in ONE
+        // transaction, so there is no un-propagated WYSIWYG content and the
+        // written bytes hold every line the fragment now serializes to
+        // (modulo respell, which the three-way predicate tolerates the same
+        // way it tolerates freshness respells). Recording the convergence
+        // here is what keeps the defer guard's witness from going stale-empty
+        // across paired-write-seeded docs — a stale witness reads every stale
+        // fragment line as pending and defers the very re-derive that would
+        // repair a later divergence, up to the exhaustion bound. This is NOT
+        // the freshness-suppressed-settlement case the witness comment warns
+        // about: the fragment is exactly AT the written content, not ahead of
+        // its stamped sourceRaw. Raw bytes, not serialize(fragment) — the
+        // O(N) serialize stays off the paired hot path.
+        lastConvergedFragmentMd = lastSyncedYTextBytes;
+        fragmentMutatedSinceConverge = false;
+        consecutiveDeriveTimingDefers = 0;
         // Refresh the FM telemetry baseline alongside the bridge baseline.
         // Without this, an agent paired-write that changes FM advances
         // the raw witness but leaves `priorFmForTelemetry` stale; the
@@ -2360,7 +2432,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // Same ambiguity as the drain, one seed earlier: a fragment carrying a
       // doc-start rule pair would seed bytes an empty Y.Text can never
       // re-derive from.
-      const md = composeWithDerivedBody(frontmatter, body).md;
+      const md = composeDerivedBodyMd(frontmatter, body).md;
       doc.transact(() => {
         ytext.insert(0, md);
       }, OBSERVER_SYNC_ORIGIN);
@@ -2395,7 +2467,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   const runObserverBSyncImpl = (): void => {
     try {
       const md = ytext.toString();
+
       const { frontmatter, body } = stripFrontmatter(md);
+      // The FM boundary slot is split off before the frontmatter-blind parser
+      // sees the body, so the separator line never mints an empty paragraph:
+      // an FM document spells j authored head empties as slot + j newlines,
+      // and handing the parser the raw body would mint j + 1. The slot is
+      // restored on every fragment-derived compose (`composeDerivedBodyMd`
+      // and the canonical forms below), keeping both spellings of the same
+      // document byte-consistent across the gates' edge comparisons.
+      const { slot: fmBoundarySlot, body: parseBody } = splitFmBoundarySlot(frontmatter, body);
 
       // Early-exit: if Y.Text already matches the last settled Y.Text
       // snapshot (via normalizeBridge), tree and text are in sync.
@@ -2408,7 +2489,24 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // WITHOUT refreshing any witness, so the router still sees it as
       // real divergence and routes the next fragment change through the
       // byte-preserving Path B merge.
-      if (normalizeBridge(lastSyncedYTextBytes) === normalizeBridge(md)) {
+      //
+      // Two carve-outs, each a case where "Y.Text unchanged since settlement"
+      // does NOT mean "fragment in sync":
+      //  - A pending split-brain re-derive request: the settlement that
+      //    enqueued this fire refreshed the raw witness from this very
+      //    `ytext`, so the comparison is tautological and exiting on it
+      //    strands the diverged fragment permanently (and with it every
+      //    later source-mode edit).
+      //  - The doc-edge dimension: an edge run gained or lost by Y.Text
+      //    relative to the settled snapshot rests INSIDE the normalize
+      //    tolerance by construction, and only this re-derive can move it
+      //    into (or out of) the fragment — early-exiting over it is what
+      //    made source-authored edge runs invisible to every WYSIWYG.
+      if (
+        !pendingSplitBrainRederive &&
+        normalizeBridge(lastSyncedYTextBytes) === normalizeBridge(md) &&
+        !docEdgeRunsDiffer(lastSyncedYTextBytes, md)
+      ) {
         // Tree and text are already in sync. FM region is already where it
         // should be (Y.Text is the source of truth). Just emit telemetry if
         // the FM changed.
@@ -2475,7 +2573,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // comparand here reads the re-spelled rule as a surplus line, defers
         // every drain, and force-resolves an innocent doc at the exhaustion
         // bound.
-        const freshFragmentMd = composeWithDerivedBody(frontmatter, freshFragmentBody).md;
+        const freshFragmentMd = composeDerivedBodyMd(frontmatter, freshFragmentBody).md;
         if (fragmentHoldsPendingContent(freshFragmentMd, md, lastConvergedFragmentMd)) {
           if (consecutiveDeriveTimingDefers >= MAX_DERIVE_TIMING_DEFERS) {
             // Exhaustion. The keystroke has stayed un-propagated across the full
@@ -2529,7 +2627,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // Y.Text-is-truth; "sole writer" is scoped to the server process, not the
       // whole system. The "always-live" contract here means no client sees
       // frozen WYSIWYG when another peer is mid-typing a broken MDX tag.
-      const parsedJson = mdManager.parseWithFallback(body, observerParseOpts);
+      const parsedJson = mdManager.parseWithFallback(parseBody, observerParseOpts);
 
       const pmNode = opts.schema.nodeFromJSON(parsedJson);
 
@@ -2537,6 +2635,12 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         const meta = { mapping: new Map(), isOMark: new Map() };
         updateYFragment(doc, xmlFragment, pmNode, meta);
       }, OBSERVER_SYNC_ORIGIN);
+      // The rebuild has landed — only now is any standing split-brain request
+      // served. `nodeFromJSON` / `updateYFragment` above can throw, and the
+      // outer catch's witness refresh leaves the raw comparand tautological
+      // for the split-brain case; a pre-rebuild clear would hand the next
+      // fire exactly the early-exit this flag exists to block.
+      pendingSplitBrainRederive = false;
 
       // The re-derive is corrective reconciliation work; whether it reached a
       // raw-byte fixed point is decided by the post-sync convergence check
@@ -2578,7 +2682,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // unreachable on this leg and the two composes are byte-equal. The
         // bridge compose module's tests pin that no-op rather than assuming
         // it, so this stays a checked coincidence and not a lucky one.
-        const canonicalYText = prependFrontmatter(frontmatter, canonicalBody);
+        const canonicalYText = prependFrontmatter(frontmatter, fmBoundarySlot + canonicalBody);
         assertBridgeInvariant(ytext.toString(), canonicalYText, {
           site: 'observer-b',
           docName: opts.docName,
@@ -2586,7 +2690,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           // the watchdog's fallback canonicalizes the SAME body B parsed
           // above, and re-running parse+serialize per fire is exactly the
           // extra O(N) pass the parsedJson reuse note above exists to avoid.
-          canonicalizeBody: (b) => (b === body ? canonicalBody : canonicalizeBody(b)),
+          canonicalizeBody: (b) =>
+            b === body ? fmBoundarySlot + canonicalBody : canonicalizeBody(b),
         });
         // Maintain Observer A's witnesses — B just absorbed Y.Text into the
         // fragment, a true settlement point. The canonical witness records
@@ -2638,7 +2743,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         const postJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
         const postBody = mdManager.serialize(postJson);
         const fm = readCurrentFm();
-        refreshCanonicalWitnessOnly(composeWithDerivedBody(fm, postBody).md);
+        refreshCanonicalWitnessOnly(composeDerivedBodyMd(fm, postBody).md);
       } catch (innerErr) {
         // Mirror the two `instanceof BridgeInvariantViolationError` catches
         // above — preserve `BridgeInvariantViolationError` throws past this
@@ -2891,7 +2996,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // Observer A drain applies the guard properly. Steady state is
         // unaffected — once Y.Text holds the re-spelled rule the serializer
         // preserves it via sourceRaw and the composition is unambiguous again.
-        const flushComposition = composeWithDerivedBody(readCurrentFm(), mdManager.serialize(json));
+        const flushComposition = composeDerivedBodyMd(readCurrentFm(), mdManager.serialize(json));
         if (flushComposition.adjusted !== 'none') {
           return { preDrain: false, reason: 'checkpoint-fm-ambiguous' };
         }

@@ -8930,6 +8930,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         const doc = hocuspocus.documents.get(docName);
         if (doc) await (forceUnloadDocument ?? hocuspocus.unloadDocument.bind(hocuspocus))(doc);
+        // Truncates the doc file to '' BY DESIGN — reset means empty. A test
+        // or probe that reads the on-disk bytes after `client.cleanup()` (which
+        // calls this route) observes the truncation, not data loss; read the
+        // file BEFORE cleanup, or detach the provider directly instead.
         writeFileSync(filePath, '', 'utf-8');
         await derivedDocumentIndex?.testOnly?.resetDocumentForTest(docName);
 

@@ -1,5 +1,6 @@
+
 import { FRONTMATTER_RE, stripFrontmatter } from '../extensions/frontmatter.ts';
-import { carriedEdgeEmpties } from '../markdown/doc-edge-blank-runs.ts';
+import { carriedEdgeEmpties, type DocEdgeEmpties } from '../markdown/doc-edge-blank-runs.ts';
 
 const LEADING_BOUNDARY_RE = /^(?:\r?\n)+/;
 
@@ -63,4 +64,30 @@ export function unprojectMergeBoundarySpace(
     splitLeadingDocBoundary(merged, carriesDocStartRun).text,
     splitLeadingDocBoundary(raw, carriesDocStartRun).boundary,
   );
+}
+
+export interface FmBoundarySlotSplit {
+  slot: string;
+  body: string;
+}
+
+export function splitFmBoundarySlot(frontmatter: string, body: string): FmBoundarySlotSplit {
+  if (frontmatter === '') return { slot: '', body };
+  const match = body.match(/^\r?\n/);
+  if (!match) return { slot: '', body };
+  return { slot: match[0], body: body.slice(match[0].length) };
+}
+
+export function bodyEdgeEmpties(text: string): DocEdgeEmpties {
+  const { frontmatter, body } = stripFrontmatter(text);
+  if (frontmatter === '') return carriedEdgeEmpties(text);
+  const slotStripped = splitFmBoundarySlot(frontmatter, body).body;
+  if (/^\n*$/.test(slotStripped)) return carriedEdgeEmpties(text);
+  return carriedEdgeEmpties(slotStripped);
+}
+
+export function docEdgeRunsDiffer(a: string, b: string): boolean {
+  const edgesA = bodyEdgeEmpties(a);
+  const edgesB = bodyEdgeEmpties(b);
+  return edgesA.leading !== edgesB.leading || edgesA.trailing !== edgesB.trailing;
 }

@@ -1,3 +1,4 @@
+
 export function selectFenceChar(info: string): '`' | '~' {
   return info.includes('`') ? '~' : '`';
 }
