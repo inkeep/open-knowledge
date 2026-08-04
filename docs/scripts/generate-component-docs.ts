@@ -278,8 +278,8 @@ const PREVIEWS: Partial<Record<string, string>> = {
   Toggle: `<ComponentPreview>
   <AccordionPreview title="Show me the details" description="Click to expand" icon="lucide:BookOpen">
     Native \`<details>\` under the hood — same substrate as the app render.
-    A standalone expand/collapse block; use \`<Accordion>\` with a shared
-    \`name\` when you need mutually-exclusive siblings.
+    Pass a shared \`name\` to sibling toggles and the browser will keep
+    only one open at a time.
   </AccordionPreview>
 </ComponentPreview>`,
   Tabs: `<ComponentPreview>
