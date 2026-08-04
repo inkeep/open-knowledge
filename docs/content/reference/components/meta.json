@@ -5,6 +5,7 @@
     "index",
     "callout",
     "accordion",
+    "toggle",
     "tabs",
     "math",
     "mermaid-fence",
@@ -14,6 +15,7 @@
     "pdf",
     "file",
     "embed",
-    "mirror"
+    "mirror",
+    "html-align-block"
   ]
 }
