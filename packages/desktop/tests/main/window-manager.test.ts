@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { DEFAULT_SERVER_HOST } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
@@ -266,7 +267,7 @@ describe('WindowManager', () => {
         contentDir: '/tmp/test-project',
         projectDir: '/tmp/test-project',
         port: 0,
-        host: 'localhost',
+        host: '127.0.0.1',
         didEnsureGit: false,
         consentVersion: 1,
         // dirname(rendererEntryPath) — the React-shell dist dir the utility
@@ -286,6 +287,30 @@ describe('WindowManager', () => {
     // Window must have been created with the right additionalArguments
     expect(env.windows.length).toBe(1);
     expect(env.windows[0]?.loadFile).toHaveBeenCalledWith('/fake/renderer/index.html');
+  });
+
+  test('createProjectWindow binds the utility server to numeric IPv4 loopback, never a hostname', async () => {
+    // macOS resolves `localhost` IPv6-first, so `listen(port, 'localhost')`
+    // binds `[::1]` ONLY. Every dialer — the MCP shim, the keepalive WS, and
+    // `ok ps` — uses DEFAULT_SERVER_HOST, which is numeric IPv4. Passing a
+    // hostname here makes a dev-launched project's server unreachable to its
+    // own MCP: the keepalive errors and reconnects forever while the window
+    // itself works fine, because the window talks to the utility in-process
+    // and never dials. Assert the literal AND the constant so neither side
+    // can drift into a name.
+    const wm = new WindowManager(env.deps);
+    const promise = wm.createProjectWindow({ projectPath: '/tmp/loopback-bind' });
+
+    const utility = env.utilities[0];
+    if (!utility) throw new Error('utility not forked');
+    const payload = (utility.postMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+      opts: { host: string };
+    };
+    expect(payload.opts.host).toBe('127.0.0.1');
+    expect(payload.opts.host).toBe(DEFAULT_SERVER_HOST);
+
+    utility.fire({ type: 'ready', port: 51999, apiOrigin: 'http://127.0.0.1:51999' });
+    await promise;
   });
 
   test('createProjectWindow forwards localOpCliArgs into the utility init IPC payload', async () => {
@@ -342,7 +367,7 @@ describe('WindowManager', () => {
         contentDir: '/tmp/dev-mode-project',
         projectDir: '/tmp/dev-mode-project',
         port: 0,
-        host: 'localhost',
+        host: '127.0.0.1',
         didEnsureGit: false,
         consentVersion: 1,
       },

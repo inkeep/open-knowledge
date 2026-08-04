@@ -28,6 +28,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
+  DEFAULT_SERVER_HOST,
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
   SPAWN_ERROR_LOG,
@@ -1816,7 +1817,15 @@ export class WindowManager {
         contentDir: projectPath,
         projectDir: projectPath,
         port: 0,
-        host: 'localhost',
+        // Numeric IPv4 loopback, NOT `localhost`. macOS resolves `localhost`
+        // IPv6-first, so `listen(port, 'localhost')` binds `[::1]` only —
+        // while every dialer (the MCP shim, keepalive WS, `ok ps`) uses
+        // `DEFAULT_SERVER_HOST`, which is numeric IPv4. The mismatch made a
+        // dev-launched project's server unreachable to its own MCP: the
+        // keepalive WS errored and reconnected forever while the window
+        // itself worked fine. `ok start` already resolves to this constant,
+        // so this keeps the dev boot path on the same address as every other.
+        host: DEFAULT_SERVER_HOST,
         didEnsureGit: opts.didEnsureGit === true,
         consentVersion: opts.consentVersion ?? 1,
         // Conditional spread (matches `localOpCliArgs` below) keeps the
