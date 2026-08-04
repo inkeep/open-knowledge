@@ -1,9 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-A crash report that arrives without its crash dump now explains itself. Until now, a bug report whose crash dump was missing looked identical whether you had unchecked the box on purpose, the app had found no crash dump it could prove was its own, or the dump had been cleaned up in the moment between choosing to send it and the report being packed. All three arrived as an empty slot, and there was no way to tell them apart afterwards, so a report that should have carried the most useful evidence about a crash could not even be shown to be missing it. The app now writes a line into its own log recording which of those actually happened, and, when a dump was looked for, how many crash dumps were skipped because they belonged to a helper process or could not be read at all. The line is written before the report is packed, so it travels inside the very report it explains rather than turning up in the next one.
-
-A dump that was on hand is the one case that line cannot settle by itself, since whether it survived being packed is only known once packing is done. The report answers that on its own: the line says a dump was going in, and the report either carries it or it does not. Relatedly, a dump cleaned up mid-pack used to abort the whole detailed report; it is now recorded as a dump that did not make it, and the rest of the report is still produced.
-
-This changes nothing about what gets attached. The crash-dump checkbox behaves exactly as before: it appears only when a crash dump for that crash is on disk, comes pre-checked because that dump is the evidence the report exists to carry, and can be unchecked. This only observes the choice already being made. The record names no file: a crash dump is raw program memory that cannot be scrubbed, and its filename identifies the individual crash, so the line carries only the outcome, the counts, and a size in bytes.
