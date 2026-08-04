@@ -63,7 +63,7 @@ import { scanGlobalInPlaceSkills, scanInPlaceSkills } from './in-place-skills.ts
 import { resolveLocalSinkConfig } from './local-sink-resolver.ts';
 import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import { createMcpHttpHandler } from './mcp-http.ts';
-import { mountMcpAndApi } from './mcp-mount.ts';
+import { mountMcpAndApi, type ReadinessState } from './mcp-mount.ts';
 import { MissingOkConfigError } from './missing-ok-config-error.ts';
 import { RemoteConfigError, resolveRemoteAccess } from './remote-access.ts';
 import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
@@ -895,11 +895,28 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     log.info({ url: remoteAccess.url }, '[remote] remote access enabled (trust-the-tunnel)');
   }
 
+  // Readiness snapshot for /readyz. Both callbacks handle the promise so a
+  // failed async init cannot surface as an unhandled rejection here (the
+  // caller still owns `ready` and observes the real error there).
+  let readinessState: ReadinessState = 'pending';
+  ready.then(
+    () => {
+      readinessState = 'ready';
+    },
+    () => {
+      readinessState = 'failed';
+    },
+  );
+
   const mount = mountMcpAndApi({
     httpServer,
     hocuspocus,
     mcpHttpHandler,
     remoteAccess,
+    health: {
+      readiness: () => readinessState,
+      degraded: () => degraded,
+    },
     log,
     sessionManager,
     agentFocusBroadcaster,
@@ -1045,6 +1062,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   destroy = async (): Promise<void> => {
     if (destroyed) return;
     destroyed = true;
+    // Flip /readyz to not-ready synchronously, before any teardown step, so
+    // probe-driven routers stop sending traffic during the drain window —
+    // the HTTP mirror of the lock-file draining mark below.
+    readinessState = 'draining';
     const errors: unknown[] = [];
     const runStep = async (name: string, work: () => Promise<void>): Promise<void> => {
       try {
