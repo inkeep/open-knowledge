@@ -83,16 +83,17 @@ function FileChip({ path, onRemove }: { path: string; onRemove: () => void }) {
 }
 
 export function ComposerContextChips({
-  files,
+  files = [],
   onRemoveFile,
   className,
   children,
 }: {
   /** Ordered set of workspace-relative file paths to show as removable top-row
    *  chips (already deduped against inline mentions + sticky-dismissed by the
-   *  host). Empty → only `children` (if any) render. */
-  files: readonly string[];
-  onRemoveFile: (path: string) => void;
+   *  host). Empty (the default) → only `children` (if any) render, which is how
+   *  a composer with no file-context tracking of its own reuses the row. */
+  files?: readonly string[];
+  onRemoveFile?: (path: string) => void;
   className?: string;
   /** Extra context chips rendered as siblings in the SAME flex-wrap row (e.g.
    *  the captured-selection pill), so every reference shares one wrapping row and
@@ -111,7 +112,7 @@ export function ComposerContextChips({
       data-testid="composer-context-chips"
     >
       {files.map((path) => (
-        <FileChip key={path} path={path} onRemove={() => onRemoveFile(path)} />
+        <FileChip key={path} path={path} onRemove={() => onRemoveFile?.(path)} />
       ))}
       {children}
     </div>

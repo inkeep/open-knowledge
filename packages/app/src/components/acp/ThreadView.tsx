@@ -41,6 +41,18 @@ import {
   useRef,
   useState,
 } from 'react';
+import { toast } from 'sonner';
+import {
+  composeCommentBatchInstruction,
+  QueuedCommentsChip,
+  QueuedCommentsList,
+  toCommentBatchItem,
+  useQueuedComments,
+  useSelectedCommentCount,
+} from '@/comments/comment-chips';
+import { dispatchComments, selectAllQueued } from '@/comments/store';
+import type { CommentThread } from '@/comments/types';
+import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
@@ -289,37 +301,136 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   // would read as two copies.
   const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
 
+  // Queued review comments ride this composer the same way they ride the Ask AI
+  // one: the chip is the attach control, the typed draft becomes the batch's
+  // shared instruction, and the batch lands as ONE turn in THIS thread — which
+  // is the point of having it here rather than only in the omnicomposer, where
+  // every send starts a conversation detached from the one already going.
+  const queuedComments = useQueuedComments();
+  const selectedCommentCount = useSelectedCommentCount();
+  const [commentsAttached, setCommentsAttached] = useState(false);
+  const [commentsExpanded, setCommentsExpanded] = useState(false);
+  const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
+
+  /**
+   * The one send. A live thread prompts (the server queues it behind an active
+   * turn); an archived one type-to-resumes — the send respawns the agent and
+   * reconnects the stored session, with the message riding the resume op as its
+   * first turn (the server echoes it into the transcript immediately).
+   *
+   * Resolves to whether the message actually reached the agent, which the
+   * queued-comment send needs: a batch reported as delivered is resolved and
+   * dropped from the queue, so a resume that failed has to say so rather than
+   * close comments on a turn that never ran.
+   *
+   * `.catch().finally()` rather than try/catch: React Compiler bails on some
+   * TryStatement shapes, and the promise form is what the other composer uses.
+   */
+  const sendText = (
+    text: string,
+    /**
+     * What the "new thread" fallback should carry when an archived thread's
+     * resume fails. Defaults to the message itself.
+     *
+     * The queued-comment send passes null instead, because a failed hand-off
+     * leaves every comment QUEUED: stashing the composed batch would run it on
+     * the fresh thread and then let the same comments ride a later send too.
+     * Null falls the fallback back to the draft — the reviewer's own words —
+     * and re-attaching the still-queued batch there is the retry.
+     */
+    failureText: string | null = text,
+  ): Promise<boolean> => {
+    if (!archived) {
+      client.prompt(info.threadId, text);
+      // Sending re-engages the live edge even if the reader had scrolled up.
+      scrollApiRef.current?.scrollToEnd();
+      return Promise.resolve(true);
+    }
+    setResumePending(true);
+    setResumeError(null);
+    setFailedPrompt(null);
+    scrollApiRef.current?.scrollToEnd();
+    return client
+      .resumeThread(info.threadId, text)
+      .then(() => true)
+      .catch((err) => {
+        setResumeError(
+          err instanceof ThreadResumeError
+            ? err
+            : new ThreadResumeError('internal', err instanceof Error ? err.message : String(err)),
+        );
+        setFailedPrompt(failureText);
+        return false;
+      })
+      .finally(() => setResumePending(false));
+  };
+
   const submit = (): void => {
     const text = draft.trim();
     // `canQueue` rides alongside `canPrompt`: a busy thread accepts a queued
     // message rather than refusing the send.
-    if (text === '' || !(canPrompt || canQueue)) return;
-    if (archived) {
-      // Type-to-resume: the send respawns the agent and reconnects the
-      // stored session; the message rides the resume op as its first turn
-      // (the server echoes it into the transcript immediately).
-      setResumePending(true);
-      setResumeError(null);
-      setFailedPrompt(null);
-      client
-        .resumeThread(info.threadId, text)
-        .catch((err) => {
-          setResumeError(
-            err instanceof ThreadResumeError
-              ? err
-              : new ThreadResumeError('internal', err instanceof Error ? err.message : String(err)),
-          );
-          setFailedPrompt(text);
-        })
-        .finally(() => setResumePending(false));
-      setDraft('');
-      // Sending re-engages the live edge even if the reader had scrolled up.
-      scrollApiRef.current?.scrollToEnd();
+    if (!(canPrompt || canQueue)) return;
+    // An attached batch IS the content, so the empty-draft gate doesn't apply to
+    // it — the comments carry the ask even when nothing was typed for them.
+    if (hasQueuedComments) {
+      // `dispatchComments` reports every failure it knows about and returns an
+      // empty batch, so nothing here should reject. If something upstream ever
+      // does, the composer is already in the safe state — draft intact, batch
+      // still attached, comments still queued — so this only has to keep the
+      // rejection from disappearing.
+      submitQueuedComments(text).catch((err) => {
+        console.warn('[acp] queued-comment send rejected unexpectedly', err);
+      });
       return;
     }
-    client.prompt(info.threadId, text);
+    if (text === '') return;
+    void sendText(text);
     setDraft('');
-    scrollApiRef.current?.scrollToEnd();
+  };
+
+  /**
+   * Dispatch the queued comments as one turn in this thread. The server
+   * re-finds each anchor first (so a passage that moved is still found, and one
+   * that is gone is flagged rather than silently retargeted), and the batch
+   * resolves only if the send actually happened — a failed resume leaves every
+   * comment queued, with the instruction still in the composer.
+   *
+   * Re-entrant sends are held off by `dispatchComments` itself, which guards the
+   * one queue across every surface that drains it.
+   */
+  const submitQueuedComments = async (instruction: string): Promise<void> => {
+    // A mid-turn send only reaches the server's MESSAGE queue, and both a
+    // cancel and a terminal status drop that queue before the agent ever reads
+    // it. Resolving there would close review work nobody has acted on — the one
+    // failure the comment queue exists to prevent — so the batch stays queued
+    // until a send that actually runs. The message itself is really sent, so
+    // the composer still clears; the toast is what explains the two facts
+    // sitting side by side.
+    const queuedBehindTurn = canQueue;
+    const shipped = await dispatchComments({
+      resolve: !queuedBehindTurn,
+      compose: (items) =>
+        sendText(
+          composeCommentBatchInstruction(
+            items.map((item) => toCommentBatchItem(item.payload)),
+            instruction,
+          ),
+          // Never stash the composed batch for the new-thread fallback — see
+          // `sendText`'s `failureText`.
+          null,
+        ),
+    });
+    if (shipped.length === 0) return;
+    if (queuedBehindTurn) {
+      toast.info(
+        t`Your comments are waiting behind the running turn — they stay queued until the agent picks the message up.`,
+      );
+    }
+    setDraft('');
+    // The batch detaches with the rest of the draft. Left on, the next message
+    // would silently carry whatever had been queued since.
+    setCommentsAttached(false);
+    setCommentsExpanded(false);
   };
 
   const startFreshThread = (): void => {
@@ -494,6 +605,22 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         archived={archived}
         resumePending={resumePending}
         usage={model?.tokenUsage ?? null}
+        queuedComments={queuedComments}
+        selectedCommentCount={selectedCommentCount}
+        hasQueuedComments={hasQueuedComments}
+        commentsExpanded={commentsExpanded}
+        onAttachComments={() => {
+          setCommentsAttached(true);
+          // Deselection is sticky, so re-attaching has to re-check the queue —
+          // otherwise this puts an empty batch on the message and the chip
+          // bounces straight back to detached.
+          selectAllQueued();
+        }}
+        onToggleCommentsExpanded={() => setCommentsExpanded((open) => !open)}
+        onDismissComments={() => {
+          setCommentsAttached(false);
+          setCommentsExpanded(false);
+        }}
       />
     </div>
   );
@@ -1995,6 +2122,13 @@ function ThreadComposer({
   archived,
   resumePending,
   usage,
+  queuedComments,
+  selectedCommentCount,
+  hasQueuedComments,
+  commentsExpanded,
+  onAttachComments,
+  onToggleCommentsExpanded,
+  onDismissComments,
 }: {
   info: ThreadInfo;
   draft: string;
@@ -2013,6 +2147,22 @@ function ThreadComposer({
   resumePending: boolean;
   /** Context-window fill the agent reported; null until it reports any. */
   usage: { used?: number; size?: number } | null;
+  /** The review comments waiting to be sent, in queue order. */
+  queuedComments: readonly CommentThread[];
+  /** How many of them are checked — what an attached send would carry. */
+  selectedCommentCount: number;
+  /**
+   * The batch is riding this message AND still has something checked — the
+   * derived flag, never the raw attached state. `BottomComposer` carries the
+   * same distinction: unchecking the last item means nothing rides this
+   * message, which is the detached state however it was reached, and keying the
+   * chip on the raw flag leaves a countless chip above a list of unchecked rows.
+   */
+  hasQueuedComments: boolean;
+  commentsExpanded: boolean;
+  onAttachComments: () => void;
+  onToggleCommentsExpanded: () => void;
+  onDismissComments: () => void;
 }): ReactNode {
   const { t } = useLingui();
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -2038,9 +2188,12 @@ function ThreadComposer({
 
   const queue = info.queue ?? [];
 
+  const queueSize = queuedComments.length;
+
   // What the action slot keys off. Both the Stop/Send choice and Send's disabled
-  // state read this, or the two disagree.
-  const hasSendableContent = draft.trim() !== '';
+  // state read this, or the two disagree. An attached batch counts as content:
+  // the comments are the ask, so a send with nothing typed is a real send.
+  const hasSendableContent = draft.trim() !== '' || hasQueuedComments;
 
   return (
     <div className="p-2">
@@ -2058,6 +2211,32 @@ function ThreadComposer({
         onMouseDown={(event) => focusComposerInputOnCardPointer(event, ref)}
         className="cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
       >
+        {/* Queued comments as a context chip above the field, the same control
+            the Ask AI composer carries — detached it is a `+ Comments` add
+            button, attached it grows the peek + ✕ the other context chips have.
+            Same row component, so the two composers read as one chip system. */}
+        {/* Gated here as well as inside the chip: `ComposerContextChips` decides
+            whether to render its row by counting children, and an element that
+            returns null still counts as one. An empty queue has to contribute NO
+            child, or the row appears as an empty strip above the field. */}
+        {queueSize > 0 ? (
+          <ComposerContextChips className="px-3 pt-2 pb-1">
+            <QueuedCommentsChip
+              // Attached, the count is what a SEND carries, so unchecking an
+              // item moves it. Detached the chip shows no number, so the raw
+              // queue is what decides it renders at all.
+              count={hasQueuedComments ? selectedCommentCount : queueSize}
+              attached={hasQueuedComments}
+              expanded={commentsExpanded}
+              onAttach={onAttachComments}
+              onToggleExpanded={onToggleCommentsExpanded}
+              onDismiss={onDismissComments}
+            />
+            {hasQueuedComments && commentsExpanded ? (
+              <QueuedCommentsList threads={queuedComments} />
+            ) : null}
+          </ComposerContextChips>
+        ) : null}
         <Textarea
           ref={ref}
           value={draft}

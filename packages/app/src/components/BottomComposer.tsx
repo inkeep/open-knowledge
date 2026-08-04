@@ -851,7 +851,14 @@ export function BottomComposer({
     // instruction for the batch, and every queued comment rides along with its
     // own doc + passage. One send, one agent turn.
     if (hasQueuedComments) {
-      void submitQueuedComments();
+      // `dispatchComments` reports every failure it knows about and returns an
+      // empty batch, so nothing here should reject. If something upstream ever
+      // does, the composer is already in the safe state — draft intact, batch
+      // still attached, comments still queued — so this only has to keep the
+      // rejection from disappearing.
+      submitQueuedComments().catch((err) => {
+        console.warn('[comments] queued-comment send rejected unexpectedly', err);
+      });
       return;
     }
     void dispatchComposed(composeCurrentInput());

@@ -937,6 +937,9 @@
     "EhDLBx": ["You modified <0>", ["filePath"], "</0> locally, but it was deleted upstream."],
     "Ehkru0": ["Open, navigate, accept, or dismiss CodeMirror completion suggestions."],
     "EiVgl5": ["You don't have permission to push to this repo."],
+    "Eiowpn": [
+      "Your comments are waiting behind the running turn — they stay queued until the agent picks the message up."
+    ],
     "Eji13z": ["Toggle highlight formatting."],
     "EkH9pt": ["Update"],
     "EkUnmS": ["any"],

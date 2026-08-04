@@ -12128,6 +12128,10 @@ msgstr ""
 msgid "Your change is still being saved — run the test again in a moment."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Your comments are waiting behind the running turn — they stay queued until the agent picks the message up."
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
 msgstr ""
