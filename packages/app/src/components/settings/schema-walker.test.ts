@@ -56,6 +56,7 @@ describe('resolveLeafSchema against ConfigSchema', () => {
   test('descends to defaulted boolean leaves', () => {
     const leaf = requireLeaf(['editor', 'wordWrap']);
     expect(getLeafTypeTag(leaf)).toBe('boolean');
+    expect(getLeafTypeTag(requireLeaf(['editor', 'previewTabs']))).toBe('boolean');
   });
 
   test('returns undefined for non-existent path', () => {
@@ -74,5 +75,9 @@ describe('getFieldDefault against ConfigSchema', () => {
 
   test('returns defaults for editor.wordWrap', () => {
     expect(getFieldDefault(requireLeaf(['editor', 'wordWrap']))).toBe(true);
+  });
+
+  test('returns defaults for editor.previewTabs', () => {
+    expect(getFieldDefault(requireLeaf(['editor', 'previewTabs']))).toBe(true);
   });
 });

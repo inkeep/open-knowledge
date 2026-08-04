@@ -15,13 +15,14 @@ import { toast } from 'sonner';
 import { AgentBrandIcon } from '@/components/AgentIconCluster';
 import { ChangedOutsideBadge } from '@/components/ChangedOutsideBadge';
 import type { SkillActions } from '@/components/skill-actions';
-import { Button } from '@/components/ui/button';
 import {
-  DropdownMenuCheckboxItem,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+  SkillMenuCheckboxItem,
+  SkillMenuItem,
+  type SkillMenuKind,
+  SkillMenuLabel,
+  SkillMenuSeparator,
+} from '@/components/skill-menu-primitives';
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSkills } from '@/hooks/use-skills';
 import { emitSkillsChanged } from '@/lib/documents-events';
@@ -80,9 +81,8 @@ export interface SkillHostToggles {
 
 /**
  * The per-editor install-state machine, shared by the editor toolbar's install
- * pill (`SkillEditorActions`) AND the sidebar three-dot menu (`SkillContextMenuItems`,
- * §9.3) so the two surfaces offer the SAME control instead of the toolbar's full
- * per-editor dropdown vs. the menu's single "Install".
+ * pill (`SkillEditorActions`) and every `SkillContextMenuItems` surface so the
+ * toolbar, sidebar, and editor tab all expose the same install controls.
  *
  * Optimistic host overlay so RAPID per-editor toggles compose correctly: each click
  * builds on the LATEST intended set (via `liveHostsRef`, updated synchronously), not
@@ -91,7 +91,7 @@ export interface SkillHostToggles {
  * the marker file. `actions` is passed in so both surfaces share one install-in-flight.
  *
  * The overlay itself lives in a module store keyed `scope:name`, NOT in component
- * state: all three surfaces can be on screen together, and a per-component overlay
+ * state: several surfaces can be on screen together, and a per-component overlay
  * meant the clicked one read "Installed" while its neighbour still read "Install".
  */
 export function useSkillHostToggles(
@@ -304,6 +304,7 @@ export function SkillInstallMenuItems({
   skill,
   onResolveFork,
   onRunStart,
+  menuKind = 'dropdown',
 }: {
   toggles: SkillHostToggles;
   /** Each row shows the REAL target path (`.codex/skills/<name>`) — path-first
@@ -334,6 +335,8 @@ export function SkillInstallMenuItems({
    * half-converted state — they flip and then settle, which reads as breakage.
    */
   onRunStart?: () => void;
+  /** Match the Radix primitive family of the parent menu. */
+  menuKind?: SkillMenuKind;
 }) {
   const { t } = useLingui();
   const { hostSet, toggleEditor, installAll } = toggles;
@@ -597,7 +600,7 @@ export function SkillInstallMenuItems({
       {/* "All" rides the section label instead of being its own bottom row —
           the old footer (Install-on-all + Settings, each fenced by separators)
           read as three stacked strips. */}
-      <DropdownMenuLabel className="flex items-center justify-between gap-2">
+      <SkillMenuLabel menuKind={menuKind} className="flex items-center justify-between gap-2">
         <Trans>Install on</Trans>
         <Hint hint={t`Install on all agents`}>
           <Button
@@ -611,14 +614,15 @@ export function SkillInstallMenuItems({
             <Trans>All</Trans>
           </Button>
         </Hint>
-      </DropdownMenuLabel>
+      </SkillMenuLabel>
       {/* The skill's OWN folder when it isn't a standard editor dir (a store
           bundle / unusual location) — the true SOURCE, shown so no occupied
           location is ever invisible here. Static: the source can't be
           unchecked (that would be deletion). */}
       {sourceRow !== null ? (
         <Hint hint={t`The skill's own folder — the source other locations copy or link from`}>
-          <DropdownMenuCheckboxItem
+          <SkillMenuCheckboxItem
+            menuKind={menuKind}
             disabled={busy}
             checked
             onSelect={(e) => e.preventDefault()}
@@ -646,7 +650,7 @@ export function SkillInstallMenuItems({
                 <Trans>source</Trans>
               </span>
             </span>
-          </DropdownMenuCheckboxItem>
+          </SkillMenuCheckboxItem>
         </Hint>
       ) : null}
       {rows.map((editor) => {
@@ -675,7 +679,8 @@ export function SkillInstallMenuItems({
                       : t`Click to install in ${label}`
             }
           >
-            <DropdownMenuCheckboxItem
+            <SkillMenuCheckboxItem
+              menuKind={menuKind}
               disabled={busy}
               checked={hostSet.has(editor)}
               onCheckedChange={(on) => {
@@ -766,7 +771,7 @@ export function SkillInstallMenuItems({
                   </Hint>
                 ) : null}
               </span>
-            </DropdownMenuCheckboxItem>
+            </SkillMenuCheckboxItem>
           </Hint>
         );
       })}
@@ -786,7 +791,8 @@ export function SkillInstallMenuItems({
                 : t`Copies the skill to ${r.display}`
           }
         >
-          <DropdownMenuCheckboxItem
+          <SkillMenuCheckboxItem
+            menuKind={menuKind}
             disabled={busy}
             checked={r.placed !== null}
             onCheckedChange={(on) => {
@@ -847,7 +853,7 @@ export function SkillInstallMenuItems({
                 </>
               ) : null}
             </span>
-          </DropdownMenuCheckboxItem>
+          </SkillMenuCheckboxItem>
         </Hint>
       ))}
 
@@ -919,8 +925,7 @@ export function SkillInstallMenuItems({
           </Hint>
         </div>
       ) : null}
-
-      <DropdownMenuSeparator />
+      <SkillMenuSeparator menuKind={menuKind} />
       {/* Folder-level wiring lives one level up from this menu: this menu places
           THIS skill, that pane links whole FOLDERS (so two agents share every
           skill) and registers custom roots. Named for what it manages rather
@@ -929,7 +934,8 @@ export function SkillInstallMenuItems({
       <Hint
         hint={t`Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots.`}
       >
-        <DropdownMenuItem
+        <SkillMenuItem
+          menuKind={menuKind}
           onSelect={() => {
             // Land on the pane that governs THIS skill's folders. A global skill's
             // roots live under `~`, which the project pane doesn't manage at all,
@@ -940,7 +946,7 @@ export function SkillInstallMenuItems({
         >
           <SettingsIcon aria-hidden />
           <Trans>Manage skill folders</Trans>
-        </DropdownMenuItem>
+        </SkillMenuItem>
       </Hint>
     </>
   );

@@ -206,6 +206,11 @@ msgstr ""
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr ""
 
+#. placeholder {0}: deleteTargets.length
+#: src/components/FileTree.tsx
+msgid "{0, plural, one {Delete} other {Delete # items}}"
+msgstr ""
+
 #. placeholder {0}: fileRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {File} other {Files}}"
@@ -248,6 +253,11 @@ msgstr ""
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
+msgstr ""
+
+#. placeholder {0}: activeData.label
+#: src/components/EditorWorkspace.tsx
+msgid "{0} is over {destination}."
 msgstr ""
 
 #. placeholder {0}: resolvedTarget.displayName
@@ -301,6 +311,11 @@ msgstr ""
 #. placeholder {0}: formatSize(phase.report.zipSizeBytes)
 #: src/components/ReportBugDialogBody.tsx
 msgid "{0} total"
+msgstr ""
+
+#. placeholder {0}: activeData.label
+#: src/components/EditorWorkspace.tsx
+msgid "{0} was not moved."
 msgstr ""
 
 #. placeholder {0}: share.owner
@@ -440,10 +455,6 @@ msgstr ""
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
-msgstr ""
-
-#: src/components/FileTree.tsx
-msgid "{deleteCount, plural, one {Delete} other {Delete # items}}"
 msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
@@ -886,6 +897,16 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "A network problem or GitHub outage interrupted the clone."
+msgstr ""
+
+#. placeholder {0}: paneLabel(data.paneId)
+#: src/components/EditorWorkspace.tsx
+msgid "a new pane to the left of {0}"
+msgstr ""
+
+#. placeholder {0}: paneLabel(data.paneId)
+#: src/components/EditorWorkspace.tsx
+msgid "a new pane to the right of {0}"
 msgstr ""
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
@@ -1870,6 +1891,7 @@ msgstr ""
 #: src/components/CreateProjectDialog.tsx
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
+#: src/components/FileTargetRenameDialog.tsx
 #: src/components/FrontmatterRow.tsx
 #: src/components/ImportSkillForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -1906,6 +1928,11 @@ msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Cancelled"
+msgstr ""
+
+#. placeholder {0}: activeData.label
+#: src/components/EditorWorkspace.tsx
+msgid "Cancelled moving {0}."
 msgstr ""
 
 #: src/editor/image-upload/index.ts
@@ -2281,7 +2308,7 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Collapse all"
 msgstr ""
 
@@ -2484,6 +2511,7 @@ msgstr ""
 msgid "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Connect this project to GitHub to share."
@@ -2605,7 +2633,7 @@ msgstr ""
 msgid "Convert"
 msgstr ""
 
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Convert (delete original)"
 msgstr ""
 
@@ -2639,6 +2667,7 @@ msgstr ""
 msgid "Copied"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Copied full path"
@@ -2648,6 +2677,7 @@ msgstr ""
 msgid "Copied path"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Copied relative path"
@@ -2716,7 +2746,7 @@ msgid "Copy full path, No workspace"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Copy path"
 msgstr ""
 
@@ -2760,11 +2790,13 @@ msgstr ""
 msgid "Could not construct share URL."
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Could not copy full path"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Could not copy relative path"
@@ -3523,6 +3555,7 @@ msgstr ""
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/DeleteConfirmationDialog.tsx
+#: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -3970,7 +4003,7 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
 msgid "Duplicate"
 msgstr ""
@@ -4125,6 +4158,10 @@ msgstr ""
 
 #: src/components/EditorModeToggle.tsx
 msgid "Editor mode"
+msgstr ""
+
+#: src/components/EditorWorkspace.tsx
+msgid "editor pane"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -4387,7 +4424,7 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Expand all"
 msgstr ""
 
@@ -5088,7 +5125,7 @@ msgid "Full guide"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Full path"
 msgstr ""
 
@@ -5309,6 +5346,7 @@ msgstr ""
 msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Hidden “{basename}”"
 msgstr ""
@@ -5318,6 +5356,7 @@ msgstr ""
 msgid "Hidden files"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Hidden folder “{basename}”"
 msgstr ""
@@ -5356,6 +5395,7 @@ msgstr ""
 msgid "Hide files and folders from your knowledge base. Hidden items don’t appear in the file tree, search, or AI tools. <0>Learn more about patterns</0>."
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Hide folder"
 msgstr ""
@@ -5403,6 +5443,7 @@ msgstr ""
 msgid "Hide these comments"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Hide this file"
 msgstr ""
@@ -5527,7 +5568,7 @@ msgstr ""
 msgid "Import"
 msgstr ""
 
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Import as template"
 msgstr ""
 
@@ -5951,7 +5992,11 @@ msgstr ""
 msgid "Keep my version"
 msgstr ""
 
-#: src/components/FileTree.tsx
+#: src/components/EditorTabs.tsx
+msgid "Keep open"
+msgstr ""
+
+#: src/components/FileTargetMenuItems.tsx
 msgid "Keep original file"
 msgstr ""
 
@@ -6299,6 +6344,7 @@ msgstr ""
 msgid "Make this the source — the skill's real folder moves here"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
 msgstr ""
@@ -6528,6 +6574,14 @@ msgstr ""
 msgid "Move to {0}?"
 msgstr ""
 
+#: src/components/EditorTabs.tsx
+msgid "Move to new pane left"
+msgstr ""
+
+#: src/components/EditorTabs.tsx
+msgid "Move to new pane right"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move to the next CodeMirror lint diagnostic."
 msgstr ""
@@ -6559,11 +6613,24 @@ msgstr ""
 msgid "Moved \"{0}\" to {1}"
 msgstr ""
 
+#. placeholder {0}: activeData.label
+#: src/components/EditorWorkspace.tsx
+msgid "Moved {0} to {destination}."
+msgstr ""
+
 #. placeholder {0}: moved.label
 #. placeholder {1}: moved.position
 #. placeholder {2}: moved.total
 #: src/components/SessionsHost.tsx
 msgid "Moved {0} to position {1} of {2}"
+msgstr ""
+
+#: src/components/EditorTabs.tsx
+msgid "Moved {label} to a new pane on the left."
+msgstr ""
+
+#: src/components/EditorTabs.tsx
+msgid "Moved {label} to a new pane on the right."
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -6597,6 +6664,7 @@ msgid "name"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/components/FileTargetRenameDialog.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/NewSkillDialog.tsx
 #: src/components/SkillRenameDialog.tsx
@@ -6606,10 +6674,6 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Name (e.g. {login})"
-msgstr ""
-
-#: src/components/EditorTabs.tsx
-msgid "Name can’t be empty, \".\", \"..\", or contain / or \\"
 msgstr ""
 
 #: src/components/NewItemDialog.tsx
@@ -6651,7 +6715,6 @@ msgstr ""
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr ""
 
-#: src/components/EditorTabs.tsx
 #: src/components/FileTree.tsx
 #: src/components/NewItemDialog.tsx
 msgid "Network error — please try again"
@@ -6695,7 +6758,7 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 #: src/components/NewItemDialog.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillsTree.tsx
@@ -6718,7 +6781,7 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 #: src/components/NewItemDialog.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "New folder"
@@ -6730,7 +6793,7 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "New from template"
 msgstr ""
 
@@ -7143,6 +7206,7 @@ msgstr ""
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -7442,12 +7506,9 @@ msgstr ""
 msgid "Open comment"
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Open containing folder"
-msgstr ""
-
-#: src/components/FileTree.tsx
-msgid "Open containing folder, {hint}"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -7844,6 +7905,11 @@ msgstr ""
 msgid "Pan up"
 msgstr ""
 
+#. placeholder {0}: position + 1
+#: src/components/EditorWorkspace.tsx
+msgid "pane {0}"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr ""
@@ -8018,6 +8084,12 @@ msgstr ""
 msgid "Pick up where you left off"
 msgstr ""
 
+#. placeholder {0}: data.label
+#. placeholder {1}: paneLabel(data.paneId)
+#: src/components/EditorWorkspace.tsx
+msgid "Picked up {0} from {1}."
+msgstr ""
+
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr ""
@@ -8079,6 +8151,10 @@ msgstr ""
 
 #: src/uninstall/UninstallApp.tsx
 msgid "Preparing to uninstall OpenKnowledge"
+msgstr ""
+
+#: src/components/EditorWorkspace.tsx
+msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
@@ -8462,7 +8538,7 @@ msgid "Reject"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 msgid "Relative path"
 msgstr ""
 
@@ -8623,7 +8699,8 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
+#: src/components/FileTargetRenameDialog.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillFileRenameDialog.tsx
 #: src/components/SkillRenameDialog.tsx
@@ -8637,10 +8714,6 @@ msgstr ""
 
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
-msgstr ""
-
-#: src/components/EditorTabs.tsx
-msgid "Rename {label}"
 msgstr ""
 
 #. placeholder {0}: result.error
@@ -8658,10 +8731,6 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
-msgstr ""
-
-#: src/components/EditorTabs.tsx
-msgid "Rename succeeded but the tabstrip may be out of date — refresh to resync"
 msgstr ""
 
 #. placeholder {0}: docLeaf(descriptor.from)
@@ -9000,25 +9069,19 @@ msgstr ""
 msgid "Reused if it already exists, created if not."
 msgstr ""
 
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Reveal in File Explorer"
 msgstr ""
 
-#: src/components/FileTree.tsx
-msgid "Reveal in File Explorer, {hint}"
-msgstr ""
-
 #: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/skill-actions.tsx
 msgid "Reveal in Finder"
-msgstr ""
-
-#: src/components/FileTree.tsx
-msgid "Reveal in Finder, {hint}"
 msgstr ""
 
 #: src/components/FileSidebar.tsx
@@ -9103,6 +9166,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
@@ -9605,7 +9669,7 @@ msgid "Setup OpenKnowledge in this folder?"
 msgstr ""
 
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
+#: src/components/FileTargetMenuItems.tsx
 #: src/components/ShareButton.tsx
 msgid "Share"
 msgstr ""
@@ -9887,7 +9951,6 @@ msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr ""
 
 #: src/components/command-palette-commands.ts
-#: src/components/EditorTabs.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FilesSkillsToggle.tsx
 #: src/components/settings/SettingsDialogShell.tsx

@@ -84,7 +84,6 @@ async function installLocalTabSession(
   state: {
     openTabs: string[];
     pinnedTabIds?: string[];
-    activeDocName: string | null;
     activeTabId: string | null;
   },
 ) {
@@ -92,9 +91,18 @@ async function installLocalTabSession(
     window.localStorage.setItem(
       `ok-editor-tabs-v1:${window.location.origin}`,
       JSON.stringify({
-        pinnedTabIds: [],
-        ...sessionState,
+        activeTabByMode: { files: null, skills: null },
         updatedAt: '2026-05-12T00:00:00.000Z',
+        panes: [
+          {
+            id: 'pane-main',
+            openTabs: sessionState.openTabs,
+            pinnedTabIds: sessionState.pinnedTabIds ?? [],
+            activeTabId: sessionState.activeTabId,
+            size: 100,
+          },
+        ],
+        focusedPaneId: 'pane-main',
       }),
     );
   }, state);
@@ -164,10 +172,13 @@ async function expectPersistedTabSession(
       page.evaluate(() => {
         const raw = window.localStorage.getItem(`ok-editor-tabs-v1:${window.location.origin}`);
         if (!raw) return null;
-        const parsed = JSON.parse(raw) as { openTabs?: unknown; activeTabId?: unknown };
+        const parsed = JSON.parse(raw) as {
+          panes?: Array<{ openTabs?: unknown; activeTabId?: unknown }>;
+        };
+        const pane = parsed.panes?.[0];
         return {
-          openTabs: Array.isArray(parsed.openTabs) ? parsed.openTabs : null,
-          activeTabId: typeof parsed.activeTabId === 'string' ? parsed.activeTabId : null,
+          openTabs: Array.isArray(pane?.openTabs) ? pane.openTabs : null,
+          activeTabId: typeof pane?.activeTabId === 'string' ? pane.activeTabId : null,
         };
       }),
     )
@@ -180,33 +191,36 @@ async function expectPersistedPinnedTabs(page: Page, expected: string[]) {
       page.evaluate(() => {
         const raw = window.localStorage.getItem(`ok-editor-tabs-v1:${window.location.origin}`);
         if (!raw) return null;
-        const parsed = JSON.parse(raw) as { pinnedTabIds?: unknown };
-        return Array.isArray(parsed.pinnedTabIds) ? parsed.pinnedTabIds : null;
+        const parsed = JSON.parse(raw) as { panes?: Array<{ pinnedTabIds?: unknown }> };
+        const pinnedTabIds = parsed.panes?.[0]?.pinnedTabIds;
+        return Array.isArray(pinnedTabIds) ? pinnedTabIds : null;
       }),
     )
     .toEqual(expected);
 }
 
 async function editorTabOrder(page: Page): Promise<string[]> {
-  return page.locator('header div[aria-roledescription="sortable"]').evaluateAll((tabEls) =>
-    tabEls.flatMap((tabEl) => {
-      // Anchor on data-testids, not Lingui-wrapped accessible names — the
-      // placeholder/close labels route through the i18n catalog. The primary
-      // button's aria-label is the doc/folder/asset filename (not Lingui-routed),
-      // so it stays the order key.
-      if (tabEl.querySelector('[data-testid="editor-new-tab-placeholder-button"]')) {
-        return ['new-tab'];
-      }
-      const primaryButton = [...tabEl.querySelectorAll('button[aria-label]')].find(
-        (button) =>
-          !button.matches(
-            '[data-testid="editor-tab-close-button"], [data-testid="editor-tab-unpin-button"]',
-          ),
-      );
-      const label = primaryButton?.getAttribute('aria-label');
-      return label ? [label] : [];
-    }),
-  );
+  return page
+    .locator('[data-editor-pane-focused] [data-editor-pane-tabs] [data-editor-tab-sortable]')
+    .evaluateAll((tabEls) =>
+      tabEls.flatMap((tabEl) => {
+        // Anchor on data-testids, not Lingui-wrapped accessible names — the
+        // placeholder/close labels route through the i18n catalog. The primary
+        // button's aria-label is the doc/folder/asset filename (not Lingui-routed),
+        // so it stays the order key.
+        if (tabEl.querySelector('[data-testid="editor-new-tab-placeholder-button"]')) {
+          return ['new-tab'];
+        }
+        const primaryButton = [...tabEl.querySelectorAll('button[aria-label]')].find(
+          (button) =>
+            !button.matches(
+              '[data-testid="editor-tab-close-button"], [data-testid="editor-tab-unpin-button"]',
+            ),
+        );
+        const label = primaryButton?.getAttribute('aria-label');
+        return label ? [label] : [];
+      }),
+    );
 }
 
 async function expectDocumentListContainsAsset(baseURL: string, assetPath: string) {
@@ -370,7 +384,7 @@ test.describe('Editor tabs', () => {
       .toEqual([firstLabel, 'new-tab', 'new-tab', selectedLabel]);
   });
 
-  test('sidebar folder click replaces the active file tab with the folder tab', async ({
+  test('sidebar folder click opens a preview beside the permanent file tab', async ({
     page,
     api,
     workerServer,
@@ -397,12 +411,14 @@ test.describe('Editor tabs', () => {
     await sidebarTreeItem(page, folder).click();
 
     await expect(page).toHaveURL(new RegExp(`#/${folder}/$`));
-    await expect(fileTabs).toHaveCount(0);
+    await expect(fileTabs).toHaveCount(1);
     await expect(folderTabs).toHaveCount(1);
     await expectActiveTab(folderTabs.first());
+    await expect(editorTabChrome(folderTabs.first())).toHaveAttribute('data-preview-tab', 'true');
+    await expect.poll(() => editorTabOrder(page)).toEqual([fileLabel, folderLabel]);
   });
 
-  test('sidebar asset click replaces the active file tab with an asset tab', async ({
+  test('sidebar asset click opens a preview beside the permanent file tab', async ({
     page,
     api,
     workerServer,
@@ -423,48 +439,12 @@ test.describe('Editor tabs', () => {
     await sidebarTreeItem(page, assetPath).click();
 
     const assetTab = editorTabButtons(page, assetPath);
-    await expect(docTab).toHaveCount(0);
+    await expect(docTab).toHaveCount(1);
     await expect(assetTab).toHaveCount(1);
     await expectActiveTab(assetTab.first());
-    await expect.poll(() => editorTabOrder(page)).toEqual([assetPath]);
+    await expect(editorTabChrome(assetTab.first())).toHaveAttribute('data-preview-tab', 'true');
+    await expect.poll(() => editorTabOrder(page)).toEqual([docLabel, assetPath]);
     await expect(page).toHaveURL(new RegExp(`#/__asset__/${assetPath.replace('.', '\\.')}$`));
-  });
-
-  test('sidebar asset click focuses the existing asset tab when that asset is already open', async ({
-    page,
-    api,
-    workerServer,
-  }) => {
-    test.skip(
-      true,
-      'Asset setup currently times out before tab assertions; focus-existing behavior is covered by editor-tabs.test.ts.',
-    );
-    const id = testId();
-    const docName = `asset-new-tab-doc-${id}`;
-    const assetPath = `asset-new-tab-${id}.png`;
-    const assetTabId = `\u0000asset:${assetPath}`;
-
-    await seedReferencedAssetDoc(api, workerServer, docName, assetPath);
-
-    await page.goto(`/#/__asset__/${assetPath}`);
-    const assetTabs = editorTabButtons(page, assetPath);
-    await expect(assetTabs).toHaveCount(1, { timeout: 10_000 });
-    await expectActiveTab(assetTabs.first());
-
-    await editorNewTabButton(page).click();
-    await expect(activateNewTabButtons(page)).toHaveCount(1);
-    await expectActiveTab(activateNewTabButtons(page).first());
-
-    await sidebarTreeItem(page, assetPath).click();
-
-    await expect(assetTabs).toHaveCount(1);
-    await expect(activateNewTabButtons(page)).toHaveCount(0);
-    await expect(activeEditorTabButtons(page, assetPath)).toHaveCount(1);
-    await expect.poll(() => editorTabOrder(page)).toEqual([assetPath]);
-    await expectPersistedTabSession(page, {
-      openTabs: [assetTabId],
-      activeTabId: assetTabId,
-    });
   });
 
   test('sidebar folder click focuses the existing folder tab when that folder is already open', async ({
@@ -552,7 +532,6 @@ test.describe('Editor tabs', () => {
 
     await installLocalTabSession(page, {
       openTabs: [fooDoc, barDoc],
-      activeDocName: barDoc,
       activeTabId: barDoc,
     });
 
@@ -576,80 +555,43 @@ test.describe('Editor tabs', () => {
     });
   });
 
-  test('refresh preserves a restored session where two tabs point at the same file', async ({
+  test('sidebar previews replace the previous preview and Keep open promotes it', async ({
     page,
     api,
   }) => {
     const id = testId();
-    const fooDoc = `foo-refresh-${id}`;
-    const barDoc = `bar-refresh-${id}`;
+    const fooDoc = `foo-preview-${id}`;
+    const barDoc = `bar-preview-${id}`;
+    const bazDoc = `baz-preview-${id}`;
     const fooLabel = `${fooDoc}.md`;
     const barLabel = `${barDoc}.md`;
-    const duplicateFooTabId = `${fooDoc}\u0000doc-tab:1`;
+    const bazLabel = `${bazDoc}.md`;
 
     await seedMarkdownDocs(api, [
-      { name: fooDoc, markdown: `# Foo Refresh ${id}` },
-      { name: barDoc, markdown: `# Bar Refresh ${id}` },
+      { name: fooDoc, markdown: `# Foo Preview ${id}` },
+      { name: barDoc, markdown: `# Bar Preview ${id}` },
+      { name: bazDoc, markdown: `# Baz Preview ${id}` },
     ]);
-
-    // Two tabs pointing at the same file can only exist in a restored session
-    // now (focus-in-place prevents creating a second one via the UI); assert the
-    // legacy duplicate survives a reload.
-    await installLocalTabSession(page, {
-      openTabs: [fooDoc, barDoc, duplicateFooTabId],
-      activeDocName: fooDoc,
-      activeTabId: fooDoc,
-    });
 
     await page.goto(`/#/${fooDoc}`);
     const fooTabs = editorTabButtons(page, fooLabel);
     const barTabs = editorTabButtons(page, barLabel);
-    await expect(fooTabs).toHaveCount(2, { timeout: 10_000 });
+    const bazTabs = editorTabButtons(page, bazLabel);
+    await expect(fooTabs).toHaveCount(1, { timeout: 10_000 });
+
+    await sidebarTreeItem(page, barLabel).click();
     await expect(barTabs).toHaveCount(1);
-    await expectActiveTab(fooTabs.nth(0));
-    await expectInactiveTab(fooTabs.nth(1));
-    await expectPersistedTabSession(page, {
-      openTabs: [fooDoc, barDoc, duplicateFooTabId],
-      activeTabId: fooDoc,
-    });
+    await expect(editorTabChrome(barTabs.first())).toHaveAttribute('data-preview-tab', 'true');
 
-    await page.reload();
+    await editorTabChrome(barTabs.first()).click({ button: 'right' });
+    await page.getByTestId('editor-tab-context-keep-open').click();
+    await expect(editorTabChrome(barTabs.first())).not.toHaveAttribute('data-preview-tab');
 
-    await expect(fooTabs).toHaveCount(2, { timeout: 10_000 });
-    await expect(barTabs).toHaveCount(1);
-    await expectActiveTab(fooTabs.nth(0));
-    await expectInactiveTab(fooTabs.nth(1));
-    await expectPersistedTabSession(page, {
-      openTabs: [fooDoc, barDoc, duplicateFooTabId],
-      activeTabId: fooDoc,
-    });
-  });
-
-  test('renaming one duplicate file tab does not restyle the sibling duplicate tab', async ({
-    page,
-    api,
-  }) => {
-    const id = testId();
-    const fooDoc = `foo-duplicate-rename-${id}`;
-    const duplicateFooTabId = `${fooDoc}\u0000doc-tab:1`;
-    const fooLabel = `${fooDoc}.md`;
-
-    await seedMarkdownDocs(api, [{ name: fooDoc, markdown: `# Foo Duplicate Rename ${id}` }]);
-
-    await installLocalTabSession(page, {
-      openTabs: [fooDoc, duplicateFooTabId],
-      activeDocName: fooDoc,
-      activeTabId: fooDoc,
-    });
-
-    await page.goto(`/#/${fooDoc}`);
-    const fooTabs = editorTabButtons(page, fooLabel);
-    await expect(fooTabs).toHaveCount(2, { timeout: 10_000 });
-
-    await fooTabs.nth(0).dblclick();
-
-    await expect(page.getByRole('main').getByTestId('editor-tab-rename-input')).toHaveCount(1);
+    await sidebarTreeItem(page, bazLabel).click();
     await expect(fooTabs).toHaveCount(1);
+    await expect(barTabs).toHaveCount(1);
+    await expect(bazTabs).toHaveCount(1);
+    await expect(editorTabChrome(bazTabs.first())).toHaveAttribute('data-preview-tab', 'true');
   });
 
   test('tab click selects the already-open foo.md tab without rewriting the bar.md tab', async ({
@@ -710,7 +652,6 @@ test.describe('Editor tabs', () => {
     ]);
     await installLocalTabSession(page, {
       openTabs: [barDoc],
-      activeDocName: barDoc,
       activeTabId: barDoc,
     });
 
@@ -740,36 +681,34 @@ test.describe('Editor tabs', () => {
     await expectInactiveTab(editorTabButtons(page, helloLabel).first());
   });
 
-  test('clicking the second duplicate .mdx tab activates that exact tab instance', async ({
+  test('double-clicking a preview tab promotes it without entering rename mode', async ({
     page,
     api,
   }) => {
     const id = testId();
-    const folder = `dup-${id}`;
+    const folder = `preview-rename-${id}`;
+    const baseDoc = `${folder}/base-${id}`;
     const barDoc = `${folder}/bar-${id}`;
+    const baseLabel = `${folder}/base-${id}.mdx`;
     const barLabel = `${folder}/bar-${id}.mdx`;
 
-    await seedMdxDocs(api, [{ name: barDoc, markdown: `# Duplicate Bar ${id}` }]);
+    await seedMdxDocs(api, [
+      { name: baseDoc, markdown: `# Base ${id}` },
+      { name: barDoc, markdown: `# Preview Bar ${id}` },
+    ]);
 
-    await installLocalTabSession(page, {
-      openTabs: [barDoc, `${barDoc}\u0000doc-tab:1`],
-      activeDocName: barDoc,
-      activeTabId: barDoc,
-    });
+    await page.goto(`/#/${baseDoc}`);
+    await expect(editorTabButtons(page, baseLabel)).toHaveCount(1, { timeout: 10_000 });
+    await sidebarTreeItem(page, `bar-${id}.mdx`).click();
 
-    const duplicateTabs = editorTabButtons(page, barLabel);
-    await page.goto(`/#/${barDoc}`);
-    await expect(duplicateTabs).toHaveCount(2, { timeout: 10_000 });
-    await expectActiveTab(duplicateTabs.nth(0));
-    await expectInactiveTab(duplicateTabs.nth(1));
+    const previewTab = editorTabButtons(page, barLabel);
+    const previewChrome = page.getByRole('main').locator(`[data-editor-tab-id="${barDoc}"]`);
+    await expect(previewTab).toHaveCount(1);
+    await expect(previewChrome).toHaveAttribute('data-preview-tab', 'true');
 
-    await duplicateTabs.nth(1).click();
-    await expectActiveTab(duplicateTabs.nth(1));
-    await expectInactiveTab(duplicateTabs.nth(0));
-
-    await duplicateTabs.nth(0).click();
-    await expectActiveTab(duplicateTabs.nth(0));
-    await expectInactiveTab(duplicateTabs.nth(1));
+    await previewTab.dblclick();
+    await expect(previewChrome).not.toHaveAttribute('data-preview-tab');
+    await expect(page.getByRole('main').getByTestId('editor-tab-rename-input')).toHaveCount(0);
   });
 
   test('pinning a tab replaces close with pin and bulk close keeps it open', async ({
@@ -789,7 +728,6 @@ test.describe('Editor tabs', () => {
 
     await installLocalTabSession(page, {
       openTabs: [pinnedDoc, otherDoc],
-      activeDocName: otherDoc,
       activeTabId: otherDoc,
     });
 
@@ -848,7 +786,6 @@ test.describe('Editor tabs', () => {
 
     await installLocalTabSession(page, {
       openTabs: [pinnedDoc],
-      activeDocName: pinnedDoc,
       activeTabId: pinnedDoc,
     });
 

@@ -105,11 +105,14 @@ test('SLASH-AUTOOPEN-IMG-MULTI: slash-inserting Image with a prior Image auto-op
   // Wait for the seeded img NodeView to mount.
   await expect(page.locator('[data-jsx-component]')).toHaveCount(1);
 
-  // Land cursor at end of doc (in the trailing empty paragraph). Typing the
-  // trigger before the caret has actually moved there types '/image' at a stale
-  // position, where the suggestion never matches — prove the move landed first.
-  await page.click('.ProseMirror:not(.composer-prosemirror)');
-  await page.keyboard.press('ControlOrMeta+End');
+  // Land cursor at end of doc (in the trailing empty paragraph). This test
+  // covers slash insertion, so position the caret through TipTap rather than
+  // depending on a platform keyboard shortcut for its setup.
+  await page.evaluate(() => {
+    const editor = window.__activeEditor;
+    if (!editor) throw new Error('window.__activeEditor not set');
+    editor.chain().focus().setTextSelection(editor.state.doc.content.size).run();
+  });
   await focusEditor(page);
   await expect
     .poll(() =>

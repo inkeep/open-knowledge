@@ -1,3 +1,4 @@
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   detectEmbeddedHostFromBrowser,
   isFrontmatterSchemaAsset,
@@ -16,6 +17,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useGroupRef, usePanelRef } from 'react-resizable-panels';
 import { AssetPreview } from '@/components/AssetPreview';
 import { DocPanel, type PanelTab } from '@/components/DocPanel';
@@ -72,7 +74,6 @@ import { RIGHT_COLLAPSE_THRESHOLD, resolvePartition } from '@/lib/sidebar-partit
 import { applyToggle, readPins, resolveEffectiveState } from '@/lib/sidebar-pin-store';
 import { closeTimelineDiff, useTimelineDiffView } from '@/lib/timeline-diff-store';
 import { useSettingsRoute } from '@/lib/use-settings-route';
-import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { useSyncStatus } from '@/presence/use-sync-status';
 import { BottomComposer } from './BottomComposer';
@@ -81,6 +82,11 @@ import { EditorActivityPool } from './EditorActivityPool';
 import { EditorFooter } from './EditorFooter';
 import type { EditorMode } from './EditorPane';
 import { EditorToolbar } from './EditorToolbar';
+import {
+  EditorWorkspace,
+  type EditorWorkspaceActivityBindings,
+  type EditorWorkspacePaneRenderContext,
+} from './EditorWorkspace';
 import { shouldPaintOverlay } from './editor-area-overlay';
 import { computeStickyRepinLayout } from './editor-area-sticky-repin';
 import { TerminalDock } from './TerminalDock';
@@ -119,6 +125,55 @@ function ConfigEditorFallback() {
     >
       <Trans>Loading editor</Trans>
     </div>
+  );
+}
+
+function PaneDocumentToolbar({
+  docName,
+  provider,
+  isSourceMode,
+  onModeChange,
+  isPanelCollapsed,
+  onTogglePanel,
+  reserveRightGutter,
+}: {
+  docName: string;
+  provider: HocuspocusProvider;
+  isSourceMode: boolean;
+  onModeChange: (mode: EditorMode) => void;
+  isPanelCollapsed: boolean;
+  onTogglePanel: () => void;
+  reserveRightGutter: boolean;
+}) {
+  const { requestAddProperty } = useProperties();
+  const syncStatus = useSyncStatus(provider);
+  // Missing required properties have no property row or body anchor, so the
+  // pane toolbar is the only always-present surface that can report them.
+  const { data: frontmatterLintConfig } = useDocLintConfig(docName);
+  // Source mode has no Add-properties button, so avoid linting every keystroke
+  // for diagnostics that cannot render there.
+  const { missing: missingProperties } = partitionFrontmatterProblems(
+    useFrontmatterDiagnostics(
+      isSourceMode ? null : provider,
+      frontmatterLintConfig?.effective ?? null,
+    ),
+  );
+  const lifecycleStatus = useLifecycleStatus(docName);
+  if (lifecycleStatus === 'conflict') return null;
+
+  return (
+    <EditorToolbar
+      activeDocName={docName}
+      isSourceMode={isSourceMode}
+      sourceDisabled={syncStatus !== 'connected' && syncStatus !== 'synced'}
+      onModeChange={onModeChange}
+      showAddPropertyButton={!isSourceMode}
+      onAddProperty={() => requestAddProperty(docName)}
+      frontmatterProblems={missingProperties}
+      isPanelCollapsed={isPanelCollapsed}
+      onTogglePanel={onTogglePanel}
+      reserveRightGutter={reserveRightGutter}
+    />
   );
 }
 
@@ -189,16 +244,18 @@ interface EditorAreaProps {
   terminalVisible?: boolean;
   onTerminalVisibleChange?: (visible: boolean) => void;
   /** Agents-panel visibility. Its own resizable column to the right of the
-   *  doc/agent panel (`#agents-column`, MD | PANE | AGENTS). Independent of the
-   *  terminal — both panels can be open at once. */
+   * doc/agent panel. Independent of the terminal. */
   agentsVisible?: boolean;
   onAgentsVisibleChange?: (visible: boolean) => void;
-  /** Report both panels' attach points up to EditorPane (which owns the session
-   *  hosts). See {@link SessionPlacements}. */
+  /** Report both panels' attach points to the session hosts owned by EditorPane. */
   onSessionPlacements?: (placements: SessionPlacements) => void;
-  /** Reveal the agents panel — drives the right edge tab shown while it is
-   *  hidden. Provided on every host (agent threads are server-hosted). */
+  /** Reveal the agents panel from its right-edge affordance. */
   onRevealAgents?: () => void;
+  renderWorkspaceHeader?: (tabs: ReactNode) => ReactNode;
+}
+
+function renderTabsWithoutHeader(tabs: ReactNode): ReactNode {
+  return tabs;
 }
 
 export function EditorArea(props: EditorAreaProps) {
@@ -262,6 +319,7 @@ function EditorAreaInner({
   onAgentsVisibleChange,
   onSessionPlacements,
   onRevealAgents,
+  renderWorkspaceHeader = renderTabsWithoutHeader,
 }: EditorAreaProps) {
   const { t } = useLingui();
   const {
@@ -276,31 +334,11 @@ function EditorAreaInner({
     docPanelExpandSignal,
   } = useDocumentContext();
   const { openDocumentTransition } = useDocumentTransition();
-  const { requestAddProperty } = useProperties();
   const stats = useDocumentStats(activeProvider, activeDocName);
   const selectionStats = useSelectionStats(
     activeDocName,
     editorMode === 'source' ? 'source' : 'wysiwyg',
   );
-  const syncStatus = useSyncStatus(activeProvider);
-  const isConnected = syncStatus === 'connected' || syncStatus === 'synced';
-  // Schema-required properties the doc does not have badge the toolbar's
-  // Add-properties button: they have no body construct to mark and no property
-  // row either (being absent is the problem), and on a doc with no properties
-  // at all `PropertyPanel` renders nothing — so the toolbar is the only surface
-  // always there to carry them. Present-but-invalid properties are the panel's.
-  const { data: frontmatterLintConfig } = useDocLintConfig(activeDocName);
-  // Source mode hides the Add-properties button entirely, so the pass has no
-  // consumer there — short-circuit rather than lint on every keystroke for a
-  // badge that cannot render.
-  const { missing: missingProperties } = partitionFrontmatterProblems(
-    useFrontmatterDiagnostics(
-      editorMode === 'source' ? null : activeProvider,
-      frontmatterLintConfig?.effective ?? null,
-    ),
-  );
-  const lifecycleStatus = useLifecycleStatus(activeDocName);
-  const isConflict = lifecycleStatus === 'conflict';
   // Latches true once any provider has been active this session. It separates a
   // genuine cold start (group never mounted, no docked terminal alive yet) from
   // a mid-session navigation whose provider is transiently null — closing a tab
@@ -323,6 +361,7 @@ function EditorAreaInner({
   // paint the updated shell before the editor mount cost begins. The
   // shell-snap budget is ~250ms.
   const deferredActiveDocName = useDeferredValue(activeDocName);
+  const isSourceMode = editorMode === 'source';
   const isNewDoc = activeTarget?.kind === 'missing';
   const showStats = !!activeDocName && activeTarget?.kind !== 'folder';
   const editorPlaceholder = isNewDoc ? t`Start writing to create this page` : undefined;
@@ -421,6 +460,14 @@ function EditorAreaInner({
   // panels (MD | PANE | AGENTS), present across EVERY view kind (the column just
   // has no doc panel beside it on asset / large-file / empty views).
   const [agentsContainer, setAgentsContainer] = useState<HTMLDivElement | null>(null);
+  // The global editor header sits above the complete horizontal workspace so
+  // every right-side panel begins below it. EditorWorkspace owns the tab DnD
+  // context, so it portals the rendered header into this mount instead of
+  // nesting it inside the editor-width panel.
+  const [workspaceHeaderContainer, setWorkspaceHeaderContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [workspaceColumnEl, setWorkspaceColumnEl] = useState<HTMLDivElement | null>(null);
   // The bottom-dock mount + the editor-region focus target, reported up by
   // TerminalDock (the bottom shell). The terminal host portals into the container
   // and both hosts return focus to the editor region when they hide.
@@ -532,6 +579,25 @@ function EditorAreaInner({
   // Plain-ref mirror for callbacks created before the element mounts (event
   // subscribers with narrow deps would otherwise close over the initial null).
   const groupContainerElRef = useRef<HTMLDivElement | null>(null);
+
+  // Tabs still follow the editor workspace width while the global actions stay
+  // pinned to the window edge. ResizeObserver updates the CSS width throughout
+  // a live panel drag, avoiding the lag that an onResize/React-state round trip
+  // would introduce.
+  useLayoutEffect(() => {
+    if (workspaceHeaderContainer == null || workspaceColumnEl == null) return;
+    const updateTabsWidth = () => {
+      workspaceHeaderContainer.style.setProperty(
+        '--editor-header-tabs-width',
+        `${workspaceColumnEl.getBoundingClientRect().width}px`,
+      );
+    };
+    updateTabsWidth();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateTabsWidth);
+    observer.observe(workspaceColumnEl);
+    return () => observer.disconnect();
+  }, [workspaceHeaderContainer, workspaceColumnEl]);
 
   // Group-level imperative handle. Layout corrections MUST go through
   // `setLayout` (the whole layout in one shot): the per-panel imperative APIs
@@ -861,6 +927,7 @@ function EditorAreaInner({
   // and view-kind changes.
   let viewContent: ReactNode;
   let rightPanel: ReactNode = null;
+  let renderFocusedDocument: ((activityMount: ReactNode) => ReactNode) | null = null;
 
   // The agents column (when visible) is rendered once at the
   // panel-group level below, to the right of `rightPanel`, so the branches here
@@ -1084,16 +1151,6 @@ function EditorAreaInner({
       viewContent = <EmptyEditorState terminalOpen={terminalVisible} agentsOpen={agentsVisible} />;
     }
   } else {
-    const isSourceMode = editorMode === 'source';
-    const sourceDisabled = !isConnected;
-
-    const isPanelCollapsed = isCollapsed;
-
-    function openAddPropertyForm() {
-      if (!activeDocName) return;
-      requestAddProperty(activeDocName);
-    }
-
     // Visibility for the open doc's "Ask AI" composer — the pure gate in
     // bottom-composer-gate.ts (hidden while either session panel is open, in
     // embedded webviews, and with no doc open). The folder overview mounts its
@@ -1113,7 +1170,7 @@ function EditorAreaInner({
       !(timelineDiff && timelineDiff.docName === activeDocName) &&
       !(agentDiff && agentDiffDoc === activeDocName);
     const externalSkillEdit = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
-    const editorContent = (
+    const renderEditorContent = (activityMount: ReactNode) => (
       <div className="relative flex h-full flex-col">
         {/* Detected-skill edit-in-place banner: a real layout row above the editor
             (not the toolbar's absolute overlay), so it reads like the read-only
@@ -1125,11 +1182,13 @@ function EditorAreaInner({
         ) : null}
         <div className="relative min-h-0 flex-1">
           {/* Hybrid Activity + Suspense + ErrorBoundary render tree.
-          EditorActivityPool keeps Tiptap eager and lazy-loads SourceEditor on
-          the first source-mode visit for each doc, then preserves the per-doc
-          display:none toggle after that initial load. Each Activity entry owns
-          its own scroll container so scroll position is DOM-local to that
-          doc's subtree and survives the Activity hidden-mode mount/unmount cycle.
+          EditorWorkspace supplies this pane-owned host while the single
+          EditorActivityPool portals each Activity entry into its visible pane.
+          The pool keeps Tiptap eager and lazy-loads SourceEditor on the first
+          source-mode visit for each doc, then preserves the per-doc display:none
+          toggle after that initial load. Each Activity entry owns its own scroll
+          container so scroll position is DOM-local to that doc's subtree and
+          survives the Activity hidden-mode mount/unmount cycle.
 
           Error + Suspense scoping lives INSIDE EditorActivityPool — each
           Activity wraps its own DocumentErrorBoundary + Suspense so a
@@ -1137,20 +1196,7 @@ function EditorAreaInner({
           the visible UI. See EditorActivityPool.tsx file
           docstring "ERROR + SUSPENSE SCOPING" for rationale. */}
           <div className="relative h-full">
-            <EditorActivityPool
-              // Fall back to the urgent `activeDocName` when the deferred
-              // value is still null (initial load, before the first
-              // deferred-commit pass populates it). The
-              // `!activeProvider || !activeDocName` null-guard above already
-              // short-circuits with skeleton/empty-state when `activeDocName`
-              // itself is null, so we can assert non-null here.
-              activeDocName={deferredActiveDocName ?? activeDocName}
-              isSourceMode={isSourceMode}
-              editorPlaceholder={editorPlaceholder}
-              previousDocName={previousDocName ?? undefined}
-              onNavigateBack={navigateBackToDoc}
-              onRecycle={recycleDocument}
-            />
+            {activityMount}
             <FindReplaceController activeDocName={activeDocName} isSourceMode={isSourceMode} />
             {/* Nav-pending skeleton overlay. Rendered when the urgent
             `activeDocName` (shell state — driving sidebar highlight +
@@ -1219,23 +1265,6 @@ function EditorAreaInner({
               </Suspense>
             ) : null}
           </div>
-          {!isConflict && (
-            <EditorToolbar
-              activeDocName={activeDocName}
-              isSourceMode={isSourceMode}
-              sourceDisabled={sourceDisabled}
-              onModeChange={onModeChange}
-              showAddPropertyButton={!isSourceMode}
-              onAddProperty={openAddPropertyForm}
-              frontmatterProblems={missingProperties}
-              isPanelCollapsed={isPanelCollapsed}
-              onTogglePanel={togglePanel}
-              // When the doc panel is collapsed, the action cluster reaches the
-              // far-right corner where the agents reveal tab sits — shift it left
-              // so the three stay in one row instead of overlapping.
-              reserveRightGutter={rightRevealTabPresent && isPanelCollapsed}
-            />
-          )}
           {/* Floats over the bottom of the scroll area (an absolute overlay, like
               the toolbar at the top) so content scrolls under its faded top edge.
               BottomComposer publishes its measured height as `--ask-composer-height`
@@ -1264,7 +1293,8 @@ function EditorAreaInner({
       </div>
     );
 
-    viewContent = editorContent;
+    viewContent = null;
+    renderFocusedDocument = renderEditorContent;
     // While the agents column is open and the doc panel is closed, the
     // collapsed doc panel sits as a zero-width flex neighbor between the editor
     // and the agents column. Its own handle is disabled whenever it is collapsed
@@ -1327,11 +1357,7 @@ function EditorAreaInner({
           // in DOM, in Tab order, and announced by screen readers. `inert` removes the
           // collapsed subtree from the a11y tree and focus order without remounting.
           inert={isCollapsed}
-          className={cn(
-            'flex flex-col bg-muted/20',
-            !isDraggingDocHandle &&
-              'transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0',
-          )}
+          className="flex flex-col bg-muted/20"
         >
           <DocPanel
             docName={activeDocName}
@@ -1342,6 +1368,125 @@ function EditorAreaInner({
           />
         </ResizablePanel>
       </>
+    );
+  }
+
+  function renderUnfocusedPane({
+    activityMount,
+    pane,
+  }: EditorWorkspacePaneRenderContext): ReactNode {
+    const target = pane.activeTarget;
+    if (activityMount) return activityMount;
+    if (target?.kind === 'large-file') {
+      return (
+        <LargeFileEditorState docName={target.docName} size={target.size} limit={target.limit} />
+      );
+    }
+    if (target?.kind === 'folder') {
+      return <FolderOverview folderPath={target.folderPath} />;
+    }
+    if (
+      target?.kind === 'asset' &&
+      isMarkdownlintJsonConfig(target.assetPath.split('/').pop() ?? target.assetPath)
+    ) {
+      return (
+        <Suspense fallback={<ConfigEditorFallback />}>
+          <LazyLintConfigEditor key={target.assetPath} assetPath={target.assetPath} />
+        </Suspense>
+      );
+    }
+    if (target?.kind === 'asset' && isFrontmatterSchemaAsset(target.assetPath)) {
+      return (
+        <Suspense fallback={<ConfigEditorFallback />}>
+          <LazySchemaConfigEditor key={target.assetPath} assetPath={target.assetPath} />
+        </Suspense>
+      );
+    }
+    if (target?.kind === 'asset') {
+      return (
+        <AssetPreview
+          key={target.assetPath}
+          assetPath={target.assetPath}
+          mediaKind={target.mediaKind}
+        />
+      );
+    }
+    if (target?.kind === 'skill-file') {
+      return (
+        <SkillFileViewer
+          key={`${target.scope}/${target.name}/${target.host ?? ''}/${target.path}`}
+          scope={target.scope}
+          name={target.name}
+          path={target.path}
+          host={target.host}
+        />
+      );
+    }
+    if (target?.kind === 'skill-preview') {
+      return (
+        <SkillPreviewTab
+          key={`${target.flavor}:${target.source}:${target.name}:${target.level ?? ''}`}
+          flavor={target.flavor}
+          source={target.source}
+          name={target.name}
+          subtitle={target.subtitle}
+          level={target.level}
+          path={target.path}
+        />
+      );
+    }
+    if (pane.activeNewTabId && isSkillsNewTabId(pane.activeNewTabId)) {
+      return <SkillsBasePage sessionsDockOpen={false} />;
+    }
+    return <EmptyEditorState />;
+  }
+
+  function renderWorkspacePane(context: EditorWorkspacePaneRenderContext): ReactNode {
+    if (!context.isFocused) return renderUnfocusedPane(context);
+    return renderFocusedDocument ? renderFocusedDocument(context.activityMount) : viewContent;
+  }
+
+  function renderWorkspaceActivityPool({
+    activityHosts,
+    parkingHost,
+    visibleDocNames,
+  }: EditorWorkspaceActivityBindings): ReactNode {
+    const renderableVisibleDocNames = shareReceiveMiss
+      ? new Set([...visibleDocNames].filter((docName) => docName !== activeDocName))
+      : visibleDocNames;
+    const focusedDocName =
+      activeDocName && renderableVisibleDocNames.has(activeDocName) ? activeDocName : undefined;
+    const deferredDocName =
+      deferredActiveDocName && renderableVisibleDocNames.has(deferredActiveDocName)
+        ? deferredActiveDocName
+        : undefined;
+    const poolActiveDocName = focusedDocName
+      ? (deferredDocName ?? focusedDocName)
+      : renderableVisibleDocNames.values().next().value;
+    if (!poolActiveDocName) return null;
+    return (
+      <EditorActivityPool
+        activeDocName={poolActiveDocName}
+        visibleDocNames={renderableVisibleDocNames}
+        activityHosts={activityHosts}
+        parkingHost={parkingHost}
+        renderToolbar={(docName, provider) => (
+          <PaneDocumentToolbar
+            docName={docName}
+            provider={provider}
+            isSourceMode={isSourceMode}
+            onModeChange={onModeChange}
+            isPanelCollapsed={isCollapsed}
+            onTogglePanel={togglePanel}
+            reserveRightGutter={docName === activeDocName && rightRevealTabPresent && isCollapsed}
+          />
+        )}
+        isSourceMode={isSourceMode}
+        editorPlaceholder={poolActiveDocName === activeDocName ? editorPlaceholder : undefined}
+        previousDocName={previousDocName ?? undefined}
+        onNavigateBack={navigateBackToDoc}
+        onRecycle={recycleDocument}
+      />
     );
   }
 
@@ -1360,7 +1505,15 @@ function EditorAreaInner({
       onBottomContainer={setBottomTerminalContainer}
       onEditorRegion={setTerminalEditorRegion}
     >
-      {viewContent}
+      <EditorWorkspace
+        renderHeader={(tabs) =>
+          workspaceHeaderContainer == null
+            ? null
+            : createPortal(renderWorkspaceHeader(tabs), workspaceHeaderContainer)
+        }
+        renderPane={renderWorkspacePane}
+        renderActivityPool={renderWorkspaceActivityPool}
+      />
     </TerminalDock>
   );
 
@@ -1413,14 +1566,14 @@ function EditorAreaInner({
             debouncedWriteAgentsWidth(size.inPixels);
           }
         }}
-        className={cn(
-          'flex flex-col',
-          !isDraggingAgentsHandle &&
-            'transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0',
-        )}
+        className="flex flex-col"
       >
         {/* Mount point for the agents host's stable host div. */}
-        <div ref={setAgentsContainer} className="flex min-h-0 flex-1 flex-col overflow-hidden" />
+        <div
+          ref={setAgentsContainer}
+          data-agents-panel-mount=""
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        />
       </ResizablePanel>
     </>
   ) : null;
@@ -1437,53 +1590,58 @@ function EditorAreaInner({
   // Order: EDITOR | doc/agent panel | agents column. The agents panel is the
   // far-right column, so it renders AFTER `rightPanel`.
   return (
-    <div
-      className="relative flex min-h-0 flex-1"
-      ref={(el) => {
-        setGroupContainerEl(el);
-        groupContainerElRef.current = el;
-      }}
-    >
-      <ResizablePanelGroup
-        orientation="horizontal"
-        groupRef={groupRef}
-        data-dragging={isDraggingDocHandle || isDraggingAgentsHandle || undefined}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        ref={setWorkspaceHeaderContainer}
+        data-editor-area-header=""
+        className="relative z-30 shrink-0"
+      />
+      <div
+        data-editor-area-panels=""
+        className="relative flex min-h-0 flex-1"
+        ref={(el) => {
+          setGroupContainerEl(el);
+          groupContainerElRef.current = el;
+        }}
       >
-        <ResizablePanel
-          // No explicit id: an id here changed how react-resizable-panels
-          // redistributes on imperative resize and broke the doc-panel
-          // pixel-width sticky restore. The
-          // left panel is always the first child, so React keeps it mounted
-          // across right-side toggles without one (the terminal still persists).
-          //
-          // With the terminal column mounted the editor yields to a 5% sliver so
-          // the terminal can be dragged near-full width without ever fully
-          // eclipsing the editor — the horizontal mirror of the bottom dock's
-          // 95%/5% split (see the terminal column's maxSize below; the pair must
-          // sum to 100% or the drag can't reach the max). Without the terminal
-          // the 30% floor keeps the editor usable against the doc panel.
-          minSize={agentsColumnPresent ? '5%' : '30%'}
-          // Editor takes full width only when nothing on the right claims space;
-          // otherwise it absorbs the residual while the pixel-sized doc panel and
-          // terminal column hold their widths.
-          {...(editorAbsorbsResidual ? {} : { defaultSize: '100%' })}
-          className={cn(
-            !(isDraggingDocHandle || isDraggingAgentsHandle) &&
-              'transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0',
-          )}
+        <ResizablePanelGroup
+          orientation="horizontal"
+          groupRef={groupRef}
+          data-dragging={isDraggingDocHandle || isDraggingAgentsHandle || undefined}
         >
-          {leftColumn}
-        </ResizablePanel>
-        {rightPanel}
-        {agentsColumn}
-      </ResizablePanelGroup>
-      {rightRevealTabPresent ? (
-        // Pinned to the far-right top, vertically in line with the toolbar's
-        // action buttons. When the doc panel is collapsed those buttons reach this
-        // same corner; the toolbar shifts its cluster left (reserveRightGutter) so
-        // all three sit in one row rather than overlapping.
-        <TerminalRevealTab edge="right" onReveal={onRevealAgents} className="top-2.5 right-0" />
-      ) : null}
+          <ResizablePanel
+            // No explicit id: an id here changed how react-resizable-panels
+            // redistributes on imperative resize and broke the doc-panel
+            // pixel-width sticky restore. The
+            // left panel is always the first child, so React keeps it mounted
+            // across right-side toggles without one (the terminal still persists).
+            //
+            // With the agents column mounted the editor yields to a 5% sliver so
+            // the panel can be dragged near-full width without ever fully
+            // eclipsing the editor — the horizontal mirror of the bottom dock's
+            // 95%/5% split (see the terminal column's maxSize below; the pair must
+            // sum to 100% or the drag can't reach the max). Without the terminal
+            // the 30% floor keeps the editor usable against the doc panel.
+            minSize={agentsColumnPresent ? '5%' : '30%'}
+            // Editor takes full width only when nothing on the right claims space;
+            // otherwise it absorbs the residual while the pixel-sized doc panel and
+            // agents column hold their widths.
+            {...(editorAbsorbsResidual ? {} : { defaultSize: '100%' })}
+          >
+            <div ref={setWorkspaceColumnEl} className="flex h-full min-w-0 flex-col">
+              {leftColumn}
+            </div>
+          </ResizablePanel>
+          {rightPanel}
+          {agentsColumn}
+        </ResizablePanelGroup>
+        {rightRevealTabPresent ? (
+          // This is intentionally inside the below-header workspace. It stays
+          // attached to the agents-panel edge without competing with global
+          // header actions.
+          <TerminalRevealTab edge="right" onReveal={onRevealAgents} className="top-2.5 right-0" />
+        ) : null}
+      </div>
     </div>
   );
 }

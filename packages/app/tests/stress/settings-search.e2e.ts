@@ -83,6 +83,25 @@ test.describe('Settings search — navigation + pinned layout', () => {
     await expect(field).toHaveClass(/animate-settings-nav-flash/, { timeout: 2_000 });
     await expect(field).not.toHaveClass(/animate-settings-nav-flash/, { timeout: 3_000 });
   });
+
+  test('Preview tabs is searchable from its catalog-backed label and description', async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    for (const query of ['preview', 'reuse']) {
+      await page.getByTestId('settings-search-input').fill(query);
+      const result = page.getByTestId(
+        'settings-search-result-field:preferences:editor.previewTabs',
+      );
+      await expect(result).toBeVisible({ timeout: 5_000 });
+      await result.click();
+
+      const field = page.locator('[data-field="editor.previewTabs"]');
+      await expect(field).toBeVisible({ timeout: 5_000 });
+      await expect(field).toBeInViewport();
+    }
+  });
 });
 
 test.describe('Settings search — scope badges + markdownlint rules', () => {

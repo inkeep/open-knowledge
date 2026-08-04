@@ -35,15 +35,14 @@ import {
   useDocumentTransition,
 } from '@/editor/DocumentContext';
 import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
-import { parseEditorTabId } from '@/editor/editor-tabs';
+import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
-import { ConfigProvider } from '@/lib/config-provider';
+import { ConfigProvider, useConfigContext } from '@/lib/config-provider';
 import {
   assetPathFromHash,
   docNameFromHash,
   isContentRootHash,
-  isManagedHashHistoryState,
   markCurrentHashHistoryEntry,
   replaceHashWithoutNavigation,
   skillFileFromHash,
@@ -132,8 +131,14 @@ function knownTargetsSignature(
  *  path. Target resolution (asset / doc / folder-index / folder / missing)
  *  lives here plus resolveNavigationTarget. */
 function NavigationHandler() {
-  const { clearTarget, openTabs, syncOpenTabsWithKnownTargets, tabSessionLoaded } =
-    useDocumentContext();
+  const {
+    activeTabId,
+    activeTarget,
+    clearTarget,
+    openTabs,
+    syncOpenTabsWithKnownTargets,
+    tabSessionLoaded,
+  } = useDocumentContext();
   const { openTargetTransition } = useDocumentTransition();
   // Reconcile open skill tabs against the live skills list: an agent/MCP/server-
   // side scope move only broadcasts `files` (never retargets the client tab),
@@ -150,10 +155,6 @@ function NavigationHandler() {
     pagesByBasename,
   } = usePageList();
   const lastSyncedTargetsSignatureRef = useRef<string | null>(null);
-  // Same-tab navigation records hashes with pushState, which stays silent until
-  // history traversal. Pair popstate with its following hashchange so replay
-  // replaces the active tab instead of taking the hash handler's append path.
-  const historyTraversalUrlRef = useRef<string | null>(null);
   const targetsSignature = knownTargetsSignature(pages, folderPaths, assetPaths, filePaths);
 
   useEffect(
@@ -187,26 +188,23 @@ function NavigationHandler() {
   ]);
 
   useEffect(() => {
+    if (!tabSessionLoaded && window.okDesktop?.config.mode === 'editor') return;
     onHashChange();
 
-    function onPopState(event: PopStateEvent) {
-      historyTraversalUrlRef.current = isManagedHashHistoryState(event.state)
-        ? window.location.href
-        : null;
-    }
-
     function onHashChange() {
-      const isHistoryTraversal = historyTraversalUrlRef.current === window.location.href;
-      historyTraversalUrlRef.current = null;
-      // Chromium also emits popstate before hashchange for direct hash assignments.
-      // Mark entries after classifying them so only actual history traversal reuses the active tab.
       markCurrentHashHistoryEntry();
       const openHashTarget = (target: ResolvedNavigationTarget) => {
-        if (isHistoryTraversal) {
-          openTargetTransition(target, { tabBehavior: 'replace-active' });
+        if (
+          tabIdForNavigationTarget(target) === activeTabId &&
+          activeTarget?.kind === target.kind &&
+          activeTarget.target === target.target
+        ) {
           return;
         }
-        openTargetTransition(target);
+        openTargetTransition(target, {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        });
       };
 
       // Overlay-dialog hashes (settings, install) don't replace the
@@ -303,13 +301,13 @@ function NavigationHandler() {
       mark('ok/nav/hash-change', { docName, kind: target.kind });
       openHashTarget(target);
     }
-    window.addEventListener('popstate', onPopState);
     window.addEventListener('hashchange', onHashChange);
     return () => {
-      window.removeEventListener('popstate', onPopState);
       window.removeEventListener('hashchange', onHashChange);
     };
   }, [
+    activeTabId,
+    activeTarget,
     clearTarget,
     folderPaths,
     loading,
@@ -319,6 +317,7 @@ function NavigationHandler() {
     pages,
     pagesBySlug,
     pagesByBasename,
+    tabSessionLoaded,
   ]);
 
   return null;
@@ -519,14 +518,27 @@ function ConfigProviderHost({ children }: { children: ReactNode }) {
   );
 }
 
+function PreviewTabsSettingsBridge({ children }: { children: ReactNode }) {
+  const { merged } = useConfigContext();
+  const { promoteAllPreviewTabs } = useDocumentContext();
+
+  useEffect(() => {
+    if (merged?.editor?.previewTabs === false) promoteAllPreviewTabs();
+  }, [merged?.editor?.previewTabs, promoteAllPreviewTabs]);
+
+  return children;
+}
+
 export function App() {
   return (
     <ProfilerBoundary name="app">
       <DocumentProvider>
         <ConfigProviderHost>
-          <SingleFileModeProvider>
-            <AppBody />
-          </SingleFileModeProvider>
+          <PreviewTabsSettingsBridge>
+            <SingleFileModeProvider>
+              <AppBody />
+            </SingleFileModeProvider>
+          </PreviewTabsSettingsBridge>
         </ConfigProviderHost>
       </DocumentProvider>
     </ProfilerBoundary>

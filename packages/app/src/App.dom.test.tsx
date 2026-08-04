@@ -28,6 +28,7 @@ let openTabs: string[] = [];
 let loading = false;
 let singleFileMode = false;
 let tabSessionLoaded = true;
+let mergedConfig: { editor: { previewTabs: boolean } } | null = null;
 let fetchApiConfigMock = vi.fn(() =>
   Promise.resolve({
     status: 'ok' as const,
@@ -41,8 +42,12 @@ let fetchApiConfigMock = vi.fn(() =>
 );
 let clearTargetMock = vi.fn(() => {});
 let syncOpenTabsWithKnownTargetsMock = vi.fn(() => {});
+let promoteAllPreviewTabsMock = vi.fn(() => {});
 let openTargetTransitionMock = vi.fn(
-  (_: NavigationTarget, _options?: { tabBehavior?: 'append' | 'replace-active' }) => {},
+  (
+    _: NavigationTarget,
+    _options: { disposition: 'preview' | 'permanent'; consumeActiveNewTab: boolean },
+  ) => {},
 );
 let resolveNavigationTargetMock = vi.fn(
   (docName: string): NavigationTarget => ({ kind: 'doc', target: docName, docName }),
@@ -61,8 +66,15 @@ vi.doMock('@/editor/DocumentContext', () => ({
   ),
   useDocumentContext: () => ({
     activeDocName: activeTarget?.kind === 'doc' ? activeTarget.docName : null,
+    activeTabId:
+      activeTarget?.kind === 'doc'
+        ? activeTarget.docName
+        : activeTarget?.kind === 'missing'
+          ? activeTarget.target
+          : null,
     activeTarget,
     clearTarget: clearTargetMock,
+    promoteAllPreviewTabs: promoteAllPreviewTabsMock,
     syncOpenTabsWithKnownTargets: syncOpenTabsWithKnownTargetsMock,
     tabSessionLoaded,
     // The skill-tab reconciler reads these at render (no open skill tab here,
@@ -117,14 +129,14 @@ vi.doMock('@/lib/config-provider', () => ({
   ),
   // ValidationFreshness (mounted in the App body) gates on the merged config;
   // null merged reads as every default (indicators on).
-  useConfigContext: () => ({ merged: null }),
+  useConfigContext: () => ({ merged: mergedConfig }),
 }));
 
 // AppBody reads `merged.appearance.preview.autoOpen` to compose the
 // "Open in terminal" launch prompt; the ConfigProvider above is a passthrough
 // so the real context is never set. Stub the hook to the cold-start shape.
 vi.doMock('@/lib/config-context', () => ({
-  useConfigContext: () => ({ merged: null }),
+  useConfigContext: () => ({ merged: mergedConfig }),
 }));
 
 vi.doMock('@/lib/api-config', () => ({
@@ -267,6 +279,7 @@ function createBridge() {
     // to gate the terminal-launch provider (mac-only PTY). Mirror that shape so
     // the gate resolves instead of dereferencing undefined.
     config: {
+      mode: 'editor' as const,
       ptyAvailable: true,
     },
   };
@@ -304,6 +317,7 @@ describe('App runtime wiring', () => {
     loading = false;
     singleFileMode = false;
     tabSessionLoaded = true;
+    mergedConfig = null;
     fetchApiConfigMock = vi.fn(() =>
       Promise.resolve({
         status: 'ok' as const,
@@ -318,8 +332,12 @@ describe('App runtime wiring', () => {
     globalThis.fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))) as never;
     clearTargetMock = vi.fn(() => {});
     syncOpenTabsWithKnownTargetsMock = vi.fn(() => {});
+    promoteAllPreviewTabsMock = vi.fn(() => {});
     openTargetTransitionMock = vi.fn(
-      (_: NavigationTarget, _options?: { tabBehavior?: 'append' | 'replace-active' }) => {},
+      (
+        _: NavigationTarget,
+        _options: { disposition: 'preview' | 'permanent'; consumeActiveNewTab: boolean },
+      ) => {},
     );
     resolveNavigationTargetMock = vi.fn(
       (docName: string): NavigationTarget => ({ kind: 'doc', target: docName, docName }),
@@ -343,6 +361,23 @@ describe('App runtime wiring', () => {
     expect(screen.getByTestId('system-doc-subscriber')).not.toBeNull();
     expect(screen.getByTestId('file-sidebar')).not.toBeNull();
     expect(screen.getByTestId('editor-pane')).not.toBeNull();
+  });
+
+  test('promotes preview tabs when the setting changes from enabled to disabled', async () => {
+    mergedConfig = { editor: { previewTabs: true } };
+    const view = renderApp();
+
+    expect(promoteAllPreviewTabsMock).not.toHaveBeenCalled();
+
+    mergedConfig = { editor: { previewTabs: false } };
+    view.rerender(<App />);
+
+    await waitFor(() => {
+      expect(promoteAllPreviewTabsMock).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(<App />);
+    expect(promoteAllPreviewTabsMock).toHaveBeenCalledTimes(1);
   });
 
   test('passes tracked non-markdown files to tab reconciliation', async () => {
@@ -408,7 +443,10 @@ describe('App runtime wiring', () => {
 
     await waitFor(() => {
       expect(downgradeFolderIndexForHashNavMock).toHaveBeenCalledWith(resolved);
-      expect(openTargetTransitionMock).toHaveBeenCalledWith(downgraded);
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(downgraded, {
+        disposition: 'permanent',
+        consumeActiveNewTab: true,
+      });
     });
     expect(openTargetTransitionMock).not.toHaveBeenCalledWith(resolved);
   });
@@ -440,7 +478,10 @@ describe('App runtime wiring', () => {
     renderApp();
 
     await waitFor(() => {
-      expect(openTargetTransitionMock).toHaveBeenCalledWith(missing);
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(missing, {
+        disposition: 'permanent',
+        consumeActiveNewTab: true,
+      });
     });
   });
 
@@ -456,13 +497,73 @@ describe('App runtime wiring', () => {
     renderApp();
 
     await waitFor(() => {
-      expect(openTargetTransitionMock).toHaveBeenCalledWith({
-        kind: 'doc',
-        target: 'docs/guide.mdx',
-        docName: 'docs/guide.mdx',
-      });
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'docs/guide.mdx',
+          docName: 'docs/guide.mdx',
+        },
+        {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        },
+      );
     });
     expect(resolveNavigationTargetMock).not.toHaveBeenCalled();
+  });
+
+  test('does not reopen an already-active hash target after tab state changes', async () => {
+    activeTarget = { kind: 'doc', target: 'page-a', docName: 'page-a' };
+    setHash('#/page-a');
+
+    renderApp();
+
+    await Promise.resolve();
+    expect(openTargetTransitionMock).not.toHaveBeenCalled();
+  });
+
+  test('refreshes an active missing target after the page list resolves it', async () => {
+    activeTarget = { kind: 'missing', target: 'page-a' };
+    setHash('#/page-a');
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        { kind: 'doc', target: 'page-a', docName: 'page-a' },
+        {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        },
+      );
+    });
+  });
+
+  test('defers hash navigation until the persisted tab session has restored', async () => {
+    tabSessionLoaded = false;
+    setHash('#/.editorconfig');
+    const view = renderApp({ bridge: createBridge() });
+
+    await Promise.resolve();
+    expect(resolveNavigationTargetMock).not.toHaveBeenCalled();
+    expect(openTargetTransitionMock).not.toHaveBeenCalled();
+
+    tabSessionLoaded = true;
+    view.rerender(<App />);
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: '.editorconfig',
+          docName: '.editorconfig',
+        },
+        {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        },
+      );
+    });
   });
 
   test('navigation-history subscription cleans up before remount and invokes each action once', () => {
@@ -481,16 +582,22 @@ describe('App runtime wiring', () => {
     expect(forward).toHaveBeenCalledOnce();
   });
 
-  test('history traversal reuses the active tab across same-tab page navigation', async () => {
+  test('history traversal opens permanent canonical tabs', async () => {
     setHash('#/page-a');
     renderApp();
 
     await waitFor(() => {
-      expect(openTargetTransitionMock).toHaveBeenCalledWith({
-        kind: 'doc',
-        target: 'page-a',
-        docName: 'page-a',
-      });
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-a',
+          docName: 'page-a',
+        },
+        {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        },
+      );
     });
 
     // File-tree navigation opens in the active tab and records the URL with
@@ -509,7 +616,7 @@ describe('App runtime wiring', () => {
           target: 'page-b',
           docName: 'page-b',
         },
-        { tabBehavior: 'replace-active' },
+        { disposition: 'permanent', consumeActiveNewTab: true },
       );
     });
 
@@ -524,7 +631,7 @@ describe('App runtime wiring', () => {
           target: 'page-a',
           docName: 'page-a',
         },
-        { tabBehavior: 'replace-active' },
+        { disposition: 'permanent', consumeActiveNewTab: true },
       );
     });
 
@@ -539,7 +646,7 @@ describe('App runtime wiring', () => {
           target: 'page-b',
           docName: 'page-b',
         },
-        { tabBehavior: 'replace-active' },
+        { disposition: 'permanent', consumeActiveNewTab: true },
       );
     });
   });
@@ -549,11 +656,17 @@ describe('App runtime wiring', () => {
     renderApp();
 
     await waitFor(() => {
-      expect(openTargetTransitionMock).toHaveBeenCalledWith({
-        kind: 'doc',
-        target: 'page-a',
-        docName: 'page-a',
-      });
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-a',
+          docName: 'page-a',
+        },
+        {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        },
+      );
     });
 
     openTargetTransitionMock.mockClear();
@@ -562,20 +675,18 @@ describe('App runtime wiring', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
 
     await waitFor(() => {
-      expect(openTargetTransitionMock).toHaveBeenCalledWith({
-        kind: 'doc',
-        target: 'page-b',
-        docName: 'page-b',
-      });
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-b',
+          docName: 'page-b',
+        },
+        {
+          disposition: 'permanent',
+          consumeActiveNewTab: true,
+        },
+      );
     });
-    expect(openTargetTransitionMock).not.toHaveBeenCalledWith(
-      {
-        kind: 'doc',
-        target: 'page-b',
-        docName: 'page-b',
-      },
-      { tabBehavior: 'replace-active' },
-    );
   });
 
   test('active doc and folder targets are pushed to the desktop bridge', async () => {

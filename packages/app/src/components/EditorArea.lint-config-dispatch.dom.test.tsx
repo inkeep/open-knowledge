@@ -67,6 +67,22 @@ vi.doMock('@/components/EmptyEditorState', () => ({
 vi.doMock('./TerminalDock', () => ({
   TerminalDock: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
+vi.doMock('./EditorWorkspace', () => ({
+  EditorWorkspace: ({
+    renderPane,
+  }: {
+    renderPane: (context: {
+      pane: { id: string };
+      isFocused: boolean;
+      activityDocName: string | null;
+    }) => ReactNode;
+  }) =>
+    renderPane({
+      pane: { id: 'pane-test' },
+      isFocused: true,
+      activityDocName: null,
+    }),
+}));
 vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({ current: { collapse: () => {}, expand: () => {} } }),
   useGroupRef: () => ({ current: { getLayout: () => [], setLayout: () => {} } }),

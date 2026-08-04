@@ -136,6 +136,29 @@ vi.doMock('./TerminalDock', () => ({
   },
 }));
 
+vi.doMock('./EditorWorkspace', () => ({
+  EditorWorkspace: ({
+    renderHeader,
+    renderPane,
+  }: {
+    renderHeader: (tabs: ReactNode) => ReactNode;
+    renderPane: (context: {
+      pane: { id: string };
+      isFocused: boolean;
+      activityDocName: string | null;
+    }) => ReactNode;
+  }) => (
+    <>
+      {renderHeader(<div data-testid="workspace-tabs" />)}
+      {renderPane({
+        pane: { id: 'pane-test' },
+        isFocused: true,
+        activityDocName: null,
+      })}
+    </>
+  ),
+}));
+
 // Spy substrate for the group-level layout assert (assertRightRailLayout).
 // `groupLayout` is what the group "currently" holds (the assert derives the
 // panel-ID set from it); `groupSetLayoutCalls` records every corrective write.
@@ -511,12 +534,27 @@ describe('EditorArea session-panel edge reveal tabs', () => {
 
   test('the agents tab is up while the panel is hidden, even with no conversations', () => {
     renderArea({ agentsVisible: false });
-    expect(screen.getByRole('button', { name: 'Open agents panel' })).toBeTruthy();
+    const reveal = screen.getByRole('button', { name: 'Open agents panel' });
+    const header = document.querySelector('[data-editor-area-header]');
+    const panels = document.querySelector('[data-editor-area-panels]');
+
+    expect(header).toBeTruthy();
+    expect(panels).toBeTruthy();
+    expect(header?.contains(screen.getByTestId('workspace-tabs'))).toBe(true);
+    expect(panels?.contains(reveal)).toBe(true);
+    expect(header?.contains(reveal)).toBe(false);
   });
 
   test('the agents tab goes away once the panel is open', () => {
     renderArea({ agentsVisible: true });
     expect(screen.queryByRole('button', { name: 'Open agents panel' })).toBeNull();
+    const header = document.querySelector('[data-editor-area-header]');
+    const panels = document.querySelector('[data-editor-area-panels]');
+    const agentMount = document.querySelector('[data-agents-panel-mount]');
+
+    expect(header).toBeTruthy();
+    expect(panels?.contains(agentMount)).toBe(true);
+    expect(header?.contains(agentMount)).toBe(false);
   });
 });
 

@@ -26,6 +26,12 @@ export function serializeSidebarDragPayload(payload: SidebarDragPayload): string
   return JSON.stringify(payload);
 }
 
+export function hasSidebarDragType(
+  dataTransfer: Pick<DataTransfer, 'types'> | null | undefined,
+): boolean {
+  return dataTransfer ? Array.from(dataTransfer.types).includes(OK_SIDEBAR_DRAG_MIME) : false;
+}
+
 export function navigationForSidebarDragPayload(payload: SidebarDragPayload): {
   target: ResolvedNavigationTarget;
   hash: string;
@@ -60,9 +66,7 @@ export function navigationForSidebarDragPayload(payload: SidebarDragPayload): {
 export function parseSidebarDragPayload(
   dataTransfer: Pick<DataTransfer, 'types' | 'getData'> | null | undefined,
 ): SidebarDragPayload | null {
-  if (!dataTransfer) return null;
-  const types = Array.from(dataTransfer.types);
-  if (!types.includes(OK_SIDEBAR_DRAG_MIME)) return null;
+  if (!dataTransfer || !hasSidebarDragType(dataTransfer)) return null;
 
   const raw = dataTransfer.getData(OK_SIDEBAR_DRAG_MIME);
   if (!raw) return null;

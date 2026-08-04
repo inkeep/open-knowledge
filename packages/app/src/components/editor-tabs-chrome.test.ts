@@ -3,13 +3,17 @@ import { describe, expect, test } from 'vitest';
 import {
   createTabReorderModifier,
   DRAGGING_TAB_Z_INDEX,
+  editorWorkspaceCollisionDetection,
   getSortableTabClassName,
   getSortableTabKeyDownAction,
   getSortableTabStyle,
   getTabCloseButtonClass,
   getTabCloseButtonTabIndex,
+  isEditorTabDragData,
+  isEditorTabDropData,
   measureTabReorderBounds,
   shouldActivateSortableTabFromKeyDown,
+  shouldOpenTabContextMenu,
   TAB_KEYBOARD_DRAG_CODES,
   TAB_REORDER_AUTO_SCROLL,
   type TabReorderBounds,
@@ -100,6 +104,81 @@ function collisionArgs(pointerX: number): CollisionArgs {
   };
 }
 
+function workspaceCollisionArgs({
+  dragRect = rect(100, 40),
+  includeStrip = false,
+  pointerCoordinates = { x: 24, y: 10 },
+  splittable = true,
+}: {
+  dragRect?: ReturnType<typeof rect>;
+  includeStrip?: boolean;
+  pointerCoordinates?: { x: number; y: number } | null;
+  splittable?: boolean;
+} = {}): CollisionArgs {
+  const edge = {
+    data: {
+      current: { kind: 'pane-edge', paneId: 'pane-b', side: 'left' },
+    },
+    disabled: false,
+    id: 'pane-b-left',
+    key: 'pane-b-left',
+    node: { current: null },
+    rect: { current: null },
+  };
+  const tab = {
+    data: {
+      current: {
+        kind: 'editor-tab',
+        label: 'B',
+        paneId: 'pane-b',
+        splittable: true,
+        tabId: 'doc-b',
+      },
+    },
+    disabled: false,
+    id: 'doc-b',
+    key: 'doc-b',
+    node: { current: null },
+    rect: { current: null },
+  };
+  const strip = {
+    data: {
+      current: { kind: 'pane-strip', paneId: 'pane-b', index: 1 },
+    },
+    disabled: false,
+    id: 'pane-b-strip',
+    key: 'pane-b-strip',
+    node: { current: null },
+    rect: { current: null },
+  };
+  const droppableContainers = includeStrip ? [edge, strip, tab] : [edge, tab];
+  const droppableRects = new Map([
+    [edge.id, rect(0, 48)],
+    [tab.id, rect(100, 40)],
+  ]);
+  if (includeStrip) droppableRects.set(strip.id, rect(80, 240));
+
+  return {
+    active: {
+      data: {
+        current: {
+          kind: 'editor-tab',
+          label: 'A',
+          paneId: 'pane-a',
+          splittable,
+          tabId: 'doc-a',
+        },
+      },
+      id: 'doc-a',
+      rect: { current: { initial: null, translated: null } },
+    },
+    collisionRect: dragRect,
+    droppableContainers,
+    droppableRects,
+    pointerCoordinates,
+  };
+}
+
 function sortableTabKeyDownEvent(
   code: KeyboardCode,
   targetIsCurrentTarget = true,
@@ -139,15 +218,20 @@ function sortableTabKeyDownActionArgs({
 }
 
 describe('editor tab chrome helpers', () => {
-  test('inactive close controls are hover-only and skipped by tab navigation', () => {
+  test('inactive close controls remain hover-only', () => {
     const className = getTabCloseButtonClass(false);
 
     expect(className).toContain('opacity-0');
     expect(className).toContain('pointer-events-none');
     expect(className).toContain('group-hover:opacity-100');
     expect(className).toContain('group-hover:pointer-events-auto');
+    expect(className).toContain('absolute');
+    expect(className).toContain('right-1');
+    expect(className).not.toContain('bg-background/80');
+    expect(className).not.toContain('backdrop-blur-sm');
     expect(className).not.toContain('group-focus-within:opacity-100');
     expect(className).not.toContain('focus-visible:opacity-100');
+    expect(className).not.toContain('transition');
     expect(getTabCloseButtonTabIndex(false)).toBe(-1);
   });
 
@@ -155,6 +239,8 @@ describe('editor tab chrome helpers', () => {
     const className = getTabCloseButtonClass(true);
 
     expect(className).toContain('opacity-100');
+    expect(className).toContain('mr-1');
+    expect(className).not.toContain('absolute');
     expect(className).not.toContain('opacity-0');
     expect(getTabCloseButtonTabIndex(true)).toBeUndefined();
   });
@@ -204,6 +290,12 @@ describe('editor tab chrome helpers', () => {
     expect(
       shouldActivateSortableTabFromKeyDown(sortableTabKeyDownEvent(KeyboardCode.Enter, false)),
     ).toBe(false);
+  });
+
+  test('tab context menu recognizes both standard keyboard gestures', () => {
+    expect(shouldOpenTabContextMenu({ key: 'F10', shiftKey: true })).toBe(true);
+    expect(shouldOpenTabContextMenu({ key: 'ContextMenu', shiftKey: false })).toBe(true);
+    expect(shouldOpenTabContextMenu({ key: 'F10', shiftKey: false })).toBe(false);
   });
 
   test('sortable tab keydown action activates Enter only before dragging starts', () => {
@@ -271,6 +363,18 @@ describe('editor tab chrome helpers', () => {
     expect(style.maxWidth).toBe(144);
     expect(style.flexBasis).toBe(144);
     expect(style.transform).toBe('translate3d(12px, 8px, 0) scaleX(1) scaleY(1)');
+  });
+
+  test('static tab reorder feedback suppresses movement and transform transitions', () => {
+    const style = getSortableTabStyle({
+      disableMovement: true,
+      isDragging: true,
+      transform: { scaleX: 1, scaleY: 1, x: 48, y: 0 },
+      transition: 'transform 200ms ease',
+    });
+
+    expect(style.transform).toBeUndefined();
+    expect(style.transition).toBeUndefined();
   });
 
   test('non-dragged tab style preserves caller stacking', () => {
@@ -344,5 +448,106 @@ describe('editor tab chrome helpers', () => {
 
     expect(collisions.length).toBeGreaterThan(0);
     expect(collisions[0]?.id).toBe('tab-a');
+  });
+
+  test('workspace collision detection gives a pointer-hit pane edge priority', () => {
+    expect(editorWorkspaceCollisionDetection(workspaceCollisionArgs())[0]?.id).toBe('pane-b-left');
+  });
+
+  test('workspace collision detection excludes pane edges for blank tabs and keyboard drags', () => {
+    expect(
+      editorWorkspaceCollisionDetection(
+        workspaceCollisionArgs({
+          pointerCoordinates: { x: 120, y: 10 },
+          splittable: false,
+        }),
+      )[0]?.id,
+    ).toBe('doc-b');
+    expect(
+      editorWorkspaceCollisionDetection(workspaceCollisionArgs({ pointerCoordinates: null }))[0]
+        ?.id,
+    ).toBe('doc-b');
+  });
+
+  test('workspace collision detection prefers a pointer-hit tab over its overlapping strip', () => {
+    expect(
+      editorWorkspaceCollisionDetection(
+        workspaceCollisionArgs({
+          includeStrip: true,
+          pointerCoordinates: { x: 120, y: 10 },
+          splittable: false,
+        }),
+      )[0]?.id,
+    ).toBe('doc-b');
+  });
+
+  test('workspace collision detection keeps the strip target for blank tab-row space', () => {
+    expect(
+      editorWorkspaceCollisionDetection(
+        workspaceCollisionArgs({
+          includeStrip: true,
+          pointerCoordinates: { x: 250, y: 10 },
+          splittable: false,
+        }),
+      )[0]?.id,
+    ).toBe('pane-b-strip');
+  });
+
+  test('workspace collision detection keeps tab feedback while the dragged tab overlaps the strip', () => {
+    expect(
+      editorWorkspaceCollisionDetection(
+        workspaceCollisionArgs({
+          dragRect: rect(100, 40, 15, 40),
+          includeStrip: true,
+          pointerCoordinates: { x: 140, y: 80 },
+        }),
+      )[0]?.id,
+    ).toBe('doc-b');
+  });
+
+  test('workspace collision detection ignores drags fully outside strips and split edges', () => {
+    expect(
+      editorWorkspaceCollisionDetection(
+        workspaceCollisionArgs({
+          dragRect: rect(100, 40, 80, 40),
+          includeStrip: true,
+          pointerCoordinates: { x: 140, y: 80 },
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  test('workspace drag and drop guards reject incomplete payloads', () => {
+    expect(
+      isEditorTabDragData({
+        kind: 'editor-tab',
+        label: 'A',
+        paneId: 'pane-a',
+        splittable: true,
+        tabId: 'doc-a',
+      }),
+    ).toBe(true);
+    expect(
+      isEditorTabDragData({
+        kind: 'editor-tab',
+        paneId: 'pane-a',
+        splittable: true,
+        tabId: 'doc-a',
+      }),
+    ).toBe(false);
+    expect(
+      isEditorTabDropData({
+        kind: 'pane-edge',
+        paneId: 'pane-a',
+        side: 'right',
+      }),
+    ).toBe(true);
+    expect(
+      isEditorTabDropData({
+        kind: 'pane-strip',
+        index: 1.5,
+        paneId: 'pane-a',
+      }),
+    ).toBe(false);
   });
 });

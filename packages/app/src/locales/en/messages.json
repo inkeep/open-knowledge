@@ -210,6 +210,7 @@
     "38foVZ": ["Loading diff"],
     "3BLniE": ["Configuration problems"],
     "3BnyYc": ["This doc isn't on GitHub yet. The link won't work until it's pushed."],
+    "3C2nIJ": ["Moved ", ["label"], " to a new pane on the left."],
     "3DJEEt": [
       ["sizeText"],
       " · secrets redacted · ",
@@ -262,6 +263,7 @@
     "3l_knd": ["Press the sun or moon on “Custom” above to use this scheme."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
+    "3nnyi_": [["0", "plural", { "one": ["Delete"], "other": ["Delete ", "#", " items"] }]],
     "3o3tur": ["Starter content"],
     "3oEK1e": ["Resuming the conversation"],
     "3oh0nQ": ["Nested .okignore error in ", ["path"]],
@@ -598,6 +600,7 @@
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
     "9HKBNN": ["commands"],
+    "9Ii3uK": ["a new pane to the left of ", ["0"]],
     "9J8xNg": ["Imported ", ["importedLabel"]],
     "9KooKn": ["Run a project audit from the Problems panel."],
     "9NJWgv": ["Backlinks"],
@@ -874,7 +877,6 @@
     "Dut9Ht": ["Describe the skill you want to create"],
     "Dvr1Sg": ["Copying"],
     "Dvwa0U": ["Create a worktree from this branch"],
-    "Dw1T_W": ["Rename ", ["label"]],
     "Dz7fsq": ["Zoom In"],
     "E1Da_b": [
       "This permanently removes ",
@@ -1024,7 +1026,6 @@
     "Fr8JGg": ["Zip file"],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
-    "FvpFSZ": ["Reveal in Finder, ", ["hint"]],
     "Fxf4jq": ["Description (optional)"],
     "Fy4GgU": [
       "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
@@ -1049,6 +1050,7 @@
     "GBQjiV": ["Add skill"],
     "GDvlUT": ["Role"],
     "GGsM4y": ["Selected in graph"],
+    "GH02QY": ["Keep open"],
     "GHsJb8": ["Show .ok folders"],
     "GJH-AT": [
       ["docName"],
@@ -1073,14 +1075,19 @@
     "G_hVTP": ["Enable Themes"],
     "G_mWXb": ["Filter languages"],
     "GamjcN": ["Template saved"],
+    "GceAYf": ["Moved ", ["label"], " to a new pane on the right."],
     "GemPfn": ["Failed to parse forward-links error response (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
     "GidGkh": ["Update from source"],
     "GkYV_4": ["Renamed ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Local path"],
+    "GrBgX_": [
+      "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
+    ],
     "GsBUCk": ["Loading settings"],
     "Gt4gOO": ["This folder has unpushed changes. Recipients will see the last pushed version."],
+    "Gu9pRm": [["0"], " was not moved."],
     "GuLeuE": [
       "Search matches file names, paths, and folders. Open a file to search its body <0>",
       ["0"],
@@ -1219,6 +1226,7 @@
     "JkCD2u": ["Sync paused — you don't have permission to push to this repo"],
     "JlFcis": ["Send"],
     "JmfgFc": ["(a worktree of ", ["0"], ")"],
+    "Jnz9AY": [["0"], " is over ", ["destination"], "."],
     "Jqqevv": ["System error"],
     "JsY1p5": ["Denied"],
     "JtD-Br": ["Page link"],
@@ -1401,7 +1409,6 @@
       "A symlink is a pointer to the source folder rather than a folder of its own. Every location reads the exact same bytes, so nothing can drift, and a location stops working if the source is deleted."
     ],
     "MTs6g3": ["Couldn't reconnect after server restart"],
-    "MUBR8r": ["Rename succeeded but the tabstrip may be out of date — refresh to resync"],
     "MUrVEo": ["No recent projects."],
     "MV-Dkb": ["Found ", ["countDisplay"], " markdown files"],
     "MVxpbf": ["Find and replace"],
@@ -1558,7 +1565,6 @@
     "P47EWZ": ["Could not update sidebar settings"],
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
-    "P8yDjG": ["Name can’t be empty, \".\", \"..\", or contain / or \\"],
     "PB4upl": ["Find previous match"],
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
@@ -1831,6 +1837,7 @@
     "UPWItY": ["A folder containing SKILL.md."],
     "UPjaXD": ["Couldn't duplicate \"", ["0"], "\": ", ["1"]],
     "UQAp48": ["Search templates"],
+    "URN-cv": ["Cancelled moving ", ["0"], "."],
     "URmyfc": ["Details"],
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
@@ -2199,6 +2206,7 @@
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
     "_Pmhxt": ["… earlier output trimmed"],
+    "_PnPuw": ["Picked up ", ["0"], " from ", ["1"], "."],
     "_QwkMu": ["No matching paths"],
     "_RcqUM": [
       "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
@@ -2469,9 +2477,6 @@
     "dbhUX1": ["Hide this file"],
     "dbtjJh": ["(opens in new tab)"],
     "djc1l9": ["More than ", ["0"], " requests were blocked by the preview's security policy"],
-    "djjdjr": [
-      ["deleteCount", "plural", { "one": ["Delete"], "other": ["Delete ", "#", " items"] }]
-    ],
     "dprWmL": ["Anchor in this page"],
     "dr1vFs": ["Replace all matches"],
     "drzzZw": ["Preview tabs"],
@@ -2569,6 +2574,7 @@
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
+    "fo6CCk": ["pane ", ["0"]],
     "fqSfXY": ["Replace"],
     "fru3T7": ["Could not fix ", ["0"], " of ", ["1"], " files."],
     "ft-BOm": ["Report a bug…"],
@@ -2635,6 +2641,7 @@
     "gmJ0An": ["Failed to open folder."],
     "goO4Ll": ["Editor status bar"],
     "gp3I7-": ["Before syncing, set your identity for git commits:"],
+    "gqk-3R": ["Moved ", ["0"], " to ", ["destination"], "."],
     "gtEbeW": ["Highlight"],
     "gtGQ9S": ["Start ", ["agentName"], ", ", ["hint"]],
     "gv5w9J": ["owner/repo, a git URL, or a local path"],
@@ -2818,6 +2825,7 @@
     "j_Z6g7": ["Shared default"],
     "jbSG8V": ["Show Files (", ["sidebarShortcutLabel"], ")"],
     "jdGUeI": ["Couldn't create template: ", ["error"]],
+    "jeCFV7": ["Move to new pane right"],
     "jeJexw": ["Couldn't finish installing ", ["0"], " — see below."],
     "jerqF0": ["Loading branch state"],
     "jhtG3I": [" Your selection has been restored."],
@@ -2827,6 +2835,7 @@
     ],
     "jng7Ko": ["conflict"],
     "jol95m": ["Failed to open Project Navigator."],
+    "jp6I-2": ["a new pane to the right of ", ["0"]],
     "jpctdh": ["View"],
     "jpoCue": [".myteam/skills"],
     "jqe7Yq": [
@@ -3080,6 +3089,7 @@
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxGJVE": ["Switch worktree…"],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
+    "n2XqGH": ["editor pane"],
     "n2lRue": ["Commit or stash changes to switch:"],
     "n3T3EE": ["Installed in ", ["label"], " — click to remove"],
     "n3wx1q": ["Restore to this version?"],
@@ -3160,7 +3170,6 @@
     "o0bHtA": ["By OpenKnowledge"],
     "o2yoFu": ["Reveal in Finder, No workspace"],
     "o49mDZ": ["Loading timeline history"],
-    "o4dcAf": ["Reveal in File Explorer, ", ["hint"]],
     "o5jB-D": ["Collapse panel"],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Auto-update from source"],
@@ -3223,6 +3232,7 @@
     "p9sdCy": ["New ignore pattern"],
     "pAgkuZ": ["Reopening \"", ["docName"], "\" with a fresh local collaboration cache."],
     "pBROkv": ["Thanks for subscribing. Watch your inbox for product updates."],
+    "pCralD": ["Move to new pane left"],
     "pEQFsW": ["No matching projects."],
     "pFPzHA": ["Emoji picker"],
     "pFRz_E": ["Leave these comments out of this message"],
@@ -3819,7 +3829,6 @@
     "zLak8b": ["Activate new tab"],
     "zO-IiA": ["The terminal isn't available here — the comments are still waiting to send."],
     "zQBg2C": ["Move the current block up or down one position."],
-    "zUhPuR": ["Open containing folder, ", ["hint"]],
     "zXj1rA": ["Search by meaning"],
     "zYp8Sr": [
       "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."

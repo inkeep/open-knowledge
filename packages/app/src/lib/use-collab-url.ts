@@ -94,6 +94,17 @@ interface CollabPollState {
   lastError: CollabUrlError | null;
 }
 
+export function initialCollabUrlState(config: OkDesktopConfig | undefined): CollabPollState {
+  return config
+    ? electronStateFromConfig(config)
+    : {
+        collabUrl: null,
+        attempts: 0,
+        terminal: false,
+        lastError: null,
+      };
+}
+
 interface CollabPollHandle {
   /** Stop the loop and abort any in-flight fetch. Safe to call multiple times. */
   cancel: () => void;
@@ -214,12 +225,11 @@ interface LoopState {
 export function useCollabUrl(): UseCollabUrlState {
   const [state, setState] = useState<
     Pick<UseCollabUrlState, 'collabUrl' | 'attempts' | 'terminal' | 'lastError'>
-  >({
-    collabUrl: null,
-    attempts: 0,
-    terminal: false,
-    lastError: null,
-  });
+  >(() =>
+    initialCollabUrlState(
+      tryElectronBridge(typeof window === 'undefined' ? undefined : window)?.config,
+    ),
+  );
   // Bump on manual retry to invalidate any in-flight loop state. Stored in a
   // ref because we don't want a bump to trigger a re-render on its own — the
   // effect reacts via a separate `retrySignal` state.

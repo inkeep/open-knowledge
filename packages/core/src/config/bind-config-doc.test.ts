@@ -49,6 +49,7 @@ describe('bindConfigDoc — current()', () => {
     expect(config.content).toBeDefined();
     expect(config.appearance).toBeDefined();
     expect(config.editor?.wordWrap).toBe(true);
+    expect(config.editor?.previewTabs).toBe(true);
     binding.dispose();
   });
 
@@ -121,6 +122,21 @@ describe('bindConfigDoc — patch()', () => {
     const ytext = doc.getText('source').toString();
     expect(ytext).toContain('editor:');
     expect(ytext).toContain('wordWrap: false');
+    binding.dispose();
+  });
+
+  test('writes editor.previewTabs to empty Y.Text + returns effective config', () => {
+    const binding = bindConfigDoc(provider, 'user');
+    const result = binding.patch({ editor: { previewTabs: false } });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.appliedPaths).toEqual(['editor.previewTabs']);
+    expect(result.effective.editor?.previewTabs).toBe(false);
+
+    const ytext = doc.getText('source').toString();
+    expect(ytext).toContain('editor:');
+    expect(ytext).toContain('previewTabs: false');
     binding.dispose();
   });
 

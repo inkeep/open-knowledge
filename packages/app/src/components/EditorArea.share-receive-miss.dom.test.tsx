@@ -54,6 +54,38 @@ vi.doMock('@/components/EmptyEditorState', () => ({
 vi.doMock('./TerminalDock', () => ({
   TerminalDock: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
+vi.doMock('./EditorWorkspace', () => ({
+  EditorWorkspace: ({
+    renderActivityPool,
+    renderPane,
+  }: {
+    renderActivityPool?: (bindings: {
+      activityHosts: ReadonlyMap<string, HTMLElement>;
+      parkingHost: HTMLElement | null;
+      visibleDocNames: ReadonlySet<string>;
+    }) => ReactNode;
+    renderPane: (context: {
+      pane: { id: string };
+      isFocused: boolean;
+      activityDocName: string | null;
+      activityMount: ReactNode;
+    }) => ReactNode;
+  }) => (
+    <>
+      {renderPane({
+        pane: { id: 'pane-test' },
+        isFocused: true,
+        activityDocName: docCtx.activeDocName,
+        activityMount: <div data-testid="activity-mount" />,
+      })}
+      {renderActivityPool?.({
+        activityHosts: new Map(),
+        parkingHost: document.body,
+        visibleDocNames: new Set([docCtx.activeDocName]),
+      })}
+    </>
+  ),
+}));
 vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({ current: { collapse: () => {}, expand: () => {} } }),
   // EditorArea imports `useGroupRef` alongside `usePanelRef`; the mock must

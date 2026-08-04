@@ -468,7 +468,7 @@ describe('FileTree showAll lazy root seed', () => {
           assetPath: 'LICENSE',
           mediaKind: null,
         },
-        { tabBehavior: 'replace-active' },
+        { disposition: 'preview', consumeActiveNewTab: true },
       ),
     );
     expect(window.location.hash).toBe('#/__asset__/LICENSE');
@@ -518,7 +518,7 @@ describe('FileTree showAll lazy root seed', () => {
           target: 'README',
           docName: 'README',
         },
-        { tabBehavior: 'replace-active' },
+        { disposition: 'preview', consumeActiveNewTab: true },
       ),
     );
     expect(window.location.hash).toBe('#/README');
@@ -547,7 +547,7 @@ describe('FileTree showAll lazy root seed', () => {
           target: 'README',
           docName: 'README',
         },
-        { tabBehavior: 'append' },
+        { disposition: 'permanent', consumeActiveNewTab: true },
       ),
     );
     window.location.hash = '';
@@ -575,7 +575,7 @@ describe('FileTree showAll lazy root seed', () => {
           target: 'docs',
           folderPath: 'docs',
         },
-        { tabBehavior: 'replace-active' },
+        { disposition: 'preview', consumeActiveNewTab: true },
       ),
     );
     expect(window.location.hash).toBe('#/docs/');

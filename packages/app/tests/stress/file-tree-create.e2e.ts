@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
+import type { EditorTabSessionState } from '../../src/editor/editor-tabs';
 import {
   type ApiHelpers,
   createFileViaSidebar,
@@ -197,12 +198,7 @@ async function gotoRootAndAwaitSidebar(page: Page): Promise<void> {
 async function installDelayedDesktopSessionBridge(
   page: Page,
   workerServer: { baseURL: string; port: number; contentDir: string },
-  initialSession: {
-    openTabs: string[];
-    pinnedTabIds: string[];
-    activeDocName: string | null;
-    activeTabId: string | null;
-  },
+  initialSession: Omit<EditorTabSessionState, 'updatedAt'>,
 ): Promise<void> {
   await page.addInitScript(
     ({ baseURL, contentDir, initialSession, port }) => {
@@ -380,10 +376,17 @@ test.describe('FileTree sidebar create', () => {
     workerServer,
   }) => {
     await installDelayedDesktopSessionBridge(page, workerServer, {
-      openTabs: ['test-doc', 'sidebar-folder/nested-doc'],
-      pinnedTabIds: [],
-      activeDocName: 'sidebar-folder/nested-doc',
-      activeTabId: 'sidebar-folder/nested-doc',
+      panes: [
+        {
+          id: 'pane-main',
+          openTabs: ['test-doc', 'sidebar-folder/nested-doc'],
+          pinnedTabIds: [],
+          activeTabId: 'sidebar-folder/nested-doc',
+          size: 100,
+        },
+      ],
+      focusedPaneId: 'pane-main',
+      activeTabByMode: { files: 'sidebar-folder/nested-doc', skills: null },
     });
 
     await page.goto('/#/test-doc');
@@ -702,14 +705,12 @@ test.describe('FileTree sidebar create', () => {
       for (const folderName of folderNames.slice(0, 2)) {
         await sidebarTreeItem(page, folderName).click();
         await expect(sidebarTreeItem(page, folderName)).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole('button', { name: `${folderName}/`, exact: true })).toBeVisible(
-          { timeout: 10_000 },
-        );
+        const folderTab = page.getByRole('button', { name: `${folderName}/`, exact: true });
+        await expect(folderTab).toBeVisible({ timeout: 10_000 });
+        await folderTab.dblclick();
       }
 
-      await page.evaluate(() => {
-        window.location.hash = '#/';
-      });
+      await gotoRootAndAwaitSidebar(page);
       await commitDefaultFolderCreate(page, 'New Folder');
 
       await selectAllSidebarItems(page, 'New Folder');
@@ -854,12 +855,9 @@ test.describe('FileTree sidebar create', () => {
       // `navigateToFolderWithPulse`), so `activeTarget.kind === 'folder'`
       // and the sidebar's New File button would create inside it.
       // This test needs the file as a ROOT SIBLING of the folder (same
-      // basename, different kinds), so reset the URL hash to the workspace
-      // root before clicking New File.
-      await page.evaluate(() => {
-        window.location.hash = '#/';
-      });
-      await expect(page).toHaveURL(/#\/$/);
+      // basename, different kinds), so fully navigate to the workspace root
+      // before clicking New File.
+      await gotoRootAndAwaitSidebar(page);
       await createFileViaSidebar(page, name);
       const fileItem = await visibleSidebarItemByPath(page, `${name}.md`);
       await expect(editorTabButton(page, `${name}/`).first()).toBeVisible();

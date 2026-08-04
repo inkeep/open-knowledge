@@ -157,7 +157,9 @@ vi.doMock('@/editor/use-editor-mode', () => ({
 }));
 
 vi.doMock('./EditorHeader', () => ({
-  EditorHeader: () => <div data-testid="editor-header" />,
+  EditorHeader: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="editor-header">{children}</div>
+  ),
 }));
 
 // EditorArea renders the layout shells + reports both panels' placements up; the
@@ -167,7 +169,15 @@ vi.doMock('./EditorHeader', () => ({
 // surfaces the threaded `surface` + `visible` + `launch` props so these tests keep
 // asserting EditorPane's wiring across the prop boundary.
 vi.doMock('./EditorArea', () => ({
-  EditorArea: () => <div data-testid="editor-area" />,
+  EditorArea: ({
+    renderWorkspaceHeader,
+  }: {
+    renderWorkspaceHeader?: (tabs: ReactNode) => ReactNode;
+  }) => (
+    <div data-testid="editor-area">
+      {renderWorkspaceHeader?.(<div data-testid="workspace-tabs" />)}
+    </div>
+  ),
 }));
 // The agent-thread client binder opens a WS + polls /api/config on mount; stub it
 // so these EditorPane tests exercise terminal/onboarding wiring in isolation.
@@ -495,6 +505,9 @@ describe('EditorPane session-panel wiring', () => {
     expect(agents.getAttribute('data-terminal-capable')).toBe('false');
     expect(screen.queryByTestId('terminal-dock')).toBeNull();
     expect(screen.getByTestId('editor-header')).toBeTruthy();
+    expect(screen.getByTestId('editor-header').contains(screen.getByTestId('workspace-tabs'))).toBe(
+      true,
+    );
     expect(screen.getByTestId('editor-area')).toBeTruthy();
   });
 

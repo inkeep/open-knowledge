@@ -1,6 +1,7 @@
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
+  hasSidebarDragType,
   navigationForSidebarDragPayload,
   OK_SIDEBAR_DRAG_MIME,
   parseSidebarDragPayload,
@@ -16,6 +17,16 @@ function dataTransfer(data: Record<string, string>) {
 }
 
 describe('sidebar drag payload', () => {
+  test('recognizes sidebar drags from the MIME type before payload bytes are readable', () => {
+    expect(
+      hasSidebarDragType({
+        types: [OK_SIDEBAR_DRAG_MIME],
+      }),
+    ).toBe(true);
+    expect(hasSidebarDragType({ types: ['text/plain'] })).toBe(false);
+    expect(hasSidebarDragType(null)).toBe(false);
+  });
+
   test('round-trips doc, folder, and asset payloads', () => {
     const payloads: SidebarDragPayload[] = [
       { v: 1, kind: 'doc', docName: 'notes/Intro', size: null },

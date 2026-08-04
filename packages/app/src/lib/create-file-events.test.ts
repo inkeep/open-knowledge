@@ -109,6 +109,17 @@ describe('create-file event bridge', () => {
     expect(received[0]?.initialDir).toBe('meetings');
   });
 
+  test('folder creation requests preserve their item kind', () => {
+    installFakeWindow();
+    const received: Array<{ initialDir?: string; kind?: 'file' | 'folder' }> = [];
+    const off = subscribeToCreateTopLevelFile((request) => received.push(request));
+
+    emitCreateTopLevelFile({ initialDir: 'reports', kind: 'folder' });
+    off();
+
+    expect(received).toEqual([{ initialDir: 'reports', kind: 'folder' }]);
+  });
+
   test('template payload is forwarded verbatim (folder + name)', () => {
     installFakeWindow();
     const received: Array<{ template?: { folder: string; name: string } }> = [];

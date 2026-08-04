@@ -87,6 +87,15 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.editor?.wordWrap).toBe(false);
   });
 
+  test("scope: 'user' (editor.previewTabs) returns user preference even when other layers differ", () => {
+    const user = makeConfig({ editor: { previewTabs: false } });
+    const project = makeConfig({ editor: { previewTabs: true } });
+    const projectLocal = makeConfig({ editor: { previewTabs: true } });
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.editor?.previewTabs).toBe(false);
+  });
+
   test("scope: 'project' (content.dir) returns project, ignoring project-local", () => {
     // `content.dir` is a `scope: 'project'` leaf. The project-over-project-local
     // short-circuit applies — pinning here so the scope: 'project'

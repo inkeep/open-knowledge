@@ -510,6 +510,7 @@ describe('preview_url tool — file branch (out-of-project)', () => {
       offCwdResolverDeps: mockOffCwdDeps([
         { contentDir: '/loose', baseUrl: 'http://localhost:6001' },
       ]),
+      resolveUserAutoOpen: () => true,
     });
     const result = await handler({ file: '/loose/notes.md' });
     expect(result.isError).toBeUndefined();

@@ -516,7 +516,7 @@ describe('FileTree duplicate action runtime behavior', () => {
         target: 'notes/source copy',
         docName: 'notes/source copy',
       },
-      { tabBehavior: 'replace-active' },
+      { disposition: 'preview', consumeActiveNewTab: true },
     );
     await waitFor(() => expect(model.getItem('notes/source copy.mdx')).not.toBeNull());
     expect(closeMenuMock).toHaveBeenCalled();
@@ -590,7 +590,7 @@ describe('FileTree duplicate action runtime behavior', () => {
         target: 'notes copy',
         folderPath: 'notes copy',
       },
-      { tabBehavior: 'replace-active' },
+      { disposition: 'preview', consumeActiveNewTab: true },
     );
     await waitFor(() => expect(model.getItem('notes copy/')).not.toBeNull());
     expect(toastSuccessMock).toHaveBeenCalledWith('Folder duplicated', {
@@ -1136,7 +1136,35 @@ describe('FileTree duplicate action runtime behavior', () => {
     );
   });
 
-  test('delete event bus drops .ok targets before any delete side effect', async () => {
+  test('tab delete event opens the sidebar confirmation before any delete side effect', async () => {
+    renderFileTree();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+    fetchCalls = [];
+
+    act(() => {
+      emitFileTreeMenuActionDelete({
+        kind: 'folder',
+        target: 'notes',
+        folderPath: 'notes',
+      } satisfies ResolvedNavigationTarget);
+    });
+
+    await screen.findByTestId('delete-confirmation-dialog');
+    expect(deleteConfirmationProps?.itemName).toBe('notes/');
+    expect(deletePathCalls()).toHaveLength(0);
+
+    await act(async () => {
+      await deleteConfirmationProps?.onDelete?.();
+    });
+
+    await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+    expect(JSON.parse(String(deletePathCalls()[0]?.init?.body))).toEqual({
+      kind: 'folder',
+      path: 'notes',
+    });
+  });
+
+  test('delete event bus drops .ok targets before opening confirmation', async () => {
     renderFileTree();
     await screen.findByRole('menuitem', { name: /duplicate/i });
     fetchCalls = [];
@@ -1151,21 +1179,6 @@ describe('FileTree duplicate action runtime behavior', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(deletePathCalls()).toHaveLength(0);
-
-    // Same spine stays live for deletable targets — proves the drop above is
-    // the .ok gate, not a dead subscription.
-    act(() => {
-      emitFileTreeMenuActionDelete({
-        kind: 'folder',
-        target: 'notes',
-        folderPath: 'notes',
-      } satisfies ResolvedNavigationTarget);
-    });
-
-    await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
-    expect(JSON.parse(String(deletePathCalls()[0]?.init?.body))).toEqual({
-      kind: 'folder',
-      path: 'notes',
-    });
+    expect(screen.queryByTestId('delete-confirmation-dialog')).toBeNull();
   });
 });

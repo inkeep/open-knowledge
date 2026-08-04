@@ -1,7 +1,14 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MouseEventHandler, ReactNode } from 'react';
+import {
+  createElement,
+  type MouseEventHandler,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { OK_SIDEBAR_DRAG_MIME, parseSidebarDragPayload } from '@/lib/sidebar-drag';
 import type { FileEntry } from './file-tree-utils';
 
 // Controls the mocked git-sync hook's hasRemote signal per test.
@@ -316,6 +323,34 @@ vi.doMock('@pierre/trees', () => ({
   themeToTreeStyles: () => ({}),
 }));
 
+function PierreTreeDragSurface() {
+  const hostRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const shadow = host.attachShadow({ mode: 'open' });
+    const row = document.createElement('div');
+    row.dataset.itemPath = 'notes/source.mdx';
+    row.dataset.itemType = 'file';
+    row.dataset.testid = 'fake-pierre-tree-row';
+    shadow.append(row);
+
+    function handlePierreDragStart(event: Event) {
+      const dragEvent = event as DragEvent;
+      if (!dragEvent.dataTransfer) return;
+      dragEvent.dataTransfer.effectAllowed = 'move';
+      dragEvent.dataTransfer.dropEffect = 'move';
+      dragEvent.dataTransfer.setData('text/plain', 'notes/source.mdx');
+    }
+
+    row.addEventListener('dragstart', handlePierreDragStart);
+    return () => row.removeEventListener('dragstart', handlePierreDragStart);
+  }, []);
+
+  return createElement('ok-file-tree', { ref: hostRef });
+}
+
 vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
   FileTree: ({
@@ -332,15 +367,18 @@ vi.doMock('@pierre/trees/react', () => ({
     onMouseMove?: MouseEventHandler<HTMLDivElement>;
     onMouseLeave?: MouseEventHandler<HTMLDivElement>;
   }) => (
-    <div
-      data-testid="fake-pierre-tree"
-      role="tree"
-      onClickCapture={onClickCapture}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-    >
-      {renderContextMenu?.(menuItem, { close: closeMenuMock })}
-    </div>
+    <>
+      <PierreTreeDragSurface />
+      <div
+        data-testid="fake-pierre-tree"
+        role="tree"
+        onClickCapture={onClickCapture}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+      >
+        {renderContextMenu?.(menuItem, { close: closeMenuMock })}
+      </div>
+    </>
   ),
 }));
 
@@ -348,6 +386,30 @@ const { FileTree } = await import('./FileTree');
 
 function renderFileTree() {
   return render(<FileTree />);
+}
+
+class TestDragEvent extends Event {
+  readonly dataTransfer: DataTransfer;
+
+  constructor(type: string, dataTransfer: DataTransfer) {
+    super(type, { bubbles: true, composed: true });
+    this.dataTransfer = dataTransfer;
+  }
+}
+
+function createTestDataTransfer(): DataTransfer {
+  const values = new Map<string, string>();
+  const types: string[] = [];
+  return {
+    dropEffect: 'none',
+    effectAllowed: 'uninitialized',
+    getData: (type: string) => values.get(type) ?? '',
+    setData: (type: string, value: string) => {
+      values.set(type, value);
+      if (!types.includes(type)) types.push(type);
+    },
+    types,
+  } as DataTransfer;
 }
 
 describe('FileTree context-menu Share action', () => {
@@ -363,12 +425,42 @@ describe('FileTree context-menu Share action', () => {
     runShareActionMock.mockClear();
     toastSuccessMock.mockClear();
     toastErrorMock.mockClear();
+    vi.stubGlobal('DragEvent', TestDragEvent);
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     consoleLogSpy.mockRestore();
+  });
+
+  test('publishes a pane-compatible sidebar payload after Pierre initializes its row drag', async () => {
+    const { container } = renderFileTree();
+    await screen.findByTestId('fake-pierre-tree');
+    const host = container.querySelector('ok-file-tree');
+    const row = host?.shadowRoot?.querySelector<HTMLElement>(
+      '[data-testid="fake-pierre-tree-row"]',
+    );
+    expect(row).toBeTruthy();
+
+    await waitFor(() => {
+      const probe = createTestDataTransfer();
+      row?.dispatchEvent(new TestDragEvent('dragstart', probe));
+      expect(probe.getData(OK_SIDEBAR_DRAG_MIME)).not.toBe('');
+    });
+
+    const dataTransfer = createTestDataTransfer();
+    act(() => {
+      row?.dispatchEvent(new TestDragEvent('dragstart', dataTransfer));
+    });
+
+    expect(parseSidebarDragPayload(dataTransfer)).toMatchObject({
+      v: 1,
+      kind: 'doc',
+      docName: 'notes/source',
+    });
+    expect(dataTransfer.effectAllowed).toBe('copyMove');
   });
 
   test('a doc row shows Share and dispatches a doc-scope share input', async () => {

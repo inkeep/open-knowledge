@@ -25,6 +25,8 @@ const CREATE_TOP_LEVEL_FILE_EVENT = 'open-knowledge:create-top-level-file';
 export interface CreateFileRequest {
   /** Folder to create the file in. Empty string = project root. */
   initialDir?: string;
+  /** Item kind for inline creation. Defaults to `file` for legacy callers. */
+  kind?: 'file' | 'folder';
   /**
    * When set, scaffold from a template. `folder` is the template's
    * `source_folder` (the folder owning `.ok/templates/<name>.md`);

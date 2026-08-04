@@ -19,6 +19,42 @@ import {
   setSpellCheckEnabled,
 } from '../../src/main/state-store.ts';
 
+function persistedWorkspace(
+  openTabs: string[],
+  pinnedTabIds: string[],
+  activeTabId: string | null,
+) {
+  return {
+    panes: [
+      {
+        id: 'pane-main',
+        openTabs,
+        pinnedTabIds,
+        activeTabId,
+        size: 100,
+      },
+    ],
+    focusedPaneId: 'pane-main',
+  };
+}
+
+function projectSession(
+  openTabs: string[],
+  pinnedTabIds: string[],
+  activeTabId: string | null,
+  updatedAt: string | null = null,
+  activeTabByMode: { files: string | null; skills: string | null } = {
+    files: null,
+    skills: null,
+  },
+) {
+  return {
+    activeTabByMode,
+    updatedAt,
+    ...persistedWorkspace(openTabs, pinnedTabIds, activeTabId),
+  };
+}
+
 describe('state-store (recent projects + LRU)', () => {
   test('addRecentProject prepends to empty list', () => {
     const next = addRecentProject(emptyState(), '/tmp/p1', 'p1');
@@ -67,60 +103,42 @@ describe('state-store (recent projects + LRU)', () => {
   });
 
   test('project session state persists by project path', () => {
-    const state = setProjectSessionState(emptyState(), '/tmp/a', {
-      openTabs: ['README', 'docs/guide'],
-      pinnedTabIds: ['README'],
-      activeDocName: 'docs/guide',
-      activeTabId: 'docs/guide',
-      updatedAt: '2026-05-06T00:00:00Z',
-    });
-    expect(getProjectSessionState(state, '/tmp/a')).toEqual({
-      openTabs: ['README', 'docs/guide'],
-      pinnedTabIds: ['README'],
-      activeDocName: 'docs/guide',
-      activeTabId: 'docs/guide',
-      activeTabByMode: { files: null, skills: null },
-      updatedAt: '2026-05-06T00:00:00Z',
-    });
-    expect(getProjectSessionState(state, '/tmp/b')).toEqual({
-      openTabs: [],
-      pinnedTabIds: [],
-      activeDocName: null,
-      activeTabId: null,
-      activeTabByMode: { files: null, skills: null },
-      updatedAt: null,
-    });
+    const session = projectSession(
+      ['README', 'docs/guide'],
+      ['README'],
+      'docs/guide',
+      '2026-05-06T00:00:00Z',
+    );
+    const state = setProjectSessionState(emptyState(), '/tmp/a', session);
+    expect(getProjectSessionState(state, '/tmp/a')).toEqual(session);
+    expect(getProjectSessionState(state, '/tmp/b')).toEqual(projectSession([], [], null));
   });
 
   test('project session state preserves active folder tabs', () => {
     const folderTabId = '\u0000folder:docs';
-    const state = setProjectSessionState(emptyState(), '/tmp/a', {
-      openTabs: ['README', folderTabId],
-      pinnedTabIds: [folderTabId],
-      activeDocName: null,
-      activeTabId: folderTabId,
-      updatedAt: '2026-05-06T00:00:00Z',
-    });
-    expect(getProjectSessionState(state, '/tmp/a')).toEqual({
-      openTabs: ['README', folderTabId],
-      pinnedTabIds: [folderTabId],
-      activeDocName: null,
-      activeTabId: folderTabId,
-      activeTabByMode: { files: null, skills: null },
-      updatedAt: '2026-05-06T00:00:00Z',
-    });
+    const session = projectSession(
+      ['README', folderTabId],
+      [folderTabId],
+      folderTabId,
+      '2026-05-06T00:00:00Z',
+    );
+    const state = setProjectSessionState(emptyState(), '/tmp/a', session);
+    expect(getProjectSessionState(state, '/tmp/a')).toEqual(session);
   });
 
   test('project session state round-trips per-surface active tabs', () => {
-    const state = setProjectSessionState(emptyState(), '/tmp/a', {
-      openTabs: ['README', 'docs/guide'],
-      pinnedTabIds: [],
-      activeDocName: 'docs/guide',
-      activeTabId: 'docs/guide',
-      // 'docs/guide' is open → kept; 'gone' is not an open tab → dropped to null.
-      activeTabByMode: { files: 'docs/guide', skills: 'gone' },
-      updatedAt: '2026-05-06T00:00:00Z',
-    });
+    const state = setProjectSessionState(
+      emptyState(),
+      '/tmp/a',
+      projectSession(
+        ['README', 'docs/guide'],
+        [],
+        'docs/guide',
+        '2026-05-06T00:00:00Z',
+        // 'docs/guide' is open → kept; 'gone' is not an open tab → dropped to null.
+        { files: 'docs/guide', skills: 'gone' },
+      ),
+    );
     expect(getProjectSessionState(state, '/tmp/a').activeTabByMode).toEqual({
       files: 'docs/guide',
       skills: null,
@@ -128,22 +146,13 @@ describe('state-store (recent projects + LRU)', () => {
   });
 
   test('removeRecentProject drops matching session state', () => {
-    const withSession = setProjectSessionState(emptyState(), '/tmp/a', {
-      openTabs: ['README'],
-      pinnedTabIds: ['README'],
-      activeDocName: 'README',
-      activeTabId: 'README',
-      updatedAt: '2026-05-06T00:00:00Z',
-    });
+    const withSession = setProjectSessionState(
+      emptyState(),
+      '/tmp/a',
+      projectSession(['README'], ['README'], 'README', '2026-05-06T00:00:00Z'),
+    );
     const next = removeRecentProject(withSession, '/tmp/a');
-    expect(getProjectSessionState(next, '/tmp/a')).toEqual({
-      openTabs: [],
-      pinnedTabIds: [],
-      activeDocName: null,
-      activeTabId: null,
-      activeTabByMode: { files: null, skills: null },
-      updatedAt: null,
-    });
+    expect(getProjectSessionState(next, '/tmp/a')).toEqual(projectSession([], [], null));
   });
 
   test('annotateMissing flips missing for non-existent paths', () => {
@@ -154,7 +163,7 @@ describe('state-store (recent projects + LRU)', () => {
     expect(annotated.find((p) => p.path === '/tmp/missing')?.missing).toBe(true);
   });
 
-  test('parseAppState accepts well-formed state', () => {
+  test('parseAppState ignores flat legacy project sessions', () => {
     const raw = {
       recentProjects: [{ path: '/tmp/a', name: 'a', lastOpenedAt: '2026-04-20T00:00:00Z' }],
       lastOpenedProject: '/tmp/a',
@@ -172,13 +181,60 @@ describe('state-store (recent projects + LRU)', () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.recentProjects.length).toBe(1);
     expect(parsed?.lastOpenedProject).toBe('/tmp/a');
+    expect(parsed?.projectSessions['/tmp/a']).toEqual(projectSession([], [], null));
+  });
+
+  test('parseAppState drops legacy occurrence ids without transforming them', () => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      projectSessions: {
+        '/tmp/a': {
+          panes: [
+            {
+              id: 'pane-a',
+              openTabs: ['docs/a', 'docs/a\u0000doc-tab:1', 'docs/b'],
+              pinnedTabIds: ['docs/a'],
+              activeTabId: 'docs/a',
+              size: 1,
+            },
+            {
+              id: 'pane-b',
+              openTabs: ['docs/d', 'docs/c\u0000doc-tab:1'],
+              pinnedTabIds: ['docs/d', 'docs/c\u0000doc-tab:1'],
+              activeTabId: 'docs/c\u0000doc-tab:1',
+              size: 1,
+            },
+          ],
+          focusedPaneId: 'pane-b',
+          activeTabByMode: {
+            files: 'docs/a\u0000doc-tab:1',
+            skills: 'docs/c\u0000doc-tab:1',
+          },
+          updatedAt: '2026-05-06T00:00:00Z',
+        },
+      },
+    });
+
     expect(parsed?.projectSessions['/tmp/a']).toEqual({
-      openTabs: ['README', 'docs/guide'],
-      pinnedTabIds: ['README'],
-      activeDocName: 'docs/guide',
-      activeTabId: 'docs/guide',
       activeTabByMode: { files: null, skills: null },
       updatedAt: '2026-05-06T00:00:00Z',
+      panes: [
+        {
+          id: 'pane-a',
+          openTabs: ['docs/a', 'docs/b'],
+          pinnedTabIds: ['docs/a'],
+          activeTabId: 'docs/a',
+          size: 50,
+        },
+        {
+          id: 'pane-b',
+          openTabs: ['docs/d'],
+          pinnedTabIds: ['docs/d'],
+          activeTabId: 'docs/d',
+          size: 50,
+        },
+      ],
+      focusedPaneId: 'pane-b',
     });
   });
 

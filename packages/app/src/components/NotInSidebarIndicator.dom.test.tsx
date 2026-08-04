@@ -27,7 +27,8 @@ type SidebarVisibilityConfig = {
   };
 };
 
-let mergedConfig: SidebarVisibilityConfig | null = null;
+let mergedConfig: SidebarVisibilityConfig | null = {};
+let projectLocalSynced = true;
 let projectLocalBindingNull = false;
 let patchResultOk = true;
 const patchCalls: unknown[] = [];
@@ -36,6 +37,7 @@ const toastErrors: unknown[][] = [];
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: mergedConfig as Config | null,
+    projectLocalSynced,
     projectLocalBinding: projectLocalBindingNull
       ? null
       : {
@@ -64,7 +66,8 @@ const onlyMarkdownFlip = () => screen.queryByTestId('not-in-sidebar-flip-only-ma
 
 describe('NotInSidebarIndicator', () => {
   beforeEach(() => {
-    mergedConfig = null;
+    mergedConfig = {};
+    projectLocalSynced = true;
     projectLocalBindingNull = false;
     patchResultOk = true;
     patchCalls.length = 0;
@@ -79,6 +82,28 @@ describe('NotInSidebarIndicator', () => {
     expect(indicator()).toBeTruthy();
     expect(hiddenFilesFlip()).toBeTruthy();
     expect(onlyMarkdownFlip()).toBeNull();
+  });
+
+  test('renders nothing while merged config is unknown', () => {
+    mergedConfig = null;
+    projectLocalSynced = false;
+    render(<NotInSidebarIndicator entry={{ kind: 'document', docName: '.scratch/note' }} />);
+
+    expect(indicator()).toBeNull();
+  });
+
+  test('renders nothing while project-local config has defaults but is not synced', () => {
+    projectLocalSynced = false;
+    render(<NotInSidebarIndicator entry={{ kind: 'document', docName: '.scratch/note' }} />);
+
+    expect(indicator()).toBeNull();
+  });
+
+  test('renders nothing when resolved config shows hidden files', () => {
+    mergedConfig = { appearance: { sidebar: { showHiddenFiles: true } } };
+    render(<NotInSidebarIndicator entry={{ kind: 'document', docName: '.scratch/note' }} />);
+
+    expect(indicator()).toBeNull();
   });
 
   test('flip action patches the axis config leaf through the project-local binding', () => {

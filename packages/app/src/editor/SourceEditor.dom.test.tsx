@@ -290,12 +290,50 @@ describe('SourceEditor outline navigation', () => {
     globalThis.fetch = originalFetch;
   });
 
-  async function dispatchOutlineNav(index: number, slug: string): Promise<void> {
-    const detail: OutlineNavDetail = { index, slug, mode: 'source' };
+  async function dispatchOutlineNav(docName: string, index: number, slug: string): Promise<void> {
+    const detail: OutlineNavDetail = { docName, index, slug, mode: 'source' };
     await act(async () => {
       window.dispatchEvent(new CustomEvent(OUTLINE_NAV_EVENT, { detail }));
     });
   }
+
+  test('only the source editor matching the navigation document moves its cursor', async () => {
+    const first = makeProvider('source-outline-owner', '# First\n\n## First target');
+    const second = makeProvider('source-outline-bystander', '# Second\n\n## Second target');
+    const { container } = render(
+      <>
+        <Harness provider={first.provider} ytext={first.ytext} wordWrap={true} />
+        <Harness provider={second.provider} ytext={second.ytext} wordWrap={true} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.cm-content')).toHaveLength(2);
+    });
+    const [firstContent, secondContent] = container.querySelectorAll<HTMLElement>('.cm-content');
+    const firstView = EditorView.findFromDOM(firstContent);
+    const secondView = EditorView.findFromDOM(secondContent);
+    expect(firstView).toBeTruthy();
+    expect(secondView).toBeTruthy();
+    if (!firstView || !secondView) return;
+
+    const secondSelectionBefore = secondView.state.selection.main.head;
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(OUTLINE_NAV_EVENT, {
+          detail: {
+            docName: 'source-outline-owner',
+            index: 1,
+            slug: 'first-target',
+            mode: 'source',
+          } satisfies OutlineNavDetail,
+        }),
+      );
+    });
+
+    expect(firstView.state.selection.main.head).toBe(firstView.state.doc.line(3).from);
+    expect(secondView.state.selection.main.head).toBe(secondSelectionBefore);
+  });
 
   test('skips a frontmatter region whose opening fence carries a trailing space', async () => {
     // `--- ` is one in-tolerance keystroke away from `---`. The outline list
@@ -320,7 +358,7 @@ describe('SourceEditor outline navigation', () => {
     expect(view).toBeTruthy();
     if (!view) return;
 
-    await dispatchOutlineNav(0, 'real-heading');
+    await dispatchOutlineNav('source-outline-nav-fm-ws', 0, 'real-heading');
 
     const headingLine = view.state.doc.line(6);
     expect(headingLine.text).toBe('# Real Heading');
@@ -344,7 +382,7 @@ describe('SourceEditor outline navigation', () => {
     expect(view).toBeTruthy();
     if (!view) return;
 
-    await dispatchOutlineNav(0, 'real-heading');
+    await dispatchOutlineNav('source-outline-nav-fm-close-ws', 0, 'real-heading');
 
     const headingLine = view.state.doc.line(6);
     expect(headingLine.text).toBe('# Real Heading');
@@ -370,7 +408,7 @@ describe('SourceEditor outline navigation', () => {
     expect(view).toBeTruthy();
     if (!view) return;
 
-    await dispatchOutlineNav(1, 'second');
+    await dispatchOutlineNav('source-outline-nav-fm-bare', 1, 'second');
 
     const headingLine = view.state.doc.line(8);
     expect(headingLine.text).toBe('## Second');

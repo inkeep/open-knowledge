@@ -47,11 +47,18 @@ function makeBridge(overrides: Partial<OkDesktopBridge> = {}): OkDesktopBridge &
       removeRecent: vi.fn(() => Promise.resolve()),
       getSessionState: vi.fn(() =>
         Promise.resolve({
-          openTabs: [],
-          pinnedTabIds: [],
-          activeDocName: null,
-          activeTabId: null,
+          activeTabByMode: { files: null, skills: null },
           updatedAt: null,
+          panes: [
+            {
+              id: 'pane-main',
+              openTabs: [],
+              pinnedTabIds: [],
+              activeTabId: null,
+              size: 100,
+            },
+          ],
+          focusedPaneId: 'pane-main',
         }),
       ),
       setSessionState: vi.fn(() => Promise.resolve()),

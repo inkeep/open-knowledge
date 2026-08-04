@@ -161,32 +161,37 @@ test.describe('docs-open — hybrid navigation UX', () => {
     // Pre-assertion: small.md is currently active in the sidebar.
     await expect(sidebarItem(page, 'small.md')).toHaveAttribute('aria-selected', 'true');
 
-    // Install an in-page timer that observes the aria-selected mutation so we
-    // measure wall-clock time from click to shell-snap — Playwright's own
-    // poll intervals (50-200ms) would round up our measurement and hide
-    // subframe regressions. MutationObserver fires synchronously after the
-    // microtask that flips the attribute, so the delta captures exactly
-    // "click dispatch → React commit of new activeDocName".
-    await page.evaluate(() => {
+    // Resolve Playwright's actionability work before timing so scrolling and
+    // locator stability do not count against the shell response budget.
+    await bigRow.click({ trial: true });
+
+    // Install an in-page timer that starts on the real browser click and
+    // observes the row's aria-selected mutation. Starting from the trusted
+    // event excludes Playwright's protocol latency while preserving the
+    // application's actual navigation path.
+    await bigRow.evaluate((target) => {
       window.__f0Result = null;
-      const root = document.querySelector('file-tree-container')?.shadowRoot;
-      if (!root) return;
-      const start = performance.now();
+      if (!(target instanceof HTMLElement)) return;
+      window.__f0Start = undefined;
       const observer = new MutationObserver(() => {
-        const current = root.querySelector('[aria-selected="true"]');
-        if (current?.getAttribute('aria-label') === 'big.md') {
+        const start = window.__f0Start;
+        if (target.getAttribute('aria-selected') === 'true' && start !== undefined) {
           window.__f0Result = { shellMs: performance.now() - start };
           observer.disconnect();
         }
       });
-      observer.observe(root, {
-        subtree: true,
+      observer.observe(target, {
         attributes: true,
         attributeFilter: ['aria-selected'],
       });
-      window.__f0Start = start;
+      window.addEventListener(
+        'click',
+        () => {
+          window.__f0Start = performance.now();
+        },
+        { capture: true, once: true },
+      );
     });
-
     await bigRow.click();
 
     // Poll for the shell-snap result; the MutationObserver fills it as soon

@@ -19,6 +19,7 @@ function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
 function ResizableHandle({
   withHandle,
   className,
+  children,
   ...props
 }: ResizablePrimitive.SeparatorProps & {
   withHandle?: boolean;
@@ -33,6 +34,7 @@ function ResizableHandle({
       {...props}
     >
       {withHandle && <div className="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border" />}
+      {children}
     </ResizablePrimitive.Separator>
   );
 }

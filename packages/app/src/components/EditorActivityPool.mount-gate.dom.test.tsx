@@ -141,4 +141,26 @@ describe('ActivityEntry — mount gate reads the effective mode', () => {
     rerender(<Pool isSourceMode activeDocName="doc-hidden" />);
     expect(deferMountMark('doc-hidden')?.renderSource).toBe(true);
   });
+
+  test('renders document toolbar chrome in every visible split-pane host', () => {
+    poolEntries.push(makeEntry('doc-third', 0));
+    const activityHosts = new Map(
+      poolEntries.map(({ docName }) => [docName, document.createElement('div')]),
+    );
+
+    render(
+      <EditorActivityPool
+        activeDocName="doc-active"
+        visibleDocNames={new Set(['doc-active', 'doc-hidden', 'doc-third'])}
+        activityHosts={activityHosts}
+        isSourceMode={false}
+        onRecycle={() => {}}
+        renderToolbar={(docName) => <div data-testid={`toolbar-${docName}`} />}
+      />,
+    );
+
+    for (const [docName, host] of activityHosts) {
+      expect(host.querySelector(`[data-testid="toolbar-${docName}"]`)).not.toBeNull();
+    }
+  });
 });

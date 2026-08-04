@@ -13,6 +13,7 @@
 
 import {
   sharedExtensions as coreExtensions,
+  DEFAULT_LINTER_CONFIG,
   type LintDiagnostic,
   MarkdownManager,
 } from '@inkeep/open-knowledge-core';
@@ -310,7 +311,7 @@ describe('Problems-row navigation — scroll suppression', () => {
   }
 
   function clickProblemsRow(line: number, source?: string): void {
-    const detail: LintNavDetail = { line, column: 1, source };
+    const detail: LintNavDetail = { docName: DOC, line, column: 1, source };
     window.dispatchEvent(new CustomEvent<LintNavDetail>(LINT_NAV_EVENT, { detail }));
   }
 
@@ -318,7 +319,7 @@ describe('Problems-row navigation — scroll suppression', () => {
     __resetScrollRestoreCoordination();
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(async () =>
-      Response.json({ effective: {} }),
+      Response.json({ effective: DEFAULT_LINTER_CONFIG }),
     ) as unknown as typeof fetch;
     scrollIntoView = vi.fn();
     originalScrollIntoView = Object.getOwnPropertyDescriptor(

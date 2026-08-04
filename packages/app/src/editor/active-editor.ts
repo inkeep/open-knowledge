@@ -10,11 +10,11 @@
  * sequences where the key command reads PM internal state require a
  * PM-state-aware wait, not a DOM-frame yield.
  *
- * Registry is module-scope, not pooled — `EditorActivityPool` can mount up
- * to `ACTIVITY_MOUNT_LIMIT` (3) editors concurrently. Last-writer wins per
- * docName; `getEditorForDoc` resolves via `activeDocName` in DocumentContext
- * so the getter picks the currently-active entry, not whichever registered
- * last.
+ * Registry is module-scope, not pooled — `EditorActivityPool` mounts every
+ * visible pane plus an `ACTIVITY_MOUNT_LIMIT` (3) warm-background floor.
+ * Last-writer wins per docName; split view keeps one editor per docName, and
+ * `getEditorForDoc` resolves via `activeDocName` in DocumentContext so the
+ * getter picks the focused entry rather than whichever registered last.
  */
 
 import type { Editor } from '@tiptap/core';

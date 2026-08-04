@@ -202,6 +202,14 @@ Five tools stay gated: `delete` and `move` (knowledge-base-wide blast radius), `
 
 Turn it off in **Settings → Terminal → “Let agents use OpenKnowledge without asking”** ([`agents.autoApproveOkTools`](../reference/configuration.mdx)). It applies to every project on this machine and defaults on.
 
+## Tabs and split panes
+
+Tabs share the main editor header and shrink as the row fills, keeping every open target visible without a horizontal scrollbar. Drag a tab to reorder it. Opening a file from the sidebar uses a lightweight preview tab by default: the next single-clicked file replaces it, while double-clicking the tab title, pinning, or choosing **Keep open** from its context menu keeps it open. Turn previews off with **Settings → Preferences → Preview tabs** ([`editor.previewTabs`](/docs/reference/configuration)).
+
+To work side by side, drag any document, folder, or **New tab** to the left or right edge of the editor. The blue drop indicator shows where the new vertical pane will open. You can also right-click a tab and choose **Move to new pane left** or **Move to new pane right**; from the keyboard, focus the tab, press `Shift+F10` (or the Menu key), then choose the same command. Drag the divider to resize panes. Each pane keeps its own active tab, while the document panel follows the pane you most recently focused. Moving or closing a pane's last tab removes the pane automatically.
+
+Open tabs, pane order, sizes, and the focused pane are restored with the project after a clean restart.
+
 ## Command palette
 
 `Cmd+K` opens the command palette in both the desktop app and the browser. Type to jump to any file or folder, run create commands, open the graph or settings, or dispatch to an agent; recently opened entries surface first. In the desktop app it also switches projects and worktrees.
@@ -311,4 +319,3 @@ For recovery + history, see [Timeline and recovery](./timeline-and-recovery.mdx)
 - [Configuration reference](../reference/configuration.mdx): `.ok/config.yml` schema including `appearance.sidebar.*`
 - [Agent activity](./agent-activity.mdx): review and undo per-session agent edits
 - [Timeline and recovery](./timeline-and-recovery.mdx): version history and restore
-

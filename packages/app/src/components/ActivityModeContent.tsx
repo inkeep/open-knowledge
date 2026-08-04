@@ -390,6 +390,7 @@ export function ActivityModeContent({
   const onNavigate = (docName: string): void => {
     openTargetTransition(
       withLargeFileOpenGuard({ kind: 'doc', target: docName, docName }, pageMeta),
+      { disposition: 'permanent', consumeActiveNewTab: true },
     );
     navigateToDoc(docName);
   };

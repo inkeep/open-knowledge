@@ -24,24 +24,7 @@ import {
   type FileTree as PierreFileTreeModel,
 } from '@pierre/trees';
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react';
-import {
-  Copy,
-  CopyPlus,
-  EyeOff,
-  FileKey,
-  FilePlus,
-  FolderOpen,
-  FolderPlus,
-  FoldVertical,
-  Info,
-  Pencil,
-  RefreshCw,
-  Share2,
-  SquarePen,
-  Trash2,
-  TriangleAlert,
-  UnfoldVertical,
-} from 'lucide-react';
+import { Info, RefreshCw, TriangleAlert } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import {
   type DragEvent as ReactDragEvent,
@@ -50,6 +33,7 @@ import {
   type Ref,
   startTransition,
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -57,6 +41,10 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
+import {
+  FileTargetMenuItems,
+  type FileTargetMenuPrimitives,
+} from '@/components/FileTargetMenuItems';
 import { FileTreeFilteredToZeroNotice } from '@/components/FileTreeFilteredToZeroNotice';
 import { MARKDOWN_FILE_ICON_VIEWBOX } from '@/components/file-entry-icon';
 import {
@@ -106,6 +94,7 @@ import {
   applyDeleteToDocuments,
   applyDuplicateToDocuments,
   applyRenameToDocuments,
+  buildRenamedNodePath,
   buildTrashAbsPath,
   canonicalizeAssetTargetForDelete,
   type FileTreeTarget,
@@ -191,7 +180,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { asDirectoryHandle, useSelectionMirror } from '@/components/use-selection-mirror';
 import { getEditorForDoc } from '@/editor/active-editor';
-import { useDocumentContext } from '@/editor/DocumentContext';
+import { type OpenTargetOptions, useDocumentContext } from '@/editor/DocumentContext';
 import { assetTabId, docTabId, folderTabId, remapPathForFolderRenames } from '@/editor/editor-tabs';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
@@ -207,6 +196,7 @@ import { emitDocumentsChanged } from '@/lib/documents-events';
 import {
   subscribeToFileTreeMenuActionDelete,
   subscribeToFileTreeMenuActionDuplicate,
+  subscribeToFileTreeMenuActionImportTemplate,
   subscribeToFileTreeMenuActionRename,
 } from '@/lib/file-tree-menu-action-events';
 import { importTemplate } from '@/lib/folder-config-api';
@@ -219,7 +209,11 @@ import {
   runShareAction,
   type ShareTargetInput,
 } from '@/lib/share/run-share-action';
-import { OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload } from '@/lib/sidebar-drag';
+import {
+  hasSidebarDragType,
+  OK_SIDEBAR_DRAG_MIME,
+  serializeSidebarDragPayload,
+} from '@/lib/sidebar-drag';
 import { cn } from '@/lib/utils';
 import { getValidationSnapshot, subscribeToValidationStore } from '@/lib/validation-store';
 import { joinWorkspacePath } from '@/lib/workspace-paths';
@@ -293,6 +287,55 @@ async function copyToClipboard(text: string, kind: 'full' | 'relative'): Promise
     console.warn('[FileTree] clipboard write failed:', err);
     toast.error(kind === 'full' ? t`Could not copy full path` : t`Could not copy relative path`);
   }
+}
+
+function fileTreeTargetFromNavigationTarget(
+  target: ResolvedNavigationTarget,
+  documents: readonly FileEntry[],
+  documentPath: 'doc-name' | 'tree-path' = 'doc-name',
+): FileTreeTarget | null {
+  if (target.kind === 'doc' || target.kind === 'folder-index') {
+    const docEntry = documents.find(
+      (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === target.docName,
+    );
+    const path =
+      documentPath === 'tree-path'
+        ? docNameToTreePath(target.docName, docEntry?.docExt)
+        : target.docName;
+    return {
+      kind: 'file',
+      path,
+      name: path.split('/').pop() ?? path,
+      docExt: docEntry?.docExt,
+    };
+  }
+  if (target.kind === 'folder') {
+    return {
+      kind: 'folder',
+      path: target.folderPath,
+      name: target.folderPath.split('/').pop() ?? target.folderPath,
+    };
+  }
+  if (target.kind === 'asset') {
+    return {
+      kind: 'asset',
+      path: target.assetPath,
+      name: target.assetPath.split('/').pop() ?? target.assetPath,
+    };
+  }
+  return null;
+}
+
+function warnUnsupportedMenuTarget(
+  action: 'delete' | 'duplicate' | 'rename',
+  target: ResolvedNavigationTarget,
+): void {
+  console.warn(
+    JSON.stringify({
+      event: `file-tree-menu-action-${action}-unsupported-kind`,
+      kind: target.kind,
+    }),
+  );
 }
 
 // Drop-to-root affordance. The patched `@pierre/trees` sets
@@ -436,69 +479,13 @@ function revealInFileManagerLabel(platform: 'darwin' | 'win32' | 'linux'): strin
   return t`Open containing folder`;
 }
 
-/**
- * File-tree menu row that opens the OS file manager with the target file/folder
- * selected. Hidden entirely on the web variant (no useful no-op without a host
- * filesystem) — the disabled-with-hint pattern used by `OpenInAgentContextSubmenu`
- * doesn't apply here because reveal has no cross-host fallback. When present but
- * the workspace metadata hasn't resolved yet, renders disabled with a "No workspace"
- * affordance mirroring the handoff submenu's pattern.
- */
-function RevealInFileManagerMenuItem({
-  item,
-  workspace,
-  onClose,
-}: {
-  item: ContextMenuItem;
-  workspace: WorkspaceInfo | null;
-  onClose: () => void;
-}) {
-  const { t } = useLingui();
-  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
-  if (!bridge) return null;
-  const platform = bridge.platform;
-  const label = revealInFileManagerLabel(platform);
-  const hint = !workspace ? t`No workspace` : null;
-  // Per-platform aria-label so the catalog entry carries the literal label
-  // (e.g. `Reveal in Finder, {hint}`) — `t`${label}, ${hint}`` would extract
-  // a context-free `{label}, {hint}` that translators can't render naturally.
-  const ariaLabel =
-    platform === 'darwin'
-      ? hint
-        ? t`Reveal in Finder, ${hint}`
-        : t`Reveal in Finder`
-      : platform === 'win32'
-        ? hint
-          ? t`Reveal in File Explorer, ${hint}`
-          : t`Reveal in File Explorer`
-        : hint
-          ? t`Open containing folder, ${hint}`
-          : t`Open containing folder`;
-  return (
-    <DropdownMenuItem
-      disabled={!workspace}
-      onSelect={() => {
-        if (!workspace) return;
-        onClose();
-        const full = joinWorkspacePath(
-          workspace.contentDir,
-          relativePathForTreeItem(item),
-          workspace.pathSeparator,
-        );
-        void bridge.shell.showItemInFolder(full);
-      }}
-      aria-label={ariaLabel}
-    >
-      <FolderOpen aria-hidden="true" />
-      <span className="flex-1">{label}</span>
-      {hint ? (
-        <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
-          {hint}
-        </span>
-      ) : null}
-    </DropdownMenuItem>
-  );
-}
+const DROPDOWN_FILE_TARGET_MENU_PRIMITIVES = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+  Sub: DropdownMenuSub,
+  SubContent: DropdownMenuSubContent,
+  SubTrigger: DropdownMenuSubTrigger,
+} satisfies FileTargetMenuPrimitives;
 
 interface FileTreeMenuProps {
   item: ContextMenuItem;
@@ -561,22 +548,12 @@ function FileTreeMenu({
   const { t } = useLingui();
   const target = treeItemToTarget(item, documents);
   const isFolder = item.kind === 'directory';
-  // Revealed `.ok` rows are inspect-only: no create/rename/delete/duplicate/
-  // hide affordances (creates into `.ok` are server-refused; mutation of
-  // OK-managed state belongs to its canonical editors). Path/tree actions
-  // (Reveal, Copy path, Expand/Collapse) stay.
   const isOkRow = hasOkPathSegment(item.path);
   const okignoreTarget = target.kind === 'asset' ? null : target;
   const canHide = okignoreTarget !== null && okignoreBinding !== null;
   const hideLabel = isFolder ? t`Hide folder` : t`Hide this file`;
-  // Drives the smart-hide of the folder menu's "New from template" submenu.
-  // Only folder rows can fetch (null → idle, no request) and the menu mounts
-  // on-demand per right-click, so this fetch fires once when the menu opens —
-  // not eagerly for every tree row. Optimistic-true while loading mirrors the
-  // toolbar + empty-space gates in FileSidebar: hide the submenu only once we
-  // KNOW the resolved cascade is empty, so a slow cold fetch doesn't flicker
-  // the entry out from under the cursor.
-  const folderConfig = useFolderConfig(isFolder ? treeDirectoryPathToFolderPath(item.path) : null);
+  const folderPath = isFolder ? treeDirectoryPathToFolderPath(item.path) : null;
+  const folderConfig = useFolderConfig(folderPath);
   const folderHasTemplates =
     folderConfig.state.status === 'ready'
       ? (folderConfig.state.data.folder.templates_available?.length ?? 0) > 0
@@ -586,47 +563,32 @@ function FileTreeMenu({
     ? selectedTreePathsToDeleteTargets(selectedTreePaths, documents)
     : [];
   const deleteTargets = selectedDeleteTargets.length > 1 ? selectedDeleteTargets : [target];
-  const deleteCount = deleteTargets.length;
-  const deleteLabel = plural(deleteCount, { one: 'Delete', other: 'Delete # items' });
-  // Per-row-type handoff input shape:
-  //   asset  → null (assets still suppress the submenu via the render-time
-  //             `!isAsset` gate below; the helper short-circuits so the
-  //             submenu's `inputMissing` branch never runs for an asset that
-  //             was never going to render anyway)
-  //   folder → folder-scoped helper; cwd lands at `workspace.contentDir`
-  //             (project root) — folder focus rides on the directive prompt
-  //   file   → today's doc-scoped helper
-  const handoffInput: HandoffDispatchInput | null = isAsset
-    ? null
-    : isFolder
-      ? buildFolderHandoffInput({
-          // Relative path is the discriminator — dispatch hook picks
-          // `composeFolderPrompt(folderRelativePath)` for the directive.
-          folderRelativePath: relativePathForTreeItem(item),
-          workspace,
-        })
-      : buildHandoffInput({
-          docName: treeFilePathToDocumentDocName(item.path, documents),
-          workspace,
-        });
-
+  const deleteLabel = plural(deleteTargets.length, { one: 'Delete', other: 'Delete # items' });
+  const relativePath = relativePathForTreeItem(item);
+  let handoffInput: HandoffDispatchInput | null = null;
+  if (isFolder) {
+    handoffInput = buildFolderHandoffInput({ folderRelativePath: relativePath, workspace });
+  } else if (!isAsset) {
+    handoffInput = buildHandoffInput({
+      docName: treeFilePathToDocumentDocName(item.path, documents),
+      workspace,
+    });
+  }
   const closeForInlineSurface = () => context.close({ restoreFocus: false });
   const close = () => context.close();
 
-  // Share is offered for folders and real docs (never assets) and only with a
-  // GitHub remote; no-remote falls back to an explanatory toast.
   const { status: gitSyncStatus } = useGitSyncStatusDetailed();
   const hasRemote = gitSyncStatus?.hasRemote === true;
-  const shareInput: ShareTargetInput | null =
-    isAsset || target.kind === 'asset'
-      ? null
-      : isFolder
-        ? buildFolderShareInput(treeDirectoryPathToFolderPath(item.path))
-        : buildDocShareInput(treeFilePathToDocumentDocName(item.path, documents));
+  let shareInput: ShareTargetInput | null = null;
+  if (isFolder) {
+    shareInput = buildFolderShareInput(folderPath ?? '');
+  } else if (!isAsset && target.kind !== 'asset') {
+    shareInput = buildDocShareInput(treeFilePathToDocumentDocName(item.path, documents));
+  }
   const canShare = hasRemote && shareInput !== null;
-  const handleShare = () => {
+
+  function handleShare() {
     if (!shareInput) return;
-    // No popover here (unlike the header button), so let every toast through.
     void runShareAction(
       {
         ...shareInput,
@@ -642,36 +604,16 @@ function FileTreeMenu({
         logEvent: (msg) => console.log(msg),
       },
     );
-  };
-  // Shared Share item — rendered in both the folder and file menu branches.
-  const shareMenuItem = canShare ? (
-    <DropdownMenuItem
-      data-testid="file-tree-menu-share"
-      onSelect={() => {
-        close();
-        handleShare();
-      }}
-    >
-      <Share2 aria-hidden="true" />
-      <Trans>Share</Trans>
-    </DropdownMenuItem>
-  ) : null;
+  }
 
-  // Smart-hide for the subtree Expand/Collapse-All items — counts folders
-  // under the right-clicked folder (root + descendants) using the same
-  // `folderPath === root || folderPath.startsWith(root)` predicate that
-  // `expandSubtree`/`collapseSubtree` apply, so visibility tracks the
-  // action surface exactly. Mirrors the toolbar dropdown's hide rule:
-  // hide "Expand all" when every folder is already expanded; hide
-  // "Collapse all" when none are expanded.
   let subtreeFolderCount = 0;
   let subtreeExpandedCount = 0;
   if (isFolder) {
     const root = folderPathToTreeDirectoryPath(item.path);
-    for (const folderPath of folderTreePaths) {
-      if (folderPath === root || folderPath.startsWith(root)) {
+    for (const candidate of folderTreePaths) {
+      if (candidate === root || candidate.startsWith(root)) {
         subtreeFolderCount++;
-        if (asDirectoryHandle(model.getItem(folderPath))?.isExpanded()) {
+        if (asDirectoryHandle(model.getItem(candidate))?.isExpanded()) {
           subtreeExpandedCount++;
         }
       }
@@ -679,6 +621,26 @@ function FileTreeMenu({
   }
   const showSubtreeExpandAll = isFolder && subtreeExpandedCount < subtreeFolderCount;
   const showSubtreeCollapseAll = isFolder && subtreeExpandedCount > 0;
+  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
+  const revealHint = !workspace ? t`No workspace` : null;
+  const revealLabel = bridge ? revealInFileManagerLabel(bridge.platform) : null;
+  const revealAriaLabel = revealLabel && revealHint ? `${revealLabel}, ${revealHint}` : revealLabel;
+
+  function hideTarget() {
+    if (!okignoreBinding || !okignoreTarget) return;
+    close();
+    const pattern = buildOkignorePatternFromTarget(okignoreTarget);
+    const current = okignoreBinding.current();
+    const doc = parseOkignoreDoc(current);
+    const updated = appendPattern(doc, pattern);
+    if (updated === doc) return;
+    okignoreBinding.patch(serializeOkignoreDoc(updated));
+    const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
+    toast.success(isFolder ? t`Hidden folder “${basename}”` : t`Hidden “${basename}”`, {
+      description: t`Manage hidden files in Settings → Ignore patterns.`,
+      duration: 5000,
+    });
+  }
 
   return (
     <DropdownMenu
@@ -701,192 +663,57 @@ function FileTreeMenu({
         data-file-tree-context-menu-root="true"
         className="min-w-52"
       >
-        {isFolder ? (
-          <>
-            {!isOkRow ? (
-              <>
-                <DropdownMenuItem
-                  disabled={anyActionBusy}
-                  onSelect={() => {
+        <FileTargetMenuItems
+          busy={anyActionBusy}
+          deleteLabel={deleteLabel}
+          primitives={DROPDOWN_FILE_TARGET_MENU_PRIMITIVES}
+          workspaceReady={workspace != null}
+          folderCreate={
+            isFolder && !isOkRow && folderPath != null
+              ? {
+                  onNewFile: () => {
                     closeForInlineSurface();
-                    onStartCreating('file', treeDirectoryPathToFolderPath(item.path));
-                  }}
-                >
-                  <SquarePen aria-hidden="true" />
-                  <Trans>New file</Trans>
-                </DropdownMenuItem>
-                {folderHasTemplates ? (
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger disabled={anyActionBusy}>
-                      <FilePlus aria-hidden="true" />
-                      <Trans>New from template</Trans>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <TemplateMenuRows
-                        parentDir={treeDirectoryPathToFolderPath(item.path)}
-                        onSelectTemplate={(templateName) => {
-                          closeForInlineSurface();
-                          onCreateFromTemplate(
-                            treeDirectoryPathToFolderPath(item.path),
-                            templateName,
-                          );
-                        }}
-                        ItemComponent={DropdownMenuItem}
-                      />
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                ) : null}
-                <DropdownMenuItem
-                  disabled={anyActionBusy}
-                  onSelect={() => {
+                    onStartCreating('file', folderPath);
+                  },
+                  onNewFolder: () => {
                     closeForInlineSurface();
-                    onStartCreating('folder', treeDirectoryPathToFolderPath(item.path));
-                  }}
-                >
-                  <FolderPlus aria-hidden="true" />
-                  <Trans>New folder</Trans>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            ) : null}
-            <RevealInFileManagerMenuItem item={item} workspace={workspace} onClose={close} />
-            <OpenInAgentContextSubmenu
-              input={handoffInput}
-              installStates={handoff.installStates}
-              isElectronHost={handoff.isElectronHost}
-              dispatch={handoff.dispatch}
-              onBeforeLaunch={close}
-            />
-            {shareMenuItem}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Copy aria-hidden="true" />
-                <Trans>Copy path</Trans>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem
-                  disabled={!workspace}
-                  onSelect={() => {
+                    onStartCreating('folder', folderPath);
+                  },
+                  templateItems: folderHasTemplates ? (
+                    <TemplateMenuRows
+                      parentDir={folderPath}
+                      onSelectTemplate={(templateName) => {
+                        closeForInlineSurface();
+                        onCreateFromTemplate(folderPath, templateName);
+                      }}
+                      ItemComponent={DropdownMenuItem}
+                    />
+                  ) : undefined,
+                }
+              : undefined
+          }
+          reveal={
+            bridge
+              ? {
+                  label: revealLabel,
+                  ariaLabel: revealAriaLabel ?? undefined,
+                  disabled: !workspace,
+                  hint: revealHint,
+                  onSelect: () => {
                     if (!workspace) return;
                     close();
                     const full = joinWorkspacePath(
                       workspace.contentDir,
-                      relativePathForTreeItem(item),
+                      relativePath,
                       workspace.pathSeparator,
                     );
-                    void copyToClipboard(full, 'full');
-                  }}
-                >
-                  <Trans>Full path</Trans>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    close();
-                    void copyToClipboard(relativePathForTreeItem(item), 'relative');
-                  }}
-                >
-                  <Trans>Relative path</Trans>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            {/* Subtree-scoped Expand/Collapse, smart-hidden. The divider only
-                renders when the section is non-empty so a fully-expanded or
-                fully-collapsed subtree collapses to a single divider before
-                the destructive section instead of an empty double rule. */}
-            {showSubtreeExpandAll || showSubtreeCollapseAll ? <DropdownMenuSeparator /> : null}
-            {showSubtreeExpandAll ? (
-              <DropdownMenuItem
-                onSelect={() => {
-                  close();
-                  onExpandSubtree(item.path);
-                }}
-              >
-                <UnfoldVertical aria-hidden="true" />
-                <Trans>Expand all</Trans>
-              </DropdownMenuItem>
-            ) : null}
-            {showSubtreeCollapseAll ? (
-              <DropdownMenuItem
-                onSelect={() => {
-                  close();
-                  onCollapseSubtree(item.path);
-                }}
-              >
-                <FoldVertical aria-hidden="true" />
-                <Trans>Collapse all</Trans>
-              </DropdownMenuItem>
-            ) : null}
-            {/* Destructive section (hidden for inspect-only .ok rows). Rename
-                sits with Hide/Delete here (not at the top with creation) so
-                the menu's read order is create → act → tree →
-                mutate-or-remove. */}
-            {!isOkRow ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  disabled={anyActionBusy}
-                  onSelect={() => {
-                    if (target.kind === 'asset') return;
-                    close();
-                    onDuplicate(target);
-                  }}
-                >
-                  <CopyPlus aria-hidden="true" />
-                  <Trans>Duplicate</Trans>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={anyActionBusy}
-                  onSelect={() => {
-                    closeForInlineSurface();
-                    model.startRenaming(item.path);
-                  }}
-                >
-                  <Pencil aria-hidden="true" />
-                  <Trans>Rename</Trans>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="file-tree-menu-hide"
-                  disabled={!canHide}
-                  onSelect={() => {
-                    if (!okignoreBinding || !okignoreTarget) return;
-                    close();
-                    const pattern = buildOkignorePatternFromTarget(okignoreTarget);
-                    const current = okignoreBinding.current();
-                    const doc = parseOkignoreDoc(current);
-                    // appendPattern returns the same doc reference for whitespace-only
-                    // input AND for duplicates; skip the patch on both no-ops so we
-                    // don't churn the Y.Text with identical bytes.
-                    const updated = appendPattern(doc, pattern);
-                    if (updated === doc) return;
-                    okignoreBinding.patch(serializeOkignoreDoc(updated));
-                    const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
-                    toast.success(t`Hidden folder “${basename}”`, {
-                      description: t`Manage hidden files in Settings → Ignore patterns.`,
-                      duration: 5000,
-                    });
-                  }}
-                >
-                  <EyeOff aria-hidden="true" />
-                  {hideLabel}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={anyActionBusy}
-                  onSelect={() => {
-                    close();
-                    onDelete(deleteTargets);
-                  }}
-                >
-                  <Trash2 aria-hidden="true" />
-                  {deleteLabel}
-                </DropdownMenuItem>
-              </>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <RevealInFileManagerMenuItem item={item} workspace={workspace} onClose={close} />
-            {!isAsset && (
+                    void bridge.shell.showItemInFolder(full);
+                  },
+                }
+              : undefined
+          }
+          openWithAi={
+            isAsset ? undefined : (
               <OpenInAgentContextSubmenu
                 input={handoffInput}
                 installStates={handoff.installStates}
@@ -894,140 +721,92 @@ function FileTreeMenu({
                 dispatch={handoff.dispatch}
                 onBeforeLaunch={close}
               />
-            )}
-            {shareMenuItem}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Copy aria-hidden="true" />
-                <Trans>Copy path</Trans>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem
-                  disabled={!workspace}
-                  onSelect={() => {
-                    if (!workspace) return;
+            )
+          }
+          share={
+            canShare
+              ? {
+                  onSelect: () => {
                     close();
-                    const full = joinWorkspacePath(
-                      workspace.contentDir,
-                      relativePathForTreeItem(item),
-                      workspace.pathSeparator,
-                    );
-                    void copyToClipboard(full, 'full');
-                  }}
-                >
-                  <Trans>Full path</Trans>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    close();
-                    void copyToClipboard(relativePathForTreeItem(item), 'relative');
-                  }}
-                >
-                  <Trans>Relative path</Trans>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            {/* Mutate section (hidden for inspect-only .ok rows). */}
-            {!isOkRow ? (
-              <>
-                <DropdownMenuSeparator />
-                {!isAsset ? (
-                  <>
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger disabled={anyActionBusy}>
-                        <FileKey aria-hidden="true" />
-                        <Trans>Import as template</Trans>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        <DropdownMenuItem
-                          disabled={anyActionBusy}
-                          onSelect={() => {
-                            close();
-                            onImportTemplate(target, false);
-                          }}
-                        >
-                          <Trans>Keep original file</Trans>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={anyActionBusy}
-                          onSelect={() => {
-                            close();
-                            onImportTemplate(target, true);
-                          }}
-                        >
-                          <Trans>Convert (delete original)</Trans>
-                        </DropdownMenuItem>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                    <DropdownMenuItem
-                      disabled={anyActionBusy}
-                      onSelect={() => {
+                    handleShare();
+                  },
+                }
+              : undefined
+          }
+          onCopyFullPath={() => {
+            if (!workspace) return;
+            close();
+            const full = joinWorkspacePath(
+              workspace.contentDir,
+              relativePath,
+              workspace.pathSeparator,
+            );
+            void copyToClipboard(full, 'full');
+          }}
+          onCopyRelativePath={() => {
+            close();
+            void copyToClipboard(relativePath, 'relative');
+          }}
+          folderTree={
+            isFolder
+              ? {
+                  onExpandAll: showSubtreeExpandAll
+                    ? () => {
                         close();
-                        onDuplicate(target);
-                      }}
-                    >
-                      <CopyPlus aria-hidden="true" />
-                      <Trans>Duplicate</Trans>
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-                <DropdownMenuItem
-                  disabled={anyActionBusy}
-                  onSelect={() => {
-                    closeForInlineSurface();
-                    model.startRenaming(item.path);
-                  }}
-                >
-                  <Pencil aria-hidden="true" />
-                  <Trans>Rename</Trans>
-                </DropdownMenuItem>
-                {okignoreTarget ? (
-                  <DropdownMenuItem
-                    data-testid="file-tree-menu-hide"
-                    disabled={!canHide}
-                    onSelect={() => {
-                      if (!okignoreBinding) return;
-                      close();
-                      const pattern = buildOkignorePatternFromTarget(okignoreTarget);
-                      const current = okignoreBinding.current();
-                      const doc = parseOkignoreDoc(current);
-                      // appendPattern returns the same doc reference for whitespace-only
-                      // input AND for duplicates; skip the patch on both no-ops so we
-                      // don't churn the Y.Text with identical bytes.
-                      const updated = appendPattern(doc, pattern);
-                      if (updated === doc) return;
-                      okignoreBinding.patch(serializeOkignoreDoc(updated));
-                      const basename = okignoreTarget.path.split('/').pop() || okignoreTarget.path;
-                      toast.success(t`Hidden “${basename}”`, {
-                        description: t`Manage hidden files in Settings → Ignore patterns.`,
-                        duration: 5000,
-                      });
-                    }}
-                  >
-                    <EyeOff aria-hidden="true" />
-                    {hideLabel}
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={anyActionBusy}
-                  onSelect={() => {
-                    close();
-                    onDelete(deleteTargets);
-                  }}
-                >
-                  <Trash2 aria-hidden="true" />
-                  {deleteLabel}
-                </DropdownMenuItem>
-              </>
-            ) : null}
-          </>
-        )}
+                        onExpandSubtree(item.path);
+                      }
+                    : undefined,
+                  onCollapseAll: showSubtreeCollapseAll
+                    ? () => {
+                        close();
+                        onCollapseSubtree(item.path);
+                      }
+                    : undefined,
+                }
+              : undefined
+          }
+          onImportTemplate={
+            !isFolder && !isAsset && !isOkRow
+              ? (deleteSource) => {
+                  close();
+                  onImportTemplate(target, deleteSource);
+                }
+              : undefined
+          }
+          onDuplicate={
+            !isAsset && !isOkRow
+              ? () => {
+                  close();
+                  onDuplicate(target);
+                }
+              : undefined
+          }
+          onRename={
+            !isOkRow
+              ? () => {
+                  closeForInlineSurface();
+                  model.startRenaming(item.path);
+                }
+              : undefined
+          }
+          hide={
+            !isOkRow && okignoreTarget
+              ? { label: hideLabel, disabled: !canHide, onSelect: hideTarget }
+              : undefined
+          }
+          onDelete={
+            !isOkRow
+              ? () => {
+                  close();
+                  onDelete(deleteTargets);
+                }
+              : undefined
+          }
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-
 export interface FileTreeHandle {
   startCreating(kind: 'file' | 'folder', parentDir: string): void;
   /** Open NewItemDialog at the given parentDir so the template picker is
@@ -1110,7 +889,11 @@ export function FileTree({
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
   const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
-  const previewTabs = merged?.editor?.previewTabs ?? true;
+  const previewTabsEnabled = merged?.editor?.previewTabs ?? true;
+  const previewOpenOptions = {
+    disposition: previewTabsEnabled ? 'preview' : 'permanent',
+    consumeActiveNewTab: true,
+  } satisfies OpenTargetOptions;
   const {
     documents,
     setDocuments,
@@ -1195,14 +978,12 @@ export function FileTree({
   ) {
     if (target.kind === 'doc') {
       if (target.registerPage) addPage(target.docName);
-      openTarget(navigationTargetForDocument(target.docName, target.size), {
-        tabBehavior: openTabBehavior(),
-      });
+      openTarget(navigationTargetForDocument(target.docName, target.size), previewOpenOptions);
       pushHashWithoutNavigation(hashFromDocName(target.docName));
     } else if (target.kind === 'folder') {
       openTarget(
         { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
-        { tabBehavior: openTabBehavior() },
+        previewOpenOptions,
       );
       pushHashWithoutNavigation(hashFromFolderPath(target.folderPath));
     } else {
@@ -1218,7 +999,7 @@ export function FileTree({
           assetPath: target.assetPath,
           mediaKind: entry?.mediaKind ?? null,
         },
-        { tabBehavior: openTabBehavior() },
+        previewOpenOptions,
       );
       pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
     }
@@ -1248,7 +1029,7 @@ export function FileTree({
           assetPath: action.path,
           mediaKind: action.mediaKind,
         },
-        { tabBehavior: openTabBehavior() },
+        previewOpenOptions,
       );
       pushHashWithoutNavigation(action.hash);
       notifySidebarFileSelected();
@@ -1271,7 +1052,7 @@ export function FileTree({
       docExt: docEntry?.docExt,
     });
     if (okTarget?.kind === 'asset') {
-      openTarget(okTarget, { tabBehavior: openTabBehavior() });
+      openTarget(okTarget, previewOpenOptions);
       pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
       notifySidebarFileSelected();
       return;
@@ -1317,13 +1098,6 @@ export function FileTree({
   // Pierre reset helpers may run after an awaited mutation, so they read the
   // latest `showOkFolders` setting rather than the render that started it.
   const showOkFoldersRef = useRef<boolean>(false);
-  // Preview-tab behavior: on (the default), a tree click reuses the active tab
-  // the way an editor preview tab does; off, every click opens its own tab.
-  // Same ref treatment as the view setting above — the open closures are
-  // created at mount and must read the latest value at click time.
-  const previewTabsRef = useRef<boolean>(true);
-  const openTabBehavior = (): 'append' | 'replace-active' =>
-    previewTabsRef.current ? 'replace-active' : 'append';
   const fileTreeHostRef = useRef<HTMLDivElement | null>(null);
   const handleSelectionChangeRef = useRef<(selectedPaths: readonly string[]) => void>(() => {});
   const handleRenameRef = useRef<(event: FileTreeRenameEvent) => void>(() => {});
@@ -1371,6 +1145,13 @@ export function FileTree({
       event.dataTransfer?.setData(OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload(payload));
     }
 
+    function finalizeSidebarDragStart(event: Event) {
+      if (!(event instanceof DragEvent)) return;
+      if (!hasSidebarDragType(event.dataTransfer)) return;
+      // Pierre's row handler runs between these shadow-root phases and resets this to move.
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove';
+    }
+
     function handleExternalFileDragOver(event: Event) {
       if (!(event instanceof DragEvent)) return;
       if (!isExternalFileDrag(event)) return;
@@ -1409,6 +1190,7 @@ export function FileTree({
     }
 
     shadow.addEventListener('dragstart', handleDragStart, { capture: true });
+    shadow.addEventListener('dragstart', finalizeSidebarDragStart);
     shadow.addEventListener('dragover', handleExternalFileDragOver, { capture: true });
     shadow.addEventListener('dragleave', handleExternalFileDragLeave, { capture: true });
     shadow.addEventListener('drop', handleExternalFileDrop, { capture: true });
@@ -1417,6 +1199,7 @@ export function FileTree({
     window.addEventListener('dragend', clearSidebarDragInProgressSoon, true);
     return () => {
       shadow.removeEventListener('dragstart', handleDragStart, { capture: true });
+      shadow.removeEventListener('dragstart', finalizeSidebarDragStart);
       shadow.removeEventListener('dragover', handleExternalFileDragOver, { capture: true });
       shadow.removeEventListener('dragleave', handleExternalFileDragLeave, { capture: true });
       shadow.removeEventListener('drop', handleExternalFileDrop, { capture: true });
@@ -1728,62 +1511,6 @@ export function FileTree({
   useEffect(() => {
     handleDuplicateTargetRef.current = handleDuplicateTarget;
   });
-
-  async function handleImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
-    if (target.kind !== 'file') return;
-    if (deleteSource) {
-      setTemplateConvertRequest(target);
-      return;
-    }
-    await executeImportTemplate(target, false);
-  }
-
-  async function executeImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
-    if (busyPathRef.current !== null) return;
-    const clearBusyState = () => {
-      setBusyPath(null);
-      busyPathRef.current = null;
-      setTemplateConvertRequest(null);
-    };
-    busyPathRef.current = target.path;
-    setBusyPath(target.path);
-    setError(null);
-
-    const appPath = target.path;
-    const slash = appPath.lastIndexOf('/');
-    const targetFolder = slash === -1 ? '' : appPath.slice(0, slash);
-
-    const res = await importTemplate({
-      sourcePath: target.path,
-      targetFolder,
-      deleteSource,
-    });
-
-    if (!res.ok) {
-      toast.error(t`Failed to import template`, { description: res.error });
-      clearBusyState();
-      return;
-    }
-
-    if (deleteSource) {
-      await applyDeleteAftermath([target], [target.path], []);
-      // Optimistically remove from view if deleted, standard watcher sweeps later
-      setDocuments((current) => {
-        const next = current.filter(
-          (entry) => !(isDocumentEntry(entry) && entry.docName === target.path),
-        );
-        resetModelToDocuments(next);
-        markNextDocumentsAsApplied(next);
-        return next;
-      });
-      emitDocumentsChanged(['files', 'backlinks', 'graph']);
-    }
-
-    toast.success(t`Template imported`, {
-      description: res.path,
-    });
-    clearBusyState();
-  }
 
   function recoverMarkdownRenameConflict(message: string): boolean {
     const bareDestinationPath = parseAlreadyExistsRenamePath(message);
@@ -2322,6 +2049,8 @@ export function FileTree({
     }
   }
 
+  const handleTreeRenameEvent = useEffectEvent(handleTreeRename);
+
   async function handleDropComplete(event: FileTreeDropResult) {
     const operations = event.draggedPaths
       .map((sourcePath) => {
@@ -2759,7 +2488,6 @@ export function FileTree({
     assetTreePathsRef.current = assetTreePaths;
     busyPathRef.current = busyPath;
     showOkFoldersRef.current = showOkFolders;
-    previewTabsRef.current = previewTabs;
     treePathsRef.current = treePaths;
     folderTreePathsRef.current = folderTreePaths;
     activeAncestorTreePathsRef.current = activeAncestorTreePaths;
@@ -3182,6 +2910,64 @@ export function FileTree({
     emitDocumentsChanged(['files', 'backlinks', 'graph']);
   }
 
+  async function executeImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
+    if (busyPathRef.current !== null) return;
+    const clearBusyState = () => {
+      setBusyPath(null);
+      busyPathRef.current = null;
+      setTemplateConvertRequest(null);
+    };
+    busyPathRef.current = target.path;
+    setBusyPath(target.path);
+    setError(null);
+
+    const appPath = target.path;
+    const slash = appPath.lastIndexOf('/');
+    const targetFolder = slash === -1 ? '' : appPath.slice(0, slash);
+
+    const res = await importTemplate({
+      sourcePath: target.path,
+      targetFolder,
+      deleteSource,
+    });
+
+    if (!res.ok) {
+      toast.error(t`Failed to import template`, { description: res.error });
+      clearBusyState();
+      return;
+    }
+
+    if (deleteSource) {
+      await applyDeleteAftermath([target], [target.path], []);
+      // Optimistically remove from view if deleted, standard watcher sweeps later
+      setDocuments((current) => {
+        const next = current.filter(
+          (entry) => !(isDocumentEntry(entry) && entry.docName === target.path),
+        );
+        resetModelToDocuments(next);
+        markNextDocumentsAsApplied(next);
+        return next;
+      });
+      emitDocumentsChanged(['files', 'backlinks', 'graph']);
+    }
+
+    toast.success(t`Template imported`, {
+      description: res.path,
+    });
+    clearBusyState();
+  }
+
+  async function handleImportTemplate(target: FileTreeTarget, deleteSource: boolean) {
+    if (target.kind !== 'file') return;
+    if (deleteSource) {
+      setTemplateConvertRequest(target);
+      return;
+    }
+    await executeImportTemplate(target, false);
+  }
+
+  const handleImportTemplateEvent = useEffectEvent(handleImportTemplate);
+
   /**
    * Hard-delete via `POST /api/delete-path` — web mode and the Electron
    * fallback path (Delete Permanently from `TrashFailureModal`). Iterates
@@ -3510,24 +3296,9 @@ export function FileTree({
     await handleDeleteTargets(originals);
   }
 
-  // Hold a ref to handleDeleteTargets so the menu-action subscription
-  // effect below can keep its closure off the latest function identity
-  // without forcing the effect to re-bind on every render. Declared after
-  // the function declaration to keep React Compiler's
-  // `PruneHoistedContexts` pass from tripping on the forward-reference
-  // pattern the earlier startCreating refs benefit from (those functions
-  // are declared above their refs).
-  const handleDeleteTargetsRef = useRef(handleDeleteTargets);
-  useEffect(() => {
-    handleDeleteTargetsRef.current = handleDeleteTargets;
-  });
-
-  // Subscribe to the macOS File menu's `move-to-trash` request bus. The
-  // FileSidebar menu-action handler emits when the user picks File → Move
-  // to Trash; we convert the navigation-target snapshot to the same
-  // `FileTreeTarget` shape the row context menu produces and route through
-  // the existing 2-step Trash spine. One subscription owns the
-  // surface so a hot-reload / remount tears down cleanly.
+  // Editor tabs and the macOS File menu share this request bus. Convert their
+  // navigation target to the row menu's target shape, then open the same
+  // confirmation dialog instead of bypassing it for an immediate delete.
   //
   // docExt is looked up from `documentsRef` (the in-memory document list)
   // at fire-time so document trash flow + downstream rename hints render the
@@ -3535,50 +3306,17 @@ export function FileTree({
   // `kind: 'asset'` targets and share the same delete spine.
   useEffect(() => {
     return subscribeToFileTreeMenuActionDelete((target) => {
-      if (target.kind === 'doc' || target.kind === 'folder-index') {
-        const docName = target.docName;
-        const docEntry = documentsRef.current.find(
-          (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === docName,
-        );
-        void handleDeleteTargetsRef.current([
-          {
-            kind: 'file',
-            path: docName,
-            name: docName.split('/').pop() ?? docName,
-            docExt: docEntry?.docExt,
-          },
-        ]);
-        return;
-      }
-      if (target.kind === 'folder') {
-        void handleDeleteTargetsRef.current([
-          {
-            kind: 'folder',
-            path: target.folderPath,
-            name: target.folderPath.split('/').pop() ?? target.folderPath,
-          },
-        ]);
-        return;
-      }
-      if (target.kind === 'asset') {
-        void handleDeleteTargetsRef.current([
-          {
-            kind: 'asset',
-            path: target.assetPath,
-            name: target.assetPath.split('/').pop() ?? target.assetPath,
-          },
-        ]);
+      const fileTreeTarget = fileTreeTargetFromNavigationTarget(target, documentsRef.current);
+      if (fileTreeTarget) {
+        if (!hasOkPathSegment(fileTreeTarget.path)) {
+          setDeleteRequest({ targets: [fileTreeTarget] });
+        }
         return;
       }
       // missing — File menu's Move to Trash is disabled for this scope
       // upstream; the emit shouldn't fire. Logging the event so a future
       // drift between the menu-enable gate and the emitter is caught.
-      console.warn(
-        JSON.stringify({
-          event: 'file-tree-menu-action-delete-unsupported-kind',
-          kind: target.kind,
-        }),
-      );
+      warnUnsupportedMenuTarget('delete', target);
     });
   }, []);
 
@@ -3587,70 +3325,50 @@ export function FileTree({
   // doc + folder-index duplicate the file, folder duplicates the folder, and
   // asset + missing are guarded upstream by menu enablement.
   useEffect(() => {
-    return subscribeToFileTreeMenuActionDuplicate((target: ResolvedNavigationTarget) => {
-      if (target.kind === 'doc' || target.kind === 'folder-index') {
-        const docName = target.docName;
-        const docEntry = documentsRef.current.find(
-          (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === docName,
-        );
-        void handleDuplicateTargetRef.current({
-          kind: 'file',
-          path: docName,
-          name: docName.split('/').pop() ?? docName,
-          docExt: docEntry?.docExt,
-        });
+    return subscribeToFileTreeMenuActionDuplicate((target) => {
+      const fileTreeTarget = fileTreeTargetFromNavigationTarget(target, documentsRef.current);
+      if (fileTreeTarget && fileTreeTarget.kind !== 'asset') {
+        void handleDuplicateTargetRef.current(fileTreeTarget);
         return;
       }
-      if (target.kind === 'folder') {
-        void handleDuplicateTargetRef.current({
-          kind: 'folder',
-          path: target.folderPath,
-          name: target.folderPath.split('/').pop() ?? target.folderPath,
-        });
-        return;
-      }
-      console.warn(
-        JSON.stringify({
-          event: 'file-tree-menu-action-duplicate-unsupported-kind',
-          kind: target.kind,
-        }),
-      );
+      warnUnsupportedMenuTarget('duplicate', target);
     });
   }, []);
 
-  // macOS File menu's `rename` item bridges to Pierre's inline-rename via
-  // the model API. Path resolution per kind: doc + folder-index use
-  // `docNameToTreePath(docName, docExt)` (extension lookup from documentsRef
-  // mirrors the delete subscriber); folder uses folderPath directly.
-  // asset uses the raw asset path; missing falls through to a structured
-  // warn because the menu enable gate disables rename for that scope.
+  // Menu-bar rename keeps Pierre's inline editor. Tab-menu rename supplies a
+  // destination name from its dialog and enters the same handleTreeRename
+  // spine directly, so both surfaces share validation and reconciliation.
   useEffect(() => {
-    return subscribeToFileTreeMenuActionRename((target) => {
-      if (target.kind === 'doc' || target.kind === 'folder-index') {
-        const docName = target.docName;
-        const docEntry = documentsRef.current.find(
-          (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === docName,
-        );
-        const treePath = docNameToTreePath(docName, docEntry?.docExt);
-        model.startRenaming(treePath);
-        return;
-      }
-      if (target.kind === 'folder') {
-        model.startRenaming(target.folderPath);
-        return;
-      }
-      if (target.kind === 'asset') {
-        model.startRenaming(target.assetPath);
-        return;
-      }
-      console.warn(
-        JSON.stringify({
-          event: 'file-tree-menu-action-rename-unsupported-kind',
-          kind: target.kind,
-        }),
+    return subscribeToFileTreeMenuActionRename((target, nextName) => {
+      const renameTarget = fileTreeTargetFromNavigationTarget(
+        target,
+        documentsRef.current,
+        'tree-path',
       );
+      if (!renameTarget) {
+        warnUnsupportedMenuTarget('rename', target);
+        return;
+      }
+
+      if (nextName === undefined) {
+        model.startRenaming(renameTarget.path);
+        return;
+      }
+      void handleTreeRenameEvent({
+        sourcePath: renameTarget.path,
+        destinationPath: buildRenamedNodePath(renameTarget, nextName),
+        isFolder: renameTarget.kind === 'folder',
+      });
     });
   }, [model]);
+
+  useEffect(() => {
+    return subscribeToFileTreeMenuActionImportTemplate((target, deleteSource) => {
+      const fileTreeTarget = fileTreeTargetFromNavigationTarget(target, documentsRef.current);
+      if (fileTreeTarget?.kind !== 'file') return;
+      void handleImportTemplateEvent(fileTreeTarget, deleteSource);
+    });
+  }, []);
 
   function cancelCurrentHoverPrewarm() {
     const current = hoveredPrewarmDocRef.current;

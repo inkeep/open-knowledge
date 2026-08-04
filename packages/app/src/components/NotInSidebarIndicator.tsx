@@ -30,7 +30,8 @@ interface NotInSidebarIndicatorProps {
  */
 export function NotInSidebarIndicator({ entry, className }: NotInSidebarIndicatorProps) {
   const { t } = useLingui();
-  const { projectLocalBinding, merged } = useConfigContext();
+  const { projectLocalBinding, projectLocalSynced, merged } = useConfigContext();
+  if (merged === null || !projectLocalSynced) return null;
   const sidebar = merged?.appearance?.sidebar;
   const axes = attributeTreeHiddenAxes(entry, {
     showHiddenFiles: sidebar?.showHiddenFiles ?? false,

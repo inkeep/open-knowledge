@@ -12,9 +12,11 @@ import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import {
   emitFileTreeMenuActionDelete,
   emitFileTreeMenuActionDuplicate,
+  emitFileTreeMenuActionImportTemplate,
   emitFileTreeMenuActionRename,
   subscribeToFileTreeMenuActionDelete,
   subscribeToFileTreeMenuActionDuplicate,
+  subscribeToFileTreeMenuActionImportTemplate,
   subscribeToFileTreeMenuActionRename,
 } from './file-tree-menu-action-events';
 
@@ -118,6 +120,17 @@ describe('file-tree-menu-action-events bus', () => {
     unsubscribe();
   });
 
+  test('rename delivers the dialog name when supplied', () => {
+    installFakeWindow();
+    const received: Array<[ResolvedNavigationTarget, string | undefined]> = [];
+    const unsubscribe = subscribeToFileTreeMenuActionRename((target, nextName) =>
+      received.push([target, nextName]),
+    );
+    emitFileTreeMenuActionRename(DOC_TARGET, 'renamed.md');
+    expect(received).toEqual([[DOC_TARGET, 'renamed.md']]);
+    unsubscribe();
+  });
+
   test('rename + delete buses are independent channels', () => {
     installFakeWindow();
     const renameReceived: ResolvedNavigationTarget[] = [];
@@ -170,5 +183,16 @@ describe('file-tree-menu-action-events bus', () => {
     unsubDuplicate();
     unsubRename();
     unsubDelete();
+  });
+
+  test('import-template delivers the target and conversion choice', () => {
+    installFakeWindow();
+    const received: Array<[ResolvedNavigationTarget, boolean]> = [];
+    const unsubscribe = subscribeToFileTreeMenuActionImportTemplate((target, deleteSource) =>
+      received.push([target, deleteSource]),
+    );
+    emitFileTreeMenuActionImportTemplate(DOC_TARGET, true);
+    expect(received).toEqual([[DOC_TARGET, true]]);
+    unsubscribe();
   });
 });

@@ -1,119 +1,106 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
 
-import {
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useDndContext,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  horizontalListSortingStrategy,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { RenamePathSuccessSchema } from '@inkeep/open-knowledge-core';
+import { useDndContext } from '@dnd-kit/core';
+import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { AlertTriangle, PinIcon, PlusIcon, XIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  CopyX,
+  PanelLeft,
+  PanelRight,
+  PinIcon,
+  PlusIcon,
+  Trash2,
+  XIcon,
+} from 'lucide-react';
 import {
   type HTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
   type Ref,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
-import { toast } from 'sonner';
 import {
-  buildRenamedNodePath,
-  isValidNodeName,
-  normalizeRenameValue,
-  remapActiveDocName,
-} from '@/components/file-tree-operations';
+  type EditorTabFileTarget,
+  EditorTabTargetMenuItems,
+} from '@/components/EditorTabTargetMenuItems';
+import { FileTargetRenameDialog } from '@/components/FileTargetRenameDialog';
+import {
+  SkillContextMenuItems,
+  SkillFileContextMenuItems,
+  useSkillActions,
+} from '@/components/skill-actions';
 import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText,
-} from '@/components/ui/input-group';
 import { Kbd } from '@/components/ui/kbd';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import {
-  docTabId,
   filterClosableTabIds,
+  isSkillBundleShapedPath,
+  isSkillDocName,
   parseEditorTabId,
   tabIdForNavigationTarget,
   tabParts,
 } from '@/editor/editor-tabs';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
-import { hashFromDocName } from '@/lib/doc-hash';
-import { emitDocumentsChanged } from '@/lib/documents-events';
+import { useSkills } from '@/hooks/use-skills';
+import { emitFileTreeMenuActionRename } from '@/lib/file-tree-menu-action-events';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
-import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
 import { cn } from '@/lib/utils';
 import {
-  createTabReorderModifier,
+  type EditorTabDragData,
+  findEditorTabElement,
   getSortableTabClassName,
   getSortableTabKeyDownAction,
   getSortableTabStyle,
   getTabCloseButtonClass,
   getTabCloseButtonTabIndex,
-  measureTabReorderBounds,
-  TAB_KEYBOARD_DRAG_CODES,
-  TAB_REORDER_AUTO_SCROLL,
-  type TabReorderBounds,
-  tabRunCollisionDetection,
+  shouldOpenTabContextMenu,
 } from './editor-tabs-chrome';
 import { usePageList } from './PageListContext';
 import { scrollTabStripOnWheel } from './tab-strip-wheel';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
-const TAB_RENAME_EXTENSIONS = ['.md', '.mdx'] as const;
 const TAB_BASE_CLASS =
-  'group relative -mb-px flex h-10 min-w-28 max-w-64 shrink-0 cursor-pointer items-center overflow-hidden border border-transparent font-medium transition-colors';
+  'group @container/tab relative -mb-px flex h-10 min-w-32 max-w-48 grow-0 basis-36 shrink cursor-grab items-center overflow-hidden border border-transparent font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset active:cursor-grabbing';
 const TAB_ACTIVE_CLASS =
   'z-10 rounded-t-lg rounded-b-none border-border border-b-0 bg-background text-foreground';
-const TAB_INACTIVE_CLASS = cn(
-  TAB_ACTIVE_CLASS,
-  'bg-transparent hover:bg-muted focus-visible:bg-muted border-transparent hover:border-border focus-visible:border-border',
-);
+const TAB_INACTIVE_CLASS =
+  'rounded-t-md text-muted-foreground hover:border-border/70 hover:bg-muted/60 hover:text-foreground focus-visible:border-border focus-visible:bg-muted focus-visible:text-foreground';
 const TAB_BUTTON_CLASS =
-  'flex h-full min-w-0 flex-1 cursor-pointer items-center overflow-hidden px-3 text-left text-[13px]';
+  'flex h-full min-w-0 flex-1 cursor-pointer items-center overflow-hidden pl-3 pr-1.5 text-left text-[13px] outline-none @max-[5rem]/tab:pl-2';
 
-function tabDomIdPart(docName: string): string {
-  return docName.replace(/[^A-Za-z0-9_-]/g, '-');
+function tabTitleClassName(isFocusedActive: boolean, isPreview: boolean): string {
+  return cn(TAB_BUTTON_CLASS, isFocusedActive && 'font-semibold', isPreview && 'italic');
 }
 
-function navigateToDoc(docName: string) {
-  const nextHash = hashFromDocName(docName);
-  if (window.location.hash !== nextHash) {
-    window.location.hash = nextHash;
-  }
+function tabTitleOverflowClassName(isActive: boolean): string {
+  return isActive
+    ? 'overflow-hidden whitespace-nowrap mask-r-from-[calc(100%-1.5rem)] mask-r-to-[100%]'
+    : 'truncate group-hover:text-clip group-hover:mask-r-from-[calc(100%-3rem)] group-hover:mask-r-to-[calc(100%-1.5rem)]';
 }
 
-function stripRenameExtensionSuffix(value: string, docExt: string): string {
-  const extensions = [docExt, ...TAB_RENAME_EXTENSIONS].filter(
-    (ext, index, all) => ext && all.indexOf(ext) === index,
+function syncTabOverflowIndicators(scrollContainer: HTMLElement): void {
+  const overflowRoot = scrollContainer.closest<HTMLElement>('[data-editor-tab-overflow-root]');
+  if (!overflowRoot) return;
+  const maxScrollLeft = Math.max(0, scrollContainer.scrollWidth - scrollContainer.clientWidth);
+  overflowRoot.toggleAttribute('data-overflow-left', scrollContainer.scrollLeft > 1);
+  overflowRoot.toggleAttribute(
+    'data-overflow-right',
+    scrollContainer.scrollLeft < maxScrollLeft - 1,
   );
-  const lowerValue = value.toLowerCase();
-  const extension = extensions.find(
-    (ext) => value.length > ext.length && lowerValue.endsWith(ext.toLowerCase()),
-  );
-  return extension ? value.slice(0, -extension.length) : value;
 }
 
 function hasTabShortcutModifier(event: globalThis.KeyboardEvent): boolean {
@@ -121,15 +108,12 @@ function hasTabShortcutModifier(event: globalThis.KeyboardEvent): boolean {
 }
 
 const TAB_SHORTCUT_HINT_DELAY_MS = 1000;
+const EMPTY_SKILL_NAME_SET: ReadonlySet<string> = new Set();
 
 function shortcutDigitForIndex(index: number, tabCount: number): string | null {
   if (index < 0 || index >= tabCount) return null;
   if (index < 8) return String(index + 1);
   return index === tabCount - 1 ? '9' : null;
-}
-
-function tabShortcutHintForIndex(index: number, tabCount: number): string | null {
-  return shortcutDigitForIndex(index, tabCount);
 }
 
 function tabAriaKeyShortcutsForIndex(index: number, tabCount: number): string | undefined {
@@ -155,12 +139,9 @@ function TabShortcutHint({ value }: { value: string }) {
     <span
       aria-hidden="true"
       data-testid="editor-tab-shortcut-hint"
-      className={cn(
-        getTabCloseButtonClass(true),
-        'font-mono tabular-nums hover:bg-transparent animate-in fade-in-0 zoom-in-95 duration-150 motion-reduce:animate-none motion-reduce:duration-0',
-      )}
+      className="mr-1 flex h-5 w-fit shrink-0 items-center justify-center font-mono tabular-nums @max-[5rem]/tab:hidden"
     >
-      <Kbd className="text-[10px]">{`⌘${value}`}</Kbd>
+      <Kbd className="px-0.5 text-[10px]">{`⌘${value}`}</Kbd>
     </span>
   );
 }
@@ -169,9 +150,7 @@ function TabShortcutHint({ value }: { value: string }) {
  * Sortable wrapper for one tab div, bound to `@dnd-kit/sortable`'s
  * `useSortable` so the whole tab (not a separate drag handle) is draggable.
  * Activation is gated by the outer DndContext's PointerSensor `distance: 8`
- * so plain clicks still activate / close the tab. While renaming, `disabled`
- * short-circuits the sortable bindings — the inline input keeps full
- * pointer/keyboard affordance and the tab stays in place.
+ * so plain clicks still activate / close the tab.
  *
  * Callers should not pass a `role` prop. `useSortable`'s `attributes` inject
  * `role="button"` + `aria-roledescription="sortable"` so screen readers can
@@ -184,26 +163,42 @@ function TabShortcutHint({ value }: { value: string }) {
  */
 function SortableTab({
   activateFromKeyboard,
+  children,
   className,
+  dropIndicatorSide,
+  label,
+  paneId,
+  splittable,
   tabId,
-  disabled,
   onKeyDown,
   ref: outerRef,
   style: outerStyle,
   ...rest
 }: {
   activateFromKeyboard?: () => void;
+  dropIndicatorSide?: 'before' | 'after';
+  label: string;
+  paneId: string;
+  splittable: boolean;
   tabId: string;
-  disabled?: boolean;
   ref?: Ref<HTMLDivElement>;
 } & HTMLAttributes<HTMLDivElement>) {
   const { attributes, listeners, rect, setNodeRef, transform, transition, isDragging } =
     useSortable({
+      animateLayoutChanges: () => false,
       id: tabId,
-      disabled,
+      data: {
+        kind: 'editor-tab',
+        paneId,
+        tabId,
+        splittable,
+        label,
+      } satisfies EditorTabDragData,
+      transition: null,
     });
   const style = getSortableTabStyle({
     activeWidth: rect.current?.width,
+    disableMovement: true,
     isDragging,
     outerStyle,
     transform,
@@ -220,6 +215,20 @@ function SortableTab({
   const sortableKeyDown = listeners?.onKeyDown;
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     onKeyDown?.(event);
+    if (!event.defaultPrevented && shouldOpenTabContextMenu(event)) {
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      event.currentTarget.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + Math.min(rect.width / 2, 16),
+          clientY: rect.top + rect.height / 2,
+          view: window,
+        }),
+      );
+      return;
+    }
     const action = getSortableTabKeyDownAction({
       event,
       hasKeyboardActivation: Boolean(activateFromKeyboard),
@@ -238,85 +247,175 @@ function SortableTab({
     <div
       ref={composedRef}
       data-editor-tab-sortable=""
+      data-editor-pane-id={paneId}
+      data-editor-tab-id={tabId}
       className={getSortableTabClassName({ className, isDragging })}
       style={style}
       {...rest}
       {...attributes}
       {...listeners}
       onKeyDown={handleKeyDown}
-    />
+    >
+      {children}
+      {dropIndicatorSide ? (
+        <span
+          aria-hidden="true"
+          data-editor-tab-drop-indicator={dropIndicatorSide}
+          className={cn(
+            'pointer-events-none absolute inset-y-1 z-30 w-0.5 rounded-full bg-primary',
+            dropIndicatorSide === 'before' ? 'left-0' : 'right-0',
+          )}
+        />
+      ) : null}
+    </div>
   );
 }
 
 function EditorTabContextMenu({
+  canSplit = true,
   children,
   closeTab,
   closeTabs,
   canPin = true,
-  disabled = false,
+  docExt,
+  isPreview = false,
   openTabs,
   pinTab,
   pinnedTabIds,
+  promoteTab,
+  splitTab,
+  skillMenuItems,
+  tabLabel,
   tabId,
+  target,
+  renameName,
   unpinTab,
 }: {
   children: ReactNode;
   canPin?: boolean;
+  canSplit?: boolean;
+  docExt?: string;
   closeTab: (tabId: string) => void;
   closeTabs: (tabIds: readonly string[]) => void;
-  disabled?: boolean;
+  isPreview?: boolean;
   openTabs: readonly string[];
   pinTab: (tabId: string) => void;
   pinnedTabIds: readonly string[];
+  promoteTab: (tabId: string) => void;
+  splitTab: (tabId: string, side: 'left' | 'right', label: string) => void;
+  skillMenuItems?: ReactNode;
+  tabLabel: string;
   tabId: string;
+  target?: EditorTabFileTarget;
+  renameName?: string;
   unpinTab: (tabId: string) => void;
 }) {
-  if (disabled) return children;
-
+  const [renameOpen, setRenameOpen] = useState(false);
   const isPinned = canPin && pinnedTabIds.includes(tabId);
   const otherTabIds = filterClosableTabIds(
     openTabs.filter((openTabId) => openTabId !== tabId),
     pinnedTabIds,
   );
   const closableTabIds = filterClosableTabIds(openTabs, pinnedTabIds);
+  const canMoveToNewPane = canSplit && openTabs.length > 1;
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="min-w-40">
-        <ContextMenuItem disabled={isPinned} onSelect={() => closeTab(tabId)}>
-          <Trans>Close</Trans>
-        </ContextMenuItem>
-        <ContextMenuItem
-          disabled={otherTabIds.length === 0}
-          onSelect={() => {
-            closeTabs(otherTabIds);
-          }}
-        >
-          <Trans>Close others</Trans>
-        </ContextMenuItem>
-        <ContextMenuItem
-          disabled={closableTabIds.length === 0}
-          data-testid="editor-tab-context-close-all"
-          onSelect={() => {
-            closeTabs(closableTabIds);
-          }}
-        >
-          {pinnedTabIds.length ? <Trans>Close all unpinned</Trans> : <Trans>Close all</Trans>}
-        </ContextMenuItem>
-        {canPin && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              data-testid="editor-tab-context-pin-toggle"
-              onSelect={() => (isPinned ? unpinTab(tabId) : pinTab(tabId))}
-            >
-              {isPinned ? <Trans>Unpin tab</Trans> : <Trans>Pin tab</Trans>}
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="min-w-56">
+          <ContextMenuGroup>
+            <ContextMenuItem disabled={isPinned} onSelect={() => closeTab(tabId)}>
+              <XIcon aria-hidden="true" />
+              <Trans>Close</Trans>
             </ContextMenuItem>
-          </>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
+            <ContextMenuItem
+              disabled={otherTabIds.length === 0}
+              onSelect={() => {
+                closeTabs(otherTabIds);
+              }}
+            >
+              <CopyX aria-hidden="true" />
+              <Trans>Close others</Trans>
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={closableTabIds.length === 0}
+              data-testid="editor-tab-context-close-all"
+              onSelect={() => {
+                closeTabs(closableTabIds);
+              }}
+            >
+              <Trash2 aria-hidden="true" />
+              {pinnedTabIds.length ? <Trans>Close all unpinned</Trans> : <Trans>Close all</Trans>}
+            </ContextMenuItem>
+          </ContextMenuGroup>
+          {target || skillMenuItems ? (
+            <>
+              <ContextMenuSeparator />
+              {target ? (
+                <EditorTabTargetMenuItems
+                  docExt={docExt}
+                  target={target}
+                  onRename={() => setRenameOpen(true)}
+                />
+              ) : null}
+              {skillMenuItems}
+            </>
+          ) : null}
+          {isPreview && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                data-testid="editor-tab-context-keep-open"
+                onSelect={() => promoteTab(tabId)}
+              >
+                <PinIcon aria-hidden="true" />
+                <Trans>Keep open</Trans>
+              </ContextMenuItem>
+            </>
+          )}
+          {canPin && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                data-testid="editor-tab-context-pin-toggle"
+                onSelect={() => (isPinned ? unpinTab(tabId) : pinTab(tabId))}
+              >
+                <PinIcon aria-hidden="true" />
+                {isPinned ? <Trans>Unpin tab</Trans> : <Trans>Pin tab</Trans>}
+              </ContextMenuItem>
+            </>
+          )}
+          <ContextMenuSeparator />
+          <ContextMenuGroup>
+            <ContextMenuItem
+              disabled={!canMoveToNewPane}
+              data-testid="editor-tab-context-split-left"
+              onSelect={() => splitTab(tabId, 'left', tabLabel)}
+            >
+              <PanelLeft aria-hidden="true" />
+              <Trans>Move to new pane left</Trans>
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={!canMoveToNewPane}
+              data-testid="editor-tab-context-split-right"
+              onSelect={() => splitTab(tabId, 'right', tabLabel)}
+            >
+              <PanelRight aria-hidden="true" />
+              <Trans>Move to new pane right</Trans>
+            </ContextMenuItem>
+          </ContextMenuGroup>
+        </ContextMenuContent>
+      </ContextMenu>
+      {renameOpen && target && renameName ? (
+        <FileTargetRenameDialog
+          currentName={renameName}
+          open
+          onOpenChange={setRenameOpen}
+          onSave={(nextName) => emitFileTreeMenuActionRename(target, nextName)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -383,21 +482,9 @@ function TabPinOrCloseButton({
 }
 
 /**
- * Full-path hover disclosure for a tab whose visible label is only the base
- * name — two `SPEC.md` tabs from different folders are otherwise
- * indistinguishable. Supersedes the native `title` attribute, which carried
- * the same string but renders OS-styled after the platform's own ~1s delay;
- * keeping both would stack a second tooltip under the first.
- *
- * Shown even where the label already reads as the whole name. Tabs cap at
- * `max-w-64` and truncate, so a long enough name is clipped whether or not a
- * folder prefix precedes it, and that clipped case is exactly where the
- * disclosure earns its keep. Suppressing the apparent echo would drop it.
- * Same reasoning as the terminal tab strip and the footer project path.
- *
- * Anchored to the inner label button, not the outer sortable tab, because
- * `SortableTab` spreads dnd-kit's `listeners` after `rest` — pointer handlers
- * a trigger injected there would be silently overwritten.
+ * Full-path hover disclosure for labels that may be visually truncated.
+ * Anchoring to the inner button avoids dnd-kit's sortable listeners replacing
+ * the tooltip trigger's pointer handlers on the outer tab.
  */
 function TabPathTooltip({ children, path }: { children: ReactNode; path: string }) {
   // A reorder drag keeps firing pointermove over the trigger, which re-opens
@@ -433,18 +520,24 @@ function DocumentTabButton({
   activateTab,
   baseName,
   docName,
-  enterRenameMode,
   extension,
   hideDocExtension,
+  isActive,
+  isFocusedPane,
+  isPreview,
+  promoteTab,
   tabId,
 }: {
   accessibleLabel: string;
   activateTab: (tabId: string) => void;
   baseName: string;
   docName: string;
-  enterRenameMode: (tabId: string, docName: string) => void;
   extension: string;
   hideDocExtension: boolean;
+  isActive: boolean;
+  isFocusedPane: boolean;
+  isPreview: boolean;
+  promoteTab: (tabId: string) => void;
   tabId: string;
 }) {
   const { t } = useLingui();
@@ -457,20 +550,25 @@ function DocumentTabButton({
       <button
         type="button"
         aria-label={buttonAccessibleLabel}
-        className={TAB_BUTTON_CLASS}
+        className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
         onClick={() => {
           activateTab(tabId);
         }}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          enterRenameMode(tabId, docName);
+          promoteTab(tabId);
         }}
         tabIndex={-1}
       >
         <TabConflictBadge hasConflict={hasConflict} />
         <span className="flex min-w-0 flex-1 items-center">
-          <span className="min-w-0 truncate">{baseName}</span>
+          <span
+            data-editor-tab-title-overflow={isActive ? 'fade' : 'ellipsis'}
+            className={cn('min-w-0 flex-1', tabTitleOverflowClassName(isActive))}
+          >
+            {baseName}
+          </span>
           {!hideDocExtension && <span className="shrink-0">{extension}</span>}
         </span>
       </button>
@@ -478,62 +576,204 @@ function DocumentTabButton({
   );
 }
 
-export function EditorTabs() {
-  const {
-    activeDocName,
-    activeTabId: activeContextTabId,
-    activeNewTabId,
-    activeTarget,
-    activateTab,
-    activateNewTab,
-    closeNewTab,
-    closeTab,
-    closeTabs,
-    isNewTabActive,
-    newTabIds,
-    openNewTab,
-    openTabs,
-    pinTab,
-    pinnedTabIds,
-    reopenClosedTab,
-    reconcileLocalRename,
-    reorderTabs,
-    unpinTab,
-    visibleTabIds,
-  } = useDocumentContext();
+interface EditorTabFrameProps {
+  accessibleLabel: string;
+  activateTab: (tabId: string) => void;
+  ariaKeyShortcuts?: string;
+  children: ReactNode;
+  closeTab: (tabId: string) => void;
+  closeTabs: (tabIds: readonly string[]) => void;
+  docExt?: string;
+  dropIndicatorSide?: 'before' | 'after';
+  forceCloseVisible: boolean;
+  isActive: boolean;
+  isPinned: boolean;
+  isPreview: boolean;
+  openTabs: readonly string[];
+  paneId: string;
+  pinTab: (tabId: string) => void;
+  pinnedTabIds: readonly string[];
+  promoteTab: (tabId: string) => void;
+  renameName?: string;
+  shortcutHint: string | null;
+  splitTab: (tabId: string, side: 'left' | 'right', label: string) => void;
+  skillMenuItems?: ReactNode;
+  tabId: string;
+  target?: EditorTabFileTarget;
+  unpinTab: (tabId: string) => void;
+}
+
+function EditorTabFrame({
+  accessibleLabel,
+  activateTab,
+  ariaKeyShortcuts,
+  children,
+  closeTab,
+  closeTabs,
+  docExt,
+  dropIndicatorSide,
+  forceCloseVisible,
+  isActive,
+  isPinned,
+  isPreview,
+  openTabs,
+  paneId,
+  pinTab,
+  pinnedTabIds,
+  promoteTab,
+  renameName,
+  shortcutHint,
+  splitTab,
+  skillMenuItems,
+  tabId,
+  target,
+  unpinTab,
+}: EditorTabFrameProps) {
+  return (
+    <EditorTabContextMenu
+      tabId={tabId}
+      docExt={docExt}
+      target={target}
+      renameName={renameName}
+      openTabs={openTabs}
+      closeTab={closeTab}
+      closeTabs={closeTabs}
+      isPreview={isPreview}
+      pinTab={pinTab}
+      pinnedTabIds={pinnedTabIds}
+      promoteTab={promoteTab}
+      splitTab={splitTab}
+      skillMenuItems={skillMenuItems}
+      tabLabel={accessibleLabel}
+      unpinTab={unpinTab}
+    >
+      <SortableTab
+        dropIndicatorSide={dropIndicatorSide}
+        label={accessibleLabel}
+        paneId={paneId}
+        splittable
+        tabId={tabId}
+        activateFromKeyboard={() => activateTab(tabId)}
+        aria-current={isActive ? 'page' : undefined}
+        aria-keyshortcuts={ariaKeyShortcuts}
+        data-active-tab={isActive ? 'true' : undefined}
+        data-preview-tab={isPreview ? 'true' : undefined}
+        className={cn(TAB_BASE_CLASS, isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS)}
+        onAuxClick={(event) => {
+          if (event.button !== 1) return;
+          event.preventDefault();
+          if (!isPinned) closeTab(tabId);
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) activateTab(tabId);
+        }}
+      >
+        {children}
+        <TabPinOrCloseButton
+          accessibleLabel={accessibleLabel}
+          closeTab={closeTab}
+          forceCloseVisible={forceCloseVisible}
+          isActive={isActive}
+          isPinned={isPinned}
+          shortcutHint={shortcutHint}
+          tabId={tabId}
+          unpinTab={unpinTab}
+        />
+      </SortableTab>
+    </EditorTabContextMenu>
+  );
+}
+
+interface EditorTabsProps {
+  dropIndicatorIndex?: number | null;
+  paneId: string;
+  onSplitComplete?: (paneId: string, tabId: string) => void;
+  reserveLeadingChrome?: boolean;
+  reserveTrailingChrome?: boolean;
+}
+
+export function EditorTabs({
+  dropIndicatorIndex = null,
+  paneId,
+  onSplitComplete,
+  reserveLeadingChrome = false,
+  reserveTrailingChrome = false,
+}: EditorTabsProps) {
   const { t } = useLingui();
+  const context = useDocumentContext();
+  const { reopenClosedTab } = context;
+  const pane = context.panes.find((candidate) => candidate.id === paneId) ?? context.panes[0];
+  const resolvedPaneId = pane?.id ?? paneId;
+  const openTabs = pane?.openTabs ?? [];
+  const pinnedTabIds = pane?.pinnedTabIds ?? [];
+  const previewTabId = pane?.previewTabId ?? null;
+  const newTabIds = pane?.newTabIds ?? [];
+  const visibleTabIds = context.visibleTabIdsByPane.get(resolvedPaneId) ?? [
+    ...openTabs,
+    ...newTabIds,
+  ];
+  const activeTarget = pane?.activeTarget ?? null;
+  const activeContextTabId = pane?.activeTabId ?? null;
+  const activeNewTabId = pane?.activeNewTabId ?? null;
+  const isNewTabActive = activeNewTabId !== null;
+  const isFocusedPane = context.focusedPaneId === resolvedPaneId;
+  const hasSkillTab = visibleTabIds.some((tabId) => {
+    const tab = parseEditorTabId(tabId);
+    return tab.kind === 'skill-file' || (tab.kind === 'doc' && isSkillDocName(tab.docName));
+  });
+  const skillsState = useSkills({ enabled: hasSkillTab });
+  const skillActions = useSkillActions();
+  const editableSkills =
+    skillsState.status === 'ready' ? skillsState.data.filter((skill) => !skill.managed) : [];
+  const editableSkillsByTabId = new Map(
+    editableSkills.map((skill) => [skillEntryLiveDocName(skill), skill] as const),
+  );
+  const skillNamesByScope = new Map(
+    (['project', 'global'] as const).map((scope) => [
+      scope,
+      new Set(
+        skillsState.status === 'ready'
+          ? skillsState.data.filter((skill) => skill.scope === scope).map((skill) => skill.name)
+          : [],
+      ),
+    ]),
+  );
+  const activateTab = (tabId: string) => context.activateTabInPane(resolvedPaneId, tabId);
+  const activateNewTab = (tabId: string) => context.activateNewTabInPane(resolvedPaneId, tabId);
+  const closeTab = (tabId: string) => context.closeTabInPane(resolvedPaneId, tabId);
+  const closeTabs = (tabIds: readonly string[]) => context.closeTabsInPane(resolvedPaneId, tabIds);
+  const closeNewTab = (tabId: string) => context.closeNewTabInPane(resolvedPaneId, tabId);
+  const openNewTab = () => context.openNewTabInPane(resolvedPaneId);
+  const pinTab = (tabId: string) => context.pinTabInPane(resolvedPaneId, tabId);
+  const unpinTab = (tabId: string) => context.unpinTabInPane(resolvedPaneId, tabId);
+  const promoteTab = (tabId: string) => context.promoteTabInPane(resolvedPaneId, tabId);
+  const [splitAnnouncement, setSplitAnnouncement] = useState({ id: 0, text: '' });
+  function splitTab(tabId: string, side: 'left' | 'right', label: string) {
+    const nextPaneId = context.moveTabToNewPane(tabId, side);
+    if (!nextPaneId) return;
+    const text =
+      side === 'left'
+        ? t`Moved ${label} to a new pane on the left.`
+        : t`Moved ${label} to a new pane on the right.`;
+    setSplitAnnouncement((current) => ({ id: current.id + 1, text }));
+    onSplitComplete?.(nextPaneId, tabId);
+  }
   const { pageMeta } = usePageList();
-  const tabListRef = useRef<HTMLDivElement>(null);
-  const [tabReorderBounds, setTabReorderBounds] = useState<TabReorderBounds | null>(null);
-  const [renamingTab, setRenamingTab] = useState<{ docName: string; tabId: string } | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const [isRenameLoading, setIsRenameLoading] = useState(false);
   const [showTabShortcutHints, setShowTabShortcutHints] = useState(false);
-  const renameInputRef = useRef<HTMLInputElement>(null);
-  const commitInProgressRef = useRef(false);
-  const cancelRequestedRef = useRef(false);
-  const lastFailedValueRef = useRef<string | null>(null);
-  const activeDocNameRef = useRef(activeDocName);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
   const tabShortcutHintTimerRef = useRef<number | null>(null);
   const isTabShortcutModifierHeldRef = useRef(false);
   const showTabShortcutHintsRef = useRef(false);
   const activeTabId =
-    activeContextTabId ??
-    (activeTarget
-      ? tabIdForNavigationTarget(activeTarget)
-      : activeDocName
-        ? docTabId(activeDocName)
-        : null);
-  const activeTabScrollKey = isNewTabActive
-    ? `${activeNewTabId ?? '__new-tab__'}\u0000${openTabs.join('\u0000')}\u0000${newTabIds.join('\u0000')}`
-    : activeTabId
-      ? `${activeTabId}\u0000${openTabs.join('\u0000')}`
-      : '';
+    activeContextTabId ?? (activeTarget ? tabIdForNavigationTarget(activeTarget) : null);
 
-  useEffect(() => {
-    activeDocNameRef.current = activeDocName;
-  }, [activeDocName]);
+  function dropIndicatorSideForTab(tabIndex: number): 'before' | 'after' | undefined {
+    if (dropIndicatorIndex === tabIndex) return 'before';
+    if (dropIndicatorIndex === visibleTabIds.length && tabIndex === visibleTabIds.length - 1) {
+      return 'after';
+    }
+    return undefined;
+  }
 
   useEffect(() => {
     return () => {
@@ -543,191 +783,10 @@ export function EditorTabs() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!activeTabScrollKey) return;
-    const activeTab = tabListRef.current?.querySelector<HTMLElement>('[data-active-tab="true"]');
-    activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [activeTabScrollKey]);
-
-  useEffect(() => {
-    if (!renamingTab) return;
-    renameInputRef.current?.focus();
-    renameInputRef.current?.select();
-  }, [renamingTab]);
-
-  useEffect(() => {
-    if (!renamingTab || openTabs.includes(renamingTab.tabId)) return;
-    cancelRequestedRef.current = true;
-    lastFailedValueRef.current = null;
-    setRenamingTab(null);
-    setRenameValue('');
-    setRenameError(null);
-    setIsRenameLoading(false);
-  }, [openTabs, renamingTab]);
-
-  function enterRenameMode(tabId: string, docName: string) {
-    const segments = docName.split('/');
-    cancelRequestedRef.current = false;
-    lastFailedValueRef.current = null;
-    setRenamingTab({ docName, tabId });
-    setRenameValue(segments[segments.length - 1]);
-    setRenameError(null);
-  }
-
-  function cancelRename() {
-    cancelRequestedRef.current = true;
-    lastFailedValueRef.current = null;
-    setRenamingTab(null);
-    setRenameValue('');
-    setRenameError(null);
-    setIsRenameLoading(false);
-  }
-
-  async function commitRename() {
-    if (cancelRequestedRef.current) {
-      cancelRequestedRef.current = false;
-      return;
-    }
-    if (commitInProgressRef.current) return;
-
-    const docName = renamingTab?.docName;
-    if (!docName) {
-      cancelRename();
-      return;
-    }
-
-    const docExt = pageMeta.get(docName)?.docExt ?? '.md';
-    const normalized = normalizeRenameValue(
-      'file',
-      stripRenameExtensionSuffix(renameValue, docExt),
-    );
-    const segments = docName.split('/');
-    const currentName = segments[segments.length - 1];
-
-    if (normalized === currentName) {
-      cancelRename();
-      return;
-    }
-    if (normalized === lastFailedValueRef.current) {
-      renameInputRef.current?.focus();
-      return;
-    }
-
-    if (!isValidNodeName(normalized)) {
-      setRenameError(t`Name can’t be empty, ".", "..", or contain / or \\`);
-      renameInputRef.current?.focus();
-      return;
-    }
-
-    const newDocName = buildRenamedNodePath(
-      { kind: 'file', path: docName, name: currentName },
-      normalized,
-    );
-
-    commitInProgressRef.current = true;
-    setIsRenameLoading(true);
-    setRenameError(null);
-
-    try {
-      const res = await fetch('/api/rename-path', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'file', fromPath: docName, toPath: newDocName }),
-      });
-
-      if (cancelRequestedRef.current) {
-        setIsRenameLoading(false);
-        commitInProgressRef.current = false;
-        return;
-      }
-
-      const parsed = await parseServerResponse(res, `Server error (HTTP ${res.status})`);
-
-      if (!parsed.ok) {
-        setRenameError(parsed.title);
-        setIsRenameLoading(false);
-        commitInProgressRef.current = false;
-        lastFailedValueRef.current = normalized;
-        renameInputRef.current?.focus();
-        return;
-      }
-
-      const success = parseSuccessOrWarn(RenamePathSuccessSchema, parsed.body, 'rename-path:tab', {
-        renamed: [],
-        renamedAssets: [],
-      });
-      const renamed = success.renamed;
-      const currentActiveDocName = activeDocNameRef.current;
-      const nextActiveDocName = remapActiveDocName(currentActiveDocName, renamed);
-
-      // Split try/catch: server-side rename already committed
-      // (`parsed.ok === true`). A failure inside the post-commit work
-      // (persistence cleanup, tab remap, event dispatch)
-      // is a client-side reconciliation failure, NOT a network error.
-      // Labeling it "Network error — please try again" would misdirect
-      // the user toward a retry that POSTs against a now-nonexistent
-      // source path and fails differently. The correct recovery is to
-      // refresh and resync with disk truth.
-      let reconcileOk = true;
-      try {
-        await reconcileLocalRename({ renamed });
-        emitDocumentsChanged(['files', 'backlinks', 'graph']);
-      } catch (reconcileErr) {
-        reconcileOk = false;
-        console.warn('[EditorTabs] post-rename reconciliation failed', {
-          err: reconcileErr,
-          docName,
-          newDocName,
-          normalized,
-        });
-        toast.error(t`Rename succeeded but the tabstrip may be out of date — refresh to resync`);
-      }
-
-      cancelRequestedRef.current = true;
-      setRenamingTab(null);
-      setRenameValue('');
-      setRenameError(null);
-      setIsRenameLoading(false);
-      commitInProgressRef.current = false;
-      lastFailedValueRef.current = null;
-
-      // Skip navigation when reconciliation failed: tab identities remain stale,
-      // so no tab is keyed to nextActiveDocName. Calling navigateToDoc
-      // would silently open a new tab and contradict the "refresh to resync"
-      // toast. Refresh recovers consistent state.
-      if (reconcileOk && nextActiveDocName && nextActiveDocName !== currentActiveDocName) {
-        navigateToDoc(nextActiveDocName);
-      }
-    } catch (err) {
-      console.warn('[EditorTabs] rename failed', { err, docName, newDocName, normalized });
-      setRenameError(t`Network error — please try again`);
-      setIsRenameLoading(false);
-      commitInProgressRef.current = false;
-      lastFailedValueRef.current = normalized;
-      renameInputRef.current?.focus();
-    }
-  }
-
-  // Electron-host gate. Two regions, split by geometry:
-  //
-  //   • The strip ROOT stays a window-drag region (`-webkit-app-region: drag`).
-  //     The strip is h-12 (48px) and `items-end`, so the empty 8px band ABOVE
-  //     the h-10 (40px) tabs — plus all trailing space after the last tab when
-  //     the strip isn't full — is the root showing through, and stays draggable.
-  //   • An inner wrapper that hugs the tabs + add-button (content width, 40px
-  //     tall, bottom-aligned) declares `no-drag`. That covers the tabs AND the
-  //     4px gaps between them, so they stay interactive.
-  //
-  // Why the split: macOS hijacks pointer/wheel events in drag regions at the OS
-  // chrome level (the DOM never sees them; see the `[data-electron-drag]`
-  // neutralization rule in globals.css). A draggable inter-tab gap therefore
-  // killed wheel-scroll whenever the cursor sat between two tabs. Scoping
-  // `no-drag` to the content-hugging wrapper keeps wheel-scroll alive over the
-  // tabs and gaps while preserving the drag affordance on the genuinely-empty
-  // top band and trailing space. Web mode (no `window.okDesktop`) is unchanged.
+  // Pane-local strips live below the global window chrome. Keep the entire
+  // strip interactive in Electron so blank strip space can accept tab drops.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const newTabIdSet = new Set(newTabIds);
-  const tabReorderModifiers = [createTabReorderModifier(tabReorderBounds)];
 
   function closeVisibleTabs(tabIds: readonly string[]) {
     const documentTabIds: string[] = [];
@@ -746,7 +805,9 @@ export function EditorTabs() {
   }
 
   useEffect(() => {
+    if (!isFocusedPane) return;
     const currentNewTabIds = new Set(newTabIds);
+    const currentVisibleTabIds = [...openTabs, ...newTabIds];
 
     function clearTabShortcutHintTimer() {
       if (tabShortcutHintTimerRef.current === null) return;
@@ -783,19 +844,22 @@ export function EditorTabs() {
 
     function activateVisibleTab(tabId: string) {
       if (currentNewTabIds.has(tabId)) {
-        activateNewTab(tabId);
+        context.activateNewTabInPane(resolvedPaneId, tabId);
       } else {
-        activateTab(tabId);
+        context.activateTabInPane(resolvedPaneId, tabId);
       }
     }
 
     function activateTabByOffset(offset: number) {
-      if (visibleTabIds.length === 0) return;
+      if (currentVisibleTabIds.length === 0) return;
       const activeVisibleTabId = isNewTabActive ? activeNewTabId : activeTabId;
-      const activeIndex = activeVisibleTabId ? visibleTabIds.indexOf(activeVisibleTabId) : -1;
+      const activeIndex = activeVisibleTabId
+        ? currentVisibleTabIds.indexOf(activeVisibleTabId)
+        : -1;
       const baseIndex = activeIndex >= 0 ? activeIndex : 0;
-      const nextIndex = (baseIndex + offset + visibleTabIds.length) % visibleTabIds.length;
-      activateVisibleTab(visibleTabIds[nextIndex]);
+      const nextIndex =
+        (baseIndex + offset + currentVisibleTabIds.length) % currentVisibleTabIds.length;
+      activateVisibleTab(currentVisibleTabIds[nextIndex]);
     }
 
     function onKeyDown(event: globalThis.KeyboardEvent) {
@@ -809,7 +873,7 @@ export function EditorTabs() {
 
       if (matchesKeyboardShortcut(event, 'tab-new')) {
         event.preventDefault();
-        openNewTab();
+        context.openNewTabInPane(resolvedPaneId);
         return;
       }
       if (matchesKeyboardShortcut(event, 'tab-reopen-closed')) {
@@ -828,10 +892,10 @@ export function EditorTabs() {
         return;
       }
 
-      const jumpIndex = jumpTabIndexFromShortcut(event, visibleTabIds.length);
+      const jumpIndex = jumpTabIndexFromShortcut(event, currentVisibleTabIds.length);
       if (jumpIndex === null) return;
       event.preventDefault();
-      activateVisibleTab(visibleTabIds[jumpIndex]);
+      activateVisibleTab(currentVisibleTabIds[jumpIndex]);
     }
 
     function onKeyUp(event: globalThis.KeyboardEvent) {
@@ -851,464 +915,428 @@ export function EditorTabs() {
   }, [
     activeNewTabId,
     activeTabId,
-    activateNewTab,
-    activateTab,
+    context.activateNewTabInPane,
+    context.activateTabInPane,
+    context.openNewTabInPane,
+    isFocusedPane,
     isNewTabActive,
     newTabIds,
-    openNewTab,
+    openTabs,
     reopenClosedTab,
-    visibleTabIds,
+    resolvedPaneId,
   ]);
-
-  // Tab drag-reorder. PointerSensor `distance: 8` keeps plain clicks from
-  // initiating a drag (tabs differ from the PropertyPanel drag-handle pattern,
-  // where the handle is a dedicated child — here the entire tab is the drag
-  // source, so the activation threshold has to be looser than the panel's 4px).
-  // KeyboardSensor + sortableKeyboardCoordinates makes keyboard reorder work.
-  // Space starts drag so Enter can stay available for one-stop tab activation
-  // on the outer sortable tab while inner activation buttons remain tabIndex=-1.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-      keyboardCodes: TAB_KEYBOARD_DRAG_CODES,
-    }),
-  );
   const forceTabCloseVisible = showTabShortcutHints;
+  const selectedTabId = isNewTabActive ? activeNewTabId : activeTabId;
+  const previousSelectedTabIdRef = useRef(selectedTabId);
 
-  function handleDragStart() {
-    setTabReorderBounds(measureTabReorderBounds(tabListRef.current, '[data-editor-tab-sortable]'));
-  }
+  useLayoutEffect(() => {
+    const scrollContainer = tabScrollRef.current;
+    if (!scrollContainer) return;
+    syncTabOverflowIndicators(scrollContainer);
+  });
 
-  function clearTabReorderBounds() {
-    setTabReorderBounds(null);
-  }
+  useLayoutEffect(() => {
+    const scrollContainer = tabScrollRef.current;
+    if (!scrollContainer || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => syncTabOverflowIndicators(scrollContainer));
+    observer.observe(scrollContainer);
+    return () => observer.disconnect();
+  }, []);
 
-  function handleDragEnd(event: DragEndEvent) {
-    clearTabReorderBounds();
-    const activeId = String(event.active.id);
-    const overId = event.over ? String(event.over.id) : null;
-    if (!overId || activeId === overId) return;
-    const fromIndex = visibleTabIds.indexOf(activeId);
-    const toIndex = visibleTabIds.indexOf(overId);
-    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
-    reorderTabs(arrayMove([...visibleTabIds], fromIndex, toIndex), activeId);
-  }
+  useEffect(() => {
+    const previousSelectedTabId = previousSelectedTabIdRef.current;
+    previousSelectedTabIdRef.current = selectedTabId;
+    if (selectedTabId === null || selectedTabId === previousSelectedTabId) return;
+
+    const scrollContainer = tabScrollRef.current;
+    if (!scrollContainer) return;
+    findEditorTabElement(scrollContainer, resolvedPaneId, selectedTabId)?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [resolvedPaneId, selectedTabId]);
 
   return (
     <div
-      ref={tabListRef}
-      data-electron-drag={isElectronHost ? '' : undefined}
+      data-editor-pane-tabs={resolvedPaneId}
       className={cn(
-        'pl-2 flex h-12 min-w-0 touch-manipulation flex-1 items-end overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-fade-mask-x [scrollbar-width:none]',
-        isElectronHost && '[-webkit-app-region:drag]',
+        'flex h-12 w-full min-w-0 touch-manipulation items-end overflow-hidden',
+        reserveLeadingChrome
+          ? 'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]'
+          : 'pl-2',
+        reserveTrailingChrome && 'pr-[var(--editor-header-trailing-width,0px)]',
+        isElectronHost && '[-webkit-app-region:no-drag]',
       )}
-      onWheel={scrollTabStripOnWheel}
     >
       <div
+        data-editor-tab-overflow-root=""
         className={cn(
-          // Content-hugging, bottom-aligned no-drag wrapper. Hugs the tabs +
-          // add-button (no flex-1) so the root's empty space stays draggable;
-          // `no-drag` here keeps the tabs and inter-tab gaps wheel-scrollable.
-          'flex items-end gap-1',
+          'group/tab-overflow relative flex min-w-0 flex-1 items-end gap-px overflow-hidden',
           isElectronHost && '[-webkit-app-region:no-drag]',
         )}
       >
-        <DndContext
-          sensors={sensors}
-          autoScroll={TAB_REORDER_AUTO_SCROLL}
-          collisionDetection={tabRunCollisionDetection}
-          modifiers={tabReorderModifiers}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={clearTabReorderBounds}
-          accessibility={{
-            // Portal @dnd-kit's `DndDescribedBy` + `DndLiveRegion` SR helpers
-            // out of the strip's flex container — without this they land as
-            // siblings of the SortableTab list and the `+` button, occupying
-            // the `:first-child` slot in the parent flex flow. That breaks
-            // the `+` Button's `first:mb-3 mb-1.5` Tailwind variant when the
-            // tabs list is empty, leaving the `+` button 6px below where it
-            // should sit (cy=37 instead of cy=32). SSR/test-safe: only pass
-            // `document.body` when `document` exists in the runtime.
-            container: typeof document !== 'undefined' ? document.body : undefined,
-          }}
+        <span
+          aria-atomic="true"
+          aria-live="polite"
+          data-testid="editor-tab-split-announcement"
+          className="sr-only"
         >
-          <SortableContext items={[...visibleTabIds]} strategy={horizontalListSortingStrategy}>
-            {visibleTabIds.map((tabId, tabIndex) => {
-              const shortcutHint = showTabShortcutHints
-                ? tabShortcutHintForIndex(tabIndex, visibleTabIds.length)
-                : null;
-              const ariaKeyShortcuts = tabAriaKeyShortcutsForIndex(tabIndex, visibleTabIds.length);
-              if (newTabIdSet.has(tabId)) {
-                const isActive = tabId === activeNewTabId;
-                return (
-                  <EditorTabContextMenu
-                    key={tabId}
-                    tabId={tabId}
-                    canPin={false}
-                    openTabs={visibleTabIds}
-                    closeTab={closeNewTab}
-                    closeTabs={closeVisibleTabs}
-                    pinTab={pinTab}
-                    pinnedTabIds={pinnedTabIds}
-                    unpinTab={unpinTab}
-                  >
-                    <SortableTab
+          <span key={splitAnnouncement.id}>{splitAnnouncement.text}</span>
+        </span>
+        <SortableContext items={[...visibleTabIds]} strategy={horizontalListSortingStrategy}>
+          <div className="relative h-10 w-fit max-w-[calc(100%-1.75rem)] min-w-0 flex-none self-end">
+            <div
+              ref={tabScrollRef}
+              data-editor-tab-scroll=""
+              className="scrollbar-none flex h-10 w-fit max-w-full min-w-0 items-end gap-px overflow-x-auto overflow-y-hidden overscroll-x-contain group-data-[overflow-left]/tab-overflow:mask-l-from-[calc(100%-4rem)] group-data-[overflow-right]/tab-overflow:mask-r-from-[calc(100%-4rem)]"
+              onScroll={(event) => syncTabOverflowIndicators(event.currentTarget)}
+              onWheel={(event) => {
+                scrollTabStripOnWheel(event);
+                syncTabOverflowIndicators(event.currentTarget);
+              }}
+            >
+              {visibleTabIds.length === 0 && dropIndicatorIndex === 0 ? (
+                <span
+                  aria-hidden="true"
+                  data-editor-tab-drop-indicator="before"
+                  className="pointer-events-none absolute inset-y-1 left-0 z-30 w-0.5 rounded-full bg-primary"
+                />
+              ) : null}
+              {visibleTabIds.map((tabId, tabIndex) => {
+                const shortcutHint = showTabShortcutHints
+                  ? shortcutDigitForIndex(tabIndex, visibleTabIds.length)
+                  : null;
+                const ariaKeyShortcuts = isFocusedPane
+                  ? tabAriaKeyShortcutsForIndex(tabIndex, visibleTabIds.length)
+                  : undefined;
+                if (newTabIdSet.has(tabId)) {
+                  const isActive = tabId === activeNewTabId;
+                  return (
+                    <EditorTabContextMenu
+                      key={tabId}
                       tabId={tabId}
-                      activateFromKeyboard={() => activateNewTab(tabId)}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-keyshortcuts={ariaKeyShortcuts}
-                      data-active-tab={isActive ? 'true' : undefined}
-                      className={cn(
-                        TAB_BASE_CLASS,
-                        isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS,
-                      )}
-                      onAuxClick={(event) => {
-                        if (event.button !== 1) return;
-                        event.preventDefault();
-                        closeNewTab(tabId);
-                      }}
-                      onClick={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        activateNewTab(tabId);
-                      }}
+                      canPin={false}
+                      openTabs={visibleTabIds}
+                      closeTab={closeNewTab}
+                      closeTabs={closeVisibleTabs}
+                      pinTab={pinTab}
+                      pinnedTabIds={pinnedTabIds}
+                      promoteTab={promoteTab}
+                      splitTab={splitTab}
+                      tabLabel={t`New tab`}
+                      unpinTab={unpinTab}
                     >
-                      <button
-                        type="button"
-                        aria-label={t`Activate new tab`}
-                        data-testid="editor-new-tab-placeholder-button"
-                        className={TAB_BUTTON_CLASS}
-                        onClick={() => activateNewTab(tabId)}
-                        tabIndex={-1}
+                      <SortableTab
+                        dropIndicatorSide={dropIndicatorSideForTab(tabIndex)}
+                        label={t`New tab`}
+                        paneId={resolvedPaneId}
+                        splittable
+                        tabId={tabId}
+                        activateFromKeyboard={() => activateNewTab(tabId)}
+                        aria-current={isActive ? 'page' : undefined}
+                        aria-keyshortcuts={ariaKeyShortcuts}
+                        data-active-tab={isActive ? 'true' : undefined}
+                        className={cn(
+                          TAB_BASE_CLASS,
+                          isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS,
+                        )}
+                        onAuxClick={(event) => {
+                          if (event.button !== 1) return;
+                          event.preventDefault();
+                          closeNewTab(tabId);
+                        }}
+                        onClick={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          activateNewTab(tabId);
+                        }}
                       >
-                        <span className="min-w-0 truncate">
-                          <Trans>New tab</Trans>
-                        </span>
-                      </button>
-                      {shortcutHint ? (
-                        <TabShortcutHint value={shortcutHint} />
-                      ) : (
                         <button
                           type="button"
-                          aria-label={t`Close new tab`}
-                          data-testid="editor-new-tab-placeholder-close"
-                          className={getTabCloseButtonClass(forceTabCloseVisible || isActive)}
-                          tabIndex={getTabCloseButtonTabIndex(isActive)}
-                          onClick={(event) => {
+                          aria-label={t`Activate new tab`}
+                          data-testid="editor-new-tab-placeholder-button"
+                          className={tabTitleClassName(isActive && isFocusedPane, false)}
+                          onClick={() => activateNewTab(tabId)}
+                          tabIndex={-1}
+                        >
+                          <span
+                            data-editor-tab-title-overflow="ellipsis"
+                            className="min-w-0 truncate"
+                          >
+                            <Trans>New tab</Trans>
+                          </span>
+                        </button>
+                        {shortcutHint ? (
+                          <TabShortcutHint value={shortcutHint} />
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={t`Close new tab`}
+                            data-testid="editor-new-tab-placeholder-close"
+                            className={getTabCloseButtonClass(forceTabCloseVisible || isActive)}
+                            tabIndex={getTabCloseButtonTabIndex(isActive)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              closeNewTab(tabId);
+                            }}
+                          >
+                            <XIcon aria-hidden="true" className="size-3.5" />
+                          </button>
+                        )}
+                      </SortableTab>
+                    </EditorTabContextMenu>
+                  );
+                }
+
+                const tab = parseEditorTabId(tabId);
+                const isActive = tabId === activeTabId;
+                const isPinned = pinnedTabIds.includes(tabId);
+                const isPreview = tabId === previewTabId;
+                if (tab.kind === 'folder') {
+                  const { baseName, label, prefix } = tabParts(tab.folderPath, '/');
+                  const accessibleLabel = `${prefix}${label}`;
+                  return (
+                    <EditorTabFrame
+                      key={tabId}
+                      accessibleLabel={accessibleLabel}
+                      activateTab={activateTab}
+                      ariaKeyShortcuts={ariaKeyShortcuts}
+                      dropIndicatorSide={dropIndicatorSideForTab(tabIndex)}
+                      tabId={tabId}
+                      paneId={resolvedPaneId}
+                      target={{
+                        kind: 'folder',
+                        target: tab.folderPath,
+                        folderPath: tab.folderPath,
+                      }}
+                      renameName={baseName}
+                      openTabs={visibleTabIds}
+                      closeTab={closeTab}
+                      closeTabs={closeVisibleTabs}
+                      forceCloseVisible={forceTabCloseVisible}
+                      isActive={isActive}
+                      isPinned={isPinned}
+                      isPreview={isPreview}
+                      pinTab={pinTab}
+                      pinnedTabIds={pinnedTabIds}
+                      promoteTab={promoteTab}
+                      shortcutHint={shortcutHint}
+                      splitTab={splitTab}
+                      unpinTab={unpinTab}
+                    >
+                      <TabPathTooltip path={accessibleLabel}>
+                        <button
+                          type="button"
+                          aria-label={accessibleLabel}
+                          className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
+                          onClick={() => activateTab(tabId)}
+                          onDoubleClick={(event) => {
+                            event.preventDefault();
                             event.stopPropagation();
-                            closeNewTab(tabId);
-                          }}
-                        >
-                          <XIcon aria-hidden="true" className="size-3.5" />
-                        </button>
-                      )}
-                    </SortableTab>
-                  </EditorTabContextMenu>
-                );
-              }
-
-              const tab = parseEditorTabId(tabId);
-              const isActive = tabId === activeTabId;
-              const isPinned = pinnedTabIds.includes(tabId);
-              if (tab.kind === 'folder') {
-                const { baseName, label, prefix } = tabParts(tab.folderPath, '/');
-                const accessibleLabel = `${prefix}${label}`;
-                return (
-                  <EditorTabContextMenu
-                    key={tabId}
-                    tabId={tabId}
-                    openTabs={visibleTabIds}
-                    closeTab={closeTab}
-                    closeTabs={closeVisibleTabs}
-                    pinTab={pinTab}
-                    pinnedTabIds={pinnedTabIds}
-                    unpinTab={unpinTab}
-                  >
-                    <SortableTab
-                      tabId={tabId}
-                      activateFromKeyboard={() => activateTab(tabId)}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-keyshortcuts={ariaKeyShortcuts}
-                      data-active-tab={isActive ? 'true' : undefined}
-                      className={cn(
-                        TAB_BASE_CLASS,
-                        isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS,
-                      )}
-                      onAuxClick={(event) => {
-                        if (event.button !== 1) return;
-                        event.preventDefault();
-                        if (isPinned) return;
-                        closeTab(tabId);
-                      }}
-                      onClick={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        activateTab(tabId);
-                      }}
-                    >
-                      <TabPathTooltip path={accessibleLabel}>
-                        <button
-                          type="button"
-                          aria-label={accessibleLabel}
-                          className={TAB_BUTTON_CLASS}
-                          onClick={() => {
-                            activateTab(tabId);
+                            promoteTab(tabId);
                           }}
                           tabIndex={-1}
                         >
-                          {prefix && (
-                            <span
-                              className={cn(
-                                'min-w-0 flex-1 truncate',
-                                isActive && 'text-muted-foreground',
-                              )}
-                            >
-                              {prefix}
-                            </span>
-                          )}
                           <span
-                            className={cn(
-                              'flex min-w-0 items-center',
-                              prefix ? 'max-w-[70%] shrink-0' : 'flex-1',
-                            )}
+                            data-editor-tab-title-overflow={isActive ? 'fade' : 'ellipsis'}
+                            className={cn('min-w-0 flex-1', tabTitleOverflowClassName(isActive))}
                           >
-                            <span className="min-w-0 truncate">{baseName}</span>
-                            <span className="shrink-0">/</span>
+                            {prefix && (
+                              <span
+                                className={cn(
+                                  '@max-[5rem]/tab:hidden',
+                                  isActive && 'text-muted-foreground',
+                                )}
+                              >
+                                {prefix}
+                              </span>
+                            )}
+                            <span>{baseName}/</span>
                           </span>
                         </button>
                       </TabPathTooltip>
-                      <TabPinOrCloseButton
-                        accessibleLabel={accessibleLabel}
-                        closeTab={closeTab}
-                        forceCloseVisible={forceTabCloseVisible}
-                        isActive={isActive}
-                        isPinned={isPinned}
-                        shortcutHint={shortcutHint}
-                        tabId={tabId}
-                        unpinTab={unpinTab}
-                      />
-                    </SortableTab>
-                  </EditorTabContextMenu>
-                );
-              }
+                    </EditorTabFrame>
+                  );
+                }
 
-              if (
-                tab.kind === 'asset' ||
-                tab.kind === 'skill-file' ||
-                tab.kind === 'skills' ||
-                tab.kind === 'skill-preview'
-              ) {
-                // Assets, skill bundle files, the Skills hub, and a pre-install
-                // skill preview share the asset tab's read-only chrome. Label off
-                // the asset path, the skill-relative path (`references/x.md`), the
-                // previewed skill's name, or a fixed "Skills" label.
-                const labelPath =
-                  tab.kind === 'asset'
-                    ? tab.assetPath
-                    : tab.kind === 'skill-file'
-                      ? tab.path
-                      : tab.kind === 'skill-preview'
-                        ? tab.name
-                        : t`Skills`;
-                const { baseName, label, prefix } = tabParts(labelPath, '');
-                const accessibleLabel = `${prefix}${label}`;
-                return (
-                  <EditorTabContextMenu
-                    key={tabId}
-                    tabId={tabId}
-                    openTabs={visibleTabIds}
-                    closeTab={closeTab}
-                    closeTabs={closeVisibleTabs}
-                    pinTab={pinTab}
-                    pinnedTabIds={pinnedTabIds}
-                    unpinTab={unpinTab}
-                  >
-                    <SortableTab
+                if (
+                  tab.kind === 'asset' ||
+                  tab.kind === 'skill-file' ||
+                  tab.kind === 'skill-preview'
+                ) {
+                  // Skill bundle files and marketplace previews share the asset
+                  // tab's read-only chrome.
+                  let labelPath: string;
+                  switch (tab.kind) {
+                    case 'asset':
+                      labelPath = tab.assetPath;
+                      break;
+                    case 'skill-file':
+                      labelPath = tab.path;
+                      break;
+                    case 'skill-preview':
+                      labelPath = tab.name;
+                      break;
+                  }
+                  const { baseName, label, prefix } = tabParts(labelPath, '');
+                  const accessibleLabel = `${prefix}${label}`;
+                  const skillFileCandidates =
+                    tab.kind === 'skill-file'
+                      ? editableSkills.filter(
+                          (skill) => skill.scope === tab.scope && skill.name === tab.name,
+                        )
+                      : [];
+                  const skillFileOwner =
+                    tab.kind === 'skill-file'
+                      ? tab.host
+                        ? skillFileCandidates.find((skill) => skill.hosts[0] === tab.host)
+                        : skillFileCandidates.length === 1
+                          ? skillFileCandidates[0]
+                          : undefined
+                      : undefined;
+                  return (
+                    <EditorTabFrame
+                      key={tabId}
+                      accessibleLabel={accessibleLabel}
+                      activateTab={activateTab}
+                      ariaKeyShortcuts={ariaKeyShortcuts}
+                      dropIndicatorSide={dropIndicatorSideForTab(tabIndex)}
                       tabId={tabId}
-                      activateFromKeyboard={() => activateTab(tabId)}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-keyshortcuts={ariaKeyShortcuts}
-                      data-active-tab={isActive ? 'true' : undefined}
-                      className={cn(
-                        TAB_BASE_CLASS,
-                        isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS,
-                      )}
-                      onAuxClick={(event) => {
-                        if (event.button !== 1) return;
-                        event.preventDefault();
-                        if (isPinned) return;
-                        closeTab(tabId);
-                      }}
-                      onClick={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        activateTab(tabId);
-                      }}
-                    >
-                      <TabPathTooltip path={accessibleLabel}>
-                        <button
-                          type="button"
-                          aria-label={accessibleLabel}
-                          className={TAB_BUTTON_CLASS}
-                          onClick={() => {
-                            activateTab(tabId);
-                          }}
-                          tabIndex={-1}
-                        >
-                          {prefix ? (
-                            <span
-                              className={cn(
-                                'min-w-0 flex-1 truncate text-muted-foreground/60',
-                                isActive && 'text-muted-foreground',
-                              )}
-                            >
-                              {prefix}
-                            </span>
-                          ) : null}
-                          <span
-                            className={cn(
-                              'min-w-0 truncate',
-                              prefix ? 'max-w-[70%] shrink-0' : 'flex-1',
-                            )}
-                          >
-                            {baseName}
-                          </span>
-                        </button>
-                      </TabPathTooltip>
-                      <TabPinOrCloseButton
-                        accessibleLabel={accessibleLabel}
-                        closeTab={closeTab}
-                        forceCloseVisible={forceTabCloseVisible}
-                        isActive={isActive}
-                        isPinned={isPinned}
-                        shortcutHint={shortcutHint}
-                        tabId={tabId}
-                        unpinTab={unpinTab}
-                      />
-                    </SortableTab>
-                  </EditorTabContextMenu>
-                );
-              }
-
-              const docName = tab.docName;
-              const docExt = pageMeta.get(docName)?.docExt ?? '.md';
-              const { baseName, extension, label, prefix } = tabParts(docName, docExt);
-              const accessibleLabel = `${prefix}${label}`;
-              const hideDocExtension = docExt === '.md' || docExt === '.mdx';
-              const isRenaming = renamingTab?.tabId === tabId;
-              const renameErrorId = `editor-tab-rename-error-${tabDomIdPart(docName)}`;
-              return (
-                <EditorTabContextMenu
-                  key={tabId}
-                  disabled={isRenaming}
-                  tabId={tabId}
-                  openTabs={visibleTabIds}
-                  closeTab={closeTab}
-                  closeTabs={closeVisibleTabs}
-                  pinTab={pinTab}
-                  pinnedTabIds={pinnedTabIds}
-                  unpinTab={unpinTab}
-                >
-                  <SortableTab
-                    tabId={tabId}
-                    activateFromKeyboard={() => activateTab(tabId)}
-                    disabled={isRenaming}
-                    aria-current={isActive ? 'page' : undefined}
-                    aria-keyshortcuts={ariaKeyShortcuts}
-                    data-active-tab={isActive ? 'true' : undefined}
-                    className={cn(
-                      TAB_BASE_CLASS,
-                      isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS,
-                      isRenaming && renameError && 'border-destructive',
-                    )}
-                    onAuxClick={(event) => {
-                      if (event.button !== 1) return;
-                      event.preventDefault();
-                      if (isPinned) return;
-                      closeTab(tabId);
-                    }}
-                    onClick={(event) => {
-                      if (event.target !== event.currentTarget) return;
-                      activateTab(tabId);
-                    }}
-                  >
-                    {isRenaming ? (
-                      <>
-                        <InputGroup className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent dark:bg-transparent">
-                          <InputGroupInput
-                            ref={renameInputRef}
-                            value={renameValue}
-                            disabled={isRenameLoading}
-                            aria-label={t`Rename ${label}`}
-                            data-testid="editor-tab-rename-input"
-                            aria-invalid={renameError ? true : undefined}
-                            aria-describedby={renameError ? renameErrorId : undefined}
-                            aria-busy={isRenameLoading || undefined}
-                            title={renameError ?? docName}
-                            className="h-full min-w-0 px-2 py-0 font-medium text-foreground text-xs selection:bg-primary selection:text-primary-foreground"
-                            onChange={(event) => {
-                              setRenameValue(
-                                stripRenameExtensionSuffix(event.target.value, docExt),
-                              );
-                              setRenameError(null);
-                              lastFailedValueRef.current = null;
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                void commitRename();
-                              } else if (event.key === 'Escape') {
-                                event.preventDefault();
-                                cancelRename();
-                              }
-                            }}
-                            onBlur={commitRename}
+                      paneId={resolvedPaneId}
+                      target={
+                        tab.kind === 'asset'
+                          ? {
+                              kind: 'asset',
+                              target: tab.assetPath,
+                              assetPath: tab.assetPath,
+                              mediaKind: null,
+                            }
+                          : undefined
+                      }
+                      renameName={tab.kind === 'asset' ? baseName : undefined}
+                      openTabs={visibleTabIds}
+                      closeTab={closeTab}
+                      closeTabs={closeVisibleTabs}
+                      forceCloseVisible={forceTabCloseVisible}
+                      isActive={isActive}
+                      isPinned={isPinned}
+                      isPreview={isPreview}
+                      pinTab={pinTab}
+                      pinnedTabIds={pinnedTabIds}
+                      promoteTab={promoteTab}
+                      shortcutHint={shortcutHint}
+                      splitTab={splitTab}
+                      skillMenuItems={
+                        tab.kind === 'skill-file' && skillFileOwner ? (
+                          <SkillFileContextMenuItems
+                            actions={skillActions}
+                            filePath={tab.path}
+                            menuKind="context"
+                            skill={skillFileOwner}
                           />
-                          <InputGroupAddon
-                            align="inline-end"
-                            aria-hidden="true"
-                            className="pr-2 text-xs"
+                        ) : undefined
+                      }
+                      unpinTab={unpinTab}
+                    >
+                      <TabPathTooltip path={accessibleLabel}>
+                        <button
+                          type="button"
+                          aria-label={accessibleLabel}
+                          className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
+                          onClick={() => activateTab(tabId)}
+                          onDoubleClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            promoteTab(tabId);
+                          }}
+                          tabIndex={-1}
+                        >
+                          <span
+                            data-editor-tab-title-overflow={isActive ? 'fade' : 'ellipsis'}
+                            className={cn('min-w-0 flex-1', tabTitleOverflowClassName(isActive))}
                           >
-                            <InputGroupText className="text-muted-foreground/60 text-xs">
-                              {docExt}
-                            </InputGroupText>
-                          </InputGroupAddon>
-                        </InputGroup>
-                        {renameError ? (
-                          <span id={renameErrorId} role="alert" className="sr-only">
-                            {renameError}
+                            {prefix ? (
+                              <span
+                                className={cn(
+                                  'text-muted-foreground/60 @max-[5rem]/tab:hidden',
+                                  isActive && 'text-muted-foreground',
+                                )}
+                              >
+                                {prefix}
+                              </span>
+                            ) : null}
+                            <span>{baseName}</span>
                           </span>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        <DocumentTabButton
-                          accessibleLabel={accessibleLabel}
-                          activateTab={activateTab}
-                          baseName={baseName}
-                          docName={docName}
-                          enterRenameMode={enterRenameMode}
-                          extension={extension}
-                          hideDocExtension={hideDocExtension}
-                          tabId={tabId}
+                        </button>
+                      </TabPathTooltip>
+                    </EditorTabFrame>
+                  );
+                }
+
+                const docName = tab.docName;
+                const skill = editableSkillsByTabId.get(docName);
+                const docExt = pageMeta.get(docName)?.docExt ?? '.md';
+                const { baseName, extension, label, prefix } = tabParts(docName, docExt);
+                const accessibleLabel = `${prefix}${label}`;
+                const hideDocExtension = docExt === '.md' || docExt === '.mdx';
+                const hasFileTargetActions =
+                  !isSkillDocName(docName) && !isSkillBundleShapedPath(docName);
+                return (
+                  <EditorTabFrame
+                    key={tabId}
+                    accessibleLabel={accessibleLabel}
+                    activateTab={activateTab}
+                    ariaKeyShortcuts={ariaKeyShortcuts}
+                    dropIndicatorSide={dropIndicatorSideForTab(tabIndex)}
+                    tabId={tabId}
+                    paneId={resolvedPaneId}
+                    docExt={docExt}
+                    target={
+                      hasFileTargetActions ? { kind: 'doc', target: docName, docName } : undefined
+                    }
+                    renameName={hasFileTargetActions ? `${baseName}${extension}` : undefined}
+                    openTabs={visibleTabIds}
+                    closeTab={closeTab}
+                    closeTabs={closeVisibleTabs}
+                    forceCloseVisible={forceTabCloseVisible}
+                    isActive={isActive}
+                    isPinned={isPinned}
+                    isPreview={isPreview}
+                    pinTab={pinTab}
+                    pinnedTabIds={pinnedTabIds}
+                    promoteTab={promoteTab}
+                    shortcutHint={shortcutHint}
+                    splitTab={splitTab}
+                    skillMenuItems={
+                      skill ? (
+                        <SkillContextMenuItems
+                          actions={skillActions}
+                          existingNames={skillNamesByScope.get(skill.scope) ?? EMPTY_SKILL_NAME_SET}
+                          menuKind="context"
+                          skill={skill}
                         />
-                        <TabPinOrCloseButton
-                          accessibleLabel={accessibleLabel}
-                          closeTab={closeTab}
-                          forceCloseVisible={forceTabCloseVisible}
-                          isActive={isActive}
-                          isPinned={isPinned}
-                          shortcutHint={shortcutHint}
-                          tabId={tabId}
-                          unpinTab={unpinTab}
-                        />
-                      </>
-                    )}
-                  </SortableTab>
-                </EditorTabContextMenu>
-              );
-            })}
-          </SortableContext>
-        </DndContext>
+                      ) : undefined
+                    }
+                    unpinTab={unpinTab}
+                  >
+                    <DocumentTabButton
+                      accessibleLabel={accessibleLabel}
+                      activateTab={activateTab}
+                      baseName={baseName}
+                      docName={docName}
+                      extension={extension}
+                      hideDocExtension={hideDocExtension}
+                      isActive={isActive}
+                      isFocusedPane={isFocusedPane}
+                      isPreview={isPreview}
+                      promoteTab={promoteTab}
+                      tabId={tabId}
+                    />
+                  </EditorTabFrame>
+                );
+              })}
+            </div>
+          </div>
+        </SortableContext>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -1317,7 +1345,7 @@ export function EditorTabs() {
               variant="ghost"
               aria-label={t`New tab`}
               data-testid="editor-new-tab-button"
-              className="first:mb-3 mb-1.5"
+              className="first:mb-3 mb-1.5 shrink-0"
               onClick={openNewTab}
             >
               <PlusIcon aria-hidden="true" />
@@ -1328,6 +1356,7 @@ export function EditorTabs() {
           </TooltipContent>
         </Tooltip>
       </div>
+      {skillActions.dialogs}
     </div>
   );
 }

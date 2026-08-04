@@ -514,7 +514,8 @@ export function SourceEditor({
   useEffect(() => {
     function onNav(e: Event) {
       const detail = (e as CustomEvent<OutlineNavDetail>).detail;
-      if (!detail || detail.mode !== 'source' || !isSourceModeActive) return;
+      if (!detail || detail.docName !== docName || detail.mode !== 'source' || !isSourceModeActive)
+        return;
       const view = viewRef.current;
       if (!view) return;
       applyOutlineNavigation(view, detail, docName);
@@ -528,7 +529,7 @@ export function SourceEditor({
   useEffect(() => {
     function onLintNav(e: Event) {
       const detail = (e as CustomEvent<LintNavDetail>).detail;
-      if (!detail || !isSourceModeActive) return;
+      if (!detail || detail.docName !== docName || !isSourceModeActive) return;
       const view = viewRef.current;
       if (!view) return;
       applyLintNavigation(view, detail, docName);

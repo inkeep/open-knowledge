@@ -27,6 +27,7 @@ describe('WYSIWYG STOP rule — ProseMirror clipboard hooks', () => {
 
     expect(typeof props.clipboardTextSerializer).toBe('function');
     expect(props.clipboardSerializer).toBe(fakeClipboard.html.serializer);
+    expect(props.handleDrop).toBe(fakeClipboard.drop);
   });
 
   test('wires copy/cut ONLY to the comment-carriage intercept; dragstart stays PM-native', () => {

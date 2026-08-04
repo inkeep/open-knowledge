@@ -237,6 +237,24 @@ describe('computeActivityMountList — active-doc force-inclusion (invariant #2)
   });
 });
 
+describe('computeActivityMountList — visible pane protection', () => {
+  test('keeps every visible document in pane order even above the warm floor', () => {
+    const entries = [entry('a', 100), entry('b', 400), entry('c', 300), entry('d', 200)];
+
+    const result = computeActivityMountList(entries, new Set(['d', 'a', 'c', 'b']), 3);
+
+    expect(result.map((item) => item.docName)).toEqual(['d', 'a', 'c', 'b']);
+  });
+
+  test('fills a partially visible workspace with hidden MRU entries', () => {
+    const entries = [entry('a', 100), entry('b', 400), entry('c', 300), entry('d', 200)];
+
+    const result = computeActivityMountList(entries, new Set(['a']), 3);
+
+    expect(result.map((item) => item.docName)).toEqual(['a', 'b', 'c']);
+  });
+});
+
 describe('LARGE_DOC_CHAR_THRESHOLD', () => {
   test('is 500_000 — matches SPEC D12 DIRECTED + evidence/s1-diagnosis.md', () => {
     // The threshold is a tuning knob, not a contract. Lowering below the

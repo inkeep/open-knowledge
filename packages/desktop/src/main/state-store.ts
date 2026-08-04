@@ -50,6 +50,15 @@ export interface PersistedWindowBounds {
   isFullScreen: boolean;
 }
 
+/** Keep field-for-field with the canonical and IPC ProjectSessionState pane shape. */
+interface PersistedEditorPane {
+  id: string;
+  openTabs: string[];
+  pinnedTabIds: string[];
+  activeTabId: string | null;
+  size: number;
+}
+
 /**
  * One entry in the persisted session-restore snapshot. A restart reopens the
  * full set of windows open at the last clean exit — each is either a project
@@ -84,19 +93,15 @@ interface RecentFile {
   lastOpenedAt: string;
 }
 
-interface ProjectSessionState {
-  /** User-open tabs for this project, in visible tab order. */
-  openTabs: string[];
-  /** Visible tab IDs protected from tab-strip close affordances. */
-  pinnedTabIds: string[];
-  /** Most recently active document tab, or null when the project had no active doc. */
-  activeDocName: string | null;
-  /** Most recently active tab, including folder overview tabs. */
-  activeTabId: string | null;
+export interface ProjectSessionState {
   /** Last-active tab per sidebar surface (Files vs Skills), each an open-tab id or null. */
   activeTabByMode: { files: string | null; skills: string | null };
   /** ISO-8601 timestamp of the last tab-session write. */
   updatedAt: string | null;
+  /** Authoritative flat, side-by-side editor workspace. */
+  panes: PersistedEditorPane[];
+  /** Pane that owns the active editor target. */
+  focusedPaneId: string;
 }
 
 /**
@@ -328,14 +333,20 @@ export function setSpellCheckEnabled(state: AppState, enabled: boolean): AppStat
   return { ...state, spellCheckEnabled: enabled };
 }
 
-function emptyProjectSessionState(): ProjectSessionState {
+export function emptyProjectSessionState(): ProjectSessionState {
   return {
-    openTabs: [],
-    pinnedTabIds: [],
-    activeDocName: null,
-    activeTabId: null,
     activeTabByMode: { files: null, skills: null },
     updatedAt: null,
+    panes: [
+      {
+        id: 'pane-main',
+        openTabs: [],
+        pinnedTabIds: [],
+        activeTabId: null,
+        size: 100,
+      },
+    ],
+    focusedPaneId: 'pane-main',
   };
 }
 
@@ -360,34 +371,71 @@ function sanitizeStringArray(value: unknown): string[] {
   return result;
 }
 
+function isPositiveFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function sanitizeOpenTabIds(value: unknown, claimedTargets = new Set<string>()): string[] {
+  return sanitizeStringArray(value).filter((tabId) => {
+    if (tabId.includes('\u0000doc-tab:')) return false;
+    if (tabId.startsWith('\u0000')) return true;
+    if (claimedTargets.has(tabId)) return false;
+    claimedTargets.add(tabId);
+    return true;
+  });
+}
+
+function normalizePaneSizes(panes: PersistedEditorPane[]): PersistedEditorPane[] {
+  if (panes.length === 0) return [];
+  const total = panes.reduce((sum, pane) => sum + pane.size, 0);
+  const fallbackSize = 100 / panes.length;
+  return panes.map((pane) => ({
+    ...pane,
+    size: total > 0 ? (pane.size / total) * 100 : fallbackSize,
+  }));
+}
+
+function parsePersistedEditorPanes(raw: unknown): PersistedEditorPane[] | null {
+  if (!Array.isArray(raw)) return null;
+  const paneIds = new Set<string>();
+  const tabTargets = new Set<string>();
+  const panes: PersistedEditorPane[] = [];
+  for (const candidate of raw) {
+    if (typeof candidate !== 'object' || candidate === null) continue;
+    const pane = candidate as Record<string, unknown>;
+    if (typeof pane.id !== 'string' || pane.id.length === 0 || paneIds.has(pane.id)) continue;
+    paneIds.add(pane.id);
+    const openTabs = sanitizeOpenTabIds(pane.openTabs, tabTargets);
+    const openTabIds = new Set(openTabs);
+    panes.push({
+      id: pane.id,
+      openTabs,
+      pinnedTabIds: sanitizeStringArray(pane.pinnedTabIds).filter((tabId) => openTabIds.has(tabId)),
+      activeTabId:
+        typeof pane.activeTabId === 'string' && openTabIds.has(pane.activeTabId)
+          ? pane.activeTabId
+          : (openTabs[0] ?? null),
+      size: isPositiveFiniteNumber(pane.size) ? pane.size : 1,
+    });
+  }
+  return panes.length === 0 ? null : normalizePaneSizes(panes);
+}
+
 function parseProjectSessionState(raw: unknown): ProjectSessionState {
   if (typeof raw !== 'object' || raw === null) return emptyProjectSessionState();
   const obj = raw as Record<string, unknown>;
-  const openTabs = sanitizeStringArray(obj.openTabs);
-  const openTabSet = new Set(openTabs);
-  const pinnedTabIds = sanitizeStringArray(obj.pinnedTabIds).filter((tabId) =>
-    openTabSet.has(tabId),
-  );
-  const activeDocName =
-    typeof obj.activeDocName === 'string' && openTabs.includes(obj.activeDocName)
-      ? obj.activeDocName
-      : null;
-  const activeTabId =
-    typeof obj.activeTabId === 'string' && openTabs.includes(obj.activeTabId)
-      ? obj.activeTabId
-      : activeDocName;
+  const panes = parsePersistedEditorPanes(obj.panes);
+  if (panes === null) return emptyProjectSessionState();
+  const paneOpenTabs = panes.flatMap((pane) => pane.openTabs);
+  const focusedPane = panes.find((pane) => pane.id === obj.focusedPaneId) ?? panes[0];
   return {
-    openTabs,
-    pinnedTabIds,
-    activeDocName,
-    activeTabId,
-    // Persist per-surface active as open-tab ids; the app re-validates surface
-    // membership via parseEditorTabSessionState on read.
     activeTabByMode: {
-      files: readModeSlot(obj.activeTabByMode, 'files', openTabs),
-      skills: readModeSlot(obj.activeTabByMode, 'skills', openTabs),
+      files: readModeSlot(obj.activeTabByMode, 'files', paneOpenTabs),
+      skills: readModeSlot(obj.activeTabByMode, 'skills', paneOpenTabs),
     },
     updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : null,
+    panes,
+    focusedPaneId: focusedPane.id,
   };
 }
 

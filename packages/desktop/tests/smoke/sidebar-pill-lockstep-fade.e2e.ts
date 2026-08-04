@@ -141,13 +141,19 @@ test.describe('sidebar search pill — Electron lockstep-fade smoke', () => {
     await pill.waitFor({ state: 'visible', timeout: 10_000 });
 
     const sidebarHeader = page.locator('[data-slot="sidebar-header"]');
-    const editorHeader = page.locator('[data-slot="sidebar-inset"] > header');
+    const editorHeaderLeadingActions = page.locator('[data-editor-header-leading-actions]');
     const backButtons = page.getByRole('button', { name: 'Back', exact: true });
     const forwardButtons = page.getByRole('button', { name: 'Forward', exact: true });
     const sidebarBack = sidebarHeader.getByRole('button', { name: 'Back', exact: true });
     const sidebarForward = sidebarHeader.getByRole('button', { name: 'Forward', exact: true });
-    const headerBack = editorHeader.getByRole('button', { name: 'Back', exact: true });
-    const headerForward = editorHeader.getByRole('button', { name: 'Forward', exact: true });
+    const headerBack = editorHeaderLeadingActions.getByRole('button', {
+      name: 'Back',
+      exact: true,
+    });
+    const headerForward = editorHeaderLeadingActions.getByRole('button', {
+      name: 'Forward',
+      exact: true,
+    });
 
     // Expanded placement: SidebarHeader owns the only Back/Forward pair.
     await expect(sidebarBack).toHaveCount(1);

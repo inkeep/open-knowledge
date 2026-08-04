@@ -287,7 +287,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
         tree.createFromTemplate(request.template.folder, request.template.name);
         return;
       }
-      tree.startCreating('file', dir);
+      tree.startCreating(request.kind ?? 'file', dir);
     });
   }, [tree]);
   const hasFolders = folderState.folderCount > 0;

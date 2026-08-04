@@ -471,6 +471,16 @@ export class ProviderPool {
   }
   private lruOrder: string[] = [];
   private activeDocName: string | null = null;
+  /**
+   * Documents rendered in visible editor panes. These entries must survive LRU
+   * churn even when they are not the globally focused document: every visible
+   * pane owns a live editor bound to its provider.
+   *
+   * The set deliberately stores names rather than PoolEntry references. A
+   * recycle replaces an entry in place while the pane continues to own the
+   * document, and the next `open()` must retain that protection.
+   */
+  private visibleDocNames = new Set<string>();
   private readonly maxSize: number;
   private readonly wsUrl: string;
   private readonly recycleDebounceMs: number;
@@ -1653,10 +1663,61 @@ export class ProviderPool {
   }
 
   /**
+   * Replace the workspace's visible document set.
+   *
+   * Visible panes are a resource-policy exemption, not another active-document
+   * concept: `activeDocName` still identifies the one focused pane for global
+   * shortcuts and awareness. System documents are never admitted to either
+   * layer. Shrinking the set eagerly returns the provider pool to its ordinary
+   * budget by evicting only entries that are no longer protected.
+   */
+  setVisibleDocNames(names: ReadonlySet<string>): void {
+    const next = new Set<string>();
+    for (const docName of names) {
+      if (!isSystemDoc(docName)) next.add(docName);
+    }
+
+    if (
+      next.size === this.visibleDocNames.size &&
+      [...next].every((docName) => this.visibleDocNames.has(docName))
+    ) {
+      return;
+    }
+
+    this.visibleDocNames = next;
+    this.trimToCapacity();
+    mark('ok/pool/visible-set', {
+      visibleCount: this.visibleDocNames.size,
+      poolSize: this.entries.size,
+    });
+  }
+
+  private isProtected(docName: string): boolean {
+    return docName === this.activeDocName || this.visibleDocNames.has(docName);
+  }
+
+  private effectiveCapacity(): number {
+    // The focused document is normally in visibleDocNames. Counting it here as
+    // well keeps the active-document protection intact during transient
+    // workspace updates where a focused target changes before its pane list.
+    const protectedCount =
+      this.visibleDocNames.size +
+      (this.activeDocName !== null && !this.visibleDocNames.has(this.activeDocName) ? 1 : 0);
+    return Math.max(this.maxSize, protectedCount);
+  }
+
+  private trimToCapacity(): void {
+    while (this.entries.size > this.effectiveCapacity() && this.evictLru()) {
+      // `evictLru` synchronously removes one unprotected entry. Continue until
+      // the normal budget is restored or every remaining entry is protected.
+    }
+  }
+
+  /**
    * Open (or reuse) a document. Returns the pool entry, or `null` if the
    * docName is reserved (the `__system__` pseudo-doc carries CC1 signals and
    * is never user-editable). If the pool is at
-   * capacity, evicts the LRU entry (never the active doc).
+   * capacity, evicts the LRU entry (never an active or visible-pane doc).
    */
   open(docName: string): PoolEntry | null {
     if (isSystemDoc(docName)) return null;
@@ -1687,8 +1748,11 @@ export class ProviderPool {
     // start/end pair captured around the body is faithful.
     const openStartMs = Date.now();
 
-    // Evict if at capacity
-    if (this.entries.size >= this.maxSize) {
+    // Keep MAX_POOL as the normal warm-provider budget, while allowing every
+    // visible editor pane to retain its provider. If all current entries are
+    // protected, admission may temporarily exceed the baseline; the next
+    // visible-set shrink trims unprotected entries back to budget.
+    if (this.entries.size >= this.effectiveCapacity()) {
       this.evictLru();
     }
 
@@ -3456,6 +3520,7 @@ export class ProviderPool {
     this._entries.clear();
     this.lruOrder = [];
     this.activeDocName = null;
+    this.visibleDocNames.clear();
     this.onChange = null;
     // Reset every mutable field so a disposed pool can't bleed stale state
     // into a future test or reused harness instance. Production HMR drops
@@ -3509,15 +3574,18 @@ export class ProviderPool {
     this.flushOnHideEnabled = true;
   }
 
-  private evictLru(): void {
-    // Find the LRU entry that is NOT the active doc
+  private evictLru(): boolean {
+    // Visible panes and the focused document are both protected. Their
+    // providers back live editor trees, so evicting either would orphan a
+    // mounted Y.Doc under split-view pressure.
     for (const docName of this.lruOrder) {
-      if (docName !== this.activeDocName) {
+      if (!this.isProtected(docName)) {
         mark('ok/pool/evict-lru', { docName });
         this.close(docName);
-        return;
+        return true;
       }
     }
+    return false;
   }
 
   private destroyEntry(entry: PoolEntry): void {

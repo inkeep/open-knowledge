@@ -19,9 +19,9 @@ interface FilesSkillsToggleProps {
  * The collapsed segment carries a tooltip so its bare icon can still be named on
  * hover. Both segments stay in the DOM at all times — the collapsed label is
  * clipped, not removed, so it remains in the accessible name. Selecting flips
- * only the sidebar surface (via the ephemeral `skillsSidebar` flag) — it does
- * NOT navigate or open a hub tab, so the current doc stays open; the empty state
- * maps to the Skills base page in Skills mode (see `EditorArea`). The icon-only
+ * the sidebar surface. A surface with no remembered tab opens its ephemeral home
+ * tab; Skills home uses its canonical route so browser history restores the
+ * correct surface (see `EditorArea`). The icon-only
  * width is content-sized (no `w-full`) so it can share the sidebar chrome row
  * with the trailing search affordance.
  */

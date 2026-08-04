@@ -348,6 +348,7 @@ import {
   addRecentFile,
   addRecentProject,
   annotateMissing,
+  emptyProjectSessionState,
   emptyState,
   evaluateSchemaCompatibility,
   getProjectSessionState,
@@ -4979,25 +4980,9 @@ function registerIpcHandlers() {
 
   handle('ok:project:get-session-state', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || !wm)
-      return {
-        openTabs: [],
-        pinnedTabIds: [],
-        activeDocName: null,
-        activeTabId: null,
-        activeTabByMode: { files: null, skills: null },
-        updatedAt: null,
-      };
+    if (!win || !wm) return emptyProjectSessionState();
     const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
-    if (!ctx)
-      return {
-        openTabs: [],
-        pinnedTabIds: [],
-        activeDocName: null,
-        activeTabId: null,
-        activeTabByMode: { files: null, skills: null },
-        updatedAt: null,
-      };
+    if (!ctx) return emptyProjectSessionState();
     return getProjectSessionState(appState, ctx.projectPath);
   });
 

@@ -437,4 +437,22 @@ describe('Electron host short-circuit (US-010)', () => {
     expect(state.terminal).toBe(false);
     expect(state.lastError).toBeNull();
   });
+
+  test('initialCollabUrlState exposes Electron collaboration before effects run', async () => {
+    const { initialCollabUrlState } = await import('./use-collab-url');
+    expect(
+      initialCollabUrlState({
+        collabUrl: 'ws://localhost:52000/collab',
+        apiOrigin: 'http://localhost:52000',
+        projectPath: '/tmp/project',
+        projectName: 'Project',
+        mode: 'editor',
+      }),
+    ).toEqual({
+      collabUrl: 'ws://localhost:52000/collab',
+      attempts: 0,
+      terminal: false,
+      lastError: null,
+    });
+  });
 });

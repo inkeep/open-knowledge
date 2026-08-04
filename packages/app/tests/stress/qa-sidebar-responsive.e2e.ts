@@ -426,10 +426,7 @@ test.describe('non-embedded UA', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('QA-021: right panel has a transition class (animated, gated on drag)', async ({
-    page,
-    api,
-  }) => {
+  test('QA-021: right panel resizing does not animate', async ({ page, api }) => {
     await seedDoc(api, 'qa-021');
     await page.setViewportSize(WIDE);
     await page.goto('/#/qa-021');
@@ -437,39 +434,10 @@ test.describe('non-embedded UA', () => {
       timeout: 60_000,
     });
     await expect(page.locator('#doc-panel')).toBeAttached({ timeout: 10_000 });
-    // react-resizable-panels v3 puts id on a wrapper but className on the inner data-slot=resizable-panel element.
-    // Probe both: scan the doc-panel subtree for any element carrying the transition class.
-    const probe = await page.evaluate(() => {
-      const root = document.querySelector('#doc-panel');
-      if (!root) return { rootExists: false };
-      // Walk root + descendants for the transition class
-      const allWithClass = [root, ...root.querySelectorAll('*')].map((el) => ({
-        tag: el.tagName,
-        id: el.id || null,
-        slot: (el as HTMLElement).getAttribute('data-slot'),
-        className: (el as HTMLElement).className,
-      }));
-      // Find one that contains 'transition-[flex-grow]'
-      const match = allWithClass.find(
-        (e) => typeof e.className === 'string' && e.className.includes('transition-[flex-grow]'),
-      );
-      return {
-        rootExists: true,
-        rootClassName: (root as HTMLElement).className,
-        rootSlot: root.getAttribute('data-slot'),
-        match,
-        descendantCount: allWithClass.length,
-      };
-    });
-    console.log('QA-021 className probe:', JSON.stringify(probe, null, 2));
-    expect(probe.rootExists, '#doc-panel mounted').toBe(true);
-    // Either the root or a descendant must carry the transition class
-    const className = probe.match?.className ?? probe.rootClassName ?? '';
-    expect(className, 'transition class located somewhere in doc-panel subtree').toBeTruthy();
-    expect(className).toContain('transition-[flex-grow]');
-    expect(className).toContain('duration-200');
-    expect(className).toContain('ease-out');
-    expect(className).toContain('motion-reduce:transition-none');
+    const transitionDuration = await page
+      .locator('#doc-panel')
+      .evaluate((element) => getComputedStyle(element).transitionDuration);
+    expect(transitionDuration).toBe('0s');
   });
 
   test('QA-022: data-dragging attribute appears during handle drag', async ({ page, api }) => {

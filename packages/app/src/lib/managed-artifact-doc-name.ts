@@ -16,17 +16,13 @@
 import {
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   parseProjectSkillBundleDoc,
-  projectSkillContentDocName,
   type SkillsListEntry,
   skillFileLiveDocName,
   skillLiveDocName,
   stripMdExt,
 } from '@inkeep/open-knowledge-core';
 
-// `projectSkillContentDocName` + `skillLiveDocName` are the SINGLE source of
-// truth in core, shared with the server. Re-exported here so existing app call
-// sites keep importing them from this module unchanged.
-export { projectSkillContentDocName, skillLiveDocName };
+export { skillLiveDocName };
 
 // NOTE: there is intentionally no `skillDocName(scope, name)` builder. Project
 // skills are CONTENT docs (`.ok/skills/<name>/SKILL`), not `__skill__/project/…`

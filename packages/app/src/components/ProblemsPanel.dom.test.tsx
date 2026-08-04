@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SWEEP_PROGRESS_CHUNK, sweepProgressInterval } from '@/components/problems-sweep';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
+import type { LintNavDetail } from './ProblemsPanel';
 
 // Both lingui macro specifiers alias to ONE shim module under the vitest dom
 // config, so two mock registrations race for a single resolved module id and
@@ -518,15 +519,20 @@ describe('ProblemsPanel', () => {
   });
 
   test('clicking a row dispatches LINT_NAV_EVENT with the line', () => {
-    let received: { line: number; column: number } | null = null;
+    let received: LintNavDetail | null = null;
     const listener = (e: Event) => {
-      received = (e as CustomEvent<{ line: number; column: number }>).detail;
+      received = (e as CustomEvent<LintNavDetail>).detail;
     };
     window.addEventListener(LINT_NAV_EVENT, listener);
     try {
       render(<ProblemsPanel docName="notes" diagnostics={[diag({ line: 7, column: 2 })]} />);
       fireEvent.click(screen.getByRole('button'));
-      expect(received).toEqual({ line: 7, column: 2, source: 'markdownlint' });
+      expect(received).toEqual({
+        docName: 'notes',
+        line: 7,
+        column: 2,
+        source: 'markdownlint',
+      });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
@@ -579,9 +585,9 @@ describe('ProblemsPanel', () => {
   });
 
   test('expanding a group lists each occurrence, and one click jumps to its line', () => {
-    let received: { line: number; column: number } | null = null;
+    let received: LintNavDetail | null = null;
     const listener = (e: Event) => {
-      received = (e as CustomEvent<{ line: number; column: number }>).detail;
+      received = (e as CustomEvent<LintNavDetail>).detail;
     };
     window.addEventListener(LINT_NAV_EVENT, listener);
     try {
@@ -602,7 +608,12 @@ describe('ProblemsPanel', () => {
       // reads as a whole finding out of list context.
       expect(occurrences[1]?.getAttribute('aria-label')).toBe('Hard tabs at line 9');
       fireEvent.click(occurrences[1] as HTMLElement);
-      expect(received).toEqual({ line: 9, column: 1, source: 'markdownlint' });
+      expect(received).toEqual({
+        docName: 'notes',
+        line: 9,
+        column: 1,
+        source: 'markdownlint',
+      });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
@@ -739,7 +750,7 @@ describe('ProblemsPanel', () => {
     try {
       render(<ProblemsPanel docName="notes" diagnostics={[linkDiag({ line: 5 })]} />);
       fireEvent.click(screen.getByRole('button', { name: /does not resolve/ }));
-      expect(received).toEqual({ line: 5, column: 1, source: 'links' });
+      expect(received).toEqual({ docName: 'notes', line: 5, column: 1, source: 'links' });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
@@ -752,7 +763,7 @@ describe('ProblemsPanel', () => {
     // the next source-mode activation within the TTL replays it.
     expect(consumePendingSourceNavigation('notes')).toEqual({
       kind: 'lint',
-      detail: { line: 7, column: 2, source: 'markdownlint' },
+      detail: { docName: 'notes', line: 7, column: 2, source: 'markdownlint' },
     });
   });
 });
@@ -983,10 +994,15 @@ describe('ProblemsPanel — project scope', () => {
       expect(window.location.hash).toBe('#/guides/setup');
       expect(consumePendingSourceNavigation('guides/setup')).toEqual({
         kind: 'lint',
-        detail: { line: 4, column: 2, source: 'markdownlint' },
+        detail: {
+          docName: 'guides/setup',
+          line: 4,
+          column: 2,
+          source: 'markdownlint',
+        },
       });
-      // The in-doc nav event stays quiet on cross-doc clicks — it carries no
-      // docName and would move the cursor in the doc that is still open.
+      // The in-doc nav event stays quiet on cross-doc clicks. The banked,
+      // document-scoped intent replays after the target editor activates.
       expect(navEvents).toBe(0);
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
@@ -1038,7 +1054,12 @@ describe('ProblemsPanel — project scope', () => {
       expect(window.location.hash).toBe('#/guides/setup');
       expect(consumePendingSourceNavigation('guides/setup')).toEqual({
         kind: 'lint',
-        detail: { line: 9, column: 1, source: 'frontmatter' },
+        detail: {
+          docName: 'guides/setup',
+          line: 9,
+          column: 1,
+          source: 'frontmatter',
+        },
       });
       // Cross-doc clicks stay off the in-doc event (it carries no docName).
       expect(navEvents).toBe(0);
@@ -1050,9 +1071,9 @@ describe('ProblemsPanel — project scope', () => {
   test('clicking a project-scope diagnostic for the open doc keeps the in-doc event fast path', async () => {
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'notes.md', diagnostics: [diag({ line: 7, column: 2 })] }] });
-    let received: { line: number; column: number } | null = null;
+    let received: LintNavDetail | null = null;
     const listener = (e: Event) => {
-      received = (e as CustomEvent<{ line: number; column: number }>).detail;
+      received = (e as CustomEvent<LintNavDetail>).detail;
     };
     window.addEventListener(LINT_NAV_EVENT, listener);
     try {
@@ -1064,11 +1085,16 @@ describe('ProblemsPanel — project scope', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /Hard tabs/ }));
 
-      expect(received).toEqual({ line: 7, column: 2, source: 'markdownlint' });
+      expect(received).toEqual({
+        docName: 'notes',
+        line: 7,
+        column: 2,
+        source: 'markdownlint',
+      });
       expect(window.location.hash).toBe(hashBefore);
       expect(consumePendingSourceNavigation('notes')).toEqual({
         kind: 'lint',
-        detail: { line: 7, column: 2, source: 'markdownlint' },
+        detail: { docName: 'notes', line: 7, column: 2, source: 'markdownlint' },
       });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);

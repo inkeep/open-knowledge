@@ -17,7 +17,6 @@ import {
   hashFromSkillFile,
   hashFromSkillPreview,
   hashFromSkills,
-  selectedPathForSkillPreview,
   skillFileFromHash,
   skillPreviewFromHash,
 } from '@/lib/doc-hash';
@@ -36,9 +35,27 @@ import {
 } from './client-removal-reconciliation';
 import { captureRenameSnapshots, subscribePoolEviction } from './editor-cache';
 import {
-  addOpenTab,
-  addPinnedTab,
-  applyDragPinMutation,
+  type EditorPaneId,
+  type EditorPaneState,
+  type EditorWorkspaceState,
+  type ExistingTabOpenBehavior,
+  findPaneOwningTab,
+  flattenWorkspacePinnedTabs,
+  flattenWorkspaceTabs,
+  focusEditorPane,
+  focusedPane,
+  hydrateEditorWorkspace,
+  normalizeEditorWorkspace,
+  type PaneSide,
+  projectVisibleEditorWorkspace,
+  type RecentlyClosedEditorTab,
+  recordRecentlyClosedTab,
+  type TabOpenDisposition,
+  tabBucketIndexForVisibleInsertion,
+  transitionEditorWorkspace,
+  updateEditorPane,
+} from './editor-panes';
+import {
   assetTabId,
   createEditorTabSessionState,
   docNameForTabId,
@@ -48,19 +65,12 @@ import {
   folderTabId,
   isSkillTabId,
   localTabSessionStorageKey,
-  nextActiveTabAfterClose,
-  nextActiveTabAfterCloseMany,
-  normalizePinnedTabIds,
-  openDocTab,
-  openTab,
   parseEditorTabId,
   parseEditorTabSessionState,
   readLocalTabSessionState,
   reconcileVisibleTabOrder,
   remapOpenTabs,
   remapVisibleTabsForRename,
-  removeOpenTab,
-  removePinnedTab,
   shouldPersistTabSession,
   skillFileTabId,
   skillPreviewTabId,
@@ -107,15 +117,51 @@ interface DocumentContextValue {
   activeTabId: string | null;
   activeDocName: string | null;
   activeProvider: HocuspocusProvider | null;
+  /** Canonical side-by-side editor workspace. Flat tab fields below are compatibility projections. */
+  workspace: EditorWorkspaceState;
+  panes: ReadonlyArray<EditorPaneState>;
+  focusedPaneId: EditorPaneId;
+  focusPane: (paneId: EditorPaneId) => void;
+  activateTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  activateNewTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  openNewTabInPane: (paneId: EditorPaneId) => void;
+  closeTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  closeTabsInPane: (
+    paneId: EditorPaneId,
+    tabIds: readonly string[],
+    options?: CloseTabsOptions,
+  ) => void;
+  closeNewTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  pinTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  unpinTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  reorderTabsInPane: (
+    paneId: EditorPaneId,
+    newOrder: readonly string[],
+    draggedTabId: string,
+  ) => void;
+  moveTabToPane: (tabId: string, targetPaneId: EditorPaneId, targetIndex: number) => void;
+  splitTab: (tabId: string, targetPaneId: EditorPaneId, side: PaneSide) => EditorPaneId | null;
+  moveTabToNewPane: (tabId: string, side: PaneSide) => EditorPaneId | null;
+  resizePanes: (sizesByPane: ReadonlyMap<EditorPaneId, number>) => void;
   /**
    * User-open tabs, distinct from `poolEntries`: prewarmed providers can be
    * pool-resident without becoming visible tabs. Document tabs use the
    * docName as their ID; folder and asset tabs use internal tab IDs.
+   * Compatibility projection; pane-aware code should use `panes[].openTabs`.
    */
   openTabs: ReadonlyArray<string>;
-  /** Tab IDs protected from tab-strip close affordances until explicitly unpinned. */
+  /**
+   * Tab IDs protected from tab-strip close affordances until explicitly unpinned.
+   * Compatibility projection; pane-aware code should use `panes[].pinnedTabIds`.
+   */
   pinnedTabIds: ReadonlyArray<string>;
-  /** Visible tab-strip order across document/folder tabs and ephemeral blank tabs. */
+  /** Visible tab-strip order keyed by pane. */
+  visibleTabIdsByPane: ReadonlyMap<EditorPaneId, ReadonlyArray<string>>;
+  previewTabIdsByPane: ReadonlyMap<EditorPaneId, string | null>;
+  /**
+   * Visible tab-strip order across document/folder tabs and ephemeral blank tabs.
+   * Compatibility projection; pane-aware code should use `visibleTabIdsByPane`.
+   */
   visibleTabIds: ReadonlyArray<string>;
   /** True once persisted tab session restore has either applied or intentionally skipped. */
   tabSessionLoaded: boolean;
@@ -150,6 +196,12 @@ interface DocumentContextValue {
    * sets the new-doc intent and opens the pooled provider.
    */
   openTarget: (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => void;
+  /** Open a target in a specific pane, moving an existing tab there when necessary. */
+  openTargetInPane: (
+    paneId: EditorPaneId,
+    target: ResolvedNavigationTarget,
+    options?: OpenTargetOptions,
+  ) => void;
   /**
    * Hash-driven navigation entry (`NavigationHandler` in `App.tsx`). Kept
    * alongside `openTarget` for API symmetry with `openDocumentTransition`.
@@ -158,6 +210,8 @@ interface DocumentContextValue {
    * non-transition callers (tests, direct agent actions).
    */
   openTargetTransition: (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => void;
+  promoteTabInPane: (paneId: EditorPaneId, tabId: string) => void;
+  promoteAllPreviewTabs: () => void;
   clearTarget: () => void;
   closeDocument: (docName: string) => void;
   /** Close the active tab if one exists; returns false when the window should close instead. */
@@ -180,7 +234,7 @@ interface DocumentContextValue {
    * Every other tab keeps its pin state, so pinned and unpinned tabs still
    * interleave freely (no enforced visual pin-section boundary). pinTab/
    * unpinTab remain the explicit toggles. Persistence is automatic via the
-   * existing effect watching openTabs/pinnedTabIds.
+   * existing effect watching workspace.
    */
   reorderTabs: (newOrder: readonly string[], draggedTabId: string) => void;
   /** Empty tab placeholders created by the tab strip's New tab button. */
@@ -192,8 +246,8 @@ interface DocumentContextValue {
   /**
    * Explicit Files/Skills surface pin. `null` = autofollow the active doc's
    * surface (the default); `true`/`false` = an explicit toggle. The pin only
-   * survives until the next navigation — `commitActiveTabId` re-arms it to
-   * `null` — so autofollow keeps working after a toggle. Not persisted. Prefer
+   * survives until the next navigation, when pane activation re-arms it to
+   * `null`, so autofollow keeps working after a toggle. Not persisted. Prefer
    * reading `skillFocused` (the resolved surface); this is the raw override.
    */
   skillsSidebar: boolean | null;
@@ -372,7 +426,10 @@ interface DocumentContextValue {
   closeActivityPanel: () => void;
 }
 
-interface OpenTargetOptions {
+export interface OpenTargetOptions {
+  disposition?: TabOpenDisposition;
+  consumeActiveNewTab?: boolean;
+  /** Compatibility policy used by sidebar callers and the preview-tabs setting. */
   tabBehavior?: 'append' | 'replace-active';
 }
 
@@ -446,35 +503,11 @@ function getLocalTabSessionKey(): string | null {
 }
 
 function readInitialLocalTabSession() {
-  if (typeof window === 'undefined') return parseEditorTabSessionState(null, MAX_POOL);
+  if (typeof window === 'undefined') return parseEditorTabSessionState(null);
   const key = getLocalTabSessionKey();
-  if (!key) return parseEditorTabSessionState(null, MAX_POOL);
+  if (!key) return parseEditorTabSessionState(null);
   const storage = typeof window.localStorage !== 'undefined' ? window.localStorage : null;
-  return readLocalTabSessionState(storage, key, MAX_POOL);
-}
-
-function readInitialLocalTabs(): string[] {
-  return readInitialLocalTabSession().openTabs;
-}
-
-function readInitialLocalPinnedTabIds(): string[] {
-  return readInitialLocalTabSession().pinnedTabIds;
-}
-
-function readInitialLocalActiveTabId(): string | null {
-  // Hydrate the active-tab selection synchronously from localStorage so the
-  // tab UI highlights the correct tab on first paint. A non-empty URL hash
-  // is a deep-link and takes precedence — the async hydration effect handles
-  // the hash-matches-saved-active case after the desktop bridge resolves.
-  if (typeof window === 'undefined') return null;
-  if (window.location.hash.length > 0) return null;
-  const session = readInitialLocalTabSession();
-  return (
-    session.activeTabId ??
-    (session.activeDocName ? docTabId(session.activeDocName) : null) ??
-    session.openTabs[0] ??
-    null
-  );
+  return readLocalTabSessionState(storage, key);
 }
 
 // New tabs are ephemeral placeholders (never persisted) keyed only by identity,
@@ -495,7 +528,6 @@ export function isSkillsNewTabId(id: string | null | undefined): boolean {
 function tabIdIsSkillSurface(id: string): boolean {
   return isSkillsNewTabId(id) || isSkillTabId(id);
 }
-
 function hashFromTabId(tabId: string): string {
   const tab = parseEditorTabId(tabId);
   switch (tab.kind) {
@@ -507,8 +539,6 @@ function hashFromTabId(tabId: string): string {
       return hashFromAssetPath(tab.assetPath);
     case 'skill-file':
       return hashFromSkillFile({ scope: tab.scope, name: tab.name, path: tab.path });
-    case 'skills':
-      return hashFromSkills();
     case 'skill-preview':
       return hashFromSkillPreview({
         flavor: tab.flavor,
@@ -519,8 +549,10 @@ function hashFromTabId(tabId: string): string {
   }
 }
 
-function setLocationHash(hash: string) {
-  if (typeof window !== 'undefined') window.location.hash = hash;
+function navigateToHash(nextHash: string): void {
+  if (typeof window !== 'undefined' && window.location.hash !== nextHash) {
+    window.location.hash = nextHash;
+  }
 }
 
 function requireRemovalReconciler(
@@ -528,6 +560,76 @@ function requireRemovalReconciler(
 ): ClientRemovalReconciler {
   if (!reconciler) throw new Error('removal reconciler is not initialized');
   return reconciler;
+}
+
+function resolvedTargetForTabId(tabId: string): ResolvedNavigationTarget {
+  const tab = parseEditorTabId(tabId);
+  switch (tab.kind) {
+    case 'doc':
+      return { kind: 'doc', target: tab.docName, docName: tab.docName };
+    case 'folder':
+      return { kind: 'folder', target: tab.folderPath, folderPath: tab.folderPath };
+    case 'asset':
+      return assetTargetForPath(tab.assetPath);
+    case 'skill-file':
+      return {
+        kind: 'skill-file',
+        target: `${tab.scope}/${tab.name}${tab.host ? `:${tab.host}` : ''}/${tab.path}`,
+        scope: tab.scope,
+        name: tab.name,
+        path: tab.path,
+        ...(tab.host ? { host: tab.host } : {}),
+      };
+    case 'skill-preview':
+      return {
+        kind: 'skill-preview',
+        target: `${tab.flavor}/${tab.source}/${tab.name}`,
+        flavor: tab.flavor,
+        source: tab.source,
+        name: tab.name,
+        subtitle: tab.subtitle,
+        level: tab.level,
+      };
+  }
+}
+
+function paneWithResolvedTarget(pane: EditorPaneState): EditorPaneState {
+  if (pane.activeNewTabId !== null || pane.activeTabId === null) {
+    return pane.activeTarget === null ? pane : { ...pane, activeTarget: null };
+  }
+  const currentTargetTabId = pane.activeTarget ? tabIdForNavigationTarget(pane.activeTarget) : null;
+  if (currentTargetTabId === pane.activeTabId) {
+    return pane;
+  }
+  return { ...pane, activeTarget: resolvedTargetForTabId(pane.activeTabId) };
+}
+
+function workspaceWithResolvedTargets(workspace: EditorWorkspaceState): EditorWorkspaceState {
+  return {
+    ...workspace,
+    panes: workspace.panes.map(paneWithResolvedTarget),
+  };
+}
+
+function readInitialEditorWorkspace(): EditorWorkspaceState {
+  const session = readInitialLocalTabSession();
+  return workspaceWithResolvedTargets(
+    hydrateEditorWorkspace({ panes: session.panes, focusedPaneId: session.focusedPaneId }),
+  );
+}
+
+function providerDocNameForPane(pane: EditorPaneState): string | null {
+  if (!pane.activeTarget || pane.activeTarget.kind === 'large-file') return null;
+  return docNameForNavigationTarget(pane.activeTarget);
+}
+
+function visibleProviderDocNames(workspace: EditorWorkspaceState): Set<string> {
+  const names = new Set<string>();
+  for (const pane of workspace.panes) {
+    const docName = providerDocNameForPane(pane);
+    if (docName) names.add(docName);
+  }
+  return names;
 }
 
 function tabIdFromHash(hash: string): string | null {
@@ -569,26 +671,6 @@ function assetTargetForPath(
     assetPath,
     mediaKind: mediaKindForSidebarAssetExtension(assetExt),
   };
-}
-
-function activeTabIdForTarget(
-  activeTarget: ResolvedNavigationTarget | null,
-  activeDocName: string | null,
-): string | null {
-  if (activeTarget) return tabIdForNavigationTarget(activeTarget);
-  return activeDocName ? docTabId(activeDocName) : null;
-}
-
-function hasOpenDocTab(
-  tabs: readonly string[],
-  docName: string,
-  excluding: ReadonlySet<string>,
-): boolean {
-  return tabs.some((tabId) => !excluding.has(tabId) && docNameForTabId(tabId) === docName);
-}
-
-function sameTabIds(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((tabId, index) => tabId === b[index]);
 }
 
 function navigationTargetKey(target: ResolvedNavigationTarget): string {
@@ -691,13 +773,26 @@ function takeSnapshot(p: ProviderPool): Snapshot {
 
 export function DocumentProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY_SNAPSHOT);
-  const [activeTarget, setActiveTarget] = useState<ResolvedNavigationTarget | null>(null);
-  const [activeTabId, setActiveTabId] = useState<string | null>(readInitialLocalActiveTabId);
-  const [openTabs, setOpenTabs] = useState<string[]>(readInitialLocalTabs);
-  const [pinnedTabIds, setPinnedTabIds] = useState(readInitialLocalPinnedTabIds);
-  const [newTabIds, setNewTabIds] = useState<string[]>([]);
-  const [visibleTabIds, setVisibleTabIds] = useState<string[]>(openTabs);
-  const [activeNewTabId, setActiveNewTabId] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<EditorWorkspaceState>(readInitialEditorWorkspace);
+  const workspaceRef = useRef(workspace);
+  const [visibleTabIdsByPane, setVisibleTabIdsByPane] = useState(
+    () => new Map(workspace.panes.map((pane) => [pane.id, [...pane.openTabs, ...pane.newTabIds]])),
+  );
+  const visibleTabIdsByPaneRef = useRef(visibleTabIdsByPane);
+  const currentPane = focusedPane(workspace);
+  const activeTarget = currentPane.activeTarget;
+  const activeTabId = currentPane.activeTabId;
+  const openTabs = flattenWorkspaceTabs(workspace);
+  const pinnedTabIds = flattenWorkspacePinnedTabs(workspace);
+  const previewTabIdsByPane = new Map(
+    workspace.panes.map((pane) => [pane.id, pane.previewTabId] as const),
+  );
+  const activeNewTabId = currentPane.activeNewTabId;
+  const visibleTabIds = reconcileVisibleTabOrder(
+    visibleTabIdsByPane.get(currentPane.id) ?? [],
+    currentPane.openTabs,
+    currentPane.newTabIds,
+  );
   const [skillsSidebar, setSkillsSidebarState] = useState<boolean | null>(null);
   // Per-surface active-tab memory: switching Files/Skills restores the tab you
   // last had active in that surface (or clears to its empty/home state). Kept in
@@ -707,21 +802,22 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     skills: null,
   });
   const [tabSessionLoaded, setTabSessionLoaded] = useState(false);
-  const activeTargetRef = useRef<ResolvedNavigationTarget | null>(activeTarget);
-  const activeTabIdRef = useRef<string | null>(activeTabId);
-  const openTabsRef = useRef<string[]>(openTabs);
-  const pinnedTabIdsRef = useRef(pinnedTabIds);
-  const activeNewTabIdRef = useRef<string | null>(activeNewTabId);
-  const newTabIdsRef = useRef<string[]>(newTabIds);
-  const visibleTabIdsRef = useRef<string[]>(visibleTabIds);
   const nextNewTabOrdinalRef = useRef(1);
-  const recentlyClosedTabsRef = useRef<string[]>([]);
+  const nextPaneOrdinalRef = useRef(1);
+  const recentlyClosedTabsRef = useRef<RecentlyClosedEditorTab[]>([]);
+  const removalReconcilerRef = useRef<ClientRemovalReconciler | null>(null);
+  // Set true when the user explicitly CLOSES (or unpins/replaces) a tab during
+  // the async session-restore window. Bails the restore merge so a freshly-
+  // closed tab cannot resurrect from the about-to-arrive restored snapshot.
+  //
+  // OPENS (hash-nav, sidebar clicks, agent links) intentionally do NOT set this
+  // ref — the restore merge is additive, so an opened-during-restore tab
+  // coexists with the restored set without collision.
   const tabSessionUserClosedRef = useRef(false);
   // Only true once a session read RESOLVES this mount. Guards the persist
   // effect below so a failed restore never overwrites the stored session with
   // our empty in-memory state (a rejected read leaves it false → no write).
   const restoreSucceededRef = useRef(false);
-  const [tabIdentityResolved, setTabIdentityResolved] = useState(false);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [systemProvider, setSystemProvider] = useState<HocuspocusProvider | null>(null);
   const [docPanelMode, setDocPanelModeState] = useState<'doc' | 'agent'>('doc');
@@ -734,306 +830,99 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     retry: retryCollab,
   } = useCollabUrl();
 
-  function commitActiveTabId(nextActiveTabId: string | null) {
-    const previousActiveTabId = activeTabIdRef.current;
-    activeTabIdRef.current = nextActiveTabId;
-    setActiveTabId(nextActiveTabId);
-    // Opening a DIFFERENT tab re-arms autofollow so the sidebar surface tracks
-    // the opened doc's mode (an explicit Files/Skills pin only survives until the
-    // next real navigation). Two things must NOT re-arm, or an explicit pin dies:
-    //  - Clears (null) — the toggle's empty-surface path pins then clears.
-    //  - Re-activating the SAME tab — a server-driven provider reset (e.g. the
-    //    auth rejection when the open skill doc is deleted) re-fires a hashchange
-    //    for the same doc; re-arming there drops the delete-time Skills pin, and
-    //    once the skill target clears autofollow falls back to Files.
-    if (nextActiveTabId !== null && nextActiveTabId !== previousActiveTabId) {
-      setSkillsSidebarState(null);
-    }
+  function createPaneId(): EditorPaneId {
+    let paneId = '';
+    do {
+      paneId = `pane-${nextPaneOrdinalRef.current}`;
+      nextPaneOrdinalRef.current += 1;
+    } while (workspaceRef.current.panes.some((pane) => pane.id === paneId));
+    return paneId;
   }
 
-  function commitActiveNewTabId(nextActiveNewTabId: string | null) {
-    activeNewTabIdRef.current = nextActiveNewTabId;
-    setActiveNewTabId(nextActiveNewTabId);
-  }
-
-  function commitVisibleTabIds(nextVisibleTabIds: string[]) {
-    visibleTabIdsRef.current = nextVisibleTabIds;
-    setVisibleTabIds((current) =>
-      sameTabIds(current, nextVisibleTabIds) ? current : nextVisibleTabIds,
-    );
-  }
-
-  function commitPinnedTabIds(nextPinnedTabIds: string[]) {
-    pinnedTabIdsRef.current = nextPinnedTabIds;
-    setPinnedTabIds((current) =>
-      sameTabIds(current, nextPinnedTabIds) ? current : nextPinnedTabIds,
-    );
-  }
-
-  function commitTabState(nextOpenTabs: string[], nextPinnedTabIds: readonly string[]) {
-    const normalizedPinnedTabIds = normalizePinnedTabIds(nextPinnedTabIds, nextOpenTabs);
-    openTabsRef.current = nextOpenTabs;
-    pinnedTabIdsRef.current = normalizedPinnedTabIds;
-    setOpenTabs((current) => (sameTabIds(current, nextOpenTabs) ? current : nextOpenTabs));
-    setPinnedTabIds((current) =>
-      sameTabIds(current, normalizedPinnedTabIds) ? current : normalizedPinnedTabIds,
-    );
-    commitVisibleTabIds(
-      reconcileVisibleTabOrder(visibleTabIdsRef.current, nextOpenTabs, newTabIdsRef.current),
-    );
-  }
-
-  function commitOpenTabs(nextOpenTabs: string[]) {
-    commitTabState(nextOpenTabs, pinnedTabIdsRef.current);
-  }
-
-  function updateOpenTabs(updater: (current: string[]) => string[]) {
-    commitOpenTabs(updater(openTabsRef.current));
-  }
-
-  // Set true when the user explicitly CLOSES (or unpins/replaces) a tab during
-  // the async session-restore window. Bails the restore merge so a freshly-
-  // closed tab cannot resurrect from the about-to-arrive restored snapshot.
-  //
-  // OPENS (hash-nav, sidebar clicks, agent links) intentionally do NOT set this
-  // ref — the restore merge below is additive (state.openTabs ∪ openTabsRef.current),
-  // so an opened-during-restore tab coexists with the restored set without
-  // collision. Earlier code bailed on every mutation, which dropped the entire
-  // restore on any open and broke hash-nav-while-restore-pending paths.
-  //
-  // Closes (and close-like replace-active) during the restore window bail the
-  // restore merge. Other mutations (open, pin, activate) remain additive.
-  const markTabSessionClosedDuringRestore = () => {
-    if (!tabSessionLoaded) tabSessionUserClosedRef.current = true;
-  };
-
-  function remapTabsForRename(
-    renamed: readonly { fromDocName: string; toDocName: string }[],
-    renamedFolders: readonly { fromPath: string; toPath: string }[] = [],
-    renamedAssets: readonly { fromPath: string; toPath: string }[] = [],
-  ) {
-    markTabSessionClosedDuringRestore();
-    const next = remapOpenTabs(
-      openTabsRef.current,
-      renamed,
-      MAX_POOL,
-      renamedFolders,
-      pinnedTabIdsRef.current,
-      renamedAssets,
-    );
-    const nextPinnedTabIds = normalizePinnedTabIds(
-      remapOpenTabs(
-        pinnedTabIdsRef.current,
-        renamed,
-        Number.MAX_SAFE_INTEGER,
-        renamedFolders,
-        [],
-        renamedAssets,
-      ),
-      next,
-    );
+  function syncPoolToWorkspace(nextWorkspace: EditorWorkspaceState, updateHash = false) {
+    const focused = focusedPane(nextWorkspace);
     if (collabUrl !== null) {
       const p = getPool(collabUrl);
-      for (const tabId of next) {
-        const docName = docNameForTabId(tabId);
-        if (docName) p.open(docName);
-      }
-    }
-    commitVisibleTabIds(
-      remapVisibleTabsForRename(visibleTabIdsRef.current, renamed, renamedFolders, renamedAssets),
-    );
-    commitTabState(next, nextPinnedTabIds);
-    const currentActiveTabId = activeTabIdRef.current;
-    if (!currentActiveTabId) return;
-    const remappedActiveTabId = remapOpenTabs(
-      [currentActiveTabId],
-      renamed,
-      1,
-      renamedFolders,
-      [],
-      renamedAssets,
-    )[0];
-    if (remappedActiveTabId && next.includes(remappedActiveTabId)) {
-      commitActiveTabId(remappedActiveTabId);
-    }
-  }
+      const visibleDocNames = visibleProviderDocNames(nextWorkspace);
+      p.setVisibleDocNames(visibleDocNames);
+      for (const docName of visibleDocNames) p.open(docName);
 
-  function pushRecentlyClosedTabs(tabIds: readonly string[]) {
-    if (tabIds.length === 0) return;
-    recentlyClosedTabsRef.current = [...recentlyClosedTabsRef.current, ...tabIds].slice(-50);
-  }
-
-  function closeTabIds(
-    tabIds: readonly string[],
-    { rememberRecentlyClosed = false }: { rememberRecentlyClosed?: boolean } = {},
-  ) {
-    const closingTabIds = new Set(tabIds.filter((tabId) => tabId.length > 0));
-    if (closingTabIds.size === 0) return;
-    markTabSessionClosedDuringRestore();
-    if (rememberRecentlyClosed) {
-      pushRecentlyClosedTabs(openTabsRef.current.filter((tabId) => closingTabIds.has(tabId)));
-    }
-    if (collabUrl !== null) {
-      const p = getPool(collabUrl);
-      const closingByDocName = new Map<string, Set<string>>();
-      for (const tabId of closingTabIds) {
-        const docName = docNameForTabId(tabId);
-        if (!docName) continue;
-        const tabsForDoc = closingByDocName.get(docName) ?? new Set<string>();
-        tabsForDoc.add(tabId);
-        closingByDocName.set(docName, tabsForDoc);
-      }
-      for (const [docName, tabsForDoc] of closingByDocName) {
-        if (!hasOpenDocTab(openTabsRef.current, docName, tabsForDoc)) p.close(docName);
-      }
-    }
-    let nextActiveTabId: string | null = null;
-    const currentActiveTabId =
-      activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
-    // Keep the successor on the active tab's SURFACE (Files vs Skills): closing
-    // the last skill tab must not teleport focus to a Files tab (and vice
-    // versa) — the surface's empty/home state should show instead.
-    const activeIsSkill = currentActiveTabId ? tabIdIsSkillSurface(currentActiveTabId) : false;
-    updateOpenTabs((current) => {
-      const sameSurface = current.filter((id) => tabIdIsSkillSurface(id) === activeIsSkill);
-      nextActiveTabId = nextActiveTabAfterCloseMany(sameSurface, currentActiveTabId, closingTabIds);
-      return current.filter((tabId) => !closingTabIds.has(tabId));
-    });
-    if (!currentActiveTabId || !closingTabIds.has(currentActiveTabId)) {
-      if (!currentActiveTabId) {
-        setActiveTarget((current) => {
-          if (!current) return current;
-          const targetTabId = tabIdForNavigationTarget(current);
-          return targetTabId && closingTabIds.has(targetTabId) ? null : current;
-        });
-      }
-      return;
-    }
-    if (nextActiveTabId) {
-      commitActiveTabId(nextActiveTabId);
-      setLocationHash(hashFromTabId(nextActiveTabId));
-      return;
-    }
-    // No tab left on this surface → pin it so its empty/home state shows.
-    setSkillsSidebarState(activeIsSkill);
-    if (collabUrl !== null) getPool(collabUrl).clearActive();
-    setActiveTarget(null);
-    commitActiveTabId(null);
-    setLocationHash('');
-  }
-
-  function createRemovalReconciler() {
-    return createClientRemovalReconciler({
-      captureRenameSnapshots,
-      getActivePoolDocName: () =>
-        collabUrl === null ? null : getPool(collabUrl).getActiveDocName(),
-      hasPooledDocument: (docName) => collabUrl !== null && getPool(collabUrl).has(docName),
-      closeAndClear: async (docName) => {
-        if (collabUrl !== null) await getPool(collabUrl).closeAndClearPersistence(docName);
-      },
-      openAndActivate: (docName) => {
-        if (collabUrl === null) return;
-        const p = getPool(collabUrl);
+      const docName = providerDocNameForPane(focused);
+      if (docName) {
         p.open(docName);
         p.setActive(docName);
-      },
-      remapTabs: ({ renamed, renamedFolders, renamedAssets }) =>
-        remapTabsForRename(renamed, renamedFolders, renamedAssets),
-      closeTabs: closeTabIds,
-      removeDocumentTab: (docName) =>
-        commitTabState(removeOpenTab(openTabsRef.current, docName), pinnedTabIdsRef.current),
-      remapActiveTargetForRename: (fromDocName, toDocName) => {
-        const current = activeTargetRef.current;
-        const remapped = current !== null && docNameForNavigationTarget(current) === fromDocName;
-        if (!remapped) return false;
-        const next = { kind: 'doc' as const, target: toDocName, docName: toDocName };
-        activeTargetRef.current = next;
-        setActiveTarget((current) => {
-          if (!current || docNameForNavigationTarget(current) !== fromDocName) return current;
-          return next;
-        });
-        return true;
-      },
-      clearActiveTargetForRemoval: (docName) => {
-        setActiveTarget((current) =>
-          current && docNameForNavigationTarget(current) === docName ? null : current,
-        );
-      },
-      navigateToDocument: (docName) => {
-        setLocationHash(hashFromDocName(docName));
-      },
-      navigateHome: () => {
-        setLocationHash('');
-      },
+      } else {
+        p.clearActive();
+      }
+    }
+    if (!updateHash) return;
+    let nextHash = '';
+    if (focused.activeNewTabId !== null) {
+      if (isSkillsNewTabId(focused.activeNewTabId)) nextHash = hashFromSkills();
+    } else if (focused.activeTabId !== null) {
+      nextHash = hashFromTabId(focused.activeTabId);
+    }
+    navigateToHash(nextHash);
+  }
+
+  function isSameWorkspace(left: EditorWorkspaceState, right: EditorWorkspaceState): boolean {
+    if (left.focusedPaneId !== right.focusedPaneId || left.panes.length !== right.panes.length) {
+      return false;
+    }
+    return left.panes.every((pane, index) => {
+      const other = right.panes[index];
+      return (
+        other !== undefined &&
+        pane.id === other.id &&
+        pane.activeTabId === other.activeTabId &&
+        pane.activeNewTabId === other.activeNewTabId &&
+        pane.previewTabId === other.previewTabId &&
+        Math.abs(pane.size - other.size) < 1e-9 &&
+        sameNavigationTarget(pane.activeTarget, other.activeTarget) &&
+        pane.openTabs.join('\0') === other.openTabs.join('\0') &&
+        pane.pinnedTabIds.join('\0') === other.pinnedTabIds.join('\0') &&
+        pane.newTabIds.join('\0') === other.newTabIds.join('\0')
+      );
     });
   }
 
-  const removalReconcilerRef = useRef<ClientRemovalReconciler | null>(null);
-
-  function commitNewTabIds(nextNewTabIds: string[]) {
-    newTabIdsRef.current = nextNewTabIds;
-    setNewTabIds((current) => (sameTabIds(current, nextNewTabIds) ? current : nextNewTabIds));
-    commitVisibleTabIds(
-      reconcileVisibleTabOrder(visibleTabIdsRef.current, openTabsRef.current, nextNewTabIds),
-    );
-  }
-
-  function removeActiveNewTab(replacementTabId?: string | null) {
-    const activeBlankTabId = activeNewTabIdRef.current;
-    if (!activeBlankTabId) return;
-    const nextNewTabIds = newTabIdsRef.current.filter((tabId) => tabId !== activeBlankTabId);
-    newTabIdsRef.current = nextNewTabIds;
-    setNewTabIds((current) => (sameTabIds(current, nextNewTabIds) ? current : nextNewTabIds));
-    commitActiveNewTabId(null);
-
-    const orderWithReplacement: string[] = [];
-    const seen = new Set<string>();
-    for (const tabId of visibleTabIdsRef.current) {
-      const nextTabId = tabId === activeBlankTabId ? replacementTabId : tabId;
-      if (!nextTabId || seen.has(nextTabId)) continue;
-      seen.add(nextTabId);
-      orderWithReplacement.push(nextTabId);
+  function commitWorkspace(nextWorkspace: EditorWorkspaceState, updateHash = false) {
+    const normalized = workspaceWithResolvedTargets(normalizeEditorWorkspace(nextWorkspace));
+    if (isSameWorkspace(workspaceRef.current, normalized)) {
+      syncPoolToWorkspace(workspaceRef.current, updateHash);
+      return;
     }
-    commitVisibleTabIds(
-      reconcileVisibleTabOrder(orderWithReplacement, openTabsRef.current, nextNewTabIds),
-    );
+    workspaceRef.current = normalized;
+    const paneIds = new Set(normalized.panes.map((pane) => pane.id));
+    for (const paneId of visibleTabIdsByPaneRef.current.keys()) {
+      if (!paneIds.has(paneId)) visibleTabIdsByPaneRef.current.delete(paneId);
+    }
+    for (const pane of normalized.panes) {
+      visibleTabIdsByPaneRef.current.set(
+        pane.id,
+        reconcileVisibleTabOrder(
+          visibleTabIdsByPaneRef.current.get(pane.id) ?? [],
+          pane.openTabs,
+          pane.newTabIds,
+        ),
+      );
+    }
+    setVisibleTabIdsByPane(new Map(visibleTabIdsByPaneRef.current));
+    setWorkspace((current) => (current === normalized ? current : normalized));
+    syncPoolToWorkspace(normalized, updateHash);
   }
 
-  useEffect(() => {
-    activeTargetRef.current = activeTarget;
-  }, [activeTarget]);
-
-  // No dependency array: auth callbacks need a reconciler with the latest
-  // collab URL and locally-scoped state helpers after every render.
-  useEffect(() => {
-    removalReconcilerRef.current = createRemovalReconciler();
-  });
-
-  useEffect(() => {
-    activeTabIdRef.current = activeTabId;
-  }, [activeTabId]);
-
-  useEffect(() => {
-    openTabsRef.current = openTabs;
-  }, [openTabs]);
-
-  useEffect(() => {
-    pinnedTabIdsRef.current = pinnedTabIds;
-  }, [pinnedTabIds]);
-
-  useEffect(() => {
-    activeNewTabIdRef.current = activeNewTabId;
-  }, [activeNewTabId]);
-
-  useEffect(() => {
-    newTabIdsRef.current = newTabIds;
-  }, [newTabIds]);
-
-  useEffect(() => {
-    visibleTabIdsRef.current = visibleTabIds;
-  }, [visibleTabIds]);
-
-  const isNewTabActive = activeNewTabId !== null;
+  function updatePaneState(
+    paneId: EditorPaneId,
+    update: (pane: EditorPaneState) => EditorPaneState,
+    options: { focus?: boolean; updateHash?: boolean } = {},
+  ) {
+    const current = workspaceRef.current;
+    if (!current.panes.some((pane) => pane.id === paneId)) return;
+    const updatedWorkspace = updateEditorPane(current, paneId, update);
+    const next = options.focus ? { ...updatedWorkspace, focusedPaneId: paneId } : updatedWorkspace;
+    commitWorkspace(next, options.updateHash);
+  }
 
   // The active sidebar/tab surface. An explicit pin (`skillsSidebar`
   // true/false) wins; the default `null` follows whichever surface the open doc
@@ -1062,9 +951,20 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const visibleTabIdsForMode = visibleTabIds.filter(
     (id) => tabIdIsSkillSurface(id) === skillFocused,
   );
+  const visibleTabIdsByPaneForMode = new Map(
+    [...visibleTabIdsByPane].map(([paneId, tabIds]) => [
+      paneId,
+      tabIds.filter((tabId) => tabIdIsSkillSurface(tabId) === skillFocused),
+    ]),
+  );
+  const surfaceWorkspace = workspaceWithResolvedTargets(
+    projectVisibleEditorWorkspace(workspace, visibleTabIdsByPaneForMode),
+  );
+  const surfacePane = focusedPane(surfaceWorkspace);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: workspace mutations read the live ref; collaboration readiness and load state are the restore triggers.
   useEffect(() => {
-    if (collabUrl === null || tabSessionLoaded || !tabIdentityResolved) return;
+    if (collabUrl === null || tabSessionLoaded) return;
     let cancelled = false;
     const bridge = getDesktopBridge();
     const localKey = getLocalTabSessionKey();
@@ -1072,67 +972,93 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const loaded = bridge
       ? bridge.project.getSessionState()
       : Promise.resolve(
-          localKey
-            ? readLocalTabSessionState(storage, localKey, MAX_POOL)
-            : {
-                openTabs: [],
-                pinnedTabIds: [],
-                activeDocName: null,
-                activeTabId: null,
-                updatedAt: null,
-              },
+          localKey ? readLocalTabSessionState(storage, localKey) : parseEditorTabSessionState(null),
         );
 
     loaded
       .then((raw) => {
         restoreSucceededRef.current = true;
         if (cancelled) return;
-        const state = parseEditorTabSessionState(raw, MAX_POOL);
+        const state = parseEditorTabSessionState(raw);
         if (tabSessionUserClosedRef.current) return;
-        const p = getPool(collabUrl);
-        for (const tabId of state.openTabs) {
-          const docName = docNameForTabId(tabId);
-          if (docName) p.open(docName);
+        const currentWorkspace = workspaceRef.current;
+        let nextWorkspace = workspaceWithResolvedTargets(
+          hydrateEditorWorkspace({ panes: state.panes, focusedPaneId: state.focusedPaneId }),
+        );
+        const restoredFocusedPaneId = nextWorkspace.focusedPaneId;
+
+        // Restore is authoritative for pane layout and ordering, while opens
+        // that raced it remain additive in the restored focused pane.
+        for (const current of currentWorkspace.panes) {
+          for (const tabId of current.openTabs) {
+            const owner = findPaneOwningTab(nextWorkspace, tabId);
+            if (owner) {
+              if (!owner.openTabs.includes(tabId)) {
+                nextWorkspace = updateEditorPane(nextWorkspace, owner.id, (pane) => ({
+                  ...pane,
+                  openTabs: [...pane.openTabs, tabId],
+                  pinnedTabIds: current.pinnedTabIds.includes(tabId)
+                    ? [...pane.pinnedTabIds, tabId]
+                    : pane.pinnedTabIds,
+                }));
+                continue;
+              }
+              if (current.pinnedTabIds.includes(tabId) && !owner.pinnedTabIds.includes(tabId)) {
+                nextWorkspace = updateEditorPane(nextWorkspace, owner.id, (pane) => ({
+                  ...pane,
+                  pinnedTabIds: [...pane.pinnedTabIds, tabId],
+                }));
+              }
+              continue;
+            }
+            nextWorkspace = updateEditorPane(nextWorkspace, restoredFocusedPaneId, (pane) => ({
+              ...pane,
+              openTabs: [...pane.openTabs, tabId],
+              pinnedTabIds: current.pinnedTabIds.includes(tabId)
+                ? [...pane.pinnedTabIds, tabId]
+                : pane.pinnedTabIds,
+            }));
+          }
         }
-        const mergedPinnedTabIds = [...state.pinnedTabIds, ...pinnedTabIdsRef.current];
-        let nextTabs = state.openTabs;
-        for (const tabId of openTabsRef.current) {
-          nextTabs = addOpenTab(nextTabs, tabId, MAX_POOL, mergedPinnedTabIds);
+
+        const currentFocused = focusedPane(currentWorkspace);
+        if (currentFocused.newTabIds.length > 0) {
+          nextWorkspace = updateEditorPane(nextWorkspace, restoredFocusedPaneId, (pane) => ({
+            ...pane,
+            newTabIds: [...new Set([...pane.newTabIds, ...currentFocused.newTabIds])],
+            activeNewTabId: currentFocused.activeNewTabId,
+            activeTabId: currentFocused.activeNewTabId ? null : pane.activeTabId,
+            activeTarget: currentFocused.activeNewTabId ? null : pane.activeTarget,
+          }));
         }
-        const normalizedPinnedTabIds = normalizePinnedTabIds(mergedPinnedTabIds, nextTabs);
-        openTabsRef.current = nextTabs;
-        pinnedTabIdsRef.current = normalizedPinnedTabIds;
-        // Restore each surface's last-active tab, but only fill slots not already
-        // set by a tab opened during the async restore window (additive, matching
-        // the openTabs merge above). Persisted ids were validated against the
-        // saved openTabs, a subset of nextTabs, so they remain valid here.
+        // Restore each surface's last-active tab without overwriting a tab
+        // opened while the async session read was in flight.
         activeTabByModeRef.current = {
           files: activeTabByModeRef.current.files ?? state.activeTabByMode.files,
           skills: activeTabByModeRef.current.skills ?? state.activeTabByMode.skills,
         };
-        setOpenTabs((current) => (sameTabIds(current, nextTabs) ? current : nextTabs));
-        setPinnedTabIds((current) =>
-          sameTabIds(current, normalizedPinnedTabIds) ? current : normalizedPinnedTabIds,
-        );
-        // A hash target can open before async session restore resolves. When a
-        // saved session exists, keep the restored tab order authoritative so the
-        // hash-opened tab does not jump to the front of the strip on reload.
-        const visibleOrderSeed = state.openTabs.length > 0 ? nextTabs : visibleTabIdsRef.current;
-        const nextVisibleTabIds = reconcileVisibleTabOrder(
-          visibleOrderSeed,
-          nextTabs,
-          newTabIdsRef.current,
-        );
-        visibleTabIdsRef.current = nextVisibleTabIds;
-        setVisibleTabIds((current) =>
-          sameTabIds(current, nextVisibleTabIds) ? current : nextVisibleTabIds,
-        );
+
+        const hash = window.location.hash;
+        const hashTabId = tabIdFromHash(hash);
+        const hashOwner = hashTabId ? findPaneOwningTab(nextWorkspace, hashTabId) : null;
+        if (hashOwner && hashTabId && currentFocused.activeNewTabId === null) {
+          const currentOwner = findPaneOwningTab(currentWorkspace, hashTabId);
+          const currentTarget =
+            currentOwner?.activeTabId === hashTabId ? currentOwner.activeTarget : null;
+          nextWorkspace = {
+            ...updateEditorPane(nextWorkspace, hashOwner.id, (pane) =>
+              paneWithResolvedTarget({
+                ...pane,
+                activeTabId: hashTabId,
+                activeNewTabId: null,
+                activeTarget: currentTarget,
+              }),
+            ),
+            focusedPaneId: hashOwner.id,
+          };
+        }
         const currentHashDoc = docNameFromHash(window.location.hash);
-        const restoredActive =
-          state.activeTabId ??
-          (state.activeDocName ? docTabId(state.activeDocName) : null) ??
-          state.openTabs[0] ??
-          null;
+        const restoredActive = focusedPane(nextWorkspace).activeTabId;
         const restoredActiveHash = restoredActive ? hashFromTabId(restoredActive) : null;
         const restoredActiveDocName = restoredActive ? docNameForTabId(restoredActive) : null;
         const shouldRestoreActive =
@@ -1143,15 +1069,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
             window.location.hash,
             restoredActiveDocName,
           );
-        if (shouldRestoreActive && restoredActive) {
-          activeTabIdRef.current = restoredActive;
-          setActiveTabId(restoredActive);
-          const nextHash = hashFromTabId(restoredActive);
-          if (window.location.hash !== nextHash) window.location.hash = nextHash;
+        nextWorkspace = workspaceWithResolvedTargets(normalizeEditorWorkspace(nextWorkspace));
+        for (const pane of nextWorkspace.panes) {
+          visibleTabIdsByPaneRef.current.set(pane.id, [...pane.openTabs, ...pane.newTabIds]);
         }
+        commitWorkspace(nextWorkspace, shouldRestoreActive && restoredActive !== null);
       })
       .catch((err: unknown) => {
-        console.warn('[editor-tabs] failed to restore tab session:', err);
+        console.error('[editor-tabs] failed to restore tab session:', err);
       })
       .finally(() => {
         if (!cancelled) setTabSessionLoaded(true);
@@ -1160,17 +1085,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [collabUrl, tabIdentityResolved, tabSessionLoaded]);
+  }, [collabUrl, tabSessionLoaded]);
 
   useEffect(() => {
     if (!tabSessionLoaded) return;
     if (!shouldPersistTabSession(restoreSucceededRef.current, openTabs.length)) return;
-    const state = createEditorTabSessionState(
-      openTabs,
-      activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName),
-      pinnedTabIds,
-      activeTabByModeRef.current,
-    );
+    const state = createEditorTabSessionState(workspace, activeTabByModeRef.current);
     const bridge = getDesktopBridge();
     if (bridge) {
       void bridge.project.setSessionState(state).catch((err: unknown) => {
@@ -1182,12 +1102,230 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     if (!localKey) return;
     const storage = typeof localStorage !== 'undefined' ? localStorage : null;
     writeLocalTabSessionState(storage, localKey, state);
-  }, [activeTabId, activeTarget, openTabs, pinnedTabIds, snapshot.activeDocName, tabSessionLoaded]);
+  }, [openTabs.length, tabSessionLoaded, workspace]);
 
+  // Closes (and close-like preview replacement) during the restore window bail the
+  // restore merge. Other mutations (open, pin, activate) are no-ops here because
+  // the restore merge is additive — see tabSessionUserClosedRef declaration for
+  // the full rationale.
+  function markTabSessionClosedDuringRestore() {
+    if (!tabSessionLoaded) tabSessionUserClosedRef.current = true;
+  }
+
+  function remapTabsForRename(
+    renamed: readonly { fromDocName: string; toDocName: string }[],
+    renamedFolders: readonly { fromPath: string; toPath: string }[] = [],
+    renamedAssets: readonly { fromPath: string; toPath: string }[] = [],
+  ) {
+    markTabSessionClosedDuringRestore();
+    const remapTabId = (tabId: string) =>
+      remapOpenTabs(
+        [tabId],
+        renamed,
+        Number.MAX_SAFE_INTEGER,
+        renamedFolders,
+        [],
+        renamedAssets,
+      )[0] ?? null;
+    for (const [paneId, order] of visibleTabIdsByPaneRef.current) {
+      visibleTabIdsByPaneRef.current.set(
+        paneId,
+        remapVisibleTabsForRename(order, renamed, renamedFolders, renamedAssets),
+      );
+    }
+    const previousFocusedTabId = focusedPane(workspaceRef.current).activeTabId;
+    const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+      type: 'remap-tabs',
+      remap: remapTabId,
+    }).workspace;
+    const nextFocusedTabId = focusedPane(nextWorkspace).activeTabId;
+    commitWorkspace(
+      nextWorkspace,
+      previousFocusedTabId !== null && previousFocusedTabId !== nextFocusedTabId,
+    );
+  }
+
+  function closeProvidersWithoutOpenTabs(
+    removedTabIds: Iterable<string>,
+    nextWorkspace: EditorWorkspaceState,
+  ) {
+    if (collabUrl === null) return;
+    const remainingDocNames = new Set<string>();
+    for (const tabId of flattenWorkspaceTabs(nextWorkspace)) {
+      const docName = docNameForTabId(tabId);
+      if (docName) remainingDocNames.add(docName);
+    }
+    const p = getPool(collabUrl);
+    for (const tabId of removedTabIds) {
+      const docName = docNameForTabId(tabId);
+      if (docName && !remainingDocNames.has(docName)) p.close(docName);
+    }
+  }
+
+  function preserveClosedTabSurface(
+    previousPane: EditorPaneState,
+    closingTabIds: ReadonlySet<string>,
+    workspaceAfterClose: EditorWorkspaceState,
+  ): EditorWorkspaceState {
+    const closedActiveTabId =
+      previousPane.activeTabId && closingTabIds.has(previousPane.activeTabId)
+        ? previousPane.activeTabId
+        : previousPane.activeNewTabId && closingTabIds.has(previousPane.activeNewTabId)
+          ? previousPane.activeNewTabId
+          : null;
+    if (!closedActiveTabId) return workspaceAfterClose;
+
+    const nextPane = workspaceAfterClose.panes.find((pane) => pane.id === previousPane.id);
+    const nextActiveTabId = nextPane?.activeTabId ?? nextPane?.activeNewTabId ?? null;
+    const closedSkillsTab = tabIdIsSkillSurface(closedActiveTabId);
+    if (!nextPane || !nextActiveTabId || tabIdIsSkillSurface(nextActiveTabId) === closedSkillsTab) {
+      return workspaceAfterClose;
+    }
+
+    const visibleOrder = reconcileVisibleTabOrder(
+      visibleTabIdsByPaneRef.current.get(previousPane.id) ?? [],
+      previousPane.openTabs,
+      previousPane.newTabIds,
+    );
+    const activeIndex = visibleOrder.indexOf(closedActiveTabId);
+    const candidates =
+      activeIndex < 0
+        ? visibleOrder
+        : [...visibleOrder.slice(activeIndex + 1), ...visibleOrder.slice(0, activeIndex).reverse()];
+    const remainingTabIds = new Set([...nextPane.openTabs, ...nextPane.newTabIds]);
+    const fallbackTabId = candidates.find(
+      (tabId) =>
+        !closingTabIds.has(tabId) &&
+        remainingTabIds.has(tabId) &&
+        tabIdIsSkillSurface(tabId) === closedSkillsTab,
+    );
+
+    if (fallbackTabId) {
+      return updateEditorPane(workspaceAfterClose, previousPane.id, (pane) => ({
+        ...pane,
+        activeTabId: pane.openTabs.includes(fallbackTabId) ? fallbackTabId : null,
+        activeNewTabId: pane.newTabIds.includes(fallbackTabId) ? fallbackTabId : null,
+        activeTarget: null,
+      }));
+    }
+
+    const prefix = closedSkillsTab ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
+    const newTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
+    nextNewTabOrdinalRef.current += 1;
+    return updateEditorPane(workspaceAfterClose, previousPane.id, (pane) => ({
+      ...pane,
+      newTabIds: [...pane.newTabIds, newTabId],
+      activeTabId: null,
+      activeNewTabId: newTabId,
+      activeTarget: null,
+    }));
+  }
+
+  const closeTabsInPaneById = (
+    paneId: EditorPaneId,
+    tabIds: readonly string[],
+    options: CloseTabsOptions = {},
+  ) => {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
+    const closingTabIds = new Set(
+      options.force
+        ? tabIds.filter((tabId) => pane.openTabs.includes(tabId))
+        : filterClosableTabIds(tabIds, pane.pinnedTabIds).filter((tabId) =>
+            pane.openTabs.includes(tabId),
+          ),
+    );
+    if (closingTabIds.size === 0) return;
+    markTabSessionClosedDuringRestore();
+    if (!options.force) {
+      for (const tabId of pane.openTabs.filter((candidate) => closingTabIds.has(candidate))) {
+        recentlyClosedTabsRef.current = recordRecentlyClosedTab(
+          recentlyClosedTabsRef.current,
+          { paneId, tabId },
+          50,
+        );
+      }
+    }
+    const wasFocused = workspaceRef.current.focusedPaneId === paneId;
+    const nextWorkspace = preserveClosedTabSurface(
+      pane,
+      closingTabIds,
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'close-tabs',
+        paneId,
+        tabIds: [...closingTabIds],
+      }).workspace,
+    );
+    closeProvidersWithoutOpenTabs(closingTabIds, nextWorkspace);
+    commitWorkspace(nextWorkspace, wasFocused);
+  };
+
+  function closeTabsAcrossPanes(tabIds: readonly string[], options: CloseTabsOptions = {}) {
+    const requested = new Set(tabIds.filter((tabId) => tabId.length > 0));
+    for (const paneId of workspaceRef.current.panes.map((pane) => pane.id)) {
+      const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+      if (!pane) continue;
+      const inPane = pane.openTabs.filter((tabId) => requested.has(tabId));
+      if (inPane.length > 0) closeTabsInPaneById(paneId, inPane, options);
+    }
+  }
+
+  function createRemovalReconciler() {
+    return createClientRemovalReconciler({
+      captureRenameSnapshots,
+      getActivePoolDocName: () =>
+        collabUrl === null ? null : getPool(collabUrl).getActiveDocName(),
+      hasPooledDocument: (docName) => collabUrl !== null && getPool(collabUrl).has(docName),
+      closeAndClear: async (docName) => {
+        if (collabUrl !== null) await getPool(collabUrl).closeAndClearPersistence(docName);
+      },
+      openAndActivate: (docName) => {
+        if (collabUrl === null) return;
+        const p = getPool(collabUrl);
+        p.open(docName);
+        p.setActive(docName);
+      },
+      remapTabs: ({ renamed, renamedFolders, renamedAssets }) =>
+        remapTabsForRename(renamed, renamedFolders, renamedAssets),
+      closeTabs: (tabIds) => closeTabsAcrossPanes(tabIds, { force: true }),
+      removeDocumentTab: (docName) => {
+        const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+          type: 'prune-tabs',
+          keep: (tabId) => docNameForTabId(tabId) !== docName,
+        }).workspace;
+        commitWorkspace(nextWorkspace);
+      },
+      remapActiveTargetForRename: (_fromDocName, toDocName) =>
+        providerDocNameForPane(focusedPane(workspaceRef.current)) === toDocName,
+      clearActiveTargetForRemoval: (docName) => {
+        const nextWorkspace = {
+          ...workspaceRef.current,
+          panes: workspaceRef.current.panes.map((pane) =>
+            pane.activeTarget && docNameForNavigationTarget(pane.activeTarget) === docName
+              ? { ...pane, activeTarget: null }
+              : pane,
+          ),
+        };
+        commitWorkspace(nextWorkspace);
+      },
+      navigateToDocument: (docName) => navigateToHash(hashFromDocName(docName)),
+      navigateHome: () => {
+        const focused = focusedPane(workspaceRef.current);
+        navigateToHash(focused.activeTabId ? hashFromTabId(focused.activeTabId) : '');
+      },
+    });
+  }
+
+  // No dependency array: auth callbacks need a reconciler with the latest
+  // collab URL and locally-scoped state helpers after every render.
+  useEffect(() => {
+    removalReconcilerRef.current = createRemovalReconciler();
+  });
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pool wiring is scoped to the collab URL; callbacks read the live workspace ref.
   useEffect(() => {
     if (collabUrl === null) return;
     let cancelled = false;
-    setTabIdentityResolved(false);
     const p = getPool(collabUrl);
 
     // Reuses the previous snapshot when nothing observable changed, so a pool
@@ -1201,6 +1339,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
     // Sync initial state
     commitSnapshot();
+    syncPoolToWorkspace(workspaceRef.current);
 
     // Late-join branch backstop. Auth-token `expectedBranch` claim
     // mismatch (server is on branch B, client claims branch A) routes
@@ -1320,9 +1459,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       .catch((err: unknown) => {
         if (cancelled) return;
         warnPrincipalFetchOnce(err);
-      })
-      .finally(() => {
-        if (!cancelled) setTabIdentityResolved(true);
       });
 
     // CRDT server-restart recovery boot fetch: pull the server's
@@ -1400,31 +1536,64 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     };
   }, [collabUrl]);
 
+  function focusPaneById(paneId: EditorPaneId, updateHash = true) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
+    const surfacePane = surfaceWorkspace.panes.find((candidate) => candidate.id === paneId);
+    let nextWorkspace = workspaceRef.current;
+    if (surfacePane?.activeTabId && surfacePane.activeTabId !== pane.activeTabId) {
+      setSkillsSidebarState(null);
+      nextWorkspace = transitionEditorWorkspace(nextWorkspace, {
+        type: 'activate-tab',
+        paneId,
+        tabId: surfacePane.activeTabId,
+      }).workspace;
+    } else if (surfacePane?.activeNewTabId && surfacePane.activeNewTabId !== pane.activeNewTabId) {
+      setSkillsSidebarState(null);
+      nextWorkspace = updateEditorPane(nextWorkspace, paneId, (candidate) => ({
+        ...candidate,
+        activeTabId: null,
+        activeNewTabId: surfacePane.activeNewTabId,
+        activeTarget: null,
+      }));
+    } else if (nextWorkspace.focusedPaneId === paneId) {
+      return;
+    }
+    commitWorkspace(
+      focusEditorPane(
+        {
+          ...nextWorkspace,
+          panes: nextWorkspace.panes.map((candidate) =>
+            candidate.id === paneId ? paneWithResolvedTarget(candidate) : candidate,
+          ),
+        },
+        paneId,
+      ),
+      updateHash,
+    );
+  }
+
+  function activateTabInPaneById(paneId: EditorPaneId, tabId: string, updateHash = true) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
+    if (!pane.openTabs.includes(tabId)) return;
+    setSkillsSidebarState(null);
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'activate-tab',
+        paneId,
+        tabId,
+      }).workspace,
+      updateHash,
+    );
+  }
+
   const openDocument = (docName: string) => {
     mark('ok/nav/open-document', { docName, transition: false });
-    if (collabUrl === null) return;
-    // Intentionally does NOT mark the session as closed-during-restore.
-    // Opens are additive: the restore-merge unions state.openTabs with
-    // openTabsRef.current, so an opened-during-restore tab coexists with
-    // the restored set. Marking would bail the entire restore on the
-    // hash-nav-while-restore-pending path.
-    const p = getPool(collabUrl);
-    const entry = p.open(docName);
-    if (!entry) return; // reserved doc (e.g. __system__) — pool refused admission
-    // Deterministic prewarm-then-click correlation by poolEventId. Emits
-    // ok/sidebar/prewarm-clicked when the entry was prewarmed recently
-    // and the IDs match.
-    consumePrewarmClick(docName, entry.poolEventId);
-    const nextTabId = docTabId(docName);
-    updateOpenTabs((current) => addOpenTab(current, nextTabId, MAX_POOL, pinnedTabIdsRef.current));
-    removeActiveNewTab(nextTabId);
-    commitActiveTabId(nextTabId);
-    p.setActive(docName);
-    // Set a doc-kind ResolvedNavigationTarget so downstream consumers
-    // (EditorArea's isNewDoc, EditorPane's folder-mode effect) stay in sync.
-    // openTarget() is the canonical path for folder/missing kinds; openDocument
-    // stays as a direct-doc affordance for non-resolver callers (tests, etc.).
-    setActiveTarget({ kind: 'doc', target: docName, docName });
+    openTargetWithOptions(
+      { kind: 'doc', target: docName, docName },
+      { disposition: 'permanent', consumeActiveNewTab: true },
+    );
   };
   // Pass-through wrapper. React's default Suspense behavior handles cold
   // (skeleton) and warm (no suspension → fast commit) without deferring
@@ -1437,358 +1606,387 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openDocument(docName);
   };
 
+  function activateOrOpenSurfaceNewTab(paneId: EditorPaneId, skills: boolean) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
+    const existingTabId = pane.newTabIds.find((tabId) => isSkillsNewTabId(tabId) === skills);
+    setSkillsSidebarState(null);
+    if (existingTabId) {
+      updatePaneState(
+        pane.id,
+        (current) => ({
+          ...current,
+          activeNewTabId: existingTabId,
+          activeTabId: null,
+          activeTarget: null,
+        }),
+        { updateHash: true },
+      );
+      return;
+    }
+
+    const prefix = skills ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
+    const nextNewTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
+    nextNewTabOrdinalRef.current += 1;
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'open-new-tab',
+        paneId: pane.id,
+        tabId: nextNewTabId,
+      }).workspace,
+      true,
+    );
+  }
+
   const openTargetWithOptions = (
     target: ResolvedNavigationTarget,
     options: OpenTargetOptions = {},
+    requestedPaneId?: EditorPaneId,
+    existingTabBehavior: ExistingTabOpenBehavior = 'activate-owner',
   ) => {
     if (collabUrl === null) return;
-    // `replace-active` displaces the previously-active tab (close-like) — must
-    // bail the restore merge so it cannot resurrect. Plain opens (any other
-    // tabBehavior) are additive; the merge handles them.
-    if (options.tabBehavior === 'replace-active') {
-      markTabSessionClosedDuringRestore();
-    }
+    const paneId = requestedPaneId ?? workspaceRef.current.focusedPaneId;
     const p = getPool(collabUrl);
+    if (target.kind === 'skills') {
+      activateOrOpenSurfaceNewTab(paneId, true);
+      return;
+    }
     const docName = docNameForNavigationTarget(target);
-    const activeBlankTabId = activeNewTabIdRef.current;
-    const replacingBlankTab = activeBlankTabId !== null && options.tabBehavior === 'replace-active';
-    const currentActiveTabId = activeBlankTabId
-      ? null
-      : (activeTabIdRef.current ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName));
-    const hasCurrentActiveTab =
-      currentActiveTabId !== null && openTabsRef.current.includes(currentActiveTabId);
-    const currentActiveTabIsPinned =
-      currentActiveTabId !== null && pinnedTabIdsRef.current.includes(currentActiveTabId);
-    const behavior =
-      options.tabBehavior === 'replace-active' && currentActiveTabIsPinned
-        ? 'append'
-        : options.tabBehavior === 'replace-active' && !replacingBlankTab && !hasCurrentActiveTab
-          ? 'append'
-          : (options.tabBehavior ?? 'append');
+    const nextTabId = tabIdForNavigationTarget(target);
+    if (!nextTabId) return;
     if (docName && target.kind !== 'large-file') {
       const entry = p.open(docName);
       if (!entry) return;
       consumePrewarmClick(docName, entry.poolEventId);
-      const opened = openDocTab(openTabsRef.current, docName, {
-        behavior,
-        currentTabId: currentActiveTabId,
-        limit: MAX_POOL,
-        pinnedTabIds: pinnedTabIdsRef.current,
-      });
-      commitOpenTabs(opened.tabs);
-      removeActiveNewTab(opened.activeTabId);
-      commitActiveTabId(opened.activeTabId);
-      p.setActive(docName);
-    } else {
-      p.clearActive();
-      if (target.kind === 'skills') {
-        // Skills is a new-tab surface, not a standing titled tab: focus an
-        // existing skills new tab or open one, so it reads as "New tab" and
-        // never persists across reloads. Renders via `isSkillsNewTabId`
-        // (activeTarget stays null), same path as a `+`-opened skills new tab.
-        const existing = newTabIdsRef.current.find(isSkillsNewTabId);
-        if (existing) {
-          commitActiveNewTabId(existing);
-        } else {
-          const nextNewTabId = `${SKILLS_NEW_TAB_PREFIX}${nextNewTabOrdinalRef.current}`;
-          nextNewTabOrdinalRef.current += 1;
-          commitNewTabIds([...newTabIdsRef.current, nextNewTabId]);
-          commitActiveNewTabId(nextNewTabId);
-        }
-        commitActiveTabId(null);
-        setActiveTarget(null);
-        // Opening the Skills surface re-arms autofollow (commitActiveTabId(null)
-        // above does not), so `skillFocused` tracks the skills new tab even if a
-        // Files pin was active.
-        setSkillsSidebarState(null);
-        return;
-      }
-      const nextTabId = tabIdForNavigationTarget(target);
-      if (nextTabId) {
-        const opened = openTab(openTabsRef.current, nextTabId, {
-          behavior,
-          currentTabId: currentActiveTabId,
-          limit: MAX_POOL,
-          pinnedTabIds: pinnedTabIdsRef.current,
-        });
-        commitOpenTabs(opened.tabs);
-        commitActiveTabId(opened.activeTabId);
-        removeActiveNewTab(opened.activeTabId);
-      } else {
-        removeActiveNewTab(nextTabId);
-      }
     }
-    setActiveTarget((current) => (sameNavigationTarget(current, target) ? current : target));
+
+    const transition = transitionEditorWorkspace(workspaceRef.current, {
+      type: 'open-target',
+      paneId,
+      tabId: nextTabId,
+      target,
+      disposition:
+        options.disposition ?? (options.tabBehavior === 'replace-active' ? 'preview' : 'permanent'),
+      consumeActiveNewTab: options.consumeActiveNewTab ?? true,
+      existingTabBehavior,
+    });
+    if (transition.replacedPreviewTabId !== null) markTabSessionClosedDuringRestore();
+    setSkillsSidebarState(null);
+    commitWorkspace(transition.workspace);
   };
-  const openTarget = (target: ResolvedNavigationTarget, options: OpenTargetOptions = {}) => {
+  const openTarget = (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => {
     openTargetWithOptions(target, options);
   };
-  const openTargetTransition = (
+  const openTargetInPane = (
+    paneId: EditorPaneId,
     target: ResolvedNavigationTarget,
-    options: OpenTargetOptions = {},
+    options?: OpenTargetOptions,
   ) => {
+    openTargetWithOptions(target, options, paneId, 'open-in-pane');
+  };
+  const openTargetTransition = (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => {
     const docName = docNameForNavigationTarget(target);
     mark('ok/nav/open-target', { docName, kind: target.kind, transition: false });
     openTargetWithOptions(target, options);
   };
 
-  const activateTabById = (tabId: string) => {
-    const tab = parseEditorTabId(tabId);
-    commitActiveNewTabId(null);
-    commitActiveTabId(tabId);
-    if (tab.kind === 'doc') {
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        const entry = p.open(tab.docName);
-        if (!entry) return;
-        p.setActive(tab.docName);
-      }
-      setActiveTarget({ kind: 'doc', target: tab.docName, docName: tab.docName });
-      const nextHash = hashFromDocName(tab.docName);
-      if (window.location.hash !== nextHash) window.location.hash = nextHash;
-      return;
-    }
-    if (collabUrl !== null) {
-      const p = getPool(collabUrl);
-      p.clearActive();
-    }
-    if (tab.kind === 'asset') {
-      setActiveTarget(assetTargetForPath(tab.assetPath));
-      const nextHash = hashFromAssetPath(tab.assetPath);
-      if (window.location.hash !== nextHash) window.location.hash = nextHash;
-      return;
-    }
-    if (tab.kind === 'skill-file') {
-      // Carry the host through: dropping it here would re-resolve the file
-      // against whichever same-named skill a bare name lookup lands on, so
-      // re-activating the tab could swap in another skill's bytes.
-      setActiveTarget({
-        kind: 'skill-file',
-        target: `${tab.scope}/${tab.name}${tab.host ? `:${tab.host}` : ''}/${tab.path}`,
-        scope: tab.scope,
-        name: tab.name,
-        path: tab.path,
-        ...(tab.host ? { host: tab.host } : {}),
-      });
-      const nextHash = hashFromSkillFile({
-        scope: tab.scope,
-        name: tab.name,
-        path: tab.path,
-        ...(tab.host ? { host: tab.host } : {}),
-      });
-      if (window.location.hash !== nextHash) window.location.hash = nextHash;
-      return;
-    }
-    if (tab.kind === 'skill-preview') {
-      // The tab IDENTITY is path-less (one preview tab), so the selected-file
-      // `path` lives only in the hash. Preserve it only when that hash describes
-      // THIS preview; otherwise a bundle path selected in the prior preview
-      // would leak into the newly activated tab.
-      const hashPath = selectedPathForSkillPreview(window.location.hash, tab);
-      const previewTarget = {
-        flavor: tab.flavor,
-        source: tab.source,
-        name: tab.name,
-        subtitle: tab.subtitle,
-        level: tab.level,
-        ...(hashPath ? { path: hashPath } : {}),
-      };
-      setActiveTarget({
-        kind: 'skill-preview',
-        target: `${tab.flavor}/${tab.source}/${tab.name}`,
-        ...previewTarget,
-      });
-      const nextHash = hashFromSkillPreview(previewTarget);
-      if (window.location.hash !== nextHash) window.location.hash = nextHash;
-      return;
-    }
-    if (tab.kind === 'folder') {
-      setActiveTarget({ kind: 'folder', target: tab.folderPath, folderPath: tab.folderPath });
-      const nextHash = hashFromFolderPath(tab.folderPath);
-      if (window.location.hash !== nextHash) window.location.hash = nextHash;
-    }
-    // A `skills` tab id is unreachable here (isValidTabId prunes it so it never
-    // enters the open-tab list) — no branch, so it no-ops rather than restoring
-    // the retired standing Skills tab.
-  };
+  const activateTabById = (tabId: string) =>
+    activateTabInPaneById(workspaceRef.current.focusedPaneId, tabId);
 
-  const openNewTabById = () => {
-    // Open a blank tab — additive, no close-during-restore mark. Inherit the
-    // current surface (incl. an explicit Files/Skills pin) so a new tab opened
-    // from Skills lands on the Skills home, not the Files empty state.
+  const openNewTabInPaneById = (paneId: EditorPaneId) => {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
     const prefix = skillFocused ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
     const nextNewTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
     nextNewTabOrdinalRef.current += 1;
-    commitNewTabIds([...newTabIdsRef.current, nextNewTabId]);
-    commitActiveNewTabId(nextNewTabId);
-    if (collabUrl !== null) {
-      const p = getPool(collabUrl);
-      p.clearActive();
-    }
-    setActiveTarget(null);
-    commitActiveTabId(null);
-    if (window.location.hash !== '') {
-      window.location.hash = '';
-    }
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'open-new-tab',
+        paneId,
+        tabId: nextNewTabId,
+      }).workspace,
+      true,
+    );
   };
+  const openNewTabById = () => openNewTabInPaneById(workspaceRef.current.focusedPaneId);
 
-  // Files/Skills toggle. `null` just re-arms autofollow. An explicit surface
-  // choice restores that surface's last-active tab (so the editor swaps to it),
-  // or — when it has none open — pins the surface and clears the editor so its
-  // empty/home state shows. A no-op when already on the requested surface.
+  const closeTabInPaneById = (paneId: EditorPaneId, tabId: string) =>
+    closeTabsInPaneById(paneId, [tabId]);
+  const closeTabById = (tabId: string) =>
+    closeTabInPaneById(workspaceRef.current.focusedPaneId, tabId);
+
+  const closeNewTabInPaneById = (paneId: EditorPaneId, tabId: string) => {
+    markTabSessionClosedDuringRestore();
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane?.newTabIds.includes(tabId)) return;
+    const wasActive = pane.activeNewTabId === tabId;
+    const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+      type: 'close-tabs',
+      paneId,
+      tabIds: [tabId],
+    }).workspace;
+    const nextPane = nextWorkspace.panes.find((candidate) => candidate.id === paneId);
+    const nextActiveTabId = nextPane?.activeTabId ?? nextPane?.activeNewTabId ?? null;
+    const closedSkillsTab = isSkillsNewTabId(tabId);
+    const remainsOnClosedSurface =
+      nextActiveTabId !== null && tabIdIsSkillSurface(nextActiveTabId) === closedSkillsTab;
+    if (wasActive && !remainsOnClosedSurface) setSkillsSidebarState(closedSkillsTab);
+    commitWorkspace(
+      nextWorkspace,
+      workspaceRef.current.focusedPaneId === paneId && wasActive && remainsOnClosedSurface,
+    );
+  };
+  const closeNewTabById = (tabId: string) =>
+    closeNewTabInPaneById(workspaceRef.current.focusedPaneId, tabId);
+
+  // Files/Skills toggle. Each surface remembers its last active tab even when
+  // that tab lives in a different split pane. With no remembered tab, retain
+  // the workspace and activate that surface's ephemeral home tab.
   const setSkillsSidebar = (next: boolean | null) => {
     if (next === null) {
       setSkillsSidebarState(null);
       return;
     }
+
     const targetMode = next ? 'skills' : 'files';
     if ((skillFocused ? 'skills' : 'files') === targetMode) {
       setSkillsSidebarState(next);
       return;
     }
-    const remembered = activeTabByModeRef.current[targetMode];
-    if (remembered && openTabsRef.current.includes(remembered)) {
-      // activateTabById re-arms autofollow; `skillFocused` then tracks the
-      // restored tab's own surface, which equals targetMode.
-      activateTabById(remembered);
-      return;
-    }
-    // Target surface has no open tab → pin it and clear the editor so its
-    // empty/home surface renders (Skills hub for skills, "create" for files).
-    setSkillsSidebarState(next);
-    if (collabUrl !== null) getPool(collabUrl).clearActive();
-    commitActiveNewTabId(null);
-    commitActiveTabId(null);
-    setActiveTarget(null);
-    if (window.location.hash !== '') window.location.hash = '';
-  };
 
-  const closeTabById = (tabId: string) => {
-    if (pinnedTabIdsRef.current.includes(tabId)) return;
-    if (!openTabsRef.current.includes(tabId)) {
-      // A tab the user can SEE must always be closable. `visibleTabIds` is
-      // normally a subset of openTabs ∪ newTabIds, but if the two ever diverge
-      // the strip renders a tab whose close is a silent no-op — un-closable
-      // short of a restart. Prune it here rather than returning into that trap.
-      if (visibleTabIdsRef.current.includes(tabId)) {
-        commitVisibleTabIds(visibleTabIdsRef.current.filter((id) => id !== tabId));
-      }
-      return;
-    }
-    markTabSessionClosedDuringRestore();
-    const closingIsSkill = tabIdIsSkillSurface(tabId);
-    let nextActiveTabId: string | null = null;
-    const closingDocName = docNameForTabId(tabId);
-    pushRecentlyClosedTabs([tabId]);
-    if (collabUrl !== null) {
-      const p = getPool(collabUrl);
-      if (closingDocName && !hasOpenDocTab(openTabsRef.current, closingDocName, new Set([tabId]))) {
-        p.close(closingDocName);
-      }
-    }
-    const currentActiveTabId =
-      activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
-    updateOpenTabs((current) => {
-      // Pick the successor from the SAME surface, so closing the last Skills tab
-      // lands on the Skills empty state instead of jumping to a Files tab.
-      const sameSurface = current.filter((id) => tabIdIsSkillSurface(id) === closingIsSkill);
-      nextActiveTabId = nextActiveTabAfterClose(sameSurface, currentActiveTabId, tabId);
-      return removeOpenTab(current, tabId);
-    });
-    if (currentActiveTabId !== tabId) return;
-    if (nextActiveTabId) {
-      commitActiveTabId(nextActiveTabId);
-      window.location.hash = hashFromTabId(nextActiveTabId);
-      return;
-    }
-    // No tab left on this surface → pin it so its own empty/home state shows
-    // rather than falling back to Files via autofollow.
-    setSkillsSidebarState(closingIsSkill);
-    if (collabUrl !== null) {
-      const p = getPool(collabUrl);
-      p.clearActive();
-    }
-    setActiveTarget(null);
-    commitActiveTabId(null);
-    window.location.hash = '';
-  };
-
-  const closeNewTabById = (tabId: string) => {
-    markTabSessionClosedDuringRestore();
-    const currentNewTabIds = newTabIdsRef.current;
-    if (!currentNewTabIds.includes(tabId)) return;
-    const nextNewTabIds = currentNewTabIds.filter((id) => id !== tabId);
-    commitNewTabIds(nextNewTabIds);
-    if (activeNewTabIdRef.current !== tabId) return;
-
-    const closedIndex = currentNewTabIds.indexOf(tabId);
-    const nextNewTabId = nextNewTabIds[closedIndex] ?? nextNewTabIds[closedIndex - 1] ?? null;
-    if (nextNewTabId) {
-      commitActiveNewTabId(nextNewTabId);
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        p.clearActive();
-      }
-      setActiveTarget(null);
-      commitActiveTabId(null);
-      if (window.location.hash !== '') {
-        window.location.hash = '';
-      }
+    const rememberedTabId = activeTabByModeRef.current[targetMode];
+    const owner = rememberedTabId ? findPaneOwningTab(workspaceRef.current, rememberedTabId) : null;
+    if (rememberedTabId && owner) {
+      setSkillsSidebarState(null);
+      activateTabInPaneById(owner.id, rememberedTabId);
       return;
     }
 
-    commitActiveNewTabId(null);
-    // Fall back to the most-recent open tab on the closed placeholder's OWN
-    // surface, so closing a Skills "New tab" stays in Skills.
-    const closingNewIsSkill = isSkillsNewTabId(tabId);
-    const sameSurfaceOpen = openTabsRef.current.filter(
-      (id) => tabIdIsSkillSurface(id) === closingNewIsSkill,
-    );
-    const nextActiveTabId = sameSurfaceOpen[sameSurfaceOpen.length - 1] ?? null;
-    if (nextActiveTabId) {
-      commitActiveTabId(nextActiveTabId);
-      window.location.hash = hashFromTabId(nextActiveTabId);
-      return;
-    }
-    // Nothing open on this surface → pin it so its empty/home state shows.
-    setSkillsSidebarState(closingNewIsSkill);
-    if (collabUrl !== null) {
-      const p = getPool(collabUrl);
-      p.clearActive();
-    }
-    setActiveTarget(null);
-    commitActiveTabId(null);
-    window.location.hash = '';
+    const pane = focusedPane(workspaceRef.current);
+    activateOrOpenSurfaceNewTab(pane.id, next);
   };
 
   const closeActiveTabOrWindow = (): boolean => {
-    const activeNewTab = activeNewTabIdRef.current;
+    const pane = focusedPane(workspaceRef.current);
+    const activeNewTab = pane.activeNewTabId;
     if (activeNewTab) {
-      closeNewTabById(activeNewTab);
+      closeNewTabInPaneById(pane.id, activeNewTab);
       return true;
     }
 
-    const pinnedTabSet = new Set(pinnedTabIdsRef.current);
-    const openTabSet = new Set(openTabsRef.current.filter((id) => !pinnedTabSet.has(id)));
+    const pinnedTabSet = new Set(pane.pinnedTabIds);
+    const openTabSet = new Set(pane.openTabs.filter((id) => !pinnedTabSet.has(id)));
     const activeOpenTab =
-      activeTabIdRef.current && openTabSet.has(activeTabIdRef.current)
-        ? activeTabIdRef.current
-        : null;
-    const targetTabId = activeOpenTab ?? visibleTabIdsRef.current.find((id) => openTabSet.has(id));
+      pane.activeTabId && openTabSet.has(pane.activeTabId) ? pane.activeTabId : null;
+    const visibleOrder = visibleTabIdsByPaneRef.current.get(pane.id) ?? [];
+    const targetTabId = activeOpenTab ?? visibleOrder.find((id) => openTabSet.has(id));
     if (targetTabId) {
-      closeTabById(targetTabId);
+      closeTabInPaneById(pane.id, targetTabId);
       return true;
     }
 
-    const newTabSet = new Set(newTabIdsRef.current);
-    const targetNewTabId = visibleTabIdsRef.current.find((id) => newTabSet.has(id));
+    const newTabSet = new Set(pane.newTabIds);
+    const targetNewTabId = visibleOrder.find((id) => newTabSet.has(id));
     if (targetNewTabId) {
-      closeNewTabById(targetNewTabId);
+      closeNewTabInPaneById(pane.id, targetNewTabId);
       return true;
     }
 
-    return false;
+    const fallbackPane = workspaceRef.current.panes.find(
+      (candidate) =>
+        candidate.newTabIds.length > 0 ||
+        candidate.openTabs.some((tabId) => !candidate.pinnedTabIds.includes(tabId)),
+    );
+    if (!fallbackPane) return false;
+    const fallbackNewTab = fallbackPane.activeNewTabId ?? fallbackPane.newTabIds[0] ?? null;
+    if (fallbackNewTab) {
+      closeNewTabInPaneById(fallbackPane.id, fallbackNewTab);
+      return true;
+    }
+    const fallbackTab =
+      (fallbackPane.activeTabId && !fallbackPane.pinnedTabIds.includes(fallbackPane.activeTabId)
+        ? fallbackPane.activeTabId
+        : null) ??
+      fallbackPane.openTabs.find((tabId) => !fallbackPane.pinnedTabIds.includes(tabId));
+    if (!fallbackTab) return false;
+    closeTabInPaneById(fallbackPane.id, fallbackTab);
+    return true;
   };
+
+  function activateNewTabInPaneById(paneId: EditorPaneId, tabId: string) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane?.newTabIds.includes(tabId)) return;
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'activate-tab',
+        paneId,
+        tabId,
+      }).workspace,
+      true,
+    );
+  }
+
+  function pinTabInPaneById(paneId: EditorPaneId, tabId: string) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane?.openTabs.includes(tabId)) return;
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'pin-tab',
+        paneId,
+        tabId,
+      }).workspace,
+    );
+  }
+
+  function unpinTabInPaneById(paneId: EditorPaneId, tabId: string) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane?.pinnedTabIds.includes(tabId)) return;
+    markTabSessionClosedDuringRestore();
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'unpin-tab',
+        paneId,
+        tabId,
+      }).workspace,
+    );
+  }
+
+  function reorderTabsInPaneById(
+    paneId: EditorPaneId,
+    newOrder: readonly string[],
+    draggedTabId: string,
+  ) {
+    const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
+    const known = new Set([...pane.openTabs, ...pane.newTabIds]);
+    const seed = newOrder.filter((tabId) => known.has(tabId));
+    for (const tabId of [...pane.openTabs, ...pane.newTabIds]) {
+      if (!seed.includes(tabId)) seed.push(tabId);
+    }
+    visibleTabIdsByPaneRef.current.set(paneId, seed);
+    setVisibleTabIdsByPane(new Map(visibleTabIdsByPaneRef.current));
+    const openOrder = seed.filter((tabId) => pane.openTabs.includes(tabId));
+    const newTabOrder = seed.filter((tabId) => pane.newTabIds.includes(tabId));
+    const reordered = transitionEditorWorkspace(workspaceRef.current, {
+      type: 'reorder-tabs',
+      paneId,
+      tabIds: openOrder,
+      draggedTabId,
+    }).workspace;
+    commitWorkspace({
+      ...reordered,
+      panes: reordered.panes.map((candidate) =>
+        candidate.id === paneId ? { ...candidate, newTabIds: newTabOrder } : candidate,
+      ),
+    });
+  }
+
+  function moveTabToPaneById(tabId: string, targetPaneId: EditorPaneId, targetIndex: number) {
+    const sourcePane = workspaceRef.current.panes.find(
+      (pane) => pane.openTabs.includes(tabId) || pane.newTabIds.includes(tabId),
+    );
+    const targetPane = workspaceRef.current.panes.find((pane) => pane.id === targetPaneId);
+    if (!sourcePane || !targetPane) return;
+    const targetOrder = reconcileVisibleTabOrder(
+      visibleTabIdsByPaneRef.current.get(targetPaneId) ?? [],
+      targetPane.openTabs,
+      targetPane.newTabIds,
+    ).filter((candidate) => candidate !== tabId);
+    const visibleTargetIndex = Math.max(0, Math.min(targetIndex, targetOrder.length));
+    const targetBucket = sourcePane.newTabIds.includes(tabId)
+      ? targetPane.newTabIds
+      : targetPane.openTabs;
+    const targetBucketIndex = tabBucketIndexForVisibleInsertion(
+      targetOrder,
+      targetBucket,
+      visibleTargetIndex,
+    );
+    const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+      type: 'move-tab',
+      tabId,
+      paneId: targetPaneId,
+      index: targetBucketIndex,
+    }).workspace;
+    if (sourcePane.id !== targetPaneId) {
+      visibleTabIdsByPaneRef.current.set(
+        sourcePane.id,
+        reconcileVisibleTabOrder(
+          visibleTabIdsByPaneRef.current.get(sourcePane.id) ?? [],
+          sourcePane.openTabs,
+          sourcePane.newTabIds,
+        ).filter((candidate) => candidate !== tabId),
+      );
+      targetOrder.splice(visibleTargetIndex, 0, tabId);
+      visibleTabIdsByPaneRef.current.set(targetPaneId, targetOrder);
+    }
+    commitWorkspace(nextWorkspace, true);
+  }
+
+  function splitTabById(
+    tabId: string,
+    targetPaneId: EditorPaneId,
+    side: PaneSide,
+  ): EditorPaneId | null {
+    const sourcePane = workspaceRef.current.panes.find(
+      (pane) => pane.openTabs.includes(tabId) || pane.newTabIds.includes(tabId),
+    );
+    if (!sourcePane) return null;
+    const newPaneId = createPaneId();
+    const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+      type: 'split-tab',
+      tabId,
+      paneId: targetPaneId,
+      side,
+      newPaneId,
+    }).workspace;
+    const newPane = nextWorkspace.panes.find((pane) => pane.id === newPaneId);
+    if (!newPane) return null;
+    visibleTabIdsByPaneRef.current.set(
+      sourcePane.id,
+      reconcileVisibleTabOrder(
+        visibleTabIdsByPaneRef.current.get(sourcePane.id) ?? [],
+        sourcePane.openTabs,
+        sourcePane.newTabIds,
+      ).filter((candidate) => candidate !== tabId),
+    );
+    visibleTabIdsByPaneRef.current.set(newPane.id, [tabId]);
+    commitWorkspace(nextWorkspace, true);
+    return newPane.id;
+  }
+
+  function moveTabToNewPaneById(tabId: string, side: PaneSide): EditorPaneId | null {
+    const owner = findPaneOwningTab(workspaceRef.current, tabId);
+    if (!owner) return null;
+    return splitTabById(tabId, owner.id, side);
+  }
+
+  function resizeEditorPanes(sizesByPane: ReadonlyMap<EditorPaneId, number>) {
+    if (sizesByPane.size === 0) return;
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'resize-panes',
+        sizes: workspaceRef.current.panes.map((pane) => sizesByPane.get(pane.id) ?? pane.size),
+      }).workspace,
+    );
+  }
+
+  function promoteTabInPaneById(paneId: EditorPaneId, tabId: string) {
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'promote-preview',
+        paneId,
+        tabId,
+      }).workspace,
+    );
+  }
+
+  function promoteAllPreviewTabs() {
+    commitWorkspace(
+      transitionEditorWorkspace(workspaceRef.current, {
+        type: 'promote-all-previews',
+      }).workspace,
+    );
+  }
 
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
@@ -1800,17 +1998,42 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     closeActiveTabOrWindow,
   ]);
 
+  const activeDocName = providerDocNameForPane(surfacePane);
+  const activeProvider =
+    snapshot.activeDocName === activeDocName
+      ? snapshot.activeProvider
+      : (snapshot.poolEntries.find((entry) => entry.docName === activeDocName)?.provider ?? null);
+
   const value: DocumentContextValue = {
     principal,
-    activeTarget,
-    activeTabId,
-    activeDocName: snapshot.activeDocName,
-    activeProvider: snapshot.activeProvider,
+    activeTarget: surfacePane.activeTarget,
+    activeTabId: surfacePane.activeTabId,
     skillsSidebar,
     setSkillsSidebar,
     skillFocused,
+    activeDocName,
+    activeProvider,
+    workspace,
+    panes: surfaceWorkspace.panes,
+    focusedPaneId: surfaceWorkspace.focusedPaneId,
+    focusPane: focusPaneById,
+    activateTabInPane: activateTabInPaneById,
+    activateNewTabInPane: activateNewTabInPaneById,
+    openNewTabInPane: openNewTabInPaneById,
+    closeTabInPane: closeTabInPaneById,
+    closeTabsInPane: closeTabsInPaneById,
+    closeNewTabInPane: closeNewTabInPaneById,
+    pinTabInPane: pinTabInPaneById,
+    unpinTabInPane: unpinTabInPaneById,
+    reorderTabsInPane: reorderTabsInPaneById,
+    moveTabToPane: moveTabToPaneById,
+    splitTab: splitTabById,
+    moveTabToNewPane: moveTabToNewPaneById,
+    resizePanes: resizeEditorPanes,
     openTabs,
     pinnedTabIds,
+    visibleTabIdsByPane: visibleTabIdsByPaneForMode,
+    previewTabIdsByPane,
     visibleTabIds: visibleTabIdsForMode,
     tabSessionLoaded,
     syncState: snapshot.syncState,
@@ -1819,177 +2042,76 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openDocument,
     openDocumentTransition,
     openTarget,
+    openTargetInPane,
     openTargetTransition,
+    promoteTabInPane: promoteTabInPaneById,
+    promoteAllPreviewTabs,
     clearTarget: () => {
-      if (collabUrl === null) {
-        setActiveTarget((current) => (current === null ? current : null));
-        activeTabIdRef.current = null;
-        setActiveTabId((current) => (current === null ? current : null));
-        return;
-      }
-      const p = getPool(collabUrl);
-      if (p.getActiveDocName() !== null) p.clearActive();
-      setActiveTarget((current) => (current === null ? current : null));
-      activeTabIdRef.current = null;
-      setActiveTabId((current) => (current === null ? current : null));
+      const pane = focusedPane(workspaceRef.current);
+      if (pane.activeNewTabId !== null && !isSkillsNewTabId(pane.activeNewTabId)) return;
+      activateOrOpenSurfaceNewTab(pane.id, false);
     },
     closeDocument: (docName: string) => {
-      if (collabUrl === null) return;
       markTabSessionClosedDuringRestore();
-      const p = getPool(collabUrl);
-      p.close(docName);
-      updateOpenTabs((current) => removeOpenTab(current, docTabId(docName)));
-      setActiveTabId((current) => {
-        const next = current && docNameForTabId(current) === docName ? null : current;
-        activeTabIdRef.current = next;
-        return next;
-      });
-      setActiveTarget((current) => {
-        if (!current) return current;
-        return docNameForNavigationTarget(current) === docName ? null : current;
-      });
+      const focusedWasClosed =
+        providerDocNameForPane(focusedPane(workspaceRef.current)) === docName;
+      const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+        type: 'prune-tabs',
+        keep: (tabId) => docNameForTabId(tabId) !== docName,
+      }).workspace;
+      if (collabUrl !== null) getPool(collabUrl).close(docName);
+      commitWorkspace(nextWorkspace, focusedWasClosed);
     },
     closeActiveTabOrWindow,
     closeTab: closeTabById,
-    pinTab: (tabId: string) => {
-      const nextPinnedTabIds = addPinnedTab(pinnedTabIdsRef.current, tabId, openTabsRef.current);
-      if (sameTabIds(pinnedTabIdsRef.current, nextPinnedTabIds)) return;
-      // Pin is additive; the restore merge unions pinned IDs. No close-during-restore mark.
-      commitPinnedTabIds(nextPinnedTabIds);
-    },
-    unpinTab: (tabId: string) => {
-      const nextPinnedTabIds = removePinnedTab(pinnedTabIdsRef.current, tabId);
-      if (sameTabIds(pinnedTabIdsRef.current, nextPinnedTabIds)) return;
-      // Unpin removes a tab from the pinned set — close-like for the pinned slot.
-      // Mark so the restore merge doesn't re-pin it from the restored snapshot.
-      markTabSessionClosedDuringRestore();
-      commitPinnedTabIds(nextPinnedTabIds);
-    },
-    activateTab: (tabId: string) => {
-      // Activate doesn't open/close tabs — only changes the active tab. The
-      // restore's shouldRestoreActive gate respects the current hash, so no mark.
-      activateTabById(tabId);
-    },
-    reorderTabs: (newOrder: readonly string[], draggedTabId: string) => {
-      // Tab drag-reorder. newOrder is the desired visibleTabIds order after
-      // a drop — a mix of openTab IDs and new-tab placeholders. Only the
-      // dragged tab's pin state can flip, and only if it crossed the
-      // pinned/unpinned divide (see applyDragPinMutation + the interface doc
-      // above). Persistence rides the existing openTabs/pinnedTabIds effect.
-      const openTabsSet = new Set(openTabsRef.current);
-      const newTabIdsSet = new Set(newTabIdsRef.current);
-      const seen = new Set<string>();
-      const nextOpenTabs: string[] = [];
-      const nextNewTabIds: string[] = [];
-      const seedVisibleTabIds: string[] = [];
-      for (const tabId of newOrder) {
-        if (seen.has(tabId)) continue;
-        if (openTabsSet.has(tabId)) {
-          nextOpenTabs.push(tabId);
-          seedVisibleTabIds.push(tabId);
-          seen.add(tabId);
-        } else if (newTabIdsSet.has(tabId)) {
-          nextNewTabIds.push(tabId);
-          seedVisibleTabIds.push(tabId);
-          seen.add(tabId);
-        }
-      }
-      // Defensive: append any open/new tab id the caller forgot to include so
-      // we never silently drop a tab. The caller (EditorTabs handleDragEnd)
-      // passes visibleTabIds, so this is a backstop.
-      for (const tabId of openTabsRef.current) {
-        if (!seen.has(tabId)) {
-          nextOpenTabs.push(tabId);
-          seedVisibleTabIds.push(tabId);
-          seen.add(tabId);
-        }
-      }
-      for (const tabId of newTabIdsRef.current) {
-        if (!seen.has(tabId)) {
-          nextNewTabIds.push(tabId);
-          seedVisibleTabIds.push(tabId);
-          seen.add(tabId);
-        }
-      }
-      const sameOpenOrder = sameTabIds(openTabsRef.current, nextOpenTabs);
-      const sameNewOrder = sameTabIds(newTabIdsRef.current, nextNewTabIds);
-      // Dragging a new-tab placeholder among doc-tabs (or vice versa) leaves
-      // the per-bucket orders unchanged but mutates the visible interleave —
-      // checking only the buckets early-returns valid reorders and drops them
-      // on the floor.
-      const sameVisibleOrder = sameTabIds(visibleTabIdsRef.current, seedVisibleTabIds);
-      if (sameOpenOrder && sameNewOrder && sameVisibleOrder) return;
-      // Reorder changes positions only — no opens/closes. The restore merge
-      // preserves the restored order; user's drag is then persisted by the
-      // next save effect. No close-during-restore mark needed.
-      // Seed visibleTabIdsRef so commitTabState's reconcileVisibleTabOrder
-      // uses the new drag-determined order as its starting point.
-      visibleTabIdsRef.current = seedVisibleTabIds;
-      if (!sameNewOrder) {
-        newTabIdsRef.current = nextNewTabIds;
-        setNewTabIds((current) => (sameTabIds(current, nextNewTabIds) ? current : nextNewTabIds));
-      }
-      const nextPinnedTabIds = applyDragPinMutation(
-        nextOpenTabs,
-        pinnedTabIdsRef.current,
-        draggedTabId,
-      );
-      commitTabState(nextOpenTabs, nextPinnedTabIds);
-    },
-    newTabIds,
-    activeNewTabId,
-    isNewTabActive,
+    pinTab: (tabId: string) => pinTabInPaneById(workspaceRef.current.focusedPaneId, tabId),
+    unpinTab: (tabId: string) => unpinTabInPaneById(workspaceRef.current.focusedPaneId, tabId),
+    activateTab: activateTabById,
+    reorderTabs: (newOrder: readonly string[], draggedTabId: string) =>
+      reorderTabsInPaneById(workspaceRef.current.focusedPaneId, newOrder, draggedTabId),
+    newTabIds: surfacePane.newTabIds,
+    activeNewTabId: surfacePane.activeNewTabId,
+    isNewTabActive: surfacePane.activeNewTabId !== null,
     openNewTab: openNewTabById,
-    activateNewTab: (tabId: string) => {
-      // Activate only — no open/close. No close-during-restore mark.
-      if (!newTabIdsRef.current.includes(tabId)) return;
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        p.clearActive();
-      }
-      setActiveTarget(null);
-      commitActiveTabId(null);
-      commitActiveNewTabId(tabId);
-      if (window.location.hash !== '') {
-        window.location.hash = '';
-      }
-    },
+    activateNewTab: (tabId: string) =>
+      activateNewTabInPaneById(workspaceRef.current.focusedPaneId, tabId),
     closeNewTab: closeNewTabById,
     reopenClosedTab: () => {
       const stack = [...recentlyClosedTabsRef.current];
       while (stack.length > 0) {
-        const tabId = stack.pop();
-        if (!tabId) continue;
-        if (openTabsRef.current.includes(tabId)) {
+        const closed = stack.shift();
+        if (!closed) continue;
+        if (findPaneOwningTab(workspaceRef.current, closed.tabId)) {
           recentlyClosedTabsRef.current = stack;
           continue;
         }
-        const nextOpenTabs = addOpenTab(
-          openTabsRef.current,
-          tabId,
-          MAX_POOL,
-          pinnedTabIdsRef.current,
-        );
-        if (!nextOpenTabs.includes(tabId)) return;
+        const targetPane =
+          workspaceRef.current.panes.find((pane) => pane.id === closed.paneId) ??
+          focusedPane(workspaceRef.current);
         recentlyClosedTabsRef.current = stack;
-        commitOpenTabs(nextOpenTabs);
-        activateTabById(tabId);
+        const target = resolvedTargetForTabId(closed.tabId);
+        commitWorkspace(
+          transitionEditorWorkspace(workspaceRef.current, {
+            type: 'open-target',
+            paneId: targetPane.id,
+            tabId: closed.tabId,
+            target,
+            disposition: 'permanent',
+            consumeActiveNewTab: false,
+          }).workspace,
+          true,
+        );
         return;
       }
       recentlyClosedTabsRef.current = [];
     },
-    closeTabs: (tabIds: readonly string[], options: CloseTabsOptions = {}) => {
-      const requestedTabIds = tabIds.filter((tabId) => tabId.length > 0);
-      if (options.force) {
-        closeTabIds(requestedTabIds);
-        return;
-      }
-      closeTabIds(filterClosableTabIds(requestedTabIds, pinnedTabIdsRef.current), {
-        rememberRecentlyClosed: true,
-      });
-    },
+    closeTabs: closeTabsAcrossPanes,
     syncOpenTabsWithKnownTargets: ({ pages, folderPaths, assetPaths, filePaths }) => {
-      const keepMissingDocName = activeTarget?.kind === 'missing' ? activeTarget.target : null;
+      const missingDocNames = new Set(
+        workspaceRef.current.panes.flatMap((pane) =>
+          pane.activeTarget?.kind === 'missing' ? [pane.activeTarget.target] : [],
+        ),
+      );
       // Never evict the doc the hash currently points at: on cold start the page
       // list arrives empty-then-populated, and a sync firing in that window would
       // otherwise prune the just-seeded doc and clear the hash (→ empty-state
@@ -1998,69 +2120,29 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       // can race ahead of.
       const keepHashDocName =
         typeof window !== 'undefined' ? docNameFromHash(window.location.hash) : null;
-      const nextOpenTabs = filterOpenTabsForKnownTargets(openTabs, {
-        pages,
+      const allOpenTabs = flattenWorkspaceTabs(workspaceRef.current);
+      const nextOpenTabs = filterOpenTabsForKnownTargets(allOpenTabs, {
+        pages: new Set([...pages, ...missingDocNames]),
         folderPaths,
         assetPaths,
         filePaths,
-        keepMissingDocName,
+        keepMissingDocName: null,
         keepHashDocName,
       });
-      if (nextOpenTabs.length === openTabs.length) return;
+      if (nextOpenTabs.length === allOpenTabs.length) return;
 
       const nextTabIds = new Set(nextOpenTabs);
-      const staleTabIds = openTabs.filter((tabId) => !nextTabIds.has(tabId));
-      const staleTabIdSet = new Set(staleTabIds);
+      const staleTabIds = allOpenTabs.filter((tabId) => !nextTabIds.has(tabId));
       markTabSessionClosedDuringRestore();
 
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        for (const tabId of staleTabIds) {
-          const docName = docNameForTabId(tabId);
-          if (docName) p.close(docName);
-        }
-      }
-
-      commitOpenTabs(nextOpenTabs);
-
-      const hashTabId = typeof window !== 'undefined' ? tabIdFromHash(window.location.hash) : null;
-      const currentActiveTabId =
-        activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
-      const tabToReplace =
-        hashTabId && staleTabIdSet.has(hashTabId)
-          ? hashTabId
-          : currentActiveTabId && staleTabIdSet.has(currentActiveTabId)
-            ? currentActiveTabId
-            : null;
-
-      if (!tabToReplace) {
-        setActiveTarget((current) => {
-          if (!current) return current;
-          const targetTabId = tabIdForNavigationTarget(current);
-          return targetTabId && staleTabIdSet.has(targetTabId) ? null : current;
-        });
-        return;
-      }
-
-      // Keep the successor on the evicted tab's surface, so deleting the open
-      // skill doc lands on the Skills empty state instead of a Files tab.
-      const activeIsSkill = tabIdIsSkillSurface(tabToReplace);
-      const sameSurface = openTabs.filter((id) => tabIdIsSkillSurface(id) === activeIsSkill);
-      const nextActiveTabId = nextActiveTabAfterCloseMany(sameSurface, tabToReplace, staleTabIds);
-      if (nextActiveTabId) {
-        commitActiveTabId(nextActiveTabId);
-        window.location.hash = hashFromTabId(nextActiveTabId);
-        return;
-      }
-      // No tab left on this surface → pin it so its empty/home state shows.
-      setSkillsSidebarState(activeIsSkill);
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        p.clearActive();
-      }
-      setActiveTarget(null);
-      commitActiveTabId(null);
-      window.location.hash = '';
+      const focusedActiveTabId = focusedPane(workspaceRef.current).activeTabId;
+      const focusedWasPruned = focusedActiveTabId !== null && !nextTabIds.has(focusedActiveTabId);
+      const nextWorkspace = transitionEditorWorkspace(workspaceRef.current, {
+        type: 'prune-tabs',
+        keep: (tabId) => nextTabIds.has(tabId),
+      }).workspace;
+      closeProvidersWithoutOpenTabs(staleTabIds, nextWorkspace);
+      commitWorkspace(nextWorkspace, focusedWasPruned);
     },
     reconcileLocalRename: (input) => createRemovalReconciler().reconcileLocalRename(input),
     reconcileLocalRemoval: (input) => createRemovalReconciler().reconcileLocalRemoval(input),
@@ -2133,8 +2215,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       // agent mode. Return early so a double-click landing before the
       // hashchange resolves (activeDocName still null) can't fall through to
       // the toggle guard below and flip the just-opened panel back to doc mode.
-      if (!snapshot.activeDocName && targetDoc) {
-        window.location.hash = hashFromDocName(targetDoc);
+      if (!activeDocName && targetDoc) {
+        navigateToHash(hashFromDocName(targetDoc));
         setDocPanelAgentId(connectionId);
         setDocPanelModeState('agent');
         setDocPanelExpandSignal((prev) => prev + 1);

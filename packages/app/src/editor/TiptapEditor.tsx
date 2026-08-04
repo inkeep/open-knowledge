@@ -39,7 +39,6 @@ import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePa
 import { anchorFromHash } from '@/lib/doc-hash';
 import { mark } from '@/lib/perf';
 import { wrapExtensionsWithTiming } from '@/lib/perf/cold-mount-instrumentation';
-import type { SidebarDragPayload } from '@/lib/sidebar-drag';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
 import { applyLintFixes } from './apply-lint-fix.ts';
@@ -82,7 +81,6 @@ import {
   SELECTION_STATS_DEBOUNCE_MS,
   selectionStatsFromWysiwyg,
 } from './selection-stats';
-import { createSidebarAwareHandleDrop, openSidebarDropPayload } from './sidebar-drop';
 import {
   consumePendingWysiwygNavigation,
   peekPendingWysiwygNavigation,
@@ -296,7 +294,6 @@ interface BuildEditorOptionsArgs {
    * DocumentContext; the guard's publication gate protects either way.
    */
   onWedged?: (detail: WedgeDetail) => void;
-  onSidebarDrop?: (payload: SidebarDragPayload) => void;
 }
 
 /**
@@ -512,7 +509,7 @@ function buildEditorOptions(args: BuildEditorOptionsArgs): Partial<EditorOptions
       clipboardTextSerializer: (slice, view) => clipboard.text(slice, view),
       clipboardSerializer: clipboard.html.serializer,
       handlePaste: (view, event) => clipboard.paste(view, event),
-      handleDrop: createSidebarAwareHandleDrop(clipboard.drop, args.onSidebarDrop),
+      handleDrop: clipboard.drop,
       handleDOMEvents: {
         copy: (view, event) => clipboard.copy(view, event as ClipboardEvent, false),
         cut: (view, event) => clipboard.copy(view, event as ClipboardEvent, true),
@@ -533,7 +530,6 @@ interface BuildPatternDConstructorOptionsArgs {
   clipboard: ClipboardState;
   ctorStart: number;
   onWedged?: (detail: WedgeDetail) => void;
-  onSidebarDrop?: (payload: SidebarDragPayload) => void;
 }
 
 /**
@@ -584,7 +580,7 @@ type PatternDConstructorOptions = Partial<EditorOptions> & { element: null };
 export function buildPatternDConstructorOptions(
   args: BuildPatternDConstructorOptionsArgs,
 ): PatternDConstructorOptions {
-  const { provider, placeholder, clipboard, ctorStart, onWedged, onSidebarDrop } = args;
+  const { provider, placeholder, clipboard, ctorStart, onWedged } = args;
   const fragment = provider.document.getXmlFragment('default');
   // Stable Map wired to Collaboration's `ySyncOptions.mapping` via
   // `buildPrewarmBoundCollaboration`. Starts empty; the wrapped
@@ -598,7 +594,6 @@ export function buildPatternDConstructorOptions(
     ctorStart,
     prebuiltMapping,
     onWedged,
-    onSidebarDrop,
   });
   const baseOnBeforeCreate = baseOptions.onBeforeCreate;
   return {
@@ -659,7 +654,7 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const flashStateRef = useRef(INITIAL_FLASH_STATE);
   const identity = useIdentity();
-  const { principal, activeDocName, recycleDocument, openTarget } = useDocumentContext();
+  const { principal, activeDocName, recycleDocument } = useDocumentContext();
   const docName = provider.configuration.name ?? '';
 
   const [clipboard] = useState(buildClipboardState);
@@ -698,9 +693,6 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
         onWedged: ({ externalSeq, appliedSeq }) => {
           mark('ok/editor/binding-wedge-recycle', { docName, externalSeq, appliedSeq });
           recycleDocument(docName);
-        },
-        onSidebarDrop: (payload) => {
-          openSidebarDropPayload(payload, openTarget);
         },
       }),
     );
@@ -1578,7 +1570,8 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
   useEffect(() => {
     function onNav(e: Event) {
       const detail = (e as CustomEvent<OutlineNavDetail>).detail;
-      if (!detail || detail.mode !== 'wysiwyg' || editor.isDestroyed) return;
+      if (!detail || detail.docName !== docName || detail.mode !== 'wysiwyg' || editor.isDestroyed)
+        return;
       // `getEditorView` is the non-throwing accessor for the underlying
       // ProseMirror EditorView (see utils/get-editor-view.ts). Returns
       // undefined pre-mount, never throws on the recycle/remount race.

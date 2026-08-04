@@ -48,6 +48,8 @@ import { replaceValidationFromAudit } from '@/lib/validation-store';
 
 /** Jump-to-line intent dispatched when a problem row is clicked in source mode. */
 export interface LintNavDetail {
+  /** The document that owns this navigation request. */
+  docName: string;
   /** 1-based line in `Y.Text('source')` (full doc incl. frontmatter). */
   line: number;
   /** 1-based column. */
@@ -80,8 +82,9 @@ function compareDiagnostics(a: DiagnosticLike, b: DiagnosticLike): number {
 }
 
 /** The nav contract is 1-based (CodeMirror lines); the diagnostic range is 0-based LSP. */
-function lintNavDetailOf(diagnostic: DiagnosticLike): LintNavDetail {
+function lintNavDetailOf(docName: string, diagnostic: DiagnosticLike): LintNavDetail {
   return {
+    docName,
     line: diagnostic.range.start.line + 1,
     column: diagnostic.range.start.character + 1,
     source: diagnostic.source,
@@ -750,7 +753,7 @@ export function ProblemsPanel({
   useEffect(() => subscribeToLintConfigChanged(() => onLintConfigChangedRef.current()), []);
 
   function handleNav(diagnostic: DiagnosticLike) {
-    const detail = lintNavDetailOf(diagnostic);
+    const detail = lintNavDetailOf(docName, diagnostic);
     // Banked unconditionally: the visible editor (source line-jump, or the
     // WYSIWYG block-jump in markdown-lint-decorations) consumes the event live
     // and clears the intent; when neither can anchor it (frontmatter
@@ -768,11 +771,11 @@ export function ProblemsPanel({
     }
     rememberPendingSourceNavigation(targetDocName, {
       kind: 'lint',
-      detail: lintNavDetailOf(diagnostic),
+      detail: lintNavDetailOf(targetDocName, diagnostic),
     });
-    // No LINT_NAV_EVENT here: the event carries no docName and would move the
-    // cursor in the doc that is still open. The banked intent replays once
-    // the target doc's source editor activates.
+    // The focused document changes asynchronously. Keep this navigation banked
+    // until the target's own editor is active instead of sending a live event to
+    // another visible split pane.
     window.location.hash = hashFromDocName(targetDocName);
   }
 

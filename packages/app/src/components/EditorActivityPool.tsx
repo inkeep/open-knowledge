@@ -52,6 +52,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { type PoolEntrySnapshot, useDocumentContext } from '@/editor/DocumentContext';
 import { peekRenameSnapshot, setActivityMountList } from '@/editor/editor-cache';
 import { isSystemDoc } from '@/editor/is-system-doc';
@@ -224,13 +225,14 @@ export function computeEffectiveSourceMode(
 }
 
 /**
- * Maximum number of editors mounted concurrently inside `<Activity>` boundaries.
- * Decoupled from `MAX_POOL` (exported from `provider-pool.ts`, default 10) per
- * precedent #18(c) — pool-resident-but-not-Activity-mounted docs keep their
- * warm provider (so revisiting is fast via Suspense-gated remount with
- * `syncPromise` resolving immediately from `hasSynced=true`) but skip the
- * per-editor memory + observer-CPU cost of keeping the TipTap + CodeMirror
- * instances alive.
+ * Minimum number of editors mounted concurrently inside `<Activity>`
+ * boundaries. Decoupled from `MAX_POOL` (exported from `provider-pool.ts`,
+ * default 10) per precedent #18(c): every visible split-pane document is
+ * mandatory, then MRU hidden documents fill this warm floor. Pool-resident
+ * docs outside that list keep their warm provider (so revisiting is fast via
+ * Suspense-gated remount with `syncPromise` resolving immediately from
+ * `hasSynced=true`) but skip the per-editor memory + observer-CPU cost of
+ * keeping the TipTap + CodeMirror instances alive.
  *
  * 3 covers the "alt-tab between recent docs" pattern dominant for the
  * primary personas.
@@ -279,6 +281,18 @@ const LazySourceEditor = lazy(async () => {
 
 interface EditorActivityPoolProps {
   activeDocName: string;
+  /**
+   * Every document rendered in a visible editor pane, in pane order. Omitted
+   * callers retain the legacy single-focused-document behavior while the
+   * workspace is being introduced.
+   */
+  visibleDocNames?: ReadonlySet<string>;
+  /** Stable pane-owned DOM mounts for Activity hosts, keyed by docName. */
+  activityHosts?: ReadonlyMap<string, HTMLElement>;
+  /** Stable hidden mount for MRU warm Activity entries with no visible pane. */
+  parkingHost?: HTMLElement | null;
+  /** Pane-local chrome rendered for each visible document Activity. */
+  renderToolbar?: (docName: string, provider: PoolEntrySnapshot['provider']) => ReactNode;
   isSourceMode: boolean;
   editorPlaceholder?: string;
   /**
@@ -308,14 +322,13 @@ interface EditorActivityPoolProps {
  * Invariants:
  * 1. System docs (`__system__`) are filtered out — defense-in-depth even though
  *    `ProviderPool.open` rejects them at admission.
- * 2. The active doc is always present in the result if it exists in `entries` —
- *    even if its `lastAccessedAt` would put it outside the top `limit` (this can
- *    happen transiently between `pool.open` and `pool.setActive`, or in tests).
- * 3. Otherwise: top `limit` entries by `lastAccessedAt` descending (MRU first).
+ * 2. Every existing visible document is present in the result, in pane order.
+ * 3. MRU hidden entries fill the remainder up to `limit`; when more than
+ *    `limit` documents are visible, all visible documents remain mounted.
  */
 export function computeActivityMountList<T extends { docName: string; lastAccessedAt: number }>(
   entries: ReadonlyArray<T>,
-  activeDocName: string | null,
+  visibleDocNames: ReadonlySet<string> | string | null,
   limit: number,
 ): ReadonlyArray<T> {
   if (limit <= 0) return [];
@@ -324,17 +337,35 @@ export function computeActivityMountList<T extends { docName: string; lastAccess
   // the helper is correct for any input order — keeps test scenarios independent
   // of upstream snapshot ordering decisions.
   const sorted = [...filtered].sort((a, b) => b.lastAccessedAt - a.lastAccessedAt);
-  const top = sorted.slice(0, limit);
 
-  if (activeDocName === null) return top;
-  if (top.some((e) => e.docName === activeDocName)) return top;
+  // Preserve the old focused-document helper contract for callers that have
+  // not yet adopted pane visibility. Split-aware callers always pass a Set.
+  if (typeof visibleDocNames === 'string' || visibleDocNames === null) {
+    const top = sorted.slice(0, limit);
+    if (visibleDocNames === null || top.some((entry) => entry.docName === visibleDocNames)) {
+      return top;
+    }
+    const active = filtered.find((entry) => entry.docName === visibleDocNames);
+    return active === undefined ? top : [...top.slice(0, limit - 1), active];
+  }
 
-  // Active doc exists but didn't make the top-N by lastAccessedAt — force-include it
-  // by displacing the LRU member of `top`. Preserves invariant #2 without growing
-  // beyond `limit`.
-  const active = filtered.find((e) => e.docName === activeDocName);
-  if (!active) return top;
-  return [...top.slice(0, limit - 1), active];
+  const visibleNames = visibleDocNames;
+  const entriesByDocName = new Map(filtered.map((entry) => [entry.docName, entry]));
+  const visible = [...visibleNames]
+    .filter((docName) => !isSystemDoc(docName))
+    .map((docName) => entriesByDocName.get(docName))
+    .filter((entry): entry is T => entry !== undefined);
+  const mountedDocNames = new Set(visible.map((entry) => entry.docName));
+  const targetSize = Math.max(limit, visible.length);
+
+  for (const entry of sorted) {
+    if (mountedDocNames.size >= targetSize) break;
+    if (mountedDocNames.has(entry.docName)) continue;
+    visible.push(entry);
+    mountedDocNames.add(entry.docName);
+  }
+
+  return visible;
 }
 
 type ServerRestartRecoveryView =
@@ -392,6 +423,10 @@ export function EditorActivityPool(props: EditorActivityPoolProps) {
 
 function EditorActivityPoolInner({
   activeDocName,
+  visibleDocNames,
+  activityHosts,
+  parkingHost,
+  renderToolbar,
   isSourceMode,
   editorPlaceholder,
   previousDocName,
@@ -400,8 +435,12 @@ function EditorActivityPoolInner({
 }: EditorActivityPoolProps) {
   const { poolEntries, serverRestartRecovery } = useDocumentContext();
   const { pages, loading } = usePageList();
-
-  const mountList = computeActivityMountList(poolEntries, activeDocName, ACTIVITY_MOUNT_LIMIT);
+  const effectiveVisibleDocNames = visibleDocNames ?? new Set([activeDocName]);
+  const mountList = computeActivityMountList(
+    poolEntries,
+    effectiveVisibleDocNames,
+    ACTIVITY_MOUNT_LIMIT,
+  );
 
   // Track prior mount list by a stringified doc-name key so we emit
   // `ok/activity/mount-list-change` once per real change (not once per render).
@@ -473,24 +512,34 @@ function EditorActivityPoolInner({
   return (
     <>
       {mountList.map((entry) => (
-        <ActivityEntry
+        <ActivityEntryHost
           key={entry.docName}
-          entry={entry}
-          isActive={entry.docName === activeDocName}
-          isSourceMode={isSourceMode}
-          editorPlaceholder={editorPlaceholder}
-          isNewDoc={
-            !loading &&
-            !pages.has(entry.docName) &&
-            !isManagedArtifactDocName(entry.docName) &&
-            !isMermaidDocFile(entry.docName) &&
-            !isEditableTextDocFile(entry.docName)
-          }
-          previousDocName={previousDocName}
-          onNavigateBack={onNavigateBack}
-          onRecycle={onRecycle}
-          serverRestartRecovery={serverRestartRecovery}
-        />
+          docName={entry.docName}
+          hostMount={activityHosts?.get(entry.docName) ?? parkingHost ?? null}
+        >
+          <ActivityEntry
+            entry={entry}
+            isVisible={effectiveVisibleDocNames.has(entry.docName)}
+            toolbar={
+              effectiveVisibleDocNames.has(entry.docName)
+                ? renderToolbar?.(entry.docName, entry.provider)
+                : null
+            }
+            isSourceMode={isSourceMode}
+            editorPlaceholder={editorPlaceholder}
+            isNewDoc={
+              !loading &&
+              !pages.has(entry.docName) &&
+              !isManagedArtifactDocName(entry.docName) &&
+              !isMermaidDocFile(entry.docName) &&
+              !isEditableTextDocFile(entry.docName)
+            }
+            previousDocName={previousDocName}
+            onNavigateBack={onNavigateBack}
+            onRecycle={onRecycle}
+            serverRestartRecovery={serverRestartRecovery}
+          />
+        </ActivityEntryHost>
       ))}
     </>
   );
@@ -498,7 +547,8 @@ function EditorActivityPoolInner({
 
 interface ActivityEntryProps {
   entry: PoolEntrySnapshot;
-  isActive: boolean;
+  isVisible: boolean;
+  toolbar?: ReactNode;
   isSourceMode: boolean;
   editorPlaceholder?: string;
   isNewDoc: boolean;
@@ -506,6 +556,39 @@ interface ActivityEntryProps {
   onNavigateBack?: (previousDocName: string) => void;
   onRecycle: (docName: string) => void;
   serverRestartRecovery: ServerRestartRecoveryState;
+}
+
+/**
+ * Owns one imperative host for a document Activity. Moving that host between
+ * pane mounts reparents DOM without changing the ActivityEntry's React key,
+ * preserving its scroll state and exclusive TipTap portal target.
+ */
+function ActivityEntryHost({
+  docName,
+  hostMount,
+  children,
+}: {
+  docName: string;
+  hostMount: HTMLElement | null;
+  children: ReactNode;
+}) {
+  const [host] = useState<HTMLDivElement>(() => {
+    const element = document.createElement('div');
+    element.setAttribute('data-ok-activity-host', docName);
+    element.className = 'relative h-full min-h-0';
+    return element;
+  });
+
+  useLayoutEffect(() => {
+    if (hostMount === null) return;
+    hostMount.append(host);
+    return () => host.remove();
+  }, [host, hostMount]);
+
+  // Legacy callers render the tree in place until the split workspace supplies
+  // stable pane and parking mounts. Once supplied, the portal container stays
+  // stable while the effect above moves only its host element.
+  return hostMount === null ? children : createPortal(children, host);
 }
 
 /**
@@ -1024,7 +1107,8 @@ function WarmContentFallback({ html }: { html: string }) {
 
 function ActivityEntry({
   entry,
-  isActive,
+  isVisible,
+  toolbar,
   isSourceMode,
   editorPlaceholder,
   isNewDoc,
@@ -1049,7 +1133,6 @@ function ActivityEntry({
   // Editable text docs (`.ts` / `.json` / `.txt` / …) — verbatim Y.Text docs
   // rendered by a dedicated CodeMirror editor (no markdown dual-editor).
   const isTextDoc = !isMermaid && isEditableTextDocFile(entry.docName);
-
   // Per-Activity portal target for <EditorContent>. Stable DOM element
   // exclusively owned by THIS ActivityEntry — `useState` with a lazy
   // initializer ensures the same `HTMLDivElement` reference survives across
@@ -1114,22 +1197,22 @@ function ActivityEntry({
   // so its length reliably signals "this doc will be expensive to render".
   const ytextLength = entry.provider.document.getText('source').length;
 
-  // The mode this entry actually displays. Only the active entry follows the
-  // global flip; a hidden entry stays frozen at its last-active mode until it is
-  // re-activated. Freezing is what keeps a global flip from mounting an editor
+  // The mode this entry actually displays. Every visible split pane follows the
+  // global flip; a hidden entry stays frozen at its last-visible mode until it is
+  // shown again. Freezing is what keeps a global flip from mounting an editor
   // inside a hidden (display:none) subtree — every mode-derived decision below
   // (visited tracking, mount gate, class swaps) keys off `effectiveIsSourceMode`,
   // so a flip a hidden entry never displays cannot flip its render flags.
-  const [lastActiveIsSourceMode, setLastActiveIsSourceMode] = useState(isSourceMode);
+  const [lastVisibleIsSourceMode, setLastVisibleIsSourceMode] = useState(isSourceMode);
   useEffect(() => {
-    if (isActive && lastActiveIsSourceMode !== isSourceMode) {
-      setLastActiveIsSourceMode(isSourceMode);
+    if (isVisible && lastVisibleIsSourceMode !== isSourceMode) {
+      setLastVisibleIsSourceMode(isSourceMode);
     }
-  }, [isActive, isSourceMode, lastActiveIsSourceMode]);
+  }, [isVisible, isSourceMode, lastVisibleIsSourceMode]);
   const effectiveIsSourceMode = computeEffectiveSourceMode(
-    isActive,
+    isVisible,
     isSourceMode,
-    lastActiveIsSourceMode,
+    lastVisibleIsSourceMode,
   );
 
   // Track which modes have been visited. useState (not useRef) because React
@@ -1240,7 +1323,7 @@ function ActivityEntry({
   useEffect(() => {
     if (
       !shouldEmitFirstToggle({
-        isActive,
+        isActive: isVisible,
         isLarge: gate.isLarge,
         renderSource: gate.renderSource,
         renderVisual: gate.renderVisual,
@@ -1258,7 +1341,7 @@ function ActivityEntry({
     setHasEmittedFirstToggle(true);
   }, [
     hasEmittedFirstToggle,
-    isActive,
+    isVisible,
     gate.isLarge,
     gate.renderSource,
     gate.renderVisual,
@@ -1268,14 +1351,14 @@ function ActivityEntry({
   ]);
 
   return (
-    <Activity mode={isActive ? 'visible' : 'hidden'} name={`editor:${entry.docName}`}>
+    <Activity mode={isVisible ? 'visible' : 'hidden'} name={`editor:${entry.docName}`}>
       {/* Per-Activity scroll container with save/restore across Activity
           visibility flips. See ScrollPreservingContainer for the full
           rationale. Hoisting the scroller to EditorArea would make scroll
           state cross-document and collapse scrollHeight on hidden-mode
           effect cleanup. */}
       <ScrollPreservingContainer
-        isActive={isActive}
+        isActive={isVisible}
         docName={entry.docName}
         mode={effectiveIsSourceMode ? 'source' : 'wysiwyg'}
         initialScrollTop={warmSnapshot?.scrollTop}
@@ -1399,7 +1482,7 @@ function ActivityEntry({
                           >
                             <SourceEditorSlot
                               entry={entry}
-                              isActive={isActive}
+                              isActive={isVisible}
                               isSourceMode={effectiveIsSourceMode}
                               editorPlaceholder={editorPlaceholder}
                             />
@@ -1441,6 +1524,7 @@ function ActivityEntry({
           </>
         )}
       </ScrollPreservingContainer>
+      {toolbar}
     </Activity>
   );
 }

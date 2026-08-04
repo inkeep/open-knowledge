@@ -2347,6 +2347,11 @@
   cursor: grabbing;
 }
 
+body[data-editor-tab-dragging],
+body[data-editor-tab-dragging] * {
+  cursor: grabbing;
+}
+
 /* Keyboard focus indicator — mirrors the editor-wide pattern used by
    .tag, [data-link], a.ok-file-attachment, and task-list checkboxes.
    The grip carries tabindex="-1" today, so the indicator only fires on

@@ -141,6 +141,18 @@ describe('SettingsDialogBody preferences runtime', () => {
     expect(field).toBeTruthy();
     expect(field?.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('true');
 
+    expect(screen.getByText('Preview tabs')).toBeDefined();
+    expect(
+      screen.getByText(
+        'Reuse one tab when clicking through the sidebars. Off opens every click in its own tab.',
+      ),
+    ).toBeDefined();
+    const previewTabsField = container.querySelector('[data-field="editor.previewTabs"]');
+    expect(previewTabsField).toBeTruthy();
+    expect(previewTabsField?.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe(
+      'true',
+    );
+
     expect(screen.getByText('Open preview when agent edits')).toBeDefined();
     expect(
       screen.getByText(
@@ -166,6 +178,20 @@ describe('SettingsDialogBody preferences runtime', () => {
       expect(patches).toEqual([{ editor: { wordWrap: false } }]);
     });
     expect(wordWrapSwitch.getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('commits editor.previewTabs changes through binding.patch', async () => {
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    renderPreferences(binding);
+
+    const previewTabsSwitch = screen.getByRole('switch', { name: 'Preview tabs' });
+    await user.click(previewTabsSwitch);
+
+    await waitFor(() => {
+      expect(patches).toEqual([{ editor: { previewTabs: false } }]);
+    });
+    expect(previewTabsSwitch.getAttribute('aria-checked')).toBe('false');
   });
 
   test('commits appearance.preview.autoOpen changes through binding.patch', async () => {

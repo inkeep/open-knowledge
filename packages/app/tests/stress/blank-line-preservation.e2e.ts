@@ -53,8 +53,18 @@ test.describe('blank lines typed in the visual editor', () => {
   test('survive a source-mode round trip and a reload', async ({ page }) => {
     // Three Enters at the end of the first paragraph: three empty paragraphs,
     // i.e. three blank lines the user means to keep.
-    await page.locator('.ProseMirror:not(.composer-prosemirror) p').first().click();
-    await page.keyboard.press('End');
+    const firstParagraph = page
+      .locator('.ProseMirror:not(.composer-prosemirror)')
+      .getByText('Above.', { exact: true });
+    await firstParagraph.evaluate((paragraph) => {
+      paragraph.closest<HTMLElement>('.ProseMirror')?.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');

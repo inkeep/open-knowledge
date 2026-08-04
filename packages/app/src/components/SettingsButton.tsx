@@ -63,6 +63,13 @@ export const SettingsButton: FC = () => {
     }
   };
 
+  const openSettings = () => {
+    cancelPreload();
+    if (window.location.hash !== SETTINGS_OPEN_HASH) {
+      window.location.hash = SETTINGS_OPEN_HASH;
+    }
+  };
+
   // Cleanup on unmount: clears any pending preload timer the leave/blur
   // handlers didn't catch (e.g. component unmounts mid-hover). The
   // current callback is ref-only + idempotent preload, so this guard is
@@ -89,12 +96,7 @@ export const SettingsButton: FC = () => {
           onMouseLeave={cancelPreload}
           onFocus={schedulePreload}
           onBlur={cancelPreload}
-          onClick={() => {
-            cancelPreload();
-            if (window.location.hash !== SETTINGS_OPEN_HASH) {
-              window.location.hash = SETTINGS_OPEN_HASH;
-            }
-          }}
+          onClick={openSettings}
         >
           <Settings className="size-4" />
           <span className="sr-only">

@@ -255,6 +255,53 @@ describe('ProviderPool LRU eviction', () => {
     expect(pool.has('doc3')).toBe(true);
   });
 
+  test('never evicts a visible non-focused document', () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    pool.open('focused');
+    pool.open('visible');
+    pool.open('hidden');
+    pool.setActive('focused');
+    pool.setVisibleDocNames(new Set(['focused', 'visible']));
+
+    pool.open('new-doc');
+
+    expect(pool.has('focused')).toBe(true);
+    expect(pool.has('visible')).toBe(true);
+    expect(pool.has('hidden')).toBe(false);
+    expect(pool.has('new-doc')).toBe(true);
+  });
+
+  test('grows beyond the normal capacity for visible documents and trims after pane removal', () => {
+    pool = new ProviderPool(2, DUMMY_WS);
+    pool.setVisibleDocNames(new Set(['a', 'b', 'c', 'd']));
+    pool.open('a');
+    pool.open('b');
+    pool.open('c');
+    pool.open('d');
+    pool.setActive('a');
+
+    expect(pool.entries.size).toBe(4);
+
+    pool.setVisibleDocNames(new Set(['a']));
+
+    expect(pool.entries.size).toBe(2);
+    expect(pool.has('a')).toBe(true);
+  });
+
+  test('ignores system documents in the visible protection set', () => {
+    pool = new ProviderPool(2, DUMMY_WS);
+    pool.open('a');
+    pool.open('b');
+    pool.setActive('a');
+    pool.setVisibleDocNames(new Set(['a', '__system__']));
+
+    pool.open('c');
+
+    expect(pool.has('a')).toBe(true);
+    expect(pool.has('b')).toBe(false);
+    expect(pool.has('c')).toBe(true);
+  });
+
   test('LRU order updates when document is re-opened', () => {
     pool = new ProviderPool(3, DUMMY_WS);
     pool.open('doc1');

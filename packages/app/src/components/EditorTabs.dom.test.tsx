@@ -3,7 +3,7 @@ import { isMacOS } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { assetTabId, folderTabId } from '@/editor/editor-tabs';
+import { assetTabId, folderTabId, skillFileTabId } from '@/editor/editor-tabs';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
@@ -19,9 +19,11 @@ let openTabs: string[] = [];
 let visibleTabIds: string[] = [];
 let newTabIds: string[] = [];
 let pinnedTabIds: string[] = [];
+let previewTabId: string | null = null;
 let pageMeta: Map<string, { docExt?: string }> = new Map();
 let lifecycleStatuses: Map<string, string> = new Map();
-let toastErrors: string[] = [];
+let focusedPaneId = 'pane-a';
+let skillsState: unknown = { status: 'idle' };
 
 const activateTab = vi.fn(() => {});
 const activateNewTab = vi.fn(() => {});
@@ -30,10 +32,13 @@ const closeTab = vi.fn(() => {});
 const closeTabs = vi.fn(() => {});
 const openNewTab = vi.fn(() => {});
 const pinTab = vi.fn(() => {});
+const promoteTab = vi.fn(() => {});
 const reopenClosedTab = vi.fn(() => {});
-const reconcileLocalRename = vi.fn(() => Promise.resolve());
 const reorderTabs = vi.fn(() => {});
 const unpinTab = vi.fn(() => {});
+const moveTabToNewPane = vi.fn(() => 'pane-new' as string | null);
+const requestSkillDelete = vi.fn(() => {});
+const requestSkillFileRename = vi.fn(() => {});
 
 function primaryShortcutModifier(): Pick<KeyboardEventInit, 'ctrlKey' | 'metaKey'> {
   return isMacOS() ? { metaKey: true } : { ctrlKey: true };
@@ -54,7 +59,13 @@ const sortableKeyboardCoordinatesToken = { name: 'sortableKeyboardCoordinates' }
 const dndContextProps: DndContextProps[] = [];
 const sensorCalls: Array<{ sensor: unknown; options: unknown }> = [];
 const sortableContextProps: Array<{ items: string[]; strategy: unknown }> = [];
-const sortableOptions: Array<{ id: string; disabled?: boolean }> = [];
+const sortableOptions: Array<{
+  animateLayoutChanges?: () => boolean;
+  data?: unknown;
+  disabled?: boolean;
+  id: string;
+  transition?: unknown;
+}> = [];
 // Stands in for dnd-kit's in-flight drag; non-null simulates a reorder drag.
 let activeDrag: { id: string } | null = null;
 
@@ -114,8 +125,14 @@ vi.doMock('@dnd-kit/sortable', () => ({
     sortableContextProps.push({ items: [...items], strategy });
     return <div data-testid="sortable-context">{children}</div>;
   },
-  useSortable: ({ id, disabled }: { id: string; disabled?: boolean }) => {
-    sortableOptions.push({ id, disabled });
+  useSortable: (options: {
+    animateLayoutChanges?: () => boolean;
+    data?: unknown;
+    id: string;
+    transition?: unknown;
+  }) => {
+    const { id } = options;
+    sortableOptions.push(options);
     return {
       attributes: {
         role: 'button',
@@ -147,6 +164,7 @@ vi.doMock('@/components/ui/context-menu', () => ({
       {children}
     </div>
   ),
+  ContextMenuGroup: ({ children }: { children?: ReactNode }) => <>{children}</>,
   ContextMenuItem: ({
     children,
     disabled,
@@ -174,6 +192,60 @@ vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
+vi.doMock('@/components/EditorTabTargetMenuItems', () => ({
+  EditorTabTargetMenuItems: () => null,
+}));
+
+vi.doMock('@/components/FileTargetRenameDialog', () => ({
+  FileTargetRenameDialog: () => null,
+}));
+
+vi.doMock('@/components/skill-actions', () => ({
+  SkillFileContextMenuItems: ({
+    actions,
+    filePath,
+    menuKind,
+    skill,
+  }: {
+    actions: { requestFileRename: (skill: unknown, filePath: string) => void };
+    filePath: string;
+    menuKind?: string;
+    skill: { name: string };
+  }) => (
+    <button
+      type="button"
+      role="menuitem"
+      data-menu-kind={menuKind}
+      onClick={() => actions.requestFileRename(skill, filePath)}
+    >
+      Rename skill file {filePath}
+    </button>
+  ),
+  SkillContextMenuItems: ({
+    actions,
+    menuKind,
+    skill,
+  }: {
+    actions: { requestDelete: (skill: unknown) => void };
+    menuKind?: string;
+    skill: { name: string };
+  }) => (
+    <button
+      type="button"
+      role="menuitem"
+      data-menu-kind={menuKind}
+      onClick={() => actions.requestDelete(skill)}
+    >
+      Delete skill {skill.name}
+    </button>
+  ),
+  useSkillActions: () => ({
+    dialogs: <div data-testid="skill-action-dialogs" />,
+    requestDelete: requestSkillDelete,
+    requestFileRename: requestSkillFileRename,
+  }),
+}));
+
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
@@ -192,10 +264,36 @@ vi.doMock('@/editor/DocumentContext', () => ({
     pinTab,
     pinnedTabIds,
     reopenClosedTab,
-    reconcileLocalRename,
     reorderTabs,
     unpinTab,
     visibleTabIds,
+    visibleTabIdsByPane: new Map([['pane-a', visibleTabIds]]),
+    focusedPaneId,
+    panes: [
+      {
+        id: 'pane-a',
+        openTabs,
+        pinnedTabIds,
+        previewTabId,
+        activeTabId,
+        newTabIds,
+        activeNewTabId,
+        activeTarget:
+          activeTarget ??
+          (activeDocName ? { kind: 'doc', target: activeDocName, docName: activeDocName } : null),
+        size: 100,
+      },
+    ],
+    activateTabInPane: (_paneId: string, tabId: string) => activateTab(tabId),
+    activateNewTabInPane: (_paneId: string, tabId: string) => activateNewTab(tabId),
+    closeNewTabInPane: (_paneId: string, tabId: string) => closeNewTab(tabId),
+    closeTabInPane: (_paneId: string, tabId: string) => closeTab(tabId),
+    closeTabsInPane: (_paneId: string, tabIds: readonly string[]) => closeTabs(tabIds),
+    moveTabToNewPane,
+    openNewTabInPane: () => openNewTab(),
+    pinTabInPane: (_paneId: string, tabId: string) => pinTab(tabId),
+    promoteTabInPane: (_paneId: string, tabId: string) => promoteTab(tabId),
+    unpinTabInPane: (_paneId: string, tabId: string) => unpinTab(tabId),
   }),
 }));
 
@@ -209,12 +307,8 @@ vi.doMock('@/hooks/use-lifecycle-status', () => ({
   useLifecycleStatus: (docName: string) => lifecycleStatuses.get(docName) ?? null,
 }));
 
-vi.doMock('sonner', () => ({
-  toast: {
-    error: (message: string) => {
-      toastErrors.push(message);
-    },
-  },
+vi.doMock('@/hooks/use-skills', () => ({
+  useSkills: () => skillsState,
 }));
 
 function defaultTabs() {
@@ -241,13 +335,15 @@ function resetState() {
   visibleTabIds = visible;
   newTabIds = [newId];
   pinnedTabIds = [];
+  previewTabId = null;
   pageMeta = new Map([
     ['docs/team/notes', { docExt: '.md' }],
     ['docs/team/spec', { docExt: '.mdx' }],
     ['docs/team/readme', { docExt: '.txt' }],
   ]);
   lifecycleStatuses = new Map();
-  toastErrors = [];
+  focusedPaneId = 'pane-a';
+  skillsState = { status: 'idle' };
   activeDrag = null;
   dndContextProps.length = 0;
   sensorCalls.length = 0;
@@ -261,35 +357,40 @@ function resetState() {
     closeTabs,
     openNewTab,
     pinTab,
+    promoteTab,
     reopenClosedTab,
-    reconcileLocalRename,
     reorderTabs,
     unpinTab,
+    moveTabToNewPane,
+    requestSkillDelete,
+    requestSkillFileRename,
   ]) {
     fn.mockClear();
   }
-  reconcileLocalRename.mockImplementation(() => Promise.resolve());
   Object.defineProperty(window, 'okDesktop', {
     configurable: true,
     value: undefined,
   });
   window.location.hash = '';
-  globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
 }
 
-async function renderEditorTabs() {
+async function renderEditorTabs({
+  dropIndicatorIndex = null,
+  reserveLeadingChrome = false,
+}: {
+  dropIndicatorIndex?: number | null;
+  reserveLeadingChrome?: boolean;
+} = {}) {
   const { EditorTabs } = await import('./EditorTabs');
   return render(
     <TooltipProvider>
-      <EditorTabs />
+      <EditorTabs
+        dropIndicatorIndex={dropIndicatorIndex}
+        paneId="pane-a"
+        reserveLeadingChrome={reserveLeadingChrome}
+      />
     </TooltipProvider>,
   );
-}
-
-function latestDndContext() {
-  const latest = dndContextProps.at(-1);
-  expect(latest).toBeDefined();
-  return latest as DndContextProps;
 }
 
 function tabButton(name: string) {
@@ -322,16 +423,19 @@ describe('EditorTabs runtime behavior', () => {
 
     const markdownTab = tabButton('docs/team/notes.md');
     expect(markdownTab.textContent).toBe('notes');
+    expect(markdownTab.getAttribute('title')).toBeNull();
     expect(markdownTab.closest('[data-sortable-id]')?.getAttribute('aria-keyshortcuts')).toBe(
       'Meta+1 Control+1',
     );
 
     const mdxTab = tabButton('docs/team/spec.mdx');
     expect(mdxTab.textContent).toBe('spec');
+    expect(mdxTab.getAttribute('title')).toBeNull();
     expect(mdxTab.closest('[data-sortable-id]')?.getAttribute('aria-current')).toBe('page');
 
     const txtTab = tabButton('docs/team/readme.txt');
     expect(txtTab.textContent).toBe('readme.txt');
+    expect(txtTab.getAttribute('title')).toBeNull();
   });
 
   // The visible label is only the base name, so two same-named files in
@@ -341,8 +445,6 @@ describe('EditorTabs runtime behavior', () => {
 
     const markdownTab = tabButton('docs/team/notes.md');
     expect(markdownTab.textContent).toBe('notes');
-    // The native tooltip attribute is deliberately gone: it would double up
-    // with the hover tooltip and renders OS-styled after a ~1s delay.
     expect(markdownTab.getAttribute('title')).toBeNull();
 
     fireEvent.pointerEnter(markdownTab, { pointerType: 'mouse' });
@@ -359,6 +461,7 @@ describe('EditorTabs runtime behavior', () => {
     await renderEditorTabs();
 
     const tab = tabButton(expectedPath);
+    expect(tab.getAttribute('title')).toBeNull();
     fireEvent.pointerEnter(tab, { pointerType: 'mouse' });
     fireEvent.pointerMove(tab, { pointerType: 'mouse' });
 
@@ -376,6 +479,7 @@ describe('EditorTabs runtime behavior', () => {
 
     await Promise.resolve();
     expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(markdownTab.getAttribute('title')).toBeNull();
     // Load-bearing, not incidental coupling: the tooltip opens on a timer, so
     // the absence above would also hold in the split second before an
     // unsuppressed tooltip appeared. Asserting the trigger is gone is what
@@ -394,12 +498,29 @@ describe('EditorTabs runtime behavior', () => {
 
     const rootTab = tabButton('readme.txt');
     expect(rootTab.textContent).toBe('readme.txt');
+    expect(rootTab.getAttribute('title')).toBeNull();
 
     fireEvent.pointerEnter(rootTab, { pointerType: 'mouse' });
     fireEvent.pointerMove(rootTab, { pointerType: 'mouse' });
 
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltipText(tooltip)).toBe('readme.txt');
+  });
+
+  test('advertises pane-local tab shortcuts only in the focused pane', async () => {
+    focusedPaneId = 'pane-b';
+    const { container } = await renderEditorTabs();
+
+    for (const tab of container.querySelectorAll('[data-sortable-id]')) {
+      expect(tab.getAttribute('aria-keyshortcuts')).toBeNull();
+    }
+  });
+
+  test('bolds the active tab only when its pane is focused', async () => {
+    focusedPaneId = 'pane-b';
+    await renderEditorTabs();
+
+    expectVisualClassTokensAbsent(tabButton('docs/team/spec.mdx').className, ['font-semibold']);
   });
 
   test('keeps folder, asset, and new-tab branches closeable and independently activatable', async () => {
@@ -426,7 +547,153 @@ describe('EditorTabs runtime behavior', () => {
     expect(openNewTab).toHaveBeenCalledTimes(1);
   });
 
-  test('Electron host applies drag only to the strip root and no-drag to the content wrapper', async () => {
+  test('reuses the sidebar skill actions for an editable skill tab', async () => {
+    const skill = {
+      scope: 'project',
+      name: 'release-notes',
+      path: '.ok/skills/release-notes/SKILL.md',
+      managed: false,
+    };
+    const skillTabId = '.ok/skills/release-notes/SKILL';
+    activeDocName = skillTabId;
+    activeTabId = skillTabId;
+    openTabs = [skillTabId];
+    visibleTabIds = [skillTabId];
+    newTabIds = [];
+    skillsState = { status: 'ready', data: [skill] };
+
+    await renderEditorTabs();
+
+    const deleteItem = screen.getByRole('menuitem', { name: 'Delete skill release-notes' });
+    expect(deleteItem.getAttribute('data-menu-kind')).toBe('context');
+    expect(screen.getByTestId('skill-action-dialogs')).toBeTruthy();
+
+    fireEvent.click(deleteItem);
+    expect(requestSkillDelete).toHaveBeenCalledWith(skill);
+  });
+
+  test('does not expose skill actions for a managed skill tab', async () => {
+    const skill = {
+      scope: 'project',
+      name: 'release-notes',
+      path: '.ok/skills/release-notes/SKILL.md',
+      managed: true,
+    };
+    const skillTabId = '.ok/skills/release-notes/SKILL';
+    activeDocName = skillTabId;
+    activeTabId = skillTabId;
+    openTabs = [skillTabId];
+    visibleTabIds = [skillTabId];
+    newTabIds = [];
+    skillsState = { status: 'ready', data: [skill] };
+
+    await renderEditorTabs();
+
+    expect(screen.queryByRole('menuitem', { name: 'Delete skill release-notes' })).toBeNull();
+  });
+
+  test('reuses the sidebar file actions for an editable skill-file tab', async () => {
+    const skill = {
+      scope: 'global',
+      name: 'ask-matt',
+      path: '.agents/skills/ask-matt/SKILL.md',
+      absolutePath: '/Users/example/.agents/skills/ask-matt/SKILL.md',
+      hosts: ['agents'],
+      managed: false,
+    };
+    const filePath = 'agents/openai.yml';
+    const skillTabId = skillFileTabId({ scope: 'global', name: skill.name, path: filePath });
+    activeDocName = null;
+    activeTabId = skillTabId;
+    openTabs = [skillTabId];
+    visibleTabIds = [skillTabId];
+    newTabIds = [];
+    skillsState = { status: 'ready', data: [skill] };
+
+    await renderEditorTabs();
+
+    const renameItem = screen.getByRole('menuitem', {
+      name: `Rename skill file ${filePath}`,
+    });
+    expect(renameItem.getAttribute('data-menu-kind')).toBe('context');
+
+    fireEvent.click(renameItem);
+    expect(requestSkillFileRename).toHaveBeenCalledWith(skill, filePath);
+  });
+
+  test('uses the host-qualified owner for an editable skill-file tab', async () => {
+    const agentsSkill = {
+      scope: 'global',
+      name: 'ask-matt',
+      path: '.agents/skills/ask-matt/SKILL.md',
+      hosts: ['agents'],
+      managed: false,
+    };
+    const claudeSkill = {
+      scope: 'global',
+      name: 'ask-matt',
+      path: '.claude/skills/ask-matt/SKILL.md',
+      hosts: ['claude'],
+      managed: false,
+    };
+    const filePath = 'agents/openai.yml';
+    const skillTabId = skillFileTabId({
+      scope: 'global',
+      name: agentsSkill.name,
+      path: filePath,
+      host: 'agents',
+    });
+    activeDocName = null;
+    activeTabId = skillTabId;
+    openTabs = [skillTabId];
+    visibleTabIds = [skillTabId];
+    newTabIds = [];
+    skillsState = { status: 'ready', data: [claudeSkill, agentsSkill] };
+
+    await renderEditorTabs();
+
+    fireEvent.click(
+      screen.getByRole('menuitem', {
+        name: `Rename skill file ${filePath}`,
+      }),
+    );
+    expect(requestSkillFileRename).toHaveBeenCalledWith(agentsSkill, filePath);
+  });
+
+  test('does not expose file actions when a host-less skill-file owner is ambiguous', async () => {
+    const filePath = 'agents/openai.yml';
+    const skillTabId = skillFileTabId({ scope: 'global', name: 'ask-matt', path: filePath });
+    activeDocName = null;
+    activeTabId = skillTabId;
+    openTabs = [skillTabId];
+    visibleTabIds = [skillTabId];
+    newTabIds = [];
+    skillsState = {
+      status: 'ready',
+      data: [
+        {
+          scope: 'global',
+          name: 'ask-matt',
+          path: '.agents/skills/ask-matt/SKILL.md',
+          hosts: ['agents'],
+          managed: false,
+        },
+        {
+          scope: 'global',
+          name: 'ask-matt',
+          path: '.claude/skills/ask-matt/SKILL.md',
+          hosts: ['claude'],
+          managed: false,
+        },
+      ],
+    };
+
+    await renderEditorTabs();
+
+    expect(screen.queryByRole('menuitem', { name: `Rename skill file ${filePath}` })).toBeNull();
+  });
+
+  test('Electron host keeps the pane-local strip and controls interactive', async () => {
     Object.defineProperty(window, 'okDesktop', {
       configurable: true,
       value: {},
@@ -436,70 +703,377 @@ describe('EditorTabs runtime behavior', () => {
     const root = container.firstElementChild as HTMLElement;
     const wrapper = root.firstElementChild as HTMLElement;
 
-    expect(root.getAttribute('data-electron-drag')).toBe('');
-    expectVisualClassTokens(root.className, ['[-webkit-app-region:drag]']);
+    expect(root.getAttribute('data-editor-pane-tabs')).toBe('pane-a');
+    expect(root.getAttribute('data-electron-drag')).toBeNull();
+    expectVisualClassTokens(root.className, ['[-webkit-app-region:no-drag]']);
     expectVisualClassTokens(wrapper.className, [
       '[-webkit-app-region:no-drag]',
       'flex',
       'items-end',
-      'gap-1',
+      'gap-px',
     ]);
-    expectVisualClassTokensAbsent(wrapper.className, ['flex-1']);
+    expectVisualClassTokens(wrapper.className, ['min-w-0', 'flex-1']);
   });
 
-  test('web host keeps baseline scroll layout without app-region classes', async () => {
+  test('keeps restored-tab chrome alignment immediate', async () => {
+    const { container } = await renderEditorTabs({ reserveLeadingChrome: true });
+    const root = container.firstElementChild as HTMLElement;
+
+    expectVisualClassTokens(root.className, [
+      'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]',
+    ]);
+    expectVisualClassTokensAbsent(root.className, [
+      'motion-safe:group-data-[sidebar-transition-ready]/editor-header:transition-[padding-left]',
+      'motion-safe:transition-[padding-left]',
+    ]);
+  });
+
+  test('keeps every tab kind at the same wider resting width whether active or inactive', async () => {
     const { container } = await renderEditorTabs();
     const root = container.firstElementChild as HTMLElement;
     const wrapper = root.firstElementChild as HTMLElement;
+    const scrollStrip = container.querySelector<HTMLElement>('[data-editor-tab-scroll]');
+    const scrollViewport = scrollStrip?.parentElement;
+    const newTabButton = screen.getByTestId('editor-new-tab-button');
+    const sortableTabs = [...container.querySelectorAll<HTMLElement>('[data-editor-tab-sortable]')];
 
-    expect(root.getAttribute('data-electron-drag')).toBeNull();
-    expectVisualClassTokens(root.className, ['overflow-x-auto', 'scroll-fade-mask-x']);
-    expectVisualClassTokensAbsent(root.className, ['[-webkit-app-region:drag]']);
+    expect(root.getAttribute('data-editor-pane-tabs')).toBe('pane-a');
+    expectVisualClassTokens(root.className, ['overflow-hidden']);
+    expect(scrollStrip).toBeTruthy();
+    expectVisualClassTokens(scrollStrip?.className, [
+      'scrollbar-none',
+      'overflow-x-auto',
+      'overflow-y-hidden',
+      'overscroll-x-contain',
+      'group-data-[overflow-left]/tab-overflow:mask-l-from-[calc(100%-4rem)]',
+      'group-data-[overflow-right]/tab-overflow:mask-r-from-[calc(100%-4rem)]',
+      'w-fit',
+      'max-w-full',
+    ]);
+    expectVisualClassTokens(scrollViewport?.className, [
+      'w-fit',
+      'max-w-[calc(100%-1.75rem)]',
+      'flex-none',
+    ]);
+    expect(newTabButton.parentElement).toBe(wrapper);
+    expect(wrapper.lastElementChild).toBe(newTabButton);
+    expectVisualClassTokens(wrapper.className, [
+      'group/tab-overflow',
+      'relative',
+      'min-w-0',
+      'flex-1',
+    ]);
+    expect(container.querySelector('[data-editor-tab-overflow-control]')).toBeNull();
+    expect(container.querySelector('[data-editor-tab-overflow-scrim]')).toBeNull();
+    expect(sortableTabs.map((tab) => tab.dataset.sortableId)).toEqual(visibleTabIds);
+    expect(sortableTabs.some((tab) => tab.dataset.activeTab === 'true')).toBe(true);
+    expect(sortableTabs.some((tab) => tab.dataset.activeTab !== 'true')).toBe(true);
+    for (const tab of sortableTabs) {
+      expectVisualClassTokens(tab.className, [
+        'min-w-32',
+        'max-w-48',
+        'grow-0',
+        'basis-36',
+        'shrink',
+        'outline-none',
+        'focus-visible:ring-2',
+        'focus-visible:ring-ring/50',
+        'focus-visible:ring-inset',
+      ]);
+      expectVisualClassTokensAbsent(tab.className, [
+        'max-w-40',
+        'basis-auto',
+        'basis-28',
+        'basis-32',
+        'max-w-80',
+        'grow-[2]',
+        'basis-40',
+        'max-w-56',
+        'basis-24',
+        'min-w-28',
+        'min-w-0',
+        'shrink-0',
+        'transition-colors',
+        'duration-100',
+      ]);
+    }
+    const folderButton = tabButton('docs/team/');
+    expectVisualClassTokens(folderButton.className, ['pl-3', 'pr-1.5']);
+    expectVisualClassTokensAbsent(folderButton.className, ['px-3']);
+    const folderLabel = folderButton.children[0];
+    expect(folderLabel?.children[0]?.textContent).toBe('docs/');
+    expect(folderLabel?.children[1]?.textContent).toBe('team/');
+    expectVisualClassTokens(folderLabel?.className, ['min-w-0', 'flex-1', 'truncate']);
+    expectVisualClassTokens(folderLabel?.children[0]?.className, ['@max-[5rem]/tab:hidden']);
+    expectVisualClassTokensAbsent(folderLabel?.children[0]?.className, ['truncate', 'flex-1']);
+
+    const assetButton = tabButton('images/cat.png');
+    const assetLabel = assetButton.children[0];
+    expect(assetLabel?.children[0]?.textContent).toBe('images/');
+    expect(assetLabel?.children[1]?.textContent).toBe('cat.png');
+    expectVisualClassTokens(assetLabel?.className, ['min-w-0', 'flex-1', 'truncate']);
+    expectVisualClassTokens(assetLabel?.children[0]?.className, ['@max-[5rem]/tab:hidden']);
+    expectVisualClassTokensAbsent(assetLabel?.children[0]?.className, ['truncate', 'flex-1']);
+
+    expectVisualClassTokens(newTabButton.className, ['shrink-0']);
+    expectVisualClassTokensAbsent(root.className, ['[-webkit-app-region:no-drag]']);
     expectVisualClassTokensAbsent(wrapper.className, ['[-webkit-app-region:no-drag]']);
   });
 
-  test('wires sortable sensors, visible items, drag-end reorder, and the accessibility portal at runtime', async () => {
+  test('does not scroll outer layout when a unified-header tab strip mounts', async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      await renderEditorTabs();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  test('scrolls a newly selected tab into view without smooth motion', async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      const view = await renderEditorTabs();
+      const { EditorTabs } = await import('./EditorTabs');
+
+      activeDocName = 'docs/team/readme';
+      activeTabId = 'docs/team/readme';
+      view.rerender(
+        <TooltipProvider>
+          <EditorTabs paneId="pane-a" />
+        </TooltipProvider>,
+      );
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  test('maps a vertical wheel gesture to the overflowing tab strip', async () => {
+    const { container } = await renderEditorTabs();
+    const scrollStrip = container.querySelector<HTMLElement>('[data-editor-tab-scroll]');
+    const overflowRoot = container.querySelector<HTMLElement>('[data-editor-tab-overflow-root]');
+    if (!scrollStrip) throw new Error('Expected editor tab scroll strip');
+    if (!overflowRoot) throw new Error('Expected editor tab overflow root');
+    Object.defineProperties(scrollStrip, {
+      clientWidth: { configurable: true, value: 320 },
+      scrollWidth: { configurable: true, value: 800 },
+    });
+
+    fireEvent.scroll(scrollStrip);
+    expect(overflowRoot.hasAttribute('data-overflow-left')).toBe(false);
+    expect(overflowRoot.hasAttribute('data-overflow-right')).toBe(true);
+
+    fireEvent.wheel(scrollStrip, { deltaX: 0, deltaY: 64 });
+
+    expect(scrollStrip.scrollLeft).toBe(64);
+    expect(overflowRoot.hasAttribute('data-overflow-left')).toBe(true);
+    expect(overflowRoot.hasAttribute('data-overflow-right')).toBe(true);
+
+    scrollStrip.scrollLeft = 480;
+    fireEvent.scroll(scrollStrip);
+    expect(overflowRoot.hasAttribute('data-overflow-left')).toBe(true);
+    expect(overflowRoot.hasAttribute('data-overflow-right')).toBe(false);
+  });
+
+  test('double-click and Keep open stabilize preview tabs without changing tab geometry', async () => {
+    previewTabId = 'docs/team/notes';
+    const { container } = await renderEditorTabs();
+
+    const previewButton = tabButton('docs/team/notes.md');
+    const activeButton = tabButton('docs/team/spec.mdx');
+    const previewTab = previewButton.closest<HTMLElement>('[data-editor-tab-sortable]');
+    const activeTab = activeButton.closest<HTMLElement>('[data-editor-tab-sortable]');
+
+    expect(previewTab?.dataset.previewTab).toBe('true');
+    expect(activeTab?.dataset.previewTab).toBeUndefined();
+    expectVisualClassTokens(previewButton.className, ['italic']);
+    expectVisualClassTokensAbsent(previewButton.className, ['font-semibold']);
+    expectVisualClassTokens(activeButton.className, ['font-semibold']);
+    expectVisualClassTokensAbsent(activeButton.className, ['italic']);
+    expect(previewTab?.className).toContain('basis-36');
+    expect(activeTab?.className).toContain('basis-36');
+
+    fireEvent.doubleClick(previewButton);
+    expect(promoteTab).toHaveBeenCalledWith('docs/team/notes');
+
+    promoteTab.mockClear();
+    fireEvent.click(screen.getByTestId('editor-tab-context-keep-open'));
+    expect(promoteTab).toHaveBeenCalledWith('docs/team/notes');
+    expect(container.querySelectorAll('[data-preview-tab="true"]')).toHaveLength(1);
+  });
+
+  test('suppresses the native outline on the mouse-focused tab title', async () => {
     await renderEditorTabs();
 
-    expect(sensorCalls).toEqual([
-      { sensor: pointerSensorToken, options: { activationConstraint: { distance: 8 } } },
-      {
-        sensor: keyboardSensorToken,
-        options: {
-          coordinateGetter: sortableKeyboardCoordinatesToken,
-          keyboardCodes: {
-            cancel: ['Escape'],
-            end: ['Space', 'Enter'],
-            start: ['Space'],
-          },
-        },
-      },
+    const titleButton = tabButton('docs/team/spec.mdx');
+    const sortableTab = titleButton.closest<HTMLElement>('[data-editor-tab-sortable]');
+
+    expectVisualClassTokens(titleButton.className, ['outline-none']);
+    expectVisualClassTokens(sortableTab?.className ?? '', [
+      'focus-visible:ring-2',
+      'focus-visible:ring-ring/50',
     ]);
-    expect(latestDndContext().accessibility?.container).toBe(document.body);
-    expect(latestDndContext().sensors).toEqual(sensorCalls.map((call) => call));
+  });
+
+  test('double-click stabilizes folder and asset tabs', async () => {
+    const { assetId, folderId } = defaultTabs();
+    await renderEditorTabs();
+
+    fireEvent.doubleClick(tabButton('docs/team/'));
+    expect(promoteTab).toHaveBeenCalledWith(folderId);
+
+    promoteTab.mockClear();
+    fireEvent.doubleClick(tabButton('images/cat.png'));
+    expect(promoteTab).toHaveBeenCalledWith(assetId);
+  });
+
+  test('uses one truncation owner for every path-based tab while preserving its full label', async () => {
+    const folderId = folderTabId('wiki/modules');
+    const assetId = assetTabId('images/brand/logo.png');
+    const skillId = skillFileTabId({
+      scope: 'project',
+      name: 'release-notes',
+      path: 'references/publishing.md',
+    });
+    openTabs = [folderId, assetId, skillId];
+    visibleTabIds = [folderId, assetId, skillId];
+    newTabIds = [];
+
+    await renderEditorTabs();
+
+    const pathTabs = [
+      tabButton('wiki/modules/'),
+      tabButton('images/brand/logo.png'),
+      tabButton('references/publishing.md'),
+    ];
+    expect(pathTabs.map((tab) => tab.textContent)).toEqual([
+      'wiki/modules/',
+      'images/brand/logo.png',
+      'references/publishing.md',
+    ]);
+    expect(pathTabs.map((tab) => tab.querySelectorAll('.truncate').length)).toEqual([1, 1, 1]);
+  });
+
+  test('leaves the shared dnd context to the workspace and registers pane-owned sortables', async () => {
+    await renderEditorTabs();
+
+    expect(dndContextProps).toHaveLength(0);
+    expect(sensorCalls).toHaveLength(0);
     expect(sortableContextProps.at(-1)).toEqual({
       items: visibleTabIds,
       strategy: horizontalListSortingStrategyToken,
     });
-
-    act(() => {
-      latestDndContext().onDragEnd?.({
-        active: { id: 'docs/team/readme' },
-        over: { id: 'docs/team/notes' },
-      });
+    expect(sortableOptions[0]?.data).toMatchObject({
+      kind: 'editor-tab',
+      paneId: 'pane-a',
+      tabId: 'docs/team/notes',
+      splittable: true,
     });
-
-    expect(reorderTabs).toHaveBeenCalledWith(
-      [
-        'docs/team/readme',
-        'docs/team/notes',
-        'docs/team/spec',
-        defaultTabs().folderId,
-        defaultTabs().assetId,
-        defaultTabs().newId,
-      ],
-      'docs/team/readme',
+    expect(sortableOptions.at(-1)?.data).toMatchObject({
+      kind: 'editor-tab',
+      paneId: 'pane-a',
+      tabId: defaultTabs().newId,
+      splittable: true,
+    });
+    expect(sortableOptions.every((options) => options.transition === null)).toBe(true);
+    expect(sortableOptions.every((options) => options.animateLayoutChanges?.() === false)).toBe(
+      true,
     );
+  });
+
+  test('shows a static primary separator at the requested drop boundary', async () => {
+    const { container } = await renderEditorTabs({ dropIndicatorIndex: 1 });
+
+    const indicators = container.querySelectorAll<HTMLElement>('[data-editor-tab-drop-indicator]');
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0]?.dataset.editorTabDropIndicator).toBe('before');
+    expect(indicators[0]?.closest('[data-editor-tab-id]')?.getAttribute('data-editor-tab-id')).toBe(
+      visibleTabIds[1],
+    );
+    expectVisualClassTokens(indicators[0]?.className ?? '', [
+      'bg-primary',
+      'w-0.5',
+      'rounded-full',
+      'left-0',
+    ]);
+    expectVisualClassTokensAbsent(indicators[0]?.className ?? '', ['transition']);
+  });
+
+  test('fades active and hovered inactive tab titles before the close button', async () => {
+    await renderEditorTabs();
+
+    const activeTitle = tabButton('docs/team/spec.mdx').querySelector<HTMLElement>(
+      '[data-editor-tab-title-overflow="fade"]',
+    );
+    expect(activeTitle).not.toBeNull();
+    expectVisualClassTokens(activeTitle?.className ?? '', [
+      'flex-1',
+      'overflow-hidden',
+      'whitespace-nowrap',
+      'mask-r-from-[calc(100%-1.5rem)]',
+      'mask-r-to-[100%]',
+    ]);
+    expectVisualClassTokensAbsent(activeTitle?.className ?? '', ['truncate']);
+
+    const inactiveTitle = tabButton('docs/team/notes.md').querySelector<HTMLElement>(
+      '[data-editor-tab-title-overflow="ellipsis"]',
+    );
+    expect(inactiveTitle).not.toBeNull();
+    expectVisualClassTokens(inactiveTitle?.className ?? '', [
+      'truncate',
+      'group-hover:text-clip',
+      'group-hover:mask-r-from-[calc(100%-3rem)]',
+      'group-hover:mask-r-to-[calc(100%-1.5rem)]',
+    ]);
+    expect(inactiveTitle?.className.split(/\s+/)).not.toContain('mask-r-to-[100%]');
+
+    const inactiveFolderTitle = tabButton('docs/team/').querySelector<HTMLElement>(
+      '[data-editor-tab-title-overflow="ellipsis"]',
+    );
+    expectVisualClassTokens(inactiveFolderTitle?.className ?? '', [
+      'group-hover:text-clip',
+      'group-hover:mask-r-from-[calc(100%-3rem)]',
+      'group-hover:mask-r-to-[calc(100%-1.5rem)]',
+    ]);
+  });
+
+  test('does not fade the fixed new-tab label', async () => {
+    const { newId } = defaultTabs();
+    activeDocName = null;
+    activeTabId = null;
+    activeNewTabId = newId;
+    isNewTabActive = true;
+    await renderEditorTabs();
+
+    const title = screen
+      .getByTestId('editor-new-tab-placeholder-button')
+      .querySelector<HTMLElement>('[data-editor-tab-title-overflow]');
+
+    expect(title?.getAttribute('data-editor-tab-title-overflow')).toBe('ellipsis');
+    expectVisualClassTokens(title?.className ?? '', ['truncate']);
+    expectVisualClassTokensAbsent(title?.className ?? '', [
+      'mask-r-from-[calc(100%-1.5rem)]',
+      'mask-r-to-[100%]',
+      'group-hover:mask-r-from-[calc(100%-3rem)]',
+      'group-hover:mask-r-to-[100%]',
+    ]);
+  });
+
+  test('preserves a pane-local new-tab interleave', async () => {
+    const { newId, tabs } = defaultTabs();
+    visibleTabIds = [tabs[0], newId, ...tabs.slice(1)];
+
+    await renderEditorTabs();
+
+    expect(sortableContextProps.at(-1)?.items).toEqual(visibleTabIds);
   });
 
   test('handles tab keyboard shortcuts for create, navigation, jump, and reopen', async () => {
@@ -590,6 +1164,10 @@ describe('EditorTabs runtime behavior', () => {
       expect(
         screen.getAllByTestId('editor-tab-shortcut-hint').map((node) => node.textContent),
       ).toEqual(['⌘1', '⌘2', '⌘3', '⌘4', '⌘5', '⌘6']);
+      for (const hint of screen.getAllByTestId('editor-tab-shortcut-hint')) {
+        expectVisualClassTokens(hint.className, ['mr-1', 'w-fit', 'shrink-0']);
+        expectVisualClassTokensAbsent(hint.className, ['absolute', 'animate-in', 'zoom-in-95']);
+      }
       expect(screen.queryByRole('button', { name: 'Close docs/team/notes.md' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Close new tab' })).toBeNull();
 
@@ -640,6 +1218,48 @@ describe('EditorTabs runtime behavior', () => {
     expect(closeNewTab).toHaveBeenCalledWith(newId);
   });
 
+  test('context actions move document, folder, and blank tabs into a new pane', async () => {
+    const { folderId, newId } = defaultTabs();
+    await renderEditorTabs();
+
+    fireEvent.click(screen.getAllByTestId('editor-tab-context-split-left')[0]);
+    expect(moveTabToNewPane).toHaveBeenCalledWith('docs/team/notes', 'left');
+    const announcement = screen.getByTestId('editor-tab-split-announcement');
+    expect(announcement.getAttribute('aria-live')).toBe('polite');
+    expect(announcement.textContent).toBe('Moved docs/team/notes.md to a new pane on the left.');
+
+    fireEvent.click(screen.getAllByTestId('editor-tab-context-split-right')[1]);
+    expect(moveTabToNewPane).toHaveBeenCalledWith('docs/team/spec', 'right');
+    expect(announcement.textContent).toBe('Moved docs/team/spec.mdx to a new pane on the right.');
+
+    const folderTabIndex = visibleTabIds.indexOf(folderId);
+    fireEvent.click(screen.getAllByTestId('editor-tab-context-split-left')[folderTabIndex]);
+    expect(moveTabToNewPane).toHaveBeenCalledWith(folderId, 'left');
+
+    const blankTabIndex = visibleTabIds.indexOf(newId);
+    fireEvent.click(screen.getAllByTestId('editor-tab-context-split-right')[blankTabIndex]);
+    expect(moveTabToNewPane).toHaveBeenCalledWith(newId, 'right');
+  });
+
+  test('disables move-to-pane actions when the pane has only one tab', async () => {
+    activeDocName = 'docs/team/notes';
+    activeTabId = 'docs/team/notes';
+    openTabs = ['docs/team/notes'];
+    visibleTabIds = ['docs/team/notes'];
+    newTabIds = [];
+    await renderEditorTabs();
+
+    const moveLeft = screen.getByTestId('editor-tab-context-split-left') as HTMLButtonElement;
+    const moveRight = screen.getByTestId('editor-tab-context-split-right') as HTMLButtonElement;
+
+    expect(moveLeft.disabled).toBe(true);
+    expect(moveRight.disabled).toBe(true);
+
+    fireEvent.click(moveLeft);
+    fireEvent.click(moveRight);
+    expect(moveTabToNewPane).not.toHaveBeenCalled();
+  });
+
   test('pin state changes close controls, menu actions, and middle-click behavior', async () => {
     pinnedTabIds = ['docs/team/readme'];
     await renderEditorTabs();
@@ -667,95 +1287,6 @@ describe('EditorTabs runtime behavior', () => {
     expect(closeTab).not.toHaveBeenCalledWith('docs/team/readme');
   });
 
-  test('rename mode strips the file extension, disables sorting, reports invalid input, and keeps the extension addon', async () => {
-    await renderEditorTabs();
-
-    fireEvent.doubleClick(tabButton('docs/team/readme.txt'));
-
-    const input = screen.getByTestId('editor-tab-rename-input') as HTMLInputElement;
-    expect(input.value).toBe('readme');
-    expect(screen.getByText('.txt')).toBeTruthy();
-    expect(
-      sortableOptions.some((options) => options.id === 'docs/team/readme' && options.disabled),
-    ).toBe(true);
-
-    fireEvent.change(input, { target: { value: 'bad/name.txt' } });
-    expect(input.value).toBe('bad/name');
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    expect((await screen.findByRole('alert')).textContent).toBe(
-      'Name can’t be empty, ".", "..", or contain / or \\',
-    );
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-  });
-
-  test('passes the successful response mapping to reconciliation before navigating', async () => {
-    activeDocName = 'docs/team/readme';
-    activeTabId = 'docs/team/readme';
-    reconcileLocalRename.mockImplementation((input) => {
-      expect(input).toEqual({
-        renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
-      });
-      expect(window.location.hash).toBe('');
-      return Promise.resolve();
-    });
-    globalThis.fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
-            renamedAssets: [],
-          }),
-          { headers: { 'Content-Type': 'application/json' }, status: 200 },
-        ),
-      ),
-    ) as never;
-
-    await renderEditorTabs();
-    fireEvent.doubleClick(tabButton('docs/team/readme.txt'));
-    const input = screen.getByTestId('editor-tab-rename-input') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'renamed.txt' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => {
-      expect(reconcileLocalRename).toHaveBeenCalledTimes(1);
-      expect(window.location.hash).toBe('#/docs/team/renamed');
-    });
-  });
-
-  test('rename post-commit reconciliation failures surface the refresh toast and skip navigation', async () => {
-    activeDocName = 'docs/team/readme';
-    activeTabId = 'docs/team/readme';
-    reconcileLocalRename.mockImplementation(() => Promise.reject(new Error('idb clear failed')));
-    globalThis.fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
-          }),
-          { headers: { 'Content-Type': 'application/json' }, status: 200 },
-        ),
-      ),
-    ) as never;
-
-    await renderEditorTabs();
-    fireEvent.doubleClick(tabButton('docs/team/readme.txt'));
-    const input = screen.getByTestId('editor-tab-rename-input') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'renamed.txt' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      expect(toastErrors).toContain(
-        'Rename succeeded but the tabstrip may be out of date — refresh to resync',
-      );
-    });
-    expect(toastErrors).not.toContain('Network error — please try again');
-    expect(window.location.hash).toBe('');
-  });
-
   test('tab context menus and active tab styling are visible behavior, not source-shape details', async () => {
     lifecycleStatuses.set('docs/team/notes', 'conflict');
     await renderEditorTabs();
@@ -764,6 +1295,7 @@ describe('EditorTabs runtime behavior', () => {
       name: 'docs/team/notes.md (conflict)',
     });
     expect(conflictedTabButton).toBeTruthy();
+    expect(conflictedTabButton.getAttribute('title')).toBeNull();
     // A conflict is the one case where the tooltip carries state beyond the
     // path, so pin that it tracks the label rather than just the path.
     fireEvent.pointerEnter(conflictedTabButton, { pointerType: 'mouse' });
@@ -773,11 +1305,12 @@ describe('EditorTabs runtime behavior', () => {
       'true',
     );
     expect(screen.getAllByRole('menuitem', { name: 'Close' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('menuitem', { name: 'Close others' }).length).toBeGreaterThan(0);
+    const closeOthersItems = screen.getAllByRole('menuitem', { name: 'Close others' });
+    expect(closeOthersItems.length).toBeGreaterThan(0);
+    expect(closeOthersItems[0]?.querySelector('svg.lucide-copy-x')).not.toBeNull();
     expect(screen.getAllByRole('menuitem', { name: 'Close all' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('menuitem', { name: 'Pin tab' }).length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('context-menu-separator').length).toBeGreaterThan(0);
-
     const activeSortable = screen
       .getAllByRole('button', { name: 'docs/team/spec.mdx' })
       .find((element) => element.tagName === 'BUTTON')
@@ -793,7 +1326,12 @@ describe('EditorTabs runtime behavior', () => {
     const inactiveClose = within(
       conflictedTabButton.closest('[data-sortable-id]') as HTMLElement,
     ).getByRole('button', { name: 'Close docs/team/notes.md' });
-    expectVisualClassTokens(inactiveClose.className, ['mr-1.5']);
+    expectVisualClassTokens(inactiveClose.className, ['absolute', 'right-1']);
+    expectVisualClassTokensAbsent(inactiveClose.className, [
+      'bg-background/80',
+      'backdrop-blur-sm',
+    ]);
+    expectVisualClassTokensAbsent(inactiveClose.className, ['mr-1']);
 
     const placeholderClose = screen.getByTestId('editor-new-tab-placeholder-close');
     expectVisualClassTokens(placeholderClose.className, [

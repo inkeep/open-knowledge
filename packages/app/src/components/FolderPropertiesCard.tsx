@@ -210,12 +210,10 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
         <CollapsibleTrigger className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2.5 data-[state=open]:border-b border-border">
           <span className="flex items-center gap-1.5 text-xs font-semibold uppercase font-mono tracking-wider text-muted-foreground">
             <ChevronRight
-              className={`size-3 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+              className={`size-3 shrink-0 motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.23,1,0.32,1)] ${collapsed ? '' : 'rotate-90'}`}
               aria-hidden
             />
-            <span>
-              <Trans>Folder properties</Trans>
-            </span>
+            <Trans>Folder properties</Trans>
           </span>
           {/* Stop click bubbling so single / triple click on the path
                 doesn't toggle the collapsible. Drag-to-select never fires
@@ -226,7 +224,7 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
                 keyboard activation (Enter/Space → toggle). */}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: <code> is non-focusable; keyboard activation lives on the wrapping <button>. */}
           <code
-            className="text-xs text-muted-foreground font-mono cursor-text select-text"
+            className="text-xs text-muted-foreground font-mono cursor-text select-text break-all"
             onClick={(e) => e.stopPropagation()}
           >
             {filePath}

@@ -40,6 +40,7 @@ let mergedConfig: { appearance?: { sidebar?: { showOnlyMarkdownFiles?: boolean }
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: mergedConfig,
+    projectLocalSynced: true,
     projectLocalBinding: null,
   }),
 }));
@@ -190,7 +191,7 @@ describe('AssetPreview — image loading-state placeholder (PRD-6638)', () => {
 
 describe('AssetPreview — not-in-sidebar indicator', () => {
   beforeEach(() => {
-    mergedConfig = null;
+    mergedConfig = {};
   });
 
   afterEach(() => cleanup());

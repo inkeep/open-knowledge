@@ -142,13 +142,19 @@ export type OkMenuAction =
  */
 export type OkUnsubscribe = () => void;
 
-export interface ProjectSessionState {
+export interface PersistedEditorPane {
+  id: string;
   openTabs: string[];
   pinnedTabIds: string[];
-  activeDocName: string | null;
   activeTabId: string | null;
+  size: number;
+}
+
+export interface ProjectSessionState {
   activeTabByMode: { files: string | null; skills: string | null };
   updatedAt: string | null;
+  panes: PersistedEditorPane[];
+  focusedPaneId: string;
 }
 
 /**

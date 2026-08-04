@@ -59,6 +59,16 @@ describe('getLeafFieldMeta', () => {
     });
   });
 
+  test('returns metadata for the user-scope editor.previewTabs leaf', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['editor', 'previewTabs']);
+    expect(meta).toEqual({
+      scope: 'user',
+      agentSettable: false,
+      defaultScope: 'user',
+      description: expect.any(String),
+    });
+  });
+
   test('returns project-local metadata for the linkPreviews.enabled egress opt-in', () => {
     const meta = getLeafFieldMeta(ConfigSchema, ['linkPreviews', 'enabled']);
     expect(meta).toEqual({

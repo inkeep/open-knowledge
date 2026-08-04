@@ -18,6 +18,7 @@ import {
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { OpenInAgentContextSubmenu } from '@/components/handoff/OpenInAgentContextSubmenu';
+import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
 import {
   buildSkillHandoffInput,
   useHandoffDispatch,
@@ -41,15 +42,17 @@ import {
 import { SkillRenameDialog } from '@/components/SkillRenameDialog';
 import { SkillScopeMoveDialog, type SkillScopeMoveTarget } from '@/components/SkillScopeMoveDialog';
 import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-} from '@/components/ui/dropdown-menu';
+  SkillMenuGroup,
+  SkillMenuItem,
+  type SkillMenuKind,
+  SkillMenuSeparator,
+  SkillMenuSub,
+  SkillMenuSubContent,
+  SkillMenuSubTrigger,
+} from '@/components/skill-menu-primitives';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
-import { useSkillScopeLabels } from '@/lib/skill-scope';
+import { skillDir, useSkillScopeLabels } from '@/lib/skill-scope';
 import { convertSkillLocation, duplicateSkill, installSkill } from '@/lib/skills-api';
 import { useWorkspace } from '@/lib/use-workspace';
 
@@ -323,33 +326,26 @@ export function useSkillActions(): SkillActions {
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
 /**
- * The full per-skill context menu for the file-sidebar Skills rows. Mirrors a
- * file row's menu (Reveal in Finder / Open with AI / Open in Terminal / Copy
- * Path / Duplicate / Rename / Delete) with Install/Uninstall in place of "Hide".
- * Reuses the file menu's own primitives — the desktop bridge (`showItemInFolder`),
- * `OpenInAgentContextSubmenu` (which carries the docked-terminal launch), and the
- * clipboard adapter — plus `useSkillActions` for the install/duplicate/rename/delete flow.
- * No "Edit" row: clicking the sidebar row opens the editor, like a file.
- */
-/**
- * Menu for a bundle FILE row (references/ + scripts/ + assets) inside a skill —
- * the skill-level actions (install/rename/delete) don't apply, so it offers just
- * Reveal + Copy Path, resolved against the file's own path (skill dir + the
- * file's relative path). Reuses the same desktop bridge + clipboard primitives.
+ * File actions shared by bundle-file rows in the Skills sidebar and editor tabs.
+ * Paths resolve from the skill directory rather than from its SKILL.md entry.
  */
 export function SkillFileContextMenuItems({
   skill,
   filePath,
   actions,
+  menuKind = 'dropdown',
 }: {
   skill: SkillsListEntry;
   filePath: string;
   actions: SkillActions;
+  menuKind?: SkillMenuKind;
 }) {
   const { t } = useLingui();
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
-  const absoluteFile = skill.absolutePath ? `${skill.absolutePath}/${filePath}` : undefined;
-  const relativeFile = `${skill.path}/${filePath}`;
+  const absoluteFile = skill.absolutePath
+    ? `${skillDir(skill.absolutePath)}/${filePath}`
+    : undefined;
+  const relativeFile = `${skillDir(skill.path)}/${filePath}`;
 
   async function copy(text: string) {
     try {
@@ -361,54 +357,113 @@ export function SkillFileContextMenuItems({
   }
 
   return (
-    <>
-      <DropdownMenuItem onSelect={() => actions.requestFileRename(skill, filePath)}>
+    <SkillMenuGroup menuKind={menuKind}>
+      <SkillMenuItem
+        menuKind={menuKind}
+        onSelect={() => actions.requestFileRename(skill, filePath)}
+      >
         <PencilLine aria-hidden />
         <Trans>Rename</Trans>
-      </DropdownMenuItem>
+      </SkillMenuItem>
       {bridge && absoluteFile ? (
-        <DropdownMenuItem onSelect={() => void bridge.shell.showItemInFolder(absoluteFile)}>
+        <SkillMenuItem
+          menuKind={menuKind}
+          onSelect={() => void bridge.shell.showItemInFolder(absoluteFile)}
+        >
           <FolderOpen aria-hidden />
           <Trans>Reveal in Finder</Trans>
-        </DropdownMenuItem>
+        </SkillMenuItem>
       ) : null}
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
+      <SkillMenuSub menuKind={menuKind}>
+        <SkillMenuSubTrigger menuKind={menuKind}>
           <Copy aria-hidden />
           <Trans>Copy Path</Trans>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          {absoluteFile ? (
-            <DropdownMenuItem onSelect={() => void copy(absoluteFile)}>
-              <Trans>Full Path</Trans>
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem onSelect={() => void copy(relativeFile)}>
-            <Trans>Relative Path</Trans>
-          </DropdownMenuItem>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-    </>
+        </SkillMenuSubTrigger>
+        <SkillMenuSubContent menuKind={menuKind}>
+          <SkillMenuGroup menuKind={menuKind}>
+            {absoluteFile ? (
+              <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(absoluteFile)}>
+                <Trans>Full Path</Trans>
+              </SkillMenuItem>
+            ) : null}
+            <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(relativeFile)}>
+              <Trans>Relative Path</Trans>
+            </SkillMenuItem>
+          </SkillMenuGroup>
+        </SkillMenuSubContent>
+      </SkillMenuSub>
+    </SkillMenuGroup>
   );
 }
 
+/**
+ * The full per-skill action menu shared by Skills sidebar rows and editor tabs.
+ * Callers select the matching Radix primitive family while every mutation still
+ * routes through `useSkillActions`, keeping dialogs and confirmation behavior identical.
+ */
 export function SkillContextMenuItems({
   skill,
   actions,
   existingNames,
+  menuKind = 'dropdown',
 }: {
   skill: SkillsListEntry;
   actions: SkillActions;
   existingNames: ReadonlySet<string>;
+  menuKind?: SkillMenuKind;
 }) {
-  const { t } = useLingui();
   const workspace = useWorkspace();
-  const scopeLabels = useSkillScopeLabels();
   const installStates = useInstalledAgents().states;
   const { dispatch } = useHandoffDispatch();
+  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
+  const input = buildSkillHandoffInput({
+    skillName: skill.name,
+    scope: skill.scope,
+    workspace,
+  });
+
+  return (
+    <SkillTargetMenuItems
+      actions={actions}
+      existingNames={existingNames}
+      menuKind={menuKind}
+      skill={skill}
+      openWithAi={
+        menuKind === 'context' ? (
+          <OpenInAgentEmptySpaceSubmenu
+            input={input}
+            installStates={installStates}
+            dispatch={dispatch}
+          />
+        ) : (
+          <OpenInAgentContextSubmenu
+            input={input}
+            installStates={installStates}
+            isElectronHost={bridge != null}
+            dispatch={dispatch}
+          />
+        )
+      }
+    />
+  );
+}
+
+function SkillTargetMenuItems({
+  actions,
+  existingNames,
+  menuKind,
+  openWithAi,
+  skill,
+}: {
+  actions: SkillActions;
+  existingNames: ReadonlySet<string>;
+  menuKind: SkillMenuKind;
+  openWithAi: ReactNode;
+  skill: SkillsListEntry;
+}) {
+  const { t } = useLingui();
+  const scopeLabels = useSkillScopeLabels();
   const hostToggles = useSkillHostToggles(skill, actions);
-  // Desktop-only rows (Reveal / Terminal) render only in OK Desktop; the bridge
-  // is absent on the web host, like the file menu's reveal row.
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const absolutePath = skill.absolutePath;
 
@@ -423,88 +478,97 @@ export function SkillContextMenuItems({
 
   return (
     <>
-      {bridge && absolutePath ? (
-        <DropdownMenuItem onSelect={() => void bridge.shell.showItemInFolder(absolutePath)}>
-          <FolderOpen aria-hidden />
-          <Trans>Reveal in Finder</Trans>
-        </DropdownMenuItem>
-      ) : null}
-      {/* Open in Terminal lives inside this submenu now (docked terminal + AI
-          handoff) — the standalone system-terminal item was removed app-wide
-          when the in-app shell landed. */}
-      <OpenInAgentContextSubmenu
-        input={buildSkillHandoffInput({ skillName: skill.name, scope: skill.scope, workspace })}
-        installStates={installStates}
-        isElectronHost={bridge != null}
-        dispatch={dispatch}
-      />
-      {/* Always available: Relative Path needs no host. Full Path appears once
-          the server has supplied the skill's absolute path (always, post-build;
-          absent only on a cold partial entry). */}
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <Copy aria-hidden />
-          <Trans>Copy Path</Trans>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          {absolutePath ? (
-            <DropdownMenuItem onSelect={() => void copy(absolutePath)}>
-              <Trans>Full Path</Trans>
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem onSelect={() => void copy(skill.path)}>
-            <Trans>Relative Path</Trans>
-          </DropdownMenuItem>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onSelect={() => void actions.duplicate(skill, existingNames)}>
-        <CopyPlus aria-hidden />
-        <Trans>Duplicate</Trans>
-      </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => actions.requestRename(skill, existingNames)}>
-        <PencilLine aria-hidden />
-        <Trans>Rename</Trans>
-      </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => actions.requestFileCreate(skill)}>
-        <FilePlus aria-hidden />
-        <Trans>New file</Trans>
-      </DropdownMenuItem>
-      {/* Per-editor install submenu — the SAME control as the editor toolbar's
-          install pill, so the row menu no longer offers only a bare "Install" while
-          the editor offers a per-platform dropdown (§9.3). */}
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <DownloadCloud aria-hidden />
-          <Trans>Install</Trans>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className={SKILL_INSTALL_MENU_WIDTH}>
-          <SkillInstallMenuItems
-            toggles={hostToggles}
-            skill={skill}
-            onResolveFork={(editor) => actions.requestForkResolve(skill, editor)}
-          />
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-      {/* Scope switch in the menu (§9.5) — the toolbar's level Select hides when the
-          pane is narrow, so surface the project↔global move here too. */}
-      <DropdownMenuItem
-        onSelect={() =>
-          actions.requestScopeMove(skill, skill.scope === 'project' ? 'global' : 'project')
-        }
-      >
-        <ArrowLeftRight aria-hidden />
-        {skill.scope === 'project' ? (
-          <Trans>Move to {scopeLabels.global}</Trans>
-        ) : (
-          <Trans>Move to {scopeLabels.project}</Trans>
-        )}
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem variant="destructive" onSelect={() => actions.requestDelete(skill)}>
-        <Trash2 aria-hidden />
-        <Trans>Delete</Trans>
-      </DropdownMenuItem>
+      <SkillMenuGroup menuKind={menuKind}>
+        {bridge && absolutePath ? (
+          <SkillMenuItem
+            menuKind={menuKind}
+            onSelect={() => void bridge.shell.showItemInFolder(absolutePath)}
+          >
+            <FolderOpen aria-hidden />
+            <Trans>Reveal in Finder</Trans>
+          </SkillMenuItem>
+        ) : null}
+        {openWithAi}
+        <SkillMenuSub menuKind={menuKind}>
+          <SkillMenuSubTrigger menuKind={menuKind}>
+            <Copy aria-hidden />
+            <Trans>Copy Path</Trans>
+          </SkillMenuSubTrigger>
+          <SkillMenuSubContent menuKind={menuKind}>
+            <SkillMenuGroup menuKind={menuKind}>
+              {absolutePath ? (
+                <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(absolutePath)}>
+                  <Trans>Full Path</Trans>
+                </SkillMenuItem>
+              ) : null}
+              <SkillMenuItem menuKind={menuKind} onSelect={() => void copy(skill.path)}>
+                <Trans>Relative Path</Trans>
+              </SkillMenuItem>
+            </SkillMenuGroup>
+          </SkillMenuSubContent>
+        </SkillMenuSub>
+      </SkillMenuGroup>
+      <SkillMenuSeparator menuKind={menuKind} />
+      <SkillMenuGroup menuKind={menuKind}>
+        <SkillMenuItem
+          menuKind={menuKind}
+          onSelect={() => void actions.duplicate(skill, existingNames)}
+        >
+          <CopyPlus aria-hidden />
+          <Trans>Duplicate</Trans>
+        </SkillMenuItem>
+        <SkillMenuItem
+          menuKind={menuKind}
+          onSelect={() => actions.requestRename(skill, existingNames)}
+        >
+          <PencilLine aria-hidden />
+          <Trans>Rename</Trans>
+        </SkillMenuItem>
+        <SkillMenuItem menuKind={menuKind} onSelect={() => actions.requestFileCreate(skill)}>
+          <FilePlus aria-hidden />
+          <Trans>New file</Trans>
+        </SkillMenuItem>
+        <SkillMenuSub menuKind={menuKind}>
+          <SkillMenuSubTrigger menuKind={menuKind}>
+            <DownloadCloud aria-hidden />
+            <Trans>Install</Trans>
+          </SkillMenuSubTrigger>
+          <SkillMenuSubContent menuKind={menuKind} className={SKILL_INSTALL_MENU_WIDTH}>
+            <SkillMenuGroup menuKind={menuKind}>
+              <SkillInstallMenuItems
+                toggles={hostToggles}
+                skill={skill}
+                menuKind={menuKind}
+                onResolveFork={(editor) => actions.requestForkResolve(skill, editor)}
+              />
+            </SkillMenuGroup>
+          </SkillMenuSubContent>
+        </SkillMenuSub>
+        <SkillMenuItem
+          menuKind={menuKind}
+          onSelect={() =>
+            actions.requestScopeMove(skill, skill.scope === 'project' ? 'global' : 'project')
+          }
+        >
+          <ArrowLeftRight aria-hidden />
+          {skill.scope === 'project' ? (
+            <Trans>Move to {scopeLabels.global}</Trans>
+          ) : (
+            <Trans>Move to {scopeLabels.project}</Trans>
+          )}
+        </SkillMenuItem>
+      </SkillMenuGroup>
+      <SkillMenuSeparator menuKind={menuKind} />
+      <SkillMenuGroup menuKind={menuKind}>
+        <SkillMenuItem
+          menuKind={menuKind}
+          variant="destructive"
+          onSelect={() => actions.requestDelete(skill)}
+        >
+          <Trash2 aria-hidden />
+          <Trans>Delete</Trans>
+        </SkillMenuItem>
+      </SkillMenuGroup>
     </>
   );
 }

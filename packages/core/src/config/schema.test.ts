@@ -171,6 +171,13 @@ describe('appearance.sidebar view toggles', () => {
   });
 });
 
+describe('editor preferences', () => {
+  test('preview tabs default on and preserve an explicit opt-out', () => {
+    expect(ConfigSchema.parse({}).editor.previewTabs).toBe(true);
+    expect(ConfigSchema.parse({ editor: { previewTabs: false } }).editor.previewTabs).toBe(false);
+  });
+});
+
 describe('linkPreviews.enabled (external link-hover preview egress default)', () => {
   test('defaults to enabled when the block is absent', () => {
     expect(ConfigSchema.parse({}).linkPreviews).toEqual({ enabled: true });

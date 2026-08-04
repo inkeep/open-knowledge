@@ -65,6 +65,16 @@ const FIXTURES: Fixture[] = [
     shouldAccept: false,
   },
   {
+    name: 'editor.previewTabs=false accepted',
+    input: { editor: { previewTabs: false } },
+    shouldAccept: true,
+  },
+  {
+    name: 'editor.previewTabs string rejected',
+    input: { editor: { previewTabs: 'false' } },
+    shouldAccept: false,
+  },
+  {
     name: 'appearance.preview.autoOpen=false accepted',
     input: { appearance: { preview: { autoOpen: false } } },
     shouldAccept: true,
@@ -154,6 +164,18 @@ describe('JSON Schema ↔ runtime equivalence', () => {
     }
     expect(ajvAccept).toBe(shouldAccept);
     expect(zodAccept).toBe(shouldAccept);
+  });
+
+  test('user schema exposes optional editor.previewTabs boolean with default true', () => {
+    const editorSchema = jsonSchema.properties?.editor as {
+      properties?: Record<string, { type?: string; default?: unknown }>;
+      required?: string[];
+    };
+    expect(editorSchema.properties?.previewTabs).toMatchObject({
+      type: 'boolean',
+      default: true,
+    });
+    expect(editorSchema.required ?? []).not.toContain('previewTabs');
   });
 });
 

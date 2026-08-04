@@ -1,7 +1,7 @@
 import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, type ReactNode, Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -20,7 +20,6 @@ import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 import { PresenceBar } from '@/presence/PresenceBar';
 import { BetaBadge } from './BetaBadge';
-import { EditorTabs } from './EditorTabs';
 import { HelpPopover } from './HelpPopover';
 import { InstanceBadge } from './InstanceBadge';
 import { NavigationHistoryControls } from './NavigationHistoryControls';
@@ -36,12 +35,18 @@ const AppMenubar = lazy(() =>
 );
 
 interface EditorHeaderProps {
+  children?: ReactNode;
   onSignIn?: () => void;
   onSetIdentity?: () => void;
   onOpenSearch?: () => void;
 }
 
-export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHeaderProps) {
+export function EditorHeader({
+  children,
+  onSignIn,
+  onSetIdentity,
+  onOpenSearch,
+}: EditorHeaderProps) {
   const { t } = useLingui();
   const { activeDocName, activeTarget } = useDocumentContext();
   // Managed-artifact tabs (skills/templates) are ordinary docs but carry their
@@ -50,7 +55,7 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
   // trigger gates on this. The agent-handoff for a skill lives in the Skills
   // sidebar (SkillsSidebarSection / skill-actions), not the header.
   const managedArtifact = activeDocName ? parseManagedArtifactName(activeDocName) : null;
-  const { state: sidebarState, isDraggingRail } = useSidebar();
+  const { state: sidebarState } = useSidebar();
   // No-project single-file session (`ok <file>`): drop the project chrome
   // (sidebar toggle, tab strip, Settings) while leaving the editor + the
   // doc-scoped actions (Share / sync / agent handoff) intact.
@@ -60,6 +65,13 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
   const searchShortcut = formatShortcut('command-palette');
   const searchShortcutLabel = formatShortcutLabel('command-palette');
   const [publishOpen, setPublishOpen] = useState(false);
+  // Keep tabs hidden until their action-zone offsets are ready; otherwise
+  // the zero-width CSS fallback is visible for one frame during startup.
+  const [chromeMeasured, setChromeMeasured] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const leadingActionsRef = useRef<HTMLDivElement>(null);
+  const tabsHostRef = useRef<HTMLDivElement>(null);
+  const trailingActionsRef = useRef<HTMLDivElement>(null);
   // Share input for the header button: folder → folder-scope, doc → doc-scope,
   // empty editor → project root; non-shareable surfaces yield null (disabled).
   const shareInput: ShareTargetInput | null = (() => {
@@ -92,8 +104,7 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
   // and the reserve is required to keep the SidebarTrigger clear of the
   // traffic lights. The reserve uses the shared `--ok-titlebar-reserve-left`
   // token (defined under `html.electron-mode`) so the magic 78px lives in one
-  // place; the `,1rem` fallback is the precedent-#49 safe form. The padding
-  // transition (and its drag-snap exception) is documented at the className.
+  // place; the `,1rem` fallback is the precedent-#49 safe form.
   const isCollapsed = sidebarState === 'collapsed';
   const appMenubar = shouldShowAppMenubar() ? (
     <Suspense fallback={null}>
@@ -101,39 +112,90 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
     </Suspense>
   ) : null;
 
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    const leadingActions = leadingActionsRef.current;
+    const tabsHost = tabsHostRef.current;
+    const trailingActions = trailingActionsRef.current;
+    if (!header || !leadingActions || !tabsHost || !trailingActions) return;
+
+    const updateChromeWidths = () => {
+      header.style.setProperty('--editor-header-leading-width', `${leadingActions.offsetWidth}px`);
+      const rightRailWidth = Math.max(0, header.offsetWidth - tabsHost.offsetWidth);
+      header.style.setProperty(
+        '--editor-header-trailing-width',
+        `${Math.max(0, trailingActions.offsetWidth - rightRailWidth)}px`,
+      );
+    };
+    updateChromeWidths();
+
+    // Let both the header chrome and the restored tab workspace settle before
+    // making the tabs visible. Revealing after the first measurement exposes
+    // the zero-width fallback briefly, then moves the tabs when layout catches
+    // up on the next frame.
+    let revealFrame = requestAnimationFrame(() => {
+      updateChromeWidths();
+      revealFrame = requestAnimationFrame(() => {
+        updateChromeWidths();
+        setChromeMeasured(true);
+      });
+    });
+
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateChromeWidths);
+    observer?.observe(header);
+    observer?.observe(leadingActions);
+    observer?.observe(tabsHost);
+    observer?.observe(trailingActions);
+    return () => {
+      cancelAnimationFrame(revealFrame);
+      observer?.disconnect();
+    };
+  }, []);
+
+  const headerActions = (
+    <>
+      {/* Share is a project surface: single-file `ok <file>` runs agents/MCP
+          off and on a throwaway server, so a share link would point at a
+          session that's gone on close. Hidden here (mirrors the
+          sidebar/Settings gates) rather than rendered disabled. */}
+      {!singleFile && (
+        <ShareButton input={shareInput} onClickWhenNoRemote={() => setPublishOpen(true)} />
+      )}
+      <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />
+      <PresenceBar />
+      <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
+      <InstanceBadge />
+      <BetaBadge />
+      {/* Settings is unavailable in single-file mode (config editing is inert). */}
+      {!singleFile && <SettingsButton />}
+      <HelpPopover />
+    </>
+  );
+
   return (
     <header
+      ref={headerRef}
       data-electron-drag={isElectronHost ? '' : undefined}
+      style={{
+        ['--editor-header-leading-offset' as string]:
+          isElectronHost && isCollapsed ? 'var(--ok-titlebar-reserve-left, 1rem)' : '0px',
+      }}
       className={cn(
-        'flex h-12 shrink-0 items-center bg-muted/35 shadow-[inset_0_-1px_0_var(--border)]',
+        'group/editor-header relative flex h-12 shrink-0 items-center bg-muted/35 shadow-[inset_0_-1px_0_var(--border)]',
         isElectronHost && '[-webkit-app-region:drag]',
-        isElectronHost && isCollapsed && 'pl-[var(--ok-titlebar-reserve-left,1rem)]',
-        // Animate the reserve in lockstep with the sidebar's 200ms offcanvas
-        // slide on a button/keyboard toggle — but SNAP it while the rail is
-        // being dragged. A drag-collapse sets `data-dragging` on the sidebar
-        // group, which forces `duration-0` on the sidebar's own slide, so the
-        // sidebar vanishes instantly; an animated reserve would lag ~200ms
-        // behind and park the collapse/search controls under the macOS traffic
-        // lights for the length of the animation.
-        isElectronHost &&
-          !isDraggingRail &&
-          'motion-safe:transition-[padding] motion-safe:duration-200 motion-safe:ease-linear',
       )}
     >
-      {/*
-        Left zone uses per-child `no-drag` opt-outs (instead of the
-        right zone's `[&>*]:` child-combinator) because EditorTabs is a
-        direct child whose own root MUST stay draggable so the empty
-        space inside the tab strip continues to drag the window. Adding
-        a future interactive control here? Apply `[-webkit-app-region:
-        no-drag]` (gated on `isElectronHost`) explicitly on the new
-        element — the right zone's blanket opt-out is intentionally
-        scoped to its zone.
-      */}
-      {/* The left zone (files toggle, search, tab strip) is project chrome —
-          empty in single-file mode. The flex-1 container stays so the right
-          zone keeps its position and the window-drag spacer is preserved. */}
-      <div className="flex min-w-0 flex-1 items-center gap-1 px-3">
+      {/* The left zone (files toggle and search) is project chrome —
+          empty in single-file mode. */}
+      <div
+        ref={leadingActionsRef}
+        data-editor-header-leading-actions=""
+        className={cn(
+          'absolute inset-y-0 left-0 z-20 flex items-center gap-1 px-3',
+          isElectronHost && isCollapsed && 'left-[var(--ok-titlebar-reserve-left,1rem)]',
+        )}
+      >
         {/* The menubar renders in single-file windows too: the project-chrome
             group below is absent there, so without this slot Window / Help /
             Exit would have no reachable surface at all. */}
@@ -193,14 +255,27 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
               orientation="vertical"
               className="mr-1 h-4 shrink-0 data-vertical:self-center"
             />
-            <EditorTabs />
           </>
         )}
       </div>
 
       <div
+        ref={tabsHostRef}
+        data-editor-header-tabs=""
         className={cn(
-          'flex shrink-0 items-center justify-end gap-2 px-3',
+          'absolute inset-y-0 left-0 z-10 flex min-w-0 w-[var(--editor-header-tabs-width,100%)] overflow-hidden',
+          !chromeMeasured && 'invisible',
+          isElectronHost && '[-webkit-app-region:no-drag]',
+        )}
+      >
+        {children}
+      </div>
+
+      <div
+        ref={trailingActionsRef}
+        data-editor-header-actions=""
+        className={cn(
+          'absolute inset-y-0 right-0 z-20 flex items-center justify-end gap-2 px-3',
           // Child-combinator opt-out: every direct DOM child of the right zone
           // gets `app-region: no-drag` so clicks on Save / OpenInAgentMenu /
           // SyncStatusBadge / PresenceBar / BetaBadge / SettingsButton /
@@ -215,24 +290,8 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
           isElectronHost && 'mr-[var(--ok-titlebar-reserve-right,0px)]',
         )}
       >
-        {/* Share is a project surface: single-file `ok <file>` runs agents/MCP
-            off and on a throwaway server, so a share link would point at a
-            session that's gone on close. Hidden here (mirrors the
-            sidebar/Settings gates) rather than rendered disabled. */}
-        {!singleFile && (
-          <>
-            <ShareButton input={shareInput} onClickWhenNoRemote={() => setPublishOpen(true)} />
-            <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />
-          </>
-        )}
-        <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />
-        <PresenceBar />
-        <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
-        <InstanceBadge />
-        <BetaBadge />
-        {/* Settings is unavailable in single-file mode (config editing is inert). */}
-        {!singleFile && <SettingsButton />}
-        <HelpPopover />
+        {headerActions}
+        {!singleFile && <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />}
       </div>
     </header>
   );

@@ -1,6 +1,8 @@
 import { MARKDOWNLINT_RULE_CATALOG } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import type { MessageDescriptor } from '@lingui/core';
+import { describe, expect, test, vi } from 'vitest';
 import { matchesCommandQuery } from '@/components/command-palette-search';
+import { FIELDS_USER_PREFERENCES } from './settings-fields';
 import { buildSettingsSearchIndex } from './settings-search-index';
 import type { SidebarGroup } from './settings-sidebar-types';
 
@@ -53,13 +55,40 @@ describe('buildSettingsSearchIndex', () => {
   });
 
   test('indexes preferences fields (visible section) with description keywords + targetField', () => {
-    const entries = buildSettingsSearchIndex({ groups: groupsFixture({}), translate });
+    const previewField = FIELDS_USER_PREFERENCES.find(
+      (field) => field.path.join('.') === 'editor.previewTabs',
+    );
+    expect(previewField).toBeDefined();
+    if (!previewField?.description) throw new Error('expected preview tabs field description');
+
+    const labelSentinel = 'preview-tabs-label-sentinel';
+    const descriptionSentinel = 'preview-tabs-description-sentinel';
+    const structuralTranslate = vi.fn((message: MessageDescriptor) => {
+      if (message === previewField.label) return labelSentinel;
+      if (message === previewField.description) return descriptionSentinel;
+      return message.id ?? '';
+    });
+    const entries = buildSettingsSearchIndex({
+      groups: groupsFixture({}),
+      translate: structuralTranslate,
+    });
     const fieldEntries = entries.filter((e) => e.kind === 'field' && e.sectionId === 'preferences');
     expect(fieldEntries.length).toBeGreaterThan(0);
     const wordWrap = fieldEntries.find((e) => e.targetField === 'editor.wordWrap');
     expect(wordWrap).toBeDefined();
     expect(wordWrap?.kind).toBe('field');
     expect(wordWrap?.sectionId).toBe('preferences');
+
+    const previewTabs = fieldEntries.find((e) => e.targetField === 'editor.previewTabs');
+    expect(previewTabs).toMatchObject({
+      kind: 'field',
+      sectionId: 'preferences',
+      label: labelSentinel,
+      keywords: [descriptionSentinel],
+      targetField: 'editor.previewTabs',
+    });
+    expect(structuralTranslate).toHaveBeenCalledWith(previewField.label);
+    expect(structuralTranslate).toHaveBeenCalledWith(previewField.description);
   });
 
   test('theme field indexed only when the theme plugin is a visible section', () => {

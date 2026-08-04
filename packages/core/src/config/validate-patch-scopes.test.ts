@@ -99,6 +99,21 @@ describe('validatePatchScopes', () => {
     expect(validatePatchScopes({ editor: { wordWrap: false } }, 'user')).toBeNull();
   });
 
+  test('accepts editor.previewTabs only from a user writer', () => {
+    expect(validatePatchScopes({ editor: { previewTabs: false } }, 'user')).toBeNull();
+
+    const projectViolation = validatePatchScopes({ editor: { previewTabs: false } }, 'project');
+    expect(projectViolation?.code).toBe('SCOPE_VIOLATION');
+    expect(projectViolation?.path).toEqual(['editor', 'previewTabs']);
+
+    const projectLocalViolation = validatePatchScopes(
+      { editor: { previewTabs: false } },
+      'project-local',
+    );
+    expect(projectLocalViolation?.code).toBe('SCOPE_VIOLATION');
+    expect(projectLocalViolation?.path).toEqual(['editor', 'previewTabs']);
+  });
+
   test('returns null for a project field written by a project writer', () => {
     // content.dir is scope: 'project'.
     expect(validatePatchScopes({ content: { dir: 'docs' } }, 'project')).toBeNull();

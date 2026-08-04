@@ -625,22 +625,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       <Suspense fallback={null}>
         <AgentThreadClientBinder />
       </Suspense>
-      <EditorHeader
-        onSignIn={() => {
-          setAuthInitialStep('auth');
-          setAuthModalOpen(true);
-        }}
-        onSetIdentity={() => {
-          setAuthInitialStep('identity');
-          setAuthModalOpen(true);
-        }}
-        onOpenSearch={onOpenSearch}
-      />
       {/* The editor takes the row's full width. Both session panels live WITHIN
-          EditorArea — the terminal beneath the editor, the agents panel as its own
-          right column past the doc panels; EditorArea owns that layout. The live
-          hosts are mounted below (above EditorArea) so a view-kind change never
-          remounts them. */}
+          EditorArea — the terminal below the editor and the agents panel in its
+          own right column. Their live hosts mount below, above EditorArea, so a
+          placement change never remounts a running session. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col">
           <EditorArea
@@ -655,6 +643,21 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             onAgentsVisibleChange={setAgentsVisible}
             onSessionPlacements={setPlacements}
             onRevealAgents={revealAgents}
+            renderWorkspaceHeader={(tabs) => (
+              <EditorHeader
+                onSignIn={() => {
+                  setAuthInitialStep('auth');
+                  setAuthModalOpen(true);
+                }}
+                onSetIdentity={() => {
+                  setAuthInitialStep('identity');
+                  setAuthModalOpen(true);
+                }}
+                onOpenSearch={onOpenSearch}
+              >
+                {tabs}
+              </EditorHeader>
+            )}
           />
         </div>
       </div>

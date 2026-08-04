@@ -580,7 +580,7 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
           // path banks its intent instead (replayed in recompute on mount).
           function onLintNav(event: Event) {
             const detail = (event as CustomEvent<LintNavDetail>).detail;
-            if (!detail || destroyed) return;
+            if (!detail || detail.docName !== docName || destroyed) return;
             // Consumed here — a later flip to source mode must not replay it.
             if (scrollToLintBlock(detail)) clearPendingSourceNavigation(docName);
           }

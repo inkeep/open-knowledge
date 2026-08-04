@@ -15,17 +15,19 @@ import {
 } from '@/lib/doc-hash';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { skillDisplayName } from '@/lib/skill-scope';
+import {
+  type EditorWorkspaceState,
+  type PersistedEditorPane,
+  parsePersistedEditorWorkspace,
+  persistEditorWorkspace,
+} from './editor-panes';
 
 /** Narrow a free string to a known skill scope (`project` | `global`). */
 function isSkillScope(value: string): value is SkillScope {
   return (MANAGED_ARTIFACT_SCOPES as readonly string[]).includes(value);
 }
 
-interface EditorTabSessionState {
-  openTabs: string[];
-  pinnedTabIds: string[];
-  activeDocName: string | null;
-  activeTabId: string | null;
+export interface EditorTabSessionState {
   /**
    * Last-active tab per surface (Files vs Skills), so a reload can restore the
    * tab you had open in EACH surface — not just the active one. Each entry is an
@@ -33,6 +35,9 @@ interface EditorTabSessionState {
    */
   activeTabByMode: { files: string | null; skills: string | null };
   updatedAt: string | null;
+  /** Authoritative persisted split-workspace layout. */
+  panes: PersistedEditorPane[];
+  focusedPaneId: string;
 }
 
 /** An open-tab id valid for `surface`, else null (guards stale/hand-edited state). */
@@ -47,14 +52,7 @@ function surfaceActiveTab(
 
 /** A fresh empty session — factory (not a shared const) so callers can't alias it. */
 function emptyTabSessionState(): EditorTabSessionState {
-  return {
-    openTabs: [],
-    pinnedTabIds: [],
-    activeDocName: null,
-    activeTabId: null,
-    activeTabByMode: { files: null, skills: null },
-    updatedAt: null,
-  };
+  return sessionStateFromWorkspace(parsePersistedEditorWorkspace(null), null, {});
 }
 
 export interface RenamedFolderMapping {
@@ -90,35 +88,7 @@ const ASSET_TAB_PREFIX = '\u0000asset:';
 // unambiguously even though `path` may contain slashes.
 const SKILL_FILE_TAB_PREFIX = '\u0000skill-file:';
 const SKILL_PREVIEW_TAB_PREFIX = '\u0000skill-preview:';
-const TAB_INSTANCE_SEPARATOR = '\u0000doc-tab:';
-// The Skills destination hub was a singleton full-pane tab. Nothing mints this
-// id anymore; the constant survives only to prune it out of legacy persisted
-// state. Matched EXACTLY rather than by `skills:` prefix — it is the one tab id
-// with no `\u0000` sentinel, so a prefix test also swallowed a real content-root
-// doc named `skills:…` (legal on POSIX), leaving it unopenable and routing its
-// hash to the hub.
-const SKILLS_HUB_TAB_ID = 'skills:hub';
 const MARKDOWN_TAB_EXTENSION_PATTERN = /\.(md|mdx)$/i;
-
-interface OpenTabOptions {
-  behavior: 'append' | 'replace-active';
-  currentTabId: string | null;
-  limit: number;
-  pinnedTabIds?: readonly string[];
-}
-
-function splitTabInstance(tabId: string): { baseTabId: string; instanceSuffix: string } {
-  const separatorIndex = tabId.lastIndexOf(TAB_INSTANCE_SEPARATOR);
-  if (separatorIndex < 0) return { baseTabId: tabId, instanceSuffix: '' };
-  return {
-    baseTabId: tabId.slice(0, separatorIndex),
-    instanceSuffix: tabId.slice(separatorIndex),
-  };
-}
-
-function baseTabId(tabId: string): string {
-  return splitTabInstance(tabId).baseTabId;
-}
 
 function stripMarkdownTabExtension(path: string): string | null {
   return MARKDOWN_TAB_EXTENSION_PATTERN.test(path)
@@ -127,17 +97,13 @@ function stripMarkdownTabExtension(path: string): string | null {
 }
 
 function isValidTabId(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length === 0) return false;
-  const base = baseTabId(value);
+  if (typeof value !== 'string' || value.length === 0 || value.includes('\u0000doc-tab:')) {
+    return false;
+  }
+  const base = value;
   if (base.startsWith(FOLDER_TAB_PREFIX)) return base.length > FOLDER_TAB_PREFIX.length;
   if (base.startsWith(ASSET_TAB_PREFIX)) return base.length > ASSET_TAB_PREFIX.length;
   if (base.startsWith(SKILL_FILE_TAB_PREFIX)) return parseSkillFileTabBody(base) !== null;
-  // Skills is an ephemeral new-tab surface (`new-tab:skills:*`), never a standing
-  // tab: `openTarget` opens it as a `new-tab:` placeholder that renders the Skills base page
-  // without persisting. Reject the `skills:hub` id here so a stale standing tab
-  // (from before the ephemeral move, or a rebase regression) is pruned on load
-  // instead of restoring Skills as the default tab.
-  if (base === SKILLS_HUB_TAB_ID) return false;
   if (base.startsWith(SKILL_PREVIEW_TAB_PREFIX)) return parseSkillPreviewTabBody(base) !== null;
   return true;
 }
@@ -324,9 +290,8 @@ export function tabIdForNavigationTarget(
     case 'skill-file':
       return skillFileTabId(target);
     case 'skills':
-      // No tab id: `isValidTabId` rejects the `skills:` prefix, so one could
-      // never enter `openTabs`. The Skills destination is a sidebar section,
-      // not an editor tab. The arm stays for exhaustiveness.
+      // The Skills destination is an ephemeral new-tab surface, not a standing
+      // editor tab with a persistable id. The arm stays for exhaustiveness.
       return null;
     case 'skill-preview':
       return skillPreviewTabId(target);
@@ -338,7 +303,6 @@ export function parseEditorTabId(tabId: string):
   | { kind: 'folder'; folderPath: string }
   | { kind: 'asset'; assetPath: string }
   | { kind: 'skill-file'; scope: SkillScope; name: string; path: string; host?: string }
-  | { kind: 'skills'; target: string }
   | {
       kind: 'skill-preview';
       flavor: SkillPreviewFlavor;
@@ -347,15 +311,12 @@ export function parseEditorTabId(tabId: string):
       subtitle: string;
       level?: SkillScope;
     } {
-  const base = baseTabId(tabId);
+  const base = tabId;
   if (base.startsWith(FOLDER_TAB_PREFIX)) {
     return { kind: 'folder', folderPath: base.slice(FOLDER_TAB_PREFIX.length) };
   }
   if (base.startsWith(ASSET_TAB_PREFIX)) {
     return { kind: 'asset', assetPath: base.slice(ASSET_TAB_PREFIX.length) };
-  }
-  if (base === SKILLS_HUB_TAB_ID) {
-    return { kind: 'skills', target: 'skills' };
   }
   const skillPreview = parseSkillPreviewTabBody(base);
   if (skillPreview) {
@@ -425,13 +386,12 @@ export function isSkillBundleShapedPath(docName: string): boolean {
 
 /**
  * Classify a tab id as belonging to the Skills surface vs the Files surface,
- * from the id alone (no snapshot lookup). Skill tabs: the skills hub, read-only
- * bundle-file / skill-preview viewers, and `doc` tabs whose name is a skill doc.
+ * from the id alone (no snapshot lookup). Skill tabs are read-only bundle-file
+ * or skill-preview viewers and `doc` tabs whose name is a skill doc.
  */
 export function isSkillTabId(tabId: string): boolean {
   const tab = parseEditorTabId(tabId);
   return (
-    tab.kind === 'skills' ||
     tab.kind === 'skill-file' ||
     tab.kind === 'skill-preview' ||
     (tab.kind === 'doc' && (isSkillDocName(tab.docName) || isSkillBundleShapedPath(tab.docName)))
@@ -543,89 +503,6 @@ export function applyDragPinMutation(
     : removePinnedTab(prevPinned, draggedTabId);
 }
 
-export function addOpenTab(
-  tabs: readonly string[],
-  tabId: string,
-  limit: number,
-  pinnedTabIds: readonly string[] = [],
-): string[] {
-  const normalized = capOpenTabsPreservingPinned(tabs, limit, pinnedTabIds);
-  if (!isValidTabId(tabId) || normalized.includes(tabId)) return normalized;
-  const next = [...normalized, tabId];
-  return capOpenTabsPreservingPinned(next, limit, pinnedTabIds);
-}
-
-export function replaceOpenTab(
-  tabs: readonly string[],
-  currentTabId: string | null,
-  nextTabId: string,
-  limit: number,
-  pinnedTabIds: readonly string[] = [],
-): string[] {
-  const normalized = capOpenTabsPreservingPinned(tabs, limit, pinnedTabIds);
-  if (!isValidTabId(nextTabId)) return normalized;
-  if (!currentTabId || currentTabId === nextTabId) {
-    return addOpenTab(normalized, nextTabId, limit, pinnedTabIds);
-  }
-
-  const tabsWithoutNext = normalized.filter((tab) => tab !== nextTabId);
-  const currentIndex = tabsWithoutNext.indexOf(currentTabId);
-  if (currentIndex < 0) return addOpenTab(tabsWithoutNext, nextTabId, limit, pinnedTabIds);
-
-  const next = [...tabsWithoutNext];
-  next[currentIndex] = nextTabId;
-  return capOpenTabsPreservingPinned(next, limit, pinnedTabIds);
-}
-
-export function openDocTab(
-  tabs: readonly string[],
-  docName: string,
-  options: OpenTabOptions,
-): { tabs: string[]; activeTabId: string } {
-  return openTab(tabs, docTabId(docName), options);
-}
-
-export function openTab(
-  tabs: readonly string[],
-  tabId: string,
-  { behavior, currentTabId, limit, pinnedTabIds = [] }: OpenTabOptions,
-): { tabs: string[]; activeTabId: string } {
-  const normalized = capOpenTabsPreservingPinned(tabs, limit, pinnedTabIds);
-  const canonicalTabId = baseTabId(tabId);
-  if (
-    currentTabId &&
-    normalized.includes(currentTabId) &&
-    baseTabId(currentTabId) === canonicalTabId
-  ) {
-    return {
-      tabs: normalized,
-      activeTabId: currentTabId,
-    };
-  }
-  // Focus an already-open tab for this target rather than opening a second tab
-  // for the same doc/folder/asset. Without this, opening a target that is open
-  // in a non-active tab — or while a blank new-tab is active — would mint a
-  // duplicate tab for the same file.
-  const existingTabId = normalized.find((openTabId) => baseTabId(openTabId) === canonicalTabId);
-  if (existingTabId) {
-    return {
-      tabs: normalized,
-      activeTabId: existingTabId,
-    };
-  }
-  if (behavior !== 'replace-active') {
-    return {
-      tabs: addOpenTab(normalized, canonicalTabId, limit, pinnedTabIds),
-      activeTabId: canonicalTabId,
-    };
-  }
-
-  return {
-    tabs: replaceOpenTab(normalized, currentTabId, canonicalTabId, limit, pinnedTabIds),
-    activeTabId: canonicalTabId,
-  };
-}
-
 export function removeOpenTab(tabs: readonly string[], tabId: string): string[] {
   return tabs.filter((tab) => tab !== tabId);
 }
@@ -682,9 +559,6 @@ export function filterOpenTabsForKnownTargets(
     // coordinates (not a page) — keep it like skill-file so a page-list sync
     // doesn't prune the open preview mid-session.
     if (tab.kind === 'skill-preview') return true;
-    // Skills is an ephemeral new-tab surface, not a standing tab: drop any
-    // persisted `skills:hub` so a page-list sync doesn't resurrect it.
-    if (tab.kind === 'skills') return false;
     const markdownStem = stripMarkdownTabExtension(tab.docName);
     return (
       pages.has(tab.docName) ||
@@ -739,33 +613,35 @@ export function remapOpenTabs(
   const next: string[] = [];
   const seen = new Set<string>();
   for (const tab of tabs) {
-    const { instanceSuffix } = splitTabInstance(tab);
+    if (!isValidTabId(tab)) continue;
     const parsed = parseEditorTabId(tab);
     // Skill-file tabs aren't renameable doc/folder/asset paths — pass through.
-    const mappedBase =
+    const mapped =
       parsed.kind === 'doc'
-        ? remapDocTabBase(parsed.docName, baseTabId(tab))
+        ? remapDocTabBase(parsed.docName, tab)
         : parsed.kind === 'folder'
           ? folderTabId(remapPathForFolderRenames(parsed.folderPath, folderMappings))
           : parsed.kind === 'asset'
             ? remapAssetTabBase(parsed.assetPath)
-            : baseTabId(tab);
-    const mapped = `${mappedBase}${instanceSuffix}`;
+            : tab;
     if (seen.has(mapped)) continue;
     seen.add(mapped);
     next.push(mapped);
     if (pinnedTabIds.length === 0 && next.length >= limit) break;
   }
   if (pinnedTabIds.length === 0) return next;
-  const remappedPinnedTabIds = pinnedTabIds.map((tabId) => {
+  const remappedPinnedTabIds = pinnedTabIds.flatMap((tabId) => {
+    if (!isValidTabId(tabId)) return [];
     const parsed = parseEditorTabId(tabId);
-    return parsed.kind === 'doc'
-      ? remapDocTabBase(parsed.docName, tabId)
-      : parsed.kind === 'folder'
-        ? folderTabId(remapPathForFolderRenames(parsed.folderPath, folderMappings))
-        : parsed.kind === 'asset'
-          ? remapAssetTabBase(parsed.assetPath)
-          : baseTabId(tabId);
+    const mapped =
+      parsed.kind === 'doc'
+        ? remapDocTabBase(parsed.docName, tabId)
+        : parsed.kind === 'folder'
+          ? folderTabId(remapPathForFolderRenames(parsed.folderPath, folderMappings))
+          : parsed.kind === 'asset'
+            ? remapAssetTabBase(parsed.assetPath)
+            : tabId;
+    return [mapped];
   });
   return capOpenTabsPreservingPinned(next, limit, remappedPinnedTabIds);
 }
@@ -845,69 +721,56 @@ export function nextActiveTabAfterCloseMany(
   return null;
 }
 
-export function parseEditorTabSessionState(value: unknown, limit: number): EditorTabSessionState {
+export function parseEditorTabSessionState(value: unknown): EditorTabSessionState {
   if (typeof value !== 'object' || value === null) {
     return emptyTabSessionState();
   }
   const record = value as Record<string, unknown>;
-  const rawOpenTabs = normalizeOpenTabs(record.openTabs, Number.MAX_SAFE_INTEGER);
-  const rawPinnedTabIds = normalizePinnedTabIds(record.pinnedTabIds, rawOpenTabs);
-  const openTabs =
-    rawPinnedTabIds.length === 0
-      ? normalizeOpenTabs(record.openTabs, limit)
-      : capOpenTabsPreservingPinned(rawOpenTabs, limit, rawPinnedTabIds);
-  const pinnedTabIds = normalizePinnedTabIds(record.pinnedTabIds, openTabs);
-  const activeTabId =
-    typeof record.activeTabId === 'string' && openTabs.includes(record.activeTabId)
-      ? record.activeTabId
-      : typeof record.activeDocName === 'string' && openTabs.includes(record.activeDocName)
-        ? record.activeDocName
-        : null;
-  const activeTab = activeTabId ? parseEditorTabId(activeTabId) : null;
+  if (!Array.isArray(record.panes)) return emptyTabSessionState();
   const rawActiveByMode: Record<string, unknown> =
     typeof record.activeTabByMode === 'object' &&
     record.activeTabByMode !== null &&
     !Array.isArray(record.activeTabByMode)
       ? (record.activeTabByMode as Record<string, unknown>)
       : {};
+  const workspace = parsePersistedEditorWorkspace(record);
+  return sessionStateFromWorkspace(
+    workspace,
+    typeof record.updatedAt === 'string' ? record.updatedAt : null,
+    rawActiveByMode,
+  );
+}
+
+function sessionStateFromWorkspace(
+  workspace: ReturnType<typeof parsePersistedEditorWorkspace>,
+  updatedAt: string | null,
+  rawActiveByMode: Record<string, unknown>,
+): EditorTabSessionState {
+  const openTabs = workspace.panes.flatMap((pane) => pane.openTabs);
   return {
-    openTabs,
-    pinnedTabIds,
-    activeDocName: activeTab?.kind === 'doc' ? activeTab.docName : null,
-    activeTabId,
     activeTabByMode: {
       files: surfaceActiveTab(rawActiveByMode.files, 'files', openTabs),
       skills: surfaceActiveTab(rawActiveByMode.skills, 'skills', openTabs),
     },
-    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : null,
+    updatedAt,
+    panes: workspace.panes,
+    focusedPaneId: workspace.focusedPaneId,
   };
 }
 
 export function createEditorTabSessionState(
-  openTabs: readonly string[],
-  activeTabId: string | null,
-  pinnedTabIds: readonly string[] = [],
+  workspace: EditorWorkspaceState,
   activeTabByMode: { files: string | null; skills: string | null } = {
     files: null,
     skills: null,
   },
   now: () => Date = () => new Date(),
 ): EditorTabSessionState {
-  const normalized = normalizeOpenTabs(openTabs, Number.MAX_SAFE_INTEGER);
-  const normalizedActiveTabId =
-    activeTabId && normalized.includes(activeTabId) ? activeTabId : null;
-  const activeTab = normalizedActiveTabId ? parseEditorTabId(normalizedActiveTabId) : null;
-  return {
-    openTabs: normalized,
-    pinnedTabIds: normalizePinnedTabIds(pinnedTabIds, normalized),
-    activeDocName: activeTab?.kind === 'doc' ? activeTab.docName : null,
-    activeTabId: normalizedActiveTabId,
-    activeTabByMode: {
-      files: surfaceActiveTab(activeTabByMode.files, 'files', normalized),
-      skills: surfaceActiveTab(activeTabByMode.skills, 'skills', normalized),
-    },
-    updatedAt: now().toISOString(),
-  };
+  return sessionStateFromWorkspace(
+    persistEditorWorkspace(workspace),
+    now().toISOString(),
+    activeTabByMode,
+  );
 }
 
 export function localTabSessionStorageKey(projectKey: string): string {
@@ -917,7 +780,6 @@ export function localTabSessionStorageKey(projectKey: string): string {
 export function readLocalTabSessionState(
   storage: Pick<Storage, 'getItem'> | null,
   key: string,
-  limit: number,
 ): EditorTabSessionState {
   if (!storage) {
     return emptyTabSessionState();
@@ -927,7 +789,7 @@ export function readLocalTabSessionState(
     if (!raw) {
       return emptyTabSessionState();
     }
-    return parseEditorTabSessionState(JSON.parse(raw), limit);
+    return parseEditorTabSessionState(JSON.parse(raw));
   } catch (err) {
     console.warn('[editor-tabs] failed to read local tab session:', err);
     return emptyTabSessionState();
@@ -941,7 +803,7 @@ export function writeLocalTabSessionState(
 ): void {
   if (!storage) return;
   try {
-    storage.setItem(key, JSON.stringify(state));
+    storage.setItem(key, JSON.stringify(parseEditorTabSessionState(state)));
   } catch (err) {
     console.warn('[editor-tabs] failed to write local tab session:', err);
     // Private browsing and quota failures should not affect editing.

@@ -70,6 +70,8 @@ const LEVEL_W = 12;
 const MARKER_SIZE = 6;
 
 export interface OutlineNavDetail {
+  /** The document that owns this navigation request. */
+  docName: string;
   index: number;
   slug: string;
   mode: 'wysiwyg' | 'source';
@@ -151,6 +153,7 @@ function OutlinePanelInner({
 
   function handleNav(index: number, slug: string) {
     const detail: OutlineNavDetail = {
+      docName,
       index,
       slug,
       mode: isSourceMode ? 'source' : 'wysiwyg',

@@ -1,7 +1,8 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
@@ -22,14 +23,18 @@ vi.doMock('@lingui/react/macro', () => ({
 let activeDocName: string | null = 'docs/notes';
 let activeTarget: unknown = { kind: 'doc' };
 let sidebarState: 'expanded' | 'collapsed' = 'expanded';
-let isDraggingRail = false;
+let paneCount = 1;
 let singleFile = false;
 // Captures the `input` prop EditorHeader hands to ShareButton.
 let lastShareInput: unknown;
 const onOpenSearch = vi.fn(() => {});
 
 vi.doMock('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ activeDocName, activeTarget }),
+  useDocumentContext: () => ({
+    activeDocName,
+    activeTarget,
+    panes: Array.from({ length: paneCount }, (_, index) => ({ id: `pane-${index}` })),
+  }),
 }));
 
 vi.doMock('@/lib/single-file-mode', () => ({
@@ -37,7 +42,7 @@ vi.doMock('@/lib/single-file-mode', () => ({
 }));
 
 vi.doMock('@/components/ui/sidebar', () => ({
-  useSidebar: () => ({ state: sidebarState, isDraggingRail }),
+  useSidebar: () => ({ state: sidebarState }),
   SidebarTrigger: ({ className, ...props }: ComponentProps<'button'>) => (
     <button type="button" data-testid="sidebar-trigger" className={className} {...props}>
       sidebar
@@ -47,10 +52,6 @@ vi.doMock('@/components/ui/sidebar', () => ({
 
 vi.doMock('@/components/AppMenubar', () => ({
   AppMenubar: () => <div data-testid="app-menubar" />,
-}));
-
-vi.doMock('./EditorTabs', () => ({
-  EditorTabs: () => <div data-testid="editor-tabs" />,
 }));
 
 vi.doMock('./ShareButton', () => ({
@@ -90,6 +91,10 @@ vi.doMock('./HelpPopover', () => ({
   HelpPopover: () => <button type="button">Resources</button>,
 }));
 
+vi.doMock('./InstanceBadge', () => ({
+  InstanceBadge: () => null,
+}));
+
 function setElectronHost(enabled: boolean) {
   Object.defineProperty(window, 'okDesktop', {
     configurable: true,
@@ -104,11 +109,11 @@ function setWindowsHost() {
   });
 }
 
-async function renderHeader() {
+async function renderHeader(tabs?: ReactNode) {
   const { EditorHeader } = await import('./EditorHeader');
   render(
     <TooltipProvider delayDuration={0}>
-      <EditorHeader onOpenSearch={onOpenSearch} />
+      <EditorHeader onOpenSearch={onOpenSearch}>{tabs}</EditorHeader>
     </TooltipProvider>,
   );
   return document.querySelector('header') as HTMLElement;
@@ -121,7 +126,7 @@ describe('EditorHeader runtime behavior', () => {
     activeDocName = 'docs/notes';
     activeTarget = { kind: 'doc' };
     sidebarState = 'expanded';
-    isDraggingRail = false;
+    paneCount = 1;
     singleFile = false;
     lastShareInput = undefined;
     onOpenSearch.mockClear();
@@ -201,21 +206,19 @@ describe('EditorHeader runtime behavior', () => {
     setElectronHost(true);
     sidebarState = 'collapsed';
     const header = await renderHeader();
+    const leadingZone = header.querySelector('[data-editor-header-leading-actions]') as HTMLElement;
 
     expect(header.getAttribute('data-electron-drag')).toBe('');
-    expectVisualClassTokens(header.className, [
-      '[-webkit-app-region:drag]',
-      'pl-[var(--ok-titlebar-reserve-left,1rem)]',
-      'motion-safe:transition-[padding]',
-    ]);
+    expectVisualClassTokens(header.className, ['[-webkit-app-region:drag]']);
+    expectVisualClassTokens(leadingZone.className, ['left-[var(--ok-titlebar-reserve-left,1rem)]']);
+    expectVisualClassTokensAbsent(leadingZone.className, ['motion-safe:transition-[left]']);
     expectVisualClassTokens(screen.getByTestId('sidebar-trigger').className, [
       '[-webkit-app-region:no-drag]',
     ]);
-    const leftZone = header.children.item(0) as HTMLElement;
     const workspaceNavigation = screen.getByRole('group', { name: 'Workspace navigation' });
     const search = screen.getByRole('button', { name: /^Search/ });
     const navigation = screen.getByTestId('navigation-history-controls');
-    const separator = leftZone.querySelector('[data-slot="separator"]') as HTMLElement;
+    const separator = leadingZone.querySelector('[data-slot="separator"]') as HTMLElement;
     expect(workspaceNavigation.contains(screen.getByTestId('sidebar-trigger'))).toBe(true);
     expect(workspaceNavigation.contains(search)).toBe(true);
     expect(workspaceNavigation.contains(navigation)).toBe(true);
@@ -229,18 +232,134 @@ describe('EditorHeader runtime behavior', () => {
       navigation.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expectVisualClassTokens(navigation.className, ['[-webkit-app-region:no-drag]']);
-    const rightZone = header.children.item(1) as HTMLElement;
+    const rightZone = header.querySelector('[data-editor-header-actions]') as HTMLElement;
     expectVisualClassTokens(rightZone.className, ['*:[-webkit-app-region:no-drag]']);
   });
 
-  test('Electron expanded sidebar keeps drag region but does not reserve traffic-light padding', async () => {
+  test('Electron expanded sidebar keeps drag region but does not reserve traffic-light space', async () => {
     setElectronHost(true);
     sidebarState = 'expanded';
     const header = await renderHeader();
+    const leadingZone = header.querySelector('[data-editor-header-leading-actions]') as HTMLElement;
 
     expectVisualClassTokens(header.className, ['[-webkit-app-region:drag]']);
-    expectVisualClassTokensAbsent(header.className, ['pl-[var(--ok-titlebar-reserve-left,1rem)]']);
+    expectVisualClassTokensAbsent(leadingZone.className, [
+      'left-[var(--ok-titlebar-reserve-left,1rem)]',
+    ]);
+    expect(header.style.getPropertyValue('--editor-header-leading-offset')).toBe('0px');
     expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
+  });
+
+  test('keeps the sidebar offset separate from the measured leading action width', async () => {
+    setElectronHost(true);
+    sidebarState = 'collapsed';
+    const offsetWidth = vi
+      .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.hasAttribute('data-editor-header-leading-actions')) return 224;
+        if (this.hasAttribute('data-editor-header-actions')) return 160;
+        return 0;
+      });
+
+    try {
+      const header = await renderHeader(<div>tabs</div>);
+
+      expect(header.style.getPropertyValue('--editor-header-leading-width')).toBe('224px');
+      expect(header.style.getPropertyValue('--editor-header-leading-offset')).toBe(
+        'var(--ok-titlebar-reserve-left, 1rem)',
+      );
+      const tabHost = header.querySelector('[data-editor-header-tabs]') as HTMLElement;
+      await waitFor(() => expectVisualClassTokensAbsent(tabHost.className, ['invisible']));
+    } finally {
+      offsetWidth.mockRestore();
+    }
+  });
+
+  test('keeps tabs hidden on the first render until header chrome is measured', async () => {
+    const { EditorHeader } = await import('./EditorHeader');
+    const markup = renderToStaticMarkup(
+      <TooltipProvider delayDuration={0}>
+        <EditorHeader onOpenSearch={onOpenSearch}>
+          <div>restored tabs</div>
+        </EditorHeader>
+      </TooltipProvider>,
+    );
+    const container = document.createElement('div');
+    container.innerHTML = markup;
+    const tabHost = container.querySelector('[data-editor-header-tabs]') as HTMLElement;
+
+    expectVisualClassTokens(tabHost.className, ['invisible']);
+  });
+
+  test('keeps restored tabs hidden until two settled layout frames have passed', async () => {
+    const frames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    try {
+      const header = await renderHeader(<div>restored tabs</div>);
+      const tabHost = header.querySelector('[data-editor-header-tabs]') as HTMLElement;
+
+      expectVisualClassTokens(tabHost.className, ['invisible']);
+      act(() => frames.shift()?.(0));
+      expectVisualClassTokens(tabHost.className, ['invisible']);
+      act(() => frames.shift()?.(16));
+      expectVisualClassTokensAbsent(tabHost.className, ['invisible']);
+    } finally {
+      requestFrame.mockRestore();
+      cancelFrame.mockRestore();
+    }
+  });
+
+  test('reserves only the header actions that overlap the editor-width tab strip', async () => {
+    const offsetWidth = vi
+      .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.tagName === 'HEADER') return 1_000;
+        if (this.hasAttribute('data-editor-header-tabs')) return 800;
+        if (this.hasAttribute('data-editor-header-actions')) return 300;
+        if (this.hasAttribute('data-editor-header-leading-actions')) return 100;
+        return 0;
+      });
+
+    try {
+      const header = await renderHeader(<div>tabs</div>);
+      expect(header.style.getPropertyValue('--editor-header-trailing-width')).toBe('100px');
+    } finally {
+      offsetWidth.mockRestore();
+    }
+  });
+
+  test('keeps sidebar chrome movement immediate after a post-mount state change', async () => {
+    setElectronHost(true);
+    sidebarState = 'collapsed';
+    const { EditorHeader } = await import('./EditorHeader');
+    const headerUi = () => (
+      <TooltipProvider delayDuration={0}>
+        <EditorHeader onOpenSearch={onOpenSearch}>
+          <div>restored tabs</div>
+        </EditorHeader>
+      </TooltipProvider>
+    );
+    const view = render(headerUi());
+    const header = document.querySelector('header') as HTMLElement;
+
+    const leadingZone = header.querySelector('[data-editor-header-leading-actions]') as HTMLElement;
+    expectVisualClassTokens(leadingZone.className, ['left-[var(--ok-titlebar-reserve-left,1rem)]']);
+    expectVisualClassTokensAbsent(leadingZone.className, ['motion-safe:transition-[left]']);
+
+    sidebarState = 'expanded';
+    view.rerender(headerUi());
+
+    expectVisualClassTokensAbsent(leadingZone.className, [
+      'left-[var(--ok-titlebar-reserve-left,1rem)]',
+      'motion-safe:transition-[left]',
+    ]);
   });
 
   test('Windows places Hide Files before the File menu', async () => {
@@ -249,8 +368,8 @@ describe('EditorHeader runtime behavior', () => {
 
     const files = screen.getByTestId('sidebar-trigger');
     const menubar = await screen.findByTestId('app-menubar');
-    const leftZone = header.children.item(0) as HTMLElement;
-    const separator = leftZone.querySelector('[data-slot="separator"]') as HTMLElement;
+    const leadingZone = header.querySelector('[data-editor-header-leading-actions]') as HTMLElement;
+    const separator = leadingZone.querySelector('[data-slot="separator"]') as HTMLElement;
 
     expect(files.compareDocumentPosition(menubar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
@@ -267,20 +386,6 @@ describe('EditorHeader runtime behavior', () => {
     expect(screen.queryByTestId('sidebar-trigger')).toBeNull();
   });
 
-  test('rail drag keeps the reserve but drops the padding transition so it snaps with the sidebar', async () => {
-    // During a rail drag the sidebar group runs duration-0 and collapses
-    // instantly; an animated reserve would lag behind and park the
-    // collapse/search controls under the traffic lights. The reserve must be
-    // present (collapsed) but the transition must be absent (snap).
-    setElectronHost(true);
-    sidebarState = 'collapsed';
-    isDraggingRail = true;
-    const header = await renderHeader();
-
-    expectVisualClassTokens(header.className, ['pl-[var(--ok-titlebar-reserve-left,1rem)]']);
-    expectVisualClassTokensAbsent(header.className, ['motion-safe:transition-[padding]']);
-  });
-
   test('single-file mode omits collapsed navigation history with the rest of project chrome', async () => {
     setElectronHost(true);
     sidebarState = 'collapsed';
@@ -292,13 +397,35 @@ describe('EditorHeader runtime behavior', () => {
     expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
   });
 
-  test('renders tabs and action cluster without project or asset-title chrome', async () => {
-    await renderHeader();
+  test('renders workspace tabs between the global action zones', async () => {
+    await renderHeader(<div data-testid="editor-tabs">tabs</div>);
 
-    expect(screen.getByTestId('editor-tabs')).toBeTruthy();
+    const tabHost = document.querySelector('[data-editor-header-tabs]');
+    expect(tabHost?.contains(screen.getByTestId('editor-tabs'))).toBe(true);
     expect(screen.queryByTestId('open-in-agent-menu')).toBeNull();
     expect(screen.queryByText('projectName')).toBeNull();
     expect(screen.queryByText('assetFileName')).toBeNull();
+  });
+
+  test('keeps the existing action-zone styling when workspace tabs share the header', async () => {
+    const header = await renderHeader(<div data-testid="editor-tabs">tabs</div>);
+    const leadingZone = header.querySelector('[data-editor-header-leading-actions]') as HTMLElement;
+    const trailingZone = header.querySelector('[data-editor-header-actions]') as HTMLElement;
+
+    expectVisualClassTokensAbsent(leadingZone.className, ['bg-muted/95']);
+    expectVisualClassTokensAbsent(trailingZone.className, ['bg-muted/95']);
+  });
+
+  test('keeps header actions inline with multiple editor panes', async () => {
+    paneCount = 3;
+    const header = await renderHeader();
+    const trailingZone = header.querySelector('[data-editor-header-actions]') as HTMLElement;
+
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+    expect(trailingZone.contains(screen.getByRole('button', { name: 'Share' }))).toBe(true);
+    expect(trailingZone.contains(screen.getByRole('button', { name: 'Settings' }))).toBe(true);
+    expect(trailingZone.contains(screen.getByRole('button', { name: 'Resources' }))).toBe(true);
+    expect(document.querySelector('[data-editor-header-overflow-actions]')).toBeNull();
   });
 
   test('an active doc yields a doc-scope share input', async () => {

@@ -96,11 +96,18 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
       listRecent: async () => [],
       removeRecent: async () => undefined,
       getSessionState: async () => ({
-        openTabs: [],
-        pinnedTabIds: [],
-        activeDocName: null,
-        activeTabId: null,
+        activeTabByMode: { files: null, skills: null },
         updatedAt: null,
+        panes: [
+          {
+            id: 'pane-main',
+            openTabs: [],
+            pinnedTabIds: [],
+            activeTabId: null,
+            size: 100,
+          },
+        ],
+        focusedPaneId: 'pane-main',
       }),
       setSessionState: async () => undefined,
       open: async () => undefined,

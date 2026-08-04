@@ -26,7 +26,8 @@ vi.doMock('./EditorBreadcrumb', () => ({
 // (no toggles set, binding absent) so the toolbar mounts standalone.
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
-    merged: null,
+    merged: {},
+    projectLocalSynced: true,
     projectLocalBinding: null,
   }),
 }));

@@ -42,6 +42,13 @@ async function expectAsset(page: Page, hash: string, assetName: string): Promise
   });
 }
 
+async function expectSkillsHome(page: Page): Promise<void> {
+  await expectHash(page, '#/__skills__');
+  await expect(page.getByRole('heading', { name: 'Create a skill.', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
 async function expectSkillFile(
   page: Page,
   hash: string,
@@ -166,10 +173,9 @@ test('browser history traverses every user-facing navigation target and truncate
     const sidebar = page.locator('[data-slot="sidebar-container"]');
     // The surface switch is an icon-first ToggleGroup (Radix radios, not
     // buttons), so address it by test id rather than by role+name.
-    // Switching to Skills clears the hash (the Skills base page) and so is its
-    // own history entry — the traversal below accounts for it.
+    // The Skills base page has its own canonical route and history entry.
     await sidebar.getByTestId('sidebar-skills-toggle').click();
-    await expectHash(page, '');
+    await expectSkillsHome(page);
     // Pierre's tree renders each label twice (a visible copy and an
     // aria-hidden overflow measurement copy), so take the first match.
     const projectGroup = sidebar.getByText('Project', { exact: true }).first();
@@ -189,7 +195,7 @@ test('browser history traverses every user-facing navigation target and truncate
     await page.goBack();
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
     await page.goBack();
-    await expectHash(page, '');
+    await expectSkillsHome(page);
     await page.goBack();
     await expectAsset(page, assetHash, assetName);
     await page.goBack();
@@ -210,7 +216,7 @@ test('browser history traverses every user-facing navigation target and truncate
     await page.goForward();
     await expectAsset(page, assetHash, assetName);
     await page.goForward();
-    await expectHash(page, '');
+    await expectSkillsHome(page);
     await page.goForward();
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
     await page.goForward();
@@ -219,7 +225,7 @@ test('browser history traverses every user-facing navigation target and truncate
     await page.goBack();
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
     await page.goBack();
-    await expectHash(page, '');
+    await expectSkillsHome(page);
     await page.goBack();
     await expectAsset(page, assetHash, assetName);
     // Back on the asset, the sidebar is still showing Skills — switch to Files
