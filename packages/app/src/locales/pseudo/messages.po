@@ -406,6 +406,10 @@ msgstr ""
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
 msgstr ""
 
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
+msgstr ""
+
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
 msgstr ""
@@ -2757,6 +2761,10 @@ msgstr ""
 
 #: src/components/FileSidebar.tsx
 msgid "Copy full path, No workspace"
+msgstr ""
+
+#: src/components/SkillPreviewTab.tsx
+msgid "Copy in"
 msgstr ""
 
 #: src/components/AppMenubar.tsx

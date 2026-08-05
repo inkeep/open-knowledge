@@ -367,13 +367,20 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
     const source = skillDir(s.files.skillMd);
     ensureDetectedFiles(s, source);
     const rel = sub && sub !== SKILL_MD_PATH ? sub : undefined;
-    // A Claude PLUGIN-CACHE resident is vendor-managed, versioned state — a
-    // plugin update clobbers any edit, so the editable in-place buffer is a
-    // trap there. Open the read-only detected preview instead (Adopt copies
-    // it to a real location the user owns).
-    if (s.provenance.plugin !== undefined) {
+    // Two ways the editable in-place buffer is a trap, both answered by the
+    // read-only preview whose one action is a copy the user owns:
+    //   - a Claude PLUGIN-CACHE resident is vendor-managed, versioned state, so
+    //     a plugin update clobbers any edit;
+    //   - a skill OUTSIDE the open project is only listed because worktree
+    //     enumeration resolves to the parent checkout, so an edit would land in
+    //     a different checkout on a different branch.
+    // Provenance answers only the first. Locality is a separate axis and gets a
+    // separate flavor — a non-plugin skill must not be dressed up as a plugin.
+    const trapped =
+      s.provenance.plugin !== undefined ? 'detected' : s.outsideProject ? 'foreign' : null;
+    if (trapped !== null) {
       openPreviewReplacing({
-        flavor: 'detected',
+        flavor: trapped,
         source,
         name: s.name,
         subtitle: s.sourceHarness ?? '',

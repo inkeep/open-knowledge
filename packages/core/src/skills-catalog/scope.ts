@@ -13,6 +13,9 @@
  *  - `isDetectedSkillInProject` decides whether a detected skill belongs to the
  *    open project at all — the server drops the ones that don't before the
  *    client ever buckets them.
+ *  - `isSkillOutsideOpenProject` decides whether a skill that DOES belong is
+ *    nonetheless stored outside the open tree, where editing it in place would
+ *    write to a different checkout.
  *
  * Pure + browser-safe (no `node:*`) so both the client sidebar and the server
  * endpoint share one source of truth.
@@ -63,4 +66,39 @@ export function isDetectedSkillInProject(
   const owner = provenance.projectPath;
   if (owner === undefined || projectDir === undefined) return true;
   return samePath(owner, projectDir);
+}
+
+/**
+ * Does this skill belong to the open project but live OUTSIDE its tree?
+ *
+ * Enumeration resolves a linked worktree to its parent checkout so the parent's
+ * project-scoped installs still match (see `isDetectedSkillInProject`). The
+ * cost is that a skill can pass that test while none of its files exist in the
+ * tree the user has open — editing it in place then writes to a different
+ * checkout, on a different branch. `contentDir` is the OPEN tree, never the
+ * resolved identity; passing the identity makes this vacuously false.
+ *
+ * PROJECT-bound only. A global skill sits at `~/.claude/skills/…`, outside
+ * `contentDir` by definition, and loads from every project — testing locality
+ * alone would condemn every global row.
+ *
+ * ponytail: string prefix, matching `samePath` above — both operands are
+ * already-absolute dirs. Realpath both at the server boundary if a symlinked
+ * project root ever needs to match.
+ *
+ * The `h !== c` conjunct is unreachable for today's callers (a skill `home` is
+ * always a directory NESTED under a harness root, never the project root
+ * itself) but is kept so the predicate answers "outside" correctly for any
+ * input rather than only for well-formed ones.
+ */
+export function isSkillOutsideOpenProject(
+  provenance: SkillProvenance,
+  home: string,
+  contentDir: string | undefined,
+): boolean {
+  if (contentDir === undefined) return false;
+  if (catalogRawScopeToOkScope(provenance.scope) !== 'project') return false;
+  const h = home.replace(/\/+$/, '');
+  const c = contentDir.replace(/\/+$/, '');
+  return h !== c && !h.startsWith(`${c}/`);
 }

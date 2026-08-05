@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createTestServer, pollUntil, type TestServer } from './test-harness.ts';
+import { createLinkedWorktree } from './worktree-test-harness.ts';
 
 /**
  * In-place editor-dir skills surface as first-class `/api/skills`
@@ -1363,5 +1364,71 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
       target: '.agents/skills',
     });
     expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * The `outsideProject` stamp on `/api/skills/installed`. The pure predicate is
+ * unit-tested in `core/skills-catalog/scope.test.ts`; what only a booted server
+ * can pin is WHICH directory the handler measures against. Three candidates sit
+ * at that call site and two are wrong:
+ *   - `identity`   — resolves a linked worktree to its parent, which makes the
+ *     comparison vacuous: the enumerated skills are always "inside" it;
+ *   - `contentDir` — under `content.dir: docs` this is a SUBDIRECTORY of the
+ *     project, so every project skill in the user's OWN checkout reads foreign.
+ * Only `projectDir ?? contentDir`, the open project root, is correct, and each
+ * test below fails on exactly one of the wrong two.
+ *
+ * Skills go under `.claude/skills` (an EDITOR project root). `.agents` is the
+ * vendor-neutral hub, deliberately not an editor id, so `projectHarnessHomes`
+ * does not scan it and a skill placed there is never enumerated at all.
+ */
+describe('outsideProject stamp on /api/skills/installed', () => {
+  let server: TestServer | undefined;
+  const trash: string[] = [];
+
+  type Installed = { skills: Array<{ name: string; outsideProject?: boolean }> };
+  const fetchInstalled = async (): Promise<Installed> => {
+    const res = await fetch(`http://127.0.0.1:${(server as TestServer).port}/api/skills/installed`);
+    expect(res.status).toBe(200);
+    return (await res.json()) as Installed;
+  };
+
+  afterEach(async () => {
+    await server?.cleanup();
+    server = undefined;
+    for (const d of trash.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  test('does NOT flag a project skill in the user own checkout under content.dir', async () => {
+    // `content.dir: docs`. The skill sits at <projectRoot>/.claude/skills/x —
+    // inside the project the user has open, but OUTSIDE contentDir. Measuring
+    // against contentDir flags it; measuring against the project root does not.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'ok-outside-proj-'));
+    trash.push(projectRoot);
+    const docsDir = join(projectRoot, 'docs');
+    mkdirSync(docsDir, { recursive: true });
+    writeSkill(projectRoot, '.claude/skills/homegrown', '# Homegrown');
+
+    server = await createTestServer({ contentDir: docsDir, projectDir: projectRoot });
+
+    const found = (await fetchInstalled()).skills.find((s) => s.name === 'homegrown');
+    expect(found).toBeDefined();
+    expect(found?.outsideProject).toBeUndefined();
+  });
+
+  test('flags a project skill that lives in the parent checkout of a linked worktree', async () => {
+    // The shape this feature exists for. A REAL linked worktree is required:
+    // `resolveProjectIdentity` only diverges from its input when `.git` is a
+    // pointer file, and that divergence is what surfaces the parent's skills here.
+    const wt = createLinkedWorktree({ prefix: 'ok-outside-wt', seedOkScaffold: true });
+    trash.push(wt.repoRoot, wt.worktreePath);
+    writeSkill(wt.repoRoot, '.claude/skills/fromparent', '# From the parent checkout');
+
+    server = await createTestServer({ contentDir: wt.worktreePath });
+
+    const found = (await fetchInstalled()).skills.find((s) => s.name === 'fromparent');
+    expect(found).toBeDefined();
+    expect(found?.outsideProject).toBe(true);
   });
 });

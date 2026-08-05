@@ -1673,6 +1673,7 @@ export {
 export {
   catalogRawScopeToOkScope,
   isDetectedSkillInProject,
+  isSkillOutsideOpenProject,
 } from './skills-catalog/scope.ts';
 export {
   parseSkillsShCatalogSource,

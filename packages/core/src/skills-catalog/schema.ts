@@ -82,6 +82,14 @@ export const CatalogSkillSchema = z.looseObject({
   home: z.string(),
   provenance: SkillProvenanceSchema,
   inert: SkillInertSchema,
+  /**
+   * True when `home` sits outside the OPEN project. Enumeration resolves a
+   * linked worktree to its parent checkout, so a parent's skills are listed
+   * here even though no file of theirs exists in the open tree. Only the server
+   * can decide this — it alone holds `contentDir` beside the resolved identity
+   * — so it is stamped there rather than derived by a client.
+   */
+  outsideProject: z.boolean().optional(),
 });
 export type CatalogSkill = z.infer<typeof CatalogSkillSchema>;
 

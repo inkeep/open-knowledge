@@ -162,8 +162,8 @@ export function skillPreviewTabId(target: SkillPreviewHashTarget): string {
 
 /**
  * Find an already-open preview tab for the SAME LOCAL skill, keyed by
- * flavor + name + level and IGNORING the volatile `source` path. Both
- * local-path flavors move under you: a built-in's bundle path can differ
+ * flavor + name + level and IGNORING the volatile `source` path. Every
+ * local-path flavor moves under you: a built-in's bundle path can differ
  * between skills-list refetches, and a detected skill's path carries the
  * PLUGIN VERSION (`…/plugins/cache/<marketplace>/<plugin>/1.2.679/skills/<name>`)
  * or moves when its installed copy is deleted and it is re-detected at its
@@ -180,7 +180,7 @@ export function skillPreviewTabId(target: SkillPreviewHashTarget): string {
  */
 export function findLocalSkillPreviewTabId(
   openTabs: readonly string[],
-  flavor: Extract<SkillPreviewFlavor, 'builtin' | 'detected'>,
+  flavor: Extract<SkillPreviewFlavor, 'builtin' | 'detected' | 'foreign'>,
   name: string,
   scope: SkillScope,
 ): string | null {

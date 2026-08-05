@@ -106,6 +106,7 @@ import {
   isManagedArtifactDocName,
   isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
+  isSkillOutsideOpenProject,
   LEGACY_SKILL_STORE_ROOT,
   LINKABLE_ASSET_EXTENSIONS,
   type LifecycleStatus,
@@ -7135,13 +7136,31 @@ export function createApiExtension(
         const globalInPlaceNames = new Set(scanGlobalInPlaceSkills(skillsHome).map((s) => s.name));
         const result = {
           ...catalog,
-          skills: catalog.skills.filter(
-            (s) =>
-              isDetectedSkillInProject(s.provenance, identity) &&
-              !(s.provenance.scope === 'project'
-                ? inPlaceNames.has(s.name)
-                : globalInPlaceNames.has(s.name)),
-          ),
+          skills: catalog.skills
+            .filter(
+              (s) =>
+                isDetectedSkillInProject(s.provenance, identity) &&
+                !(s.provenance.scope === 'project'
+                  ? inPlaceNames.has(s.name)
+                  : globalInPlaceNames.has(s.name)),
+            )
+            // `identity` is the PARENT checkout for a linked worktree, so a skill
+            // can match the project while living in a tree the user does not have
+            // open. Stamp that so the client can refuse an in-place edit that would
+            // land in another checkout on another branch.
+            //
+            // The reference is the OPEN PROJECT ROOT — `projectDir ?? contentDir`,
+            // the same expression `identity` is derived from but WITHOUT the
+            // worktree→parent resolution. Not `identity` (that resolution makes the
+            // test vacuously false), and not `contentDir`: under `content.dir: docs`
+            // contentDir is `<projectDir>/docs` while harness skill dirs sit at
+            // `<projectDir>/.codex/skills/…`, so every project skill in the user's
+            // OWN checkout would be flagged foreign.
+            .map((s) =>
+              isSkillOutsideOpenProject(s.provenance, s.home, projectDir ?? contentDir)
+                ? { ...s, outsideProject: true }
+                : s,
+            ),
         };
         successResponse(res, 200, SkillsInstalledSuccessSchema, result, {
           handler: 'skills-installed',

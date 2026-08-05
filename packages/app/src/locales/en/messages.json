@@ -2039,6 +2039,7 @@
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
     "XAyxsa": ["Check out remote branch"],
+    "XBgr2S": ["Copy in"],
     "XDzAnp": ["Opens in a new tab"],
     "XH30C4": ["document"],
     "XIltnd": ["A skill named \"", ["trimmed"], "\" already exists here"],
@@ -3829,6 +3830,12 @@
     "yg_6wQ": ["Search failed. Try again."],
     "yh5-4s": ["Click to add and fill them in"],
     "yhI6P0": ["Moved \"", ["0"], "\" to ", ["1"]],
+    "yhYv9j": [
+      ["boldName"],
+      " lives outside this project, at <0>",
+      ["source"],
+      "</0> — agents running here can't load it. Copy it in to edit."
+    ],
     "yhdqox": [
       "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
     ],

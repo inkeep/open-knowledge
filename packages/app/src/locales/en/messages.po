@@ -406,6 +406,10 @@ msgstr "{behind} behind origin"
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
 msgstr "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
 
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
+msgstr "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
+
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
 msgstr "{chars, plural, one {char} other {chars}}"
@@ -2762,6 +2766,10 @@ msgstr "Copy full path"
 #: src/components/FileSidebar.tsx
 msgid "Copy full path, No workspace"
 msgstr "Copy full path, No workspace"
+
+#: src/components/SkillPreviewTab.tsx
+msgid "Copy in"
+msgstr "Copy in"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx

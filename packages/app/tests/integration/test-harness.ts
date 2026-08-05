@@ -165,9 +165,11 @@ export interface CreateTestServerOptions {
    */
   ephemeral?: boolean;
   /**
-   * Explicit projectDir for the split-directory (ephemeral) shape. Defaults to
-   * a throwaway tmpdir the harness creates and removes. Only meaningful with
-   * `ephemeral: true`.
+   * Explicit projectDir, distinct from `contentDir`. Two shapes need it: the
+   * ephemeral single-file mode (where it is a throwaway the harness creates and
+   * removes when not supplied), and the ordinary `content.dir: docs` layout,
+   * where `contentDir` is a SUBDIRECTORY of a real project root. Independent of
+   * `ephemeral` — a split directory pair does not imply "no project".
    */
   projectDir?: string;
   /**
@@ -239,9 +241,11 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
   // throwaway projectDir distinct from contentDir (the user's real dir). The
   // harness creates + removes it unless the caller supplies one.
   const createdProjectDir = ephemeral && options.projectDir === undefined;
-  const projectDir = ephemeral
-    ? realpathSync(options.projectDir ?? mkdtempSync(join(tmpdir(), 'ok-ephemeral-test-')))
-    : contentDir;
+  const projectDir = options.projectDir
+    ? realpathSync(options.projectDir)
+    : ephemeral
+      ? realpathSync(mkdtempSync(join(tmpdir(), 'ok-ephemeral-test-')))
+      : contentDir;
 
   if (!ephemeral) {
     // Ensure test-doc.md exists (persistence expects it for initial load).

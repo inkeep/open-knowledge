@@ -209,13 +209,14 @@ export function skillsFromHash(hash: string): boolean {
  * skill, opened before it exists as a project doc — so its hash carries the
  * import coordinates the preview + Manage need rather than a doc name. `flavor`
  * selects the acquire path (`explore` = skills.sh `owner/repo`; `detected` = a
- * skill found in another tool, managed by name + harness). Each coordinate is
+ * skill found in another tool, managed by name + harness; `foreign` = the same
+ * but living outside the open project, where the one action is a copy IN). Each coordinate is
  * one percent-encoded segment (source/subtitle may themselves contain `/`).
  */
 const SKILL_PREVIEW_HASH_PREFIX = '#/__skill-preview__/';
 /** The skill-preview surfaces, single-sourced. Add a flavor here and every
  *  hash/tab-id validator + target type picks it up. */
-const SKILL_PREVIEW_FLAVORS = ['explore', 'detected', 'builtin'] as const;
+const SKILL_PREVIEW_FLAVORS = ['explore', 'detected', 'builtin', 'foreign'] as const;
 export type SkillPreviewFlavor = (typeof SKILL_PREVIEW_FLAVORS)[number];
 /** Type-guard for an untrusted flavor (from a `window.location` hash or a
  *  persisted, hand-editable tab id). */

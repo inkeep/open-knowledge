@@ -31,7 +31,9 @@ import { discoverSkillsInSource, fetchSkillDetail } from '@/lib/skills-api';
 
 interface Props {
   /** `explore` = a skills.sh catalog entry; `detected` = a skill found in another
-   *  tool; `builtin` = one of OK's own shipped skills (read-only, nothing to import). */
+   *  tool; `builtin` = one of OK's own shipped skills (read-only, nothing to import);
+   *  `foreign` = a skill found in another tool but stored outside the open project,
+   *  so the one action is a copy IN rather than an in-place edit. */
   flavor: SkillPreviewFlavor;
   /** skills.sh source identifier for Explore, or a local directory for Detected. */
   source: string;
@@ -171,6 +173,10 @@ export function SkillPreviewTab({
       : null;
   const detected = flavor === 'detected';
   const builtin = flavor === 'builtin';
+  // Lives outside the open project (parent checkout of a linked worktree, or any
+  // other tree): read-only here, and the action copies it IN rather than editing
+  // a file this project does not own.
+  const foreign = flavor === 'foreign';
   const targetScope: SkillScope = level ?? 'project';
   // Explore and plugin-copy previews install through the shared per-agent menu.
   // Import is implied on the first destination choice, so opening/cancelling the
@@ -195,7 +201,8 @@ export function SkillPreviewTab({
   // (which only tracks ITS own import-then-place cycle) never sees it.
   const [bulkInstalledName, setBulkInstalledName] = useState<string | null>(null);
   const landedName = previewInstall.importedName ?? bulkInstalledName;
-  const importedNow = (flavor === 'explore' || pluginInfo !== null) && landedName !== null;
+  const importedNow =
+    (flavor === 'explore' || foreign || pluginInfo !== null) && landedName !== null;
   useEffect(() => {
     if (!importedNow || redirectedRef.current) return;
     redirectedRef.current = true;
@@ -230,6 +237,14 @@ export function SkillPreviewTab({
       {boldName} is part of the{' '}
       <strong className="font-medium text-foreground">{pluginInfo.plugin}</strong> plugin
       {pluginVersion} — read-only. {boldHarness} replaces plugin files on update.
+    </Trans>
+  ) : foreign ? (
+    // Names the CHECKOUT, not the scope: scope reads identically for a skill
+    // that works here and one that does not, so quoting it misleads.
+    <Trans>
+      {boldName} lives outside this project, at{' '}
+      <strong className="font-medium text-foreground">{source}</strong> — agents running here can't
+      load it. Copy it in to edit.
     </Trans>
   ) : detected ? (
     // No action: a detected skill is edited in place from the sidebar.
@@ -276,17 +291,29 @@ export function SkillPreviewTab({
             <Button
               size="sm"
               disabled={previewInstall.toggles.installing}
-              data-testid={pluginInfo ? 'skill-preview-edit-a-copy' : undefined}
+              data-testid={
+                pluginInfo
+                  ? 'skill-preview-edit-a-copy'
+                  : foreign
+                    ? 'skill-preview-copy-in'
+                    : undefined
+              }
             >
               {previewInstall.toggles.installing ? (
-                pluginInfo ? (
+                pluginInfo || foreign ? (
                   <Trans>Copying</Trans>
                 ) : (
                   <Trans>Installing</Trans>
                 )
               ) : (
                 <>
-                  {pluginInfo ? <Trans>Edit a copy</Trans> : <Trans>Install</Trans>}
+                  {pluginInfo ? (
+                    <Trans>Edit a copy</Trans>
+                  ) : foreign ? (
+                    <Trans>Copy in</Trans>
+                  ) : (
+                    <Trans>Install</Trans>
+                  )}
                   <ChevronDown className="size-4 opacity-60" aria-hidden />
                 </>
               )}
