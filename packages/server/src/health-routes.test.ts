@@ -165,6 +165,7 @@ describe('/readyz provider states (mounted harness)', () => {
     const httpServer = createServer();
     const mount = mountMcpAndApi({
       httpServer,
+      nativeApi: undefined,
       hocuspocus: fakeHocuspocus,
       log: fakeLog as never,
       ...(readiness === undefined
@@ -208,6 +209,7 @@ describe('/readyz provider states (mounted harness)', () => {
     const httpServer = createServer();
     const mount = mountMcpAndApi({
       httpServer,
+      nativeApi: undefined,
       hocuspocus: fakeHocuspocus,
       log: fakeLog as never,
       health: {

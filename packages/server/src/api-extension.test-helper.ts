@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ApiExtensionOptions } from './api-extension.ts';
 import { createApiExtension as createApiExtensionBase } from './api-extension.ts';
 import type { BacklinkIndex } from './backlink-index.ts';
@@ -219,11 +220,24 @@ export function createApiExtension(
     },
 ): ReturnType<typeof createApiExtensionBase> {
   const { backlinkIndex, tagIndex, derivedDocumentIndex, ...apiOptions } = options;
-  return createApiExtensionBase({
+  const extension = createApiExtensionBase({
     ...apiOptions,
     durabilityState: new DocumentDurabilityState(),
     derivedDocumentIndex:
       derivedDocumentIndex ??
       createLegacyDerivedIndexPort(backlinkIndex, tagIndex, options.signalChannel),
   });
+  // Mirror the production composition (Hono native mount ABOVE the strangler
+  // catch-all): natively-routed groups dispatch first, everything else flows
+  // through the legacy onRequest hook. Tests that drive `ext.onRequest`
+  // directly keep reaching ported routes through the same shared pipeline.
+  const legacyOnRequest = extension.onRequest?.bind(extension);
+  return {
+    ...extension,
+    async onRequest(payload: { request: IncomingMessage; response: ServerResponse }) {
+      if (await extension.nativeApi.dispatch(payload.request, payload.response)) return;
+      // biome-ignore lint/suspicious/noExplicitAny: Hocuspocus `onRequest` has no exported payload type
+      await legacyOnRequest?.(payload as any);
+    },
+  };
 }

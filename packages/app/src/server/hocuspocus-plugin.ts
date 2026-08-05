@@ -224,8 +224,13 @@ export function hocuspocusPlugin(): Plugin {
         }
       });
 
-      const { hocuspocus, sessionManager, agentFocusBroadcaster, agentPresenceBroadcaster } =
-        currentSrv;
+      const {
+        hocuspocus,
+        nativeApi,
+        sessionManager,
+        agentFocusBroadcaster,
+        agentPresenceBroadcaster,
+      } = currentSrv;
 
       // ACP thread host — the dev twin of boot.ts's construction (the
       // documented dual-upgrade-handler drift hazard applies to this whole
@@ -375,6 +380,11 @@ export function hocuspocusPlugin(): Plugin {
             }
             // Method not GET/HEAD — fall through to 404.
           }
+          // Natively-routed /api/* groups (ServerInstance.nativeApi) dispatch
+          // BEFORE the legacy Hocuspocus hook — the dev twin of the Hono
+          // app's above-the-catch-all mount in `mountMcpAndApi`. The shared
+          // pipeline runs either way, so gate behavior is identical.
+          if (await nativeApi.dispatch(req, res)) return;
           // biome-ignore lint/suspicious/noExplicitAny: Hocuspocus `hooks()` has no exported payload type for onRequest
           await hocuspocus.hooks('onRequest', { request: req, response: res } as any);
           // Streaming NDJSON handlers call `writeHead(200)` and return

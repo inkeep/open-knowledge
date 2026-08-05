@@ -132,6 +132,7 @@ import type {
 } from './github-permissions.ts';
 import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
 import { errnoCode } from './http/handler-utils.ts';
+import type { NativeApiHandle } from './http/http-app.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkillDirs } from './in-place-skills.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
@@ -401,6 +402,13 @@ export interface ServerOptions {
 export interface ServerInstance {
   hocuspocus: Hocuspocus;
   sessionManager: AgentSessionManager;
+  /**
+   * Natively-routed /api/* groups (paths + the shared admission pipeline
+   * bound to their table). Callers that mount HTTP dispatch — `bootServer`
+   * via `mountMcpAndApi`, the Vite dev plugin, the integration harness —
+   * MUST wire this in, or the ported routes 404 out of the legacy dispatch.
+   */
+  nativeApi: NativeApiHandle;
   cc1Broadcaster: CC1Broadcaster;
   agentFocusBroadcaster: AgentFocusBroadcaster;
   agentPresenceBroadcaster: AgentPresenceBroadcaster;
@@ -1047,6 +1055,10 @@ export function createServer(options: ServerOptions): ServerInstance {
   let lossRing: LossCaptureRing | undefined;
   let hocuspocus: Hocuspocus;
   let sessionManager: AgentSessionManager;
+  // Natively-routed /api/* groups exposed by the api extension; handed to
+  // `mountMcpAndApi` (and the Vite dev plugin) so the Hono app can claim the
+  // ported paths ahead of the strangler catch-all.
+  let nativeApi: NativeApiHandle;
   // Set at boot when the loss detector is enabled; shared by the agent-session
   // manager (agent-undo) and the file-watcher intake path (dirty-open-doc).
   let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
@@ -1940,6 +1952,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
     });
     hocuspocus.configuration.extensions.push(apiExtension);
+    nativeApi = apiExtension.nativeApi;
 
     // Bridge loss-hardening wiring: resolve the defer-guard kill-switch
     // and construct the content-free loss ring once at boot. Reading the
@@ -4558,6 +4571,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     hocuspocus,
     durabilityState,
     sessionManager,
+    nativeApi,
     cc1Broadcaster,
     agentFocusBroadcaster,
     agentPresenceBroadcaster,

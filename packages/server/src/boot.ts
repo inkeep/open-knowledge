@@ -918,6 +918,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const mount = mountMcpAndApi({
     httpServer,
     hocuspocus,
+    nativeApi: serverInstance.nativeApi,
     mcpHttpHandler,
     remoteAccess,
     health: {

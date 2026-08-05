@@ -28,7 +28,11 @@ const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
  * `api-extension.ts` would otherwise escape these rules silently rather than
  * failing anything.
  */
-const HANDLER_SOURCES = ['api-extension.ts', 'skills-sh-handlers.ts'].map((file) => ({
+const HANDLER_SOURCES = [
+  'api-extension.ts',
+  'skills-sh-handlers.ts',
+  'http/link-graph-routes.ts',
+].map((file) => ({
   file,
   text: readFileSync(join(SERVER_SRC, file), 'utf8'),
 }));

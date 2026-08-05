@@ -16,6 +16,20 @@ import { describe, expect, test } from 'vitest';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
+/**
+ * Handlers and route records no longer all live in `api-extension.ts`: lifted
+ * groups (`skills-sh-handlers.ts`, and native Wave 2 groups like
+ * `http/link-graph-routes.ts`, which carry their OWN `const routes:` record)
+ * must stay inside the sweep, mirroring `error-envelope-coverage.test.ts` —
+ * otherwise a mutating handler added to a lifted file would ship without a
+ * categorization decision.
+ */
+const HANDLER_SOURCES = [
+  source,
+  ...['skills-sh-handlers.ts', 'http/link-graph-routes.ts'].map((file) =>
+    readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8'),
+  ),
+];
 const ACTOR_HELPER_PATH = join(
   import.meta.dirname,
   '../../../server/src/extract-actor-identity.ts',
@@ -416,34 +430,44 @@ const EXEMPT_HANDLERS = new Set([
 function extractHandlerBody(handlerName: string): string | null {
   // Legacy shape: `async function handle...(`. Migrated shape:
   // `const handle... = withValidation(...)`. Both must be supported as the
-  // cluster migrations land. Pick whichever appears first in the file.
+  // cluster migrations land. Pick whichever source declares it (a lifted
+  // handler is not in `api-extension.ts`), then whichever shape appears
+  // first in that source.
   const fnDecl = `async function ${handlerName}(`;
   const constDecl = `const ${handlerName} = withValidation(`;
-  const fnIdx = source.indexOf(fnDecl);
-  const constIdx = source.indexOf(constDecl);
+  const owner =
+    HANDLER_SOURCES.find((text) => text.includes(fnDecl) || text.includes(constDecl)) ?? source;
+  const fnIdx = owner.indexOf(fnDecl);
+  const constIdx = owner.indexOf(constDecl);
   let start = -1;
   if (fnIdx !== -1) start = fnIdx;
   else if (constIdx !== -1) start = constIdx;
   if (start === -1) return null;
-  const nextFn = source.indexOf('\n  async function handle', start + 1);
-  const nextConst = source.indexOf('\n  const handle', start + 1);
+  const nextFn = owner.indexOf('\n  async function handle', start + 1);
+  const nextConst = owner.indexOf('\n  const handle', start + 1);
   // Bound the last handler at the route table so the onRequest extension
   // body (which uses `errorResponse(...)` for the /api/* Origin gate) is
-  // never folded into the handler slice.
-  const nextRoutes = source.indexOf('\n  const routes:', start + 1);
-  const candidates = [nextFn, nextConst, nextRoutes].filter((i) => i !== -1);
+  // never folded into the handler slice. Factory modules end their handler
+  // run at the returned record instead, so bound on that too.
+  const nextRoutes = owner.indexOf('\n  const routes:', start + 1);
+  const nextReturn = owner.indexOf('\n  return {', start + 1);
+  const candidates = [nextFn, nextConst, nextRoutes, nextReturn].filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
-  return source.slice(start, next === -1 ? source.length : next);
+  return owner.slice(start, next === -1 ? owner.length : next);
 }
 
 function extractStaticRouteHandlerNames(): string[] {
-  const routesStart = source.indexOf('\n  const routes:');
-  const enableTestRoutes = source.indexOf('\n  if (enableTestRoutes)', routesStart);
-  const slice =
-    routesStart === -1
-      ? ''
-      : source.slice(routesStart, enableTestRoutes === -1 ? source.length : enableTestRoutes);
-  return [...slice.matchAll(/:\s*(handle\w+)/g)].map((m) => m[1]);
+  // Every source's `const routes:` record participates — the legacy dispatch
+  // record in `api-extension.ts` AND each native group's own record.
+  return HANDLER_SOURCES.flatMap((text) => {
+    const routesStart = text.indexOf('\n  const routes:');
+    if (routesStart === -1) return [];
+    const enableTestRoutes = text.indexOf('\n  if (enableTestRoutes)', routesStart);
+    const nativeTable = text.indexOf('\n  const table', routesStart);
+    const bounds = [enableTestRoutes, nativeTable].filter((i) => i !== -1);
+    const slice = text.slice(routesStart, bounds.length === 0 ? text.length : Math.min(...bounds));
+    return [...slice.matchAll(/:\s*(handle\w+)/g)].map((m) => m[1]);
+  });
 }
 
 describe('attribution sweep coverage (FR-5, D42)', () => {

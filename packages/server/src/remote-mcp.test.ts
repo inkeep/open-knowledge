@@ -101,6 +101,7 @@ async function bootRemoteRig(
   const httpServer: HttpServer = createHttpServer();
   const mount: MountMcpAndApiHandle = mountMcpAndApi({
     httpServer,
+    nativeApi: undefined,
     hocuspocus,
     mcpHttpHandler: handler,
     remoteAccess,

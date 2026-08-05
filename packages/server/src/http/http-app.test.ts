@@ -1,7 +1,11 @@
 import { createServer } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
-import { type CreateHttpAppOptions, createHttpApp } from './http-app.ts';
+import {
+  assertSingleRouterOwnership,
+  type CreateHttpAppOptions,
+  createHttpApp,
+} from './http-app.ts';
 
 /**
  * Adapter-boundary pins the composition suite cannot see: these assert
@@ -85,5 +89,36 @@ describe('createHttpApp adapter boundary', () => {
     } finally {
       await rig.close();
     }
+  });
+});
+
+describe('assertSingleRouterOwnership', () => {
+  test('throws when a native path also exists in the legacy record', () => {
+    expect(() =>
+      assertSingleRouterOwnership(['/api/backlinks', '/api/tags/*'], {
+        '/api/backlinks': async () => {},
+      }),
+    ).toThrow(
+      'route(s) present in both the legacy dispatch record and a native route group: /api/backlinks',
+    );
+  });
+
+  test('throws when a legacy record key falls under a native wildcard namespace', () => {
+    expect(() =>
+      assertSingleRouterOwnership(['/api/tags/*'], {
+        '/api/tags/special': async () => {},
+      }),
+    ).toThrow('/api/tags/special (under a native wildcard)');
+  });
+
+  test('passes for disjoint sets, including a legacy key at the wildcard base', () => {
+    expect(() =>
+      assertSingleRouterOwnership(['/api/backlinks', '/api/tags/*'], {
+        '/api/documents': async () => {},
+        // The base path is OUTSIDE the wildcard's namespace ('/api/tags/*'
+        // claims '/api/tags/…', not '/api/tags' itself).
+        '/api/tags': async () => {},
+      }),
+    ).not.toThrow();
   });
 });

@@ -31,16 +31,17 @@ import type { AgentSessionManager } from './agent-sessions.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
 import { createCollaborationHost } from './collaboration-host.ts';
 import { errorResponse } from './http/error-response.ts';
-import { createHttpApp, type HealthProvider } from './http/http-app.ts';
+import {
+  admitRequestSurface,
+  createHttpApp,
+  type HealthProvider,
+  type NativeApiHandle,
+} from './http/http-app.ts';
 import type { PinoLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
-import {
-  hasForwardingHeaders,
-  isRemoteAdmitted,
-  type ResolvedRemoteAccess,
-} from './remote-access.ts';
+import { hasForwardingHeaders, type ResolvedRemoteAccess } from './remote-access.ts';
 
 export type { ReadinessState } from './http/http-app.ts';
 
@@ -140,6 +141,16 @@ export interface MountMcpAndApiOptions {
    */
   health?: HealthProvider;
   /**
+   * Natively-served `/api/*` route groups (the `ServerInstance.nativeApi`
+   * handle). When supplied, the Hono app claims these paths ahead of the
+   * strangler catch-all and runs them through the shared admission pipeline.
+   * Required-but-undefinable rather than optional: forgetting the wiring at
+   * a mount site would silently 404 every ported route out of the legacy
+   * dispatch, so passing `undefined` (harnesses that never touch ported
+   * routes) must be an explicit decision, not an omission.
+   */
+  nativeApi: NativeApiHandle | undefined;
+  /**
    * Resolved `remote:` config (null/undefined ⇒ remote access disabled).
    * When set, EVERY surface (`/mcp`, `/api/*`, `/collab`, content assets,
    * the SPA) admits requests whose Host is either a loopback name or the
@@ -215,30 +226,11 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
 
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
-    // Tripwire: proxy-forwarding headers on a server that never opted into
-    // remote access mean a tunnel is pointed at us. Refuse with the fix
-    // instruction — the alternative is silently serving a public tunnel with
-    // full local trust, decided by whether the tunnel rewrites Host.
-    if (remoteAccess === undefined && hasForwardingHeaders(req)) {
-      errorResponse(
-        res,
-        403,
-        'urn:ok:error:host-not-allowed',
-        'Proxied request refused: this server was not started for remote access. Restart with `ok start --remote` to serve through a tunnel.',
-        { handler: 'mcp-mount' },
-      );
-      return;
-    }
-    // With remote access enabled, ONE admit decision covers every surface
-    // (trust-the-tunnel — see remote-access.ts): loopback socket + Host on
-    // the allowlist (loopback names or the tunnel's public host). Refusals
-    // are wrong-Host callers (DNS-rebound pages), not auth failures.
-    if (remoteAccess !== undefined && !isRemoteAdmitted(req, remoteAccess)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'mcp-mount',
-      });
-      return;
-    }
+    // Surface-wide admission prelude — the proxied-request tripwire plus the
+    // remote-access admit decision. Shared with the natively-mounted /api/*
+    // routes (`admitRequestSurface` in http-app.ts), which sit above the
+    // strangler catch-all and would otherwise bypass it.
+    if (!admitRequestSurface(req, res, remoteAccess, 'mcp-mount')) return;
     if (mcpHttpHandler !== undefined && url === '/mcp') {
       const origin = req.headers.origin;
       const sessionId = Array.isArray(req.headers['mcp-session-id'])
@@ -445,12 +437,14 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     socket.destroy();
   };
 
-  // The canonical Hono app owns top-level routing (health natively; every
-  // unmigrated surface falls through its catch-all into `onRequest`
-  // unchanged). The WS upgrade path stays a raw listener — it never routes
-  // through HTTP dispatch.
+  // The canonical Hono app owns top-level routing (health + ported /api/*
+  // groups natively; every unmigrated surface falls through its catch-all
+  // into `onRequest` unchanged). The WS upgrade path stays a raw listener —
+  // it never routes through HTTP dispatch.
   const { requestListener } = createHttpApp({
     health: opts.health,
+    nativeApi: opts.nativeApi,
+    remoteAccess,
     legacyDispatch: onRequest,
     log,
   });

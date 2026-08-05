@@ -47,13 +47,10 @@ import {
   AgentWriteSuccessSchema,
   ApiConfigSuccessSchema,
   applyPatchToFm,
-  BacklinkCountsSuccessSchema,
-  BacklinksSuccessSchema,
   type BatchEntryError,
   BranchInfoResponseSchema,
   CheckoutRequestSchema,
   CheckoutResponseSchema,
-  CLIENT_VERSION_HEADER,
   ClientLogsRequestSchema,
   ClientLogsSuccessSchema,
   CONFIG_DOC_NAME_OKIGNORE,
@@ -72,7 +69,6 @@ import {
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
-  DeadLinksSuccessSchema,
   DeletePathRequestSchema,
   DeletePathSuccessSchema,
   type DiskEditReconciledWarning,
@@ -91,7 +87,6 @@ import {
   FolderConfigGetSuccessSchema,
   FolderConfigPutRequestSchema,
   FolderConfigPutSuccessSchema,
-  ForwardLinksSuccessSchema,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemasListSuccessSchema,
@@ -114,7 +109,6 @@ import {
   LEGACY_SKILL_STORE_ROOT,
   LINKABLE_ASSET_EXTENSIONS,
   type LifecycleStatus,
-  LinkGraphSuccessSchema,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
   type LinksValidationSetting,
@@ -237,7 +231,6 @@ import {
   SkillTargetsPutSuccessSchema,
   SkillUninstallRequestSchema,
   SkillUninstallSuccessSchema,
-  SuggestLinksSuccessSchema,
   SYSTEM_DOC_NAME,
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
@@ -249,8 +242,6 @@ import {
   scanHeadingLine,
   skillLiveDocName,
   stripFrontmatter,
-  TagsForNameSuccessSchema,
-  TagsListSuccessSchema,
   TemplateDeleteSuccessSchema,
   TemplateGetSuccessSchema,
   TemplateImportRequestSchema,
@@ -338,7 +329,6 @@ import {
   snapshotBlocks,
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
-import { isAllowedApiOrigin } from './api-origin.ts';
 import { collectReferencedAssets } from './asset-references.ts';
 import { collabUrlFromRequestHeaders } from './collab-bootstrap-url.ts';
 import { createCommentApi } from './comments/comment-api.ts';
@@ -379,7 +369,7 @@ import {
   toContentDivergenceWarning,
 } from './content-divergence-gate.ts';
 import { recordContributor } from './contributor-tracker.ts';
-import { deriveDetection, embedProbeRing, recordEmbedProbe } from './embed-probe.ts';
+import { deriveDetection, embedProbeRing } from './embed-probe.ts';
 import {
   FileEmbeddingsBackend,
   probeEmbeddingEndpoint,
@@ -525,15 +515,6 @@ function bundleSelfIdentifiesAsPack(dir: string): boolean {
 export { extractPageTitle } from './page-identity.ts';
 
 import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
-import { context, propagation, SpanKind, SpanStatusCode } from '@opentelemetry/api';
-import {
-  ATTR_HTTP_REQUEST_METHOD,
-  ATTR_HTTP_RESPONSE_STATUS_CODE,
-  ATTR_HTTP_ROUTE,
-  ATTR_URL_PATH,
-  ATTR_URL_SCHEME,
-  ATTR_USER_AGENT_ORIGINAL,
-} from '@opentelemetry/semantic-conventions';
 import simpleGit from 'simple-git';
 import { parseAgentBodyFields, resolveAgentType, validateAgentId } from './agent-id.ts';
 import {
@@ -566,7 +547,6 @@ import { safeContentPath } from './content-path.ts';
 import {
   type DerivedDocumentIndexApiPort,
   type DerivedDocumentIndexMutation,
-  type DerivedGraphNode,
   isDerivedDocumentIndexClosedError,
   isDerivedOrphanMode,
 } from './derived-document-index.ts';
@@ -620,6 +600,7 @@ import {
 import { CHECKOUT_HANDLER_TAG, runCheckoutFlow } from './git-checkout.ts';
 import { withParentLock } from './git-handle.ts';
 import { writeGitIdentity } from './git-identity.ts';
+import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { catchErrors } from './http/catch-errors.ts';
 import {
   createStreamingErrorWriter,
@@ -627,13 +608,10 @@ import {
   type HttpErrorStatus,
 } from './http/error-response.ts';
 import { errnoCode, parseQuery } from './http/handler-utils.ts';
+import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
+import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
 import { methodRouter } from './http/method-router.ts';
-import {
-  getRequestId,
-  REQUEST_ID_HEADER,
-  rememberRequestId,
-  resolveRequestId,
-} from './http/request-id.ts';
+import { getRequestId } from './http/request-id.ts';
 import { validateBody, withValidation } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import {
@@ -749,28 +727,14 @@ import { restoreSkillVersion } from './skill-restore.ts';
 import { mutateSkillsLock, readSkillsLockFile } from './skills-lock-store.ts';
 import { createSkillsShHandlers } from './skills-sh-handlers.ts';
 import { reportSkillInstall } from './skills-sh-install-report.ts';
-import { SuggestLinksTargetNotFoundError, suggestLinks } from './suggest-links.ts';
 import type { SyncEngine } from './sync-engine.ts';
-import { getMeter, getTracer, withSpan, withSpanSync } from './telemetry.ts';
+import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { getDocumentHistory, getFolderTimeline } from './timeline-query.ts';
 import { recordTimelineCoalesced } from './timeline-telemetry.ts';
 
-// Cache the HTTP duration histogram at module scope — lazy-init at first use
-// so the meter is a real meter (post-`initTelemetry`), not the pre-init no-op.
-// Recreating the histogram every request allocates + registers a fresh
-// instrument on every hit.
-let _httpDurationHist: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null = null;
-
-function httpDurationHist(): ReturnType<ReturnType<typeof getMeter>['createHistogram']> {
-  _httpDurationHist ||= getMeter().createHistogram('http.server.request.duration', {
-    description: 'HTTP server request duration in seconds',
-    unit: 's',
-  });
-  return _httpDurationHist;
-}
-
 // Lazy-init so the counter registers against a real meter post-initTelemetry
-// (not the pre-init no-op). Matches the httpDurationHist pattern.
+// (not the pre-init no-op). Matches the httpDurationHist pattern in
+// http/api-pipeline.ts.
 let _hintEmittedCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null = null;
 function hintEmittedCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
   _hintEmittedCounter ||= getMeter().createCounter('ok.preview_attach.hint_emitted', {
@@ -2829,7 +2793,9 @@ export interface CommentDocHooks {
   deleted: (docName: string) => void;
 }
 
-export function createApiExtension(options: ApiExtensionOptions): Extension {
+export function createApiExtension(
+  options: ApiExtensionOptions,
+): Extension & { nativeApi: NativeApiHandle } {
   const { durabilityState, remotePublicHost } = options;
   // Every local-op call site in this factory inherits the remote-origin
   // widening through this shadow — one choke point, zero per-site churn.
@@ -7140,57 +7106,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'document-list', method: 'GET', skipBodyParse: true },
   );
 
-  const handleBacklinks = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'backlinks' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const docName = url.searchParams.get('docName');
-        if (!docName) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing docName parameter.', {
-            handler: 'backlinks',
-          });
-          return;
-        }
-        if (!isSafeDocName(docName)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
-            handler: 'backlinks',
-          });
-          return;
-        }
-        const backlinks = (await derivedDocumentIndex.getBacklinks(docName)).map((entry) => ({
-          source: entry.source,
-          anchor: entry.anchor,
-          title: readPageTitleForDocName(entry.source),
-          snippet: entry.snippet,
-        }));
-        successResponse(
-          res,
-          200,
-          BacklinksSuccessSchema,
-          { docName, backlinks },
-          { handler: 'backlinks' },
-        );
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'backlinks',
-          failureTitle: 'Failed to read backlinks.',
-        });
-      }
-    },
-    { handler: 'backlinks', method: 'GET', skipBodyParse: true },
-  );
-
   /**
    * Read-only cross-harness installed-skill enumeration. `GET /api/skills/installed`
    * returns `{ skills, packs }` — every skill OK can see across all harness
@@ -7242,57 +7157,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'skills-installed', method: 'GET', skipBodyParse: true },
-  );
-
-  /**
-   * Bulk backlink-count lookup. `GET /api/backlink-counts?docNames=a,b,c`
-   * returns `{ counts: { a: 3, b: 0, c: 2 } }`. Serves listing UIs
-   * (exec ls/grep/find slim enrichment) that need connection density per file
-   * without N-amplifying the single-doc `/api/backlinks` endpoint.
-   * docNames failing `isSafeDocName` are silently dropped from `counts`.
-   */
-  const handleBacklinkCounts = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'backlink-counts' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const raw = url.searchParams.get('docNames');
-        if (!raw) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing docNames parameter.', {
-            handler: 'backlink-counts',
-          });
-          return;
-        }
-        const docNames = raw
-          .split(',')
-          .map((docName) => docName.trim())
-          .filter((docName) => docName && isSafeDocName(docName));
-        const counts = await derivedDocumentIndex.getBacklinkCounts(docNames);
-        successResponse(
-          res,
-          200,
-          BacklinkCountsSuccessSchema,
-          { counts },
-          { handler: 'backlink-counts' },
-        );
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'backlink-counts',
-          failureTitle: 'Failed to read backlink counts.',
-        });
-      }
-    },
-    { handler: 'backlink-counts', method: 'GET', skipBodyParse: true },
   );
 
   /**
@@ -7362,169 +7226,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'comment-counts', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleForwardLinks = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'forward-links' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const docName = url.searchParams.get('docName');
-        if (!docName) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing docName parameter.', {
-            handler: 'forward-links',
-          });
-          return;
-        }
-        if (!isSafeDocName(docName)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
-            handler: 'forward-links',
-          });
-          return;
-        }
-        const admitted = await collectAdmittedDocNames();
-        successResponse(
-          res,
-          200,
-          ForwardLinksSuccessSchema,
-          {
-            docName,
-            forwardLinks: (await derivedDocumentIndex.getForwardLinkEntries(docName)).map(
-              (entry) =>
-                entry.kind === 'doc'
-                  ? {
-                      kind: 'doc' as const,
-                      docName: entry.target,
-                      anchor: entry.anchor,
-                      title: readPageTitleForLinkedDocName(entry.target, admitted),
-                      snippet: entry.snippet,
-                    }
-                  : {
-                      kind: 'external' as const,
-                      url: entry.url,
-                      title: entry.label ?? entry.url,
-                      snippet: entry.snippet,
-                    },
-            ),
-          },
-          { handler: 'forward-links' },
-        );
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'forward-links',
-          failureTitle: 'Failed to read forward links.',
-        });
-      }
-    },
-    { handler: 'forward-links', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleLinkGraph = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'link-graph' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const docName = url.searchParams.get('docName');
-        if (docName && !isSafeDocName(docName)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
-            handler: 'link-graph',
-          });
-          return;
-        }
-
-        const rawDegrees = url.searchParams.get('degrees');
-        if (rawDegrees && !docName) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'docName is required when degrees is provided.',
-            { handler: 'link-graph' },
-          );
-          return;
-        }
-
-        let nodes: DerivedGraphNode[];
-        let links: Array<{ source: string; target: string }>;
-
-        if (rawDegrees && docName) {
-          const degrees = Number.parseInt(rawDegrees, 10);
-          if (!Number.isFinite(degrees) || degrees < 0) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'degrees must be a non-negative integer.',
-              { handler: 'link-graph' },
-            );
-            return;
-          }
-
-          ({ nodes, links } = await derivedDocumentIndex.getLinkGraphNeighborhood(
-            docName,
-            degrees,
-          ));
-        } else {
-          ({ nodes, links } = await derivedDocumentIndex.getLinkGraph());
-        }
-
-        const admitted = await collectAdmittedDocNames();
-        const enrichedNodes = nodes.map((node) => {
-          if (node.kind === 'doc') {
-            const meta = readFrontmatterMetadataForLinkedDocName(node.docName, admitted);
-            return {
-              id: node.id,
-              kind: 'doc' as const,
-              docName: node.docName,
-              anchor: node.anchor ?? null,
-              label: readPageTitleForLinkedDocName(node.docName, admitted),
-              cluster: meta.cluster ?? null,
-              category: meta.category ?? null,
-              tags: meta.tags ?? null,
-            };
-          }
-          return {
-            id: node.id,
-            kind: 'external' as const,
-            url: node.url,
-            label: node.label ?? node.url,
-          };
-        });
-        successResponse(
-          res,
-          200,
-          LinkGraphSuccessSchema,
-          { nodes: enrichedNodes, links },
-          { handler: 'link-graph' },
-        );
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'link-graph',
-          failureTitle: 'Failed to read link graph.',
-        });
-      }
-    },
-    { handler: 'link-graph', method: 'GET', skipBodyParse: true },
   );
 
   const handleOrphans = withValidation(
@@ -7604,63 +7305,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'hubs', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleDeadLinks = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'dead-links' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const sourceDocNames = url.searchParams.getAll('sourceDocName');
-        if (sourceDocNames.some((docName) => docName.length === 0 || !isSafeDocName(docName))) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid sourceDocName.', {
-            handler: 'dead-links',
-          });
-          return;
-        }
-
-        const sourceDocNameFilter = sourceDocNames.length
-          ? [...new Set(sourceDocNames.map((docName) => resolveAlias(docName)))]
-          : undefined;
-        const deadLinks = await derivedDocumentIndex.getDeadLinks(
-          await collectAdmittedDocNames(),
-          sourceDocNameFilter,
-        );
-
-        successResponse(
-          res,
-          200,
-          DeadLinksSuccessSchema,
-          {
-            deadLinks: deadLinks.map((entry) => ({
-              target: entry.target,
-              sources: entry.sources.map((sourceEntry) => ({
-                source: sourceEntry.source,
-                title: readPageTitleForDocName(sourceEntry.source),
-                snippet: sourceEntry.snippet,
-              })),
-            })),
-          },
-          { handler: 'dead-links' },
-        );
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'dead-links',
-          failureTitle: 'Failed to read dead links.',
-        });
-      }
-    },
-    { handler: 'dead-links', method: 'GET', skipBodyParse: true },
   );
 
   const handleAgentPatch = withValidation(
@@ -11320,58 +10964,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'pages', method: 'GET', skipBodyParse: true },
   );
 
-  const handleSuggestLinks = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const docName = url.searchParams.get('docName');
-        if (!docName) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing docName parameter.', {
-            handler: 'suggest-links',
-          });
-          return;
-        }
-        if (!isSafeDocName(docName)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
-            handler: 'suggest-links',
-          });
-          return;
-        }
-        if (isSystemDoc(docName) || isConfigDoc(docName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${docName}' is a reserved document name.`,
-            { handler: 'suggest-links' },
-          );
-          return;
-        }
-
-        const result = await suggestLinks({
-          hocuspocus,
-          fileIndex: getFileIndex(),
-          docName,
-        });
-        successResponse(res, 200, SuggestLinksSuccessSchema, result, { handler: 'suggest-links' });
-      } catch (error) {
-        if (error instanceof SuggestLinksTargetNotFoundError) {
-          errorResponse(res, 404, 'urn:ok:error:doc-not-found', 'Page not found.', {
-            handler: 'suggest-links',
-            cause: error,
-          });
-          return;
-        }
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to suggest links.', {
-          handler: 'suggest-links',
-          cause: error,
-        });
-      }
-    },
-    { handler: 'suggest-links', method: 'GET', skipBodyParse: true },
-  );
-
   async function handleUploadAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== 'POST') {
       errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
@@ -13850,95 +13442,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           cause: e,
         });
       }
-    }
-  }
-
-  const handleTagsList = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:tag-index-not-configured',
-          'Tag index not configured.',
-          { handler: 'tags-list' },
-        );
-        return;
-      }
-      try {
-        const tags = await derivedDocumentIndex.getAllTags();
-        successResponse(res, 200, TagsListSuccessSchema, { tags }, { handler: 'tags-list' });
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'tags-list',
-          failureTitle: 'Failed to read tags.',
-        });
-      }
-    },
-    { handler: 'tags-list', method: 'GET', skipBodyParse: true },
-  );
-
-  async function handleTagsForName(
-    req: IncomingMessage,
-    res: ServerResponse,
-    rawName: string,
-  ): Promise<void> {
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'tags-for-name',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    if (!derivedDocumentIndex) {
-      errorResponse(
-        res,
-        503,
-        'urn:ok:error:tag-index-not-configured',
-        'Tag index not configured.',
-        { handler: 'tags-for-name' },
-      );
-      return;
-    }
-    let name: string;
-    try {
-      name = decodeURIComponent(rawName);
-    } catch {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid tag name encoding.', {
-        handler: 'tags-for-name',
-      });
-      return;
-    }
-    if (!name) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing tag name.', {
-        handler: 'tags-for-name',
-      });
-      return;
-    }
-    try {
-      const docs = (await derivedDocumentIndex.getDocsForTagWithMatches(name)).map(
-        ({ docName, matchingTags }) => ({
-          docName,
-          title: readPageTitleForDocName(docName),
-          matchingTags,
-          snippet: null,
-        }),
-      );
-      successResponse(
-        res,
-        200,
-        TagsForNameSuccessSchema,
-        { name, docs },
-        {
-          handler: 'tags-for-name',
-        },
-      );
-    } catch (e) {
-      respondToDerivedIndexQueryFailure(res, e, {
-        handler: 'tags-for-name',
-        failureTitle: 'Failed to read tag membership.',
-      });
     }
   }
 
@@ -22892,16 +22395,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/asset-text': handleAssetText,
     '/api/document': handleDocumentRead,
     '/api/documents': handleDocumentList,
-    '/api/backlinks': handleBacklinks,
-    '/api/backlink-counts': handleBacklinkCounts,
     '/api/comment-counts': handleCommentCounts,
     '/api/link-preview': handleLinkPreview,
-    '/api/forward-links': handleForwardLinks,
-    '/api/link-graph': handleLinkGraph,
-    '/api/dead-links': handleDeadLinks,
     '/api/orphans': handleOrphans,
     '/api/hubs': handleHubs,
-    '/api/tags': handleTagsList,
     '/api/pages': handlePages,
     '/api/folder-config': handleFolderConfig,
     '/api/template': handleTemplate,
@@ -22940,7 +22437,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/lint/audit': handleLintAudit,
     '/api/lint/fix': handleLintFix,
     '/api/audit': handleAudit,
-    '/api/suggest-links': handleSuggestLinks,
     '/api/page-headings': handlePageHeadings,
     '/api/create-page': handleCreatePage,
     '/api/create-folder': handleCreateFolder,
@@ -23081,353 +22577,79 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // by default.
   const STATE_MUTATING_PREFIXES: ReadonlyArray<string> = ['/api/local-op/'];
 
+  // The legacy route table's view for the shared /api/* admission pipeline
+  // (`http/api-pipeline.ts` — the same pipeline the native Hono routes run).
+  // `resolve` never declines an /api/* URL: unmatched paths resolve to the
+  // bounded `/api/*` template with no dispatch so the pipeline's explicit
+  // RFC 9457 404 owns the response and the dispatch surface stays closed.
+  const apiRouteTable: ApiRouteTable = {
+    resolve(url) {
+      const handler = routes[url];
+      if (handler) {
+        return { template: url, dispatch: (req, res) => handler(req, res) };
+      }
+      if (url.startsWith('/api/history/')) {
+        const encodedSha = url.slice('/api/history/'.length);
+        return {
+          template: '/api/history/:sha',
+          // Decode inside dispatch so a malformed encoding surfaces as the
+          // dispatch span's typed 500, not a resolve-time throw.
+          dispatch: encodedSha
+            ? async (req, res) => {
+                await handleHistoryVersion(req, res, decodeURIComponent(encodedSha));
+              }
+            : undefined,
+        };
+      }
+      return { template: '/api/*' };
+    },
+    isMutating: (url) =>
+      MUTATING_ROUTES.has(url) || STATE_MUTATING_PREFIXES.some((p) => url.startsWith(p)),
+  };
+
+  const runApiPipeline = createApiRequestPipeline({
+    log,
+    remotePublicHost,
+    ephemeral,
+    table: apiRouteTable,
+  });
+
+  // The natively-routed link/graph read group (`http/link-graph-routes.ts`).
+  // Its paths live in the Hono app only — deliberately absent from `routes`
+  // above (a route lives in exactly one router). The handle rides the same
+  // shared pipeline with the group's own table, so gate behavior is identical
+  // to the legacy dispatch by construction.
+  const linkGraphRoutes = createLinkGraphRoutes({
+    hocuspocus,
+    derivedDocumentIndex,
+    getFileIndex,
+    isSafeDocName,
+    readPageTitleForDocName,
+    readPageTitleForLinkedDocName,
+    readFrontmatterMetadataForLinkedDocName,
+    collectAdmittedDocNames,
+    resolveAlias,
+    respondToDerivedIndexQueryFailure,
+  });
+  // "A route lives in exactly one router" — enforced at construction, not
+  // just documented; covers every future group aggregated into the native
+  // paths. Throw semantics pinned in `http/http-app.test.ts`.
+  assertSingleRouterOwnership(linkGraphRoutes.paths, routes);
+  const nativeApi: NativeApiHandle = {
+    paths: linkGraphRoutes.paths,
+    dispatch: createApiRequestPipeline({
+      log,
+      remotePublicHost,
+      ephemeral,
+      table: linkGraphRoutes.table,
+    }),
+  };
+
   return {
     priority: 100, // Higher priority — API routes run before static file serving
     async onRequest({ request, response }: { request: IncomingMessage; response: ServerResponse }) {
-      const url = request.url?.split('?')[0];
-      if (!url) return;
-
-      // Per-request client-context observation for embed-detection spikes.
-      // Pushed into a bounded in-process ring buffer drained by
-      // /api/__embed-detect. Assumes loopback-only deployment — the consumer
-      // endpoint enforces this. Multi-valued headers (rare) collapse to the
-      // joined string Node provides by default for the headers we capture.
-      const headerString = (name: string): string | undefined => {
-        const value = request.headers[name];
-        if (value === undefined) return undefined;
-        return Array.isArray(value) ? value.join(', ') : value;
-      };
-      recordEmbedProbe({
-        ts: Date.now(),
-        url,
-        method: request.method ?? '',
-        ua: headerString('user-agent'),
-        origin: headerString('origin'),
-        referer: headerString('referer'),
-        host: headerString('host'),
-        remote: request.socket?.remoteAddress,
-        secChUa: headerString('sec-ch-ua'),
-        secChUaMobile: headerString('sec-ch-ua-mobile'),
-        secChUaPlatform: headerString('sec-ch-ua-platform'),
-        secFetchSite: headerString('sec-fetch-site'),
-        secFetchDest: headerString('sec-fetch-dest'),
-        secFetchMode: headerString('sec-fetch-mode'),
-        secFetchUser: headerString('sec-fetch-user'),
-      });
-
-      const method = request.method ?? 'GET';
-      // Normalize route for low-cardinality labels (metric labels, span
-      // attributes, and the access log below). `:id` placeholders replace
-      // dynamic segments; anything else collapses to the URL prefix.
-      let routeTemplate = url;
-      if (url.startsWith('/api/history/')) routeTemplate = '/api/history/:sha';
-      else if (url.startsWith('/api/tags/')) routeTemplate = '/api/tags/:name';
-      else if (!routes[url]) routeTemplate = '/api/*';
-
-      // Request identity + access log for the /api/* surface. Slots BEFORE the
-      // origin/loopback/host gates (without touching their order) so even
-      // gate-rejected responses carry the `x-request-id` echo and produce an
-      // access-log line. The `typeof` guards mirror the CORS block below —
-      // unit-test doubles stub only `writeHead` + `end`.
-      const requestId = url.startsWith('/api/') ? resolveRequestId(request) : undefined;
-      if (requestId !== undefined) {
-        rememberRequestId(request, requestId);
-        if (typeof response.setHeader === 'function') {
-          response.setHeader(REQUEST_ID_HEADER, requestId);
-        }
-        if (typeof response.once === 'function') {
-          const accessStarted = Date.now();
-          let accessLogged = false;
-          // One line per request on whichever of finish/close fires first:
-          // 'finish' is the fully-flushed response (including long-lived
-          // NDJSON streams, logged at stream end); 'close' catches aborted
-          // sockets (client disconnect, timeout destroy) that never finish.
-          // Route TEMPLATE, never the raw path — cardinality discipline for
-          // log aggregators matches the metric-label STOP rule. Byte counts
-          // are omitted: Node exposes no cheap per-response counter under
-          // chunked encoding (socket.bytesWritten is per-connection).
-          const emitAccessLog = () => {
-            if (accessLogged) return;
-            accessLogged = true;
-            log.info(
-              {
-                event: 'api.access',
-                requestId,
-                method,
-                route: routeTemplate,
-                status: response.statusCode,
-                durationMs: Date.now() - accessStarted,
-                ...(response.writableFinished ? {} : { aborted: true }),
-              },
-              `${method} ${routeTemplate} ${response.statusCode}`,
-            );
-          };
-          response.once('finish', emitAccessLog);
-          response.once('close', emitAccessLog);
-        }
-      }
-
-      // Origin-allowlist CORS for /api/*. Only loopback origins are accepted:
-      // - No Origin header (same-origin browser tab, curl, CLI): passes through.
-      // - Origin "null" (Electron packaged renderer, file:// per Fetch spec §4.3): allowed.
-      // - http(s)://localhost[:port] / 127.x.x.x[:port] / [::1][:port]: allowed.
-      // - Any other Origin: 403 — closes the CSRF door on unauthenticated mutating
-      //   routes (/api/agent-write-md, /api/rollback, /api/manage/delete, etc.)
-      //   without breaking the Electron renderer or local Vite dev servers.
-      //
-      // When an allowed Origin is present, it is reflected verbatim in ACAO (not
-      // `*`) so the browser's preflight check passes while non-loopback origins are
-      // still refused by the gate above. `Vary: Origin` prevents cache poisoning.
-      //
-      // Setting via `setHeader` (not `writeHead`) so handler responses that call
-      // `writeHead(status, { ... })` inherit these headers. The typeof guard handles
-      // unit tests that stub only `writeHead` + `end`.
-      if (url.startsWith('/api/')) {
-        const origin = request.headers.origin;
-        if (origin !== undefined && !isAllowedApiOrigin(origin, remotePublicHost)) {
-          // RFC 9457 problem+json. Tag the handler as `api-origin-gate` so
-          // the `ok.api.error.count` counter distinguishes onRequest-level
-          // CSRF rejections from per-handler emits. The cross-origin browser
-          // can't read the body anyway (CORS strips it) but consistent wire
-          // shape lets server-to-server callers + tests parse uniformly.
-          errorResponse(response, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
-            handler: 'api-origin-gate',
-          });
-          return;
-        }
-        if (typeof response.setHeader === 'function') {
-          if (origin !== undefined) {
-            response.setHeader('Access-Control-Allow-Origin', origin);
-            response.setHeader('Vary', 'Origin');
-          }
-          response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-          // Content-Type/Authorization: standard request headers. traceparent/
-          // tracestate/baggage: OTel W3C trace-context propagation from the
-          // browser SDK. x-ok-client-*: the client→version metadata the renderer
-          // stamps on every /api/* request (clientVersionHeaders) — omitting
-          // these fails the preflight for the cross-origin renderer (dev Vite
-          // origin / file:// packaged) before the real request fires.
-          response.setHeader(
-            'Access-Control-Allow-Headers',
-            `Content-Type, Authorization, traceparent, tracestate, baggage, ${REQUEST_ID_HEADER}, ${CLIENT_VERSION_HEADER.protocol}, ${CLIENT_VERSION_HEADER.runtime}, ${CLIENT_VERSION_HEADER.kind}`,
-          );
-          // Let cross-origin renderer JS read the correlation ID echo — CORS
-          // hides non-safelisted response headers by default.
-          response.setHeader('Access-Control-Expose-Headers', REQUEST_ID_HEADER);
-        }
-        // OPTIONS preflight — short-circuit with 204 + the headers above.
-        if (request.method === 'OPTIONS') {
-          response.writeHead(204);
-          response.end();
-          return;
-        }
-      }
-
-      // DNS-rebinding defense for state-mutating endpoints. The
-      // `isLoopbackAddress` TCP-peer check and `isAllowedWorkspaceHostHeader`
-      // Host-header check together block the standard rebinding pattern
-      // (attacker-owned hostname whose DNS resolves to 127.0.0.1 after an
-      // initial attacker-serves-JS response — the TCP peer is loopback,
-      // but the Host header names the attacker domain). The same mitigation
-      // already gates `/api/workspace`; without it, a rebinding page could
-      // POST /api/upload + /api/agent-write, mutating the local vault.
-      //
-      // Test-harness note: Node's production socket always has
-      // `remoteAddress` set by the kernel; the only path that reaches
-      // this check without a socket is a mocked `IncomingMessage` built
-      // from `Readable.from(...)`. Those mocks bypass the HTTP listener
-      // entirely and can't be reached by a real remote attacker, so a
-      // missing socket is treated as test-context and skips the check.
-      // The Host-header gate still fires (tests set `host: 'localhost'`),
-      // so the protection remains meaningful for any production path.
-      if (MUTATING_ROUTES.has(url) || STATE_MUTATING_PREFIXES.some((p) => url.startsWith(p))) {
-        const peerAddress = request.socket?.remoteAddress;
-        if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
-          errorResponse(response, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-            handler: 'api-mutating-gate',
-          });
-          return;
-        }
-        if (!isAllowedWorkspaceHostHeader(request.headers.host)) {
-          errorResponse(
-            response,
-            403,
-            'urn:ok:error:host-not-allowed',
-            'Host header not allowed.',
-            { handler: 'api-mutating-gate' },
-          );
-          return;
-        }
-      }
-
-      // No-project ephemeral single-file mode (`ok <file>`) sets contentDir to
-      // the opened file's PARENT — often a user-data dir (~/Downloads,
-      // ~/Documents). Several read routes (`/api/asset`, `/api/asset-text`,
-      // `/api/document`) return bytes under contentDir bounded only by
-      // `isWithinContentDir`, NOT by the single-file content scope (which is
-      // enforced at the indexing/listing layer, not the byte-read path). So
-      // without a host gate a DNS-rebound page could exfiltrate sibling files.
-      // Apply the same loopback + workspace-host check the mutating gate uses to
-      // EVERY `/api/*` request in ephemeral mode — one choke point, so future
-      // read routes inherit it rather than each needing its own gate. Project /
-      // desktop modes (`ephemeral` falsy) keep their prior origin-only posture
-      // for reads (the user chose the served root there); this mirrors the
-      // ephemeral-scoped content-asset gate in `mcp-mount.ts`, which covers the
-      // non-`/api/` static-serve path.
-      if (ephemeral && url.startsWith('/api/')) {
-        const peerAddress = request.socket?.remoteAddress;
-        if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
-          errorResponse(response, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-            handler: 'api-ephemeral-gate',
-          });
-          return;
-        }
-        if (!isAllowedWorkspaceHostHeader(request.headers.host)) {
-          errorResponse(
-            response,
-            403,
-            'urn:ok:error:host-not-allowed',
-            'Host header not allowed.',
-            {
-              handler: 'api-ephemeral-gate',
-            },
-          );
-          return;
-        }
-      }
-
-      // Only /api/* gets a server span. Non-API routes (static file serving,
-      // Hocuspocus's own paths) fall through silently. (Route dispatch
-      // happens inside the OTel active-span block below.)
-      if (!url.startsWith('/api/')) return;
-
-      // Extract incoming trace context (W3C traceparent header) so this server
-      // span attaches as a child of the browser-initiated trace.
-      const extractedCtx = propagation.extract(context.active(), request.headers);
-
-      const tracer = getTracer();
-      const started = Date.now();
-      await context.with(extractedCtx, () =>
-        tracer.startActiveSpan(
-          `HTTP ${method} ${routeTemplate}`,
-          {
-            kind: SpanKind.SERVER,
-            attributes: {
-              [ATTR_HTTP_REQUEST_METHOD]: method,
-              [ATTR_HTTP_ROUTE]: routeTemplate,
-              [ATTR_URL_PATH]: url,
-              [ATTR_URL_SCHEME]: 'http',
-              [ATTR_USER_AGENT_ORIGINAL]: request.headers['user-agent'] ?? '',
-              // Correlation ID (UUID or client-supplied bounded token) — a
-              // sanctioned span attribute like `ok.error.instance`; the
-              // cardinality STOP rule governs metric labels, which stay
-              // request-id-free.
-              'ok.request.id': requestId,
-            },
-          },
-          async (span) => {
-            try {
-              // Static routes
-              const handler = routes[url];
-              let dispatched = false;
-              if (handler) {
-                dispatched = true;
-                await handler(request, response);
-              } else if (url.startsWith('/api/history/')) {
-                const sha = decodeURIComponent(url.slice('/api/history/'.length));
-                if (sha) {
-                  dispatched = true;
-                  await handleHistoryVersion(request, response, sha);
-                }
-              } else if (url.startsWith('/api/tags/')) {
-                const rawName = url.slice('/api/tags/'.length);
-                if (rawName) {
-                  dispatched = true;
-                  await handleTagsForName(request, response, rawName);
-                }
-              }
-
-              // Defense-in-depth: unmatched `/api/*` routes (typos, removed
-              // endpoints, empty `/api/rescue/` / `/api/history/` segments)
-              // would otherwise fall through with no response body, leaving
-              // Hocuspocus's `onRequest` machinery to either pass through to
-              // static-file middleware or hang. Emit an explicit RFC 9457 404
-              // so the dispatch surface is fully closed. Dispatch flag is
-              // robust against test-mock `ServerResponse` shapes that don't
-              // simulate `headersSent` (vs checking `response.headersSent`
-              // directly, which would misfire on mocks after a handler
-              // successfully wrote 200).
-              if (!dispatched) {
-                // `detail` echoes the actual requested URL (no information
-                // leak — the client sent it). `routeTemplate` is bounded
-                // to `/api/*` for unmatched routes and used only for
-                // histogram labels / span attributes upstream — keeping
-                // the two concerns separate so the wire-detail stays
-                // actionable for debuggers without coupling to the
-                // cardinality-bounded telemetry surface.
-                errorResponse(response, 404, 'urn:ok:error:not-found', 'API endpoint not found.', {
-                  handler: 'api-dispatch',
-                  detail: `No handler for ${method} ${url}`,
-                });
-              }
-
-              const status = response.statusCode;
-              span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, status);
-              if (status >= 500) {
-                span.setStatus({ code: SpanStatusCode.ERROR, message: `status ${status}` });
-              }
-            } catch (err) {
-              span.recordException(err as Error);
-              span.setStatus({
-                code: SpanStatusCode.ERROR,
-                message: err instanceof Error ? err.message : String(err),
-              });
-              // Last-resort RFC 9457 envelope. Per-handler try/catch is the
-              // primary error boundary, but a synchronous throw before any
-              // response write would otherwise reach the client as a
-              // connection reset (or Hocuspocus default error handling) —
-              // not the typed application/problem+json envelope SDK
-              // consumers parse. Guard on
-              // `!headersSent && !writableEnded && !destroyed` so we
-              // don't double-emit when the inner handler already wrote a
-              // response or the socket was destroyed mid-handler — same
-              // three-way guard `createStreamingErrorWriter` uses for
-              // mid-stream emission. Handler tag is the matched route
-              // template so telemetry attributes a 5xx surge to the
-              // failing endpoint.
-              if (!response.headersSent && !response.writableEnded && !response.destroyed) {
-                errorResponse(
-                  response,
-                  500,
-                  'urn:ok:error:internal-server-error',
-                  'Internal server error.',
-                  {
-                    handler: routeTemplate,
-                    cause: err,
-                  },
-                );
-              }
-              // Re-throw so Hocuspocus's onRequest extension chain logs the
-              // exception via its built-in error machinery. The response is
-              // already ended (either by errorResponse above or by an
-              // earlier handler write), so Hocuspocus 4.x treats this as a
-              // post-response observation, not a connection-level failure.
-              // Verify this assumption holds when bumping Hocuspocus —
-              // version-specific reaction to throws from onRequest is
-              // framework-internal behavior.
-              throw err;
-            } finally {
-              span.end();
-              const durSec = (Date.now() - started) / 1000;
-              httpDurationHist().record(durSec, {
-                [ATTR_HTTP_REQUEST_METHOD]: method,
-                [ATTR_HTTP_ROUTE]: routeTemplate,
-                [ATTR_HTTP_RESPONSE_STATUS_CODE]: response.statusCode,
-              });
-            }
-          },
-        ),
-      );
+      await runApiPipeline(request, response);
     },
+    nativeApi,
   };
 }

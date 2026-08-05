@@ -26,6 +26,19 @@ import { describe, expect, test } from 'vitest';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
+/**
+ * The conflict-refusal contract applies to any handler that writes user
+ * content, regardless of which file it lives in — lifted route groups
+ * (`skills-sh-handlers.ts`, native Wave 2 groups like
+ * `http/link-graph-routes.ts` with their OWN `const routes:` record) stay
+ * inside the scan, mirroring `error-envelope-coverage.test.ts`.
+ */
+const HANDLER_SOURCES = [
+  source,
+  ...['skills-sh-handlers.ts', 'http/link-graph-routes.ts'].map((file) =>
+    readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8'),
+  ),
+];
 
 /**
  * The 8 mutating handlers. Each
@@ -321,34 +334,45 @@ const EXEMPT_HANDLERS = new Set([
 
 function extractHandlerBody(handlerName: string): string | null {
   // Same legacy vs migrated detection as the attribution-sweep meta-test,
-  // plus the `methodRouter({...})` dispatcher shape.
+  // plus the `methodRouter({...})` dispatcher shape. Pick whichever source
+  // declares it (a lifted handler is not in `api-extension.ts`).
   const fnDecl = `async function ${handlerName}(`;
   const constDecl = `const ${handlerName} = withValidation(`;
   const routerDecl = `const ${handlerName} = methodRouter(`;
-  const fnIdx = source.indexOf(fnDecl);
-  const constIdx = source.indexOf(constDecl);
-  const routerIdx = source.indexOf(routerDecl);
+  const owner =
+    HANDLER_SOURCES.find(
+      (text) => text.includes(fnDecl) || text.includes(constDecl) || text.includes(routerDecl),
+    ) ?? source;
+  const fnIdx = owner.indexOf(fnDecl);
+  const constIdx = owner.indexOf(constDecl);
+  const routerIdx = owner.indexOf(routerDecl);
   let start = -1;
   if (fnIdx !== -1) start = fnIdx;
   else if (constIdx !== -1) start = constIdx;
   else if (routerIdx !== -1) start = routerIdx;
   if (start === -1) return null;
-  const nextFn = source.indexOf('\n  async function handle', start + 1);
-  const nextConst = source.indexOf('\n  const handle', start + 1);
-  const nextRoutes = source.indexOf('\n  const routes:', start + 1);
-  const candidates = [nextFn, nextConst, nextRoutes].filter((i) => i !== -1);
+  const nextFn = owner.indexOf('\n  async function handle', start + 1);
+  const nextConst = owner.indexOf('\n  const handle', start + 1);
+  const nextRoutes = owner.indexOf('\n  const routes:', start + 1);
+  // Factory modules end their handler run at the returned record.
+  const nextReturn = owner.indexOf('\n  return {', start + 1);
+  const candidates = [nextFn, nextConst, nextRoutes, nextReturn].filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
-  return source.slice(start, next === -1 ? source.length : next);
+  return owner.slice(start, next === -1 ? owner.length : next);
 }
 
 function extractStaticRouteHandlerNames(): string[] {
-  const routesStart = source.indexOf('\n  const routes:');
-  const enableTestRoutes = source.indexOf('\n  if (enableTestRoutes)', routesStart);
-  const slice =
-    routesStart === -1
-      ? ''
-      : source.slice(routesStart, enableTestRoutes === -1 ? source.length : enableTestRoutes);
-  return [...slice.matchAll(/:\s*(handle\w+)/g)].map((m) => m[1]);
+  // Every source's `const routes:` record participates — the legacy dispatch
+  // record in `api-extension.ts` AND each native group's own record.
+  return HANDLER_SOURCES.flatMap((text) => {
+    const routesStart = text.indexOf('\n  const routes:');
+    if (routesStart === -1) return [];
+    const enableTestRoutes = text.indexOf('\n  if (enableTestRoutes)', routesStart);
+    const nativeTable = text.indexOf('\n  const table', routesStart);
+    const bounds = [enableTestRoutes, nativeTable].filter((i) => i !== -1);
+    const slice = text.slice(routesStart, bounds.length === 0 ? text.length : Math.min(...bounds));
+    return [...slice.matchAll(/:\s*(handle\w+)/g)].map((m) => m[1]);
+  });
 }
 
 describe('conflict-gate coverage (FR9)', () => {

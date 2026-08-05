@@ -3,7 +3,7 @@
  *
  * Lazy-init meter so registration runs against a real provider post-
  * `initTelemetry` (not the pre-init no-op). Same pattern as
- * `api-extension.ts:httpDurationHist` and
+ * `http/api-pipeline.ts:httpDurationHist` and
  * `file-watcher.ts:_fileWatcherEventsCounter`. Co-located here so all
  * edit-surface sites (`applyAgentMarkdownWrite`, `applyExternalChange`,
  * server-observers Observer B) call into one set of instruments.

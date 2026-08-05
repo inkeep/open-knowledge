@@ -46,6 +46,7 @@ async function startMountedServer(
   const httpServer = createServer();
   const mount = mountMcpAndApi({
     httpServer,
+    nativeApi: undefined,
     hocuspocus: serverHocuspocus,
     mcpHttpHandler: handler,
     log,
@@ -332,7 +333,7 @@ describe('mountMcpAndApi shutdown drains live WS clients', () => {
   for (const path of ['/collab', '/collab/keepalive?connectionId=teardown-probe']) {
     test(`drains live ${path.split('?')[0]} WS so wss.close + httpServer.close resolve promptly`, async () => {
       const httpServer = createServer();
-      const mount = mountMcpAndApi({ httpServer, hocuspocus, log });
+      const mount = mountMcpAndApi({ httpServer, nativeApi: undefined, hocuspocus, log });
       const port = await getFreeLoopbackPort();
       await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
 
@@ -405,6 +406,7 @@ describe('mountMcpAndApi content-asset middleware', () => {
     };
     const mount = mountMcpAndApi({
       httpServer,
+      nativeApi: undefined,
       hocuspocus,
       log,
       contentAssetMiddleware: createAssetServeMiddleware({
@@ -477,6 +479,7 @@ describe('mountMcpAndApi content-asset middleware', () => {
     const httpServer = createServer();
     const mount = mountMcpAndApi({
       httpServer,
+      nativeApi: undefined,
       hocuspocus,
       log,
       contentAssetMiddleware: () => {
@@ -521,6 +524,7 @@ describe('mountMcpAndApi ephemeral content-asset gate', () => {
     const httpServer = createServer();
     const mount = mountMcpAndApi({
       httpServer,
+      nativeApi: undefined,
       hocuspocus,
       log,
       ephemeral,
@@ -599,6 +603,7 @@ describe('mountMcpAndApi react-shell middleware', () => {
     const httpServer = createServer();
     const mount = mountMcpAndApi({
       httpServer,
+      nativeApi: undefined,
       hocuspocus,
       log,
       contentAssetMiddleware: opts?.contentAssetMiddleware,

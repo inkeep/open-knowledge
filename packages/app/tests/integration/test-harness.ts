@@ -335,6 +335,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
   const mount = mountMcpAndApi({
     httpServer,
     hocuspocus: srv.hocuspocus,
+    nativeApi: srv.nativeApi,
     mcpHttpHandler,
     log: getLogger('test-harness'),
     sessionManager: srv.sessionManager,
@@ -1591,6 +1592,7 @@ export async function createRestartableServer(
   const mount = mountMcpAndApi({
     httpServer,
     hocuspocus: srv.hocuspocus,
+    nativeApi: srv.nativeApi,
     mcpHttpHandler: undefined,
     log: getLogger('restartable-server'),
     sessionManager: srv.sessionManager,
