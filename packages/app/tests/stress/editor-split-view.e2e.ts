@@ -308,7 +308,12 @@ test.describe('vertical editor splits', () => {
     expect(Math.abs(widthsAfterReload[0] - widthsAfterResize[0])).toBeLessThan(40);
     await expect.poll(() => windowHash(page)).toContain(editedDoc.name);
     for (const doc of docs) {
-      expect(await portalGeneration(page, doc.name)).not.toBe('absent');
+      // Polled, unlike the pre-reload generation-stability reads: the four
+      // portals remount asynchronously after a reload, and pane-tab count
+      // reaching 4 only means the tab strip restored, not that every pane's
+      // editor portal is in the DOM. A one-shot read here races the slowest
+      // remount.
+      await expect.poll(() => portalGeneration(page, doc.name)).not.toBe('absent');
     }
 
     await page.setViewportSize({ width: 1200, height: 800 });
