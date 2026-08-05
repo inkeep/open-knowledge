@@ -67,6 +67,17 @@ export function harnessHomes(home: string = homedir()): HarnessHome[] {
 }
 
 /**
+ * Every user-global directory a skill can legitimately live in: the harness
+ * homes plus the `~/.ok/skills` store. Each segment is home-derived and
+ * constant — nothing here comes from a caller — which is what lets the desktop
+ * admit them as reveal roots without widening path containment to the whole
+ * home dir.
+ */
+export function userGlobalSkillRoots(home: string = homedir()): string[] {
+  return [...harnessHomes(home).map((h) => h.dir), join(home, '.ok', 'skills')];
+}
+
+/**
  * The PROJECT-scoped harness skill dirs — `<projectDir>/.<harness>/skills` for
  * every harness that keeps a bare project skill-dir layout. Derived from
  * `EDITOR_PROJECT_SKILL_ROOT`, not the user-home map: several hosts deliberately

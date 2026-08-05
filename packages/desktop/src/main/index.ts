@@ -278,6 +278,7 @@ import {
 import {
   detectProtocol as detectProtocolImpl,
   recordHandoff as recordHandoffImpl,
+  revealAllowedRoots,
   showItemInFolder as showItemInFolderImpl,
   spawnCursor as spawnCursorImpl,
   trashItem as trashItemImpl,
@@ -4642,11 +4643,7 @@ function registerIpcHandlers() {
       {
         platform: process.platform,
         projectPath: callerProjectPath,
-        // The bug-report zip lives in `~/.ok/bug-reports/`, outside every
-        // project, so the review/failure card's Reveal would otherwise be
-        // refused (`out-of-project`, or `no-project-bound` from a Navigator
-        // window). This dir is main-derived, not renderer-influenced.
-        allowedRoots: [dirname(defaultBugReportZipPath())],
+        allowedRoots: revealAllowedRoots(),
         showItemInFolder: (p) => shell.showItemInFolder(p),
       },
       path,

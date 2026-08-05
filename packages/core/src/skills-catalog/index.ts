@@ -67,7 +67,7 @@ export {
   enumerateInstalledSkills,
   type InstalledSkillsResult,
 } from './enumerate.ts';
-export { harnessHomes } from './harness-homes.ts';
+export { harnessHomes, userGlobalSkillRoots } from './harness-homes.ts';
 export {
   SKILL_IMPORT_MAX_BUNDLE_FILES,
   SKILL_IMPORT_MAX_FILE_BYTES,

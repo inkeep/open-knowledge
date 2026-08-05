@@ -11,6 +11,8 @@
 
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
+import { okBugReportsDir } from '@inkeep/open-knowledge';
+import { userGlobalSkillRoots } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   createOsProbe,
   type ExecFileLike,
@@ -273,6 +275,21 @@ export async function spawnCursor(deps: SpawnCursorDeps, path: string): Promise<
 type ShowItemInFolderOutcome =
   | { ok: true }
   | { ok: false; reason: 'invalid-format' | 'no-project-bound' | 'out-of-project' };
+
+/**
+ * The trusted roots a reveal may target besides the caller window's project:
+ * the bug-report zip dir, plus every user-global skill dir (harness homes,
+ * plugin caches, the `.ok/skills` store). Both classes are main-derived from
+ * the home dir with no renderer influence.
+ *
+ * This is the POLICY that feeds `showItemInFolder`'s predicate, and it lives
+ * beside that predicate deliberately: the main-process handler wiring is not
+ * reachable from tests, so a policy expressed inline at the call site could
+ * silently lose a root without any test going red.
+ */
+export function revealAllowedRoots(): string[] {
+  return [okBugReportsDir(), ...userGlobalSkillRoots()];
+}
 
 /** Injected deps for `showItemInFolder` — the electron `shell.showItemInFolder` and platform/projectPath. */
 interface ShowItemInFolderDeps {

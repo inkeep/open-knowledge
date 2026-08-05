@@ -34,6 +34,7 @@ import {
   type SkillActions,
   SkillContextMenuItems,
   SkillFileContextMenuItems,
+  SkillRevealMenuItem,
 } from '@/components/skill-actions';
 import {
   applyInstallClusters,
@@ -692,14 +693,25 @@ export function SkillsTree({
                   />
                 );
               } else if (node.isDir) {
-                // Every bundle dir offers New file seeded with its own path.
+                // Every bundle dir offers New file seeded with its own path,
+                // plus the same Reveal its sibling file rows carry — a nested
+                // folder is the one row kind that could not be opened on disk.
                 // `node.sub` is non-null here (the null case is handled above).
                 menuItems = (
-                  <DropdownMenuItem
-                    onSelect={() => actions.requestFileCreate(skill, `${node.sub}/`)}
-                  >
-                    <Trans>New file</Trans>
-                  </DropdownMenuItem>
+                  <>
+                    <SkillRevealMenuItem
+                      absolutePath={
+                        skill.absolutePath
+                          ? `${skillDir(skill.absolutePath)}/${node.sub}`
+                          : undefined
+                      }
+                    />
+                    <DropdownMenuItem
+                      onSelect={() => actions.requestFileCreate(skill, `${node.sub}/`)}
+                    >
+                      <Trans>New file</Trans>
+                    </DropdownMenuItem>
+                  </>
                 );
               } else {
                 menuItems = (

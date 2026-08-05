@@ -7552,8 +7552,7 @@ msgstr ""
 msgid "Open comment"
 msgstr ""
 
-#: src/components/EditorTabTargetMenuItems.tsx
-#: src/components/FileTree.tsx
+#: src/lib/reveal-label.ts
 msgid "Open containing folder"
 msgstr ""
 
@@ -9115,18 +9114,15 @@ msgstr ""
 msgid "Reused if it already exists, created if not."
 msgstr ""
 
-#: src/components/EditorTabTargetMenuItems.tsx
-#: src/components/FileTree.tsx
+#: src/lib/reveal-label.ts
 msgid "Reveal in File Explorer"
 msgstr ""
 
 #: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
 #: src/components/ReportBugDialogBody.tsx
-#: src/components/skill-actions.tsx
+#: src/lib/reveal-label.ts
 msgid "Reveal in Finder"
 msgstr ""
 

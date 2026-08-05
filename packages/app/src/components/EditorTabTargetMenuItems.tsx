@@ -36,6 +36,7 @@ import {
   emitFileTreeMenuActionDuplicate,
   emitFileTreeMenuActionImportTemplate,
 } from '@/lib/file-tree-menu-action-events';
+import { revealInFileManagerLabel } from '@/lib/reveal-label';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import {
   buildDocShareInput,
@@ -148,9 +149,7 @@ export function EditorTabTargetMenuItems({
     });
   }
 
-  let revealLabel = t`Open containing folder`;
-  if (bridge?.platform === 'darwin') revealLabel = t`Reveal in Finder`;
-  else if (bridge?.platform === 'win32') revealLabel = t`Reveal in File Explorer`;
+  const revealLabel = revealInFileManagerLabel(bridge?.platform ?? 'linux');
   const noWorkspaceHint = workspace ? null : t`No workspace`;
   const fullPath = workspace
     ? joinWorkspacePath(workspace.contentDir, relativePath, workspace.pathSeparator)

@@ -55,6 +55,7 @@ import {
   SkillMenuSubTrigger,
 } from '@/components/skill-menu-primitives';
 import { useOpenSkill } from '@/hooks/use-open-skill';
+import { revealInFileManagerLabel } from '@/lib/reveal-label';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { skillDir, useSkillScopeLabels } from '@/lib/skill-scope';
 import { convertSkillLocation, duplicateSkill, installSkill } from '@/lib/skills-api';
@@ -340,6 +341,33 @@ export function useSkillActions(): SkillActions {
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
 /**
+ * Reveal one on-disk skill path in the OS file manager. Renders nothing off
+ * desktop or when the path is unknown. Shared by every skills menu so the row
+ * kinds cannot disagree about when reveal is offered, and labelled through the
+ * same per-platform helper the file tree and editor tabs use — desktop ships on
+ * Windows and Linux, where "Reveal in Finder" is wrong.
+ */
+export function SkillRevealMenuItem({
+  absolutePath,
+  menuKind = 'dropdown',
+}: {
+  absolutePath: string | undefined;
+  menuKind?: SkillMenuKind;
+}) {
+  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
+  if (!bridge || !absolutePath) return null;
+  return (
+    <SkillMenuItem
+      menuKind={menuKind}
+      onSelect={() => void bridge.shell.showItemInFolder(absolutePath)}
+    >
+      <FolderOpen aria-hidden />
+      {revealInFileManagerLabel(bridge.platform)}
+    </SkillMenuItem>
+  );
+}
+
+/**
  * File actions shared by bundle-file rows in the Skills sidebar and editor tabs.
  * Paths resolve from the skill directory rather than from its SKILL.md entry.
  */
@@ -355,7 +383,6 @@ export function SkillFileContextMenuItems({
   menuKind?: SkillMenuKind;
 }) {
   const { t } = useLingui();
-  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const absoluteFile = skill.absolutePath
     ? `${skillDir(skill.absolutePath)}/${filePath}`
     : undefined;
@@ -380,15 +407,7 @@ export function SkillFileContextMenuItems({
           <PencilLine aria-hidden />
           <Trans>Rename</Trans>
         </SkillMenuItem>
-        {bridge && absoluteFile ? (
-          <SkillMenuItem
-            menuKind={menuKind}
-            onSelect={() => void bridge.shell.showItemInFolder(absoluteFile)}
-          >
-            <FolderOpen aria-hidden />
-            <Trans>Reveal in Finder</Trans>
-          </SkillMenuItem>
-        ) : null}
+        <SkillRevealMenuItem absolutePath={absoluteFile} menuKind={menuKind} />
         <SkillMenuSub menuKind={menuKind}>
           <SkillMenuSubTrigger menuKind={menuKind}>
             <Copy aria-hidden />
@@ -491,7 +510,6 @@ function SkillTargetMenuItems({
   const { t } = useLingui();
   const scopeLabels = useSkillScopeLabels();
   const hostToggles = useSkillHostToggles(skill, actions);
-  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const absolutePath = skill.absolutePath;
 
   async function copy(text: string) {
@@ -506,15 +524,7 @@ function SkillTargetMenuItems({
   return (
     <>
       <SkillMenuGroup menuKind={menuKind}>
-        {bridge && absolutePath ? (
-          <SkillMenuItem
-            menuKind={menuKind}
-            onSelect={() => void bridge.shell.showItemInFolder(absolutePath)}
-          >
-            <FolderOpen aria-hidden />
-            <Trans>Reveal in Finder</Trans>
-          </SkillMenuItem>
-        ) : null}
+        <SkillRevealMenuItem absolutePath={absolutePath} menuKind={menuKind} />
         {openWithAi}
         <SkillMenuSub menuKind={menuKind}>
           <SkillMenuSubTrigger menuKind={menuKind}>

@@ -7556,8 +7556,7 @@ msgstr "Open CodeMirror's lint diagnostics panel."
 msgid "Open comment"
 msgstr "Open comment"
 
-#: src/components/EditorTabTargetMenuItems.tsx
-#: src/components/FileTree.tsx
+#: src/lib/reveal-label.ts
 msgid "Open containing folder"
 msgstr "Open containing folder"
 
@@ -9119,18 +9118,15 @@ msgstr "Reuse one tab when clicking through the sidebars. Off opens every click 
 msgid "Reused if it already exists, created if not."
 msgstr "Reused if it already exists, created if not."
 
-#: src/components/EditorTabTargetMenuItems.tsx
-#: src/components/FileTree.tsx
+#: src/lib/reveal-label.ts
 msgid "Reveal in File Explorer"
 msgstr "Reveal in File Explorer"
 
 #: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
-#: src/components/FileTree.tsx
 #: src/components/ReportBugDialogBody.tsx
-#: src/components/skill-actions.tsx
+#: src/lib/reveal-label.ts
 msgid "Reveal in Finder"
 msgstr "Reveal in Finder"
 

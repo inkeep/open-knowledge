@@ -202,6 +202,7 @@ import {
 import { importTemplate } from '@/lib/folder-config-api';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
+import { revealInFileManagerLabel } from '@/lib/reveal-label';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import {
   buildDocShareInput,
@@ -465,18 +466,6 @@ interface TrashFailureRequest {
 interface WorkspaceInfo {
   contentDir: string;
   pathSeparator: '/' | '\\';
-}
-
-/**
- * Platform-specific label for the file-manager reveal action. Mirrors VS Code's copy.
- * Linux verb asymmetry (Open vs Reveal) is intentional — no stable Linux file-manager
- * brand to "Reveal in"; a normalizing fix to "Reveal in Files" would be incorrect on
- * most distros.
- */
-function revealInFileManagerLabel(platform: 'darwin' | 'win32' | 'linux'): string {
-  if (platform === 'darwin') return t`Reveal in Finder`;
-  if (platform === 'win32') return t`Reveal in File Explorer`;
-  return t`Open containing folder`;
 }
 
 const DROPDOWN_FILE_TARGET_MENU_PRIMITIVES = {
