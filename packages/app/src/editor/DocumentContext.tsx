@@ -77,6 +77,7 @@ import {
   tabIdForNavigationTarget,
   writeLocalTabSessionState,
 } from './editor-tabs';
+import { subscribePreviewTabPromotion } from './preview-tab-promotion';
 import {
   MAX_POOL,
   ProviderPool,
@@ -1987,6 +1988,29 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       }).workspace,
     );
   }
+
+  /**
+   * Make a tab permanent once the user commits to it, so the next sidebar click
+   * opens beside it instead of replacing it.
+   *
+   * Guarded on the pane's current `previewTabId` before committing, because the
+   * edit path calls this on every user keystroke: only the FIRST request for a
+   * given preview tab reaches `commitWorkspace`, and every later one returns
+   * without touching workspace state, persistence, or React.
+   */
+  function promotePreviewTab(tabId: string) {
+    const owner = findPaneOwningTab(workspaceRef.current, tabId);
+    if (!owner || owner.previewTabId !== tabId) return;
+    promoteTabInPaneById(owner.id, tabId);
+  }
+
+  useEffect(
+    () => subscribePreviewTabPromotion(promotePreviewTab),
+    [
+      // biome-ignore lint/correctness/useExhaustiveDependencies: promotePreviewTab is render-bound (React Compiler is on, so useCallback is not an option here); re-subscribing keeps the listener reading current workspace state, and the unsubscribe is identity-checked so the churn can't drop a live registration.
+      promotePreviewTab,
+    ],
+  );
 
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {

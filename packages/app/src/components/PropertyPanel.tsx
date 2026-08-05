@@ -46,6 +46,7 @@ import { coerceValue, DEFAULT_VALUE_FOR_TYPE } from '@/components/PropertyWidget
 import { usePropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Button } from '@/components/ui/button';
 import { useDocLintConfig } from '@/editor/lint-config-client';
+import { withPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 import {
   partitionFrontmatterProblems,
   useFrontmatterDiagnostics,
@@ -109,7 +110,13 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   );
 
   useEffect(() => {
-    const next = bindFrontmatterDoc(provider);
+    // Wrapped so every mutating route — this panel's own patch/rename/reorder
+    // AND the path-addressed edits nested widgets issue through
+    // `FrontmatterBindingContext` — promotes the doc's preview tab.
+    const next = withPreviewTabPromotion(
+      bindFrontmatterDoc(provider),
+      provider.configuration.name ?? '',
+    );
     setBinding(next);
     setSnapshot(next.current());
     const unsub = next.subscribe((s) => {

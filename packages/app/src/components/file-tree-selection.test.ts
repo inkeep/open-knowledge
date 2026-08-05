@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { resolveFileTreeSelection, resolveFileTreeSelectionAction } from './file-tree-selection';
+import { assetTabId, docTabId } from '@/editor/editor-tabs';
+import {
+  previewTabIdForTreePath,
+  resolveFileTreeSelection,
+  resolveFileTreeSelectionAction,
+} from './file-tree-selection';
 
 describe('resolveFileTreeSelection', () => {
   test('keeps a document row active for doc targets', () => {
@@ -354,5 +359,148 @@ describe('resolveFileTreeSelectionAction — editable text assets', () => {
         },
       ]),
     ).toMatchObject({ kind: 'asset', path: 'big/data.json' });
+  });
+});
+
+describe('previewTabIdForTreePath', () => {
+  test('a markdown row resolves to its extension-less document tab', () => {
+    // The row is `docs/guide.md`; the tab is `docs/guide`. Recomputing the tab
+    // id from the row path instead of the resolved action would target a tab
+    // that does not exist, and the double-click would silently do nothing.
+    expect(
+      previewTabIdForTreePath(
+        'docs/guide.md',
+        [{ kind: 'document', docName: 'docs/guide', size: 0, modified: '' }],
+        new Set<string>(),
+      ),
+    ).toBe(docTabId('docs/guide'));
+  });
+
+  test('an image row resolves to its asset tab', () => {
+    expect(
+      previewTabIdForTreePath(
+        'docs/photo.png',
+        [
+          {
+            kind: 'asset',
+            path: 'docs/photo.png',
+            assetExt: '.png',
+            mediaKind: 'image',
+            size: 0,
+            modified: '',
+          },
+        ],
+        new Set<string>(),
+      ),
+    ).toBe(assetTabId('docs/photo.png'));
+  });
+
+  test('a mermaid row resolves to a DOCUMENT tab despite being an asset entry', () => {
+    // The case that makes sharing `resolveFileTreeSelectionAction` load-bearing:
+    // `.mmd` is an asset entry that opens as an editable doc, so keying the tab
+    // id off the entry kind would promote the wrong tab.
+    expect(
+      previewTabIdForTreePath(
+        'assets/flow.mmd',
+        [
+          {
+            kind: 'asset',
+            path: 'assets/flow.mmd',
+            assetExt: '.mmd',
+            mediaKind: 'mermaid',
+            size: 0,
+            modified: '',
+          },
+        ],
+        new Set<string>(),
+      ),
+    ).toBe(docTabId('assets/flow.mmd'));
+  });
+
+  test('an oversized text row resolves to its asset tab, matching where it opens', () => {
+    expect(
+      previewTabIdForTreePath(
+        'big/data.json',
+        [
+          {
+            kind: 'asset',
+            path: 'big/data.json',
+            assetExt: '.json',
+            mediaKind: 'text',
+            size: 20 * 1024 * 1024,
+            modified: '',
+          },
+        ],
+        new Set<string>(),
+      ),
+    ).toBe(assetTabId('big/data.json'));
+  });
+
+  test('a folder row resolves to nothing', () => {
+    expect(
+      previewTabIdForTreePath(
+        'docs/',
+        [{ kind: 'folder', path: 'docs', modified: '' }],
+        new Set<string>(),
+      ),
+    ).toBeNull();
+  });
+
+  test('an unknown row resolves to nothing', () => {
+    expect(previewTabIdForTreePath('ghost.md', [], new Set<string>())).toBeNull();
+    expect(previewTabIdForTreePath(undefined, [], new Set<string>())).toBeNull();
+  });
+});
+
+describe('previewTabIdForTreePath — revealed .ok rows', () => {
+  // These rows are rerouted a second time by `okContentNavigationTarget`, AFTER
+  // the selection action resolves. Deriving the tab id from the action alone
+  // yields an id no pane owns, so the double-click is a silent no-op on exactly
+  // these rows whenever "Show .ok folders" is on.
+  test('a template row resolves to its managed-artifact doc tab', () => {
+    expect(
+      previewTabIdForTreePath(
+        '.ok/templates/meeting.md',
+        [
+          {
+            kind: 'document',
+            docName: '.ok/templates/meeting',
+            docExt: '.md',
+            size: 0,
+            modified: '',
+          },
+        ],
+        new Set<string>(),
+      ),
+    ).toBe(docTabId('__template__/meeting'));
+  });
+
+  test('a non-page .ok doc row resolves to the read-only asset tab', () => {
+    expect(
+      previewTabIdForTreePath(
+        '.ok/notes/scratch.md',
+        [{ kind: 'document', docName: '.ok/notes/scratch', docExt: '.md', size: 0, modified: '' }],
+        new Set<string>(),
+      ),
+    ).toBe(assetTabId('.ok/notes/scratch.md'));
+  });
+
+  test('an indexed .ok page keeps the ordinary doc tab', () => {
+    // `pages` membership means the normal doc flow owns it — no reroute.
+    expect(
+      previewTabIdForTreePath(
+        '.ok/skills/thing/SKILL.md',
+        [
+          {
+            kind: 'document',
+            docName: '.ok/skills/thing/SKILL',
+            docExt: '.md',
+            size: 0,
+            modified: '',
+          },
+        ],
+        new Set<string>(['.ok/skills/thing/SKILL']),
+      ),
+    ).toBe(docTabId('.ok/skills/thing/SKILL'));
   });
 });

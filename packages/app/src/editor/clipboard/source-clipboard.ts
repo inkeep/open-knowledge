@@ -47,6 +47,7 @@ import {
 import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import * as Y from 'yjs';
+import { requestPreviewTabPromotion } from '../preview-tab-promotion.ts';
 import { type ClipboardSource, detectSource } from './detect-source.ts';
 import {
   classifyError,
@@ -75,6 +76,13 @@ const SOURCE_PASTE_ORIGIN = Object.freeze({
 export interface SourceClipboardDeps {
   ydoc: Y.Doc;
   ytext: Y.Text;
+  /**
+   * The document this view edits. Needed because the chunked large-paste path
+   * writes Y.Text directly rather than dispatching to the view, so no editor
+   * origin guard can attribute the write and the preview tab has to be
+   * promoted from here.
+   */
+  docName: string;
 }
 
 /**
@@ -174,7 +182,11 @@ export function handleCopyOrCut(
     }
     event.preventDefault();
     if (kind === 'cut') {
-      view.dispatch({ changes: { from, to, insert: '' } });
+      // `userEvent` is CodeMirror-canonical for a cut, and load-bearing beyond
+      // undo grouping: the preview-tab origin guard admits only annotated
+      // dispatches, so an unstamped cut reads as CRDT sync and leaves the tab
+      // provisional — losing it on the next sidebar click.
+      view.dispatch({ changes: { from, to, insert: '' }, userEvent: 'delete.cut' });
     }
     logIfSlow(start, { op: kind, view: 'source', branch: 'serialize', source: 'local' });
     return true;
@@ -339,6 +351,9 @@ function tryBranchDHtml(
     view.dispatch({
       changes: { from, to, insert: markdown },
       selection: { anchor: from + markdown.length },
+      // See the cut above: without the annotation this reads as sync to the
+      // preview-tab origin guard and the pasted-into tab stays provisional.
+      userEvent: 'input.paste',
     });
     return true;
   }
@@ -357,8 +372,13 @@ function tryBranchDHtml(
   // behind — see `handleChunkedInsertFailure` below.
   const restoreText = from === to ? '' : view.state.sliceDoc(from, to);
   if (from !== to) {
-    view.dispatch({ changes: { from, to, insert: '' } });
+    view.dispatch({ changes: { from, to, insert: '' }, userEvent: 'input.paste' });
   }
+  // The chunks below land in Y.Text without passing through the view, so the
+  // source editor's origin guard never sees them — and with no selection to
+  // delete, the dispatch above doesn't run either. Announce the commit here so
+  // a large paste promotes the tab like every smaller one.
+  requestPreviewTabPromotion(deps.docName);
   const anchorIndex = from;
   // `assoc = 0` (default) is left-binding: concurrent inserts AT anchorIndex
   // leave our anchor at the original spot, so their content lands AFTER our

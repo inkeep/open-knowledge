@@ -84,6 +84,10 @@ function fixAction(result: LintDiagnostic): Action | null {
           to: offsetOf(doc, fix.range.end),
           insert: fix.newText,
         })),
+        // `@codemirror/lint` annotates none of its own dispatches. Without one
+        // the preview-tab origin guard reads this as CRDT sync, so applying a
+        // fix from the source gutter would leave the tab provisional.
+        userEvent: 'input.complete',
       });
     },
   };

@@ -13,6 +13,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core';
 import { useEffect, useRef, useState } from 'react';
+import { withPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 
 export interface FrontmatterFieldBinding {
   value: string;
@@ -42,7 +43,13 @@ export function useFrontmatterField(
   const focusedRef = useRef(false);
 
   useEffect(() => {
-    const b = bindFrontmatterDoc(provider);
+    // Wrapped so an on-blur commit promotes the doc's preview tab — same
+    // reason as PropertyPanel: the write lands as a sync-origin Y.Text change
+    // that no editor origin guard reads as user input.
+    const b = withPreviewTabPromotion(
+      bindFrontmatterDoc(provider),
+      provider.configuration.name ?? '',
+    );
     setBinding(b);
     setValue(readField(b, key));
     const unsub = b.subscribe(() => {

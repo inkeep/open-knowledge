@@ -14,6 +14,7 @@ import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
+import { requestPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 import { getSelectionContext } from '@/editor/selection-context';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
@@ -560,6 +561,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         docName: activeDocName,
         ytext: activeProvider.document.getText('source'),
       });
+      // Flipping a doc's mode is committing to it, so a previewed doc stops
+      // being provisional. Only this path promotes: the tool-driven flips
+      // (raw-MDX nav, view-in-source) call `setEditorMode` directly and stay a
+      // peek, exactly as they stay session-only for the persisted preference.
+      requestPreviewTabPromotion(activeDocName);
     }
     setEditorMode(mode);
     // User-initiated change — persist globally. Tool-driven flips (e.g.

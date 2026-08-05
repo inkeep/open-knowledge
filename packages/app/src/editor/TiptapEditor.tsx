@@ -75,6 +75,7 @@ import {
   computeChangedRange,
   createAgentInsertFlashPlugin,
 } from './plugins/agent-insert-flash';
+import { isUserIntentPmTransaction, requestPreviewTabPromotion } from './preview-tab-promotion';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
@@ -459,7 +460,7 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
     MarkdownLintDecorations.configure({
       docName: provider.configuration.name ?? '',
       getSource: () => provider.document.getText('source').toString(),
-      applyFix: (fixes) => applyLintFixes(provider, fixes),
+      applyFix: (fixes) => applyLintFixes(provider, fixes, provider.configuration.name ?? ''),
     }),
   ];
 }
@@ -1022,6 +1023,23 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       detach();
     };
   }, [editor]);
+
+  // A user edit promotes this doc's preview tab to permanent. Listens for the
+  // content change rather than the keystroke: arrow keys, Escape and Cmd+C all
+  // reach the DOM handlers above but leave the document untouched, and a tab
+  // the user only navigated around is still provisional.
+  useEffect(() => {
+    const docName = provider.configuration.name;
+    if (!docName) return;
+    const onTransaction = ({ transaction }: { transaction: PMTransaction }) => {
+      if (!isUserIntentPmTransaction(transaction)) return;
+      requestPreviewTabPromotion(docName);
+    };
+    editor.on('transaction', onTransaction);
+    return () => {
+      editor.off('transaction', onTransaction);
+    };
+  }, [editor, provider]);
 
   // Rename-snapshot consumption — one-shot, on the editor's first `'create'`.
   // The rename snapshot (HTML + scrollTop + selection, see editor-cache.ts)

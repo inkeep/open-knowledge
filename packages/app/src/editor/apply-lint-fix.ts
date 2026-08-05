@@ -9,6 +9,7 @@
 
 import type { LintDiagnostic, LintPosition, LintTextEdit } from '@inkeep/open-knowledge-core';
 import type * as Y from 'yjs';
+import { requestPreviewTabPromotion } from './preview-tab-promotion';
 
 /** Minimal provider shape — just the Y.Doc, so this stays test-friendly. */
 export interface SourceWriteProvider {
@@ -65,6 +66,7 @@ export function collectFixes(diagnostics: readonly LintDiagnostic[]): LintTextEd
 export function applyLintFixes(
   provider: SourceWriteProvider,
   fixes: readonly LintTextEdit[],
+  docName: string,
 ): boolean {
   if (fixes.length === 0) return false;
   const ytext = provider.document.getText('source');
@@ -79,6 +81,7 @@ export function applyLintFixes(
     // inside it — the container applies, the swallowed edit skips. For
     // non-overlapping edits this is the same high→low order as from-desc.
     .sort((a, b) => b.to - a.to || b.from - a.from || a.insert.localeCompare(b.insert));
+  let appliedCount = 0;
   provider.document.transact(() => {
     let lowestAppliedFrom = Number.POSITIVE_INFINITY;
     let previous: (typeof edits)[number] | undefined;
@@ -93,8 +96,15 @@ export function applyLintFixes(
       if (edit.to > edit.from) ytext.delete(edit.from, edit.to - edit.from);
       if (edit.insert.length > 0) ytext.insert(edit.from, edit.insert);
       lowestAppliedFrom = edit.from;
+      appliedCount += 1;
     }
   }, LINT_FIX_ORIGIN);
+  // Clicking Fix is the user committing to this document, but the write goes
+  // straight to Y.Text — it reaches the WYSIWYG editor carrying sync meta and
+  // the source editor with no `userEvent`, so both origin guards correctly
+  // reject it and no editor can attribute it. Announce from the write side,
+  // like the frontmatter binding wrapper, and only for a write that landed.
+  if (appliedCount > 0) requestPreviewTabPromotion(docName);
   // Nudge any mounted WYSIWYG lint decoration to re-lint — a source-only fix
   // leaves the PM doc unchanged, so its PM-driven recompute never fires.
   if (typeof window !== 'undefined') {

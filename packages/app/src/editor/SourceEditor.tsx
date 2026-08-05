@@ -32,6 +32,7 @@ import { startSourceLanding } from './mode-switch-landing';
 import { getMountId } from './mount-id-registry';
 import { markUserTyping } from './observers';
 import { landingFlashSource } from './plugins/landing-flash-source';
+import { isUserIntentCmUpdate, requestPreviewTabPromotion } from './preview-tab-promotion';
 import { claimScrollerForNavigation, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromSource } from './selection-context';
 import {
@@ -247,6 +248,7 @@ export function SourceEditor({
           const sourceClipboard = createSourceClipboardExtension({
             ydoc: provider.document,
             ytext,
+            docName: resolvedDocName,
           });
           // Created here (not as component refs) so they live with the cached
           // view — see the compartment note above and `CmCacheEntry`.
@@ -311,6 +313,15 @@ export function SourceEditor({
               landingFlashSource(),
               lintCompartment.of(createMarkdownLintExtension(linterConfig, docName)),
               sourceClipboard,
+              // A user edit promotes this doc's preview tab to permanent. Safe to
+              // capture `resolvedDocName` in the closure even though the view
+              // outlives this component: the view is bound to one doc's Y.Text
+              // for its whole lifetime, and the promotion itself is dispatched
+              // through a module-level listener rather than a captured callback.
+              EditorView.updateListener.of((update) => {
+                if (!isUserIntentCmUpdate(update)) return;
+                requestPreviewTabPromotion(resolvedDocName);
+              }),
               EditorView.updateListener.of((update) => {
                 if (!update.selectionSet && !update.docChanged) return;
                 if (selectionStatsTimer !== null) clearTimeout(selectionStatsTimer);

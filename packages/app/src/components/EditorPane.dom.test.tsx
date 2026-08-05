@@ -152,6 +152,11 @@ vi.doMock('@/editor/DocumentContext', () => ({
   isSkillsNewTabId: () => false,
 }));
 
+const promotePreviewTabMock = vi.fn(() => {});
+vi.doMock('@/editor/preview-tab-promotion', () => ({
+  requestPreviewTabPromotion: promotePreviewTabMock,
+}));
+
 vi.doMock('@/editor/use-editor-mode', () => ({
   useEditorMode: () => ['wysiwyg', () => {}],
 }));
@@ -1086,5 +1091,53 @@ describe('EditorPane session-panel wiring', () => {
     expect(dock.getAttribute('data-visible')).toBe('true');
     expect(dock.getAttribute('data-launch-nonce')).toBe('none');
     expect(input.texts).toEqual([]);
+  });
+});
+
+describe('EditorPane mode switch promotes the preview tab', () => {
+  afterEach(() => {
+    cleanup();
+    delete (window as { okDesktop?: unknown }).okDesktop;
+    promotePreviewTabMock.mockClear();
+    activeProvider = undefined;
+    clearPendingSourceNavigationsForTest();
+  });
+
+  /** The ⌥⌘M / Ctrl-Alt-M binding for `toggle-editor-mode`. */
+  function pressModeToggle() {
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          code: 'KeyM',
+          key: 'm',
+          altKey: true,
+          metaKey: true,
+          ctrlKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+  }
+
+  test('flipping a doc between source and WYSIWYG promotes its tab', async () => {
+    // Switching modes changes no bytes, so no editor origin guard can see it —
+    // the promotion has to come from the mode-change handler itself.
+    activeProvider = { document: new Y.Doc() };
+    await renderEditorPane();
+
+    pressModeToggle();
+
+    expect(promotePreviewTabMock).toHaveBeenCalledWith('docs/notes');
+  });
+
+  test('a flip with no provider yet promotes nothing', async () => {
+    // Same guard the anchor capture uses: before the provider resolves there is
+    // no document to have committed to.
+    activeProvider = undefined;
+    await renderEditorPane();
+
+    pressModeToggle();
+
+    expect(promotePreviewTabMock).not.toHaveBeenCalled();
   });
 });

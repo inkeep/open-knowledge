@@ -54,6 +54,7 @@ import {
   resolvePageCover,
   resolvePageIcon,
 } from '@/components/page-header-utils';
+import { withPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 
 interface PageHeaderProps {
   provider: HocuspocusProvider;
@@ -82,7 +83,12 @@ export function PageHeader({ provider }: PageHeaderProps) {
   const bindingRef = useRef<FrontmatterBinding | null>(null);
 
   useEffect(() => {
-    const next = bindFrontmatterDoc(provider);
+    // Wrapped like PropertyPanel's: a cover reframe is a user edit, and it
+    // reaches the editors as a sync-origin Y.Text change they can't attribute.
+    const next = withPreviewTabPromotion(
+      bindFrontmatterDoc(provider),
+      provider.configuration.name ?? '',
+    );
     bindingRef.current = next;
     setSnapshot(next.current());
     const unsub = next.subscribe((s) => {

@@ -135,6 +135,7 @@ import {
 } from '@/components/file-tree-rename-validation';
 import { revealActiveRow } from '@/components/file-tree-reveal';
 import {
+  previewTabIdForTreePath,
   resolveFileTreeSelection,
   resolveFileTreeSelectionAction,
 } from '@/components/file-tree-selection';
@@ -185,6 +186,7 @@ import { asDirectoryHandle, useSelectionMirror } from '@/components/use-selectio
 import { getEditorForDoc } from '@/editor/active-editor';
 import { type OpenTargetOptions, useDocumentContext } from '@/editor/DocumentContext';
 import { assetTabId, docTabId, folderTabId, remapPathForFolderRenames } from '@/editor/editor-tabs';
+import { requestPreviewTabPromotionForTab } from '@/editor/preview-tab-promotion';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
@@ -3480,6 +3482,33 @@ export function FileTree({
     queueMicrotask(() => activateTreePath(path));
   }
 
+  /**
+   * Double-clicking a row commits to that file, so its preview tab stops being
+   * provisional — matching double-click on the tab itself.
+   *
+   * Deliberately additive: the row was already opened by the first click of the
+   * pair, so this only flips the tab's preview state and never navigates. That
+   * keeps it clear of the click-capture handler's folder-expand and
+   * same-stem-sibling paths, which is why it doesn't preventDefault.
+   *
+   * Folders are skipped. A double-click on one is two toggles of its expand
+   * state — a gesture about the tree, not a commitment to the folder overview.
+   */
+  function handleTreeDoubleClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    // The inline rename input is a descendant of the row and inherits its
+    // `data-item-path`, so a double-click to select a word while renaming would
+    // otherwise read as a commit to the row. Same helper the tree's keydown
+    // handler uses for the same reason.
+    if (isEditableKeyboardTarget(event.target)) return;
+    const item = findTreeItemElement(event.nativeEvent);
+    if (!item || item.dataset.fileTreeStickyRow === 'true') return;
+    if (item.dataset.itemType === 'folder') return;
+    const tabId = previewTabIdForTreePath(item.dataset.itemPath, documentsRef.current, pages);
+    if (tabId) requestPreviewTabPromotionForTab(tabId);
+  }
+
   function handleEmptyExternalFileDragOver(event: ReactDragEvent<HTMLDivElement>) {
     if (!isExternalFileDrag(event.nativeEvent)) return;
     event.preventDefault();
@@ -3615,6 +3644,7 @@ export function FileTree({
           // focus-ring suppression in FILE_TREE_CREATION_CLEARED_CSS.
           {...{ [FILE_TREE_CREATION_CLEARED_ATTR]: creationDirCleared ? '' : undefined }}
           onClickCapture={handleTreeClickCapture}
+          onDoubleClickCapture={handleTreeDoubleClickCapture}
           onMouseMove={handleTreeMouseMove}
           onMouseLeave={cancelCurrentHoverPrewarm}
           renderContextMenu={(item, context) => (

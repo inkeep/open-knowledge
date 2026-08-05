@@ -249,16 +249,33 @@ vi.doMock('@pierre/trees', () => ({
 }));
 vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
-  FileTree: ({ onClickCapture }: { onClickCapture?: MouseEventHandler<HTMLDivElement> }) => (
-    <div data-testid="fake-pierre-tree" role="tree" onClickCapture={onClickCapture}>
+  FileTree: ({
+    onClickCapture,
+    onDoubleClickCapture,
+  }: {
+    onClickCapture?: MouseEventHandler<HTMLDivElement>;
+    onDoubleClickCapture?: MouseEventHandler<HTMLDivElement>;
+  }) => (
+    <div
+      data-testid="fake-pierre-tree"
+      role="tree"
+      onClickCapture={onClickCapture}
+      onDoubleClickCapture={onDoubleClickCapture}
+    >
+      {/* `aria-label` pins the row's accessible name so the nested rename
+          field's value can't change how the tests address it. */}
       <div
         role="treeitem"
+        aria-label="note.md"
         data-item-path="note.md"
         data-item-type="file"
         aria-selected="false"
         tabIndex={-1}
       >
         note.md
+        {/* Pierre renders the inline rename field inside the row, so it
+            inherits the row's `data-item-path`. */}
+        <input data-testid="rename-input" defaultValue="note.md" />
       </div>
       <div
         role="treeitem"
@@ -282,6 +299,11 @@ vi.doMock('@pierre/trees/react', () => ({
       </div>
     </div>
   ),
+}));
+
+const promoteTabMock = vi.fn(() => {});
+vi.doMock('@/editor/preview-tab-promotion', () => ({
+  requestPreviewTabPromotionForTab: promoteTabMock,
 }));
 
 const { FileTree } = await import('./FileTree');
@@ -354,5 +376,98 @@ describe('FileTree preview-tab activation', () => {
     await Promise.resolve();
     expect(openTargetMock).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('');
+  });
+});
+
+describe('FileTree double-click promotes the previewed row', () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    previewTabsEnabled = true;
+    model.items.clear();
+    model.selectedPaths = [];
+    openTargetMock.mockClear();
+    promoteTabMock.mockClear();
+    notifySidebarFileSelectedMock.mockClear();
+    window.location.hash = '';
+    globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    consoleWarnSpy.mockRestore();
+  });
+
+  async function renderTree() {
+    render(<FileTree />);
+    await screen.findByTestId('fake-pierre-tree');
+    await waitFor(() => expect(model.getItem('docs/')).not.toBeNull());
+  }
+
+  test('double-clicking a file row promotes its tab, addressed by tab id not row path', async () => {
+    await renderTree();
+
+    fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'note.md' }));
+
+    // The row is `note.md`; the tab is the extension-less `note`.
+    await waitFor(() => expect(promoteTabMock).toHaveBeenCalledWith('note'));
+  });
+
+  test('a single click does not promote — that is what keeps preview provisional', async () => {
+    await renderTree();
+
+    fireEvent.click(screen.getByRole('treeitem', { name: 'note.md' }));
+
+    await waitFor(() => expect(openTargetMock).toHaveBeenCalled());
+    expect(promoteTabMock).not.toHaveBeenCalled();
+  });
+
+  test('double-clicking a folder row promotes nothing', async () => {
+    // Two clicks on a folder are two expand toggles — a gesture about the tree,
+    // not a commitment to the folder overview.
+    await renderTree();
+
+    fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'docs/' }));
+
+    expect(promoteTabMock).not.toHaveBeenCalled();
+  });
+
+  test('double-clicking the pinned folder header promotes nothing', async () => {
+    await renderTree();
+
+    fireEvent.doubleClick(screen.getByTestId('sticky-docs'));
+
+    expect(promoteTabMock).not.toHaveBeenCalled();
+  });
+
+  test('a modified-key double-click promotes nothing', async () => {
+    // Cmd/Ctrl/Shift-click are selection and open-elsewhere gestures; they must
+    // not be read as a commitment to the row.
+    await renderTree();
+
+    fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'note.md' }), { metaKey: true });
+    fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'note.md' }), { shiftKey: true });
+
+    expect(promoteTabMock).not.toHaveBeenCalled();
+  });
+
+  test('a non-primary-button double-click promotes nothing', async () => {
+    await renderTree();
+
+    fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'note.md' }), { button: 2 });
+
+    expect(promoteTabMock).not.toHaveBeenCalled();
+  });
+
+  test('double-clicking inside the inline rename field promotes nothing', async () => {
+    // The field is a descendant of the row and inherits its `data-item-path`,
+    // so double-clicking to select a word while renaming would otherwise read
+    // as a commit to the row.
+    await renderTree();
+
+    fireEvent.doubleClick(screen.getByTestId('rename-input'));
+
+    expect(promoteTabMock).not.toHaveBeenCalled();
   });
 });

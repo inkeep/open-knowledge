@@ -4,15 +4,20 @@ import {
   isEditableTextDocFile,
   TEXT_DOC_OPEN_BYTE_LIMIT,
 } from '@inkeep/open-knowledge-core';
+import { assetTabId, docTabId } from '@/editor/editor-tabs';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import {
   findEntryByTreePath,
   treeFilePathToDocumentDocName,
   treePathToAppPath,
 } from './file-tree-adapter';
-import type { FileEntry } from './file-tree-utils';
+import type { DocumentEntry, FileEntry } from './file-tree-utils';
 import { isAssetEntry, isDocumentEntry, isFolderEntry } from './file-tree-utils';
-import { docNameForNavigationTarget, type ResolvedNavigationTarget } from './navigation-targets';
+import {
+  docNameForNavigationTarget,
+  okContentNavigationTarget,
+  type ResolvedNavigationTarget,
+} from './navigation-targets';
 
 interface FileTreeSelection {
   selectedFilePath: string | null;
@@ -145,4 +150,40 @@ export function resolveFileTreeSelectionAction(
   }
 
   return { kind: 'document', path: appPath };
+}
+
+/**
+ * The editor tab id a tree row opens into, or null when the row opens no tab.
+ *
+ * Replays the click path's resolution rather than deriving from the row path,
+ * so a double-click promotion targets exactly the tab the click created. Both
+ * steps matter, because neither mapping is the obvious one:
+ *
+ *   1. `resolveFileTreeSelectionAction` — a `.mmd` or editable text file is an
+ *      asset ENTRY that opens as a DOCUMENT tab, and a markdown row's tab drops
+ *      the extension.
+ *   2. `okContentNavigationTarget` — a revealed `.ok/**` row is rerouted again:
+ *      a template opens `__template__/<name>`, and any other non-page `.ok` doc
+ *      opens a read-only asset tab. Skipping this step yields a tab id no pane
+ *      owns, making the double-click a silent no-op on exactly those rows
+ *      whenever "Show .ok folders" is on.
+ *
+ * Folders return null. Their overview is reached by a gesture (expand /
+ * collapse) that a double-click just performs twice.
+ */
+export function previewTabIdForTreePath(
+  treePath: string | undefined,
+  entries: readonly FileEntry[],
+  pages: ReadonlySet<string>,
+): string | null {
+  const action = resolveFileTreeSelectionAction(treePath, entries);
+  if (action.kind === 'asset') return assetTabId(action.path);
+  if (action.kind !== 'document') return null;
+  const docEntry = entries.find(
+    (item): item is DocumentEntry => isDocumentEntry(item) && item.docName === action.path,
+  );
+  const okTarget = okContentNavigationTarget(action.path, { pages, docExt: docEntry?.docExt });
+  if (okTarget?.kind === 'asset') return assetTabId(okTarget.assetPath);
+  if (okTarget?.kind === 'doc') return docTabId(okTarget.docName);
+  return docTabId(action.path);
 }

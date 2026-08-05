@@ -6,6 +6,10 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { assetTabId, docTabId, localTabSessionStorageKey, skillFileTabId } from './editor-tabs';
+import {
+  requestPreviewTabPromotion,
+  requestPreviewTabPromotionForTab,
+} from './preview-tab-promotion';
 
 let mockCollabUrl: string | null = null;
 
@@ -495,6 +499,138 @@ function PaneWorkspaceHarness() {
 function ProviderHarness({ children }: { children: ReactNode }) {
   return <DocumentProvider>{children}</DocumentProvider>;
 }
+
+function PreviewEditHarness() {
+  const ctx = useDocumentContext();
+  const openPreview = (docName: string) =>
+    ctx.openTarget(
+      { kind: 'doc', target: docName, docName },
+      { disposition: 'preview', consumeActiveNewTab: false },
+    );
+  return (
+    <>
+      <span data-testid="open-tabs">{ctx.openTabs.join('|')}</span>
+      <span data-testid="preview-tab">
+        {[...ctx.previewTabIdsByPane.values()].map((tabId) => tabId ?? '').join('|')}
+      </span>
+      <span data-testid="session-loaded">{String(ctx.tabSessionLoaded)}</span>
+      <button type="button" onClick={() => openPreview('First.md')}>
+        Preview first
+      </button>
+      <button type="button" onClick={() => openPreview('Second.md')}>
+        Preview second
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          ctx.openTarget(
+            { kind: 'asset', target: 'LICENSE', assetPath: 'LICENSE', mediaKind: null },
+            { disposition: 'preview', consumeActiveNewTab: false },
+          )
+        }
+      >
+        Preview asset
+      </button>
+    </>
+  );
+}
+
+describe('DocumentContext preview-tab promotion on user edit', () => {
+  afterEach(() => {
+    cleanup();
+    mockCollabUrl = null;
+    globalThis.fetch = originalFetch;
+    window.localStorage.clear();
+    window.location.hash = '';
+  });
+
+  /** Opens bail during the restore window, so settle it before driving tabs. */
+  async function renderSettled() {
+    // Restore is gated on a resolved collab URL; without one `tabSessionLoaded`
+    // never flips and every open stays in the restore window.
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    window.localStorage.setItem(
+      localTabSessionStorageKey(window.location.origin),
+      JSON.stringify(
+        persistedTabSession([], [], null, new Date('2026-05-13T00:00:00.000Z').toISOString()),
+      ),
+    );
+    render(<PreviewEditHarness />, { wrapper: ProviderHarness });
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    return userEvent.setup();
+  }
+
+  test('an edit promotes the preview tab, so the next sidebar click opens beside it', async () => {
+    const user = await renderSettled();
+
+    await user.click(screen.getByRole('button', { name: 'Preview first' }));
+    expect(screen.getByTestId('preview-tab').textContent).toBe(docTabId('First.md'));
+
+    // The notification the editors emit on a user-intent content change.
+    act(() => {
+      requestPreviewTabPromotion('First.md');
+    });
+    expect(screen.getByTestId('preview-tab').textContent).toBe('');
+
+    await user.click(screen.getByRole('button', { name: 'Preview second' }));
+    expect(screen.getByTestId('open-tabs').textContent).toBe(
+      `${docTabId('First.md')}|${docTabId('Second.md')}`,
+    );
+  });
+
+  test('without an edit the preview tab is still replaced', async () => {
+    // The control. Preview replacement is correct behavior, not collateral of
+    // the bug — this pins that the fix did not turn every click permanent.
+    const user = await renderSettled();
+
+    await user.click(screen.getByRole('button', { name: 'Preview first' }));
+    await user.click(screen.getByRole('button', { name: 'Preview second' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe(docTabId('Second.md'));
+  });
+
+  test('an edit to a document with no open tab changes nothing', async () => {
+    const user = await renderSettled();
+
+    await user.click(screen.getByRole('button', { name: 'Preview first' }));
+    act(() => {
+      requestPreviewTabPromotion('Unopened.md');
+    });
+
+    expect(screen.getByTestId('preview-tab').textContent).toBe(docTabId('First.md'));
+    expect(screen.getByTestId('open-tabs').textContent).toBe(docTabId('First.md'));
+  });
+
+  test('the listener is torn down with the provider', () => {
+    const { unmount } = render(<PreviewEditHarness />, { wrapper: ProviderHarness });
+    unmount();
+    // A notification arriving after teardown must not reach a disposed context.
+    expect(() => requestPreviewTabPromotion('First.md')).not.toThrow();
+  });
+
+  test('a non-document preview tab promotes too, via its tab id', async () => {
+    // The sidebar can preview an asset, whose tab id is NOT its document name.
+    // Promotion is keyed by tab id precisely so this tab is reachable; the
+    // earlier docName-only API could not address it at all.
+    const user = await renderSettled();
+
+    await user.click(screen.getByRole('button', { name: 'Preview asset' }));
+    expect(screen.getByTestId('preview-tab').textContent).toBe(LICENSE_TAB_ID);
+
+    act(() => {
+      requestPreviewTabPromotionForTab(LICENSE_TAB_ID);
+    });
+    expect(screen.getByTestId('preview-tab').textContent).toBe('');
+
+    await user.click(screen.getByRole('button', { name: 'Preview first' }));
+    expect(screen.getByTestId('open-tabs').textContent).toBe(
+      `${LICENSE_TAB_ID}|${docTabId('First.md')}`,
+    );
+  });
+});
 
 describe('DocumentContext tab close force contract', () => {
   afterEach(() => {

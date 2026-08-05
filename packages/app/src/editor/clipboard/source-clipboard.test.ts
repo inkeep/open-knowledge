@@ -287,6 +287,11 @@ describe('handleCopyOrCut — empty-selection no-op + wrapper integration', () =
     expect(view.dispatchCalls).toHaveLength(1);
     expect(view.dispatchCalls[0]).toEqual({
       changes: { from: 3, to: 3 + markdown.length, insert: '' },
+      // `userEvent` is load-bearing beyond CodeMirror's undo grouping: the
+      // preview-tab origin guard admits only annotated dispatches, so dropping
+      // it makes a source-mode cut read as CRDT sync and the edited tab stays
+      // provisional — losing it on the next sidebar click.
+      userEvent: 'delete.cut',
     });
     // Clipboard payloads still written, same as copy.
     expect(dt.data['text/plain']).toBe(markdown);
@@ -383,6 +388,11 @@ describe('handlePaste — source mode paste dispatch', () => {
     expect(handled).toBe(true);
     expect(event.prevented).toBe(true);
     expect(view.dispatchCalls).toHaveLength(1);
+    // Pinned for the same reason the cut test pins `delete.cut`: the annotation
+    // is the only signal that makes the preview-tab origin guard admit this as
+    // a user edit, so dropping it would break paste promotion while leaving
+    // every other assertion here green.
+    expect(view.dispatchCalls[0]).toMatchObject({ userEvent: 'input.paste' });
   });
 
   test('source-mode wrapper with no text/plain routes through Branch D', () => {

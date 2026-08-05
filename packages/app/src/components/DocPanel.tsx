@@ -136,14 +136,14 @@ export function DocPanel({
   // document the user is viewing.
   const handleFix = (diagnostic: DiagnosticLike) => {
     if (lintProvider !== null && diagnostic.fixes && diagnostic.fixes.length > 0) {
-      applyLintFixes(lintProvider, diagnostic.fixes);
+      applyLintFixes(lintProvider, diagnostic.fixes, docName);
     }
   };
   // Auto-fix stays lint-only by construction: only the live lint diagnostics
   // carry deterministic fixes (broken links need content edits).
   const handleAutoFix = () => {
     if (lintProvider !== null) {
-      applyLintFixes(lintProvider, collectFixes(lintDiagnostics));
+      applyLintFixes(lintProvider, collectFixes(lintDiagnostics), docName);
     }
   };
   // Hand one diagnostic to the user's preferred AI as a grounded fix prompt (the

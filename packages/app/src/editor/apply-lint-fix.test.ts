@@ -1,7 +1,8 @@
 import type { LintDiagnostic, LintTextEdit } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { applyLintFixes, collectFixes, LINT_SOURCE_FIXED_EVENT } from './apply-lint-fix.ts';
+import { subscribePreviewTabPromotion } from './preview-tab-promotion';
 
 function docWith(source: string): Y.Doc {
   const doc = new Y.Doc();
@@ -35,19 +36,19 @@ describe('applyLintFixes', () => {
   test('removes a trailing-space run (MD009-style, single-line delete)', () => {
     const doc = docWith('# Title\n\nParagraph here.   \n');
     // line 2 (0-based), delete the 3 trailing spaces at chars 15..18.
-    applyLintFixes({ document: doc }, [edit(2, 15, 2, 18, '')]);
+    applyLintFixes({ document: doc }, [edit(2, 15, 2, 18, '')], 'doc');
     expect(doc.getText('source').toString()).toBe('# Title\n\nParagraph here.\n');
   });
 
   test('replaces a hard tab (MD010-style, insert replaces range)', () => {
     const doc = docWith('a\tb\n');
-    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, '  ')]);
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, '  ')], 'doc');
     expect(doc.getText('source').toString()).toBe('a  b\n');
   });
 
   test('applies multiple edits high→low without offset drift', () => {
     const doc = docWith('x   \ny   \n'); // trailing spaces on two lines
-    applyLintFixes({ document: doc }, [edit(0, 1, 0, 4, ''), edit(1, 1, 1, 4, '')]);
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 4, ''), edit(1, 1, 1, 4, '')], 'doc');
     expect(doc.getText('source').toString()).toBe('x\ny\n');
   });
 
@@ -60,14 +61,14 @@ describe('applyLintFixes', () => {
     doc.on('update', () => {
       updates += 1;
     });
-    applyLintFixes({ document: doc }, [edit(0, 1, 0, 4, ''), edit(1, 1, 1, 4, '')]);
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 4, ''), edit(1, 1, 1, 4, '')], 'doc');
     expect(updates).toBe(1);
     expect(doc.getText('source').toString()).toBe('x\ny\n');
   });
 
   test('empty fix list is a no-op returning false', () => {
     const doc = docWith('unchanged\n');
-    expect(applyLintFixes({ document: doc }, [])).toBe(false);
+    expect(applyLintFixes({ document: doc }, [], 'doc')).toBe(false);
     expect(doc.getText('source').toString()).toBe('unchanged\n');
   });
 
@@ -75,7 +76,7 @@ describe('applyLintFixes', () => {
     // MD047 (missing trailing newline) produces a pure-insertion fix: an edit
     // whose range is empty (start === end) with non-empty newText.
     const doc = docWith('# Heading');
-    applyLintFixes({ document: doc }, [edit(0, 9, 0, 9, '\n')]);
+    applyLintFixes({ document: doc }, [edit(0, 9, 0, 9, '\n')], 'doc');
     expect(doc.getText('source').toString()).toBe('# Heading\n');
   });
 
@@ -85,7 +86,7 @@ describe('applyLintFixes', () => {
     // N + 1, character: 0 } }. Exercises offsetOf's newline arithmetic across
     // a line boundary — a wrong byte count here would corrupt the shared Y.Text.
     const doc = docWith('# Title\n\npara\n\n\nextra blank\n');
-    applyLintFixes({ document: doc }, [edit(3, 0, 4, 0, '')]);
+    applyLintFixes({ document: doc }, [edit(3, 0, 4, 0, '')], 'doc');
     expect(doc.getText('source').toString()).toBe('# Title\n\npara\n\nextra blank\n');
   });
 
@@ -93,7 +94,7 @@ describe('applyLintFixes', () => {
     // Two diagnostics (e.g. two rules flagging the same run) can carry
     // byte-identical fixes; compounding them would delete twice.
     const doc = docWith('a\tb\n');
-    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, '  '), edit(0, 1, 0, 2, '  ')]);
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, '  '), edit(0, 1, 0, 2, '  ')], 'doc');
     expect(doc.getText('source').toString()).toBe('a  b\n');
   });
 
@@ -103,28 +104,36 @@ describe('applyLintFixes', () => {
     // applyFixes skips the overlapped fix; the skipped issue re-surfaces on
     // the post-fix re-lint.
     const doc = docWith('keep\nx\ty\nkeep\n');
-    applyLintFixes({ document: doc }, [
-      edit(1, 0, 2, 0, ''), // delete line 1 entirely
-      edit(1, 1, 1, 2, '  '), // replace the tab inside line 1
-    ]);
+    applyLintFixes(
+      { document: doc },
+      [
+        edit(1, 0, 2, 0, ''), // delete line 1 entirely
+        edit(1, 1, 1, 2, '  '), // replace the tab inside line 1
+      ],
+      'doc',
+    );
     expect(doc.getText('source').toString()).toBe('keep\nkeep\n');
   });
 
   test('applies touching (end-exclusive adjacent) edits from different diagnostics', () => {
     // [2,3) and [1,2) touch at offset 2 but do not overlap — both must land.
     const doc = docWith('a\t\tb\n');
-    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, ' '), edit(0, 2, 0, 3, ' ')]);
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, ' '), edit(0, 2, 0, 3, ' ')], 'doc');
     expect(doc.getText('source').toString()).toBe('a  b\n');
   });
 
   test('multi-diagnostic combination applies all non-conflicting fixes', () => {
     const doc = docWith('a\tb   \n\n\npara');
-    applyLintFixes({ document: doc }, [
-      edit(0, 1, 0, 2, '  '), // MD010 hard tab
-      edit(0, 3, 0, 6, ''), // MD009 trailing spaces
-      edit(2, 0, 3, 0, ''), // MD012 extra blank line
-      edit(3, 4, 3, 4, '\n'), // MD047 trailing newline
-    ]);
+    applyLintFixes(
+      { document: doc },
+      [
+        edit(0, 1, 0, 2, '  '), // MD010 hard tab
+        edit(0, 3, 0, 6, ''), // MD009 trailing spaces
+        edit(2, 0, 3, 0, ''), // MD012 extra blank line
+        edit(3, 4, 3, 4, '\n'), // MD047 trailing newline
+      ],
+      'doc',
+    );
     expect(doc.getText('source').toString()).toBe('a  b\n\npara\n');
   });
 
@@ -134,7 +143,7 @@ describe('applyLintFixes', () => {
       win.addEventListener(LINT_SOURCE_FIXED_EVENT, () => {
         fired += 1;
       });
-      applyLintFixes({ document: docWith('a\tb\n') }, [edit(0, 1, 0, 2, '  ')]);
+      applyLintFixes({ document: docWith('a\tb\n') }, [edit(0, 1, 0, 2, '  ')], 'doc');
     });
     expect(fired).toBe(1);
   });
@@ -145,7 +154,7 @@ describe('applyLintFixes', () => {
       win.addEventListener(LINT_SOURCE_FIXED_EVENT, () => {
         fired += 1;
       });
-      applyLintFixes({ document: docWith('unchanged\n') }, []);
+      applyLintFixes({ document: docWith('unchanged\n') }, [], 'doc');
     });
     expect(fired).toBe(0);
   });
@@ -163,5 +172,53 @@ describe('collectFixes', () => {
   const plain: LintDiagnostic = { ...fixable, code: 'MD025', fixes: undefined };
   test('collectFixes flattens only fixable diagnostics', () => {
     expect(collectFixes([fixable, plain])).toHaveLength(1);
+  });
+});
+
+describe('applyLintFixes — preview-tab promotion', () => {
+  // The write lands straight in Y.Text under LINT_FIX_ORIGIN: the WYSIWYG
+  // editor sees it carrying sync meta, the source editor with no `userEvent`,
+  // so both origin guards reject it. Announcing from the write side is the only
+  // way clicking Fix promotes the tab.
+  let unsubscribe: (() => void) | undefined;
+
+  afterEach(() => {
+    unsubscribe?.();
+    unsubscribe = undefined;
+  });
+
+  test('a fix that lands announces the doc', () => {
+    const promoted = vi.fn();
+    unsubscribe = subscribePreviewTabPromotion(promoted);
+    const doc = docWith('a\t\tb\n');
+
+    applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, ' ')], 'notes/thing');
+
+    expect(promoted).toHaveBeenCalledWith('notes/thing');
+  });
+
+  test('an empty fix list announces nothing', () => {
+    const promoted = vi.fn();
+    unsubscribe = subscribePreviewTabPromotion(promoted);
+    const doc = docWith('unchanged\n');
+
+    applyLintFixes({ document: doc }, [], 'notes/thing');
+
+    expect(promoted).not.toHaveBeenCalled();
+  });
+
+  test('a no-op edit still counts as applied, matching the return value', () => {
+    // An out-of-range edit clamps to a zero-width no-op. It is still counted,
+    // so the announce and the `true` return agree — a user who clicked Fix on a
+    // stale diagnostic gets a promoted tab rather than a silent divergence
+    // between what the function reports and what it announces.
+    const promoted = vi.fn();
+    unsubscribe = subscribePreviewTabPromotion(promoted);
+    const doc = docWith('keep\n');
+
+    const applied = applyLintFixes({ document: doc }, [edit(9, 0, 9, 0, '')], 'notes/thing');
+
+    expect(applied).toBe(true);
+    expect(promoted).toHaveBeenCalledWith('notes/thing');
   });
 });
