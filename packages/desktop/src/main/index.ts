@@ -281,6 +281,7 @@ import {
   handleSharingSetSkillsShared,
   handleSharingStatus,
 } from './ipc/sharing.ts';
+import { handleSlidesOpen, handleSlidesStatus } from './ipc/slides.ts';
 import {
   detectProtocol as detectProtocolImpl,
   recordHandoff as recordHandoffImpl,
@@ -353,6 +354,12 @@ import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
 import { installSignalCleanQuit } from './signal-clean-quit.ts';
 import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
+import { resolveDeckPath } from './slides-deck-path.ts';
+import { createSlidesDeckRegistry, type SlidesDeckWindow } from './slides-registry.ts';
+import { recordDeckOpen } from './slides-telemetry.ts';
+import { createSlidesWindow, slidesWindowChrome } from './slides-window.ts';
+import { realIsExecutableFile, resolveSlidev } from './slidev-resolve.ts';
+import { findFreePort, probeSlidevReady, realSpawnSlidev } from './slidev-server.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
 import { popSpellcheckMenu } from './spellcheck-menu.ts';
 import { beginRoot, childSpan, endRoot, injectTraceparent } from './startup-trace.ts';
@@ -907,6 +914,14 @@ let wm: WindowManager;
  * quit — callers guard with `?.` / a truthiness check.
  */
 let terminalReaper: TerminalReaper | null = null;
+/**
+ * Every open Slidev deck (server + its window), keyed by deck path. Module-scoped
+ * so the `ok:slides:dispatch` `open` handler can focus-existing / open, each
+ * window's close handler can reap its own server, and the `will-quit` handler can
+ * reap them all — no Slidev process outlives the app. Dependency-free, so it is
+ * created eagerly rather than published by `registerIpcHandlers`.
+ */
+const slidesDeckRegistry = createSlidesDeckRegistry();
 /**
  * Per-window docked-terminal visibility, recorded from the renderer's view-menu
  * push so a reloaded renderer can restore an expanded dock. Keyed by windowId
@@ -4006,6 +4021,27 @@ function formatUnknownError(err: unknown): string {
  * injected spawn. `args` selects the binary (`cliProbeArgs(bin)`); it defaults
  * to the `claude` probe.
  */
+/**
+ * Windows counterpart to {@link probeLoginShellOnPath}: is `bin` resolvable on
+ * this process's PATH? `where.exe` honours PATHEXT, so it finds the `.cmd`
+ * shim that `CreateProcess` can actually run — an extension-less existence
+ * check would report a POSIX shim that then fails to spawn. Exit 0 = found.
+ */
+function probeWindowsPath(bin: string): Promise<boolean> {
+  return new Promise((resolveProbe) => {
+    try {
+      // `where`, not `where.exe` — matches the binary name the CLI's git
+      // preflight already uses (and the one knip's ignore list declares).
+      // CreateProcess resolves it via PATHEXT either way.
+      const child = spawn('where', [bin], { stdio: 'ignore', shell: false, windowsHide: true });
+      child.on('exit', (code) => resolveProbe(code === 0));
+      child.on('error', () => resolveProbe(false));
+    } catch {
+      resolveProbe(false);
+    }
+  });
+}
+
 function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null> {
   return runLoginShellProbe(
     (file, spawnArgs) => {
@@ -5043,6 +5079,154 @@ function registerIpcHandlers() {
     }
     const mode: 'shared' | 'local-only' = request.mode === 'local-only' ? 'local-only' : 'shared';
     return handleSharingSetMode(ctx.projectPath, mode);
+  });
+
+  // Slides (Slidev). `status` detects whether a runnable slidev resolves for the
+  // active project window (a window with no bound project still resolves a
+  // global slidev, so the status read is total). `open` starts a server for a
+  // deck and confirms it serves. The global probe reuses the same login-shell
+  // PATH walk the terminal CLI-readiness surface uses (a GUI Electron process
+  // does not inherit the user's shell PATH).
+  handle('ok:slides:dispatch', async (event, request) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const projectRoot =
+      win && wm
+        ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)?.projectPath
+        : undefined;
+    const probes = {
+      isExecutableFile: realIsExecutableFile,
+      // The login-shell probe exists for the macOS/Linux GUI-PATH problem: a
+      // desktop-launched process does not source the user's rc files, so a
+      // globally-installed binary is invisible to `process.env.PATH`. Windows
+      // has neither that problem (a GUI process inherits the user PATH from the
+      // registry) nor a POSIX login shell to run `-l -i -c` against, so it uses
+      // `where.exe`, which also honours PATHEXT and finds the `.cmd` shim.
+      isOnLoginPath: async (bin: string) =>
+        process.platform === 'win32'
+          ? await probeWindowsPath(bin)
+          : (await probeLoginShellOnPath(cliProbeArgs(bin))) === 0,
+    };
+    if (request.kind === 'status') {
+      return handleSlidesStatus(projectRoot, probes);
+    }
+    // Trust boundary: the deck path is a renderer-supplied string over IPC.
+    // Require a bound project and a well-formed absolute path, then canonicalize
+    // via realpath and enforce project containment on the RESOLVED path before
+    // spawning a server against it — the same order the trash / asset handlers
+    // apply. Lexical containment alone would let an in-project symlink whose
+    // target is OUTSIDE the project pass, and Slidev/Vite would then serve that
+    // out-of-project target over loopback; realpath collapses the symlink so the
+    // escape is refused (the window's projectPath is already realpath-canonical
+    // via discoverProject). A window with no project has nothing to contain
+    // against, so it is refused.
+    // Trust boundary: the deck path is a renderer-supplied string over IPC.
+    // The admission decision (bound project + well-formed absolute path +
+    // realpath-then-contain, so an in-project symlink cannot escape) lives in
+    // `slides-deck-path.ts` where it is reachable from a test against a real
+    // filesystem; this site only logs the refusal.
+    const deckPath = resolveDeckPath({
+      docPath: request.docPath,
+      projectRoot,
+      platform: process.platform,
+      realpath: (p) => realpathSync(p),
+    });
+    if (!deckPath.ok) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:slides:dispatch',
+        reason: 'invalid-path',
+        handler: 'slidesOpen',
+        ...(deckPath.cause === undefined ? {} : { cause: deckPath.cause }),
+      });
+      return { kind: 'open', ok: false, reason: 'invalid-path' };
+    }
+    // Both come from the admission decision, which proved the root defined —
+    // keeps the narrowing the discriminated spawn config depends on.
+    const { resolvedDocPath, projectRoot: containedRoot } = deckPath;
+    const resolution = await resolveSlidev(projectRoot, probes);
+    if (!resolution.available) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:slides:dispatch',
+        reason: 'not-available',
+        handler: 'slidesOpen',
+      });
+      return { kind: 'open', ok: false, reason: 'not-available' };
+    }
+    const opened = await handleSlidesOpen(resolvedDocPath, {
+      registry: slidesDeckRegistry,
+      startDeps: {
+        findFreePort,
+        spawnSlidev: (port) => {
+          const base = { docPath: resolvedDocPath, shell: resolveShell(process.env) };
+          return realSpawnSlidev(
+            resolution.source === 'project-local'
+              ? { ...base, source: 'project-local', projectRoot: containedRoot }
+              : { ...base, source: 'global', projectRoot: containedRoot },
+            port,
+          );
+        },
+        probeReady: probeSlidevReady,
+        now: () => Date.now(),
+        delay: (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms)),
+      },
+      recordOpenAttempt: recordDeckOpen,
+      openWindow: (deck) => {
+        createSlidesWindow({
+          createWindow: (winOpts) => {
+            const win = new BrowserWindow({
+              ...DEFAULT_WIN_OPTS,
+              // A deck loads Slidev's page, not OK's renderer, so it has no
+              // `-webkit-app-region: drag` strip to move the window by. Restore
+              // an ordinary native title bar (see `slidesWindowChrome`).
+              ...slidesWindowChrome(),
+              minWidth: WINDOW_MIN_SIZE.EDITOR.width,
+              minHeight: WINDOW_MIN_SIZE.EDITOR.height,
+              title: winOpts.title,
+              webPreferences: {
+                ...DEFAULT_WIN_OPTS.webPreferences,
+                // Isolate the deck's session from the editor and inject no OK
+                // preload/bridge — a slides window loads the out-of-process
+                // Slidev server, not OK's renderer, so it needs neither.
+                partition: winOpts.partition,
+              },
+            });
+            win.on('page-title-updated', (e) => {
+              e.preventDefault();
+            });
+            applyCascadePosition(win);
+            return win as unknown as SlidesDeckWindow;
+          },
+          registry: slidesDeckRegistry,
+          deck: { docPath: deck.docPath, port: deck.port, process: deck.process },
+        });
+      },
+      focusWindow: (window) => {
+        // Raise the already-open deck window (restore → show → moveTop → focus),
+        // the recipe editor windows use to surface an existing window.
+        if (window.isMinimized?.()) window.restore?.();
+        window.show?.();
+        window.moveTop?.();
+        window.focus();
+      },
+    });
+    // The deck-open span + failure counter are emitted inside handleSlidesOpen,
+    // once per genuine spawn attempt — never for a focus-existing reopen or a
+    // joined in-flight activation, which perform no spawn (see recordOpenAttempt
+    // above). That keeps the span's denominator genuine spawn attempts.
+    // Log the start/readiness failure at this boundary before returning it.
+    // Returning handleSlidesOpen(...) directly would let spawn-error / timeout
+    // / unsupported-server reach the renderer unlogged, re-opening the IPC
+    // observability asymmetry the paired-log discipline exists to close.
+    if (!opened.ok) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:slides:dispatch',
+        reason: opened.reason,
+        handler: 'slidesOpen',
+      });
+    }
+    return opened;
   });
 
   // In-app bug reporting — build the redacted diagnostic bundle for the
@@ -7509,6 +7693,8 @@ function bootPrimaryInstance(): void {
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();
+    // Reap every spawned Slidev server for the same reason. Idempotent.
+    slidesDeckRegistry.reapAll();
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();

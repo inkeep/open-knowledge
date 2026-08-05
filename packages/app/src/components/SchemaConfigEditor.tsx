@@ -103,8 +103,11 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
           sourceLabel={t`Source`}
           wysiwygDisabledReason={t`Field editing is available for schema files mapped in the Frontmatter schemas plugin`}
         />
-        {/* Absolute so the mode toggle stays visually centered. */}
-        <PluginBetaBadge className="absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Absolute so the mode toggle stays visually centered. Denser than the
+            Badge default because this one sits in the editor toolbar beside the
+            mode toggle, not in a settings header — the settings surfaces use the
+            default so Beta and Scope badges line up. */}
+        <PluginBetaBadge className="absolute left-3 top-1/2 h-4 -translate-y-1/2 px-1 text-[10px]" />
       </div>
       {isSourceMode ? (
         // Source is a CodeMirror viewer that owns its own scroll — full-bleed,

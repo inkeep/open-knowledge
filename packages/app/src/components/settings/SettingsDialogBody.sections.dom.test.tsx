@@ -776,4 +776,15 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       expect(screen.getByTestId(`settings-plugin-${plugin.id}`)).toBeTruthy();
     }
   });
+
+  // Same drift guard, non-lint branch. Slides is a peer of the theme plugin: it
+  // owns no `contentRules` slice, so it is NOT in LINT_PLUGIN_META and the
+  // generic `plugin:` fallthrough (which only knows the lint registry) cannot
+  // dispatch it. This pins the dispatch→panel half of the hand-wired id; the
+  // shell sidebar half is pinned in SettingsDialogShell.dom.test.tsx.
+  test('dispatches plugin:slides to its own panel above the lint-plugin fallthrough', async () => {
+    const { pluginSettingsSectionId } = await import('@/lib/use-settings-route');
+    await renderBody({ activeId: pluginSettingsSectionId('slides') });
+    expect(screen.getByTestId('settings-plugin-slides')).toBeTruthy();
+  });
 });

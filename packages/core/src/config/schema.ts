@@ -597,6 +597,27 @@ export const ConfigSchema = z.looseObject({
         .default(null),
     })
     .default({ enabled: null }),
+  // USER-scope: whether the Slides plugin is offered is a personal preference,
+  // not project content — the same posture as the Themes plugin toggle
+  // (appearance.colorThemeEnabled). A document opts into the deck view with
+  // `slides: true` in its own frontmatter; this leaf only gates whether that
+  // affordance appears at all, and only on desktop, where a Slidev process can
+  // be spawned. Default off, so a user who never enables it sees nothing and
+  // pays nothing.
+  slides: z
+    .looseObject({
+      enabled: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            'Whether the Slides plugin appears in Settings → Plugins. When on, a document whose frontmatter has `slides: true` offers an action that opens the deck in a dedicated window (desktop only, requires a resolvable slidev). A personal preference (user scope). Default off.',
+        })
+        .default(false),
+    })
+    .default({ enabled: false }),
   // PROJECT-scope: the local telemetry file sink writes spans + logs to
   // `<contentDir>/.ok/local/{telemetry,logs}/*.jsonl` for `ok diagnose bundle`
   // to harvest. The data is local-only — it never leaves the machine until

@@ -195,6 +195,11 @@ export function SettingsDialogShell({
   // "User plugins" sidebar group.
   const themeEnabled = merged?.appearance?.colorThemeEnabled !== false;
 
+  // Slides is a user-scope plugin like Themes, but ships OFF (`slides.enabled`
+  // default false) — so the gate is `=== true`, not Themes' `!== false`. Its
+  // panel appears in the Plugins group only once the user opts in.
+  const slidesEnabled = merged?.slides?.enabled === true;
+
   // The packaged desktop renderer loads over file:// (desktop main's
   // loadFile), so its POST /api/link-preview requests carry Origin: null,
   // which the route's anti-proxy gate rejects by design (see
@@ -258,6 +263,7 @@ export function SettingsDialogShell({
       items: [
         ...(hasProject ? enabledPluginItems : []),
         ...(themeEnabled ? [{ id: 'plugin:theme', label: t`Themes` }] : []),
+        ...(slidesEnabled ? [{ id: 'plugin:slides', label: t`Slidev` }] : []),
       ],
     },
     {

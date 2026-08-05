@@ -1,5 +1,6 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   isEditableTextDocFile,
   type LintDiagnostic,
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button.tsx';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
+import { useConfigContextOptional } from '@/lib/config-context';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import {
@@ -26,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorModeToggle } from './EditorModeToggle';
 import { NotInSidebarIndicator } from './NotInSidebarIndicator';
+import { isSlidesHost } from './slides-host-gate';
 
 // Lazy-loaded: the skill-specific toolbar cluster (level + install + overflow)
 // only mounts when the active doc is a skill, so it stays out of the eager
@@ -40,10 +43,20 @@ const SkillOriginInline = lazy(async () => ({
   default: (await import('./SkillOriginInline')).SkillOriginInline,
 }));
 
+// The Slides action mounts only past the cheap host+plugin gate below, so its
+// frontmatter read + slidev-status probe stay out of the eager toolbar bundle
+// that every document loads.
+const SlidesToolbarControls = lazy(async () => ({
+  default: (await import('./SlidesToolbarControls')).SlidesToolbarControls,
+}));
+
 const NO_FRONTMATTER_PROBLEMS: readonly LintDiagnostic[] = [];
 
 interface EditorToolbarProps {
   activeDocName: string | null;
+  /** The active document's collab provider, used to live-read the `slides: true`
+   *  frontmatter flag that gates the Slides action. Null while a doc is loading. */
+  activeProvider?: HocuspocusProvider | null;
   isSourceMode: boolean;
   sourceDisabled: boolean;
   onModeChange: (mode: EditorModeValue) => void;
@@ -66,6 +79,7 @@ interface EditorToolbarProps {
 
 export function EditorToolbar({
   activeDocName,
+  activeProvider,
   isSourceMode,
   sourceDisabled,
   onModeChange,
@@ -77,6 +91,18 @@ export function EditorToolbar({
   reserveRightGutter = false,
 }: EditorToolbarProps) {
   const { t } = useLingui();
+  // Cheap synchronous gate for the Slides action: the plugin is enabled (ships
+  // off, so strict `=== true`) and the host exposes the slides bridge. The
+  // frontmatter flag and the slidev-status probe — the costlier, per-deck
+  // conditions — live inside the lazily-loaded cluster.
+  //
+  // The OPTIONAL reader is load-bearing. This toolbar renders for every
+  // document, including in harnesses and mount orderings where no
+  // `<ConfigProvider />` is above it; the throwing `useConfigContext` would take
+  // the whole toolbar subtree down with it, and the toolbar owns the
+  // frontmatter-problems badge — so an off-by-default slides gate would make an
+  // unrelated badge silently vanish. Absent config simply means "not enabled".
+  const slidesPluginEnabled = useConfigContextOptional()?.merged?.slides?.enabled === true;
   const panelShortcut = formatShortcut('toggle-document-panel');
   const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
   // Skills carry install/uninstall + history chrome in this per-doc toolbar
@@ -211,6 +237,14 @@ export function EditorToolbar({
             />
           )
         )}
+        {slidesPluginEnabled &&
+        isSlidesHost() &&
+        activeProvider != null &&
+        activeDocName !== null ? (
+          <Suspense fallback={null}>
+            <SlidesToolbarControls provider={activeProvider} docName={activeDocName} />
+          </Suspense>
+        ) : null}
         <Tooltip>
           <Button
             data-doc-panel-toggle=""

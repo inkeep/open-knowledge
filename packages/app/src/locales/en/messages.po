@@ -2066,6 +2066,10 @@ msgstr "Checking"
 msgid "Checking for agents"
 msgstr "Checking for agents"
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Checking for Slidev"
+msgstr "Checking for Slidev"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "Checking for updates"
@@ -3234,6 +3238,10 @@ msgstr "Couldn't open the terminal — the comments are still waiting to send."
 msgid "Couldn't open the worktree. Try again."
 msgstr "Couldn't open the worktree. Try again."
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't open this document in Slidev."
+msgstr "Couldn't open this document in Slidev."
+
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
 msgstr "Couldn't prepare this project for publish."
@@ -3411,6 +3419,10 @@ msgstr "Couldn't share skills: internal error. Please restart the app."
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't start {0}: {1}"
 msgstr "Couldn't start {0}: {1}"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't start Slidev."
+msgstr "Couldn't start Slidev."
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
@@ -3968,6 +3980,10 @@ msgstr "Disable external link previews"
 msgid "Disable semantic search"
 msgstr "Disable semantic search"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable Slidev"
+msgstr "Disable Slidev"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Disable Spell Check"
 msgstr "Disable Spell Check"
@@ -4468,6 +4484,10 @@ msgstr "Enable plugins"
 msgid "Enable semantic search"
 msgstr "Enable semantic search"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable Slidev"
+msgstr "Enable Slidev"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Enable Spell Check"
 msgstr "Enable Spell Check"
@@ -4900,6 +4920,10 @@ msgstr "Failed to reorder"
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
 msgstr "Failed to save content rules — {0}"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to save Slidev setting"
+msgstr "Failed to save Slidev setting"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Failed to save the schema field"
@@ -6292,11 +6316,11 @@ msgstr "Layout"
 msgid "Layout options"
 msgstr "Layout options"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more"
 msgstr "Learn more"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "Learn more about {title}"
 
@@ -7854,6 +7878,10 @@ msgstr "Open in default app"
 msgid "Open in file manager"
 msgstr "Open in file manager"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Open in Slidev"
+msgstr "Open in Slidev"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in worktree"
 msgstr "Open in worktree"
@@ -8118,6 +8146,14 @@ msgstr "Other"
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
 msgstr "Other OK paths are tracked upstream:"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install"
+msgstr "Other ways to install"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install Slidev"
+msgstr "Other ways to install Slidev"
 
 #: src/components/LinksPanel.tsx
 msgid "Outgoing"
@@ -8458,6 +8494,14 @@ msgstr "Preparing share URL..."
 #: src/uninstall/UninstallApp.tsx
 msgid "Preparing to uninstall OpenKnowledge"
 msgstr "Preparing to uninstall OpenKnowledge"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
+msgstr "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
+msgstr "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -9494,6 +9538,10 @@ msgstr "Run a project audit from the Problems panel."
 msgid "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 msgstr "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Run in terminal"
+msgstr "Run in terminal"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Run this in your terminal"
 msgstr "Run this in your terminal"
@@ -10411,6 +10459,39 @@ msgstr "Slash command menu"
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "Slash commands"
+
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Slidev"
+msgstr "Slidev"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev couldn't render this document."
+msgstr "Slidev couldn't render this document."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev decks open in the OpenKnowledge desktop app only."
+msgstr "Slidev decks open in the OpenKnowledge desktop app only."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found in this project. Decks will use the project's version."
+msgstr "Slidev found in this project. Decks will use the project's version."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found on your system."
+msgstr "Slidev found on your system."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev install command"
+msgstr "Slidev install command"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
+msgstr "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev timed out while starting. Try again."
+msgstr "Slidev timed out while starting. Try again."
 
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
@@ -11516,6 +11597,10 @@ msgstr "This is a preview of {boldName}, detected in {boldHarness} at the {boldL
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "This is a preview of {boldName}. Install it into your agents."
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "This isn't a supported version of Slidev."
+msgstr "This isn't a supported version of Slidev."
+
 #: src/components/DeleteConfirmationDialog.tsx
 msgid "this item"
 msgstr "this item"
@@ -12370,6 +12455,10 @@ msgstr "Waiting for your approval"
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
 msgstr "Warning"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "We couldn't check whether Slidev is installed. Return to this window to retry."
+msgstr "We couldn't check whether Slidev is installed. Return to this window to retry."
 
 #: src/components/settings/AccountSection.tsx
 msgid "We couldn't check your GitHub connection."

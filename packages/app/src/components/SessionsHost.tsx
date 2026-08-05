@@ -74,6 +74,7 @@ const ThreadView = lazy(() =>
 );
 
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
+import type { TerminalCommandId } from './handoff/terminal-command-events';
 import {
   type ActiveTerminalInputDetail,
   subscribeToActiveTerminalInput,
@@ -103,6 +104,9 @@ interface TerminalSessionDescriptor extends BaseSessionDescriptor {
   readonly kind: 'terminal';
   /** One-shot launch intent the session writes once it is live; null for a bare tab. */
   readonly launch: TerminalLaunchIntent | null;
+  /** One-shot "run this command" id baked into the spawn; null for a bare tab.
+   *  Mutually exclusive with `launch` — a tab is opened by one or the other. */
+  readonly commandId: TerminalCommandId | null;
   /** Latest OSC 0/2 title the running program set (null → positional default). */
   readonly title: string | null;
   /** User-set tab name that pins over `title`; null until renamed. */
@@ -258,6 +262,10 @@ interface SessionsHostProps {
   readonly onVisibleChange: (visible: boolean) => void;
   /** "Open in terminal" launch intent — each new intent opens its own terminal tab. */
   readonly launch?: TerminalLaunchIntent | null;
+  /** "Run this command" one-shot — each new nonce opens its own terminal tab with
+   *  the command baked into the spawn. Nonce-keyed like `launch`, so a repeat
+   *  click of the same button opens a fresh tab rather than being deduped away. */
+  readonly commandLaunch?: { readonly id: TerminalCommandId; readonly nonce: number } | null;
   /** "Start an agent" launch intent — each new intent opens its own thread tab (or
    *  the agent catalog when no concrete agent is resolvable). Agents panel only. */
   readonly threadLaunch?: ThreadLaunchIntent | null;
@@ -323,6 +331,7 @@ export function SessionsHost({
   visible,
   onVisibleChange,
   launch = null,
+  commandLaunch = null,
   threadLaunch = null,
   installedClis,
   container,
@@ -402,6 +411,7 @@ export function SessionsHost({
             kind: 'terminal',
             id: makeSessionId(1),
             launch,
+            commandId: null,
             title: null,
             customLabel: null,
             ordinal: 1,
@@ -424,6 +434,7 @@ export function SessionsHost({
     coldSeedTerminal && launch ? launch.nonce : null,
   );
   const lastHandledThreadNonceRef = useRef<number | null>(null);
+  const lastHandledCommandNonceRef = useRef<number | null>(null);
   const prevVisibleRef = useRef(isWindow ? false : visible);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
@@ -500,7 +511,10 @@ export function SessionsHost({
     persistDockOrderNow();
   }
 
-  function openSession(launchForSession: TerminalLaunchIntent | null) {
+  function openSession(
+    launchForSession: TerminalLaunchIntent | null,
+    commandForSession: TerminalCommandId | null = null,
+  ) {
     // Opening a tab is the user taking over the active slot — a lingering reload
     // restore must not later yank the active tab back.
     pendingActiveKeyRef.current = null;
@@ -512,6 +526,7 @@ export function SessionsHost({
         kind: 'terminal',
         id,
         launch: launchForSession,
+        commandId: commandForSession,
         title: null,
         customLabel: null,
         ordinal: sessionCounterRef.current,
@@ -1134,6 +1149,13 @@ export function SessionsHost({
       openSessionRef.current(launch);
       return;
     }
+    // Same shape as the launch above: a fresh nonce opens its own tab, with the
+    // command baked into that tab's spawn instead of a CLI invocation.
+    if (commandLaunch != null && commandLaunch.nonce !== lastHandledCommandNonceRef.current) {
+      lastHandledCommandNonceRef.current = commandLaunch.nonce;
+      openSessionRef.current(null, commandLaunch.id);
+      return;
+    }
     const threadLaunchPending =
       hostThreads &&
       threadLaunch != null &&
@@ -1141,7 +1163,15 @@ export function SessionsHost({
     if (visible && !wasVisible && sessions.length === 0 && !threadLaunchPending) {
       seedOnRevealRef.current();
     }
-  }, [visible, launch, threadLaunch, sessions.length, rehydrationSettled, hostThreads]);
+  }, [
+    visible,
+    launch,
+    commandLaunch,
+    threadLaunch,
+    sessions.length,
+    rehydrationSettled,
+    hostThreads,
+  ]);
 
   // "Start an agent" launch intent (agents panel): resolve the agent (concrete /
   // default-registered) and start a thread. Each new nonce opens its own thread
@@ -1205,6 +1235,9 @@ export function SessionsHost({
         const recovered: TerminalSessionDescriptor[] = survivors
           .map((entry, index) => ({
             kind: 'terminal' as const,
+            // A rehydrated tab adopts a live PTY — its command already ran (or
+            // is still running) in that shell, so re-baking it would run twice.
+            commandId: null,
             id: makeSessionId(index + 1),
             launch: null,
             title: null,
@@ -1494,6 +1527,7 @@ export function SessionsHost({
                 <TerminalGate
                   bridge={bridge}
                   launch={session.launch}
+                  commandId={session.commandId}
                   adoptPtyId={session.adoptPtyId}
                   onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
                   onTitleChange={(title) => setSessionTitle(session.id, title)}

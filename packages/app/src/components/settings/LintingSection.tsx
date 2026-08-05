@@ -22,7 +22,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Plus, SquarePen, Trash2 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
 import { Button } from '@/components/ui/button';
@@ -47,8 +47,8 @@ import { indexGlobProblemsByFile, parseAppliesToGlobProblem } from './applies-to
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { MarkdownlintRuleBrowser } from './markdownlint-rule-browser';
 import { PluginBetaBadge } from './PluginBetaBadge';
+import { PluginSectionHeader } from './PluginSectionHeader';
 import { notifyPluginEnabled } from './plugin-enabled-notice';
-import { ScopeBadge } from './ScopeBadge';
 
 /** Project-scope content-rules config + a `contentRules`-patch writer. Shared by the sections. */
 function useLinterConfig() {
@@ -174,6 +174,9 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
   const { userConfig } = useConfigContext();
   // The theme plugin is user-scope (personal). Default on.
   const themeEnabled = userConfig?.appearance?.colorThemeEnabled !== false;
+  // Slidev is user-scope too, but ships OFF — the gate is `=== true`, not
+  // Themes' `!== false`.
+  const slidesEnabled = userConfig?.slides?.enabled === true;
 
   return (
     <section
@@ -194,8 +197,8 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
         </p>
       </div>
 
-      <div className="rounded-md border p-3" data-testid="settings-user-plugins-list">
-        <div className="flex items-center justify-between gap-3">
+      <div className="divide-y rounded-md border" data-testid="settings-user-plugins-list">
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <Label htmlFor="settings-plugin-toggle-theme" className="text-sm font-medium">
               <Trans>Themes</Trans>
@@ -226,63 +229,42 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
             data-testid="settings-plugin-toggle-theme"
           />
         </div>
+        <div className="flex items-center justify-between gap-3 px-3 py-2">
+          <div className="min-w-0">
+            <Label
+              htmlFor="settings-plugin-toggle-slides"
+              className="inline-flex items-center gap-1.5 text-sm font-medium"
+            >
+              <Trans>Slidev</Trans>
+              <PluginBetaBadge />
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              <Trans>
+                Present a document as a slide deck in its own window. Works in the OpenKnowledge
+                desktop app only, and needs the Slidev CLI, which you install separately. When on,
+                it appears under Plugins in the sidebar.
+              </Trans>
+            </p>
+          </div>
+          <Switch
+            id="settings-plugin-toggle-slides"
+            checked={slidesEnabled}
+            disabled={userBinding === null}
+            onCheckedChange={(next) => {
+              if (!userBinding) return;
+              const result = userBinding.patch({ slides: { enabled: next } });
+              if (!result.ok) {
+                toast.error(t`Failed to save Slidev setting`);
+                return;
+              }
+              if (next) notifyPluginEnabled({ pluginId: 'slides', label: t`Slidev` });
+            }}
+            aria-label={slidesEnabled ? t`Disable Slidev` : t`Enable Slidev`}
+            data-testid="settings-plugin-toggle-slides"
+          />
+        </div>
       </div>
     </section>
-  );
-}
-
-/** Shared header for a per-plugin settings panel. */
-function PluginSectionHeader({
-  titleId,
-  title,
-  scope,
-  beta,
-  docUrl,
-  children,
-}: {
-  titleId: string;
-  title: string;
-  /** When set, renders a User/Project scope badge beside the title. */
-  scope?: 'user' | 'project';
-  /** When set, renders the feature-maturity Beta tag beside the title. */
-  beta?: boolean;
-  /**
-   * Docs page for the plugin. The standing counterpart to the enable-time
-   * toast: whoever lands here later still gets a route to the how-to.
-   */
-  docUrl?: string;
-  children: ReactNode;
-}) {
-  const { t } = useLingui();
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <h3 id={titleId} className="text-base font-semibold">
-          {title}
-        </h3>
-        {beta ? <PluginBetaBadge /> : null}
-        {scope ? <ScopeBadge scope={scope} /> : null}
-      </div>
-      <p className="text-sm text-muted-foreground">{children}</p>
-      {docUrl !== undefined ? (
-        <a
-          href={docUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => dispatchExternalLinkClick(e, docUrl)}
-          onAuxClick={(e) => dispatchExternalLinkClick(e, docUrl)}
-          // Names its destination for anyone listing links out of context, where
-          // a bare "Learn more" says nothing. Keeps the visible text as a prefix
-          // so voice control still activates it by what's on screen.
-          aria-label={t`Learn more about ${title}`}
-          className="inline-flex items-center gap-0.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          data-testid={`${titleId}-docs-link`}
-        >
-          <Trans>Learn more</Trans>
-          <ArrowUpRight aria-hidden className="size-3" />
-        </a>
-      ) : null}
-    </div>
   );
 }
 

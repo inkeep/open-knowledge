@@ -91,6 +91,7 @@ import {
 } from './EditorWorkspace';
 import { shouldPaintOverlay } from './editor-area-overlay';
 import { computeStickyRepinLayout } from './editor-area-sticky-repin';
+import { isSlidesHost } from './slides-host-gate';
 import { TerminalDock } from './TerminalDock';
 import { TerminalRevealTab } from './TerminalRevealTab';
 
@@ -166,6 +167,15 @@ function PaneDocumentToolbar({
   return (
     <EditorToolbar
       activeDocName={docName}
+      // Only threaded where the deck action can actually run. This toolbar is
+      // rendered per visible document from inside the Activity pool, so it is
+      // one of the hottest render paths in the editor; handing it a live
+      // provider on hosts that can never mount the Slidev action changed that
+      // path's behaviour enough to destabilise unrelated editor e2e (lint
+      // decorations and CRDT content assertions), which a three-round CI bisect
+      // pinned to exactly this prop. Web and CLI hosts keep the prop surface
+      // they had before the plugin existed.
+      activeProvider={isSlidesHost() ? provider : null}
       isSourceMode={isSourceMode}
       sourceDisabled={syncStatus !== 'connected' && syncStatus !== 'synced'}
       onModeChange={onModeChange}

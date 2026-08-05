@@ -130,6 +130,7 @@
     "1J0c0X": ["Still couldn't reach ", ["displayName"], " — try one more time?"],
     "1LtA5r": ["Symlinks the skill to ", ["path"]],
     "1MGRQl": ["Terminal sessions"],
+    "1NgrlY": ["Other ways to install"],
     "1OKzC_": ["Your report couldn't be sent. Try again or email it instead."],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
@@ -294,6 +295,7 @@
     "45MZFs": ["Commands"],
     "484LKL": ["Remove link"],
     "494br3": ["Shared with everyone on this project — committed to config.yml via git."],
+    "49Mb7P": ["We couldn't check whether Slidev is installed. Return to this window to retry."],
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
     "4CfgPM": ["Project folder created, but git init failed. Try again."],
@@ -1085,6 +1087,7 @@
     ],
     "GK-IRZ": ["Undo buttons are disabled — per-session state has been garbage-collected."],
     "GLxIKR": ["How to push manually"],
+    "GMaDTM": ["Failed to save Slidev setting"],
     "GN6L5F": ["Filename"],
     "GNkUvW": ["Queued — sends when this run finishes"],
     "GQDSBN": ["Layout options"],
@@ -1149,6 +1152,9 @@
     "HKH-W-": ["Data"],
     "HM56Bx": ["Creating..."],
     "HPTPGr": ["Create a new spec file for my user story"],
+    "HPaAxt": [
+      "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
+    ],
     "HSh8u_": ["Folders"],
     "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
     "HbcQYf": [
@@ -1330,6 +1336,9 @@
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
     "L3CEC1": ["this item"],
+    "L3w0_C": [
+      "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
+    ],
     "L4Cdd9": ["or create a new file <0/>"],
     "L6Hhh6": ["(root)"],
     "L6Ud-t": ["Couldn't load conflicts — reload to retry."],
@@ -1385,6 +1394,7 @@
       " tracked upstream — see message below."
     ],
     "Llyqvo": ["This usually means one of:"],
+    "Lm3r51": ["Slidev couldn't render this document."],
     "LnVIW4": ["Failed to start sign-in — try again"],
     "LpB85N": ["Plain"],
     "LtI9AS": ["Owner"],
@@ -1530,6 +1540,8 @@
     "Nay2Yr": ["No agents match your search."],
     "NcurBF": ["Pan down"],
     "NeQ_0G": ["Work through these comments"],
+    "NeY1Np": ["Slidev timed out while starting. Try again."],
+    "NfraGd": ["Other ways to install Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Edit ", ["tag"]],
@@ -1617,6 +1629,9 @@
     "OxplNM": ["Updated \"", ["0"], "\": added ", ["1"], ", removed ", ["2"]],
     "Oxyd5f": ["Pick a name"],
     "OyIC0Q": ["Project name"],
+    "Ozyht_": [
+      "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
+    ],
     "P-ye9o": ["Could not open folder picker"],
     "P0HC30": ["This ", ["targetNoun"], " moved to <0>", ["0"], "</0>. Open it there?"],
     "P3NS4G": ["Pattern syntax error (line ", ["lineNumber"], "): ", ["message"]],
@@ -1625,6 +1640,7 @@
     "P47EWZ": ["Could not update sidebar settings"],
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
+    "P8AnMN": ["Checking for Slidev"],
     "PB4upl": ["Find previous match"],
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
@@ -1853,6 +1869,7 @@
     "T0OVm7": ["The default branch is protected — pushes need a pull request."],
     "T3Mld1": ["Window"],
     "T3j-7o": ["e.g. Switching projects while a sync was running"],
+    "TBfy1C": ["Couldn't start Slidev."],
     "TDeOpa": [
       "Undo or redo your own edits, leaving edits from collaborators and agents in place."
     ],
@@ -1864,6 +1881,7 @@
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TTDXD8": ["New worktree…"],
     "TUzThQ": ["Share skills"],
+    "T_j5G0": ["This isn't a supported version of Slidev."],
     "T_wG4n": ["We couldn't check your GitHub connection."],
     "Ta25TG": ["No history yet"],
     "TbjyhA": ["Docs"],
@@ -1965,6 +1983,7 @@
     "Ugvy4O": ["Expand all file groups"],
     "UhpfxY": ["Pan left"],
     "UkQGhd": ["Hide replace"],
+    "UlVARL": ["Enable Slidev"],
     "Uobeu9": ["Adds the skill to ", ["rootRel"], " — also read by ", ["0"]],
     "Uoux8m": ["Include this comment in the next send"],
     "Up2_7p": ["Copy full path"],
@@ -2092,6 +2111,7 @@
     "X0ttSN": ["No tags match \"", ["tagListQuery"], "\"."],
     "X2zUS5": ["Delete this comment"],
     "X3MMeA": ["None of these problems have an automatic fix."],
+    "X59Fx2": ["Couldn't open this document in Slidev."],
     "X7ShnN": ["Open agents panel"],
     "X7u0xR": [["0"], " templates available"],
     "X8kjQX": ["Re-authenticate with GitHub"],
@@ -2637,6 +2657,7 @@
       "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
     ],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
+    "el2KyL": ["Slidev found in this project. Decks will use the project's version."],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
     "eoEUI3": ["Couldn't resolve that comment."],
@@ -2650,6 +2671,7 @@
     ],
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
     "ezUmoU": ["Allowed element values (empty = any)"],
+    "f14doC": ["Slidev"],
     "f1XQyZ": ["Move block"],
     "f3Nvg7": [
       ["0"],
@@ -2811,6 +2833,7 @@
     "hQjvzi": ["A .zip or .skill archive."],
     "hSBIG-": ["A title, description, tags — anything that describes this folder."],
     "hSySVc": ["Install handoff failed: ", ["msg"]],
+    "hVAkI8": ["Run in terminal"],
     "hXUWyd": ["Value is required"],
     "hXbSxc": ["Asset: ", ["title"]],
     "hY8pka": ["Select next occurrence"],
@@ -2841,6 +2864,7 @@
     "hxnF0I": [["0"], " Properties"],
     "hyCxJY": ["Open that worktree instead"],
     "hynz2K": ["Download started"],
+    "hz076O": ["Slidev install command"],
     "i-ShMB": ["Diagram"],
     "i-wHEp": ["Editing ", ["boldName"], " in place. Changes save straight to your editor's copy."],
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
@@ -3112,6 +3136,7 @@
       "A path inside the skill — any folder works (e.g. references/notes.md). Folders in the path are created for you."
     ],
     "lPzyrU": ["All hunks resolved"],
+    "lScd1O": ["Slidev decks open in the OpenKnowledge desktop app only."],
     "lUtr1r": [["0"], " of ", ["1"], " selected"],
     "lVWEIL": ["Indexed ", ["embedded"], " of ", ["total"], " pages."],
     "lWNpNB": ["Add cursors or select matching occurrences through CodeMirror."],
@@ -3804,6 +3829,7 @@
     "w4hMYl": [
       "Could not read branch state for this project. Close this dialog and open the share link again."
     ],
+    "w52SKa": ["Open in Slidev"],
     "w61W3L": ["Remove ", ["0"]],
     "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w6sT-y": ["Follow the agent's edits"],
@@ -3825,6 +3851,7 @@
     "wJo9oS": ["Close find"],
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
     "wQvvZY": ["New skill file"],
+    "wRni1Z": ["Disable Slidev"],
     "wT4iQr": ["Open visual-editor find with replace controls expanded."],
     "wTcjov": ["No workspace"],
     "wU8WyK": ["Element fields"],
@@ -3911,6 +3938,7 @@
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],
     "xtJgSe": ["This source bundles several skills — choose the one to import."],
+    "xxRpzT": ["Slidev found on your system."],
     "xzAmL_": ["Auto-approved"],
     "xzktOa": ["Edit wiki link"],
     "y1eoq1": ["Copy link"],

@@ -2066,6 +2066,10 @@ msgstr "正在檢查"
 msgid "Checking for agents"
 msgstr "正在尋找代理"
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Checking for Slidev"
+msgstr "正在檢查 Slidev"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "正在檢查更新"
@@ -3234,6 +3238,10 @@ msgstr "無法開啟終端機——那些註解仍在等著傳送。"
 msgid "Couldn't open the worktree. Try again."
 msgstr "無法開啟 worktree。請再試一次。"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't open this document in Slidev."
+msgstr "無法在 Slidev 中開啟此文件。"
+
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
 msgstr "無法為發布準備這個專案。"
@@ -3411,6 +3419,10 @@ msgstr "無法分享技能：內部錯誤。請重新啟動應用程式。"
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't start {0}: {1}"
 msgstr "無法啟動 {0}：{1}"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't start Slidev."
+msgstr "無法啟動 Slidev。"
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
@@ -3968,6 +3980,10 @@ msgstr "關閉外部連結預覽"
 msgid "Disable semantic search"
 msgstr "關閉語意搜尋"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable Slidev"
+msgstr "停用 Slidev"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Disable Spell Check"
 msgstr "關閉拼字檢查"
@@ -4468,6 +4484,10 @@ msgstr "啟用外掛"
 msgid "Enable semantic search"
 msgstr "開啟語意搜尋"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable Slidev"
+msgstr "啟用 Slidev"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Enable Spell Check"
 msgstr "開啟拼字檢查"
@@ -4900,6 +4920,10 @@ msgstr "重新排序失敗"
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
 msgstr "儲存內容規則失敗——{0}"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to save Slidev setting"
+msgstr "儲存 Slidev 設定失敗"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Failed to save the schema field"
@@ -6292,11 +6316,11 @@ msgstr "版面配置"
 msgid "Layout options"
 msgstr "版面配置選項"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more"
 msgstr "了解更多"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "進一步了解 {title}"
 
@@ -7854,6 +7878,10 @@ msgstr "用預設應用程式打開"
 msgid "Open in file manager"
 msgstr "在檔案管理程式中打開"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Open in Slidev"
+msgstr "在 Slidev 中開啟"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in worktree"
 msgstr "在 worktree 中開啟"
@@ -8118,6 +8146,14 @@ msgstr "其他"
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
 msgstr "其他 OK 路徑在上游受追蹤："
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install"
+msgstr "其他安裝方式"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install Slidev"
+msgstr "安裝 Slidev 的其他方式"
 
 #: src/components/LinksPanel.tsx
 msgid "Outgoing"
@@ -8458,6 +8494,14 @@ msgstr "正在準備分享 URL…"
 #: src/uninstall/UninstallApp.tsx
 msgid "Preparing to uninstall OpenKnowledge"
 msgstr "正在準備解除安裝 OpenKnowledge"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
+msgstr "在獨立視窗中將文件展示為簡報。在文件的 frontmatter 中加入 <0>slides: true</0>，再透過 Slidev 動作開啟。算繪由 Slidev CLI 處理，OpenKnowledge 並未內建。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
+msgstr "在獨立視窗中將文件展示為簡報。僅能在 OpenKnowledge 桌面應用程式中使用，並需要另外安裝 Slidev CLI。啟用後會顯示在側邊欄的 Plugins 下。"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -9494,6 +9538,10 @@ msgstr "在「問題」面板中執行一次專案稽核。"
 msgid "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 msgstr "在 OpenKnowledge 內部停靠執行一個真正的終端機，起始位置是這個專案的資料夾。"
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Run in terminal"
+msgstr "在終端機中執行"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Run this in your terminal"
 msgstr "在你的終端機中執行這個"
@@ -10411,6 +10459,39 @@ msgstr "斜線指令選單"
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "斜線指令"
+
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Slidev"
+msgstr "Slidev"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev couldn't render this document."
+msgstr "Slidev 無法算繪此文件。"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev decks open in the OpenKnowledge desktop app only."
+msgstr "Slidev 簡報僅能在 OpenKnowledge 桌面應用程式中開啟。"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found in this project. Decks will use the project's version."
+msgstr "在此專案中找到 Slidev。簡報將使用專案的版本。"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found on your system."
+msgstr "在你的系統中找到 Slidev。"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev install command"
+msgstr "Slidev 安裝指令"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
+msgstr "尚未安裝 Slidev，因此 Slidev 動作會保持隱藏。安裝後請回到此視窗。"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev timed out while starting. Try again."
+msgstr "Slidev 啟動逾時。請再試一次。"
 
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
@@ -11516,6 +11597,10 @@ msgstr "這是 {boldName} 的預覽，在 {boldHarness} 的 {boldLevel} 層級�
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "這是 {boldName} 的預覽。把它安裝到你的代理中。"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "This isn't a supported version of Slidev."
+msgstr "這不是支援的 Slidev 版本。"
+
 #: src/components/DeleteConfirmationDialog.tsx
 msgid "this item"
 msgstr "這個項目"
@@ -12370,6 +12455,10 @@ msgstr "正在等你核准"
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
 msgstr "警告"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "We couldn't check whether Slidev is installed. Return to this window to retry."
+msgstr "無法檢查是否已安裝 Slidev。請回到此視窗重試。"
 
 #: src/components/settings/AccountSection.tsx
 msgid "We couldn't check your GitHub connection."

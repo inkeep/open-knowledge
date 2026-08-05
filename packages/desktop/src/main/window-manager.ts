@@ -202,14 +202,16 @@ export interface BrowserWindowLike {
      */
     executeJavaScript(code: string): Promise<unknown>;
     /**
-     * `will-navigate` + `setWindowOpenHandler` used by the asset-click
-     * safety net. Narrow structural signature — tests that don't exercise
-     * the safety net can leave these as no-ops. Matches Electron's
+     * `will-navigate` / `will-redirect` + `setWindowOpenHandler` used by the
+     * asset-click safety net and the slides-window origin containment.
+     * `will-redirect` shares `will-navigate`'s `(event, url)` shape (its extra
+     * trailing args are unused here). Narrow structural signature — tests that
+     * don't exercise these can leave them as no-ops. Matches Electron's
      * `WebContents` at runtime.
      */
     setWindowOpenHandler(handler: (details: { url: string }) => { action: 'allow' | 'deny' }): void;
     on(
-      event: 'will-navigate',
+      event: 'will-navigate' | 'will-redirect',
       handler: (event: { preventDefault: () => void }, url: string) => void,
     ): void;
   };

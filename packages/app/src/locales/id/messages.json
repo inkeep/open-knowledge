@@ -128,6 +128,7 @@
     "1J0c0X": ["Masih tidak dapat menghubungi ", ["displayName"], ". Coba sekali lagi?"],
     "1LtA5r": ["Menautkan keterampilan secara symlink ke ", ["path"]],
     "1MGRQl": ["Sesi terminal"],
+    "1NgrlY": ["Cara lain untuk memasang"],
     "1OKzC_": ["Laporan Anda tidak bisa dikirim. Coba lagi atau kirim lewat surel saja."],
     "1QfxQT": ["Tutup"],
     "1RluQD": ["Tampilkan penggantian"],
@@ -285,6 +286,9 @@
     "45MZFs": ["Perintah"],
     "484LKL": ["Hapus tautan"],
     "494br3": ["Dibagikan dengan semua orang di proyek ini — disimpan di config.yml lewat git."],
+    "49Mb7P": [
+      "Kami tidak dapat memeriksa apakah Slidev terpasang. Kembali ke jendela ini untuk mencoba lagi."
+    ],
     "4A3Yzu": ["Blok kode"],
     "4BITzH": ["Galat:"],
     "4CfgPM": ["Folder proyek dibuat, tetapi git init gagal. Coba lagi."],
@@ -1069,6 +1073,7 @@
     ],
     "GK-IRZ": ["Tombol pembatalan dinonaktifkan — keadaan per sesi sudah dibersihkan dari memori."],
     "GLxIKR": ["Cara push manual"],
+    "GMaDTM": ["Gagal menyimpan pengaturan Slidev"],
     "GN6L5F": ["Nama berkas"],
     "GNkUvW": ["Dalam antrean — dikirim saat proses ini selesai"],
     "GQDSBN": ["Opsi tata letak"],
@@ -1137,6 +1142,9 @@
     "HKH-W-": ["Data"],
     "HM56Bx": ["Membuat..."],
     "HPTPGr": ["Buat berkas spesifikasi baru untuk cerita pengguna saya"],
+    "HPaAxt": [
+      "Slidev belum terpasang, jadi aksi Slidev tetap tersembunyi. Pasang, lalu kembali ke jendela ini."
+    ],
     "HSh8u_": ["Folder"],
     "HTW0Zw": [
       "Satu langkah lagi: jalankan <0>claude</0> di proyek ini dan setujui OpenKnowledge sekali."
@@ -1331,6 +1339,9 @@
     "L1BQTH": [["0"], " belum terpasang — membuka halaman unduhannya."],
     "L1ZE3M": ["Statistik dokumen"],
     "L3CEC1": ["item ini"],
+    "L3w0_C": [
+      "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Tambahkan <0>slides: true</0> ke frontmatter dokumen, lalu buka dengan aksi Slidev. Perenderan ditangani oleh CLI Slidev, yang tidak disertakan OpenKnowledge."
+    ],
     "L4Cdd9": ["atau buat berkas baru <0/>"],
     "L6Hhh6": ["(akar)"],
     "L6Ud-t": ["Tidak dapat memuat konflik. Muat ulang untuk mencoba lagi."],
@@ -1387,6 +1398,7 @@
       " dilacak di upstream. Lihat pesan di bawah."
     ],
     "Llyqvo": ["Biasanya ini berarti salah satu dari:"],
+    "Lm3r51": ["Slidev tidak dapat merender dokumen ini."],
     "LnVIW4": ["Gagal memulai proses masuk — coba lagi"],
     "LpB85N": ["Polos"],
     "LtI9AS": ["Pemilik"],
@@ -1524,6 +1536,8 @@
     "Nay2Yr": ["Tidak ada agen yang cocok dengan pencarian Anda."],
     "NcurBF": ["Geser ke bawah"],
     "NeQ_0G": ["Kerjakan komentar-komentar ini"],
+    "NeY1Np": ["Slidev terlalu lama saat memulai. Coba lagi."],
+    "NfraGd": ["Cara lain untuk memasang Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " aktif"],
     "NjrIak": ["Berkas: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Sunting ", ["tag"]],
@@ -1613,6 +1627,9 @@
     "OxplNM": ["\"", ["0"], "\" diperbarui: ", ["1"], " ditambahkan, ", ["2"], " dihapus"],
     "Oxyd5f": ["Pilih sebuah nama"],
     "OyIC0Q": ["Nama proyek"],
+    "Ozyht_": [
+      "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Hanya berfungsi di aplikasi desktop OpenKnowledge dan memerlukan CLI Slidev yang dipasang terpisah. Saat aktif, muncul di Plugins pada bilah sisi."
+    ],
     "P-ye9o": ["Pemilih folder tidak dapat dibuka"],
     "P0HC30": [["targetNoun"], " ini pindah ke <0>", ["0"], "</0>. Buka di sana?"],
     "P3NS4G": ["Galat sintaks pola (baris ", ["lineNumber"], "): ", ["message"]],
@@ -1621,6 +1638,7 @@
     "P47EWZ": ["Pengaturan bilah sisi tidak dapat diperbarui"],
     "P6gXB-": ["Ganti ", ["keyName"]],
     "P6lAT3": ["Folder tujuan: ", ["linkTitle"], ". Klik untuk membuka ikhtisarnya."],
+    "P8AnMN": ["Mencari Slidev"],
     "PB4upl": ["Cari kecocokan sebelumnya"],
     "PBwmDJ": ["Mencari berdasarkan makna"],
     "PBxg_E": ["Nanti saja"],
@@ -1843,6 +1861,7 @@
     "T0OVm7": ["Cabang bawaannya terlindungi — push memerlukan pull request."],
     "T3Mld1": ["Jendela"],
     "T3j-7o": ["mis. Berpindah proyek saat sinkronisasi sedang berjalan"],
+    "TBfy1C": ["Tidak dapat menjalankan Slidev."],
     "TDeOpa": [
       "Membatalkan atau mengulangi suntingan Anda sendiri, tanpa mengusik suntingan kolaborator dan agen."
     ],
@@ -1854,6 +1873,7 @@
     "TQJCR6": [["0", "plural", { "other": ["#", " hasil"] }]],
     "TTDXD8": ["Worktree baru…"],
     "TUzThQ": ["Bagikan keterampilan"],
+    "T_j5G0": ["Ini bukan versi Slidev yang didukung."],
     "T_wG4n": ["Kami tidak bisa memeriksa koneksi GitHub Anda."],
     "Ta25TG": ["Belum ada riwayat"],
     "TbjyhA": ["Dokumen"],
@@ -1954,6 +1974,7 @@
     "Ugvy4O": ["Bentangkan semua grup berkas"],
     "UhpfxY": ["Geser ke kiri"],
     "UkQGhd": ["Sembunyikan penggantian"],
+    "UlVARL": ["Aktifkan Slidev"],
     "Uobeu9": ["Menambahkan keterampilan ke ", ["rootRel"], " — juga dibaca oleh ", ["0"]],
     "Uoux8m": ["Sertakan komentar ini pada pengiriman berikutnya"],
     "Up2_7p": ["Salin jalur lengkap"],
@@ -2094,6 +2115,7 @@
     "X0ttSN": ["Tidak ada tag yang cocok dengan \"", ["tagListQuery"], "\"."],
     "X2zUS5": ["Hapus komentar ini"],
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
+    "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
     "X7ShnN": ["Buka panel agen"],
     "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
@@ -2652,6 +2674,7 @@
       "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
     ],
     "eiUA4k": [["count", "plural", { "other": ["#", " komentar"] }]],
+    "el2KyL": ["Slidev ditemukan di proyek ini. Dek akan memakai versi proyek."],
     "emgiet": ["Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."],
     "enPTnx": ["baris ", ["displayLine"]],
     "eoEUI3": ["Komentar itu tidak bisa diselesaikan."],
@@ -2665,6 +2688,7 @@
     ],
     "evs0iw": ["Tag yang cocok dengan \"", ["tagListQuery"], "\""],
     "ezUmoU": ["Nilai elemen yang diizinkan (kosong = apa saja)"],
+    "f14doC": ["Slidev"],
     "f1XQyZ": ["Pindahkan blok"],
     "f3Nvg7": [
       ["0"],
@@ -2834,6 +2858,7 @@
     "hQjvzi": ["Arsip .zip atau .skill."],
     "hSBIG-": ["Judul, deskripsi, tag — apa saja yang menggambarkan folder ini."],
     "hSySVc": ["Serah terima pemasangan gagal: ", ["msg"]],
+    "hVAkI8": ["Jalankan di terminal"],
     "hXUWyd": ["Nilai wajib diisi"],
     "hXbSxc": ["Aset: ", ["title"]],
     "hY8pka": ["Pilih kemunculan berikutnya"],
@@ -2868,6 +2893,7 @@
     "hxnF0I": ["Properti ", ["0"]],
     "hyCxJY": ["Buka worktree itu saja"],
     "hynz2K": ["Unduhan dimulai"],
+    "hz076O": ["Perintah pemasangan Slidev"],
     "i-ShMB": ["Diagram"],
     "i-wHEp": [
       "Menyunting ",
@@ -3150,6 +3176,7 @@
       "Sebuah jalur di dalam keterampilan — folder apa pun bisa (mis. references/notes.md). Folder pada jalur itu dibuatkan untuk Anda."
     ],
     "lPzyrU": ["Semua bagian sudah diselesaikan"],
+    "lScd1O": ["Dek Slidev hanya terbuka di aplikasi desktop OpenKnowledge."],
     "lUtr1r": [["0"], " dari ", ["1"], " dipilih"],
     "lVWEIL": [["embedded"], " dari ", ["total"], " halaman terindeks."],
     "lWNpNB": ["Menambahkan kursor atau memilih kemunculan yang cocok lewat CodeMirror."],
@@ -3843,6 +3870,7 @@
     "w4hMYl": [
       "Keadaan cabang untuk proyek ini tidak dapat dibaca. Tutup dialog ini dan buka lagi tautan berbaginya."
     ],
+    "w52SKa": ["Buka di Slidev"],
     "w61W3L": ["Hapus ", ["0"]],
     "w6sBjd": ["Pengaturan terminal belum dimuat — coba lagi sebentar"],
     "w6sT-y": ["Ikuti suntingan agen"],
@@ -3864,6 +3892,7 @@
     "wJo9oS": ["Tutup pencarian"],
     "wQp1V3": ["Cermin dari <0>", ["src"], "</0>"],
     "wQvvZY": ["Berkas keterampilan baru"],
+    "wRni1Z": ["Nonaktifkan Slidev"],
     "wT4iQr": ["Membuka pencarian penyunting visual dengan kendali penggantian terbentang."],
     "wTcjov": ["Tanpa ruang kerja"],
     "wU8WyK": ["Bidang elemen"],
@@ -3949,6 +3978,7 @@
     "xrVr_k": ["Keterampilan tidak bisa dibuat: ", ["0"]],
     "xsZhu-": ["Nomor halaman"],
     "xtJgSe": ["Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."],
+    "xxRpzT": ["Slidev ditemukan di sistem Anda."],
     "xzAmL_": ["Disetujui otomatis"],
     "xzktOa": ["Sunting tautan wiki"],
     "y1eoq1": ["Salin tautan"],

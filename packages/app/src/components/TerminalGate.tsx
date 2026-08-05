@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { useTerminalConsentState, useTerminalEnabledWriter } from '@/hooks/use-terminal-enabled';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import type { TerminalLaunchIntent } from './EditorPane';
+import type { TerminalCommandId } from './handoff/terminal-command-events';
 
 // xterm + its addons + xterm.css (a heavy, WebGL-bearing payload) import only
 // through TerminalPanel, so lazy-loading it keeps them out of the initial
@@ -39,6 +40,8 @@ interface TerminalGateProps {
   readonly onTitleChange?: (title: string) => void;
   /** "Open in terminal" launch intent, forwarded to the session. */
   readonly launch?: TerminalLaunchIntent | null;
+  /** "Run this command" one-shot, forwarded to the session. */
+  readonly commandId?: TerminalCommandId | null;
   /** Surviving PTY to adopt after a renderer reload, forwarded to the session;
    *  `null` for a freshly-opened tab. */
   readonly adoptPtyId?: string | null;
@@ -52,6 +55,7 @@ export function TerminalGate({
   onClose,
   onTitleChange,
   launch = null,
+  commandId = null,
   adoptPtyId = null,
   onPtyId,
 }: TerminalGateProps) {
@@ -96,6 +100,7 @@ export function TerminalGate({
             onClose={onClose}
             onTitleChange={onTitleChange}
             launch={launch}
+            commandId={commandId}
             adoptPtyId={adoptPtyId}
             onPtyId={onPtyId}
           />

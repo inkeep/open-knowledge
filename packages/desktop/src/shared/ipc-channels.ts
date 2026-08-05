@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 89 (ratchet cap 89). The 74→75 bump reconciled a merge collision:
+ * Count is 91 (ratchet cap 91). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -69,6 +69,11 @@
  * window's Chromium timers to its unsynced work — it could not fold onto the
  * sibling `ok:editor:*` snapshots (different cadence, and a fold would rebuild
  * the app menu on every keystroke-to-sync edge). The 90→91 bump added the
+ * Slides (Slidev) surface (`ok:slides:dispatch`, a discriminated fold per the
+ * `ok:sharing:dispatch` precedent — `status` and `open` share the one channel;
+ * further verbs widen the payload rather than adding a channel). Full
+ * rationale in the ratchet test header.
+ *
  * interface-language push (`ok:locale:set-preference`), which rebuilds the
  * native menu bar when the user changes language — it could not fold onto
  * `ok:theme:set-source` despite the near-identical contract, because the two
@@ -155,6 +160,38 @@ export type { OkSharingSetModeResult, OkSharingStatusResult };
  *  is what lets the renderer's `bridge.sharing.{status,setMode}` API surface
  *  recover the per-operation typing despite the consolidated wire channel. */
 export type OkSharingResult = OkSharingStatusResult | OkSharingSetModeResult;
+
+/** Slides (Slidev) — IPC payload types.
+ *
+ *  `status` is detect-only: a project's own `node_modules/.bin/slidev` wins over
+ *  a globally-installed one (npm-exec semantics let a deck pin its Slidev), and
+ *  an unresolved binary reports `available: false` rather than erroring. The
+ *  resolved filesystem path is deliberately absent from the wire result — the
+ *  renderer only needs whether, and from where, `slidev` resolved, and a raw
+ *  path would be an unbounded-cardinality leak across the boundary. */
+export type SlidevSource = 'project-local' | 'global';
+
+export type OkSlidesStatusResult =
+  | { readonly kind: 'status'; readonly available: true; readonly source: SlidevSource }
+  | { readonly kind: 'status'; readonly available: false };
+
+/** Why opening a deck as slides did not yield a live, drivable server.
+ *  `not-available` — no runnable `slidev` resolved; `invalid-path` — the deck
+ *  path was missing, not absolute, or outside the window's project; the rest are
+ *  the start/readiness failure modes (spawn failed, the server died before
+ *  serving, readiness timed out, or a 200 lacked the `slidev:version` meta tag).
+ *  Bounded literal union — no path or free-form string crosses the boundary. */
+export type SlidevOpenFailureReason =
+  | 'not-available'
+  | 'invalid-path'
+  | 'spawn-error'
+  | 'exited-early'
+  | 'timeout'
+  | 'unsupported-server';
+
+export type OkSlidesOpenResult =
+  | { readonly kind: 'open'; readonly ok: true }
+  | { readonly kind: 'open'; readonly ok: false; readonly reason: SlidevOpenFailureReason };
 
 /** Recent-project row as surfaced to the Navigator. */
 export interface RecentProject {
@@ -784,6 +821,28 @@ export interface RequestChannels {
         | { kind: 'set-skills-shared'; shared: boolean },
     ];
     result: OkSharingResult;
+  };
+  /**
+   * Slides (Slidev) — one discriminated channel (the `ok:sharing:dispatch`
+   * precedent) so the whole slides surface costs a single hand-rolled slot;
+   * later slides operations widen this payload instead of adding channels.
+   * Project scope flows from the sender window's context (main resolves
+   * webContents → ProjectContext), so the renderer cannot target a project its
+   * window does not own; a window with no project still resolves a global
+   * `slidev`.
+   *   - `{ kind: 'status' }` → whether a runnable `slidev` resolved for the
+   *     window's project and from where (project-local vs global). No download
+   *     is ever performed; an unresolved binary yields `available: false`.
+   *     Never throws — the status read is total.
+   *   - `{ kind: 'open', docPath }` → start a `slidev` server for the deck at
+   *     `docPath` (validated absolute + within the window's project) on a free
+   *     port and confirm it serves a real Slidev deck before reporting success.
+   *     Failure modes are discriminated in `SlidevOpenFailureReason`; a failed
+   *     or timed-out start leaves no process running.
+   */
+  'ok:slides:dispatch': {
+    args: [request: { kind: 'status' } | { kind: 'open'; docPath: string }];
+    result: OkSlidesStatusResult | OkSlidesOpenResult;
   };
   /**
    * In-app "Report a bug" — one consolidated discriminated channel (the

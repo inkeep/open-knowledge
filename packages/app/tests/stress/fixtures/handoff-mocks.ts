@@ -455,6 +455,19 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             mode: 'local-only' as const,
           }),
         },
+        slides: {
+          status: async () =>
+            ({
+              kind: 'status' as const,
+              available: false as const,
+            }) satisfies import('@/lib/desktop-bridge-types').OkSlidesStatusResult,
+          open: async () =>
+            ({
+              kind: 'open' as const,
+              ok: false as const,
+              reason: 'not-available' as const,
+            }) satisfies import('@/lib/desktop-bridge-types').OkSlidesOpenResult,
+        },
         bugReport: {
           create: async () => ({ ok: false as const, error: 'test mock' }),
           captureScreenshot: async () => null,

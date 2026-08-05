@@ -223,6 +223,24 @@ describe('linkPreviews.enabled (external link-hover preview egress default)', ()
   });
 });
 
+describe('slides.enabled (Slides plugin toggle default)', () => {
+  test('resolves to disabled when the section is absent', () => {
+    expect(ConfigSchema.parse({}).slides).toEqual({ enabled: false });
+  });
+
+  test('defaults enabled to false when slides is present but enabled is absent', () => {
+    expect(ConfigSchema.parse({ slides: {} }).slides.enabled).toBe(false);
+  });
+
+  test('accepts an explicit opt-in', () => {
+    expect(ConfigSchema.parse({ slides: { enabled: true } }).slides.enabled).toBe(true);
+  });
+
+  test('accepts an explicit opt-out', () => {
+    expect(ConfigSchema.parse({ slides: { enabled: false } }).slides.enabled).toBe(false);
+  });
+});
+
 describe('legacy upload.* keys remain non-authoritative', () => {
   test('upload.* keys pass through looseObject without schema error', () => {
     const result = ConfigSchema.safeParse({

@@ -294,6 +294,39 @@ describe('UserPluginsManageSection', () => {
     successToasts[0]?.action?.onClick();
     expect(window.location.hash).toBe('#settings/plugin:theme');
   });
+
+  test('lists a user-scope Slides toggle beside Themes', () => {
+    render(<UserPluginsManageSection userBinding={null} />);
+    expect(screen.getByTestId('settings-plugin-toggle-slides')).toBeDefined();
+    expect(screen.getByTestId('settings-plugin-toggle-theme')).toBeDefined();
+  });
+
+  test('enabling Slides writes the user-scope enabled patch and offers its panel', async () => {
+    const { binding: userBinding, calls: userCalls } = makeBinding();
+    // Slides ships off, so the default (absent) config reads as off — a click enables it.
+    render(<UserPluginsManageSection userBinding={userBinding} />);
+
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-slides'));
+
+    expect(userCalls).toContainEqual({ slides: { enabled: true } });
+    expect(successToasts).toHaveLength(1);
+    expect(successToasts[0]?.message).toBe('Slidev enabled');
+    successToasts[0]?.action?.onClick();
+    expect(window.location.hash).toBe('#settings/plugin:slides');
+  });
+
+  test('disabling Slides writes enabled:false and does not offer its panel', async () => {
+    const { binding: userBinding, calls: userCalls } = makeBinding();
+    // Read as on so the click turns it off.
+    mockUserConfig = { slides: { enabled: true } } as unknown as Config;
+    render(<UserPluginsManageSection userBinding={userBinding} />);
+
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-slides'));
+
+    expect(userCalls).toContainEqual({ slides: { enabled: false } });
+    // Turning it OFF is not an invitation to go configure it.
+    expect(successToasts).toHaveLength(0);
+  });
 });
 
 // Row-level browser behavior (search, filters, toggles, MD043 editor, severity

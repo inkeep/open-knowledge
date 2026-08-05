@@ -953,6 +953,29 @@ export type OkSharingSetModeResult =
       readonly reason: 'no-git' | 'no-info-dir' | 'malformed-pointer' | 'inaccessible';
     };
 
+/** Slides (Slidev) — detect-only IPC payload. Canonical types in
+ *  `packages/desktop/src/shared/ipc-channels.ts`; mirrored here per the
+ *  OkDesktopBridge 3-way-mirror invariant. */
+export type SlidevSource = 'project-local' | 'global';
+
+export type OkSlidesStatusResult =
+  | { readonly kind: 'status'; readonly available: true; readonly source: SlidevSource }
+  | { readonly kind: 'status'; readonly available: false };
+
+/** Why opening a deck as slides failed. Canonical types in
+ *  `packages/desktop/src/shared/ipc-channels.ts`; mirrored here. */
+export type SlidevOpenFailureReason =
+  | 'not-available'
+  | 'invalid-path'
+  | 'spawn-error'
+  | 'exited-early'
+  | 'timeout'
+  | 'unsupported-server';
+
+export type OkSlidesOpenResult =
+  | { readonly kind: 'open'; readonly ok: true }
+  | { readonly kind: 'open'; readonly ok: false; readonly reason: SlidevOpenFailureReason };
+
 /**
  * Payload for `onServerVersionDrift` — the desktop attached to a server whose
  * version differs from the running app's (most often a prior version's
@@ -1454,6 +1477,17 @@ export interface OkDesktopBridge {
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
     /** Toggle `.ok/skills/` shareability within local-only mode. */
     setSkillsShared(shared: boolean): Promise<OkSharingSetModeResult>;
+  };
+
+  /**
+   * Slides (Slidev) — `status` detects a runnable `slidev`; `open` starts (or
+   * reuses) a server for the deck and resolves once it is confirmed serving.
+   * Canonical JSDoc in `packages/desktop/src/shared/ipc-channels.ts`.
+   * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
+   */
+  slides: {
+    status(): Promise<OkSlidesStatusResult>;
+    open(docPath: string): Promise<OkSlidesOpenResult>;
   };
 
   /**

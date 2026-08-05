@@ -143,7 +143,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(allowlisted).toEqual([]);
   });
 
-  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme*,customTheme.*,language,preview.autoOpen,theme} + editor.{previewTabs,wordWrap}', () => {
+  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme*,customTheme.*,language,preview.autoOpen,theme} + editor.{previewTabs,wordWrap} + slides.enabled', () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const userStrict = leaves
@@ -184,6 +184,9 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.theme',
       'editor.previewTabs',
       'editor.wordWrap',
+      // The Slides plugin toggle — a personal preference like the Themes
+      // toggle above, gating whether a `slides: true` doc offers the deck view.
+      'slides.enabled',
       // The one `telemetry` leaf that leaves the machine. USER scope so a
       // repository cannot decide that its collaborators report to a third
       // party — its `localSink.*` siblings are project-scope and local-only.

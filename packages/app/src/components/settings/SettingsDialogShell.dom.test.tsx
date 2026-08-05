@@ -90,6 +90,10 @@ let mockShowInstallSkill = true;
 // markdownlint is opt-in (off by default); the default mock represents a
 // project that has enabled it, so the Plugins group lists its panel.
 let mockProjectConfig: unknown = { contentRules: { markdownlint: { enabled: true } } };
+// The layered `merged` config drives user-scope plugin visibility (Themes,
+// Slides). Default null → Themes shows (default-on gate) and Slides hides
+// (default-off gate).
+let mockMerged: unknown = null;
 
 vi.doMock('@inkeep/open-knowledge-core', () => ({
   get SHOW_INSTALL_SKILL() {
@@ -127,7 +131,7 @@ vi.doMock('@/lib/config-provider', () => ({
     projectConfig: mockProjectConfig,
     projectLocalConfig: null,
     projectLocalSynced: false,
-    merged: null,
+    merged: mockMerged,
   }),
 }));
 
@@ -167,6 +171,7 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     mockBodyMode = 'probe';
     mockShowInstallSkill = true;
     mockProjectConfig = { contentRules: { markdownlint: { enabled: true } } };
+    mockMerged = null;
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -258,6 +263,27 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     // Plugins group even when the project-scope items are gated.
     expect(screen.getByTestId('settings-sidebar-item-plugin:theme')).toBeTruthy();
     expect(screen.getByText('Themes')).toBeTruthy();
+  });
+
+  test('omits the Slides plugin from the sidebar until slides.enabled is true', () => {
+    // Slides ships off. With no `slides.enabled` (default) the item is absent;
+    // the shell sidebar half of the `plugin:slides` drift guard (dispatch half
+    // lives in SettingsDialogBody.sections.dom.test.tsx).
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('settings-sidebar-item-plugin:slides')).toBeNull();
+
+    cleanup();
+    mockMerged = { slides: { enabled: false } };
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('settings-sidebar-item-plugin:slides')).toBeNull();
+  });
+
+  test('lists the Slidev plugin in the Plugins group once slides.enabled is true', () => {
+    mockMerged = { slides: { enabled: true } };
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    expect(screen.getByTestId('settings-sidebar-item-plugin:slides')).toBeTruthy();
+    // The nav names the renderer, not the config key it is gated on.
+    expect(screen.getByText('Slidev')).toBeTruthy();
   });
 
   test('has a per-scope Plugins manage item under both User and This project', () => {

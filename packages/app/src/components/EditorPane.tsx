@@ -37,6 +37,10 @@ import { EditorArea, type SessionPlacements } from './EditorArea';
 import { EditorHeader } from './EditorHeader';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
+import {
+  subscribeToTerminalCommandRequests,
+  type TerminalCommandId,
+} from './handoff/terminal-command-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 import {
@@ -171,6 +175,13 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // entry point. Null until a UI click; bumping `nonce` makes each click a
   // distinct one-shot the session writes exactly once.
   const [terminalLaunch, setTerminalLaunch] = useState<TerminalLaunchIntent | null>(null);
+  // "Run this in the terminal" one-shot (Settings → Slides). Nonce-keyed like
+  // `terminalLaunch` so a repeat click opens a fresh tab instead of being
+  // deduped away, and so the dock acts on it exactly once.
+  const [terminalCommand, setTerminalCommand] = useState<{
+    id: TerminalCommandId;
+    nonce: number;
+  } | null>(null);
   // "Start an agent" launch intent threaded to the dock's thread host — the ACP
   // twin of `terminalLaunch`. Both buses target the one host now.
   const [threadLaunch, setThreadLaunch] = useState<ThreadLaunchIntent | null>(null);
@@ -385,6 +396,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // exclusive: `prompt` is baked as a CLI arg and RUNS, `stagePaste` is written
   // into the input and waits. A raw selection send must never auto-run, so it
   // stages.
+  useEffect(() => {
+    return subscribeToTerminalCommandRequests((id) => {
+      setTerminalVisible(true);
+      launchNonceRef.current += 1;
+      setTerminalCommand({ id, nonce: launchNonceRef.current });
+    });
+  }, []);
+
   useEffect(() => {
     return subscribeToTerminalLaunchRequests((text, cli, { stage }) => {
       setTerminalVisible(true);
@@ -700,6 +719,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             visible={terminalVisible}
             onVisibleChange={setTerminalVisible}
             launch={terminalLaunch}
+            commandLaunch={terminalCommand}
             installedClis={installedClis}
             container={placements.terminal.container}
             isShowing={placements.terminal.isShowing}

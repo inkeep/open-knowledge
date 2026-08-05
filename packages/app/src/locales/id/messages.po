@@ -2062,6 +2062,10 @@ msgstr "Memeriksa"
 msgid "Checking for agents"
 msgstr "Mencari agen"
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Checking for Slidev"
+msgstr "Mencari Slidev"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "Memeriksa pembaruan"
@@ -3230,6 +3234,10 @@ msgstr "Terminal tidak bisa dibuka — komentarnya masih menunggu dikirim."
 msgid "Couldn't open the worktree. Try again."
 msgstr "Worktree-nya tidak bisa dibuka. Coba lagi."
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't open this document in Slidev."
+msgstr "Tidak dapat membuka dokumen ini di Slidev."
+
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
 msgstr "Tidak dapat menyiapkan proyek ini untuk diterbitkan."
@@ -3407,6 +3415,10 @@ msgstr "Keterampilan tidak bisa dibagikan: galat internal. Silakan mulai ulang a
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't start {0}: {1}"
 msgstr "Tidak dapat menjalankan {0}: {1}"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't start Slidev."
+msgstr "Tidak dapat menjalankan Slidev."
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
@@ -3964,6 +3976,10 @@ msgstr "Nonaktifkan pratinjau tautan eksternal"
 msgid "Disable semantic search"
 msgstr "Nonaktifkan pencarian semantik"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable Slidev"
+msgstr "Nonaktifkan Slidev"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Disable Spell Check"
 msgstr "Nonaktifkan pemeriksa ejaan"
@@ -4464,6 +4480,10 @@ msgstr "Aktifkan plugin"
 msgid "Enable semantic search"
 msgstr "Aktifkan pencarian semantik"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable Slidev"
+msgstr "Aktifkan Slidev"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Enable Spell Check"
 msgstr "Aktifkan pemeriksa ejaan"
@@ -4896,6 +4916,10 @@ msgstr "Gagal menata ulang"
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
 msgstr "Gagal menyimpan aturan konten — {0}"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to save Slidev setting"
+msgstr "Gagal menyimpan pengaturan Slidev"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Failed to save the schema field"
@@ -6288,11 +6312,11 @@ msgstr "Tata letak"
 msgid "Layout options"
 msgstr "Opsi tata letak"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more"
 msgstr "Pelajari lebih lanjut"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "Pelajari lebih lanjut tentang {title}"
 
@@ -7850,6 +7874,10 @@ msgstr "Buka di aplikasi bawaan"
 msgid "Open in file manager"
 msgstr "Buka di pengelola berkas"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Open in Slidev"
+msgstr "Buka di Slidev"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in worktree"
 msgstr "Buka di worktree"
@@ -8114,6 +8142,14 @@ msgstr "Lainnya"
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
 msgstr "Ada jalur OK lain yang dilacak di remote:"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install"
+msgstr "Cara lain untuk memasang"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install Slidev"
+msgstr "Cara lain untuk memasang Slidev"
 
 #: src/components/LinksPanel.tsx
 msgid "Outgoing"
@@ -8454,6 +8490,14 @@ msgstr "Menyiapkan URL berbagi..."
 #: src/uninstall/UninstallApp.tsx
 msgid "Preparing to uninstall OpenKnowledge"
 msgstr "Bersiap mencopot OpenKnowledge"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
+msgstr "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Tambahkan <0>slides: true</0> ke frontmatter dokumen, lalu buka dengan aksi Slidev. Perenderan ditangani oleh CLI Slidev, yang tidak disertakan OpenKnowledge."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
+msgstr "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Hanya berfungsi di aplikasi desktop OpenKnowledge dan memerlukan CLI Slidev yang dipasang terpisah. Saat aktif, muncul di Plugins pada bilah sisi."
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -9490,6 +9534,10 @@ msgstr "Jalankan audit proyek dari panel Masalah."
 msgid "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 msgstr "Jalankan terminal sungguhan yang tertambat di dalam OpenKnowledge, dimulai di folder proyek ini."
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Run in terminal"
+msgstr "Jalankan di terminal"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Run this in your terminal"
 msgstr "Jalankan ini di terminal Anda"
@@ -10407,6 +10455,39 @@ msgstr "Menu perintah garis miring"
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "Perintah garis miring"
+
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Slidev"
+msgstr "Slidev"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev couldn't render this document."
+msgstr "Slidev tidak dapat merender dokumen ini."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev decks open in the OpenKnowledge desktop app only."
+msgstr "Dek Slidev hanya terbuka di aplikasi desktop OpenKnowledge."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found in this project. Decks will use the project's version."
+msgstr "Slidev ditemukan di proyek ini. Dek akan memakai versi proyek."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found on your system."
+msgstr "Slidev ditemukan di sistem Anda."
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev install command"
+msgstr "Perintah pemasangan Slidev"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
+msgstr "Slidev belum terpasang, jadi aksi Slidev tetap tersembunyi. Pasang, lalu kembali ke jendela ini."
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev timed out while starting. Try again."
+msgstr "Slidev terlalu lama saat memulai. Coba lagi."
 
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
@@ -11512,6 +11593,10 @@ msgstr "Ini pratinjau {boldName}, terdeteksi di {boldHarness} pada tingkat {bold
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "Ini pratinjau {boldName}. Pasang ke agen Anda."
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "This isn't a supported version of Slidev."
+msgstr "Ini bukan versi Slidev yang didukung."
+
 #: src/components/DeleteConfirmationDialog.tsx
 msgid "this item"
 msgstr "item ini"
@@ -12366,6 +12451,10 @@ msgstr "Menunggu persetujuan Anda"
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
 msgstr "Peringatan"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "We couldn't check whether Slidev is installed. Return to this window to retry."
+msgstr "Kami tidak dapat memeriksa apakah Slidev terpasang. Kembali ke jendela ini untuk mencoba lagi."
 
 #: src/components/settings/AccountSection.tsx
 msgid "We couldn't check your GitHub connection."

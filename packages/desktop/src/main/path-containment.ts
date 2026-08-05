@@ -14,6 +14,15 @@ export function validateSpawnPath(path: string, platform: NodeJS.Platform): bool
   if (!path || typeof path !== 'string') return false;
   if (path.includes('\0')) return false;
   if (platform === 'win32') {
+    // The Windows spawn path runs through `cmd.exe` (the only way to launch a
+    // `.cmd` shim, and how a global install resolves against PATHEXT), so the
+    // deck path is re-parsed under cmd's grammar after Node builds the command
+    // line. Quoting makes `&  |  <  >  ^` inert, but two characters survive it:
+    // `%` still expands inside double quotes, and `"` cannot be quoted at all.
+    // Both are refused here rather than escaped — neither is legal in a Windows
+    // filename anyway (`"`) or plausible in a deck name (`%`), so refusing costs
+    // nothing and removes the class instead of trying to out-escape cmd.
+    if (/["%]/.test(path)) return false;
     // Match `C:\…`, `C:/…`, or UNC `\\server\share\…`.
     return /^([a-zA-Z]:[\\/]|\\\\)/.test(path);
   }

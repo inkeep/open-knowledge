@@ -385,6 +385,17 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * unsynced-work transition — a fold would rebuild the menu on every
  * keystroke-to-sync edge.
  *
+ * Bumped from 90 to 92 (this and the interface-language push below) for the Slides (Slidev) presentation surface
+ * (`ok:slides:dispatch`): one discriminated channel following the
+ * `ok:sharing:dispatch` precedent — `status` detects whether a runnable
+ * `slidev` resolves for the sender window's project, and `open` spawns the
+ * deck; both share this one channel, and further verbs widen the payload
+ * rather than adding a channel. Could not fold into an existing
+ * channel: no channel carries a slidev/deck concept, and while it is
+ * project-scoped like `ok:sharing:dispatch`, its result shape (`available` /
+ * `source`) is unrelated to git-exclude posture — a fold would wear one channel
+ * over two unrelated concerns.
+ *
  * Bumped from 90 to 91 for the interface-language push
  * (`ok:locale:set-preference`): the renderer forwards the user's unresolved
  * language preference so main re-resolves it and rebuilds the native menu bar
@@ -403,7 +414,7 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * The typed-ipc migration remains the committed end state, with the
  * `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 91;
+const REQUEST_CHANNEL_CAP = 92;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

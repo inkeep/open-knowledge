@@ -43,6 +43,7 @@ import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
 import { SearchSection } from './SearchSection';
 import { SkillsManagerSection } from './SkillsManagerSection';
+import { SlidesPluginSection } from './SlidesPluginSection';
 import { SyncSection } from './SyncSection';
 import { BoundSchemaSection } from './schema-section';
 import { FIELDS_USER_PREFERENCES } from './settings-fields';
@@ -135,6 +136,12 @@ export function SettingsDialogBody({
     // The theme "plugin" — a peer of the lint plugins in the Plugins menu, not a
     // lint plugin (it owns no `contentRules` slice). Its config is user-scope.
     return userBinding ? <ThemePluginSection userBinding={userBinding} /> : <SectionSkeleton />;
+  }
+  if (activeId === 'plugin:slides') {
+    // The Slides "plugin" — a peer of the lint plugins in the Plugins menu, not
+    // a lint plugin (it owns no `contentRules` slice). Dedicated branch above
+    // the generic plugin fallthrough, which only knows the lint-plugin registry.
+    return <SlidesPluginSection />;
   }
   if (activeId === 'plugin:markdownlint') {
     // Dedicated branch (above the generic plugin fallthrough) so the settings

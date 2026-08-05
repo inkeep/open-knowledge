@@ -156,6 +156,7 @@
     ],
     "1LtA5r": ["Crée un lien symbolique de la compétence vers ", ["path"]],
     "1MGRQl": ["Sessions de terminal"],
+    "1NgrlY": ["Autres méthodes d'installation"],
     "1OKzC_": ["Votre rapport n'a pas pu être envoyé. Réessayez ou envoyez-le par e-mail."],
     "1QfxQT": ["Ignorer"],
     "1RluQD": ["Afficher le remplacement"],
@@ -359,6 +360,9 @@
     "45MZFs": ["Commandes"],
     "484LKL": ["Retirer le lien"],
     "494br3": ["Partagé avec toutes les personnes de ce projet — validé dans config.yml via git."],
+    "49Mb7P": [
+      "Nous n'avons pas pu vérifier si Slidev est installé. Revenez à cette fenêtre pour réessayer."
+    ],
     "4A3Yzu": ["Bloc de code"],
     "4BITzH": ["Erreur :"],
     "4CfgPM": ["Dossier de projet créé, mais git init a échoué. Réessayez."],
@@ -1282,6 +1286,7 @@
       "Les boutons d'annulation sont désactivés — l'état par session a été récupéré par le ramasse-miettes."
     ],
     "GLxIKR": ["Comment pousser manuellement"],
+    "GMaDTM": ["Échec de l'enregistrement du paramètre Slidev"],
     "GN6L5F": ["Nom de fichier"],
     "GNkUvW": ["En file d’attente : envoi à la fin de cette exécution"],
     "GQDSBN": ["Options de mise en page"],
@@ -1362,6 +1367,9 @@
     "HKH-W-": ["Données"],
     "HM56Bx": ["Création…"],
     "HPTPGr": ["Crée un nouveau fichier de spécification pour ma user story"],
+    "HPaAxt": [
+      "Slidev n'est pas installé, l'action Slidev reste donc masquée. Installez-le, puis revenez à cette fenêtre."
+    ],
     "HSh8u_": ["Dossiers"],
     "HTW0Zw": [
       "Encore une étape : exécutez <0>claude</0> dans ce projet et approuvez OpenKnowledge une fois."
@@ -1575,6 +1583,9 @@
     "L1BQTH": [["0"], " n'est pas encore installé — ouverture de sa page de téléchargement."],
     "L1ZE3M": ["Statistiques du document"],
     "L3CEC1": ["cet élément"],
+    "L3w0_C": [
+      "Présentez un document sous forme de diaporama dans sa propre fenêtre. Ajoutez <0>slides: true</0> au frontmatter d'un document, puis ouvrez-le avec l'action Slidev. Le rendu est assuré par la CLI Slidev, qu'OpenKnowledge ne fournit pas."
+    ],
     "L4Cdd9": ["ou créez un nouveau fichier <0/>"],
     "L6Hhh6": ["(racine)"],
     "L6Ud-t": ["Impossible de charger les conflits. Rechargez pour réessayer."],
@@ -1643,6 +1654,7 @@
       " en amont. Voir le message ci-dessous."
     ],
     "Llyqvo": ["Cela signifie généralement l'une de ces choses :"],
+    "Lm3r51": ["Slidev n'a pas pu afficher ce document."],
     "LnVIW4": ["Échec du démarrage de la connexion — réessayez"],
     "LpB85N": ["Simple"],
     "LtI9AS": ["Propriétaire"],
@@ -1798,6 +1810,8 @@
     "Nay2Yr": ["Aucun agent ne correspond à votre recherche."],
     "NcurBF": ["Faire défiler vers le bas"],
     "NeQ_0G": ["Traiter ces commentaires"],
+    "NeY1Np": ["Slidev a mis trop de temps à démarrer. Réessayez."],
+    "NfraGd": ["Autres méthodes d'installation de Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " activés"],
     "NjrIak": ["Fichier : <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Modifier ", ["tag"]],
@@ -1889,6 +1903,9 @@
     "OxplNM": ["« ", ["0"], " » mis à jour : ", ["1"], " ajouté(s), ", ["2"], " retiré(s)"],
     "Oxyd5f": ["Choisissez un nom"],
     "OyIC0Q": ["Nom du projet"],
+    "Ozyht_": [
+      "Présentez un document sous forme de diaporama dans sa propre fenêtre. Fonctionne uniquement dans l'application de bureau OpenKnowledge et nécessite la CLI Slidev, à installer séparément. Une fois activé, il apparaît sous Plugins dans la barre latérale."
+    ],
     "P-ye9o": ["Impossible d'ouvrir le sélecteur de dossier"],
     "P0HC30": ["Ce ", ["targetNoun"], " a été déplacé vers <0>", ["0"], "</0>. L'ouvrir là-bas ?"],
     "P3NS4G": ["Erreur de syntaxe du motif (ligne ", ["lineNumber"], ") : ", ["message"]],
@@ -1897,6 +1914,7 @@
     "P47EWZ": ["Impossible de mettre à jour les paramètres de la barre latérale"],
     "P6gXB-": ["Remplacer ", ["keyName"]],
     "P6lAT3": ["Dossier cible : ", ["linkTitle"], ". Cliquez pour ouvrir la synthèse."],
+    "P8AnMN": ["Recherche de Slidev"],
     "PB4upl": ["Occurrence précédente"],
     "PBwmDJ": ["Recherche par le sens"],
     "PBxg_E": ["Pas maintenant"],
@@ -2153,6 +2171,7 @@
     "T0OVm7": ["La branche par défaut est protégée — les push nécessitent une pull request."],
     "T3Mld1": ["Fenêtre"],
     "T3j-7o": ["par ex. Changement de projet pendant une synchronisation"],
+    "TBfy1C": ["Impossible de démarrer Slidev."],
     "TDeOpa": [
       "Annule ou rétablit vos propres modifications, en laissant en place celles des collaborateurs et des agents."
     ],
@@ -2170,6 +2189,7 @@
     ],
     "TTDXD8": ["Nouveau worktree…"],
     "TUzThQ": ["Partager les compétences"],
+    "T_j5G0": ["Cette version de Slidev n'est pas prise en charge."],
     "T_wG4n": ["Nous n'avons pas pu vérifier votre connexion GitHub."],
     "Ta25TG": ["Pas encore d'historique"],
     "TbjyhA": ["Documents"],
@@ -2279,6 +2299,7 @@
     "Ugvy4O": ["Développer tous les groupes de fichiers"],
     "UhpfxY": ["Faire défiler vers la gauche"],
     "UkQGhd": ["Masquer le remplacement"],
+    "UlVARL": ["Activer Slidev"],
     "Uobeu9": ["Ajoute la compétence à ", ["rootRel"], " — également lu par ", ["0"]],
     "Uoux8m": ["Inclure ce commentaire dans le prochain envoi"],
     "Up2_7p": ["Copier le chemin complet"],
@@ -2444,6 +2465,7 @@
     "X0ttSN": ["Aucune étiquette ne correspond à « ", ["tagListQuery"], " »."],
     "X2zUS5": ["Supprimer ce commentaire"],
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
+    "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
     "X7ShnN": ["Ouvrir le panneau des agents"],
     "X7u0xR": [["0"], " modèles disponibles"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
@@ -3101,6 +3123,7 @@
         }
       ]
     ],
+    "el2KyL": ["Slidev trouvé dans ce projet. Les diaporamas utiliseront la version du projet."],
     "emgiet": ["Contenu faisant autorité ; reproduit tel quel partout où il est référencé."],
     "enPTnx": ["ligne ", ["displayLine"]],
     "eoEUI3": ["Impossible de résoudre ce commentaire."],
@@ -3114,6 +3137,7 @@
     ],
     "evs0iw": ["Étiquettes correspondant à « ", ["tagListQuery"], " »"],
     "ezUmoU": ["Valeurs d'élément autorisées (vide = toutes)"],
+    "f14doC": ["Slidev"],
     "f1XQyZ": ["Déplacer le bloc"],
     "f3Nvg7": [
       ["0"],
@@ -3299,6 +3323,7 @@
     "hQjvzi": ["Une archive .zip ou .skill."],
     "hSBIG-": ["Un titre, une description, des étiquettes — tout ce qui décrit ce dossier."],
     "hSySVc": ["Échec du transfert d'installation : ", ["msg"]],
+    "hVAkI8": ["Exécuter dans le terminal"],
     "hXUWyd": ["Une valeur est obligatoire"],
     "hXbSxc": ["Ressource : ", ["title"]],
     "hY8pka": ["Sélectionner l'occurrence suivante"],
@@ -3333,6 +3358,7 @@
     "hxnF0I": ["Propriétés de ", ["0"]],
     "hyCxJY": ["Ouvrir plutôt ce worktree"],
     "hynz2K": ["Téléchargement démarré"],
+    "hz076O": ["Commande d'installation de Slidev"],
     "i-ShMB": ["Diagramme"],
     "i-wHEp": [
       "Modification de ",
@@ -3633,6 +3659,9 @@
       "Un chemin à l'intérieur de la compétence — n'importe quel dossier convient (par ex. references/notes.md). Les dossiers du chemin sont créés pour vous."
     ],
     "lPzyrU": ["Tous les blocs sont résolus"],
+    "lScd1O": [
+      "Les diaporamas Slidev s'ouvrent uniquement dans l'application de bureau OpenKnowledge."
+    ],
     "lUtr1r": [["0"], " sélectionné(s) sur ", ["1"]],
     "lVWEIL": [["embedded"], " pages indexées sur ", ["total"], "."],
     "lWNpNB": [
@@ -4443,6 +4472,7 @@
     "w4hMYl": [
       "Impossible de lire l'état des branches de ce projet. Fermez cette boîte de dialogue et rouvrez le lien de partage."
     ],
+    "w52SKa": ["Ouvrir dans Slidev"],
     "w61W3L": ["Retirer ", ["0"]],
     "w6sBjd": ["Les paramètres du terminal ne sont pas encore chargés — réessayez dans un instant"],
     "w6sT-y": ["Suivre les modifications de l'agent"],
@@ -4464,6 +4494,7 @@
     "wJo9oS": ["Fermer la recherche"],
     "wQp1V3": ["Miroir de <0>", ["src"], "</0>"],
     "wQvvZY": ["Nouveau fichier de compétence"],
+    "wRni1Z": ["Désactiver Slidev"],
     "wT4iQr": [
       "Ouvre la recherche de l'éditeur visuel avec les contrôles de remplacement dépliés."
     ],
@@ -4557,6 +4588,7 @@
     "xrVr_k": ["Impossible de créer la compétence : ", ["0"]],
     "xsZhu-": ["Numéro de page"],
     "xtJgSe": ["Cette source regroupe plusieurs compétences — choisissez celle à importer."],
+    "xxRpzT": ["Slidev trouvé sur votre système."],
     "xzAmL_": ["Approuvé automatiquement"],
     "xzktOa": ["Modifier le lien wiki"],
     "y1eoq1": ["Copier le lien"],

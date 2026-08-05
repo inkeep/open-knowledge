@@ -2062,6 +2062,10 @@ msgstr "जाँचा जा रहा है"
 msgid "Checking for agents"
 msgstr "एजेंट खोजे जा रहे हैं"
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Checking for Slidev"
+msgstr "Slidev खोजा जा रहा है"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "अपडेट देखे जा रहे हैं"
@@ -3230,6 +3234,10 @@ msgstr "टर्मिनल नहीं खोला जा सका — ट
 msgid "Couldn't open the worktree. Try again."
 msgstr "वर्कट्री नहीं खोला जा सका। फिर कोशिश करें।"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't open this document in Slidev."
+msgstr "इस दस्तावेज़ को Slidev में नहीं खोला जा सका।"
+
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
 msgstr "इस प्रोजेक्ट को प्रकाशन के लिए तैयार नहीं किया जा सका।"
@@ -3407,6 +3415,10 @@ msgstr "स्किल साझा नहीं की जा सकीं: �
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't start {0}: {1}"
 msgstr "{0} शुरू नहीं हो सका: {1}"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Couldn't start Slidev."
+msgstr "Slidev शुरू नहीं किया जा सका।"
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
@@ -3964,6 +3976,10 @@ msgstr "बाहरी लिंक पूर्वावलोकन अक्
 msgid "Disable semantic search"
 msgstr "अर्थ-आधारित खोज अक्षम करें"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable Slidev"
+msgstr "Slidev बंद करें"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Disable Spell Check"
 msgstr "वर्तनी जाँच बंद करें"
@@ -4464,6 +4480,10 @@ msgstr "प्लगइन सक्षम करें"
 msgid "Enable semantic search"
 msgstr "अर्थ-आधारित खोज सक्षम करें"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable Slidev"
+msgstr "Slidev चालू करें"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Enable Spell Check"
 msgstr "वर्तनी जाँच चालू करें"
@@ -4896,6 +4916,10 @@ msgstr "क्रम बदलने में विफल"
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
 msgstr "सामग्री नियम सहेजने में विफल — {0}"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to save Slidev setting"
+msgstr "Slidev सेटिंग सहेजी नहीं जा सकी"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Failed to save the schema field"
@@ -6288,11 +6312,11 @@ msgstr "लेआउट"
 msgid "Layout options"
 msgstr "लेआउट विकल्प"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more"
 msgstr "और जानें"
 
-#: src/components/settings/LintingSection.tsx
+#: src/components/settings/PluginSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "{title} के बारे में और जानें"
 
@@ -7850,6 +7874,10 @@ msgstr "डिफ़ॉल्ट ऐप में खोलें"
 msgid "Open in file manager"
 msgstr "फ़ाइल प्रबंधक में खोलें"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "Open in Slidev"
+msgstr "Slidev में खोलें"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in worktree"
 msgstr "वर्कट्री में खोलें"
@@ -8114,6 +8142,14 @@ msgstr "अन्य"
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
 msgstr "अन्य OK पथ अपस्ट्रीम ट्रैक किए जाते हैं:"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install"
+msgstr "इंस्टॉल करने के अन्य तरीके"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Other ways to install Slidev"
+msgstr "Slidev इंस्टॉल करने के अन्य तरीके"
 
 #: src/components/LinksPanel.tsx
 msgid "Outgoing"
@@ -8454,6 +8490,14 @@ msgstr "साझा URL तैयार किया जा रहा है…
 #: src/uninstall/UninstallApp.tsx
 msgid "Preparing to uninstall OpenKnowledge"
 msgstr "OpenKnowledge हटाने की तैयारी"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
+msgstr "किसी दस्तावेज़ को अलग विंडो में स्लाइड डेक के रूप में प्रस्तुत करें। दस्तावेज़ के frontmatter में <0>slides: true</0> जोड़ें, फिर उसे Slidev क्रिया से खोलें। रेंडरिंग Slidev CLI करता है, जिसे OpenKnowledge शामिल नहीं करता।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
+msgstr "किसी दस्तावेज़ को अलग विंडो में स्लाइड डेक के रूप में प्रस्तुत करें। यह केवल OpenKnowledge डेस्कटॉप ऐप में काम करता है और इसके लिए Slidev CLI चाहिए, जिसे आप अलग से इंस्टॉल करते हैं। चालू होने पर यह साइडबार में Plugins के अंतर्गत दिखता है।"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -9490,6 +9534,10 @@ msgstr "Problems पैनल से एक प्रोजेक्ट ऑड�
 msgid "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
 msgstr "OpenKnowledge के भीतर जुड़ा एक असली टर्मिनल चलाएँ, जो इस प्रोजेक्ट के फ़ोल्डर से शुरू होता है।"
 
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Run in terminal"
+msgstr "टर्मिनल में चलाएँ"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Run this in your terminal"
 msgstr "इसे अपने टर्मिनल में चलाएँ"
@@ -10407,6 +10455,39 @@ msgstr "स्लैश कमांड मेन्यू"
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "स्लैश कमांड"
+
+#: src/components/settings/LintingSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Slidev"
+msgstr "Slidev"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev couldn't render this document."
+msgstr "Slidev इस दस्तावेज़ को रेंडर नहीं कर सका।"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev decks open in the OpenKnowledge desktop app only."
+msgstr "Slidev डेक केवल OpenKnowledge डेस्कटॉप ऐप में खुलते हैं।"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found in this project. Decks will use the project's version."
+msgstr "इस प्रोजेक्ट में Slidev मिला। डेक प्रोजेक्ट के संस्करण का उपयोग करेंगे।"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev found on your system."
+msgstr "आपके सिस्टम पर Slidev मिला।"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev install command"
+msgstr "Slidev इंस्टॉल कमांड"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
+msgstr "Slidev इंस्टॉल नहीं है, इसलिए Slidev क्रिया छिपी रहती है। इसे इंस्टॉल करें, फिर इस विंडो पर लौटें।"
+
+#: src/components/SlidesToolbarControls.tsx
+msgid "Slidev timed out while starting. Try again."
+msgstr "Slidev शुरू होने में बहुत समय लगा। फिर से कोशिश करें।"
 
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
@@ -11512,6 +11593,10 @@ msgstr "यह {boldName} का पूर्वावलोकन है, ज�
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "यह {boldName} का पूर्वावलोकन है। इसे अपने एजेंट में इंस्टॉल करें।"
 
+#: src/components/SlidesToolbarControls.tsx
+msgid "This isn't a supported version of Slidev."
+msgstr "यह Slidev का समर्थित संस्करण नहीं है।"
+
 #: src/components/DeleteConfirmationDialog.tsx
 msgid "this item"
 msgstr "यह आइटम"
@@ -12366,6 +12451,10 @@ msgstr "आपकी स्वीकृति की प्रतीक्षा
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
 msgstr "चेतावनी"
+
+#: src/components/settings/SlidesPluginSection.tsx
+msgid "We couldn't check whether Slidev is installed. Return to this window to retry."
+msgstr "हम जाँच नहीं सके कि Slidev इंस्टॉल है या नहीं। पुनः प्रयास के लिए इस विंडो पर लौटें।"
 
 #: src/components/settings/AccountSection.tsx
 msgid "We couldn't check your GitHub connection."

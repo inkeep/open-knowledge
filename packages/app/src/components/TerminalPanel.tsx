@@ -23,6 +23,7 @@ import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/d
 import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
+import { type TerminalCommandId, terminalCommandFor } from './handoff/terminal-command-events';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
@@ -86,6 +87,12 @@ interface TerminalPanelProps {
    */
   readonly launch?: TerminalLaunchIntent | null;
   /**
+   * "Run this in the terminal" one-shot (Settings → Slides). Bakes a fixed
+   * command from a closed union into the spawn, with none of the CLI machinery.
+   * See {@link TerminalSessionProps.commandId}.
+   */
+  readonly commandId?: TerminalCommandId | null;
+  /**
    * A PTY that survived a renderer reload in the main process. When set, the
    * session adopts it (reconnects the live shell) on its first mount instead of
    * spawning a fresh one; `null` for a normally-opened tab. A restart always
@@ -110,6 +117,7 @@ export function TerminalPanel({
   onExit,
   onTitleChange,
   launch = null,
+  commandId = null,
   adoptPtyId = null,
   onPtyId,
 }: TerminalPanelProps) {
@@ -146,6 +154,7 @@ export function TerminalPanel({
           onTitleChange={onTitleChange}
           onRestart={() => setRestartKey((k) => k + 1)}
           launch={launch}
+          commandId={commandId}
           adoptPtyId={adoptForThisMount}
           onPtyId={onPtyId}
         />
@@ -167,6 +176,12 @@ interface TerminalSessionProps {
   /** "Open in terminal" launch intent — baked into the PTY spawn when present
    *  (preflight-gated). See {@link TerminalPanelProps.launch}. */
   readonly launch?: TerminalLaunchIntent | null;
+  /** "Run this in the terminal" one-shot from a UI surface (Settings → Slides).
+   *  Mutually exclusive with {@link launch}: this bakes a fixed command from the
+   *  closed {@link TerminalCommandId} union straight into the spawn, with none
+   *  of the CLI machinery — no preflight, no readiness verdict, no missing-CLI
+   *  banner, no startup injection — because there is no CLI involved. */
+  readonly commandId?: TerminalCommandId | null;
   /** Surviving PTY to adopt on mount instead of spawning a fresh shell; `null`
    *  spawns fresh (the normal path). */
   readonly adoptPtyId?: string | null;
@@ -182,6 +197,7 @@ function TerminalSession({
   onTitleChange,
   onRestart,
   launch = null,
+  commandId = null,
   adoptPtyId = null,
   onPtyId,
 }: TerminalSessionProps) {
@@ -795,6 +811,13 @@ function TerminalSession({
       if (launch !== null && adoptPtyId === null) {
         launchCommand = await resolveLaunchCommand(launch);
         if (cancelled) return;
+      } else if (commandId !== null && adoptPtyId === null) {
+        // A "run this command" tab. No preflight: the command is a constant
+        // from a closed union, not a CLI we have to find on PATH first — and
+        // the login shell the spawn already uses is what makes a global npm
+        // install resolvable from a GUI-launched app. Same adopt guard as
+        // above, so a failed adopt never silently re-runs the command.
+        launchCommand = terminalCommandFor(commandId);
       }
 
       let result: Awaited<ReturnType<typeof bridge.terminal.create>>;
@@ -948,7 +971,7 @@ function TerminalSession({
     // adoptPtyId is stable for a session instance (a restart remounts via the
     // parent key rather than changing it), so listing it never re-runs this
     // mount/adopt effect — it only satisfies the exhaustive-deps check.
-  }, [bridge, adoptPtyId, launch]);
+  }, [bridge, adoptPtyId, launch, commandId]);
 
   // Re-skin the live terminal when the app theme changes — light/dark AND the
   // color-theme layer (useLiveXtermTheme keeps identity stable until colors

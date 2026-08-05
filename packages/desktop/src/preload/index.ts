@@ -69,6 +69,7 @@ import type {
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
 import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
+import { createSlidesBridge } from './slides-bridge.ts';
 import { createUninstallBridge } from './uninstall.ts';
 
 const invoke = createInvoker(ipcRenderer);
@@ -521,6 +522,8 @@ const bridge: OkDesktopBridge = {
       return result;
     },
   },
+
+  slides: createSlidesBridge(invoke),
 
   bugReport: {
     // The `kind` discriminant is added here so the renderer surface stays
