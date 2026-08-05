@@ -26,34 +26,6 @@ export interface E2eCiLedgerEntry {
 
 export const E2E_CI_EXCLUSIONS: readonly E2eCiLedgerEntry[] = [
   {
-    file: 'prop-upload.e2e.ts',
-    reason:
-      'pins live bug inkeep/agents-private#3225: the three image-upload render tests (src replace + disk landing, subdir <img> asset fetch, 0-byte 400 toast) fail deterministically on current origin/main; same image-placeholder root suspect as the clipboard suite. Promote in the fix PR.',
-    evidence:
-      'origin/main 1dd5d73a8a locally (darwin, retries=0): the 3 image tests fail at 2-3s each while 2 siblings pass; linux CI three-striked the same tests on PR #3187 run 30955628815',
-  },
-  {
-    file: 'slash-command-auto-open.e2e.ts',
-    reason:
-      'pins live bug inkeep/agents-private#3225: the placeholder-fill-dismisses test (real img renders after src fill) fails deterministically on current origin/main; same image-placeholder root suspect. The suite rides the quarantine because exclusion is per-file. Promote in the fix PR.',
-    evidence:
-      'origin/main 1dd5d73a8a locally (darwin, retries=0, repeat-each=2): 2/2 failures; linux CI three-striked it on PR #3187 run 30955628815',
-  },
-  {
-    file: 'clipboard-relative-url-source-fallback.e2e.ts',
-    reason:
-      'pins live bug inkeep/agents-private#3225: the relative-URL IMAGE source-fallback tests (standalone image paragraph, mixed selection per-element, 50-element slow-op budget, callout-nested descriptor boundary) fail deterministically on current origin/main at assertion speed; prime suspect is the image-src failure placeholder change merged the same day. Promote in the fix PR.',
-    evidence:
-      'origin/main 1dd5d73a8a locally (darwin, retries=0): 4 tests fail in 2-4s each while the siblings pass; identical failures on this branch after merging that main; linux CI three-striked the same tests in run 30954078770',
-  },
-  {
-    file: 'editor-split-view.e2e.ts',
-    reason:
-      'pins live bug inkeep/agents-private#3200: the four-pane layout-restore test finds at least one editor portal absent after restore (portalGeneration() returns absent). Deterministic on plain origin/main locally and three-striked two CI runs on an unrelated PR, red-flagging the required aggregate for every OK PR. Promote in the fix PR.',
-    evidence:
-      'detached worktree at origin/main fe17885411, fresh install: the restore test fails 3/3 with retries=0 while the 5 sibling tests pass; PR #3187 CI runs 30932855568 and 30935260763 each failed it 3-strikes',
-  },
-  {
     file: 'frontmatter-edit.e2e.ts',
     reason:
       'needs-fixture: FR6 (duplicate-key marker) and FR9 (malformed-YAML banner) seed malformed frontmatter through /api/agent-write-md, which now by design refuses to introduce malformed frontmatter (400 urn:ok:error:frontmatter-malformed). They need a disk-write fixture that loads a pre-malformed doc from the inheritor path — M effort, not in this PR. (The other former failures — the virtual "tags" placeholder row and the banner copy — are stale selectors that a repair would fix in the same pass.)',

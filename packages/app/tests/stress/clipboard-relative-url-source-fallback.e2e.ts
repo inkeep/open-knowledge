@@ -1,7 +1,7 @@
 /**
  * Compositional E2E coverage for the clipboard relative-URL
  * source-fallback feature. Targets the user journeys + walker post-pass
- * mechanics that bun-test (no DOM, polyfilled documents) cannot exercise:
+ * mechanics that vitest (jsdom, no real browser) cannot exercise:
  *
  *   - WYSIWYG copy of a paragraph containing a relative-path
  *     image emits source-fallback `<pre class="mdx-component"><code>` block
@@ -92,6 +92,9 @@ test.describe('FR-2 walker URL classifier — WYSIWYG cross-app source-fallback'
       expect(await getYText(page)).toContain('![chart](./Q3-sales.png)');
     }).toPass({ timeout: 5_000 });
     await page.click('.ProseMirror:not(.composer-prosemirror)');
+    // Gate on the error pill being mounted before copying: the pill-omission
+    // assertion below is only non-vacuous when the load failure has landed.
+    await expect(page.locator('[data-image-error="true"]')).toBeVisible();
 
     const captured = await simulateCopyAndRead(page, 'wysiwyg');
 
@@ -105,6 +108,53 @@ test.describe('FR-2 walker URL classifier — WYSIWYG cross-app source-fallback'
     // No `<img>` tag with the non-portable URL survives — that was the
     // former broken-image-icon path.
     expect(captured.html).not.toContain('src="./Q3-sales.png"');
+    // The unresolvable relative src renders the error pill in the editor;
+    // that render-layer chrome must not ride along into the cross-app
+    // payload beside the source-fallback block.
+    expect(captured.html).not.toContain('Image failed to load');
+  });
+
+  test('portable-URL image that fails to load pastes as a plain <img> (no error-state residue)', async ({
+    page,
+    baseURL,
+  }) => {
+    // Contrast case to the standalone relative-path test above: a
+    // broken-but-portable https src keeps
+    // byte-faithful <img> paste fidelity — the URL may well resolve at the
+    // destination even though it errored here (network differences). The
+    // error pill and the `hidden` attribute LoadingImage puts on the
+    // mounted-but-errored <img> are render-layer state; a pasted
+    // `<img hidden>` renders nothing anywhere, so the re-emit boundary
+    // must strip both.
+    await fetch(`${baseURL}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docName,
+        markdown: '![remote](https://invalid.invalid/missing.png)\n\nSurrounding prose.\n',
+        position: 'replace',
+      }),
+    });
+    await expect(async () => {
+      expect(await getYText(page)).toContain('https://invalid.invalid/missing.png');
+    }).toPass({ timeout: 5_000 });
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+    // Wait for the load failure so the copy exercises the pill-visible DOM
+    // (invalid.invalid is reserved-invalid per RFC 2606 — DNS fails fast).
+    await expect(page.locator('[data-image-error="true"]')).toBeVisible();
+
+    const captured = await simulateCopyAndRead(page, 'wysiwyg');
+
+    expect(captured.plain).toContain('![remote](https://invalid.invalid/missing.png)');
+    // Portable URL → the walker classifier does NOT swap; the <img>
+    // survives with its authored src.
+    expect(captured.html).toContain('src="https://invalid.invalid/missing.png"');
+    expect(captured.html).not.toContain('<pre class="mdx-component">');
+    // No error-state residue: no pill chrome, no hidden attr on the img,
+    // no error marker on the slot.
+    expect(captured.html).not.toContain('Image failed to load');
+    expect(captured.html).not.toMatch(/<img[^>]*\shidden/);
+    expect(captured.html).not.toContain('data-image-error');
   });
 
   test('QA-005 inline image in paragraph emits inline source-fallback (D16 paragraph-content rule)', async ({

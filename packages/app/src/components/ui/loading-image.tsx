@@ -2,6 +2,7 @@ import { useLingui } from '@lingui/react/macro';
 import { ImageOff } from 'lucide-react';
 import type { CSSProperties, ImgHTMLAttributes } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
+import { OPT_OUT_ATTR } from '@/editor/clipboard/clipboard-sanitize';
 import { cn } from '@/lib/utils';
 
 type LoadingImageProps = ImgHTMLAttributes<HTMLImageElement> & {
@@ -157,6 +158,12 @@ export function LoadingImage({
         <span
           role="img"
           aria-label={t`Image failed to load: ${errorLabel}`}
+          // Render-layer chrome only: the clipboard walker strips opt-out
+          // children from cross-app copies, so the pill text never pastes
+          // as if it were document content. The hidden <img> sibling stays
+          // in the clone and carries the authored src (the walker's
+          // error-slot un-hide pass drops the hidden attr from the clone).
+          {...{ [OPT_OUT_ATTR]: 'true' }}
           className="inline-flex max-w-full items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-2 py-1 text-muted-foreground"
         >
           <ImageOff aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />

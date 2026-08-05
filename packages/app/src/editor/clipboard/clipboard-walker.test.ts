@@ -28,6 +28,7 @@ import {
   STYLE_ALLOWLIST,
   selectionPartiallyCoversTopLevelNode,
   stripBlocklistedClasses,
+  unhideErrorSlotImages,
   type WalkerEnv,
 } from './clipboard-walker.ts';
 
@@ -1277,5 +1278,81 @@ describe('buildWikiEmbedMarkdownSource — drift fence vs canonical wikiLinkEmbe
     // so this output is never emitted into the clipboard. Pinned here
     // as a contract: the helper itself does no validation; callers do.
     expect(buildWikiEmbedMarkdownSource('', null, null)).toBe('![[]]');
+  });
+});
+
+// ─── unhideErrorSlotImages — error-render-state normalization ───────────
+//
+// LoadingImage keeps a failed <img> mounted (hidden) behind its pill
+// overlay; the pass strips that render-layer state from the clipboard
+// clone. Narrow fake: only the surface the pass touches (tagName,
+// getAttribute, removeAttribute, children).
+
+interface UnhideFakeNode {
+  tagName: string;
+  attrs: Record<string, string>;
+  children: UnhideFakeNode[];
+}
+
+function makeUnhideNode(
+  tagName: string,
+  attrs: Record<string, string> = {},
+  children: UnhideFakeNode[] = [],
+): UnhideFakeNode {
+  return { tagName: tagName.toLowerCase(), attrs: { ...attrs }, children };
+}
+
+function wrapUnhideNode(node: UnhideFakeNode): Element {
+  return {
+    get tagName() {
+      return node.tagName.toUpperCase();
+    },
+    getAttribute: (name: string) => node.attrs[name] ?? null,
+    removeAttribute: (name: string) => {
+      delete node.attrs[name];
+    },
+    get children() {
+      return node.children.map(wrapUnhideNode);
+    },
+  } as unknown as Element;
+}
+
+describe('unhideErrorSlotImages — error-render-state normalization', () => {
+  test('strips hidden from the img inside an error slot and drops the slot marker', () => {
+    const img = makeUnhideNode('img', { src: 'https://example.com/x.png', hidden: '' });
+    const slot = makeUnhideNode('span', { 'data-image-error': 'true' }, [img]);
+    const root = makeUnhideNode('div', {}, [slot]);
+
+    unhideErrorSlotImages(wrapUnhideNode(root));
+
+    expect('hidden' in img.attrs).toBe(false);
+    expect('data-image-error' in slot.attrs).toBe(false);
+    expect(img.attrs.src).toBe('https://example.com/x.png');
+  });
+
+  test('img nested deeper inside the error slot is still un-hidden', () => {
+    // Image.tsx wraps the img in rmiz zoom spans — the img is not a direct
+    // child of the slot that carries the marker.
+    const img = makeUnhideNode('img', { src: '/a.png', hidden: '' });
+    const zoomInner = makeUnhideNode('span', {}, [img]);
+    const slot = makeUnhideNode('span', { 'data-image-error': 'true' }, [zoomInner]);
+
+    unhideErrorSlotImages(wrapUnhideNode(slot));
+
+    expect('hidden' in img.attrs).toBe(false);
+    expect('data-image-error' in slot.attrs).toBe(false);
+  });
+
+  test('img outside any error slot keeps its attributes untouched', () => {
+    // hidden cannot legitimately reach an in-editor img outside the error
+    // state (the descriptor prop surface doesn't pass it through), but the
+    // pass must still scope itself to marked slots rather than un-hiding
+    // globally.
+    const img = makeUnhideNode('img', { src: '/b.png', hidden: '' });
+    const root = makeUnhideNode('div', {}, [img]);
+
+    unhideErrorSlotImages(wrapUnhideNode(root));
+
+    expect('hidden' in img.attrs).toBe(true);
   });
 });

@@ -6,7 +6,7 @@
  * "empty / 0×0 box → bytes arrive → reflow" sequence — the symptom the
  * reporter observed in the WYSIWYG editor.
  *
- * Invocation via `bun run test:dom`; jsdom substrate per precedent #43.
+ * Invocation via `pnpm run test:dom`; jsdom substrate per precedent #43.
  * Sibling: DocumentErrorBoundary.dom.test.tsx, FileTree.selection-mirror.dom.test.tsx.
  *
  * Selector contract:
@@ -222,6 +222,26 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     expect(imgAfterError?.hasAttribute('hidden')).toBe(true);
   });
 
+  test('error pill chrome is clipboard-opt-out; the mounted <img> is not', () => {
+    // The pill is render-layer chrome. On WYSIWYG copy the clipboard walker
+    // clones the rendered DOM — children marked with the opt-out attr are
+    // stripped from the clone (walkPair), while the hidden <img> stays so
+    // the relative-URL source-fallback classifier still sees the authored
+    // src. Without the marker, "Image failed to load" plus the src text
+    // paste into cross-app destinations as if they were document content.
+    const { container } = render(
+      <Image src="/missing-asset.png" alt="broken" width={400} height={300} />,
+    );
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+
+    const slot = screen.getByTestId('image-slot');
+    const optOut = slot.querySelector('[data-clipboard-omit="true"]');
+    expect(optOut).not.toBeNull();
+    expect(optOut?.textContent).toContain('Image failed to load');
+    const img = slot.querySelector('img');
+    expect(img?.getAttribute('data-clipboard-omit')).toBeNull();
+  });
+
   test('restores the placeholder when src changes (e.g. AssetPreview switching assets)', () => {
     // AssetPreview re-renders the same LoadingImage instance with a new
     // assetPath/src when the sidebar selection changes. Without resetting
@@ -258,8 +278,8 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     // recur when a broken image is followed by a good one.
     expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
     // hidden was also cleared — the <img> must be visible for the new src.
-    // Pins the inverse of the error-state assertions (lines 169, 189, 222)
-    // so the recovery path can't silently regress.
+    // Pins the inverse of the error-state hidden-attr assertions above so
+    // the recovery path can't silently regress.
     const imgAfterRecovery = screen.getByTestId('image-slot').querySelector('img');
     expect(imgAfterRecovery?.hasAttribute('hidden')).toBe(false);
   });

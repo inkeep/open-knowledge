@@ -136,6 +136,12 @@ export const CLASS_BLOCKLIST: ReadonlySet<string> = new Set([
  * moment of copy, never document content. `data-selection-origin` is
  * intentionally NOT here: it's a meta-property describing how the
  * selection was initiated, not a transient state of the node.
+ *
+ * `data-image-error` is deliberately NOT here either — walkPair (which
+ * consults this blocklist) runs before unhideErrorSlotImages, and that
+ * pass reads the marker to scope its hidden-removal to error slots.
+ * Adding it here would strip the marker first and silently disable the
+ * scoping.
  */
 export const ATTR_BLOCKLIST: ReadonlySet<string> = new Set([
   'data-selected',
@@ -353,6 +359,10 @@ export function walkLiveDomToInlineStyledFragment(
 function cloneAndStyle(live: Element, env: WalkerEnv): Element {
   const clone = live.cloneNode(true) as Element;
   walkPair(live, clone, env);
+  // Runs right after walkPair so the pill chrome (opt-out) is already gone
+  // and the un-hidden <img> is what every later pass — wiki-link, inline
+  // atoms, the URL classifier — sees.
+  unhideErrorSlotImages(clone);
   // Post-walk transforms run on the modified clone, paired pairwise with the
   // unchanged live tree (skipping opt-out subtrees that walkPair removed).
   //
@@ -613,6 +623,39 @@ function replaceLucideIconsWithGlyphs(root: Element): void {
     span.setAttribute('aria-hidden', 'true');
     span.textContent = glyph;
     svg.replaceWith(span);
+  }
+}
+
+/**
+ * Strip error-render state from cloned image slots. LoadingImage keeps a
+ * failed `<img>` mounted (with the `hidden` attribute) behind its
+ * "Image failed to load" pill so DOM consumers — this walker included —
+ * still see the authored src. Both the `hidden` attribute and the slot's
+ * `data-image-error` marker are render-layer state, not authored content:
+ * a pasted `<img hidden>` renders nothing at any destination, and the URL
+ * may well resolve there even though it errored here. The pill chrome
+ * itself never reaches the clone (it carries `OPT_OUT_ATTR`, which
+ * `walkPair` strips), so after this pass a broken-but-portable image
+ * pastes as a plain `<img>` while the URL classifier still swaps
+ * non-portable ones to source-fallback shapes.
+ *
+ * Recursive child-walk keeps the scoping invariant explicit in the shape
+ * of the code: un-hiding applies only beneath a marked slot, never
+ * globally. Author-authored `hidden` cannot reach here: the img
+ * descriptor's prop surface doesn't pass it through, so `hidden` under an
+ * error slot is always ours.
+ *
+ * Exported for unit-test reach; the production caller is `cloneAndStyle`.
+ */
+export function unhideErrorSlotImages(clone: Element, inErrorSlot = false): void {
+  const isErrorSlot = clone.getAttribute('data-image-error') === 'true';
+  if (isErrorSlot) clone.removeAttribute('data-image-error');
+  const active = inErrorSlot || isErrorSlot;
+  if (active && clone.tagName.toLowerCase() === 'img') {
+    clone.removeAttribute('hidden');
+  }
+  for (const kid of Array.from(clone.children)) {
+    unhideErrorSlotImages(kid, active);
   }
 }
 
