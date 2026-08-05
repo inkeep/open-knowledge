@@ -13,6 +13,12 @@
  *
  * The gate ORDER is load-bearing and mirrors the historical hook exactly:
  *
+ *   0. table resolve — a URL the table declines returns `false` HERE, before
+ *      any request observation. Load-bearing for the multi-group native
+ *      chain (`api-extension.ts` runs one pipeline per group in turn): only
+ *      the owning group's pipeline may observe the request, so a probe or
+ *      request-id write hoisted above the resolve would fire once per
+ *      declining group for every request a later group owns.
  *   1. embed-probe observation (ring buffer drained by `/api/__embed-detect`)
  *   2. request-id resolve + echo + `api.access` log wiring — BEFORE the gates
  *      so even gate-rejected responses carry the `x-request-id` echo
@@ -136,6 +142,9 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     if (!url) return false;
 
     const resolution = table.resolve(url);
+    // Decline with ZERO side effects — see step 0 in the module docblock;
+    // moving any observation above this return double-records chained-group
+    // requests.
     if (!resolution) return false;
 
     // Per-request client-context observation for embed-detection spikes.

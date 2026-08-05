@@ -130,6 +130,28 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       const res = await fetch(`${rig.baseUrl}/api/native-declined`);
       expect(res.status).toBe(299);
       expect(rig.legacyCalls).toEqual(['/api/native-declined']);
+      // Decline is side-effect-FREE (pipeline docblock step 0): the declining
+      // pipeline must not have touched the response — no request-id echo,
+      // no CORS headers. The multi-group chain depends on this: every group
+      // before the owning one declines the same request.
+      expect(res.headers.get('x-request-id')).toBeNull();
+      expect(res.headers.get('access-control-allow-methods')).toBeNull();
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('a declined path skips the gates too — foreign Origin falls through, not 403', async () => {
+    // The decline precedes the Origin gate: a chained group must never
+    // refuse a request it does not own (the owning table — here the legacy
+    // dispatch — applies its own gates).
+    const rig = await bootNativeRig();
+    try {
+      const res = await fetch(`${rig.baseUrl}/api/native-declined`, {
+        headers: { Origin: 'https://evil.example' },
+      });
+      expect(res.status).toBe(299);
+      expect(rig.legacyCalls).toEqual(['/api/native-declined']);
     } finally {
       await rig.close();
     }

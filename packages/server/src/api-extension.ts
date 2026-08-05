@@ -91,11 +91,9 @@ import {
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemasListSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
-  getParseHealth,
   type HeadingEntry,
   HistorySuccessSchema,
   HistoryVersionSuccessSchema,
-  HubsSuccessSchema,
   type InlineAssetMediaKind,
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
@@ -141,17 +139,9 @@ import {
   MANAGED_ARTIFACT_PREFIX_SKILL,
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   MarkdownlintRuleWriteRequestSchema,
-  type MetricsAgentEffectsSuccess,
-  MetricsAgentEffectsSuccessSchema,
-  MetricsAgentPresenceSuccessSchema,
-  MetricsParseHealthSuccessSchema,
-  MetricsReconciliationSuccessSchema,
-  type MetricsWatcherRecentSuccess,
-  MetricsWatcherRecentSuccessSchema,
   mediaKindForSidebarAssetExtension,
   OK_DIR,
   OPENKNOWLEDGE_SKILLS_REPO,
-  OrphansSuccessSchema,
   PageHeadingsSuccessSchema,
   PagesSuccessSchema,
   PROJECT_SKILL_EDITOR_IDS,
@@ -312,10 +302,10 @@ import {
   registryPlatformKey,
 } from './acp/registry.ts';
 import { MAX_ACP_THREADS } from './acp/thread-manager.ts';
-import { captureEffect, type EffectValue } from './activity-log.ts';
+import { captureEffect } from './activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
-import { type AgentPresenceBroadcaster, BROADCASTER_EVICTION_MS } from './agent-presence.ts';
+import type { AgentPresenceBroadcaster } from './agent-presence.ts';
 import {
   AgentSessionCapacityError,
   type AgentSessionManager,
@@ -549,7 +539,6 @@ import {
   type DerivedDocumentIndexApiPort,
   type DerivedDocumentIndexMutation,
   isDerivedDocumentIndexClosedError,
-  isDerivedOrphanMode,
 } from './derived-document-index.ts';
 import {
   docNameToRelativePath,
@@ -574,7 +563,6 @@ import {
   type DiskEvent,
   type FileIndexEntry,
   type FolderIndexEntry,
-  getWatcherDecisionRingSnapshot,
   registerWrite,
   removeFolderIndexEntries as removeFolderIndexEntriesFromIndex,
   updateFileIndex,
@@ -612,6 +600,7 @@ import { errnoCode, parseQuery } from './http/handler-utils.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
 import { methodRouter } from './http/method-router.ts';
+import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
 import { validateBody, withValidation } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
@@ -662,7 +651,6 @@ import {
 } from './managed-rename-journal.ts';
 import { rewriteAssetReferencesForRename } from './managed-rename-rewrite.ts';
 import {
-  getMetrics,
   incrementAgentPatchFindMismatches,
   incrementAgentWriteCalls,
   incrementSummariesProvided,
@@ -7247,85 +7235,6 @@ export function createApiExtension(
     { handler: 'comment-counts', method: 'GET', skipBodyParse: true },
   );
 
-  const handleOrphans = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'orphans' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const mode = url.searchParams.get('mode') ?? 'both';
-        if (!isDerivedOrphanMode(mode)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Invalid orphan mode. Allowed values: incoming, outgoing, both.',
-            { handler: 'orphans' },
-          );
-          return;
-        }
-
-        const orphans = (
-          await derivedDocumentIndex.getOrphans([...getFileIndex().keys()], mode)
-        ).map((docName) => ({
-          docName,
-          title: readPageTitleForDocName(docName),
-        }));
-        successResponse(res, 200, OrphansSuccessSchema, { orphans }, { handler: 'orphans' });
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'orphans',
-          failureTitle: 'Failed to read orphan pages.',
-        });
-      }
-    },
-    { handler: 'orphans', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleHubs = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      if (!derivedDocumentIndex) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:backlink-index-not-configured',
-          'Backlink index is not configured.',
-          { handler: 'hubs' },
-        );
-        return;
-      }
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const rawLimit = url.searchParams.get('limit');
-        const parsed = rawLimit ? Number.parseInt(rawLimit, 10) : 20;
-        const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
-        const admitted = await collectAdmittedDocNames();
-        const hubs = (await derivedDocumentIndex.getHubs(limit)).map((hub) => ({
-          docName: hub.docName,
-          title: readPageTitleForLinkedDocName(hub.docName, admitted),
-          count: hub.count,
-        }));
-        successResponse(res, 200, HubsSuccessSchema, { hubs }, { handler: 'hubs' });
-      } catch (e) {
-        respondToDerivedIndexQueryFailure(res, e, {
-          handler: 'hubs',
-          failureTitle: 'Failed to read hub pages.',
-        });
-      }
-    },
-    { handler: 'hubs', method: 'GET', skipBodyParse: true },
-  );
-
   const handleAgentPatch = withValidation(
     AgentPatchRequestSchema,
     async (_req, res, body) => {
@@ -8980,48 +8889,6 @@ export function createApiExtension(
     { handler: 'rollback', method: 'POST' },
   );
 
-  const handleMetricsReconciliation = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        successResponse(res, 200, MetricsReconciliationSuccessSchema, getMetrics(), {
-          handler: 'metrics-reconciliation',
-        });
-      } catch (e) {
-        log.error(
-          { err: e, requestId: getRequestId(_req) },
-          '[metrics-reconciliation] handler failed',
-        );
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'metrics-reconciliation',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'metrics-reconciliation', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleMetricsParseHealth = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        successResponse(res, 200, MetricsParseHealthSuccessSchema, getParseHealth(), {
-          handler: 'metrics-parse-health',
-        });
-      } catch (e) {
-        log.error(
-          { err: e, requestId: getRequestId(_req) },
-          '[metrics-parse-health] handler failed',
-        );
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'metrics-parse-health',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'metrics-parse-health', method: 'GET', skipBodyParse: true },
-  );
-
   /**
    * GET /api/server-info
    *
@@ -9261,222 +9128,6 @@ export function createApiExtension(
       return;
     }
     successResponse(res, 200, PrincipalSuccessSchema, principal, { handler: 'principal' });
-  }
-
-  async function handleMetricsAgentPresence(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    // Loopback + Host-header gate — matches /api/workspace. The presence map
-    // exposes per-agent identity (`displayName` — operator-configured AGENT
-    // label) and the workspace-relative path each agent is currently writing
-    // to (`currentDoc`). Those are local-editing-only signals; if a user
-    // deploys to `0.0.0.0` / reverse-proxies the port, cross-origin pages or
-    // LAN peers MUST NOT be able to read the map. Authorization runs before
-    // method dispatch so a bad Host never leaks "verb the endpoint expects"
-    // via 405 (same pattern + rationale as handleWorkspace — see its
-    // comment block for the ASVS / DNS-rebinding background).
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
-      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-        handler: 'metrics-agent-presence',
-      });
-      return;
-    }
-    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'metrics-agent-presence',
-      });
-      return;
-    }
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'metrics-agent-presence',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    try {
-      // Pre-filter stale entries using the same threshold the broadcaster
-      // uses for opportunistic eviction (runs inside setPresence). Eviction
-      // is write-triggered — if the last agent disconnects without the
-      // keepalive close firing (proxy ate the frame, `-9` kill) and no other
-      // agent writes after, the raw map keeps the zombie entry. Clients
-      // already filter with their own 5s TTL so this is invisible to the
-      // bar, but `/api/metrics/agent-presence` would otherwise lie to
-      // operators. Filtering here matches what a "live" read returns
-      // without paying for a sparse timer.
-      const rawPresence = agentPresenceBroadcaster?.getPresenceMap() ?? {};
-      const now = Date.now();
-      const presence: typeof rawPresence = {};
-      for (const [agentId, entry] of Object.entries(rawPresence)) {
-        if (now - entry.ts < BROADCASTER_EVICTION_MS) {
-          presence[agentId] = entry;
-        }
-      }
-      successResponse(
-        res,
-        200,
-        MetricsAgentPresenceSuccessSchema,
-        { presence },
-        { handler: 'metrics-agent-presence' },
-      );
-    } catch (e) {
-      log.error(
-        { err: e, requestId: getRequestId(req) },
-        '[metrics-agent-presence] handler failed',
-      );
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'metrics-agent-presence',
-        cause: e,
-      });
-    }
-  }
-
-  async function handleMetricsAgentEffects(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    // Diagnostic view of the per-doc `agent-effects` ring buffers, which
-    // otherwise live only inside live Y.Docs and are invisible to bundles.
-    // Loopback + Host-header gated with auth-before-method-dispatch ordering
-    // — same pattern + rationale as `handleMetricsAgentPresence` (per-agent
-    // identity plus per-doc write timing are local-editing-only signals).
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
-      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-        handler: 'metrics-agent-effects',
-      });
-      return;
-    }
-    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'metrics-agent-effects',
-      });
-      return;
-    }
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'metrics-agent-effects',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    // Tracks the doc being summarized so a throw in the per-doc reduction (e.g.
-    // a malformed `EffectValue` from an older schema) names its source in the
-    // catch log. Rides the `doc.name` key the bundle redactor hashes.
-    let failingDocName: string | undefined;
-    try {
-      // Currently-loaded docs only — iterating `hocuspocus.documents` never
-      // materializes an unloaded doc. The `share.has` probe avoids even
-      // creating the lazy Y.Map placeholder on docs no agent ever wrote to.
-      const effects: MetricsAgentEffectsSuccess['effects'] = [];
-      for (const [effectsDocName, document] of hocuspocus.documents) {
-        if (isSystemDoc(effectsDocName) || isConfigDoc(effectsDocName)) continue;
-        if (!document.share.has('agent-effects')) continue;
-        failingDocName = effectsDocName;
-        const effectsMap = document.getMap<EffectValue>('agent-effects');
-        if (effectsMap.size === 0) continue;
-        // Deltas reduce to character counts: the diagnostic signal is who
-        // wrote how much to which doc and when. Raw delta text is user
-        // content and stays in the live doc.
-        const entries = [...effectsMap.values()]
-          .map((effect) => {
-            let insertedChars = 0;
-            let deletedChars = 0;
-            for (const op of effect.delta) {
-              if (typeof op.insert === 'string') insertedChars += op.insert.length;
-              else if (op.insert !== undefined) insertedChars += 1;
-              if (typeof op.delete === 'number') deletedChars += op.delete;
-            }
-            return {
-              sessionId: effect.sessionId,
-              agentType: effect.agent_type,
-              ts: effect.timestamp,
-              insertedChars,
-              deletedChars,
-            };
-          })
-          .sort((a, b) => a.ts - b.ts);
-        // The doc name rides under the literal `doc.name` key — the key the
-        // diagnostics-bundle redactor hashes — so a staged copy of this
-        // response is anonymized by the existing pass.
-        effects.push({ 'doc.name': effectsDocName, entries });
-      }
-      effects.sort((a, b) => a['doc.name'].localeCompare(b['doc.name']));
-      successResponse(
-        res,
-        200,
-        MetricsAgentEffectsSuccessSchema,
-        { effects },
-        { handler: 'metrics-agent-effects' },
-      );
-    } catch (e) {
-      log.error({ err: e, 'doc.name': failingDocName }, '[metrics-agent-effects] handler failed');
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'metrics-agent-effects',
-        cause: e,
-      });
-    }
-  }
-
-  async function handleMetricsWatcherRecent(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    // Diagnostic view of the file-watcher's recent-decisions ring — the
-    // record of which disk events were dispatched, skipped as self-writes,
-    // or dropped (and why), which otherwise lives only in server memory.
-    // Loopback + Host-header gated with auth-before-method-dispatch ordering
-    // — same pattern + rationale as `handleMetricsAgentEffects` (which files
-    // changed on this machine, and when, is a local-editing-only signal).
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
-      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-        handler: 'metrics-watcher-recent',
-      });
-      return;
-    }
-    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'metrics-watcher-recent',
-      });
-      return;
-    }
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'metrics-watcher-recent',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    try {
-      // Ring paths are already normalized (last two segments) at record
-      // time. The wire carries them under the literal `doc.name` key — the
-      // key the diagnostics-bundle redactor hashes — so a staged copy of
-      // this response is anonymized by the existing pass.
-      const decisions: MetricsWatcherRecentSuccess['decisions'] =
-        getWatcherDecisionRingSnapshot().map((record) => ({
-          ts: record.ts,
-          decision: record.decision,
-          kind: record.kind,
-          'doc.name': record.path,
-          pathRole: record.pathRole,
-        }));
-      successResponse(
-        res,
-        200,
-        MetricsWatcherRecentSuccessSchema,
-        { decisions },
-        { handler: 'metrics-watcher-recent' },
-      );
-    } catch (e) {
-      log.error(
-        { err: e, requestId: getRequestId(req) },
-        '[metrics-watcher-recent] handler failed',
-      );
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'metrics-watcher-recent',
-        cause: e,
-      });
-    }
   }
 
   async function handleEmbedDetect(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -22416,8 +22067,6 @@ export function createApiExtension(
     '/api/documents': handleDocumentList,
     '/api/comment-counts': handleCommentCounts,
     '/api/link-preview': handleLinkPreview,
-    '/api/orphans': handleOrphans,
-    '/api/hubs': handleHubs,
     '/api/pages': handlePages,
     '/api/folder-config': handleFolderConfig,
     '/api/template': handleTemplate,
@@ -22475,11 +22124,6 @@ export function createApiExtension(
     '/api/save-version': handleSaveVersion,
     '/api/history': handleHistory,
     '/api/rollback': handleRollback,
-    '/api/metrics/reconciliation': handleMetricsReconciliation,
-    '/api/metrics/parse-health': handleMetricsParseHealth,
-    '/api/metrics/agent-presence': handleMetricsAgentPresence,
-    '/api/metrics/agent-effects': handleMetricsAgentEffects,
-    '/api/metrics/watcher-recent': handleMetricsWatcherRecent,
     '/api/__embed-detect': handleEmbedDetect,
     '/api/server-info': handleServerInfo,
     '/api/acp/catalog': handleAcpCatalog,
@@ -22633,11 +22277,10 @@ export function createApiExtension(
     table: apiRouteTable,
   });
 
-  // The natively-routed link/graph read group (`http/link-graph-routes.ts`).
-  // Its paths live in the Hono app only — deliberately absent from `routes`
-  // above (a route lives in exactly one router). The handle rides the same
-  // shared pipeline with the group's own table, so gate behavior is identical
-  // to the legacy dispatch by construction.
+  // The natively-routed route groups. Their paths live in the Hono app only —
+  // deliberately absent from `routes` above (a route lives in exactly one
+  // router). Each group rides the same shared pipeline with its own table, so
+  // gate behavior is identical to the legacy dispatch by construction.
   const linkGraphRoutes = createLinkGraphRoutes({
     hocuspocus,
     derivedDocumentIndex,
@@ -22650,18 +22293,39 @@ export function createApiExtension(
     resolveAlias,
     respondToDerivedIndexQueryFailure,
   });
+  const metricsRoutes = createMetricsRoutes({
+    hocuspocus,
+    agentPresenceBroadcaster,
+    isAllowedWorkspaceHostHeader,
+    log,
+  });
+  const nativeGroups = [linkGraphRoutes, metricsRoutes];
   // "A route lives in exactly one router" — enforced at construction, not
-  // just documented; covers every future group aggregated into the native
-  // paths. Throw semantics pinned in `http/http-app.test.ts`.
-  assertSingleRouterOwnership(linkGraphRoutes.paths, routes);
-  const nativeApi: NativeApiHandle = {
-    paths: linkGraphRoutes.paths,
-    dispatch: createApiRequestPipeline({
+  // just documented; covers every group aggregated into the native paths.
+  // Throw semantics pinned in `http/http-app.test.ts`.
+  const nativePaths = nativeGroups.flatMap((group) => [...group.paths]);
+  assertSingleRouterOwnership(nativePaths, routes);
+  // Multi-group composition: paths concatenate; dispatch chains the per-group
+  // pipelines in order. Safe because the pipeline declines (returns false,
+  // zero side effects) BEFORE any request observation when a group's table
+  // does not resolve the URL — only the owning group's pipeline runs the
+  // admission gates and dispatch span.
+  const groupDispatches = nativeGroups.map((group) =>
+    createApiRequestPipeline({
       log,
       remotePublicHost,
       ephemeral,
-      table: linkGraphRoutes.table,
+      table: group.table,
     }),
+  );
+  const nativeApi: NativeApiHandle = {
+    paths: nativePaths,
+    dispatch: async (req, res) => {
+      for (const dispatch of groupDispatches) {
+        if (await dispatch(req, res)) return true;
+      }
+      return false;
+    },
   };
 
   return {

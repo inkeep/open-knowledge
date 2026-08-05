@@ -1,10 +1,11 @@
 /**
  * The link/graph read family — `backlinks`, `backlink-counts`,
- * `forward-links`, `link-graph`, `dead-links`, `tags-list`, `tags-for-name`,
- * `suggest-links` — lifted out of `api-extension.ts` as the first natively-
- * routed Wave 2 group. Same lift shape as `skills-sh-handlers.ts`: what the
- * handlers closed over in the extension arrives as
- * {@link LinkGraphRouteDeps}, and the handler bodies are unchanged.
+ * `forward-links`, `link-graph`, `dead-links`, `orphans`, `hubs`,
+ * `tags-list`, `tags-for-name`, `suggest-links` — lifted out of
+ * `api-extension.ts` as the first natively-routed Wave 2 group. Same lift
+ * shape as `skills-sh-handlers.ts`: what the handlers closed over in the
+ * extension arrives as {@link LinkGraphRouteDeps}, and the handler bodies
+ * are unchanged.
  *
  * Unlike the skills.sh handlers, this group does NOT return to the legacy
  * route table: `createLinkGraphRoutes` returns an {@link ApiRouteTable} +
@@ -21,13 +22,19 @@ import {
   DeadLinksSuccessSchema,
   EmptyRequestSchema,
   ForwardLinksSuccessSchema,
+  HubsSuccessSchema,
   LinkGraphSuccessSchema,
+  OrphansSuccessSchema,
   SuggestLinksSuccessSchema,
   TagsForNameSuccessSchema,
   TagsListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
-import type { DerivedDocumentIndexApiPort, DerivedGraphNode } from '../derived-document-index.ts';
+import {
+  type DerivedDocumentIndexApiPort,
+  type DerivedGraphNode,
+  isDerivedOrphanMode,
+} from '../derived-document-index.ts';
 import type { FileIndexEntry } from '../file-watcher.ts';
 import type { FrontmatterMetadata } from '../page-identity.ts';
 import { SuggestLinksTargetNotFoundError, suggestLinks } from '../suggest-links.ts';
@@ -400,6 +407,85 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
     { handler: 'dead-links', method: 'GET', skipBodyParse: true },
   );
 
+  const handleOrphans = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      if (!derivedDocumentIndex) {
+        errorResponse(
+          res,
+          503,
+          'urn:ok:error:backlink-index-not-configured',
+          'Backlink index is not configured.',
+          { handler: 'orphans' },
+        );
+        return;
+      }
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const mode = url.searchParams.get('mode') ?? 'both';
+        if (!isDerivedOrphanMode(mode)) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'Invalid orphan mode. Allowed values: incoming, outgoing, both.',
+            { handler: 'orphans' },
+          );
+          return;
+        }
+
+        const orphans = (
+          await derivedDocumentIndex.getOrphans([...getFileIndex().keys()], mode)
+        ).map((docName) => ({
+          docName,
+          title: readPageTitleForDocName(docName),
+        }));
+        successResponse(res, 200, OrphansSuccessSchema, { orphans }, { handler: 'orphans' });
+      } catch (e) {
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'orphans',
+          failureTitle: 'Failed to read orphan pages.',
+        });
+      }
+    },
+    { handler: 'orphans', method: 'GET', skipBodyParse: true },
+  );
+
+  const handleHubs = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      if (!derivedDocumentIndex) {
+        errorResponse(
+          res,
+          503,
+          'urn:ok:error:backlink-index-not-configured',
+          'Backlink index is not configured.',
+          { handler: 'hubs' },
+        );
+        return;
+      }
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const rawLimit = url.searchParams.get('limit');
+        const parsed = rawLimit ? Number.parseInt(rawLimit, 10) : 20;
+        const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+        const admitted = await collectAdmittedDocNames();
+        const hubs = (await derivedDocumentIndex.getHubs(limit)).map((hub) => ({
+          docName: hub.docName,
+          title: readPageTitleForLinkedDocName(hub.docName, admitted),
+          count: hub.count,
+        }));
+        successResponse(res, 200, HubsSuccessSchema, { hubs }, { handler: 'hubs' });
+      } catch (e) {
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'hubs',
+          failureTitle: 'Failed to read hub pages.',
+        });
+      }
+    },
+    { handler: 'hubs', method: 'GET', skipBodyParse: true },
+  );
+
   const handleSuggestLinks = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -548,6 +634,8 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
     '/api/forward-links': handleForwardLinks,
     '/api/link-graph': handleLinkGraph,
     '/api/dead-links': handleDeadLinks,
+    '/api/orphans': handleOrphans,
+    '/api/hubs': handleHubs,
     '/api/tags': handleTagsList,
     '/api/suggest-links': handleSuggestLinks,
   };

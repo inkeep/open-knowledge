@@ -51,6 +51,8 @@ describe('link/graph group over the composed listener — served natively', () =
       '/api/forward-links?docName=alpha',
       '/api/link-graph',
       '/api/dead-links',
+      '/api/orphans',
+      '/api/hubs',
       '/api/tags',
       '/api/suggest-links?docName=alpha',
     ]) {

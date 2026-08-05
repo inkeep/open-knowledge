@@ -121,4 +121,28 @@ describe('assertSingleRouterOwnership', () => {
       }),
     ).not.toThrow();
   });
+
+  // The native list is the concatenation of every group's paths — the same
+  // one-router rule applies WITHIN it, or two groups could silently answer
+  // from whichever sits earlier in the dispatch chain.
+  test('throws when two native groups claim the same path', () => {
+    expect(() =>
+      assertSingleRouterOwnership(['/api/backlinks', '/api/metrics/x', '/api/backlinks'], {}),
+    ).toThrow('route(s) claimed by more than one native route group: /api/backlinks');
+  });
+
+  test("throws when one native group's wildcard covers another native path", () => {
+    expect(() => assertSingleRouterOwnership(['/api/tags/*', '/api/tags/special'], {})).toThrow(
+      '/api/tags/special (under a native wildcard)',
+    );
+  });
+
+  test('passes for disjoint native groups concatenated, wildcard base included', () => {
+    expect(() =>
+      assertSingleRouterOwnership(
+        ['/api/backlinks', '/api/tags/*', '/api/metrics/reconciliation', '/api/tags'],
+        {},
+      ),
+    ).not.toThrow();
+  });
 });

@@ -32,6 +32,7 @@ const HANDLER_SOURCES = [
   'api-extension.ts',
   'skills-sh-handlers.ts',
   'http/link-graph-routes.ts',
+  'http/metrics-routes.ts',
 ].map((file) => ({
   file,
   text: readFileSync(join(SERVER_SRC, file), 'utf8'),

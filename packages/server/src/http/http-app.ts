@@ -107,6 +107,12 @@ export function admitRequestSurface(
  * legacy record key that falls under a native wildcard's namespace (the
  * wildcard claims everything below its prefix, so such a key is just as
  * shadowed as an exact duplicate).
+ *
+ * `nativePaths` is the CONCATENATION of every native group's paths, so the
+ * same rule applies within the native set: two groups claiming one path (or
+ * one group's wildcard covering another group's path) would silently answer
+ * from whichever group sits earlier in the dispatch chain. Those collisions
+ * throw here too, with their own message.
  */
 export function assertSingleRouterOwnership(
   nativePaths: readonly string[],
@@ -121,6 +127,24 @@ export function assertSingleRouterOwnership(
   if (conflicts.length > 0) {
     throw new Error(
       `route(s) present in both the legacy dispatch record and a native route group: ${conflicts.join(', ')}`,
+    );
+  }
+
+  const seen = new Set<string>();
+  const nativeDuplicates: string[] = [];
+  for (const p of nativePaths) {
+    if (seen.has(p)) nativeDuplicates.push(p);
+    seen.add(p);
+  }
+  // A wildcard's own entry is `${prefix}*` — exclude it; everything else
+  // under the prefix (exact paths AND narrower wildcards) is shadowed.
+  const nativeShadowed = nativePaths
+    .filter((p) => wildcardPrefixes.some((prefix) => p !== `${prefix}*` && p.startsWith(prefix)))
+    .map((p) => `${p} (under a native wildcard)`);
+  const nativeConflicts = [...new Set([...nativeDuplicates, ...nativeShadowed])];
+  if (nativeConflicts.length > 0) {
+    throw new Error(
+      `route(s) claimed by more than one native route group: ${nativeConflicts.join(', ')}`,
     );
   }
 }
