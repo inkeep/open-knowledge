@@ -52,9 +52,11 @@ type FieldType = (typeof FIELD_TYPES)[number];
 
 /**
  * The type select adds `enum` as pure UI sugar for discoverability (matching
- * the agents-manage-ui builder): picking it defaults the field to `string` and
- * points the user at the allowed-values input. On disk `enum` stays what JSON
- * Schema says it is — a constraint orthogonal to `type`.
+ * the agents-manage-ui builder): picking it points the user at the
+ * allowed-values input without writing anything, since on disk `enum` stays
+ * what JSON Schema says it is — a constraint orthogonal to `type`. So the
+ * select reads back `enum` only for a field the schema leaves untyped;
+ * anything with a declared type presents as that type, allowed values or not.
  */
 const TYPE_SELECT_OPTIONS = ['string', 'number', 'boolean', 'enum', 'array', 'object'] as const;
 
@@ -280,9 +282,9 @@ function FieldRow({
   ops: FieldOps;
 }) {
   const { t } = useLingui();
-  // The user picked the `enum` pseudo-type but hasn't entered values yet —
-  // keeps the select from snapping back to the concrete type until the first
-  // allowed value persists.
+  // The user picked the `enum` pseudo-type on a field the schema already types
+  // (or types nothing yet) — presentation only, since `enum` is a constraint
+  // rather than a type and picking it must not rewrite what was declared.
   const [enumIntent, setEnumIntent] = useState(false);
   // Same buffer for the items-type select's enum choice.
   const [itemsEnumIntent, setItemsEnumIntent] = useState(false);
@@ -298,8 +300,16 @@ function FieldRow({
   const pattern = typeof property.pattern === 'string' ? property.pattern : '';
   const description = typeof property.description === 'string' ? property.description : '';
   const preserved = hasUnmodeledKeywords(property);
+  // A declared type always wins: allowed values on a `string` field are a
+  // constraint on that string, so entering them must not re-present the field
+  // as an enum. The pseudo-type shows for a field the schema leaves untyped —
+  // a bare `{enum: [...]}`, which is what "an enum" actually is on disk — or
+  // while the user is picking it for one.
   const showAsEnum =
-    type !== 'array' && enumValues !== null && (enumValues.length > 0 || enumIntent);
+    type !== 'array' &&
+    type !== 'object' &&
+    enumValues !== null &&
+    (enumIntent || (type === undefined && enumValues.length > 0));
   const showChildren = type === 'object' && depth < MAX_NESTING_DEPTH;
   const itemsType =
     typeof items.type === 'string' &&
@@ -309,7 +319,7 @@ function FieldRow({
   const showItemsAsEnum =
     itemsType !== 'object' &&
     itemsEnumValues !== null &&
-    (itemsEnumValues.length > 0 || itemsEnumIntent);
+    (itemsEnumIntent || (itemsType === undefined && itemsEnumValues.length > 0));
   const showItemChildren = type === 'array' && itemsType === 'object' && depth < MAX_NESTING_DEPTH;
 
   return (
@@ -383,16 +393,22 @@ function FieldRow({
             value={showAsEnum ? 'enum' : (type ?? '')}
             onValueChange={(next) => {
               if (next === 'enum') {
+                // Nothing to write: `enum` is not a type, and defaulting one
+                // in is the conversion this select must not make.
                 setEnumIntent(true);
-                if (type === undefined) ops.save(field, { type: 'string' }, parentPath);
                 return;
               }
               setEnumIntent(false);
-              // Leaving the enum presentation for a concrete type also clears
-              // the values — the constraint is what made the field an "enum",
-              // so keeping it would snap the select right back.
+              // Allowed values survive only a move to `string` — the one
+              // target that can still hold them, and the one this editor
+              // exists to stop discarding. Every other type would keep a
+              // vocabulary it can never satisfy: `{type: 'number', enum:
+              // ['draft']}` compiles (the validator runs non-strict) and then
+              // rejects every possible value, while the property panel keeps
+              // offering those strings because it reads `enum` without
+              // consulting `type`.
               const constraint: FrontmatterFieldConstraint =
-                showAsEnum && (enumValues?.length ?? 0) > 0
+                next !== 'string' && (enumValues?.length ?? 0) > 0
                   ? { type: next as FieldType, enum: null }
                   : { type: next as FieldType };
               ops.save(field, constraint, parentPath);
@@ -452,12 +468,13 @@ function FieldRow({
               onValueChange={(next) => {
                 if (next === 'enum') {
                   setItemsEnumIntent(true);
-                  if (itemsType === undefined) ops.save(field, { itemsType: 'string' }, parentPath);
                   return;
                 }
                 setItemsEnumIntent(false);
+                // Same rule one level down: only `string` elements can still
+                // hold the values, so every other element type clears them.
                 const constraint: FrontmatterFieldConstraint =
-                  showItemsAsEnum && (itemsEnumValues?.length ?? 0) > 0
+                  next !== 'string' && (itemsEnumValues?.length ?? 0) > 0
                     ? { itemsType: next as ItemsType, itemsEnum: null }
                     : { itemsType: next as ItemsType };
                 ops.save(field, constraint, parentPath);

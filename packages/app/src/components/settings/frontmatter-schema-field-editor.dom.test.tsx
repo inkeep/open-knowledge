@@ -6,7 +6,19 @@
  */
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+// Radix Select reaches for pointer-capture and scroll APIs the jsdom preload
+// doesn't expose; same shims the sibling DOM tests hoist.
+const ElementProto = Element.prototype as Element & {
+  hasPointerCapture?: () => boolean;
+  releasePointerCapture?: () => void;
+  scrollIntoView?: () => void;
+};
+ElementProto.hasPointerCapture ??= () => false;
+ElementProto.releasePointerCapture ??= () => {};
+ElementProto.scrollIntoView ??= () => {};
 
 const globalWithDomShims = globalThis as { ResizeObserver?: unknown };
 if (globalWithDomShims.ResizeObserver === undefined) {
@@ -191,10 +203,171 @@ describe('FrontmatterSchemaFieldEditor', () => {
     expect(writes).toEqual([[FILE, 'status', { description: 'Lifecycle state' }, []]]);
   });
 
-  test('a field with enum values presents as the enum pseudo-type', () => {
+  test('an untyped field with enum values presents as the enum pseudo-type', () => {
     render(<FrontmatterSchemaFieldEditor file={FILE} />);
     const row = within(screen.getByTestId('frontmatter-field-row-status'));
     expect(row.getByTestId('frontmatter-field-type-status').textContent).toContain('enum');
+  });
+
+  test('entering an allowed value on a typed field writes only that constraint', () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: { owner: { type: 'string' } },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const row = within(screen.getByTestId('frontmatter-field-row-owner'));
+    const input = row.getByLabelText('Allowed values (empty = any)');
+    fireEvent.change(input, { target: { value: 'ana' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(writes).toEqual([[FILE, 'owner', { enum: ['ana'] }, []]]);
+  });
+
+  test('a typed field carrying allowed values keeps presenting as its declared type', () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: {
+        owner: { type: 'string', enum: ['ana', 'bo'] },
+        tags: { type: 'array', items: { type: 'string', enum: ['a', 'b'] } },
+      },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const type = screen.getByTestId('frontmatter-field-type-owner');
+    expect(type.textContent).toContain('string');
+    expect(type.textContent).not.toContain('enum');
+    // The values are still shown — they just don't restate the field's type.
+    expect(screen.getByText('ana')).toBeTruthy();
+
+    const itemsType = screen.getByTestId('frontmatter-field-items-type-tags');
+    expect(itemsType.textContent).toContain('string');
+    expect(itemsType.textContent).not.toContain('enum');
+    expect(screen.getByText('a')).toBeTruthy();
+  });
+
+  test('picking the enum pseudo-type presents it without writing a type', async () => {
+    mockLintData = lintDataWithSchema({ type: 'object', properties: { owner: {} } });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const type = screen.getByTestId('frontmatter-field-type-owner');
+    await userEvent.click(type);
+    await userEvent.click(await screen.findByRole('option', { name: 'enum' }));
+    expect(writes).toEqual([]);
+    expect(type.textContent).toContain('enum');
+  });
+
+  test('picking the enum pseudo-type on a typed field presents it without writing', async () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: { owner: { type: 'string' } },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const type = screen.getByTestId('frontmatter-field-type-owner');
+    expect(type.textContent).toContain('string');
+    await userEvent.click(type);
+    await userEvent.click(await screen.findByRole('option', { name: 'enum' }));
+    // A declared type must not suppress the pick: the select follows the user
+    // here, and the schema keeps the type it already had.
+    expect(writes).toEqual([]);
+    expect(type.textContent).toContain('enum');
+  });
+
+  // The round trip, which neither leg pins alone: a pick that leaves the enum
+  // presentation must drop the intent as well. Without that, one enum pick
+  // would strand the row on `enum` for the rest of the session no matter what
+  // type the user chose next.
+  test('picking a scalar after enum drops the intent, not just the values', async () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: { owner: { type: 'string', enum: ['a'] } },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const type = screen.getByTestId('frontmatter-field-type-owner');
+    await userEvent.click(type);
+    await userEvent.click(await screen.findByRole('option', { name: 'enum' }));
+    expect(type.textContent).toContain('enum');
+
+    await userEvent.click(type);
+    await userEvent.click(await screen.findByRole('option', { name: 'number' }));
+    expect(writes).toEqual([[FILE, 'owner', { type: 'number', enum: null }, []]]);
+    // The write client is mocked, so the row still reads the schema's declared
+    // `string` — what matters is that it stopped reading `enum`.
+    expect(type.textContent).not.toContain('enum');
+    expect(type.textContent).toContain('string');
+  });
+
+  test('picking a scalar element type after enum drops the items intent', async () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: { tags: { type: 'array', items: { type: 'string', enum: ['a'] } } },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const itemsType = screen.getByTestId('frontmatter-field-items-type-tags');
+    await userEvent.click(itemsType);
+    await userEvent.click(await screen.findByRole('option', { name: 'enum' }));
+    expect(itemsType.textContent).toContain('enum');
+
+    await userEvent.click(itemsType);
+    await userEvent.click(await screen.findByRole('option', { name: 'number' }));
+    expect(writes).toEqual([[FILE, 'tags', { itemsType: 'number', itemsEnum: null }, []]]);
+    expect(itemsType.textContent).not.toContain('enum');
+    expect(itemsType.textContent).toContain('string');
+  });
+
+  test('leaving the enum presentation for a scalar type keeps the allowed values', async () => {
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    await userEvent.click(screen.getByTestId('frontmatter-field-type-status'));
+    await userEvent.click(await screen.findByRole('option', { name: 'string' }));
+    expect(writes).toEqual([[FILE, 'status', { type: 'string' }, []]]);
+  });
+
+  // `string` is the only target that can still hold string values. Every other
+  // type would keep a vocabulary it can never satisfy — the validator compiles
+  // `{type: 'number', enum: ['draft']}` and then rejects every value.
+  test.each([
+    'number',
+    'boolean',
+    'array',
+    'object',
+  ])('switching to %s clears values that type could never satisfy', async (target) => {
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    await userEvent.click(screen.getByTestId('frontmatter-field-type-status'));
+    await userEvent.click(await screen.findByRole('option', { name: target }));
+    expect(writes).toEqual([[FILE, 'status', { type: target, enum: null }, []]]);
+  });
+
+  test.each([
+    'number',
+    'boolean',
+    'object',
+  ])('switching the element type to %s clears the element values', async (target) => {
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    await userEvent.click(screen.getByTestId('frontmatter-field-items-type-tags'));
+    await userEvent.click(await screen.findByRole('option', { name: target }));
+    expect(writes).toEqual([[FILE, 'tags', { itemsType: target, itemsEnum: null }, []]]);
+  });
+
+  test('entering an allowed element value on a typed array writes only that constraint', () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: { tags: { type: 'array', items: { type: 'string' } } },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const row = within(screen.getByTestId('frontmatter-field-row-tags'));
+    const input = row.getByLabelText('Allowed element values (empty = any)');
+    fireEvent.change(input, { target: { value: 'a' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(writes).toEqual([[FILE, 'tags', { itemsEnum: ['a'] }, []]]);
+  });
+
+  test('picking the enum element type presents it without writing a type', async () => {
+    mockLintData = lintDataWithSchema({
+      type: 'object',
+      properties: { tags: { type: 'array', items: {} } },
+    });
+    render(<FrontmatterSchemaFieldEditor file={FILE} />);
+    const itemsType = screen.getByTestId('frontmatter-field-items-type-tags');
+    await userEvent.click(itemsType);
+    await userEvent.click(await screen.findByRole('option', { name: 'enum' }));
+    expect(writes).toEqual([]);
+    expect(itemsType.textContent).toContain('enum');
   });
 
   test('object fields render nested child rows; nested edits carry the parent path', () => {
