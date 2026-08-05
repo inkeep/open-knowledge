@@ -46,6 +46,17 @@ export interface ShortcutBinding {
   mac: string;
   windowsLinux: string;
   match?: PlatformShortcutMatch;
+  /**
+   * A native menu item's accelerator delivers this chord on the desktop host,
+   * so a renderer keydown listener must NOT also act on it there — the menu
+   * already dispatches the action and handling it twice toggles twice. Web
+   * hosts have no menu bar and act on every binding.
+   *
+   * Only set on bindings whose shortcut has a renderer listener that runs on
+   * desktop (see {@link matchesRendererShortcut}); a listener that skips the
+   * desktop host wholesale needs no per-binding flag.
+   */
+  nativeMenuAccelerator?: boolean;
 }
 
 export interface KeyboardShortcutDefinition {
@@ -194,14 +205,26 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
   {
     id: 'toggle-terminal-panel',
     category: 'general',
-    title: msg`Show or hide terminal`,
-    description: msg`Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead.`,
+    title: msg`Show or hide bottom dock`,
+    description: msg`Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead.`,
     scope: msg`OK Desktop`,
+    // ⌘J must stay bindings[0]: `formatShortcut` renders only the first binding,
+    // and the menu-accelerator parity ratchet compares that against the View
+    // menu's CmdOrCtrl+J. ⌃` is appended, never prepended.
     bindings: [
       {
         mac: '⌘ J',
         windowsLinux: 'Ctrl J',
         match: { key: 'j', mod: true },
+        nativeMenuAccelerator: true,
+      },
+      {
+        // Literal Control on every platform — the chord VS Code and Zed both
+        // use — so `mod` (Cmd on macOS) would be the wrong modifier. Matching on
+        // `code` keeps it working on layouts that put backtick elsewhere.
+        mac: '⌃ `',
+        windowsLinux: 'Ctrl `',
+        match: { code: 'Backquote', ctrlKey: true },
       },
     ],
   },
@@ -1042,6 +1065,28 @@ export function matchesKeyboardShortcut(
 ): boolean {
   const shortcut = getShortcut(id);
   return shortcut.bindings.some((binding) => {
+    const match = resolveMatch(binding.match, platform);
+    return match ? matchesBinding(event, match, platform) : false;
+  });
+}
+
+/**
+ * {@link matchesKeyboardShortcut} for renderer keydown listeners that stay
+ * mounted on the desktop host: when a native menu bar is present, bindings a
+ * menu accelerator already delivers are skipped, so only the chords the menu
+ * does NOT claim reach the renderer.
+ *
+ * A shortcut whose every binding is menu-delivered never matches on desktop —
+ * which is the same outcome as the listener not running there at all.
+ */
+export function matchesRendererShortcut(
+  event: ShortcutEventLike,
+  id: KeyboardShortcutId,
+  hasNativeMenu: boolean,
+  platform: ShortcutPlatform = currentShortcutPlatform(),
+): boolean {
+  return getShortcut(id).bindings.some((binding) => {
+    if (hasNativeMenu && binding.nativeMenuAccelerator === true) return false;
     const match = resolveMatch(binding.match, platform);
     return match ? matchesBinding(event, match, platform) : false;
   });

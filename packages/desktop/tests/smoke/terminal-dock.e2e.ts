@@ -203,7 +203,7 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
-/** Click the View → Show/Hide Terminal application-menu item (real toggle path
+/** Click the View → Show/Hide Bottom Dock application-menu item (real toggle path
  *  on desktop — ⌘J is its OS-captured accelerator). Returns the item label. */
 async function clickViewTerminalItem(app: ElectronApplication): Promise<string | false> {
   return app.evaluate(async ({ Menu }) => {
@@ -211,7 +211,7 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<string |
     if (!menu) return false;
     const view = menu.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
+      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
     );
     if (!item) return false;
     const label = item.label;
@@ -225,7 +225,7 @@ async function viewTerminalLabel(app: ElectronApplication): Promise<string | nul
     const menu = Menu.getApplicationMenu();
     const view = menu?.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
+      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
     );
     return item?.label ?? null;
   });
@@ -244,7 +244,7 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   // Fail loud when the menu item is missing — otherwise the click silently
   // no-ops and the failure surfaces 15s later as an unrelated-looking
   // "Terminal section not visible" timeout.
-  expect(clicked, 'View menu should expose a Show/Hide Terminal item').not.toBe(false);
+  expect(clicked, 'View menu should expose a Show/Hide Bottom Dock item').not.toBe(false);
   await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
 }
 
@@ -381,13 +381,13 @@ test.describe('Docked terminal — live Electron', () => {
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
-    expect(await viewTerminalLabel(app)).toBe('Show Terminal');
+    expect(await viewTerminalLabel(app)).toBe('Show Bottom Dock');
     await clickViewTerminalItem(app);
     await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Terminal');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Bottom Dock');
 
     await clickViewTerminalItem(app);
-    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Terminal');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Bottom Dock');
   });
 
   // Toggle completes within the perceptual-instant budget.
@@ -541,7 +541,7 @@ test.describe('Docked terminal — live Electron', () => {
 
   // Escape is delivered to the terminal (NOT swallowed): terminal apps
   // (vim, the `claude` TUI) need it. The no-keyboard-trap exit (WCAG 2.1.2) is
-  // ⌘J — the View → Hide Terminal toggle — which collapses the dock and returns
+  // ⌘J — the View → Hide Bottom Dock toggle — which collapses the dock and returns
   // focus to the editor.
   test('QA-019 Escape reaches the terminal; ⌘J is the no-trap exit', async ({
     captureStderrFor,
@@ -575,6 +575,44 @@ test.describe('Docked terminal — live Electron', () => {
     // 2.1.2 without consuming Escape.
     await clickViewTerminalItem(app);
     await expect.poll(focusInTerminal).toBe(false);
+  });
+
+  // ⌃` is the dock's second chord and the only one the RENDERER delivers on
+  // desktop — ⌘J is an OS-captured menu accelerator, and a menu item may hold
+  // only one. That makes this the case no unit test can stand in for: the
+  // listener is capture-phase on `window` precisely so a focused xterm's hidden
+  // textarea cannot consume the chord first. If it ever regressed to bubble
+  // phase, or the listener went back to skipping the desktop host, the dock
+  // would become a keyboard trap for this chord — you could open it and never
+  // close it without the mouse.
+  test('Ctrl+` collapses the dock from inside a focused terminal', async ({ captureStderrFor }) => {
+    const s = seed('ctrl-backtick', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s, { restrictPath: true });
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await openTerminal(app, page);
+    await waitForStatus(page, 'running', 25_000);
+
+    const focusInTerminal = () =>
+      page.evaluate(() => {
+        const sec = document.querySelector('section[aria-label="Terminal"]');
+        return sec?.contains(document.activeElement) ?? false;
+      });
+
+    await page.locator('section[aria-label="Terminal"] .xterm').click();
+    await expect.poll(focusInTerminal).toBe(true);
+    expect(await viewTerminalLabel(app)).toBe('Hide Bottom Dock');
+
+    // The chord under test, pressed with the pty holding focus.
+    await page.keyboard.press('Control+Backquote');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Bottom Dock');
+    await expect.poll(focusInTerminal).toBe(false);
+
+    // It toggles rather than open-only (VS Code / Zed convention), so the same
+    // chord brings the dock back.
+    await page.keyboard.press('Control+Backquote');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Bottom Dock');
   });
 
   // Collapsed panel is inert and focus returns to the editor on collapse.

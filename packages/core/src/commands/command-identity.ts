@@ -577,7 +577,21 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     id: 'toggle-terminal',
     menuActionId: 'toggle-terminal',
     labelKey: 'terminalShow',
-    keywords: ['terminal', 'shell', 'console', 'toggle'],
+    // The label says "Bottom Dock", not "terminal", so the terminal words have
+    // to live here or ⌘K search for the thing in the dock stops finding the
+    // dock. `matchesCommandQuery` substring-matches the query against
+    // label+keywords JOINED, so a multi-word query only hits a contiguous run:
+    // the phrases below are what keep "show terminal" / "hide terminal" queries
+    // working and admit Zed's own name for the command.
+    keywords: [
+      'terminal',
+      'shell',
+      'console',
+      'panel',
+      'toggle bottom dock',
+      'show terminal',
+      'hide terminal',
+    ],
     shortcutId: 'toggle-terminal-panel',
     stateToggle: {
       showKey: 'terminalShow',

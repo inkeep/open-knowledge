@@ -5402,6 +5402,10 @@ msgstr "Hide advanced"
 msgid "Hide Agents"
 msgstr "Hide Agents"
 
+#: src/components/command-palette-commands.ts
+msgid "Hide Bottom Dock"
+msgstr "Hide Bottom Dock"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide document panel"
@@ -5463,10 +5467,6 @@ msgstr "Hide selection preview"
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "Hide sidebar"
-
-#: src/components/command-palette-commands.ts
-msgid "Hide Terminal"
-msgstr "Hide Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Hide these comments"
@@ -9801,6 +9801,10 @@ msgstr "Show advanced"
 msgid "Show Agents"
 msgstr "Show Agents"
 
+#: src/components/command-palette-commands.ts
+msgid "Show Bottom Dock"
+msgstr "Show Bottom Dock"
+
 #: src/components/MermaidFileViewer.tsx
 msgid "Show diagram"
 msgstr "Show diagram"
@@ -9864,16 +9868,16 @@ msgid "Show or hide agents"
 msgstr "Show or hide agents"
 
 #: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide bottom dock"
+msgstr "Show or hide bottom dock"
+
+#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr "Show or hide document panel"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
 msgstr "Show or hide Files"
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide terminal"
-msgstr "Show or hide terminal"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -9910,10 +9914,6 @@ msgstr "Show sidebar"
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
 msgstr "Show source"
-
-#: src/components/command-palette-commands.ts
-msgid "Show Terminal"
-msgstr "Show Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Show these comments"
@@ -11357,8 +11357,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "Toggle strikethrough formatting."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
-msgstr "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
+msgid "Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead."
+msgstr "Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

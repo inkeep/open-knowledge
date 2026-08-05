@@ -24,7 +24,7 @@ import { useNoPushPermissionToast } from '@/hooks/use-no-push-permission-toast';
 import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice';
 import { authPromptStore } from '@/lib/auth-prompt-store';
 import { useConfigContext } from '@/lib/config-provider';
-import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
@@ -284,11 +284,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const sendSelectionToTerminalEvent = useEffectEvent(sendSelectionToTerminal);
   const launchNewChatEvent = useEffectEvent(() => launchNewChat());
 
-  // Bottom-terminal toggle, dual-wired like the DocPanel: on desktop the
-  // View → Terminal item's ⌘J/Ctrl+J accelerator is OS-captured and dispatches
+  // Bottom-dock toggle, dual-wired like the DocPanel: on desktop the View →
+  // Bottom Dock item's ⌘J/Ctrl+J accelerator is OS-captured and dispatches
   // `toggle-terminal`; the web host has no menu, so a window keydown stands in.
-  // With a selection, ⌘J sends it to the terminal (reusing the active tab)
-  // instead of toggling.
+  // With a selection, the chord sends it to the terminal (reusing the active
+  // tab) instead of toggling.
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
       if (action === 'toggle-terminal') {
@@ -305,10 +305,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     });
   }, []);
 
+  // Unlike the ⌘L listener below, this one stays mounted on desktop: ⌃` carries
+  // no native accelerator, so the renderer is its only delivery path. ⌘J is
+  // filtered out there by `nativeMenuAccelerator` — the menu already dispatches
+  // it above, and acting on it here too would toggle twice.
   useEffect(() => {
-    if (window.okDesktop != null) return;
+    const hasNativeMenu = window.okDesktop != null;
     function handleKeyDown(event: KeyboardEvent) {
-      if (!matchesKeyboardShortcut(event, 'toggle-terminal-panel')) return;
+      if (!matchesRendererShortcut(event, 'toggle-terminal-panel', hasNativeMenu)) return;
       if (isOverlayLayerOpen()) return;
       // Claim the chord only when we will actually act on it. A selection send is
       // the whole of ⌘J on a shell-less host; with no selection AND no shell there
@@ -322,16 +326,23 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       event.preventDefault();
       setTerminalVisible((visible) => !visible);
     }
-    // Capture phase so a focused xterm textarea can't swallow ⌘J first.
+    // Capture phase so a focused xterm textarea can't swallow the chord first —
+    // load-bearing for ⌃`, which has to dismiss the dock from inside the terminal.
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [terminalAvailable]);
 
-  // ⌘L / Ctrl+L toggles the agents panel. Same dual wiring as ⌘J — on desktop the
-  // View menu item's accelerator is OS-captured and dispatches `toggle-agent-panel`
-  // (handled above), so this window keydown is the web host's stand-in. Unlike ⌘J
-  // it has no selection-send behavior: a selection goes to whichever panel the
-  // user's preferred AI lives in, which the hosts arbitrate off ⌘J.
+  // ⌘L / Ctrl+L toggles the agents panel. On desktop the View menu item's
+  // accelerator is OS-captured and dispatches `toggle-agent-panel` (handled
+  // above), so this window keydown is the web host's stand-in. Unlike ⌘J it has
+  // no selection-send behavior: a selection goes to whichever panel the user's
+  // preferred AI lives in, which the hosts arbitrate off ⌘J.
+  //
+  // Skipping the desktop host wholesale stays correct only while EVERY binding
+  // of the shortcut is menu-delivered. Add one the menu cannot carry — an
+  // Electron menu item holds a single accelerator — and that binding becomes
+  // undeliverable on desktop, silently. The fix then is to stay mounted and
+  // filter by `matchesRendererShortcut`, as the bottom-dock listener above does.
   useEffect(() => {
     if (window.okDesktop != null) return;
     function handleKeyDown(event: KeyboardEvent) {
@@ -419,7 +430,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   }, [terminalVisible]);
 
   // Reflect terminal visibility to main so the View menu label flips between
-  // "Show Terminal" and "Hide Terminal". Gated on the dock-state restore so the
+  // "Show Bottom Dock" and "Hide Bottom Dock". Gated on the dock-state restore so the
   // mount-initial `false` can't overwrite main's retained per-window visibility
   // before the restore reads it (the reload re-expand depends on that value).
   // The first push after the restore settles carries the restored — or
@@ -428,7 +439,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     if (window.okDesktop == null) return;
     if (!dockRestoreSettled) return;
     // Mirror into the renderer store so the Cmd+K palette can show a
-    // state-reflecting "Show/Hide terminal" label (bridge push is main-only).
+    // state-reflecting "Show/Hide Bottom Dock" label (bridge push is main-only).
     // Deliberately behind BOTH gates, unlike the unconditional sibling mirrors
     // in FileSidebar / EditorArea: publishing the mount-initial `false` before
     // the restore settles would flash a wrong palette label on a window whose

@@ -5398,6 +5398,10 @@ msgstr ""
 msgid "Hide Agents"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+msgid "Hide Bottom Dock"
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide document panel"
@@ -5458,10 +5462,6 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
-msgstr ""
-
-#: src/components/command-palette-commands.ts
-msgid "Hide Terminal"
 msgstr ""
 
 #: src/comments/comment-chips.tsx
@@ -9797,6 +9797,10 @@ msgstr ""
 msgid "Show Agents"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+msgid "Show Bottom Dock"
+msgstr ""
+
 #: src/components/MermaidFileViewer.tsx
 msgid "Show diagram"
 msgstr ""
@@ -9860,15 +9864,15 @@ msgid "Show or hide agents"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide bottom dock"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
-msgstr ""
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide terminal"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
@@ -9905,10 +9909,6 @@ msgstr ""
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
-msgstr ""
-
-#: src/components/command-palette-commands.ts
-msgid "Show Terminal"
 msgstr ""
 
 #: src/comments/comment-chips.tsx
@@ -11353,7 +11353,7 @@ msgid "Toggle strikethrough formatting."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
+msgid "Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

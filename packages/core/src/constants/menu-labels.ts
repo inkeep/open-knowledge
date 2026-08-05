@@ -98,8 +98,10 @@ export const MENU_LABELS = {
   docPanelHide: 'Hide document panel',
   back: 'Back',
   forward: 'Forward',
-  terminalShow: 'Show Terminal',
-  terminalHide: 'Hide Terminal',
+  // Named for the surface, not its contents: ⌘J toggles the bottom dock, which
+  // currently hosts the terminal. The Terminal menu's own leaves stay terminal-named.
+  terminalShow: 'Show Bottom Dock',
+  terminalHide: 'Hide Bottom Dock',
   agentPanelShow: 'Show Agents',
   agentPanelHide: 'Hide Agents',
   // Palette form for the install command, whose native-menu leaf renders a

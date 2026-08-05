@@ -294,9 +294,9 @@ export interface MenuDeps {
   docPanelVisible?: boolean;
   onToggleDocPanel?(): void;
   /**
-   * Docked terminal-panel visibility — drives the View → Show/Hide Terminal
-   * label. Unlike the sidebar/doc-panel (visible by default), the terminal
-   * starts hidden, so `undefined`/`false` reads as "Show Terminal".
+   * Bottom-dock visibility — drives the View → Show/Hide Bottom Dock label.
+   * Unlike the sidebar/doc-panel (visible by default), the dock starts hidden,
+   * so `undefined`/`false` reads as "Show Bottom Dock".
    */
   terminalVisible?: boolean;
   onToggleTerminal?(): void;

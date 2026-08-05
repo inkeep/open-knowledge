@@ -106,9 +106,9 @@ Hovering a code block reveals a toolbar above it with its own **Ask AI** button 
 
 ## Terminal
 
-The desktop app has a built-in terminal: real login shells, docked in the editor window. Toggle it with `Cmd+J`, **View ▸ Show / Hide Terminal**, or the edge **Show terminal** tab that sits where you last closed it. It opens as a right-side column by default; buttons in its tab strip move it between the right column and the bottom dock or collapse it (sessions keep running), and the dock position is remembered.
+The desktop app has a built-in terminal: real login shells, docked in the editor window. Toggle it with `Cmd+J` or `` Ctrl+` `` (which also works from inside a focused terminal), **View ▸ Show / Hide Bottom Dock**, or the edge **Show terminal** tab that sits where you last closed it. It opens as the bottom dock; the collapse button in its tab strip hides it again, and sessions keep running while it is hidden.
 
-The terminal is also the editor's AI-chat surface: the **Show terminal** tab starts your default CLI when no session is open, and the tab strip's **New chat** split button opens another CLI tab — its dropdown switches CLI (the pick sticks, shared with the Ask AI composer) or opens a plain shell tab. With text selected in the editor, `Cmd+J` stages the passage into the active CLI's input (or opens a new CLI tab when none is running) instead of toggling, and `Cmd+Shift+J` always stages it into a new CLI tab — the passage sits in the input for you to add to, and nothing is submitted until you press Enter. **Terminal ▸ New Terminal Window** (see [Terminal menu](#terminal-menu)) opens a dedicated window with the same multi-session tabs, `Cmd+<number>` tab switching, and shells starting at the project root.
+The terminal is also the editor's AI-chat surface: the **Show terminal** tab starts your default CLI when no session is open, and the tab strip's **New chat** split button opens another CLI tab — its dropdown switches CLI (the pick sticks, shared with the Ask AI composer) or opens a plain shell tab. With text selected in the editor, `Cmd+J` and `` Ctrl+` `` both stage the passage into the active CLI's input (or open a new CLI tab when none is running) instead of toggling — they share one handler — and `Cmd+Shift+J` always stages it into a new CLI tab — the passage sits in the input for you to add to, and nothing is submitted until you press Enter. **Terminal ▸ New Terminal Window** (see [Terminal menu](#terminal-menu)) opens a dedicated window with the same multi-session tabs, `Cmd+<number>` tab switching, and shells starting at the project root.
 
 Rename a tab by double-clicking it or pressing `F2`; the name you set pins over whatever title the running program reports, and clearing it falls back to that title. Reorder tabs by dragging, or move the active tab with `Cmd+Shift+←` / `Cmd+Shift+→` — untitled tabs keep a number that stays with their session as the strip is rearranged.
 
@@ -245,6 +245,7 @@ Keyboard shortcuts (use `Ctrl` on Windows / Linux in place of `Cmd`, unless the 
 | `Cmd+Option+M` | Toggle between the visual and source editors, keeping your place. |
 | `Cmd+Option+E` | **View in source** — jump from the visual editor to the Markdown for the block at the cursor, centered and highlighted (visual editor only). |
 | `Cmd+J` | Show / Hide the docked terminal (desktop app). With text selected, stages the passage into the AI CLI's input instead — nothing runs until you press Enter. |
+| `` Ctrl+` `` | Show / Hide the docked terminal too — the VS Code / Zed chord, literal `Ctrl` on every platform. Works even while a terminal holds focus. With text selected it stages the passage like `Cmd+J` instead of toggling. |
 | `Cmd+Shift+J` | Open an additional terminal tab (desktop app). With text selected, stages the passage into the new tab's AI CLI input. |
 | `Cmd+K` | Open the [command palette](#command-palette). |
 | `Cmd+L` | Open and focus the [Ask AI](#ask-ai) composer (desktop app). |
@@ -292,7 +293,7 @@ Before the existing Zoom and Toggle Fullscreen items, the View menu gets:
 | --- | --- | --- |
 | **Show / Hide Sidebar** | `Cmd+Option+S` | Toggles the file sidebar (left). Label flips between Show and Hide based on current state, matching Finder. |
 | **Show / Hide Document Panel** | `Cmd+Option+B` | Toggles the document panel (right). |
-| **Show / Hide Terminal** | `Cmd+J` | Toggles the docked terminal. With editor text selected, stages the selection into the AI CLI's input instead of toggling. |
+| **Show / Hide Bottom Dock** | `Cmd+J` | Toggles the docked terminal. With editor text selected, stages the selection into the AI CLI's input instead of toggling. (`` Ctrl+` `` toggles it too, though that chord has no menu accelerator.) |
 | **Show Hidden Files** | `Cmd+Shift+.` | `appearance.sidebar.showHiddenFiles`; same toggle as the sidebar's right-click menu. |
 | **Expand All** | (none) | Expands every folder in the tree. Hidden when nothing is collapsed. |
 | **Collapse All** | (none) | Collapses every folder in the tree. Hidden when nothing is expanded. |

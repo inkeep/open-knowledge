@@ -114,7 +114,7 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
   await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
+      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
     );
     item?.click();
   });

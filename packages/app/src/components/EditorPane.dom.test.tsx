@@ -573,7 +573,7 @@ describe('EditorPane session-panel wiring', () => {
     await renderEditorPane();
 
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
-    // Mount pushes terminalVisible:false so the View menu reads "Show Terminal".
+    // Mount pushes terminalVisible:false so the View menu reads "Show Bottom Dock".
     // Both panels push on mount, so name the field rather than taking the last.
     expect(desk.viewMenuPushes).toContainEqual({ terminalVisible: false });
 
@@ -855,6 +855,65 @@ describe('EditorPane session-panel wiring', () => {
     expect(desk.viewMenuPushes).toContainEqual({ terminalVisible: false });
     // With no restored state the dock stays hidden (the breadcrumb is logged).
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
+  });
+
+  // ⌃` is the dock's second chord. It carries no native accelerator (an Electron
+  // menu item holds only one), so unlike ⌘J the renderer keydown is its ONLY
+  // delivery path — on the one host where the terminal exists. If this listener
+  // ever returns to a blanket `window.okDesktop != null` early-return, ⌃` dies
+  // exactly where it is meant to work.
+  test('desktop: Ctrl+` toggles the dock (the renderer owns the chord the menu does not)', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    const dock = () => screen.getByTestId('terminal-dock');
+    expect(dock().getAttribute('data-visible')).toBe('false');
+
+    function pressCtrlBacktick(): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', {
+        key: '`',
+        code: 'Backquote',
+        ctrlKey: true,
+        cancelable: true,
+        bubbles: true,
+      });
+      act(() => {
+        window.dispatchEvent(event);
+      });
+      return event;
+    }
+
+    expect(pressCtrlBacktick().defaultPrevented).toBe(true);
+    expect(dock().getAttribute('data-visible')).toBe('true');
+    // Toggles, per the VS Code / Zed convention — it does not open-only.
+    pressCtrlBacktick();
+    expect(dock().getAttribute('data-visible')).toBe('false');
+  });
+
+  // The other half of that gate: on desktop ⌘J arrives as an OS-captured menu
+  // accelerator that dispatches `toggle-terminal`. If the renderer ALSO acted on
+  // the keydown, one press would toggle twice — a net no-op that reads as a dead
+  // shortcut.
+  test('desktop: a Cmd/Ctrl+J keydown is left to the native menu (no double toggle)', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    const dock = () => screen.getByTestId('terminal-dock');
+    const init: KeyboardEventInit = { key: 'j', cancelable: true, bubbles: true };
+    if (isMacOS()) init.metaKey = true;
+    else init.ctrlKey = true;
+    const event = new KeyboardEvent('keydown', init);
+    act(() => {
+      window.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(dock().getAttribute('data-visible')).toBe('false');
+    // The menu path is the one that acts on desktop.
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    expect(dock().getAttribute('data-visible')).toBe('true');
   });
 
   // With no selection AND no shell to spawn, ⌘J has nothing to do on the web

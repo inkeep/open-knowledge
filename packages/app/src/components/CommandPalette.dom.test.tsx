@@ -1204,7 +1204,7 @@ describe('Cmd+K menu-parity backfill', () => {
     );
     await setQuery('hide terminal');
     expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
-      'Hide Terminal',
+      'Hide Bottom Dock',
     );
 
     cleanup();
@@ -1216,8 +1216,32 @@ describe('Cmd+K menu-parity backfill', () => {
     );
     await setQuery('show terminal');
     expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
-      'Show Terminal',
+      'Show Bottom Dock',
     );
+  });
+
+  // The row's label ("Bottom Dock") doesn't contain the words users actually
+  // search for, so those live in the command's keywords instead.
+  // `matchesCommandQuery` joins label+keywords and substring-matches, so a
+  // multi-word query only resolves against a contiguous run — these are the
+  // queries that must keep finding the dock command.
+  test('AC5: the bottom-dock toggle stays reachable by its terminal-era queries', async () => {
+    setViewMenuState({ terminalVisible: false });
+    await renderPalette({ bridge: createBridge() });
+    for (const query of [
+      'terminal',
+      'show terminal',
+      'hide terminal',
+      'bottom dock',
+      'toggle bottom dock',
+      'shell',
+    ]) {
+      await setQuery(query);
+      expect(
+        screen.queryByTestId('command-palette-toggle-terminal'),
+        `query "${query}" should surface the bottom-dock toggle`,
+      ).not.toBeNull();
+    }
   });
 
   test('AC5: kill-terminal is search-visible only when a terminal is live', async () => {

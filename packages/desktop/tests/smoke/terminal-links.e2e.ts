@@ -119,10 +119,10 @@ async function openRunningTerminal(app: ElectronApplication, page: Page): Promis
   const label = await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
+      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
     );
     if (!item) return false;
-    if (item.label === 'Show Terminal') item.click();
+    if (item.label === 'Show Bottom Dock') item.click();
     return item.label;
   });
   expect(label).toBeTruthy();
