@@ -119,16 +119,15 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     expect(screen.queryByTestId('image-loading-skeleton')).toBeNull();
   });
 
-  test('dismisses placeholder when the image is already complete at mount (covers cached-success and cached-failure)', () => {
+  test('dismisses placeholder when the image is already complete at mount', () => {
     // Cached images may have `complete=true` at first paint and the `load`
     // event may not re-fire after React commits — the skeleton would stay
-    // visible forever and the <img> stuck at opacity-0. This covers both
-    // cached-success (`complete=true, naturalWidth>0`) and cached-failure
-    // (`complete=true, naturalWidth=0`) because the SUT treats `complete`
-    // alone as the terminal-state signal — `naturalWidth` is intentionally
-    // not consulted (so cached failures whose `onerror` won't re-fire still
-    // dismiss the skeleton, letting the browser's native broken-image
-    // indicator become visible).
+    // visible forever and the <img> stuck at opacity-0. The SUT treats
+    // `complete` alone as the terminal-state signal; `naturalWidth` is
+    // NOT consulted at mount (it can't distinguish a failed fetch from a
+    // dimensionless SVG, so onError is the only unambiguous error signal
+    // and cached-broken images fall through to the browser's default
+    // broken-image glyph).
     // jsdom's preload doesn't expose HTMLImageElement on globalThis, so
     // reach through `window` to override the prototype getters.
     const ImgProto = (window as Window).HTMLImageElement.prototype;
@@ -148,6 +147,49 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     }
   });
 
+  test('broken image always renders role=img + aria-label (alt="" no longer silences)', () => {
+    // alt="" at this layer conflates the WCAG decorative opt-in with the
+    // "no alt authored" case (Image.tsx coerces `props.alt ?? ''`, and
+    // `![](/x.png)` markdown reaches here with alt=''). Announcing on
+    // both is the safer default — otherwise broken no-alt-authored
+    // images fall silent to assistive tech.
+    const { container } = render(<Image src="/missing.png" alt="" width={400} height={300} />);
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error')).toBe('true');
+    // Placeholder overlay carries the ARIA — the slot's img is kept in
+    // DOM (hidden) so consumers can still inspect src.
+    const overlay = slot.querySelector('[role="img"]');
+    expect(overlay).not.toBeNull();
+    expect(overlay?.getAttribute('aria-label')).toBe('Image failed to load: /missing.png');
+    expect(slot.getAttribute('aria-hidden')).toBeNull();
+    // Img stays mounted (hidden) so tests + walkers can still find its src.
+    const img = slot.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.hasAttribute('hidden')).toBe(true);
+    expect(img?.getAttribute('src')).toBe('/missing.png');
+  });
+
+  test('non-decorative broken image (alt="...") uses alt in the aria-label', () => {
+    // Symmetric coverage: pin role=img + aria-label + no aria-hidden on
+    // the alt-provided branch, so a future refactor can't silently drop
+    // screen-reader semantics from either shape.
+    const { container } = render(
+      <Image src="/missing.png" alt="a cat photo" width={400} height={300} />,
+    );
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    const slot = screen.getByTestId('image-slot');
+    const overlay = slot.querySelector('[role="img"]');
+    expect(overlay?.getAttribute('aria-label')).toBe('Image failed to load: a cat photo');
+    expect(slot.getAttribute('aria-hidden')).toBeNull();
+    // Img stays mounted (hidden) in the alt-provided branch too, so DOM
+    // inspectors can still find src regardless of alt shape.
+    const img = slot.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.hasAttribute('hidden')).toBe(true);
+    expect(img?.getAttribute('src')).toBe('/missing.png');
+  });
+
   test('renders a visible placeholder card after the inner <img>.error event fires (broken image)', () => {
     // The browser's default broken-image glyph is a 16x16 icon that reads as
     // "the block rendered empty" — the reporter's ask was for something
@@ -165,7 +207,7 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     expect(img).not.toBeNull();
     fireEvent.error(img as HTMLImageElement);
 
-    // Skeleton gone, placeholder card mounted, src surfaced for triage.
+    // Skeleton gone, placeholder overlay mounted, src surfaced for triage.
     expect(screen.queryByTestId('image-loading-skeleton')).toBeNull();
     const slot = screen.getByTestId('image-slot');
     expect(slot.getAttribute('data-image-error')).toBe('true');
@@ -173,6 +215,11 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     expect(slot.textContent).toContain('/missing-asset.png');
     // Stays inline for phrasing-content compatibility with <p>.
     expect(slot.tagName).toBe('SPAN');
+    // Img stays mounted (hidden) so DOM inspectors still find src.
+    const imgAfterError = slot.querySelector('img');
+    expect(imgAfterError).not.toBeNull();
+    expect(imgAfterError?.getAttribute('src')).toBe('/missing-asset.png');
+    expect(imgAfterError?.hasAttribute('hidden')).toBe(true);
   });
 
   test('restores the placeholder when src changes (e.g. AssetPreview switching assets)', () => {
@@ -191,5 +238,29 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     rerender(<Image src="/assets/b.png" alt="" width={400} height={300} />);
 
     expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
+  });
+
+  test('src change after an error clears the error placeholder', () => {
+    // The mount-time effect resets hasError on src change; without this,
+    // an AssetPreview that hits a broken asset first would stay pinned on
+    // the "Image failed to load" pill for every subsequent selection.
+    const { container, rerender } = render(
+      <Image src="/missing.png" alt="broken" width={400} height={300} />,
+    );
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    expect(screen.getByTestId('image-slot').getAttribute('data-image-error')).toBe('true');
+
+    rerender(<Image src="/assets/works.png" alt="works" width={400} height={300} />);
+    // Placeholder cleared; back to the loading-state slot.
+    expect(screen.getByTestId('image-slot').getAttribute('data-image-error')).toBeNull();
+    // loaded was also reset — skeleton must reappear for the new src or
+    // the '0x0 box → bytes arrive → reflow' layout shift would silently
+    // recur when a broken image is followed by a good one.
+    expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
+    // hidden was also cleared — the <img> must be visible for the new src.
+    // Pins the inverse of the error-state assertions (lines 169, 189, 222)
+    // so the recovery path can't silently regress.
+    const imgAfterRecovery = screen.getByTestId('image-slot').querySelector('img');
+    expect(imgAfterRecovery?.hasAttribute('hidden')).toBe(false);
   });
 });

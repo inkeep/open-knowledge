@@ -5598,8 +5598,8 @@ msgid "Image failed to load"
 msgstr "Image failed to load"
 
 #: src/components/ui/loading-image.tsx
-msgid "Image failed to load: {label}"
-msgstr "Image failed to load: {label}"
+msgid "Image failed to load: {errorLabel}"
+msgstr "Image failed to load: {errorLabel}"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
