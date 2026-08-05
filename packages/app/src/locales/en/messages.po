@@ -2850,10 +2850,9 @@ msgid "Could not finalize project setup. Try again."
 msgstr "Could not finalize project setup. Try again."
 
 #. placeholder {0}: failures.length
-#. placeholder {1}: projectFixableFiles.length
-#: src/components/ProblemsPanel.tsx
-msgid "Could not fix {0} of {1} files."
-msgstr "Could not fix {0} of {1} files."
+#: src/lib/project-fix-sweep-store.ts
+msgid "Could not fix {0} of {total} files."
+msgstr "Could not fix {0} of {total} files."
 
 #. placeholder {0}: seed.candidatePath
 #: src/components/ShareReceiveDialog.tsx
@@ -4963,6 +4962,10 @@ msgstr "Fix {flatId}"
 msgid "Fix all with AI ({count})"
 msgstr "Fix all with AI ({count})"
 
+#: src/lib/project-fix-sweep-store.ts
+msgid "Fixed {total, plural, one {# file} other {# files}}."
+msgstr "Fixed {total, plural, one {# file} other {# files}}."
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr "Fixed folder in content root"
@@ -4978,6 +4981,10 @@ msgstr "Fixing {0} of {1} files"
 #: src/components/ProblemsPanel.tsx
 msgid "Fixing {0}/{1}"
 msgstr "Fixing {0}/{1}"
+
+#: src/lib/project-fix-sweep-store.ts
+msgid "Fixing files stopped unexpectedly."
+msgstr "Fixing files stopped unexpectedly."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."
@@ -10273,7 +10280,7 @@ msgstr "Stop fixing files"
 msgid "Stop fixing. Files already fixed stay fixed."
 msgstr "Stop fixing. Files already fixed stay fixed."
 
-#: src/components/ProblemsPanel.tsx
+#: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
 msgstr "Stopped fixing. Files already fixed stay fixed."
 

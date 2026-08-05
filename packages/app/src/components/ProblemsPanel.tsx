@@ -17,7 +17,6 @@ import { type ReactElement, type ReactNode, useEffect, useRef, useState } from '
 import { toast } from 'sonner';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
-import { runProjectFixSweep, sweepSleep } from '@/components/problems-sweep';
 import { LINT_PLUGIN_META, type LintPluginMeta } from '@/components/settings/lint-plugin-meta';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +41,12 @@ import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigati
 import { AUDIT_SUPERSEDED, runValidationAudit } from '@/editor/validation-audit-client';
 import { createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
+import {
+  cancelProjectFixSweep,
+  startProjectFixSweep,
+  subscribeToProjectFixSweepSettled,
+  useProjectFixSweep,
+} from '@/lib/project-fix-sweep-store';
 import { openProjectPluginsSettings } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { replaceValidationFromAudit } from '@/lib/validation-store';
@@ -541,19 +546,20 @@ export function ProblemsPanel({
         : [];
   const noPluginsEnabled = activePlugins !== null && activePlugins.length === 0;
   const [audit, setAudit] = useState<ProjectAuditState>({ status: 'idle' });
-  const [projectFixing, setProjectFixing] = useState<{ done: number; total: number } | null>(null);
+  // The sweep itself lives in a module store, not here, so it outlives this
+  // panel — a tab switch unmounts the Problems tab, and the run must not end
+  // with it. The panel only reads progress and drives start/stop.
+  const projectFixing = useProjectFixSweep();
   // The dead-link "Create page" one-shot (target being created, else null).
   // Optional context: the panel is always under PageListProvider in the app;
   // the null branch only serves bare unit harnesses (create renders disabled).
   const pageList = useOptionalPageList();
   const [creatingTarget, setCreatingTarget] = useState<string | null>(null);
-  // Tracks whether the panel is still mounted so the async project sweep can
-  // stop early instead of posting fixes and setState-ing into an unmounted tree.
+  // Tracks whether the panel is still mounted so async work owned BY the panel
+  // (the audit walk, the dead-link page create) can stop early instead of
+  // setState-ing into an unmounted tree. Deliberately not consulted by the
+  // sweep, which the store owns and which must survive this panel.
   const mountedRef = useRef(true);
-  // Set by the Stop control to end a running sweep at the next file boundary. A
-  // ref, not state: the sweep loop reads it between files and a re-render would
-  // neither reach the in-flight loop nor be wanted mid-sweep.
-  const cancelSweepRef = useRef(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -564,6 +570,8 @@ export function ProblemsPanel({
   // installed once and must not be torn down and re-added on every render, so it
   // calls through this instead of closing over a particular render's state.
   const onLintConfigChangedRef = useRef<() => void>(() => {});
+  // Latest-ref for the sweep-settled subscription, same reason as above.
+  const onSweepSettledRef = useRef<() => void>(() => {});
   // The last SETTLED audit plane, i.e. what an abandoned walk falls back to.
   // A latest-ref rather than the `audit` closure because `loadAudit` runs from
   // callbacks that outlive their render (a project sweep, a page create), and
@@ -579,6 +587,42 @@ export function ProblemsPanel({
 
   const sorted = [...diagnostics].sort(compareDiagnostics);
   const docFixableCount = countFixable(sorted);
+
+  // Declared ahead of its callers: the React Compiler cannot lower a reference
+  // to a function hoisted from below ("[PruneHoistedContexts] Rewrite hoisted
+  // function references"), and several of them sit below this declaration.
+  async function loadAudit() {
+    loadGenRef.current += 1;
+    const generation = loadGenRef.current;
+    const fallback = settledAuditRef.current;
+    setAudit({ status: 'loading' });
+    const result = await runValidationAudit();
+    // A superseded walk carries no plane, so the panel keeps the one it had —
+    // briefly-stale counts, with the refresh affordance back. It must not wait
+    // for the replacement the config change schedules: the `lint-config` push
+    // that would deliver it has no reconnect replay, so a socket drop inside the
+    // server's debounce window loses it and leaves the panel on a spinner with
+    // refresh disabled, which nothing else can clear. A first activation has no
+    // plane to keep, so it degrades to the retryable failure state instead —
+    // that state's refresh button is the way out.
+    if (result === AUDIT_SUPERSEDED) {
+      // Skipped when a later load is already in flight: its own settlement is
+      // fresher than this fallback, and it owns the panel from here.
+      if (loadGenRef.current === generation && mountedRef.current) {
+        setAudit(fallback.status === 'idle' ? { status: 'failed' } : fallback);
+      }
+      return;
+    }
+    // A successful whole-project audit is full-plane truth — refresh the
+    // shared validation store (freshness trigger 1) so the file tree's tints
+    // update in the same pass. Deliberately BEFORE the mounted guard: the
+    // store outlives this panel, and the fetch already completed.
+    if (result !== null) replaceValidationFromAudit(result.files);
+    // Don't setState into an unmounted tree: loadAudit is awaited from a
+    // settled sweep, the refresh button, and scope activation.
+    if (!mountedRef.current) return;
+    setAudit(result === null ? { status: 'failed' } : { status: 'loaded', result });
+  }
 
   /**
    * One-shot fix for a dead link: create the missing target page (the same
@@ -610,40 +654,6 @@ export function ProblemsPanel({
     if (mountedRef.current && audit.status === 'loaded') await loadAudit();
   }
 
-  async function loadAudit() {
-    loadGenRef.current += 1;
-    const generation = loadGenRef.current;
-    const fallback = settledAuditRef.current;
-    setAudit({ status: 'loading' });
-    const result = await runValidationAudit();
-    // A superseded walk carries no plane, so the panel keeps the one it had —
-    // briefly-stale counts, with the refresh affordance back. It must not wait
-    // for the replacement the config change schedules: the `lint-config` push
-    // that would deliver it has no reconnect replay, so a socket drop inside the
-    // server's debounce window loses it and leaves the panel on a spinner with
-    // refresh disabled, which nothing else can clear. A first activation has no
-    // plane to keep, so it degrades to the retryable failure state instead —
-    // that state's refresh button is the way out.
-    if (result === AUDIT_SUPERSEDED) {
-      // Skipped when a later load is already in flight: its own settlement is
-      // fresher than this fallback, and it owns the panel from here.
-      if (loadGenRef.current === generation && mountedRef.current) {
-        setAudit(fallback.status === 'idle' ? { status: 'failed' } : fallback);
-      }
-      return;
-    }
-    // A successful whole-project audit is full-plane truth — refresh the
-    // shared validation store (freshness trigger 1) so the file tree's tints
-    // update in the same pass. Deliberately BEFORE the mounted guard: the
-    // store outlives this panel, and the fetch already completed.
-    if (result !== null) replaceValidationFromAudit(result.files);
-    // Match the sweep's mounted guard: don't setState into an unmounted tree
-    // (loadAudit is awaited from the sweep, the refresh button, and scope
-    // activation).
-    if (!mountedRef.current) return;
-    setAudit(result === null ? { status: 'failed' } : { status: 'loaded', result });
-  }
-
   const projectFixableFiles =
     audit.status === 'loaded'
       ? audit.result.files.filter((file) =>
@@ -651,76 +661,17 @@ export function ProblemsPanel({
         )
       : [];
 
-  function cancelProjectFix() {
-    cancelSweepRef.current = true;
-  }
-
-  async function fixAllProjectFiles() {
-    if (projectFixing !== null || projectFixableFiles.length === 0) return;
-    const total = projectFixableFiles.length;
-    // Clear any stop left over from a previous sweep, or this one ends instantly.
-    cancelSweepRef.current = false;
-    setProjectFixing({ done: 0, total });
-    // Sequential with a small inter-file pace and capacity-aware retry: each fix
-    // lands through the agent-write spine (disk + git flush) and holds a server
-    // session, so an unpaced sweep saturates the shared session pool and starves
-    // concurrent agent writes. Pacing leaves headroom; a capacity refusal is
-    // retried rather than counted as a failure. Non-capacity failures don't stop
-    // the sweep; the re-audit below shows what remains.
-    const { failures, cancelled } = await runProjectFixSweep({
+  function fixAllProjectFiles() {
+    // The store owns the sweep loop, the progress it publishes, and the toast
+    // that reports how it ended. It fixes the files sequentially with a small
+    // inter-file pace and capacity-aware retry because each fix lands through the
+    // agent-write spine (disk + git flush) and holds a server session, so an
+    // unpaced sweep saturates the shared session pool and starves concurrent
+    // agent writes.
+    void startProjectFixSweep({
       items: projectFixableFiles,
       fixItem: (file) => fixLintDoc(filePathToDocName(file.file)),
-      sleep: sweepSleep,
-      // Commit progress in chunks, not per file, so a large sweep doesn't
-      // re-render (and re-announce to a screen reader) the panel thousands of
-      // times; the final file always commits, so the count lands on the total.
-      onProgress: (done) => setProjectFixing((prev) => (prev === null ? prev : { ...prev, done })),
-      // Two ways a sweep ends early. The panel unmounted mid-sweep (tab switch,
-      // agent-mode flip) — the user walked away, so stop posting fixes and skip
-      // the state updates React would no-op anyway (mirrors the `cancelled`
-      // guard in useDocLintConfig). Or the user pressed Stop, which is the same
-      // between-files bail but leaves the panel mounted and owing them an answer.
-      shouldContinue: () => mountedRef.current && !cancelSweepRef.current,
     });
-    // Unmounted: nobody is left to tell, and every setState below would no-op.
-    if (cancelled && !mountedRef.current) return;
-    setProjectFixing(null);
-    if (failures.length > 0) {
-      // The toast names only the first casualty; log the whole set once so a
-      // bulk failure (one root cause across many files, or a mid-sweep server
-      // restart) leaves a diagnostic trail for every file, not just the first.
-      console.warn(
-        `[lint] fix-all: ${failures.length} of ${projectFixableFiles.length} files failed`,
-        failures.map((failure) => ({ file: failure.item.file, detail: failure.detail })),
-      );
-      // Name the first casualty so the toast is actionable — "1 of 10 failed"
-      // alone gives the user nothing to act on. The detail is the server's
-      // problem+json title (untranslated, like the rule-write error toasts).
-      // Suppressed on a user stop: they know why it ended, and a failure toast
-      // there reads as "your stop broke something".
-      if (!cancelled) {
-        const first = failures[0];
-        toast.error(t`Could not fix ${failures.length} of ${projectFixableFiles.length} files.`, {
-          description:
-            first === undefined
-              ? undefined
-              : `${first.item.file}${first.detail === null ? '' : ` — ${first.detail}`}`,
-        });
-      }
-    }
-    if (cancelled) {
-      // A stop leaves the project genuinely half-fixed, which is fine — every
-      // file already swept stays fixed. Say so, and let the re-audit below
-      // replace the count with what actually remains.
-      toast.info(t`Stopped fixing. Files already fixed stay fixed.`);
-    }
-    // Guard the re-audit so a failure surfaces the "Try again" state instead of
-    // an unhandled rejection off the fire-and-forget `void fixAllProjectFiles()`.
-    try {
-      await loadAudit();
-    } catch {
-      if (mountedRef.current) setAudit({ status: 'failed' });
-    }
   }
 
   function handleScopeChange(next: PanelScope) {
@@ -751,6 +702,28 @@ export function ProblemsPanel({
     };
   });
   useEffect(() => subscribeToLintConfigChanged(() => onLintConfigChangedRef.current()), []);
+
+  // A settled sweep leaves the loaded plane describing problems it just fixed.
+  // Refresh it in place — but only for a panel that is actually mounted and
+  // showing one; a sweep that outlives this panel has nothing to refresh, and
+  // the remount reloads the plane from scratch anyway. Latest-ref for the same
+  // reason as the config subscription above: installed once, never re-added.
+  useEffect(() => {
+    onSweepSettledRef.current = () => {
+      if (audit.status === 'idle' || audit.status === 'failed') return;
+      // Guard the re-audit against an unexpected throw past the fetch: a failed
+      // audit already resolves to a null plane (logged `[audit]` and handled
+      // above), so only a genuine bug lands here. Surface the "Try again" state
+      // instead of an unhandled rejection off this fire-and-forget subscriber,
+      // and log it like the sibling `[lint]` failure sites so a swallowed bug
+      // still leaves a trail.
+      void loadAudit().catch((err) => {
+        console.warn('[lint] post-sweep re-audit failed', err);
+        if (mountedRef.current) setAudit({ status: 'failed' });
+      });
+    };
+  });
+  useEffect(() => subscribeToProjectFixSweepSettled(() => onSweepSettledRef.current()), []);
 
   function handleNav(diagnostic: DiagnosticLike) {
     const detail = lintNavDetailOf(docName, diagnostic);
@@ -933,8 +906,8 @@ export function ProblemsPanel({
               : 0
           }
           fixing={projectFixing}
-          onAutoFix={() => void fixAllProjectFiles()}
-          onCancelFix={cancelProjectFix}
+          onAutoFix={fixAllProjectFiles}
+          onCancelFix={cancelProjectFixSweep}
           onFixWithAi={
             onFixWithAi === undefined || audit.status !== 'loaded'
               ? undefined

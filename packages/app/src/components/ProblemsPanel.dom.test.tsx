@@ -25,6 +25,8 @@ import type { LintNavDetail } from './ProblemsPanel';
 const linguiMacroMock = {
   t: renderLinguiTemplate,
   msg: renderLinguiTemplate,
+  plural: (value: number, { one, other }: { one: string; other: string }) =>
+    (value === 1 ? one : other).replace('#', String(value)),
   Trans: ({ children }: { children: ReactNode }) => children,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
@@ -121,6 +123,10 @@ function lintConfigWith(plugins: { markdownlint: boolean; frontmatter: boolean }
 }
 
 const { ProblemsPanel, LINT_NAV_EVENT } = await import('./ProblemsPanel');
+// Dynamic like the panel above, not a static import: the store binds the mocked
+// `sonner` only if it loads after the registrations, and a hoisted static import
+// would bind the real one.
+const { __resetProjectFixSweepForTests } = await import('@/lib/project-fix-sweep-store');
 // The real registry, deliberately unmocked: the tests assert the banked intent
 // through its public consume API — the same call the source editor replays.
 const { consumePendingSourceNavigation, clearPendingSourceNavigationsForTest } = await import(
@@ -178,11 +184,16 @@ beforeEach(() => {
   toastSuccess.mockClear();
   toastInfo.mockClear();
   lintConfigListeners.clear();
+  // The sweep is a session singleton now, and this config isolates per FILE,
+  // not per test — without this a sweep left running by one test would refuse
+  // the next test's start.
+  __resetProjectFixSweepForTests();
 });
 
 afterEach(() => {
   cleanup();
   clearPendingSourceNavigationsForTest();
+  __resetProjectFixSweepForTests();
   window.location.hash = '';
 });
 
@@ -1101,7 +1112,7 @@ describe('ProblemsPanel — project scope', () => {
     }
   });
 
-  test('project Auto-fix sweeps only fixable files, re-audits, and stays quiet on success', async () => {
+  test('project Auto-fix sweeps only fixable files, re-audits, and reports completion', async () => {
     const fixableEdit = {
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
       newText: '  ',
@@ -1126,6 +1137,10 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'nested/c']));
     // The sweep ends in a fresh audit fetch (initial activation + re-audit).
     await waitFor(() => expect(auditCalls).toBe(2));
+    // A sweep can finish with nobody watching the counter, so completion is
+    // announced rather than inferred from the count landing on N/N.
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+    expect(String(toastSuccess.mock.calls[0]?.[0])).toContain('2 files');
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -1174,6 +1189,52 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.queryByTestId('problems-cancel-fix')).toBeNull());
     // Re-audits after stopping so the remaining count is the honest one.
     await waitFor(() => expect(auditCalls).toBe(2));
+  });
+
+  test('a running sweep survives the panel unmounting and still reports how it ended', async () => {
+    // The Problems tab is rendered conditionally, so switching to Timeline
+    // unmounts this panel mid-sweep. That used to end the run silently, leaving
+    // the project half-fixed with nothing to explain it on return.
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          { file: 'a.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'b.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+        ],
+      });
+    // Park the opening fix so the unmount lands while the sweep is genuinely
+    // mid-flight, rather than after it has already finished.
+    let releaseFirst: (() => void) | undefined;
+    const firstInFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    fixLintDocImpl = async (docName: string) => {
+      if (docName === 'a') await firstInFlight;
+      return { ok: true as const, status: 200, problemType: null, errorDetail: null };
+    };
+
+    const view = render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    await screen.findByTestId('problems-cancel-fix');
+    view.unmount();
+    releaseFirst?.();
+
+    // Every file still gets fixed, and the completion toast reaches the user
+    // through the app-root Toaster even though no panel is mounted.
+    await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'b', 'c']));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
+    expect(toastError).not.toHaveBeenCalled();
+    // Nothing left to re-audit for: the panel that owned the plane is gone, so
+    // the only walk was its initial activation.
+    expect(auditCalls).toBe(1);
   });
 
   test('a stopped sweep does not poison the next one', async () => {

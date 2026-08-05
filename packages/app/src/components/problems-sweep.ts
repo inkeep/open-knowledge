@@ -115,7 +115,7 @@ export interface ProjectFixSweepDeps<T> {
   readonly sleep: (ms: number) => Promise<void>;
   /** Publishes chunked progress; called at chunk boundaries and on the last file. */
   readonly onProgress: (done: number, total: number) => void;
-  /** False once the caller has torn down (panel unmounted); ends the sweep. */
+  /** False once the caller wants the sweep to stop; ends it at a file boundary. */
   readonly shouldContinue: () => boolean;
 }
 
@@ -128,8 +128,8 @@ export interface ProjectFixSweepResult<T> {
 /**
  * One file's fix, retried on capacity refusal with the bounded backoff schedule.
  * A non-capacity failure returns on the first attempt (no retry); success short-
- * circuits. Re-checks liveness around each backoff so a teardown mid-wait stops
- * the retries.
+ * circuits. Re-checks liveness around each backoff so a stop landing mid-wait
+ * ends the retries.
  */
 async function fixItemWithCapacityRetry<T>(
   item: T,
@@ -154,10 +154,10 @@ async function fixItemWithCapacityRetry<T>(
  * Drive the project-scope "Fix all" sweep: fix each file in series, pacing
  * between files and retrying capacity refusals so the sweep neither saturates
  * the shared session pool nor drops files the server merely deferred. Progress
- * is published in chunks; a torn-down caller ends the sweep early. Terminal
- * (non-capacity) failures don't stop the sweep — they're collected and returned
- * for the caller to surface. Pure over its injected effects, so pacing, retry,
- * and cancellation are testable without a real clock.
+ * is published in chunks; a caller that withdraws consent ends the sweep early.
+ * Terminal (non-capacity) failures don't stop the sweep — they're collected and
+ * returned for the caller to surface. Pure over its injected effects, so pacing,
+ * retry, and cancellation are testable without a real clock.
  */
 export async function runProjectFixSweep<T>(
   deps: ProjectFixSweepDeps<T>,

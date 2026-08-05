@@ -2846,9 +2846,8 @@ msgid "Could not finalize project setup. Try again."
 msgstr ""
 
 #. placeholder {0}: failures.length
-#. placeholder {1}: projectFixableFiles.length
-#: src/components/ProblemsPanel.tsx
-msgid "Could not fix {0} of {1} files."
+#: src/lib/project-fix-sweep-store.ts
+msgid "Could not fix {0} of {total} files."
 msgstr ""
 
 #. placeholder {0}: seed.candidatePath
@@ -4959,6 +4958,10 @@ msgstr ""
 msgid "Fix all with AI ({count})"
 msgstr ""
 
+#: src/lib/project-fix-sweep-store.ts
+msgid "Fixed {total, plural, one {# file} other {# files}}."
+msgstr ""
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr ""
@@ -4973,6 +4976,10 @@ msgstr ""
 #. placeholder {1}: fixing.total
 #: src/components/ProblemsPanel.tsx
 msgid "Fixing {0}/{1}"
+msgstr ""
+
+#: src/lib/project-fix-sweep-store.ts
+msgid "Fixing files stopped unexpectedly."
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -10269,7 +10276,7 @@ msgstr ""
 msgid "Stop fixing. Files already fixed stay fixed."
 msgstr ""
 
-#: src/components/ProblemsPanel.tsx
+#: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
 msgstr ""
 
