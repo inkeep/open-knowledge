@@ -26,6 +26,7 @@ interface CapturedTimer {
 
 interface MockWindow extends BrowserWindowLike {
   show: ReturnType<typeof vi.fn>;
+  showInactive: ReturnType<typeof vi.fn>;
   fireReadyToShow: () => void;
   markDestroyed: () => void;
   markVisible: () => void;
@@ -38,8 +39,12 @@ function makeWindow(): MockWindow {
   const show = vi.fn(() => {
     visible = true;
   });
+  const showInactive = vi.fn(() => {
+    visible = true;
+  });
   return {
     show,
+    showInactive,
     isDestroyed: vi.fn(() => destroyed),
     isVisible: vi.fn(() => visible),
     on: vi.fn(() => {}) as BrowserWindowLike['on'],
@@ -74,7 +79,7 @@ interface TestEnv {
   registry: ShowGateRegistry;
 }
 
-function buildEnv(opts?: { timeoutMs?: number }): TestEnv {
+function buildEnv(opts?: { timeoutMs?: number; shouldRevealInactive?: () => boolean }): TestEnv {
   const timers: CapturedTimer[] = [];
   const cleared: unknown[] = [];
   const warns: Array<{ obj: object; msg: string }> = [];
@@ -93,6 +98,7 @@ function buildEnv(opts?: { timeoutMs?: number }): TestEnv {
       cleared.push(handle);
     },
     timeoutMs: opts?.timeoutMs,
+    shouldRevealInactive: opts?.shouldRevealInactive,
   });
   return { timers, cleared, warns, registry };
 }
@@ -484,5 +490,103 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
       (w) => (w.obj as { event?: unknown }).event === 'show-gate-timeout',
     );
     expect(timeout).toBeDefined();
+  });
+});
+
+describe('createShowGateRegistry — inactive reveal', () => {
+  /** Drive a registered window through both gate signals so it reveals. */
+  function reveal(registry: ShowGateRegistry, win: MockWindow): void {
+    registry.register(win, { kind: 'editor' });
+    win.fireReadyToShow();
+    registry.fireThemeApplied(win);
+  }
+
+  test('predicate false → reveals with a focusing show()', () => {
+    const env = buildEnv({ shouldRevealInactive: () => false });
+    const win = makeWindow();
+    reveal(env.registry, win);
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(win.showInactive).not.toHaveBeenCalled();
+  });
+
+  test('predicate omitted → reveals with a focusing show()', () => {
+    const env = buildEnv();
+    const win = makeWindow();
+    reveal(env.registry, win);
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(win.showInactive).not.toHaveBeenCalled();
+  });
+
+  test('predicate true → reveals via showInactive(), never show()', () => {
+    const env = buildEnv({ shouldRevealInactive: () => true });
+    const win = makeWindow();
+    reveal(env.registry, win);
+    expect(win.showInactive).toHaveBeenCalledTimes(1);
+    expect(win.show).not.toHaveBeenCalled();
+    expect(win.isVisible?.()).toBe(true);
+  });
+
+  test('predicate is read at reveal time, not at registration time', () => {
+    // Registration happens before `loadURL`; the reveal lands seconds later. A
+    // restore that finishes between the two must not leave a later window
+    // revealing under the stale answer.
+    let inactive = true;
+    const env = buildEnv({ shouldRevealInactive: () => inactive });
+    const early = makeWindow();
+    const late = makeWindow();
+    env.registry.register(early, { kind: 'editor' });
+    env.registry.register(late, { kind: 'editor' });
+
+    early.fireReadyToShow();
+    env.registry.fireThemeApplied(early);
+    expect(early.showInactive).toHaveBeenCalledTimes(1);
+
+    inactive = false;
+    late.fireReadyToShow();
+    env.registry.fireThemeApplied(late);
+    expect(late.show).toHaveBeenCalledTimes(1);
+    expect(late.showInactive).not.toHaveBeenCalled();
+  });
+
+  test('the timeout fallback honors the predicate too', () => {
+    // A window whose second signal never arrives is force-shown by the safety
+    // timeout. That path must not become a foreground steal either.
+    const env = buildEnv({ shouldRevealInactive: () => true });
+    const win = makeWindow();
+    env.registry.register(win, { kind: 'editor' });
+    win.fireReadyToShow();
+    env.timers[0]?.cb();
+    expect(win.showInactive).toHaveBeenCalledTimes(1);
+    expect(win.show).not.toHaveBeenCalled();
+  });
+
+  test('a throwing predicate degrades to show() and warns rather than stranding the window', () => {
+    // No window at all is strictly worse than a window with the wrong focus
+    // posture, so the predicate must never be able to block a reveal.
+    const env = buildEnv({
+      shouldRevealInactive: () => {
+        throw new Error('predicate exploded');
+      },
+    });
+    const win = makeWindow();
+    env.registry.register(win, { kind: 'navigator' });
+    win.fireReadyToShow();
+    env.registry.fireThemeApplied(win);
+    expect(win.show).toHaveBeenCalledTimes(1);
+    const warn = env.warns.find(
+      (w) => (w.obj as { event?: unknown }).event === 'show-gate-reveal-predicate-failed',
+    );
+    // Carries the same windowKind its sibling warns do — a navigator, editor,
+    // or terminal revealing with the wrong posture are different user impacts.
+    expect(warn?.obj).toMatchObject({ windowKind: 'navigator' });
+  });
+
+  test('a window without showInactive still reveals when the predicate is true', () => {
+    const env = buildEnv({ shouldRevealInactive: () => true });
+    const win = makeWindow();
+    // Model a window-like that predates the inactive-reveal capability.
+    (win as { showInactive?: unknown }).showInactive = undefined;
+    reveal(env.registry, win);
+    expect(win.show).toHaveBeenCalledTimes(1);
   });
 });

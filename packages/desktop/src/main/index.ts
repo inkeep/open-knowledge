@@ -334,6 +334,7 @@ import {
   RESTORE_REVEAL_TIMEOUT_MS,
   type RevealableWindow,
   raiseMostRecentlyFocusedAfterRestore,
+  shouldRevealInactiveNow,
 } from './restore-focus.ts';
 import { handleRevealExternal } from './reveal-external.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
@@ -1029,6 +1030,67 @@ function ingestRendererStartupMarks(marks: RendererMarks): void {
   if (firstWindowShown && startupWaterfall.canEmit) emitStartupWaterfall();
 }
 
+/**
+ * True while a boot-restore is opening its window set, cleared once the
+ * post-restore raise has run. Feeds {@link shouldRevealInactiveNow} alongside
+ * {@link appHasEverBeenActive} and {@link appIsActive} — all three terms are
+ * load-bearing and that function documents why.
+ *
+ * Its own job is to scope the quiet reveal to a restore and defer the whole
+ * foreground question to a single decision at the end: the raise in the restore
+ * branch.
+ */
+let restoreRevealInactive = false;
+
+/**
+ * Whether OpenKnowledge is the foreground application right now, tracked from
+ * the app-level activation events. Read at the end of a restore to decide
+ * whether the raise may take foreground.
+ */
+let appIsActive = false;
+
+/**
+ * Whether the app has been frontmost at least once this run. The
+ * anti-self-suppression term of {@link shouldRevealInactiveNow}; removing it
+ * is a worse bug than the one it guards against, for the reasons documented
+ * there.
+ */
+let appHasEverBeenActive = false;
+
+/**
+ * True when a deep link opened a window while a restore was still in flight.
+ *
+ * Suppresses the post-restore raise entirely. Without it the raise, which waits
+ * for every reveal to settle, would land after the deep-link window and put the
+ * previously-focused restore target on top of the thing the user just asked
+ * for. Ordering only, not a reveal concern: the deep-link window is already
+ * visible and frontmost by then.
+ */
+let deepLinkClaimedWindowDuringRestore = false;
+
+/**
+ * Stop suppressing activation for subsequent window reveals. Called once the
+ * restore's own foreground decision has been made.
+ */
+function endRestoreQuietReveal(): void {
+  restoreRevealInactive = false;
+}
+
+/**
+ * Hand the restore's foreground claim to a deep link that arrived mid-restore.
+ *
+ * Explicit user intent outranks restore politeness, in both directions: the
+ * requested window reveals with a focusing `show()` rather than quietly, AND
+ * the restore's trailing raise stands down instead of burying it. Every seam
+ * that opens or surfaces a window on behalf of an `openknowledge://` URL calls
+ * this — project opens, single-file opens, and shares that resolve to the
+ * Navigator, which reaches the same show gate as any other window.
+ */
+function yieldRestoreToDeepLink(): void {
+  endRestoreQuietReveal();
+  deepLinkClaimedWindowDuringRestore = true;
+}
+
 const showGate: ShowGateRegistry = createShowGateRegistry({
   log: {
     warn: (obj, msg) => {
@@ -1039,6 +1101,12 @@ const showGate: ShowGateRegistry = createShowGateRegistry({
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
   // Startup waterfall: first shown window stamps `windowShown` + emits.
   onShown: () => onFirstWindowShown(),
+  shouldRevealInactive: () =>
+    shouldRevealInactiveNow({
+      restoreInProgress: restoreRevealInactive,
+      appHasEverBeenActive,
+      appIsActive,
+    }),
 });
 
 /**
@@ -6316,6 +6384,28 @@ function bootPrimaryInstance(): void {
     }
   });
 
+  // Foreground-state mirror for the post-restore raise. Registered here, before
+  // `whenReady`, so the launch activation itself is observed — reading this
+  // later must never mistake "not yet initialized" for "user walked away".
+  //
+  // Both events are `@platform darwin`, so off darwin these flags stay false
+  // for the whole run. Every window then reveals with `show()`
+  // (`shouldRevealInactiveNow` needs `appHasEverBeenActive`), which is the
+  // pre-existing posture. The raise is NOT identical there: `shouldActivate`
+  // reads false unconditionally, so it always takes the `activate: false`
+  // branch and skips `win.show?.()` on the target. That is inert rather than
+  // equivalent — the target is already visible by then, and `moveTop()` +
+  // `focus()` reach the same end state — and `activateApp` is a no-op off macOS
+  // regardless. Two independent guards; don't drop either on the assumption the
+  // other covers it.
+  app.on('did-become-active', () => {
+    appIsActive = true;
+    appHasEverBeenActive = true;
+  });
+  app.on('did-resign-active', () => {
+    appIsActive = false;
+  });
+
   // URL-scheme handler — register BEFORE `whenReady` so macOS cold-start
   // `open-url` Apple Events are caught even if they fire before the ready hook.
   // Listener registration is synchronous; the actual routing defers URLs into a
@@ -6337,9 +6427,18 @@ function bootPrimaryInstance(): void {
     },
     focusWindowForProject: (projectPath) => {
       if (!wm) return null;
+      // The warm seam: the project already has a window, so this surfaces it
+      // rather than opening one. It still needs the yield — `bringToFront`
+      // brings the window forward, but without this the restore's trailing
+      // raise would put the restore target straight back on top of it.
+      yieldRestoreToDeepLink();
       return wm.focusWindowForProject(projectPath) as unknown as object | null;
     },
     openProject: async (projectPath, opts) => {
+      // A deep link asked for this window, so it must come forward even if a
+      // restore is still revealing its own windows quietly — and the restore's
+      // trailing raise must not then bury it.
+      yieldRestoreToDeepLink();
       // Use the Navigator-fallback path: on failure (bad path, git-init error,
       // stale lock) the user sees a dialog and is returned to the Navigator
       // rather than a silent "link doesn't work." Success path returns the
@@ -6370,7 +6469,15 @@ function bootPrimaryInstance(): void {
     // `openknowledge://open?file=<abs>` — the desktop side of `ok <file>`.
     // `openEphemeralFile` re-derives the plan and routes project-vs-
     // ephemeral itself, so the url-scheme layer just hands off the path.
-    openEphemeralFile: (filePath) => openEphemeralFile(filePath),
+    openEphemeralFile: (filePath) => {
+      // Same rule as `openProject` above, and it must live HERE rather than
+      // inside `openEphemeralFile`: the boot restore calls that function for
+      // its own file-kind entries, and yielding there would unmute the rest of
+      // the restore. The deep-link boundary also covers the branch where the
+      // file collapses onto a project.
+      yieldRestoreToDeepLink();
+      return openEphemeralFile(filePath);
+    },
     sendDeepLink: (win, payload) => {
       const w = win as BrowserWindowLike;
       sendToRenderer(w.webContents, 'ok:deep-link', payload);
@@ -6462,6 +6569,11 @@ function bootPrimaryInstance(): void {
     checkShareTargetExists: (projectPath, kind, path) =>
       checkTargetExistsImpl(projectPath, kind, path),
     routeShareToNavigator: (payload) => {
+      // Third deep-link seam. A share that resolves to the Navigator (target
+      // missing, or a non-OK branch match) opens a window through the same show
+      // gate as any other, so mid-restore it would otherwise reveal quietly and
+      // sit behind the user's foreground app — for a link they just clicked.
+      yieldRestoreToDeepLink();
       // `openNavigator(payload)` handles both cold-create (cold path:
       // `createNavigatorWindow` registers `once('dom-ready', ...)` BEFORE
       // `loadFile`/`loadURL`) and warm-focus (warm path: `isLoading()`
@@ -6698,14 +6810,14 @@ function bootPrimaryInstance(): void {
       applyHarvestedAuthSock(process.env, await authSockHarvest, shellEnvLogger);
 
       // Every project open spawns a NEW editor window. Boot restore order:
-      //   1. An update relaunch left a `pendingWindowRestore` snapshot — open
-      //      EVERY project that was open before the relaunch, not just the
-      //      last one. The snapshot is consumed unconditionally (cleared to
-      //      null + persisted) before any window opens, so a crash mid-restore
-      //      can't loop it. A non-null-but-empty/all-missing snapshot opens
-      //      the Navigator and deliberately does NOT fall through to
-      //      `lastOpenedProject` — the relaunch is honored as "nothing was
-      //      open" rather than reopening a stale project.
+      //   1. A clean exit left a `pendingWindowRestore` snapshot — open EVERY
+      //      project that was open before, not just the last one. The snapshot
+      //      is consumed unconditionally (cleared to null + persisted) before
+      //      any window opens, so a crash mid-restore can't loop it. A
+      //      non-null-but-empty/all-missing snapshot opens the Navigator and
+      //      deliberately does NOT fall through to `lastOpenedProject` — the
+      //      relaunch is honored as "nothing was open" rather than reopening a
+      //      stale project.
       //   2. Otherwise restore `lastOpenedProject` into one editor window.
       //   3. Holding Option (`--navigator`) or having nothing to restore
       //      opens the Navigator instead.
@@ -6800,13 +6912,19 @@ function bootPrimaryInstance(): void {
           }
         });
 
-        // Parallel opens — each window's OS-level `show()` is deferred behind
-        // its own dual-signal show gate, which releases in nondeterministic
-        // order. `show()` steals key-window focus on macOS, so the raise waits
-        // for EVERY restored window to reveal before raising the last (most
-        // recently focused) entry — otherwise a sibling that shows later steals
-        // focus back. Waiting for all reveals also keeps `bringToFront`'s
-        // `show()` from bypassing the target's own gate.
+        // Reveal every restored window WITHOUT foregrounding the app, so the N
+        // reveals spread across the restore can't repeatedly yank a user who
+        // switched away while waiting. Cleared once the raise below has made
+        // the single foreground decision for the whole restore.
+        restoreRevealInactive = true;
+
+        // Parallel opens — each window's OS-level reveal is deferred behind its
+        // own dual-signal show gate, which releases in nondeterministic order,
+        // and every reveal lands above its predecessors in the window stack. So
+        // the raise waits for EVERY restored window to reveal before raising
+        // the last (most recently focused) entry — otherwise a sibling that
+        // reveals later would bury it. Waiting for all reveals also keeps
+        // `bringToFront`'s own reveal from bypassing the target's gate.
         const opens = orderedKeys.map((key) => {
           const action = actionByKey.get(key);
           if (action === undefined) return Promise.resolve();
@@ -6814,26 +6932,56 @@ function bootPrimaryInstance(): void {
             ? openProjectOrFallbackToNavigator(action.projectPath, 'recents')
             : openEphemeralFile(action.filePath);
         });
-        void Promise.allSettled(opens).then(() =>
-          raiseMostRecentlyFocusedAfterRestore({
-            windowKeys: orderedKeys,
-            // `getWindowFor` / `focusWindowForProject` canonicalize their input,
-            // so a loose-file key (canonical file path) resolves its ephemeral
-            // window just as a project key resolves its project window.
-            getWindow: (key) => {
-              const ctx = wm?.getWindowFor(key);
-              return ctx ? (ctx.window as unknown as RevealableWindow) : undefined;
-            },
-            raise: (key) => {
-              wm?.focusWindowForProject(key);
-            },
-            deps: {
-              setTimeout: (cb, ms) => setTimeout(cb, ms),
-              clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-              timeoutMs: RESTORE_REVEAL_TIMEOUT_MS,
-            },
-          }),
-        );
+        void Promise.allSettled(opens)
+          .then(() => {
+            // A deep link that arrived mid-restore already put the window the
+            // user asked for in front. Raising the restore target now would
+            // bury it, so the restore yields its ordering claim entirely.
+            if (deepLinkClaimedWindowDuringRestore) return undefined;
+            return raiseMostRecentlyFocusedAfterRestore({
+              windowKeys: orderedKeys,
+              // `getWindowFor` / `focusWindowForProject` canonicalize their input,
+              // so a loose-file key (canonical file path) resolves its ephemeral
+              // window just as a project key resolves its project window.
+              getWindow: (key) => {
+                const ctx = wm?.getWindowFor(key);
+                return ctx ? (ctx.window as unknown as RevealableWindow) : undefined;
+              },
+              raise: (key, opts) => {
+                wm?.focusWindowForProject(key, opts);
+              },
+              // The one foreground decision for the whole restore, taken after
+              // every window has revealed: come forward only if OpenKnowledge
+              // is still the app the user is in. If they moved on during the
+              // restore, the target window is ordered correctly but the
+              // foreground app is left alone.
+              shouldActivate: () => appIsActive,
+              deps: {
+                setTimeout: (cb, ms) => setTimeout(cb, ms),
+                clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+                timeoutMs: RESTORE_REVEAL_TIMEOUT_MS,
+              },
+            });
+          })
+          .catch((err: unknown) => {
+            // Every window is already revealed by this point, so a throw here
+            // costs ordering, not visibility. Logged rather than swallowed so a
+            // future regression in the raise is diagnosable instead of showing
+            // up only as "the wrong window was in front".
+            getLogger('startup').warn(
+              {
+                event: 'restore-raise-failed',
+                // Which window should have ended up in front, and how many were
+                // in the restore — enough to reconstruct the case from a log
+                // alone, without a reproduction.
+                targetKey: orderedKeys[orderedKeys.length - 1],
+                windowCount: orderedKeys.length,
+                err,
+              },
+              'post-restore raise threw — windows are up but foreground order may be wrong',
+            );
+          })
+          .finally(endRestoreQuietReveal);
       } else if (decision.action === 'lastOpened') {
         void openProjectOrFallbackToNavigator(decision.project, 'recents');
       } else if (decision.action === 'navigator') {

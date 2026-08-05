@@ -59,6 +59,23 @@ interface ShowGateRegistryDeps {
    * never the window. Optional; omitted in tests that don't assert show timing.
    */
   onShown?: (kind: WindowKind) => void;
+  /**
+   * Consulted at the instant a window reveals: `true` reveals via
+   * `showInactive()` instead of `show()`.
+   *
+   * On macOS `show()` activates the whole application, so a session restore
+   * that reveals N windows over several seconds drags the user back out of
+   * whatever they switched to, once per window. Revealing inactive makes the
+   * windows appear without touching the foreground app; a single deliberate
+   * activation afterwards (the post-restore raise) decides whether
+   * OpenKnowledge comes forward at all.
+   *
+   * A predicate rather than a per-`register` flag because reveal happens
+   * asynchronously, long after registration, and the answer depends on
+   * conditions at reveal time. Omitted → always `show()`, preserving the
+   * pre-existing behavior for every caller that doesn't opt in.
+   */
+  shouldRevealInactive?: () => boolean;
 }
 
 export interface ShowGateRegistry {
@@ -108,6 +125,31 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
     state.timerHandle = undefined;
   }
 
+  /**
+   * Reveal a window, honoring the inactive-reveal predicate. A throwing
+   * predicate must not strand the window hidden — "no window at all" is the
+   * one outcome strictly worse than revealing with the wrong focus posture —
+   * so a throw degrades to the plain `show()` that predates this option.
+   * `showInactive` is optional on the structural type, so a mock (or any
+   * future window-like) that lacks it also degrades to `show()`.
+   */
+  function revealWindow(window: BrowserWindowLike, kind: WindowKind): void {
+    let inactive = false;
+    try {
+      inactive = deps.shouldRevealInactive?.() === true;
+    } catch (err) {
+      deps.log?.warn(
+        { event: 'show-gate-reveal-predicate-failed', windowKind: kind, err },
+        'shouldRevealInactive threw — falling back to a focusing show()',
+      );
+    }
+    if (inactive && window.showInactive !== undefined) {
+      window.showInactive();
+      return;
+    }
+    window.show?.();
+  }
+
   function safeShow(window: BrowserWindowLike, state: PerWindowGateState): void {
     // Mirror of `reduced-transparency-handler.ts`'s per-call try/catch. The
     // isDestroyed/isVisible guards above handle the common shutdown race;
@@ -117,7 +159,7 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
     // so a throw doesn't leave the gate in a state that lies about visibility.
     // states.delete() runs in both branches so the Map entry never leaks.
     try {
-      window.show?.();
+      revealWindow(window, state.kind);
       state.shown = true;
       // Startup waterfall: the window is now visible. Fire AFTER `state.shown`
       // flips so a throw from `show()` doesn't emit a false windowShown mark.

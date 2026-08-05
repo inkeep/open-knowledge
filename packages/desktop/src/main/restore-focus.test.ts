@@ -3,6 +3,7 @@ import {
   type RestoreFocusDeps,
   type RevealableWindow,
   raiseMostRecentlyFocusedAfterRestore,
+  shouldRevealInactiveNow,
   whenWindowRevealed,
 } from './restore-focus.ts';
 
@@ -63,6 +64,43 @@ function makeWindow(opts: { visible?: boolean; destroyed?: boolean } = {}): Fake
 }
 
 const flush = () => Promise.resolve();
+
+describe('shouldRevealInactiveNow', () => {
+  // Full truth table. All three terms are load-bearing, and only one row is
+  // true — pinning every combination is what makes a dropped term fail here
+  // rather than in a user's window stack.
+  test.each([
+    { restoreInProgress: false, appHasEverBeenActive: false, appIsActive: false, expected: false },
+    { restoreInProgress: false, appHasEverBeenActive: false, appIsActive: true, expected: false },
+    { restoreInProgress: false, appHasEverBeenActive: true, appIsActive: false, expected: false },
+    { restoreInProgress: false, appHasEverBeenActive: true, appIsActive: true, expected: false },
+    { restoreInProgress: true, appHasEverBeenActive: false, appIsActive: false, expected: false },
+    { restoreInProgress: true, appHasEverBeenActive: false, appIsActive: true, expected: false },
+    { restoreInProgress: true, appHasEverBeenActive: true, appIsActive: false, expected: true },
+    { restoreInProgress: true, appHasEverBeenActive: true, appIsActive: true, expected: false },
+  ])('restore=$restoreInProgress everActive=$appHasEverBeenActive active=$appIsActive → $expected', ({
+    expected,
+    ...state
+  }) => {
+    expect(shouldRevealInactiveNow(state)).toBe(expected);
+  });
+
+  test('a restore that has never been frontmost reveals normally, not quietly', () => {
+    // The anti-self-suppression row, called out because it is the one that
+    // reads redundant. `showInactive()` never activates the app, so if the
+    // first restored window also revealed quietly the app would never become
+    // active, never observe a departure, and never come forward — a user who
+    // clicked Relaunch and waited would get their session back behind whatever
+    // macOS promoted when OpenKnowledge quit.
+    expect(
+      shouldRevealInactiveNow({
+        restoreInProgress: true,
+        appHasEverBeenActive: false,
+        appIsActive: false,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe('whenWindowRevealed', () => {
   test('resolves immediately when already visible', async () => {
@@ -221,5 +259,75 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     fileWin.emitShow();
     await p;
     expect(raised).toEqual(['/notes/todo.md']);
+  });
+});
+
+describe('raiseMostRecentlyFocusedAfterRestore — foreground decision', () => {
+  /** Run a two-window restore to completion, returning the raise's opts. */
+  async function runRestore(
+    shouldActivate?: () => boolean,
+  ): Promise<Array<{ key: string; activate: boolean }>> {
+    const { deps } = makeTimers();
+    const a = makeWindow();
+    const b = makeWindow();
+    const wins: Record<string, FakeWindow> = { '/a': a, '/b': b };
+    const calls: Array<{ key: string; activate: boolean }> = [];
+
+    const p = raiseMostRecentlyFocusedAfterRestore({
+      windowKeys: ['/a', '/b'],
+      getWindow: (key) => wins[key],
+      raise: (key, opts) => calls.push({ key, activate: opts.activate }),
+      shouldActivate,
+      deps,
+    });
+
+    await flush();
+    a.emitShow();
+    b.emitShow();
+    await p;
+    return calls;
+  }
+
+  test('activates when the predicate says the user is still here', async () => {
+    expect(await runRestore(() => true)).toEqual([{ key: '/b', activate: true }]);
+  });
+
+  test('declines to activate when the user has moved to another app', async () => {
+    // The reported bug: a restore that finishes after the user gave up waiting
+    // must not drag them back out of whatever they switched to.
+    expect(await runRestore(() => false)).toEqual([{ key: '/b', activate: false }]);
+  });
+
+  test('omitted predicate activates, preserving the previous behavior', async () => {
+    expect(await runRestore()).toEqual([{ key: '/b', activate: true }]);
+  });
+
+  test('reads the predicate after every reveal settles, not when the restore starts', async () => {
+    // This ordering is the whole point: a restore can run for many seconds, and
+    // the user leaving DURING it is exactly the case being fixed. Sampling the
+    // answer up front would activate anyway and reproduce the bug.
+    const { deps } = makeTimers();
+    const a = makeWindow();
+    const b = makeWindow();
+    const wins: Record<string, FakeWindow> = { '/a': a, '/b': b };
+    const calls: Array<{ key: string; activate: boolean }> = [];
+    let userPresent = true;
+
+    const p = raiseMostRecentlyFocusedAfterRestore({
+      windowKeys: ['/a', '/b'],
+      getWindow: (key) => wins[key],
+      raise: (key, opts) => calls.push({ key, activate: opts.activate }),
+      shouldActivate: () => userPresent,
+      deps,
+    });
+
+    await flush();
+    a.emitShow();
+    // The user walks away while the last window is still coming up.
+    userPresent = false;
+    b.emitShow();
+    await p;
+
+    expect(calls).toEqual([{ key: '/b', activate: false }]);
   });
 });

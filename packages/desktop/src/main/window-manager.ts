@@ -131,6 +131,16 @@ export interface BrowserWindowLike {
    * mocks omit it; `?.show()` callers no-op silently when missing.
    */
   show?(): void;
+  /**
+   * Display the OS-level window WITHOUT taking focus. On macOS a plain
+   * `show()` activates the whole app — it pulls OpenKnowledge in front of
+   * whatever the user switched to — whereas `showInactive()` reveals the
+   * window and leaves the foreground app alone. That difference is what keeps
+   * a multi-window session restore from yanking the user back once per
+   * window. Optional in the structural type because some test mocks omit it;
+   * callers fall back to `show()`.
+   */
+  showInactive?(): void;
   restore?(): void;
   isMinimized?(): boolean;
   /**
@@ -925,10 +935,20 @@ export class WindowManager {
    * canonicalization `createProjectWindow` applies — so a deep-link URL
    * carrying a realpath matches a window opened via a symlinked path.
    */
-  focusWindowForProject(projectPath: string): BrowserWindowLike | null {
+  focusWindowForProject(
+    projectPath: string,
+    opts?: { activate?: boolean },
+  ): BrowserWindowLike | null {
     const ctx = this.windowsByPath.get(this.canonicalizeKey(projectPath));
     if (!ctx) return null;
-    this.bringToFront(ctx.window);
+    // Same destroyed-window gate every other `bringToFront` caller applies. A
+    // map entry outlives its native window by the gap between `closed` firing
+    // and the utility `exit` that clears the entry, and calling into a
+    // destroyed BrowserWindow throws. Reporting it as "no window" sends deep
+    // links down their cold path, which is the right answer for one that is
+    // gone.
+    if (ctx.window.isDestroyed?.() === true) return null;
+    this.bringToFront(ctx.window, opts);
     return ctx.window;
   }
 
@@ -944,14 +964,32 @@ export class WindowManager {
    * already has it. Single source of truth for all focus-an-existing-window
    * paths (deep-link warm path + the createProjectWindow / ephemeral dedup
    * branches).
+   *
+   * `opts.activate: false` performs the same raise WITHOUT pulling the app to
+   * the foreground — for callers that want a window ordered correctly but must
+   * not take the user out of whatever app they are currently in (the
+   * post-restore raise, when the user walked away mid-restore). Measured on
+   * macOS: `show()` activates the app, while `showInactive()`, `moveTop()`,
+   * and `focus()` do not. So the non-activating path swaps the reveal and drops
+   * the app-level steal, but keeps `moveTop()` + `focus()` — the window still
+   * becomes the one OpenKnowledge surfaces when the user returns on their own.
    */
-  private bringToFront(win: BrowserWindowLike): void {
+  private bringToFront(win: BrowserWindowLike, opts?: { activate?: boolean }): void {
+    const activate = opts?.activate ?? true;
     if (win.isMinimized?.()) win.restore?.();
-    win.show?.();
+    if (activate) {
+      win.show?.();
+    } else if (win.isVisible?.() !== true) {
+      // Reveal a still-hidden window without foregrounding the app. `show()` is
+      // the fallback only when `showInactive` is absent (test mocks) — a
+      // window the caller asked for must never stay invisible.
+      if (win.showInactive !== undefined) win.showInactive();
+      else win.show?.();
+    }
     const alreadyFrontmost = win.isFocused?.() === true;
     win.moveTop?.();
     win.focus();
-    if (!alreadyFrontmost) this.deps.activateApp?.();
+    if (activate && !alreadyFrontmost) this.deps.activateApp?.();
   }
 
   /**

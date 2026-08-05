@@ -70,6 +70,11 @@ function makeWindow(opts?: { minimized?: boolean; focused?: boolean }): BrowserW
     show: vi.fn(() => {
       visible = true;
     }),
+    // Reveals like `show` but never foregrounds the app — the distinction the
+    // non-activating raise depends on.
+    showInactive: vi.fn(() => {
+      visible = true;
+    }),
     restore: vi.fn(() => {
       minimized = false;
     }),
@@ -2085,6 +2090,103 @@ describe('WindowManager.focusWindowForProject (M4 URL-scheme warm-start)', () =>
     expect(ctx.window.moveTop).toHaveBeenCalled();
     expect(ctx.window.focus).toHaveBeenCalled();
     expect(env.activateApp).toHaveBeenCalled();
+  });
+
+  test('reports a destroyed window as no window rather than calling into it', async () => {
+    // A map entry outlives its native window between `closed` and the utility
+    // `exit` that clears it. Surfacing that entry would throw; reporting "no
+    // window" instead sends a deep link down its cold path, which is correct
+    // for a window that is gone.
+    const w = makeWindow();
+    env.deps.createWindow = () => {
+      env.createWindowOpts.push({ additionalArguments: [], title: '' });
+      env.windows.push(w);
+      return w;
+    };
+    const wm = new WindowManager(env.deps);
+    const p = wm.createProjectWindow({ projectPath: '/tmp/gone-proj' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51223, apiOrigin: 'http://localhost:51223' });
+    await p;
+    w.markDestroyed();
+    w.focus.mockClear();
+    w.show.mockClear();
+
+    expect(wm.focusWindowForProject('/tmp/gone-proj')).toBeNull();
+    expect(w.focus).not.toHaveBeenCalled();
+    expect(w.show).not.toHaveBeenCalled();
+    expect(env.activateApp).not.toHaveBeenCalled();
+  });
+
+  test('activate:false raises without foregrounding the app', async () => {
+    // The post-restore raise when the user walked away mid-restore: order the
+    // window correctly inside OpenKnowledge, but leave whatever app they are
+    // actually using in front. `show()` would activate the app on macOS, so the
+    // reveal must go through `showInactive()` and the app-level steal must not
+    // fire at all.
+    const wm = new WindowManager(env.deps);
+    const p = wm.createProjectWindow({ projectPath: '/tmp/quiet-proj' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51220, apiOrigin: 'http://localhost:51220' });
+    const ctx = await p;
+    const win = ctx.window as unknown as ReturnType<typeof makeWindow>;
+    win.show.mockClear();
+    win.showInactive.mockClear();
+
+    wm.focusWindowForProject('/tmp/quiet-proj', { activate: false });
+
+    expect(env.activateApp).not.toHaveBeenCalled();
+    expect(win.show).not.toHaveBeenCalled();
+    // Asserted, not just described: the reveal is the whole point of the
+    // branch, so a regression that dropped it must fail here.
+    expect(win.showInactive).toHaveBeenCalledTimes(1);
+    // Still ordered + made key within the app, so returning to OpenKnowledge
+    // lands on this window rather than an arbitrary sibling.
+    expect(win.moveTop).toHaveBeenCalled();
+    expect(win.focus).toHaveBeenCalled();
+  });
+
+  test('activate:false leaves an already-visible window alone rather than re-revealing', async () => {
+    // Every restored window has already revealed by the time the raise runs, so
+    // the common case must not call a reveal primitive at all.
+    const w = makeWindow();
+    env.deps.createWindow = () => {
+      env.createWindowOpts.push({ additionalArguments: [], title: '' });
+      env.windows.push(w);
+      return w;
+    };
+    const wm = new WindowManager(env.deps);
+    const p = wm.createProjectWindow({ projectPath: '/tmp/visible-proj' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51221, apiOrigin: 'http://localhost:51221' });
+    await p;
+    w.show();
+    w.show.mockClear();
+    w.showInactive.mockClear();
+
+    wm.focusWindowForProject('/tmp/visible-proj', { activate: false });
+
+    expect(w.show).not.toHaveBeenCalled();
+    expect(w.showInactive).not.toHaveBeenCalled();
+    expect(env.activateApp).not.toHaveBeenCalled();
+  });
+
+  test('activate:false reveals a still-hidden window via showInactive', async () => {
+    const w = makeWindow();
+    env.deps.createWindow = () => {
+      env.createWindowOpts.push({ additionalArguments: [], title: '' });
+      env.windows.push(w);
+      return w;
+    };
+    const wm = new WindowManager(env.deps);
+    const p = wm.createProjectWindow({ projectPath: '/tmp/hidden-proj' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51222, apiOrigin: 'http://localhost:51222' });
+    await p;
+    w.show.mockClear();
+    w.showInactive.mockClear();
+
+    wm.focusWindowForProject('/tmp/hidden-proj', { activate: false });
+
+    expect(w.showInactive).toHaveBeenCalled();
+    expect(w.show).not.toHaveBeenCalled();
+    expect(env.activateApp).not.toHaveBeenCalled();
   });
 
   test('skips the app-level focus steal when the window is already frontmost', async () => {
