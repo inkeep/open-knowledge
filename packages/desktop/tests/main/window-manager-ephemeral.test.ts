@@ -330,6 +330,42 @@ describe('createEphemeralWindow', () => {
     expect(env.windows).toHaveLength(0);
   });
 
+  // This path SIGTERMs the orphan and then awaits `removeDir` before throwing.
+  // The child therefore dies, and its exit record lands, inside that await. If
+  // the error consulted the exit record at throw time it would report our own
+  // kill as the child's failure — a merely-slow start described as "killed by
+  // SIGTERM", with the deadline dropped from the message entirely.
+  test('a slow child killed by our own SIGTERM is not reported as having crashed', async () => {
+    env.publishLock = false; // server never publishes its lock
+    env.deps.spawnLockPollDeadlineMs = 0; // deadline already elapsed, child still alive
+
+    // The exit record appears only once WE signal, mirroring production where
+    // the 'exit' listener fires during the removeDir await.
+    let exitRecord: { code: number | null; signal: string | null } | null = null;
+    const recordingKill = env.deps.killProbe;
+    env.deps.killProbe = (pid, signal) => {
+      recordingKill(pid, signal);
+      if (signal === 'SIGTERM') exitRecord = { code: null, signal: 'SIGTERM' };
+    };
+    env.deps.spawnDetachedServer = async () => ({ pid: 42001, readExit: () => exitRecord });
+
+    const wm = new WindowManager(env.deps);
+    const err = await wm
+      .createEphemeralWindow({ canonicalFilePath: FILE, contentDir: PARENT, docName: 'todo' })
+      .then(
+        () => null,
+        (e: unknown) => e as Error,
+      );
+
+    // Reported as what it was: a deadline reached with the process alive.
+    expect(err?.message).toMatch(/did not bind a port/);
+    expect(err?.message).not.toMatch(/killed by SIGTERM/);
+    expect(err?.message).not.toMatch(/exited before binding/);
+    // The orphan is still signalled and the temp dir still cleaned up.
+    expect(env.killCalls).toContainEqual({ pid: 42001, signal: 'SIGTERM' });
+    expect(env.removedDirs).toEqual(['/tmp/ok-ephemeral-1']);
+  });
+
   test('a spawn failure removes the temp dir before rethrowing (no leak)', async () => {
     env.deps.spawnDetachedServer = async () => {
       throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });

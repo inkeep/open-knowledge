@@ -1,3 +1,4 @@
+
 const MARKDOWNLINT_JSON_CONFIG_FILES: ReadonlySet<string> = new Set([
   '.markdownlint.json',
   '.markdownlint.jsonc',

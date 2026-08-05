@@ -191,4 +191,70 @@ describe('detached-server lifecycle integration', () => {
       }
     }
   }, 60_000);
+
+  /**
+   * Pins the Node-level assumption the spawn-failure reporting rests on.
+   *
+   * `spawnDetachedServer` reports a child's exit code/signal by attaching an
+   * `'exit'` listener and then calling `.unref()`. That is only sound if
+   * `unref()` releases the event-loop reference WITHOUT detaching listeners —
+   * true, but a semantic that is easy to regress by reordering the two calls,
+   * and not something reading the code can confirm. A real detached child is
+   * the only way to check it.
+   *
+   * Without this, a reordering would silently restore the original defect: the
+   * parent again learns nothing about how the child died.
+   */
+  test('an unref-ed detached child still reports its exit code and signal', async () => {
+    async function captureExit(
+      args: string[],
+    ): Promise<{ code: number | null; signal: string | null }> {
+      const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore' });
+      await new Promise<void>((res, rej) => {
+        child.once('spawn', res);
+        child.once('error', rej);
+      });
+
+      // Same order as production: listener first, then unref.
+      let exitRecord: { code: number | null; signal: string | null } | null = null;
+      child.on('exit', (code, signal) => {
+        exitRecord = { code, signal };
+      });
+      child.unref();
+
+      const deadline = Date.now() + 10_000;
+      while (exitRecord === null && Date.now() < deadline) {
+        await wait(25);
+      }
+      if (exitRecord === null) throw new Error('child exit was never observed');
+      return exitRecord;
+    }
+
+    expect(await captureExit(['-e', 'process.exit(3)'])).toEqual({ code: 3, signal: null });
+  }, 30_000);
+
+  test('a signal-killed detached child reports the signal, not an exit code', async () => {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    await new Promise<void>((res, rej) => {
+      child.once('spawn', res);
+      child.once('error', rej);
+    });
+
+    let exitRecord: { code: number | null; signal: string | null } | null = null;
+    child.on('exit', (code, signal) => {
+      exitRecord = { code, signal };
+    });
+    child.unref();
+
+    process.kill(child.pid as number, 'SIGKILL');
+
+    const deadline = Date.now() + 10_000;
+    while (exitRecord === null && Date.now() < deadline) {
+      await wait(25);
+    }
+    expect(exitRecord).toEqual({ code: null, signal: 'SIGKILL' });
+  }, 30_000);
 });

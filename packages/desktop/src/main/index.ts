@@ -1605,6 +1605,21 @@ function ensureWindowManager() {
                 // Best-effort.
               }
             }
+            // Observe how the child dies. Exit code + signal are the only
+            // failure evidence always available to the parent: a child can die
+            // having written nothing to the capture log (killed by a signal,
+            // or reporting on stdout, which is not captured), and without this
+            // the caller cannot tell "still starting" from "died 200ms ago".
+            // Retaining a listener also keeps Node reaping the child rather
+            // than leaving it defunct in the process table.
+            //
+            // Order matters: registered before `unref()` so an exit in the
+            // handshake window is not missed. `unref()` releases the
+            // event-loop reference only; it does not detach listeners.
+            let exitRecord: { code: number | null; signal: string | null } | null = null;
+            childRef.on('exit', (code, signal) => {
+              exitRecord = { code, signal };
+            });
             childRef.unref();
             const pid = childRef.pid;
             if (pid === undefined) {
@@ -1613,7 +1628,7 @@ function ensureWindowManager() {
                 'spawnDetachedServer: child_process.spawn did not return a pid after spawn-event resolution.',
               );
             }
-            return { pid };
+            return { pid, readExit: () => exitRecord };
           },
         }
       : {}),

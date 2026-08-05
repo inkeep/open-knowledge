@@ -500,6 +500,20 @@ export interface WindowManagerDeps {
     projectDir?: string;
   }): Promise<{
     pid: number;
+    /**
+     * How the child died, or `null` while it is still running.
+     *
+     * The parent has no other channel for a reason. `stdio` captures the
+     * child's output to `SPAWN_ERROR_LOG`, but a child can exit having written
+     * nothing there — a failure reported on stdout, or a signal death — which
+     * leaves the operator with a bare deadline and no way to tell a fast crash
+     * from a slow start. Exit code + signal are the two facts always available
+     * to the parent, so they must not be dropped.
+     *
+     * Optional: callers that spawn without observing exit (and every existing
+     * test stub) stay valid, and the poll degrades to the deadline.
+     */
+    readExit?: () => { code: number | null; signal: string | null } | null;
   }>;
   /**
    * Create the throwaway `projectDir` for an ephemeral single-file session
@@ -1689,8 +1703,15 @@ export class WindowManager {
       });
       this.spawnedDetachedPids.set(canonicalKey, handle.pid);
       const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? 15_000;
-      const lock = await this.pollServerLock(lockDir, POLL_DEADLINE_MS);
+      const lock = await this.pollServerLock(lockDir, POLL_DEADLINE_MS, handle);
       if (lock === null) {
+        // Both sampled BEFORE the SIGTERM below — afterwards they would be
+        // observing our own kill and would report a merely-slow child as
+        // having crashed. `childExited` is `undefined` when there is no probe.
+        const childExited = this.deps.isProcessAlive
+          ? !this.deps.isProcessAlive(handle.pid)
+          : undefined;
+        const childExit = handle.readExit?.() ?? null;
         // The detached spawn is `.unref()`ed, so a server that started but
         // failed to bind a port (or stalled before writing its lock) will
         // continue running as an orphan after we throw. Idle-shutdown may
@@ -1718,31 +1739,16 @@ export class WindowManager {
           }
         }
         this.spawnedDetachedPids.delete(canonicalKey);
-        // Read the spawned child's stderr capture so the surfaced error
-        // points at the actual failure (port-bind error, missing native
-        // dep, bootServer init throw) instead of leaving the user with a
-        // generic 15-second timeout. Bound the tail so a runaway log
-        // doesn't blow up the error envelope. Best-effort: missing log
-        // file just falls through with no `stderrTail`.
-        const STDERR_TAIL_BYTES = 8192;
-        let stderrTail: string | undefined;
-        try {
-          const raw = readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8');
-          stderrTail = raw.length > STDERR_TAIL_BYTES ? `…${raw.slice(-STDERR_TAIL_BYTES)}` : raw;
-        } catch {
-          // Best-effort: the spawn might have died before opening the fd.
-        }
-        const messageBase = `OpenKnowledge server did not bind a port within ${POLL_DEADLINE_MS}ms after spawn (pid=${handle.pid}).`;
-        const err = Object.assign(
-          new Error(stderrTail ? `${messageBase}\n--- stderr ---\n${stderrTail}` : messageBase),
-          {
-            name: 'SpawnLockTimeoutError' as const,
-            kind: 'spawn-lock-timeout' as const,
-            pid: handle.pid,
-            ...(stderrTail !== undefined && { stderrTail }),
-          },
-        );
-        throw err;
+        // Surface the child's own account of the failure (exit code/signal,
+        // plus its captured stderr) rather than only the deadline.
+        throw this.buildSpawnFailureError({
+          pid: handle.pid,
+          exit: childExit,
+          lockDir,
+          deadlineMs: POLL_DEADLINE_MS,
+          spawnLabel: 'spawn',
+          childExited,
+        });
       }
       this.deps.log?.info(
         { event: 'desktop-server-spawned-detached', pid: handle.pid, port: lock.port, lockDir },
@@ -2145,7 +2151,10 @@ export class WindowManager {
     const lockDir = getLocalDir(tempProjectDir);
 
     const reactShellDistDir = dirname(this.deps.rendererEntryPath);
-    let handle: { pid: number };
+    // Derived from the dep rather than hand-written, so the handle keeps every
+    // field the spawn actually returns (the exit record among them) instead of
+    // being silently narrowed away by a stale local annotation.
+    let handle: Awaited<ReturnType<NonNullable<WindowManagerDeps['spawnDetachedServer']>>>;
     try {
       handle = await spawnDetachedServer({
         contentDir: opts.contentDir,
@@ -2161,8 +2170,15 @@ export class WindowManager {
     }
 
     const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? 15_000;
-    const lock = await this.pollServerLock(lockDir, POLL_DEADLINE_MS);
+    const lock = await this.pollServerLock(lockDir, POLL_DEADLINE_MS, handle);
     if (lock === null) {
+      // Both sampled BEFORE the SIGTERM below — see the project-open path.
+      // This path additionally awaits `removeDir` before throwing, so a
+      // re-read after the kill would very likely observe it.
+      const childExited = this.deps.isProcessAlive
+        ? !this.deps.isProcessAlive(handle.pid)
+        : undefined;
+      const childExit = handle.readExit?.() ?? null;
       // Server never bound — SIGTERM the orphan (the spawn is `.unref()`ed, so a
       // half-started server would otherwise leak), remove the temp dir, and
       // surface the captured stderr (same shape as the project spawn-timeout).
@@ -2183,24 +2199,14 @@ export class WindowManager {
         }
       }
       await removeDir(tempProjectDir).catch(() => {});
-      const STDERR_TAIL_BYTES = 8192;
-      let stderrTail: string | undefined;
-      try {
-        const raw = readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8');
-        stderrTail = raw.length > STDERR_TAIL_BYTES ? `…${raw.slice(-STDERR_TAIL_BYTES)}` : raw;
-      } catch {
-        // Best-effort: the spawn might have died before opening the fd.
-      }
-      const messageBase = `OpenKnowledge server did not bind a port within ${POLL_DEADLINE_MS}ms after ephemeral spawn (pid=${handle.pid}).`;
-      throw Object.assign(
-        new Error(stderrTail ? `${messageBase}\n--- stderr ---\n${stderrTail}` : messageBase),
-        {
-          name: 'SpawnLockTimeoutError' as const,
-          kind: 'spawn-lock-timeout' as const,
-          pid: handle.pid,
-          ...(stderrTail !== undefined && { stderrTail }),
-        },
-      );
+      throw this.buildSpawnFailureError({
+        pid: handle.pid,
+        exit: childExit,
+        lockDir,
+        deadlineMs: POLL_DEADLINE_MS,
+        spawnLabel: 'ephemeral spawn',
+        childExited,
+      });
     }
 
     const port = lock.port;
@@ -2371,17 +2377,106 @@ export class WindowManager {
   }
 
   /**
-   * Poll `<lockDir>/server.lock` until a valid lock appears with `port > 0`
-   * and a known `kind`, or until `deadlineMs` elapses. Used by the detached-
-   * spawn path to wait for the freshly-spawned CLI to bind a port and write
-   * its lock atomically (the lock writer in `bootServer` only flips port from
-   * `0` to the bound port after `httpServer.listen` resolves, so seeing
-   * `port > 0` is the readiness signal).
+   * Build the error for a detached spawn that never produced a usable lock.
    *
-   * Returns the parsed lock metadata on success, or `null` on timeout. When
-   * `readServerLock` is not wired in `deps` (back-compat with tests that
-   * don't exercise the detached path), returns `null` immediately — the
-   * caller propagates that as a spawn-failure error.
+   * Two distinct failures reach here and they need different framings. A child
+   * that is still running simply missed the deadline — the deadline is the
+   * story. A child that has already exited did not "take too long"; it died,
+   * and reporting a 15-second timeout for a crash that happened in 200 ms sends
+   * the reader looking for a slow start that never occurred. That
+   * misdescription is the reported defect, so the framing is chosen from
+   * observed liveness rather than fixed.
+   *
+   * Takes the child's state as already-observed values rather than probing for
+   * it, because BOTH facts must be sampled at one instant: the moment the poll
+   * gave up, before the orphan SIGTERM. Re-reading either one here would let
+   * our own kill land in between and be reported as the child's failure — a
+   * merely-slow child described as `killed by SIGTERM`.
+   *
+   * `childExited: undefined` means liveness was never probed (no
+   * `isProcessAlive` wired), which is distinct from "probed and alive": the
+   * message may only claim the process was running when that was observed.
+   */
+  private buildSpawnFailureError(opts: {
+    pid: number;
+    exit: { code: number | null; signal: string | null } | null;
+    lockDir: string;
+    deadlineMs: number;
+    spawnLabel: string;
+    childExited: boolean | undefined;
+  }): Error {
+    const { pid, exit, lockDir, deadlineMs, spawnLabel, childExited } = opts;
+    // Bound the tail so a runaway log doesn't blow up the error envelope.
+    // Best-effort: a missing log file just falls through with no `stderrTail`.
+    const STDERR_TAIL_BYTES = 8192;
+    let stderrTail: string | undefined;
+    try {
+      const raw = readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8');
+      stderrTail = raw.length > STDERR_TAIL_BYTES ? `…${raw.slice(-STDERR_TAIL_BYTES)}` : raw;
+    } catch (readErr) {
+      // An absent log is expected — the child can die before opening the fd.
+      // Anything else (permissions, a bad path) would otherwise vanish here and
+      // leave the failure report silently thinner than it should be, on the one
+      // path whose entire job is explaining a failure.
+      const code = (readErr as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+        this.deps.log?.warn(
+          { event: 'desktop-spawn-error-log-read-failed', err: readErr, code, lockDir },
+          '[window-manager] could not read the spawn error log',
+        );
+      }
+    }
+
+    const exited = exit !== null || childExited === true;
+
+    let messageBase: string;
+    if (exited) {
+      const reason =
+        exit === null
+          ? ''
+          : exit.signal !== null
+            ? `, killed by ${exit.signal}`
+            : exit.code !== null
+              ? `, exit code ${exit.code}`
+              : '';
+      messageBase = `OpenKnowledge server exited before binding a port (pid=${pid}${reason}).`;
+    } else {
+      // A crash and a hung start otherwise render as the same bare deadline,
+      // leaving no way to tell which happened. Saying the process was still
+      // running names this as the slow/stuck case — but only when liveness was
+      // actually observed, never as an assumption.
+      const liveness = childExited === false ? ', still running' : '';
+      messageBase = `OpenKnowledge server did not bind a port within ${deadlineMs}ms after ${spawnLabel} (pid=${pid}${liveness}).`;
+    }
+
+    return Object.assign(
+      new Error(stderrTail ? `${messageBase}\n--- stderr ---\n${stderrTail}` : messageBase),
+      {
+        name: 'SpawnLockTimeoutError' as const,
+        // Discriminant held stable across both framings — `index.ts` branches
+        // on it, and the distinction between the two lives in the exit fields.
+        kind: 'spawn-lock-timeout' as const,
+        pid,
+        ...(exit !== null && { exitCode: exit.code, exitSignal: exit.signal }),
+        ...(stderrTail !== undefined && { stderrTail }),
+      },
+    );
+  }
+
+  /**
+   * Poll `<lockDir>/server.lock` until a valid lock appears with `port > 0`
+   * and a known `kind`, or until `deadlineMs` elapses — or, when `child` is
+   * supplied, until that child is observed to have exited (a dead child will
+   * never publish a lock, so the rest of the deadline is dead time). Used by
+   * the detached-spawn path to wait for the freshly-spawned CLI to bind a port
+   * and write its lock atomically (the lock writer in `bootServer` only flips
+   * port from `0` to the bound port after `httpServer.listen` resolves, so
+   * seeing `port > 0` is the readiness signal).
+   *
+   * Returns the parsed lock metadata on success, or `null` on timeout or child
+   * death. When `readServerLock` is not wired in `deps` (back-compat with
+   * tests that don't exercise the detached path), returns `null` immediately —
+   * the caller propagates that as a spawn-failure error.
    *
    * Polling cadence: 50 ms. Uses `deps.setTimeout` so test injections that
    * fire the timer synchronously make the loop deterministic.
@@ -2389,10 +2484,12 @@ export class WindowManager {
   private async pollServerLock(
     lockDir: string,
     deadlineMs: number,
+    child?: { pid: number },
   ): Promise<ServerLockMetadataLike | null> {
     const POLL_INTERVAL_MS = 50;
     const reader = this.deps.readServerLock;
     if (!reader) return null;
+    const isAlive = this.deps.isProcessAlive;
     const deadline = Date.now() + deadlineMs;
     while (Date.now() < deadline) {
       const lock = reader(lockDir);
@@ -2401,6 +2498,25 @@ export class WindowManager {
       // (non-draining) lock appears.
       if (lock !== null && lock.draining !== true && lock.port > 0 && lock.kind !== undefined) {
         return lock;
+      }
+      // Liveness, not wall-clock, ends the wait once the child is gone: a dead
+      // child will never publish a lock, so the rest of the deadline is dead
+      // time, and spending it reframes a fast crash as a slow start.
+      //
+      // Checked AFTER the lock read — a child that bound and then exited still
+      // leaves a usable lock, and that read must win.
+      //
+      // The exception is load-bearing: the lock is keyed by PROJECT, not by
+      // process. When a concurrent starter wins the acquire, our child exits
+      // BY DESIGN (a lock collision) while the winner is still on its way to
+      // binding — the documented `port=0`-but-not-yet-bound window. Bailing on
+      // our child's death would then report a failure that another process is
+      // about to resolve. A non-draining lock held by a different, live pid is
+      // exactly that signal, so keep waiting for the winner to publish a port.
+      if (child !== undefined && isAlive !== undefined && !isAlive(child.pid)) {
+        const winnerStillStarting =
+          lock !== null && lock.draining !== true && lock.pid !== child.pid && isAlive(lock.pid);
+        if (!winnerStillStarting) return null;
       }
       await new Promise<void>((resolveSleep) => {
         this.deps.setTimeout(() => {

@@ -1536,6 +1536,194 @@ describe('WindowManager', () => {
         expect(pids.size).toBe(0);
       });
 
+      // A hung start and a crash otherwise render as the same bare deadline.
+      // Naming the surviving process is what lets the reader tell them apart.
+      test('a deadline reached with the child alive says the process was still running', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/slow-child' }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).toMatch(/did not bind a port/);
+        expect(err?.message).toMatch(/still running/);
+      });
+
+      // Never claim liveness that was not observed: with no probe wired, the
+      // message must stay agnostic rather than assert a state we cannot see.
+      test('with no liveness probe wired the message claims nothing about the process', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = undefined;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/unprobed' }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).toMatch(/did not bind a port/);
+        expect(err?.message).not.toMatch(/still running/);
+        expect(err?.message).not.toMatch(/exited before binding/);
+      });
+
+      // The sibling case to the test above: there, the child is ALIVE and
+      // simply never binds, so waiting out the deadline is the correct
+      // behavior. Here the child is DEAD. Waiting is then pure dead time, and
+      // the deadline framing ("did not bind a port within 15000ms") actively
+      // misdescribes a fast crash as a slow start.
+      test('a dead child ends the lock poll immediately instead of waiting out the deadline', async () => {
+        enableSyncTimers();
+        let readCount = 0;
+        env.deps.readServerLock = () => {
+          readCount++;
+          return null;
+        };
+        // Child exited between spawn and the first poll tick.
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        // A realistic deadline. The poll must NOT consume it: liveness, not
+        // wall-clock, is what ends the wait once the child is gone.
+        env.deps.spawnLockPollDeadlineMs = 500;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/dead-child' }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err).toMatchObject({ pid: 88001 });
+        // Framed as a death, not as a deadline — reporting "did not bind within
+        // 500ms" for a child that died immediately is the original defect.
+        expect(err?.message).toMatch(/exited before binding a port/);
+        expect(err?.message).not.toMatch(/did not bind a port/);
+
+        // Bounded, not exhaustive. Spinning the full 500ms window produces
+        // reads in the thousands; noticing the death costs a handful.
+        expect(readCount).toBeLessThanOrEqual(3);
+      });
+
+      // The lock is keyed by project, not by process. A concurrent starter that
+      // wins the acquire makes OUR child exit by design, while the winner is
+      // still mid-bind (lock present, port still 0). Treating our child's death
+      // as "no lock is coming" would report a failure another process is about
+      // to resolve — the project would fail to open where it previously did.
+      test('a losing child does not abort the wait while a live winner is still binding', async () => {
+        enableSyncTimers();
+        const WINNER_PID = 77001;
+        const winnerLock = (port: number): ServerLockMetadataLike => ({
+          pid: WINNER_PID,
+          hostname: 'my-host',
+          port,
+          startedAt: '2026-08-05T00:00:00.000Z',
+          worktreeRoot: '/tmp/contended',
+          kind: 'interactive',
+          capabilities: ['ws'],
+        });
+
+        // Winner holds the lock at port 0 (acquired, not yet bound), then binds.
+        let reads = 0;
+        env.deps.readServerLock = () => {
+          reads++;
+          if (reads === 1) return null; // pre-spawn attach gate: nothing usable yet
+          if (reads < 4) return winnerLock(0); // winner acquired, still binding
+          return winnerLock(52999); // winner bound
+        };
+        // Our spawned child lost the acquire and exited; the winner is alive.
+        env.deps.isProcessAlive = (pid) => pid === WINNER_PID;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 500;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/contended' });
+
+        // Attached to the winner rather than erroring on our child's death.
+        expect(ctx.port).toBe(52999);
+        expect(env.windows.length).toBe(1);
+      });
+
+      test('a child that exits before binding surfaces its exit code and signal', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        // The spawn handle reports how the child died. `readExit` returns null
+        // while it is still running and the exit record once it has exited —
+        // the parent's only channel for a reason, since stdout/stderr may be
+        // empty (the reported failure had an empty capture log).
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({
+            pid: 88001,
+            readExit: () => ({ code: 1, signal: null }),
+          });
+        env.deps.spawnLockPollDeadlineMs = 500;
+
+        const wm = new WindowManager(env.deps);
+        await expect(
+          wm.createProjectWindow({ projectPath: '/tmp/exited-child' }),
+        ).rejects.toMatchObject({ pid: 88001, exitCode: 1, exitSignal: null });
+      });
+
+      test('a signal-killed child surfaces the signal in its error message', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({
+            pid: 88001,
+            readExit: () => ({ code: null, signal: 'SIGKILL' }),
+          });
+        env.deps.spawnLockPollDeadlineMs = 500;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/killed-child' }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        // The reason belongs in the message, not only in a structured field —
+        // this string is what reaches the user in the "Unable to open project"
+        // dialog, and a bare deadline there is the reported complaint.
+        expect(err?.message).toMatch(/SIGKILL/);
+      });
+
+      // Degradation guard: a handle with no exit record (child still running,
+      // or a caller that predates `readExit`) must still produce the ordinary
+      // timeout rather than throwing on an absent accessor.
+      test('an unavailable exit record still yields the ordinary timeout error', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001, readExit: () => null });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        await expect(
+          wm.createProjectWindow({ projectPath: '/tmp/still-running' }),
+        ).rejects.toMatchObject({ kind: 'spawn-lock-timeout', pid: 88001 });
+      });
+
       test('detached-mode window close: no shutdown IPC, no spawn pid removal', async () => {
         enableSyncTimers();
         // Same attach-then-spawn split as the previous test: first read no
