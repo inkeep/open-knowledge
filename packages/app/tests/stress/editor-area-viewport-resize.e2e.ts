@@ -290,3 +290,48 @@ test.describe('editor-area viewport resize — editor mount stability', () => {
     ).toBe(true);
   });
 });
+
+/**
+ * Pane-wrapper fill contract.
+ *
+ * `WorkspacePane` mounts every pane surface inside one wrapper div. Surfaces that
+ * size with `flex-1` (the empty state, the unfocused folder overview) only fill the
+ * pane if that wrapper establishes a flex column — a plain block parent leaves their
+ * `flex-1` inert and collapses them to content height. The contract lived only in a
+ * comment, and the wrapper's `display` has already regressed once.
+ *
+ * Asserts the observable (the surface fills its wrapper), not the markup, so it
+ * fails for any change that breaks the height chain, not only a `display` edit.
+ */
+test.describe('pane wrapper fill contract', () => {
+  test('empty-state root fills the pane wrapper', async ({ page }) => {
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await page.goto('/');
+    // No doc open -> EmptyEditorState, whose root sizes with `flex-1`.
+    await expect(page.getByText('Create something great.')).toBeVisible();
+
+    const panes = await page.evaluate(() =>
+      [...document.querySelectorAll('section[data-editor-pane-id]')].flatMap((pane) => {
+        const wrapper = pane.firstElementChild;
+        const root = wrapper?.firstElementChild;
+        if (!wrapper || !root) return [];
+        return [
+          {
+            paneId: pane.getAttribute('data-editor-pane-id') ?? '',
+            wrapperHeight: Math.round(wrapper.getBoundingClientRect().height),
+            rootHeight: Math.round(root.getBoundingClientRect().height),
+          },
+        ];
+      }),
+    );
+
+    expect(panes.length).toBeGreaterThan(0);
+    for (const pane of panes) {
+      expect(pane.wrapperHeight).toBeGreaterThan(0);
+      expect(
+        pane.rootHeight,
+        `pane ${pane.paneId}: empty-state root must fill its wrapper (the wrapper must establish a flex column)`,
+      ).toBe(pane.wrapperHeight);
+    }
+  });
+});

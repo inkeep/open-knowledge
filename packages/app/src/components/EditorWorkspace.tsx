@@ -311,7 +311,12 @@ function WorkspacePane({
       onPointerDownCapture={() => focusPane(pane.id)}
       onFocusCapture={() => focusPane(pane.id)}
     >
-      <div className="relative min-h-0 flex-1">
+      {/* Flex column, not a plain block: surfaces mounted here fill the pane via
+          `flex-1` and position their content against that height — the empty
+          state (`my-auto` / `justify-center` / `justify-end`) and the folder
+          overview's scroll region. A block parent leaves their `flex-1` inert,
+          collapsing them to content height pinned at the top. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {renderPane({
           pane,
           isFocused,
