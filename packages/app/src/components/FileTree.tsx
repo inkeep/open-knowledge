@@ -3430,6 +3430,14 @@ export function FileTree({
       }
       return;
     }
+    // The pinned folder-header overlay renders a second element for the same
+    // row: it carries `data-item-path` but no `aria-selected`, so the folder
+    // branch below would read every click on it as a first click and re-expand
+    // instead of collapsing. Pierre's own sticky click handling collapses the
+    // folder and scrolls the canonical row back into view, which is the whole
+    // gesture, so stay out of its way.
+    if (item.dataset.fileTreeStickyRow === 'true') return;
+
     const wasSelected = item.getAttribute('aria-selected') === 'true';
 
     const rawPath = item.dataset.itemPath;

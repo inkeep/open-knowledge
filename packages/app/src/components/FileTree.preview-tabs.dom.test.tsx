@@ -269,6 +269,17 @@ vi.doMock('@pierre/trees/react', () => ({
       >
         docs/
       </div>
+      {/* Pierre's pinned folder header: same row, no role and no aria-selected. */}
+      <div
+        data-testid="sticky-docs"
+        data-item-path="docs/"
+        data-item-type="folder"
+        data-file-tree-sticky-row="true"
+        data-file-tree-sticky-path="docs/"
+        tabIndex={-1}
+      >
+        docs/
+      </div>
     </div>
   ),
 }));
@@ -327,5 +338,21 @@ describe('FileTree preview-tab activation', () => {
     );
     expect(window.location.hash).toBe('#/docs/');
     expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('leaves a click on a pinned folder header to the tree, so it collapses instead of reopening', async () => {
+    render(<FileTree />);
+
+    await screen.findByTestId('fake-pierre-tree');
+    await waitFor(() => expect(model.getItem('docs/')).not.toBeNull());
+
+    fireEvent.click(screen.getByTestId('sticky-docs'));
+
+    // The pre-fix path reached navigation through `queueMicrotask`, so one
+    // flush is all it takes to catch it. A `waitFor` would pass on its first
+    // synchronous check and prove nothing.
+    await Promise.resolve();
+    expect(openTargetMock).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('');
   });
 });
