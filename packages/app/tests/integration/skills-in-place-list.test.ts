@@ -566,6 +566,77 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(((await noop.json()) as { sourceMovedTo?: string }).sourceMovedTo).toBeUndefined();
   });
 
+  test('setSource flattens a recorded placement link that chained through the new source', async () => {
+    const { dirname, isAbsolute, resolve } = await import('node:path');
+    const { readlinkSync } = await import('node:fs');
+    // .claude is the source; .codex a copy; a recorded placement LINKS to
+    // .claude. Promoting .codex leaves .claude a link to it, so the placement
+    // resolves to the real dir only by chaining through .claude.
+    expect((await install(['claude', 'codex'])).status).toBe(200);
+    const placed = await fetch(`${base()}/api/skill/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'fanout',
+        scope: 'project',
+        place: { dir: '.windsurf/skills', mode: 'link' },
+      }),
+    });
+    expect(placed.status).toBe(200);
+    const promoted = await fetch(`${base()}/api/skill/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'fanout', scope: 'project', setSource: 'codex' }),
+    });
+    expect(promoted.status).toBe(200);
+    // The ledger sweep claims chains through the new source exactly as the
+    // host-slot sweep does: ONE hop to the real dir, not two through .claude.
+    const link = join(contentDir, '.windsurf/skills/fanout');
+    const oneHop = resolve(dirname(link), readlinkSync(link));
+    expect(oneHop).toBe(join(contentDir, '.codex/skills/fanout'));
+    // `resolve(dirname, readlink)` normalizes a relative and an absolute target
+    // to the same path, so pin the FORM separately: every target this call site
+    // can produce is inside the project, which is the relative branch of
+    // `skillLinkTarget`. The absolute branch is unreachable from here.
+    expect(isAbsolute(readlinkSync(link))).toBe(false);
+  });
+
+  test('setSource does not re-point sibling host links the relocation sweep already owns', async () => {
+    const { dirname, resolve } = await import('node:path');
+    const { readlinkSync, lstatSync } = await import('node:fs');
+    // The placement ledger records host slots too, so the ledger sweep's slot
+    // list overlaps the relocation sweep's. Excluding the host-owned ones must
+    // not leave any sibling stale: after the promote every non-source host link
+    // still resolves in ONE hop to the new real dir.
+    expect(
+      (
+        await fetch(`${base()}/api/skill/install`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'fanout',
+            scope: 'project',
+            targets: ['claude', 'codex', 'cursor'],
+            linkMode: true,
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    const promoted = await fetch(`${base()}/api/skill/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'fanout', scope: 'project', setSource: 'codex' }),
+    });
+    expect(promoted.status).toBe(200);
+    const dest = join(contentDir, '.codex/skills/fanout');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+    for (const sib of ['.claude/skills/fanout', '.cursor/skills/fanout']) {
+      const abs = join(contentDir, sib);
+      expect(lstatSync(abs).isSymbolicLink()).toBe(true);
+      expect(resolve(dirname(abs), readlinkSync(abs))).toBe(dest);
+    }
+  });
+
   test('placing a skill at the location it already occupies is a no-op success', async () => {
     // Imports land IN-PLACE at the `.agents/skills` hub, so asking to place a
     // freshly imported skill there names its own canonical dir. That used to

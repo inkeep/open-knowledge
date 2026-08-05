@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   applyPatchToFm,
@@ -38,9 +38,11 @@ import {
 } from '../skill-placements.ts';
 import {
   classifyInPlaceDest,
+  hostSlotPaths,
   projectInPlaceSkill,
   relocateInPlaceCanonical,
   removeInPlaceSkillCopies,
+  repointSiblingLinks,
   skillProjectionRoots,
 } from '../skill-projection.ts';
 
@@ -453,26 +455,31 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           mode: 'link',
         });
         // Re-point recorded placement SYMLINKS that referenced the old
-        // source (the relocation loop only covers host dirs).
-        for (const p of readSkillPlacements(ledgerBase)[name] ?? []) {
-          const abs = resolve(ledgerBase, p.path);
-          if (abs === moved.newAbs) continue;
-          try {
-            if (!lstatSync(abs).isSymbolicLink()) continue;
-          } catch {
-            continue;
-          }
-          let target: string | null = null;
-          try {
-            target = realpathSync(abs);
-          } catch {
-            target = null; // dangling (pointed at the moved-away dir)
-          }
-          if (target === null || target === resolve(skillDir)) {
-            tracedRmSync(abs, { recursive: true, force: true });
-            tracedSymlinkSync(relative(dirname(abs), moved.newAbs), abs, 'dir');
-          }
-        }
+        // source: `relocateInPlaceCanonical`'s own sweep only walks host dirs,
+        // so the ledger is a second slot source over the same relocation. Both
+        // run the shared spine with the same claim + skip sets, because two
+        // sweeps of one relocation disagreeing is how a link or a directory the
+        // other was written to preserve gets deleted.
+        //
+        // The ledger records host slots too, so the two slot sources OVERLAP.
+        // Excluding the host-owned ones is what keeps a sibling host link from
+        // being unlinked and rebuilt here microseconds after the host sweep
+        // wrote it correctly -- byte-identical, tree-invisible, and exactly the
+        // scar `skip` exists to avoid on the slots this sweep does own.
+        const hostOwned = new Set(
+          hostSlotPaths(base, name, skillProjectionRoots(scope)).map((p) => resolve(p)),
+        );
+        repointSiblingLinks({
+          name,
+          cwd: base,
+          roots: skillProjectionRoots(scope),
+          target: moved.newAbs,
+          slots: (readSkillPlacements(ledgerBase)[name] ?? [])
+            .map((pl) => resolve(ledgerBase, pl.path))
+            .filter((abs) => !hostOwned.has(abs)),
+          skip: [moved.newAbs, resolve(skillDir)],
+          alsoClaim: [resolve(skillDir), moved.newAbs],
+        });
         // The promoted path is now the REAL dir — refresh its receipt to
         // the promoted form (hash-less copy: no drift, resync skips it,
         // and a custom root stays registered with the scan). A leftover

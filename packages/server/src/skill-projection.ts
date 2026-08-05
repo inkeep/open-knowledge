@@ -616,18 +616,31 @@ const ALL_TARGET_HOSTS: readonly SkillHostId[] = [
 ];
 
 /**
+ * The host-dir slots for `name` — the slots {@link repointSiblingLinks} sweeps
+ * by default, and therefore the ones a caller passing its OWN `slots` must
+ * exclude: two sweeps claiming one slot on the same relocation is a redundant
+ * unlink-and-rebuild of a link the other just wrote correctly.
+ */
+export function hostSlotPaths(cwd: string, name: string, roots: SkillProjectionRoots): string[] {
+  return ALL_TARGET_HOSTS.map((host) => skillTargetDir(cwd, host, name, roots)).filter(
+    (p): p is string => p !== null,
+  );
+}
+
+/**
  * Re-point sibling symlinks at `target`: walk every install-target host, skip
  * anything that is not a symlink, and replace each CLAIMED link with one aimed
  * directly at `target`. Shared by relocation and removal, which walk the same
  * slots for the same reason.
  *
- * A THIRD sweep of this shape lives in `api-extension.ts`, in the promote path.
- * It is not shared because it walks the placement LEDGER rather than host slots,
- * so folding it in needs a slot-source parameter this helper does not have. It
- * also claims a narrower set: dangling or the old source, but not a link chained
- * through the new dest, which this one claims via `alsoClaim`. Both sweeps fire
- * on the same relocation, and the divergence is inert because a link resolving
- * to `dest` already resolves to a real dir. Widen either and they must agree.
+ * The promote path's placement-ledger sweep in `skill-install-ops.ts` routes
+ * through here too, handing its ledger paths to `slots`. The two sweeps fire on
+ * the same relocation and PARTITION the slots between them: the ledger caller
+ * excludes {@link hostSlotPaths}, because a slot swept twice is an unlink and
+ * rebuild of a link the first sweep already wrote correctly. Folding them also
+ * widened the ledger sweep's claim set to match this one's, so a placement that
+ * reached the real dir by chaining through the new source is now flattened
+ * rather than left as a chain.
  *
  * They differ in which links they claim, and that difference is data, not an
  * inverted condition. A dangling link is ALWAYS claimed: it resolves to
@@ -647,12 +660,20 @@ const ALL_TARGET_HOSTS: readonly SkillHostId[] = [
  * sequence of filesystem operations is not, and in this file an unnecessary
  * unlink of a link standing in for a real directory is the scar being avoided.
  */
-function repointSiblingLinks(opts: {
+export function repointSiblingLinks(opts: {
   name: string;
   cwd: string;
   roots: SkillProjectionRoots;
   /** Real bundle dir every claimed link is re-pointed at. */
   target: string;
+  /**
+   * Absolute slot paths to sweep. Defaults to {@link hostSlotPaths} for `name`;
+   * the promote path passes its placement-ledger paths instead, so both slot
+   * sources run the same claim + skip rules. When supplied, `name` and `roots`
+   * are unused — they only feed the default — so the caller controls which
+   * slots are swept without affecting the link target written (always `target`).
+   */
+  slots?: readonly string[];
   /** Sibling SLOTS never touched, matched on the slot path itself. */
   skip?: readonly string[];
   /** Link REALPATHS claimed on top of dangling ones. */
@@ -661,9 +682,9 @@ function repointSiblingLinks(opts: {
   const { name, cwd, roots, target } = opts;
   const skip = new Set((opts.skip ?? []).map((p) => resolve(p)));
   const claim = new Set((opts.alsoClaim ?? []).map((p) => resolve(p)));
-  for (const host of ALL_TARGET_HOSTS) {
-    const sib = skillTargetDir(cwd, host, name, roots);
-    if (sib === null || skip.has(resolve(sib))) continue;
+  const slots = opts.slots ?? hostSlotPaths(cwd, name, roots);
+  for (const sib of slots) {
+    if (skip.has(resolve(sib))) continue;
     try {
       if (!lstatSync(sib).isSymbolicLink()) continue;
     } catch {
