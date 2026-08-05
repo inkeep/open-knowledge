@@ -10,7 +10,7 @@ metadata:
 
 # Frame a proposal — turn a problem into a reviewable RFC
 
-The platform `open-knowledge` skill still governs every markdown operation here (reads via `exec`/`search`, writes via `write`/`edit`, links as plain relative markdown, never native Read/Edit/Grep/`cat` on in-scope files). This skill layers proposal-authoring craft on top: it decides *what a good proposal contains and in what order you earn each section*.
+The platform `/open-knowledge` skill still governs every markdown operation here (reads via `exec`/`search`, writes via `write`/`edit`, links as plain relative markdown, never native Read/Edit/Grep/`cat` on in-scope files). This skill layers proposal-authoring craft on top: it decides *what a good proposal contains and in what order you earn each section*.
 
 A proposal in `proposals/` is a design argument, not a decision and not a plan. It exists to force a **choice** among options and to give reviewers enough to disagree with. Filename is `0001-feature-name.md` — a zero-padded 4-digit sequence plus a kebab title. Status flows `draft → fcp → accepted/rejected` (fcp = final comment period). Acceptance graduates the proposal to a record in `decisions/` — that is a *separate*, human act and a *separate* skill.
 
@@ -215,8 +215,8 @@ State plainly that advancing status and accepting the proposal are human acts. Y
 
 ## Non-goals
 
-- **Don't record the decision.** Acceptance graduates a proposal to a record in `decisions/` — that's the sibling `record-a-decision` skill, run *after* a human accepts. This skill stops at `draft`.
-- **Don't write the implementation spec.** Design altitude, not build detail. The spec is `write-a-spec`.
+- **Don't record the decision.** Acceptance graduates a proposal to a record in `decisions/` — that's the sibling `/record-a-decision` skill, run *after* a human accepts. This skill stops at `draft`.
+- **Don't write the implementation spec.** Design altitude, not build detail. The spec is `/write-a-spec`.
 - **Don't mark a proposal `accepted` (or `fcp`) on your own authority.** Advancing status is a human act. Leave `status: draft`; offer the recap of what advancing would require.
 - **Don't skip the Step 1 framing gate.** Solution text before an agreed problem is the exact failure this skill exists to prevent. If you've drafted Design without a confirmed beneficiary and forced decision, you skipped the gate — back up.
 - **Don't pad Alternatives with strawmen or leave Drawbacks empty.** Both are tells that the proposal wasn't really examined. Reviewers read them as such.

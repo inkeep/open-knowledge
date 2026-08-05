@@ -11,7 +11,7 @@ metadata:
 
 This project holds an **agent-authored wiki of a codebase** — DeepWiki, but living in the repo. A coding agent reads the source and writes a navigable, diagram-rich, source-grounded wiki as markdown under `wiki/`. It is version-controlled and diffable, private by default, human+agent co-editable, renders in OK's live preview, and doubles as durable grounding context for future agent sessions. There is no separate Q&A surface — Q&A is "the OK-grounded agent + `search`".
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the wiki workflow on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the wiki workflow on top.
 
 ## The shape
 

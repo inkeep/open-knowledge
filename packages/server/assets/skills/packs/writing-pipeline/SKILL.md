@@ -11,7 +11,7 @@ metadata:
 
 A lean three-stage flow for short-to-medium-form writing (essays, newsletters, blog posts).
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the drafting flow on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the drafting flow on top.
 
 
 ```

@@ -11,7 +11,7 @@ metadata:
 
 This project is a fiction encyclopedia. The graph is the product: characters, settings, themes, factions, and lore that link to each other. The agent's main jobs are auto-stubbing new entities as they're mentioned and flagging contradictions. This skill holds those behaviors so templates and folder descriptions stay clean.
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the worldbuilding conventions on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the worldbuilding conventions on top.
 
 ## Folders
 

@@ -9,7 +9,7 @@ metadata:
 ---
 # Write a spec — scope a feature and commit an implementation spec
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers spec-writing craft on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers spec-writing craft on top.
 
 A spec is the contract between "we decided to build this" and "here is how it gets built." It is derived from an ACCEPTED proposal, maps the system that exists TODAY before proposing a change, and records its one-way-door choices in a Decision Log so the reasoning survives the author leaving. A spec that skips the current-system mapping, or resolves its open questions silently, is a liability — it reads authoritative while being unfounded.
 
@@ -58,7 +58,7 @@ A spec implements a decision that was already made. Before scoping anything, fin
 
 - **Accepted proposal exists** → note its path; it becomes `parent_proposal:` in the spec frontmatter. Proceed to Step 1.
 - **Proposal exists but is not accepted** (`draft`, `fcp`, `rejected`) → STOP. A spec for an un-accepted proposal builds on sand. Surface this: "The proposal `<path>` is at `status: <x>`, not accepted. A spec should follow an accepted proposal. Want me to help get it accepted first, or proceed anyway?"
-- **No proposal at all** → say so plainly: "There's no accepted proposal behind this feature. Specs derive from proposals — the proposal is where we argue *whether* to build; the spec is *how*. I can frame a proposal first (that's the `frame-a-proposal` skill), or, if you acknowledge the risk, proceed straight to a spec and record that we skipped the proposal." If the user opts to proceed, record that choice in the Decision Log (Step 6) with its rationale. Do not silently skip it.
+- **No proposal at all** → say so plainly: "There's no accepted proposal behind this feature. Specs derive from proposals — the proposal is where we argue *whether* to build; the spec is *how*. I can frame a proposal first (that's the `/frame-a-proposal` skill), or, if you acknowledge the risk, proceed straight to a spec and record that we skipped the proposal." If the user opts to proceed, record that choice in the Decision Log (Step 6) with its rationale. Do not silently skip it.
 
 **HARD GATE:** do not create `spec.md` until the parent-proposal question is resolved one way or the other and, if skipped, acknowledged by the user.
 
@@ -189,7 +189,7 @@ Each entry is a short block:
 Discipline:
 - One entry per one-way-door choice from Step 5, plus any process decision (e.g. "proceeded without a parent proposal per the user's acknowledgement on <date>").
 - The `Reverses if` line is not optional — a decision with no stated reversal condition can never be re-examined honestly.
-- This log is scoped to THIS spec. It is not the project's decision record. Recording an architecture decision in `decisions/` is the sibling `record-a-decision` skill's job; do not write ADRs here.
+- This log is scoped to THIS spec. It is not the project's decision record. Recording an architecture decision in `decisions/` is the sibling `/record-a-decision` skill's job; do not write ADRs here.
 
 ---
 
@@ -291,8 +291,8 @@ State plainly what is still open. A spec's honesty about its own gaps is what ma
 ## Non-goals
 
 - **Don't invent requirements the proposal didn't establish.** The spec is *how*, not a second bite at *whether*. A goal with no root in the parent proposal is scope creep — flag it, don't smuggle it in.
-- **Don't record decisions in `decisions/`.** That's the sibling `record-a-decision` skill. The spec's Decision Log is scoped to THIS spec's one-way doors; it is not the project's ADR record.
+- **Don't record decisions in `decisions/`.** That's the sibling `/record-a-decision` skill. The spec's Decision Log is scoped to THIS spec's one-way doors; it is not the project's ADR record.
 - **Don't skip the current-system mapping.** Designing against an imagined system is the top failure mode. No `## Design` before Step 1's map with real pointers.
 - **Don't mark `shipped` before the work ships.** `status` reflects reality. A spec is `draft` until built, and only `shipped` once the code is live — never aspirationally.
-- **Don't write the postmortem.** If the shipped feature breaks, the incident write-up is the `write-a-postmortem` skill's job, not an addendum here.
+- **Don't write the postmortem.** If the shipped feature breaks, the incident write-up is the `/write-a-postmortem` skill's job, not an addendum here.
 - **Don't silently resolve Open Questions.** A marked open question is information; a fabricated answer is a hazard. Ship the spec with its unknowns visible.

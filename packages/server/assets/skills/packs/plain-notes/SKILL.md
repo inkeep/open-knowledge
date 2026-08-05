@@ -11,7 +11,7 @@ metadata:
 
 The lightest pack: no posture imposed, just write and link.
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the notes habit on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the notes habit on top.
 
 ## Folders
 

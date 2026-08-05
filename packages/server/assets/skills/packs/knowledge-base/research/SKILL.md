@@ -9,9 +9,9 @@ metadata:
 ---
 # Research — gather sources and write provisional findings
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the procedure on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the procedure on top.
 
-Conduct **evidence-driven research** on a topic and produce a provisional research article under `research/`. Provisional, not canonical: research articles capture findings, trade-offs, and open questions at a point in time. They are promoted to canonical articles via the `consolidate-notes` skill only when decisions solidify.
+Conduct **evidence-driven research** on a topic and produce a provisional research article under `research/`. Provisional, not canonical: research articles capture findings, trade-offs, and open questions at a point in time. They are promoted to canonical articles via the `/consolidate-notes` skill only when decisions solidify.
 
 The content directory is the resolved `content.dir` — read it with `config({ key: 'content.dir' })` if you don't already know it. Paths below are relative to it.
 
@@ -189,7 +189,7 @@ Return this structure to the user:
 
 ## Step 3: Capture raw sources via ingest
 
-For each relevant URL, paper, or document in the confirmed rubric, follow the **ingest** procedure — it lives in the platform `open-knowledge` skill at `references/ingest-and-sources.md`, not in this pack. **Typical research pulls 3-8 sources.** Too few → thin synthesis. Too many → you'll be reading for the rest of the session.
+For each relevant URL, paper, or document in the confirmed rubric, follow the **ingest** procedure — it lives in the platform `/open-knowledge` skill at `references/ingest-and-sources.md`, not in this pack. **Typical research pulls 3-8 sources.** Too few → thin synthesis. Too many → you'll be reading for the rest of the session.
 
 - **Don't skip ingest.** Raw preservation separates capture from interpretation and makes research reproducible. An article without preserved sources is just opinion; an article with preserved sources is a trail someone else can follow.
 - If a fetch fails for a source you specifically need, **stop and ask the user to paste it** — don't silently drop it. Write-time fabrication of missing evidence is the biggest failure mode.
@@ -296,7 +296,7 @@ sources:
 ### Voice
 
 - **Provisional, not canonical.** Use "tentative", "initial findings", "based on current understanding."
-- **Do NOT write as if it were canonical** — that's misleading. Canonicality is the `consolidate-notes` skill's job, after decisions land.
+- **Do NOT write as if it were canonical** — that's misleading. Canonicality is the `/consolidate-notes` skill's job, after decisions land.
 - **Explicit about uncertainty.** Research is the layer where uncertainty is allowed to live.
 
 ---
@@ -366,7 +366,7 @@ In headless mode, write the recap into the research article's "Further reading" 
 
 ## Non-goals
 
-- **Don't promote to a canonical article.** That's the `consolidate-notes` skill's job after a decision actually lands. Premature canonicalization buries uncertainty and misleads future readers.
+- **Don't promote to a canonical article.** That's the `/consolidate-notes` skill's job after a decision actually lands. Premature canonicalization buries uncertainty and misleads future readers.
 - **Don't hide uncertainty.** Research is the layer where "we don't know yet" is acceptable prose. Say it explicitly.
 - **Don't skip ingest.** Always capture raw sources first, then analyze. An article without preserved sources is opinion.
 - **Don't skip the Step 1 scan.** Duplicate research wastes the user's time AND misses chances to extend prior work.

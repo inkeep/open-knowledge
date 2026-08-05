@@ -10,7 +10,7 @@ metadata:
 
 # Review a design — is it sound, not just complete
 
-The platform `open-knowledge` skill still governs every markdown operation here (reads via `exec`, writes via `write`/`edit`, links as plain relative markdown, MCP owns in-scope `.md`); this skill layers design-review craft on top of it.
+The platform `/open-knowledge` skill still governs every markdown operation here (reads via `exec`, writes via `write`/`edit`, links as plain relative markdown, MCP owns in-scope `.md`); this skill layers design-review craft on top of it.
 
 **Three reviews are not the same review, and only one is this skill's job.**
 
@@ -119,9 +119,9 @@ Never edit the design under review to "apply" a finding. You emit findings; the 
 
 Route blocking and substantive findings back to whoever owns the fix:
 
-- Findings on a **proposal** → **frame-a-proposal** (the argument, alternatives, or motivation needs rework).
-- Findings on a **spec** → **write-a-spec** (goals, non-goals, migration, or test plan needs rework).
-- A finding that has *resolved into a made choice* ("we discussed it; we're going with the synchronous version") → **record-a-decision**, so the choice and its rationale land in `decisions/` with a `supersedes:` link if it overturns a prior ADR.
+- Findings on a **proposal** → `/frame-a-proposal` (the argument, alternatives, or motivation needs rework).
+- Findings on a **spec** → `/write-a-spec` (goals, non-goals, migration, or test plan needs rework).
+- A finding that has *resolved into a made choice* ("we discussed it; we're going with the synchronous version") → `/record-a-decision`, so the choice and its rationale land in `decisions/` with a `supersedes:` link if it overturns a prior ADR.
 - A finding that a **past failure is being reintroduced** → point the author at the specific `postmortems/YYYY-MM-DD-name.md` so the design engages with it explicitly.
 
 Name the skill and the reason in your handoff so the author knows exactly where to go.

@@ -11,7 +11,7 @@ metadata:
 
 This project holds the doc lifecycle for an engineering team or OSS project. The flow is **proposals → decisions → specs → postmortems**, with **guides** as the how-to bucket. This skill holds the workflow so templates and folder descriptions stay clean.
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the lifecycle conventions on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the lifecycle conventions on top.
 
 ## The flow
 
@@ -44,11 +44,11 @@ Authoring in this project is procedural, not conventional. Each workflow ships a
 
 | Workflow | Sibling skill | When |
 | --- | --- | --- |
-| Frame a proposal | `frame-a-proposal` | A change needs designing and arguing before anyone builds it. |
-| Write a spec | `write-a-spec` | An accepted proposal needs scoping into an implementable spec. |
-| Record a decision | `record-a-decision` | A decision was actually made and needs its context and consequences preserved. |
-| Write a postmortem | `write-a-postmortem` | An incident happened and the team needs a blameless write-up. |
-| Review a design | `review-a-design` | An existing proposal, spec, or decision needs pressure-testing for soundness. |
+| Frame a proposal | `/frame-a-proposal` | A change needs designing and arguing before anyone builds it. |
+| Write a spec | `/write-a-spec` | An accepted proposal needs scoping into an implementable spec. |
+| Record a decision | `/record-a-decision` | A decision was actually made and needs its context and consequences preserved. |
+| Write a postmortem | `/write-a-postmortem` | An incident happened and the team needs a blameless write-up. |
+| Review a design | `/review-a-design` | An existing proposal, spec, or decision needs pressure-testing for soundness. |
 
 ## Templates
 

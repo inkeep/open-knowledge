@@ -16,7 +16,7 @@ metadata:
 
 This project was scaffolded to be conformant with **Google's Open Knowledge Format (OKF) v0.1** from the first commit — markdown + YAML frontmatter, a standard-markdown link graph, and two reserved files. Conformance here is pre-populated, **not enforced**: OpenKnowledge's native frontmatter schema stays open-shaped, nothing is linted, and you are free to author however you like. This skill explains the conventions so the kit stays OKF-portable as it grows.
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the OKF conventions on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the OKF conventions on top.
 
 ## The one rule (keep the kit conformant)
 

@@ -10,7 +10,7 @@ metadata:
 
 # Write a postmortem
 
-The platform `open-knowledge` skill still governs every markdown operation here — folder scope, the read/write tool surface, linking, and preview. This skill layers postmortem craft on top of it; it does not replace those rules.
+The platform `/open-knowledge` skill still governs every markdown operation here — folder scope, the read/write tool surface, linking, and preview. This skill layers postmortem craft on top of it; it does not replace those rules.
 
 A postmortem is not a status update and not a blame ledger. It is a durable, blameless reconstruction of one incident, built from evidence, that makes the system's failure mode legible and produces action items someone will actually verify. The value compounds only when postmortems that share a subsystem link to each other — that is how a repeat class stops being invisible.
 
@@ -198,5 +198,5 @@ Then point at the file: `postmortems/YYYY-MM-DD-name.md` and any runbook stubs c
 - **Don't stop at the first plausible cause.** "A bad config was pushed" is a trigger. Keep asking what made the trigger sufficient until you reach a missing safeguard.
 - **Don't write action items you cannot verify.** No owner, no date, no checkable done-condition means it is a wish, not an action item. Leave it out or fix it.
 - **Don't quietly omit "what went well."** Skipping it loses the practices worth preserving. If little went well, say so honestly rather than dropping the section.
-- **Don't use a postmortem to relitigate a design decision.** A postmortem documents what happened and what to change operationally. Arguing that the architecture should have been different belongs in a proposal (`frame-a-proposal`) or a design review (`review-a-design`) — link to it from Related; don't fight it here.
+- **Don't use a postmortem to relitigate a design decision.** A postmortem documents what happened and what to change operationally. Arguing that the architecture should have been different belongs in a proposal (`/frame-a-proposal`) or a design review (`/review-a-design`) — link to it from Related; don't fight it here.
 - **Don't fabricate the timeline.** No entry without a source you can point at; reconstructed-from-memory entries are labelled inline as such.

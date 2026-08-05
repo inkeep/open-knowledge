@@ -12,7 +12,7 @@ Typical day-2 flow: user shares a URL → ingest (preserve) → user asks "now r
 
 - ingest → reference file `ingest-and-sources.md`, here in this bundle. Ships with every `ok init` because Core's Grounding rule depends on it, pack or no pack.
 - onboard a repo that already has content → reference file `onboard-existing-repo.md`, here in this bundle.
-- research / consolidate → their own skills, `research-with-sources` and `consolidate-notes`, installed alongside their pack by `ok seed --pack knowledge-base`. **Not available otherwise** — if the pack isn't seeded, say so rather than improvising a lookalike pipeline.
+- research / consolidate → their own skills, `/research-with-sources` and `/consolidate-notes`, installed alongside their pack by `ok seed --pack knowledge-base`. **Not available otherwise** — if the pack isn't seeded, say so rather than improvising a lookalike pipeline.
 - generate / refresh a codebase wiki → reference file `generate-and-refresh.md`, inside the `codebase-wiki` skill's bundle and readable once that skill loads. Installed by `ok seed --pack codebase-wiki`.
 
 Read the relevant procedure and execute its numbered steps with the OK verbs; don't skip its STOP gates.

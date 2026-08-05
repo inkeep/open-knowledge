@@ -9,7 +9,7 @@ metadata:
 ---
 # Consolidate — promote research into a canonical article
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the procedure on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the procedure on top.
 
 Promote existing research on a topic into a canonical article under `articles/`. **Canonical, not provisional** — the output is the source of truth for future agents, not a snapshot of uncertainty.
 
@@ -58,7 +58,7 @@ Locate research articles on this topic:
 - Follow its `sources:` frontmatter list — read every referenced source file
 - Also read any existing canonical article on the topic — if one already exists, you may be **updating** it rather than creating a new one
 
-If there is no research to consolidate, stop. Consolidation is promotion, not creation. Do the `research-with-sources` skill first.
+If there is no research to consolidate, stop. Consolidation is promotion, not creation. Do the `/research-with-sources` skill first.
 
 ### 2. Re-confirm the decision
 

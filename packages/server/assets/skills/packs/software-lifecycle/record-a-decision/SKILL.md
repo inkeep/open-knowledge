@@ -10,7 +10,7 @@ metadata:
 
 # Record a decision — write an ADR under `decisions/`
 
-The platform `open-knowledge` skill still governs every markdown operation here (grounding, linking, the rule that OK's MCP tools own in-scope markdown); this skill layers ADR craft on top.
+The platform `/open-knowledge` skill still governs every markdown operation here (grounding, linking, the rule that OK's MCP tools own in-scope markdown); this skill layers ADR craft on top.
 
 An Architecture Decision Record is a small, dated, frozen document that captures **one** decision, the forces that made it necessary, and what the team now has to live with. The value compounds over years: a reader who joins in three years should understand not just what was decided but *why it was even a question*. ADRs are frozen once accepted — you never rewrite one to change your mind, you **supersede** it with a new record and leave the old one standing as history. That supersedes chain is what separates an honest decision log from a pile of stale opinions.
 
@@ -22,9 +22,9 @@ Filenames are `NNNN-title.md` (zero-padded 4-digit sequence + kebab title). Stat
 
 **An ADR records a decision; it does not make one.** Before anything else, establish that a choice has been settled.
 
-- If the user is still weighing options, comparing approaches, or asking "should we do X or Y?" — they do not have a decision yet. **Stop and route them to the `frame-a-proposal` skill.** A proposal is where options get explored and argued; an ADR is where the settled outcome gets recorded. Recording a decision the user has not made produces a fake record that misleads every future reader.
+- If the user is still weighing options, comparing approaches, or asking "should we do X or Y?" — they do not have a decision yet. **Stop and route them to the `/frame-a-proposal` skill.** A proposal is where options get explored and argued; an ADR is where the settled outcome gets recorded. Recording a decision the user has not made produces a fake record that misleads every future reader.
 - If the user says "we decided X" but you cannot tell *what lost* or *why*, ask one question: "What were the alternatives, and what made you pick this one?" An ADR with no rejected options is a press release, not a record.
-- If the thing in question is whether the design itself is sound — not the record of it — hand off to `review-a-design`. This skill assumes the decision is sound; it captures it.
+- If the thing in question is whether the design itself is sound — not the record of it — hand off to `/review-a-design`. This skill assumes the decision is sound; it captures it.
 
 Do not proceed past this gate until the user has confirmed a specific decision. State it back to them in one sentence and get a nod.
 
@@ -129,7 +129,7 @@ Read the draft as a skeptic who disagrees with the decision. Answer each honestl
 - **Would a reader who disagrees find their objection addressed?** The strongest counter-argument should appear somewhere — in a rejected option or a named consequence. If the obvious objection is missing, add it.
 - **Is any consequence being hidden because it's inconvenient?** The cost you'd rather not write down is exactly the one that belongs in the record.
 
-If this pass reveals that the *design itself* is in question — not the quality of the record but whether the decision is right — stop and hand off to `review-a-design`. This skill records sound decisions; it is not the place to relitigate one.
+If this pass reveals that the *design itself* is in question — not the quality of the record but whether the decision is right — stop and hand off to `/review-a-design`. This skill records sound decisions; it is not the place to relitigate one.
 
 ---
 
@@ -181,8 +181,8 @@ Then note whether `status` is `accepted` (deciders signed off) or `proposed` (aw
 
 ## Non-goals
 
-- **Don't decide on the user's behalf.** If no decision has been made, route to `frame-a-proposal`. This skill records; it does not choose.
+- **Don't decide on the user's behalf.** If no decision has been made, route to `/frame-a-proposal`. This skill records; it does not choose.
 - **Don't rewrite an accepted record.** ADRs are frozen. To change a past decision, supersede it (Step 7) and leave the old one standing — never edit its Context/Decision/Consequences prose.
-- **Don't fold implementation detail into an ADR.** The migration plan, the API shape, the rollout steps belong in a spec (`write-a-spec`). The ADR captures what and why, not how.
+- **Don't fold implementation detail into an ADR.** The migration plan, the API shape, the rollout steps belong in a spec (`/write-a-spec`). The ADR captures what and why, not how.
 - **Don't record a decision that has no consequences section.** A record with only upside, or with no costs and no new obligations, isn't an ADR — it's marketing. Every real decision costs something; find it and write it down.
-- **Don't judge the soundness of the design here.** If the question is whether the decision is *right* rather than whether it's well-recorded, that's `review-a-design`.
+- **Don't judge the soundness of the design here.** If the question is whether the decision is *right* rather than whether it's well-recorded, that's `/review-a-design`.

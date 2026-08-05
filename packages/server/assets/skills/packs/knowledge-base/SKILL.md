@@ -11,7 +11,7 @@ metadata:
 
 This project uses the **source-grounded knowledge-base** layout. The whole point is a closed evidence loop: nothing canonical exists without a traceable chain back to a preserved source. This skill holds the workflow so the templates and `log.md` can stay clean — when you create a doc from a template you get structure, and the *how* lives here.
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the KB workflow on top.
+> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the KB workflow on top.
 
 ## Link at creation
 
@@ -37,9 +37,9 @@ Each layer has a full, STOP-gated procedure, and each ships as its own skill so 
 
 | Procedure | Where it lives | When |
 | --- | --- | --- |
-| ingest | Platform `open-knowledge` skill (`references/ingest-and-sources.md`) — its Grounding rule depends on it everywhere, so it ships with every project, not just this pack. | Preserve a shared URL / PDF / file verbatim, OR you fetched a URL to ground a KB claim (binary sources preserved, not scraped). |
-| research | Sibling skill `research-with-sources` | Investigate / compare / synthesize multiple sources → `status: provisional` article + `sources:`. |
-| consolidate | Sibling skill `consolidate-notes` | A decision was actually made → commit canonical source-of-truth with a `supersedes:` chain. |
+| ingest | Platform `/open-knowledge` skill (`references/ingest-and-sources.md`) — its Grounding rule depends on it everywhere, so it ships with every project, not just this pack. | Preserve a shared URL / PDF / file verbatim, OR you fetched a URL to ground a KB claim (binary sources preserved, not scraped). |
+| research | Sibling skill `/research-with-sources` | Investigate / compare / synthesize multiple sources → `status: provisional` article + `sources:`. |
+| consolidate | Sibling skill `/consolidate-notes` | A decision was actually made → commit canonical source-of-truth with a `supersedes:` chain. |
 
 Typical day-2 flow: user shares a URL → **ingest** (preserve) → user asks "now research this" → **research** (provisional article, ingesting more sources as needed) → decision lands → **consolidate** (canonical article, supersedes the research).
 
@@ -51,9 +51,9 @@ Typical day-2 flow: user shares a URL → **ingest** (preserve) → user asks "n
 
 **`external-sources/`** — Raw sources saved verbatim, not just cited: the actual fetched text of URLs, extracted text of PDFs, copies of referenced files. Each file's frontmatter carries the original URL, access date, and any author/publisher metadata. Produced by the ingest procedure (applies whether the user shared the URL or you fetched it yourself to ground a claim). Immutable after capture — update only to refresh a stale fetch. **No analysis here**; that belongs in `research/`.
 
-**`research/`** — Provisional analysis synthesizing external sources. Produced by the `research-with-sources` skill. Every factual claim cites a specific doc in `external-sources/` (or an inline URL if ingest was skipped); no unsourced assertions. Keep the `sources:` frontmatter list aligned with the docs actually linked in the body. Promote to `articles/` via the `consolidate-notes` skill once the team decides the findings are stable.
+**`research/`** — Provisional analysis synthesizing external sources. Produced by the `/research-with-sources` skill. Every factual claim cites a specific doc in `external-sources/` (or an inline URL if ingest was skipped); no unsourced assertions. Keep the `sources:` frontmatter list aligned with the docs actually linked in the body. Promote to `articles/` via the `/consolidate-notes` skill once the team decides the findings are stable.
 
-**`articles/`** — Canonical knowledge, committed after a team decision. Produced by the `consolidate-notes` skill. Carries a `supersedes:` chain tying back to the `research/` docs it replaces (which in turn cite `external-sources/`) so the full evidence chain is traceable without leaving the repo. Source-of-truth for the domain; update only when a new decision supersedes it.
+**`articles/`** — Canonical knowledge, committed after a team decision. Produced by the `/consolidate-notes` skill. Carries a `supersedes:` chain tying back to the `research/` docs it replaces (which in turn cite `external-sources/`) so the full evidence chain is traceable without leaving the repo. Source-of-truth for the domain; update only when a new decision supersedes it.
 
 ## Status flow
 
