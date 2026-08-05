@@ -153,6 +153,48 @@ describe('CodePreviewEditModal', () => {
     expect(saved).toBeNull();
   });
 
+  test('body opts into md:flex-row-reverse so the preview renders visually left in wide viewports', async () => {
+    // Contract pin for the visual pane swap: source stays first in DOM (tab
+    // order + stacked-layout on-top position), while `md:flex-row-reverse`
+    // moves the preview visually to the left in wide viewports. A DOM-order
+    // assertion can't catch a regression to the plain `md:flex-row` shape
+    // because DOM order is intentionally unchanged; the classname pin is
+    // the load-bearing signal.
+    render(
+      <Harness
+        onSave={() => {
+          // no-op — this test asserts layout, not save wiring.
+        }}
+        renderPreview={(value) => <div data-testid="preview-marker">{value}</div>}
+      />,
+    );
+    const body = await screen.findByTestId('ok-code-preview-edit-modal-body');
+    expect(body.className).toContain('md:flex-row-reverse');
+    // `overflow-y-auto` + `overscroll-contain` are the paired defenses
+    // against the below-`md` stack overflowing `DialogContent`'s clip; pin
+    // both so a future refactor that drops one surfaces the regression.
+    expect(body.className).toContain('overflow-y-auto');
+    expect(body.className).toContain('overscroll-contain');
+  });
+
+  test('body drops the row-reverse token when the preview pane is absent', async () => {
+    // Without a preview slot the modal collapses to a single-pane source
+    // editor — flex-direction should stay column at every width, no visual
+    // swap semantics to preserve. Pinned so a future consumer can't
+    // accidentally trigger the wide-viewport row layout by wiring the class
+    // set unconditionally.
+    render(
+      <Harness
+        onSave={() => {
+          // no-op — this test asserts layout, not save wiring.
+        }}
+      />,
+    );
+    const body = await screen.findByTestId('ok-code-preview-edit-modal-body');
+    expect(body.className).not.toContain('md:flex-row-reverse');
+    expect(body.className).not.toContain('md:flex-row');
+  });
+
   test('preview-originated edits write back into the draft and commit on Save', async () => {
     // The Mermaid WYSIWYG canvas in the preview slot commits gestures
     // through the `setValue` argument; the modal must fold those into the

@@ -7,11 +7,20 @@
  * future preview-class nodes (Mermaid, Math) can wire in without
  * duplicating the dialog + CodeMirror plumbing.
  *
- * Layout: two columns inside a shadcn `<Dialog>`. CodeMirror on the
- * left, live preview on the right. The preview consumes a *debounced*
- * draft (default 300ms) so heavy preview surfaces (HTML iframe, KaTeX
- * lazy load, Mermaid layout) don't thrash on every keystroke. The
- * source editor itself stays buttery — debouncing only the preview.
+ * Layout: two columns inside a shadcn `<Dialog>`. Live preview visually on
+ * the left (the reader's anchor — 'what does this look like?'), CodeMirror
+ * source visually on the right (what they're changing). The visual swap is
+ * done via `md:flex-row-reverse` rather than JSX order — source stays first
+ * in the DOM so keyboard tab order reaches the editor before the preview's
+ * own controls (Mermaid pan/zoom toolbar, HTML iframe), and the stacked
+ * (below-`md`) layout keeps the editor on top rather than the render.
+ * The body is scrollable (`overflow-y-auto`) so when the two `min-h-[260px]`
+ * panes stack past `DialogContent`'s clip on short viewports, users can
+ * scroll to the second pane instead of losing it below the fold.
+ * The preview consumes a *debounced* draft (default 300ms) so heavy preview
+ * surfaces (HTML iframe, KaTeX lazy load, Mermaid layout) don't thrash on
+ * every keystroke. The source editor itself stays buttery — debouncing only
+ * the preview.
  *
  * Keyboard:
  *   - `Esc` cancels and closes the modal (matches every other shadcn
@@ -27,7 +36,7 @@
  * doc-agnostic.
  *
  * Preview pane is opt-in: passing `renderPreview` mounts the
- * right-hand iframe / KaTeX / Mermaid render; omitting it makes the
+ * left-hand iframe / KaTeX / Mermaid render; omitting it makes the
  * modal a single-pane source editor for nodes where the preview-while-
  * editing case doesn't apply.
  */
@@ -374,9 +383,23 @@ export function CodePreviewEditModal({
           )}
         </DialogHeader>
         <div
-          className={`flex min-h-0 flex-1 gap-3 ${previewEnabled ? 'flex-col md:flex-row' : 'flex-col'}`}
+          className={`flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain ${previewEnabled ? 'flex-col md:flex-row-reverse' : 'flex-col'}`}
           data-testid="ok-code-preview-edit-modal-body"
         >
+          {/* DOM order below is source-first, preview-second by design:
+              - keeps the CodeMirror host ahead of the preview's own tab
+                stops (Mermaid pan/zoom toolbar, HTML iframe) so keyboard
+                users reach the editor first;
+              - the stacked (below-`md`) layout renders the editor on top,
+                the render below — the user came here to edit, so putting
+                the editor where it can be reached matters more than
+                showing the render first;
+              - the visual "render on the left" that the shared surface
+                promises comes from `md:flex-row-reverse` on the body, not
+                from JSX order.
+              Shared with every preview-class edit modal (HTML fence,
+              Mermaid, future Math etc.) so the split is consistent
+              across all of them. */}
           <div
             ref={setHostRef}
             className="ok-codepreview-cm min-h-[260px] flex-1 overflow-hidden rounded-md border border-border md:min-h-0"
