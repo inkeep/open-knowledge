@@ -23,3 +23,9 @@ Open the project in Codex and ask:
 <VerifyExec />
 
 If you don't see the tool, restart Codex. If it's still missing and `ok init` reported your config was `left unchanged`, the reason in parentheses says why `~/.codex/config.toml` (or `$CODEX_HOME/config.toml` if set) was left untouched. For config problems, fix the file and re-run `ok init`; for `no format-preserving writer available`, your config isn't the problem — OpenKnowledge can't rewrite the file safely on this platform, so add an `open-knowledge` entry to `mcp_servers` by hand (command: `ok mcp`).
+
+## Scheduled runs
+
+The ChatGPT desktop app runs Codex on a schedule from its **Scheduled** view. Tasks run unattended under your default sandbox, against your local project or an isolated background worktree, and the app must be running for tasks that need local files. See OpenAI's [scheduled tasks](https://learn.chatgpt.com/docs/automations) docs. Codex CLI has no scheduler of its own; use [`codex exec`](https://learn.chatgpt.com/docs/non-interactive-mode) from OS cron instead. Described as of August 2026, while the ChatGPT and Codex surfaces are still changing quickly.
+
+The meeting-sync prompt in [Ingest meetings](../workflows/meeting-ingestion.mdx#automatically-on-a-schedule) works verbatim as a scheduled task.

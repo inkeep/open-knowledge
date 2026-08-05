@@ -11,7 +11,7 @@ Meetings live in a `meetings/` folder. Any project can have one. The [Entity vau
 There are two ways to get meetings in:
 
 - **On demand.** You ask, the agent writes. Works in any editor, no extra infrastructure.
-- **Automatically.** A scheduler or a webhook asks for you, so meetings appear on their own. Needs the [OpenClaw](../integrations/openclaw.mdx) gateway.
+- **Automatically.** A schedule or a webhook asks for you, so meetings appear on their own. Schedules run from your agent's own scheduler (Claude Code, Codex) or the [OpenClaw](../integrations/openclaw.mdx) gateway; webhooks route through the gateway.
 
 Both write the same doc, into the same folder, using the same addressing rule below.
 
@@ -59,7 +59,15 @@ Otter, Avoma, Teams (MS Graph), and Google Meet expose an API but no official MC
 
 ## Automatically, on a schedule
 
-The [OpenClaw](../integrations/openclaw.mdx) gateway has a built-in scheduler. Register both MCP servers with it, `open-knowledge` via `ok init` and your recorder's MCP per the vendor's install guide, then create one cron job that wakes an agent to run the on-demand flow for you:
+Schedule the on-demand flow in whatever scheduler your agent already has. This prompt works verbatim in any of them:
+
+```text
+Pull meetings from the recorder MCP since the last run. Write each new one into the meetings/ folder of this project, addressed as meetings/<source>-<source_meeting_id> so re-runs update in place. Do not duplicate meetings already present.
+```
+
+- **Claude Code.** Three tiers, from a local desktop task to a cloud routine that runs with your machine off. Each reaches a different set of files and MCP servers: [Scheduled runs](../integrations/claude-code.mdx#scheduled-runs).
+- **Codex.** The ChatGPT desktop app schedules it; Codex CLI runs it from OS cron: [Scheduled runs](../integrations/codex.mdx#scheduled-runs).
+- **[OpenClaw](../integrations/openclaw.mdx).** The gateway has a built-in scheduler. Register both MCP servers with it, `open-knowledge` via `ok init` and your recorder's MCP per the vendor's install guide, then create one cron job that wakes an agent with the prompt above:
 
 ```bash
 openclaw cron create "*/30 * * * *" \
@@ -69,7 +77,7 @@ openclaw cron create "*/30 * * * *" \
   --no-deliver
 ```
 
-Polling works for every recorder, including Granola, which has no native webhook. The gateway must be running for schedules to fire.
+Polling works for every recorder, including Granola, which has no native webhook. Schedules fire only while their host is running: the OpenClaw gateway, or the Claude / ChatGPT desktop app. Claude cloud routines are the exception, running on Anthropic's infrastructure with your machine off.
 
 ## Automatically, on an event
 
