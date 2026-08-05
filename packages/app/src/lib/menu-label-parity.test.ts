@@ -41,6 +41,11 @@ const catalogStrings = new Set<string>();
 // catalog surfaces as a clear hook failure rather than an opaque module-load error
 // that masks the per-label assertions.
 beforeAll(() => {
+  // Pin the comparison locale explicitly. The third assertion family below
+  // compares `i18n._(descriptor)` byte-for-byte against the English constants,
+  // so it only holds while the singleton is on `en` — and since the app
+  // bootstrap became locale-aware, that is no longer something to assume.
+  i18n.activate('en');
   const catalog = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'locales', 'en', 'messages.json'), 'utf8'),
   ) as { messages: Record<string, unknown> };

@@ -41,6 +41,7 @@ import {
   evaluateCommandAvailability,
   MENU_LABELS,
   type MenuSection,
+  NATIVE_MENU_LABELS,
   OPEN_KNOWLEDGE_GITHUB_URL,
   SHOW_INSTALL_SKILL,
 } from '@inkeep/open-knowledge-core';
@@ -48,6 +49,7 @@ import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
 import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
+import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
 export interface MenuDeps {
   onNavigateBack?(): void;
@@ -360,6 +362,80 @@ export interface MenuDeps {
    * contexts that don't wire it (unit tests).
    */
   onToggleSpellCheck?(): void;
+  /**
+   * Renders every label in the resolved interface language. Absent — which is
+   * how the unit tests and any caller that has not resolved a locale yet build
+   * the template — leaves every label in English.
+   */
+  translate?: MenuTranslator;
+}
+
+/**
+ * Electron's English `role:` label, per role, so we can hand each role item an
+ * explicit translated `label`. Electron hardcodes these in its own bundle with
+ * no OS lookup and no locale variation, so an implicit role renders English
+ * inside an otherwise translated menu bar — and none of them appears in any
+ * string audit, because we never wrote them.
+ *
+ * Three roles vary by platform in Electron's own table; the branches here
+ * reproduce that exactly so an English build reads unchanged.
+ */
+function roleLabelSource(role: string, isMac: boolean): string | undefined {
+  switch (role) {
+    case 'about':
+      return process.platform === 'linux'
+        ? NATIVE_MENU_LABELS.roleAboutGeneric
+        : NATIVE_MENU_LABELS.roleAbout;
+    case 'quit':
+      if (isMac) return NATIVE_MENU_LABELS.roleQuit;
+      return process.platform === 'win32'
+        ? NATIVE_MENU_LABELS.roleExit
+        : NATIVE_MENU_LABELS.roleQuitGeneric;
+    case 'close':
+      return isMac ? NATIVE_MENU_LABELS.roleCloseWindow : NATIVE_MENU_LABELS.roleClose;
+    case 'services':
+      return NATIVE_MENU_LABELS.roleServices;
+    case 'hide':
+      return NATIVE_MENU_LABELS.roleHide;
+    case 'hideOthers':
+      return NATIVE_MENU_LABELS.roleHideOthers;
+    case 'unhide':
+      return NATIVE_MENU_LABELS.roleUnhide;
+    case 'undo':
+      return NATIVE_MENU_LABELS.roleUndo;
+    case 'redo':
+      return NATIVE_MENU_LABELS.roleRedo;
+    case 'cut':
+      return NATIVE_MENU_LABELS.roleCut;
+    case 'copy':
+      return NATIVE_MENU_LABELS.roleCopy;
+    case 'paste':
+      return NATIVE_MENU_LABELS.rolePaste;
+    case 'selectAll':
+      return NATIVE_MENU_LABELS.roleSelectAll;
+    case 'reload':
+      return NATIVE_MENU_LABELS.roleReload;
+    case 'forceReload':
+      return NATIVE_MENU_LABELS.roleForceReload;
+    case 'toggleDevTools':
+      return NATIVE_MENU_LABELS.roleToggleDevTools;
+    case 'resetZoom':
+      return NATIVE_MENU_LABELS.roleResetZoom;
+    case 'zoomIn':
+      return NATIVE_MENU_LABELS.roleZoomIn;
+    case 'zoomOut':
+      return NATIVE_MENU_LABELS.roleZoomOut;
+    case 'togglefullscreen':
+      return NATIVE_MENU_LABELS.roleToggleFullScreen;
+    case 'minimize':
+      return NATIVE_MENU_LABELS.roleMinimize;
+    case 'zoom':
+      return NATIVE_MENU_LABELS.roleZoom;
+    case 'front':
+      return NATIVE_MENU_LABELS.roleFront;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -604,18 +680,19 @@ function menuLeafLabel(
   cmd: CommandIdentity,
   placement: CommandMenuPlacement,
   deps: MenuDeps,
+  translate: MenuTranslator,
 ): string {
-  if (placement.menuLabelText !== undefined) return placement.menuLabelText;
+  if (placement.menuLabelText !== undefined) return translate(placement.menuLabelText);
   if (cmd.stateToggle) {
     const { stateField, defaultVisible, showKey, hideKey } = cmd.stateToggle;
     const visible = deps[stateField] ?? defaultVisible;
-    return MENU_LABELS[visible ? hideKey : showKey];
+    return translate(MENU_LABELS[visible ? hideKey : showKey]);
   }
   const key = placement.menuLabelKey ?? cmd.labelKey;
   if (key === undefined) {
     throw new Error(`command ${cmd.id} menu leaf has no resolvable label`);
   }
-  return MENU_LABELS[key];
+  return translate(MENU_LABELS[key]);
 }
 
 /** Generate the actionable command leaves for the current platform, grouped by
@@ -624,6 +701,7 @@ function menuLeafLabel(
 function buildCommandLeaves(
   deps: MenuDeps,
   isMac: boolean,
+  translate: MenuTranslator,
 ): Map<MenuSection, MenuItemConstructorOptions[]> {
   const platform = isMac ? 'mac' : 'other';
   const ctx = menuCommandContext(deps);
@@ -637,7 +715,7 @@ function buildCommandLeaves(
       if (binding?.present && !binding.present(deps)) continue;
       const available = evaluateCommandAvailability(cmd.availability, ctx);
       const depWired = binding?.enabled ? binding.enabled(deps) : true;
-      const label = menuLeafLabel(cmd, placement, deps);
+      const label = menuLeafLabel(cmd, placement, deps, translate);
       const item: MenuItemConstructorOptions = {
         label: placement.ellipsis ? `${label}…` : label,
       };
@@ -691,14 +769,28 @@ function withLeadingSep(items: MenuItemConstructorOptions[]): MenuItemConstructo
  */
 export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
   const isMac = process.platform === 'darwin';
+  const translate = deps.translate ?? translateEnglish;
   const recents = deps.getRecentProjects();
-  const leaves = buildCommandLeaves(deps, isMac);
+  const leaves = buildCommandLeaves(deps, isMac, translate);
   const leafOf = (section: MenuSection): MenuItemConstructorOptions[] => leaves.get(section) ?? [];
+
+  /** A role item carrying the explicit translated label Electron would
+   *  otherwise supply in English. Roles with no entry in Electron's own label
+   *  table (there are none in this template) keep their implicit label. */
+  const roleItem = <T extends MenuItemConstructorOptions['role'] & string>(
+    role: T,
+  ): MenuItemConstructorOptions => {
+    const source = roleLabelSource(role, isMac);
+    if (source === undefined) return { role };
+    return { role, label: translate(source, { appName: deps.appName }) };
+  };
 
   const recentSubmenu: MenuItemConstructorOptions[] =
     recents.length === 0
-      ? [{ label: 'No recent projects', enabled: false }]
+      ? [{ label: translate(NATIVE_MENU_LABELS.noRecentProjects), enabled: false }]
       : [
+          // Row labels are project folder names — user-authored text, so they
+          // pass through verbatim.
           ...recents.slice(0, 10).map((row) => ({
             label: row.name,
             sublabel: row.path,
@@ -708,7 +800,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           })),
           { type: 'separator' as const },
           {
-            label: 'Clear menu',
+            label: translate(NATIVE_MENU_LABELS.clearMenu),
             click: () => deps.clearRecentProjects(),
           },
         ];
@@ -719,7 +811,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
   const recentFiles = deps.getRecentFiles?.() ?? [];
   const recentFilesSubmenu: MenuItemConstructorOptions[] =
     recentFiles.length === 0
-      ? [{ label: 'No recent files', enabled: false }]
+      ? [{ label: translate(NATIVE_MENU_LABELS.noRecentFiles), enabled: false }]
       : [
           ...recentFiles.slice(0, 10).map((row) => ({
             label: row.name,
@@ -730,7 +822,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           })),
           { type: 'separator' as const },
           {
-            label: 'Clear menu',
+            label: translate(NATIVE_MENU_LABELS.clearMenu),
             click: () => deps.clearRecentFiles?.(),
           },
         ];
@@ -742,7 +834,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           {
             label: deps.appName,
             submenu: [
-              { role: 'about' as const },
+              roleItem('about'),
               { type: 'separator' as const },
               // Apple HIG: "Check for updates…" under About, then "Settings…".
               // Both are platform-conditional placements in the shared registry
@@ -753,21 +845,21 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
               ...withTrailingSep(leafOf('app-updates')),
               ...leafOf('app-settings'),
               { type: 'separator' as const },
-              { role: 'services' as const },
+              roleItem('services'),
               { type: 'separator' as const },
-              { role: 'hide' as const },
-              { role: 'hideOthers' as const },
-              { role: 'unhide' as const },
+              roleItem('hide'),
+              roleItem('hideOthers'),
+              roleItem('unhide'),
               { type: 'separator' as const },
               ...withTrailingSep(leafOf('app-uninstall')),
-              { role: 'quit' as const },
+              roleItem('quit'),
             ],
           },
         ]
       : []),
 
     {
-      label: 'File',
+      label: translate(NATIVE_MENU_LABELS.menuFile),
       submenu: [
         // Creation items head the File menu; then the project section (mirrors
         // the in-app ProjectSwitcher order: Recent → New project → Switch →
@@ -778,11 +870,16 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         ...leafOf('file-create'),
         { type: 'separator' },
         {
-          label: 'Recent project',
+          label: translate(NATIVE_MENU_LABELS.recentProject),
           submenu: recentSubmenu,
         },
         ...(deps.getRecentFiles !== undefined
-          ? [{ label: 'Recent files', submenu: recentFilesSubmenu }]
+          ? [
+              {
+                label: translate(NATIVE_MENU_LABELS.recentFiles),
+                submenu: recentFilesSubmenu,
+              },
+            ]
           : []),
         ...leafOf('file-project'),
         { type: 'separator' },
@@ -792,7 +889,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         { type: 'separator' },
         ...leafOf('file-reveal'),
         {
-          label: MENU_LABELS.copyPath,
+          label: translate(MENU_LABELS.copyPath),
           enabled: deps.onCopyFullPath !== undefined || deps.onCopyRelativePath !== undefined,
           submenu: leafOf('file-copy-path'),
         },
@@ -801,36 +898,36 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         // On Windows/Linux Settings… belongs in the File menu (macOS renders it
         // in the App menu above); its registry placement is `other`-only.
         ...withTrailingSep(leafOf('file-settings')),
-        ...(isMac ? leafOf('file-close') : [{ role: 'quit' as const }]),
+        ...(isMac ? leafOf('file-close') : [roleItem('quit')]),
       ],
     },
 
     {
-      label: 'Edit',
+      label: translate(NATIVE_MENU_LABELS.menuEdit),
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        roleItem('undo'),
+        roleItem('redo'),
         { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        roleItem('cut'),
+        roleItem('copy'),
+        roleItem('paste'),
+        roleItem('selectAll'),
         { type: 'separator' },
         ...leafOf('edit-spell'),
       ],
     },
 
     {
-      label: 'View',
+      label: translate(NATIVE_MENU_LABELS.menuView),
       submenu: [
         ...leafOf('view-history'),
         { type: 'separator' as const },
         // Reload / Force Reload ship on every channel; Toggle Developer Tools is
         // gated on `showDevToolsMenu` (dev + beta) — Electron built-in roles.
-        { role: 'reload' as const },
-        { role: 'forceReload' as const },
+        roleItem('reload'),
+        roleItem('forceReload'),
         ...(deps.showDevToolsMenu
-          ? ([{ role: 'toggleDevTools' as const }] satisfies MenuItemConstructorOptions[])
+          ? ([roleItem('toggleDevTools')] satisfies MenuItemConstructorOptions[])
           : []),
         { type: 'separator' as const },
         ...leafOf('view-panels'),
@@ -839,36 +936,36 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         { type: 'separator' },
         ...leafOf('view-tree'),
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        roleItem('resetZoom'),
+        roleItem('zoomIn'),
+        roleItem('zoomOut'),
         { type: 'separator' },
-        { role: 'togglefullscreen' },
+        roleItem('togglefullscreen'),
       ],
     },
 
     {
       // Top-level Terminal menu (VS Code placement, between View and Window).
-      label: 'Terminal',
+      label: translate(NATIVE_MENU_LABELS.menuTerminal),
       submenu: leafOf('terminal'),
     },
 
     {
-      label: 'Window',
+      label: translate(NATIVE_MENU_LABELS.menuWindow),
       submenu: [
-        { role: 'minimize' },
+        roleItem('minimize'),
         ...(isMac
           ? ([
-              { role: 'zoom' as const },
+              roleItem('zoom'),
               { type: 'separator' as const },
-              { role: 'front' as const },
+              roleItem('front'),
             ] satisfies MenuItemConstructorOptions[])
-          : ([{ role: 'close' as const }] satisfies MenuItemConstructorOptions[])),
+          : ([roleItem('close')] satisfies MenuItemConstructorOptions[])),
       ],
     },
 
     {
-      label: 'Help',
+      label: translate(NATIVE_MENU_LABELS.menuHelp),
       submenu: [
         ...withTrailingSep(leafOf('help-install')),
         ...leafOf('help-links'),

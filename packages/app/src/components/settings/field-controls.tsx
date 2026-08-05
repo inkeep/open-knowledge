@@ -18,6 +18,8 @@ import {
   getFieldMeta,
   isKnownConfigError,
 } from '@inkeep/open-knowledge-core';
+import type { MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check, RotateCcw } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -51,6 +53,7 @@ import { useConfigContextOptional } from '@/lib/config-context';
 import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
 import { cn } from '@/lib/utils';
 import { ColorThemePicker } from './ColorThemePicker';
+import { LanguageSelect } from './LanguageSelect';
 import {
   getEnumOptions,
   getFieldDefault,
@@ -68,6 +71,21 @@ import { pickFirstIssueForPath } from './use-config-form';
  * THIS PROJECT use the project binding.
  */
 export type Scope = 'user' | 'project';
+
+/**
+ * Display copy for the enum values a toggle renders.
+ *
+ * A config enum value is a wire identifier (`'light'`, `'system'`), not copy.
+ * Rendering it verbatim puts English on screen in every locale — and visibly
+ * so, since the toggle sits directly beneath its own translated label and
+ * description. An unmapped value falls through to the raw identifier, so a new
+ * enum still renders something rather than blanking.
+ */
+const ENUM_OPTION_LABELS: Record<string, MessageDescriptor> = {
+  light: msg`Light`,
+  dark: msg`Dark`,
+  system: msg`System`,
+};
 
 export function firstIssuePath(error: ConfigValidationError): string | null {
   if (!isKnownConfigError(error) || error.code !== 'SCHEMA_INVALID') return null;
@@ -334,6 +352,20 @@ function FieldControlBody({
   // but FieldControlBody also renders in provider-less unit harnesses.
   const config = useConfigContextOptional();
   const merged = config?.merged ?? null;
+  if (field.control === 'language-select') {
+    return (
+      <LanguageSelect
+        {...slotForwarded}
+        value={ctl.value}
+        ref={ctl.ref}
+        onBlur={ctl.onBlur}
+        onValueChange={(next) => {
+          ctl.onChange(next);
+          onCommit();
+        }}
+      />
+    );
+  }
   if (field.control === 'theme-tiles') {
     const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
     const customSeed = merged?.appearance?.customTheme;
@@ -457,16 +489,22 @@ function FieldControlBody({
           className="bg-muted dark:bg-background p-0.5 rounded-lg"
           aria-label={t(field.label)}
         >
-          {enumOptions.map((opt, idx) => (
-            <ToggleGroupItem
-              key={opt}
-              value={opt}
-              id={idx === 0 ? forwardedId : undefined}
-              className="text-1sm capitalize"
-            >
-              {opt}
-            </ToggleGroupItem>
-          ))}
+          {enumOptions.map((opt, idx) => {
+            const label = ENUM_OPTION_LABELS[opt];
+            return (
+              <ToggleGroupItem
+                key={opt}
+                value={opt}
+                id={idx === 0 ? forwardedId : undefined}
+                // `capitalize` only styles the raw-identifier fallback; a
+                // translated label is already cased by its translator, and
+                // some scripts have no case at all.
+                className={label ? 'text-1sm' : 'text-1sm capitalize'}
+              >
+                {label ? t(label) : opt}
+              </ToggleGroupItem>
+            );
+          })}
         </ToggleGroup>
       );
     }

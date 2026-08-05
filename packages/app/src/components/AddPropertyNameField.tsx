@@ -277,7 +277,7 @@ export function AddPropertyNameField({
                   ) : null}
                 </span>
                 {suggestion.required ? (
-                  <Badge variant="gray" className="ml-auto shrink-0 text-2xs">
+                  <Badge variant="gray" className="ms-auto shrink-0 text-2xs">
                     <Trans>required</Trans>
                   </Badge>
                 ) : null}

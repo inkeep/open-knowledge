@@ -18,6 +18,8 @@
  * card stays put while you type. Rendered above the native bar (z-60).
  */
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import { commentQuoteText } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';

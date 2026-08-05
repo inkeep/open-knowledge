@@ -126,6 +126,7 @@ function PaneEdgeDropTarget({
       data-pane-edge={side}
       data-editor-pane-id={paneId}
       data-pane-drop-side={isOver ? side : undefined}
+      // biome-ignore lint/plugin/no-physical-direction-utility: `side` is the split model's own physical left/right, not a reading-direction edge — this strip has to land on the pane side the pointer is actually over. Whether panes themselves mirror under RTL is still open; mapping to start/end now would pre-commit that answer while looking like a no-op, since the two are identical in LTR.
       className={cn(
         'pointer-events-none absolute inset-y-0 z-30 w-12 opacity-0',
         side === 'left' ? 'left-0' : 'right-0',

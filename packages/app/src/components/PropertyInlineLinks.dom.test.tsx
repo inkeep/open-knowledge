@@ -5,10 +5,13 @@
  *   1. Wikilink anchors point at the SPA's hash router (`#/<target>`), not
  *      at the URL `target` verbatim — without this, the navigation would
  *      land on the docs site / 404 instead of staying inside the editor.
- *   2. Plain text fast-path renders a single `<span>` with no link
+ *   2. Plain text fast-path renders a single element with no link
  *      affordances and no test-id attribute, so the overwhelming majority
  *      of property values (which have no embedded link syntax) pay zero
  *      DOM cost beyond a bare text node.
+ *   3. Either way the value is isolated from the chrome's writing direction —
+ *      a property value is the user's own words, so a right-to-left interface
+ *      must not re-order it.
  *
  * Repo convention (see `FootnoteBubbleButton.dom.test.tsx`,
  * `tag-pill-input.dom.test.tsx`): no @testing-library/react interaction
@@ -75,10 +78,10 @@ describe('PropertyInlineLinks — markdown links and autolinks', () => {
 });
 
 describe('PropertyInlineLinks — plain-text fast path', () => {
-  test('plain text renders a single span with no link-component test-id', () => {
+  test('plain text renders a single element with no link-component test-id', () => {
     const { container } = render(<PropertyInlineLinks text="just plain words" />);
     // `hasInlineLinks` returned false → component skipped the tokenizer
-    // and emitted a single span. The outer test-id only mounts on the
+    // and emitted a single element. The outer test-id only mounts on the
     // tokenized path, so its absence is the proof we took the fast path.
     expect(screen.queryByTestId('property-inline-links')).toBeNull();
     expect(screen.queryByTestId('property-inline-wikilink')).toBeNull();
@@ -87,7 +90,7 @@ describe('PropertyInlineLinks — plain-text fast path', () => {
     expect(container.textContent).toBe('just plain words');
   });
 
-  test('empty string renders an empty span', () => {
+  test('empty string renders an empty element', () => {
     const { container } = render(<PropertyInlineLinks text="" />);
     expect(container.textContent).toBe('');
   });
@@ -123,5 +126,22 @@ describe('PropertyInlineLinks — mixed content', () => {
     expect(screen.getByTestId('property-inline-wikilink').textContent).toBe('Page');
     expect(screen.getByTestId('property-inline-link').textContent).toBe('doc');
     expect(screen.getByTestId('property-inline-autolink').textContent).toBe('https://example.com');
+  });
+});
+
+describe('PropertyInlineLinks — writing direction', () => {
+  test('a plain value takes its direction from the value, not from the chrome', () => {
+    const { container } = render(<PropertyInlineLinks text="notes about ranking" />);
+    expect(container.firstElementChild?.tagName).toBe('BDI');
+  });
+
+  test('a value carrying links is isolated once, as a whole', () => {
+    // One isolate around the value rather than one per link: the links are
+    // fragments of a single authored string, so isolating them separately
+    // would re-order the sentence it sits in.
+    render(<PropertyInlineLinks text="see [[some/page]] — and https://example.com" />);
+    const value = screen.getByTestId('property-inline-links');
+    expect(value.tagName).toBe('BDI');
+    expect(value.querySelectorAll('bdi').length).toBe(0);
   });
 });

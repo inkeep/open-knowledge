@@ -18,7 +18,7 @@
     "check:fast": "pnpm run typecheck",
     "check:doc-links": "pnpm --dir docs run validate-link",
     "check:drift": "pnpm run check:drift:guards && vitest run --config vitest.scripts.config.ts",
-    "check:drift:guards": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && bash scripts/check-no-major-changeset.sh",
+    "check:drift:guards": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && node scripts/check-i18n-new-string-translations.mjs && node scripts/check-i18n-picker-completeness.mjs && bash scripts/check-no-major-changeset.sh",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:vitest-selftest": "vitest run",

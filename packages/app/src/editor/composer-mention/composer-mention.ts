@@ -241,6 +241,9 @@ export function composerMentionExtensions(options?: { placeholder?: string }) {
     ComposerHardBreak,
     ComposerHistory,
     ComposerMention,
+    // Seeds the mount-time value only. Extensions are built once, so the host
+    // re-points `options.placeholder` on this instance when the interface
+    // language changes — see `ComposerMentionInput`.
     ...(options?.placeholder ? [Placeholder.configure({ placeholder: options.placeholder })] : []),
   ];
 }

@@ -10,6 +10,7 @@ import {
   canonicalGitHubRemoteUrl as _canonicalGitHubRemoteUrl,
   type ExpectedShareRepo,
 } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import type {
   CheckTargetExistsResult,
   OkShareReceivedPayload,
@@ -41,19 +42,30 @@ export function mapValidationToToast(
   result: ShareFolderValidationResult,
   expected: ExpectedShareRepo,
 ): string | null {
+  // Bind each interpolated value to a named local: the macro derives its
+  // placeholder name from the expression, so a member access would extract as
+  // positional `{0}`/`{1}` and leave a translator guessing which is which.
+  const expectedOwner = expected.owner;
+  const expectedRepo = expected.repo;
+  const expectedHost = expected.host;
   switch (result.kind) {
     case 'ok':
       return null;
     case 'not-git':
-      return "This folder doesn't contain a git repository. Pick a different folder?";
-    case 'wrong-repo':
-      return `This folder is a clone of ${result.actualOwner}/${result.actualRepo}, not ${expected.owner}/${expected.repo}. Pick a different folder?`;
-    case 'wrong-host':
-      return `This folder is a clone of ${expected.owner}/${expected.repo} on ${result.actualHost}, not ${expected.host}. Pick a folder cloned from ${expected.host}?`;
+      return t`This folder doesn't contain a git repository. Pick a different folder?`;
+    case 'wrong-repo': {
+      const actualOwner = result.actualOwner;
+      const actualRepo = result.actualRepo;
+      return t`This folder is a clone of ${actualOwner}/${actualRepo}, not ${expectedOwner}/${expectedRepo}. Pick a different folder?`;
+    }
+    case 'wrong-host': {
+      const actualHost = result.actualHost;
+      return t`This folder is a clone of ${expectedOwner}/${expectedRepo} on ${actualHost}, not ${expectedHost}. Pick a folder cloned from ${expectedHost}?`;
+    }
     case 'no-origin':
     case 'non-github':
     case 'symlink-escape':
-      return `This folder isn't a clone of ${expected.owner}/${expected.repo}. Pick a different folder?`;
+      return t`This folder isn't a clone of ${expectedOwner}/${expectedRepo}. Pick a different folder?`;
   }
 }
 
@@ -71,11 +83,11 @@ export function presentReceiveError(payload: OkShareReceivedPayload): ReceiveErr
   if (payload.kind === 'unsupported-version') {
     return {
       kind: 'unsupported-version',
-      message: 'Update OpenKnowledge to open this share.',
+      message: t`Update OpenKnowledge to open this share.`,
     };
   }
   if (payload.kind === 'invalid') {
-    return { kind: 'invalid', message: 'Invalid share URL.' };
+    return { kind: 'invalid', message: t`Invalid share URL.` };
   }
   return null;
 }

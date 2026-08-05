@@ -16,6 +16,8 @@
  * `packages/app/src/main.tsx`).
  */
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   FileText,
@@ -48,6 +50,11 @@ import { createCloneController } from '@/lib/share/clone-controller';
 import { ipcAuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { ipcAuthTransport } from '@/lib/transports/auth-transport';
 import { ipcCloneTransport } from '@/lib/transports/clone-transport';
+import {
+  narrowLanguagePreference,
+  readCachedLanguagePreference,
+  useApplyConfigLanguage,
+} from '@/lib/use-apply-config-language';
 import { AuthModal } from './AuthModal';
 import { BetaBadge } from './BetaBadge';
 import { CloneDialog } from './CloneDialog';
@@ -171,6 +178,28 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   // ThemeProvider default or sources `themeValue` from a different surface
   // would otherwise stall the show-gate's 5 s safety timeout.
   useThemeBridge(bridge, themeValue ?? 'system');
+
+  // Same shape as the theme line above, and for the same reason: the launcher
+  // has no CRDT, so the saved choice comes from the client-side cache instead of
+  // merged config. `userConfigSynced` is true because that cache is already the
+  // authoritative source here — there is no later config load to wait for.
+  //
+  // Without this the launcher renders the bootstrap catalog while the menu bar
+  // above it is translated, since the menus are built in the main process from
+  // the preference on disk and never needed a window.
+  useApplyConfigLanguage({
+    // Main's value first: it read the saved choice off disk while opening this
+    // window, which is the same read that translated the menu bar. The cache
+    // is the browser-surface fallback, where there is no main process — and it
+    // is empty on a desktop profile whose editor windows have never run, which
+    // is exactly when the launcher is the first thing shown.
+    // Narrowed here rather than in the preload: that file is sandboxed and
+    // cannot import the supported-locale list to validate against, so it
+    // forwards the argv value verbatim.
+    preference:
+      narrowLanguagePreference(bridge.config.languagePreference) ?? readCachedLanguagePreference(),
+    userConfigSynced: true,
+  });
 
   useEffect(() => {
     let cancelled = false;

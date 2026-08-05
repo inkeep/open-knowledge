@@ -69,6 +69,27 @@
     the editor-mode FOUC above.
   -->
   <script>(() => { const isMode = (v) => v === 'light' || v === 'dark' || v === 'system'; const isThemeId = (v) => typeof v === 'string' && /^[a-z0-9-]{1,32}$/.test(v); let pref = 'system'; try { const r = localStorage.getItem('ok-theme-v1'); if (isMode(r)) pref = r; } catch {} let slots = null; try { const raw = localStorage.getItem('ok-color-theme-pair-v1'); if (raw) { const o = JSON.parse(raw); if (o?.light && o?.dark) { slots = o; if (isMode(o.pref)) pref = o.pref; } } } catch {} let dark = pref === 'dark'; if (pref === 'system') { try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch {} } let ct = null; if (slots) { const slot = dark ? slots.dark : slots.light; if (isThemeId(slot?.id)) { dark = !!slot.dark; if (slot.id !== 'default') ct = slot.id; } } else { try { const c = localStorage.getItem('ok-color-theme-v1'); if (isThemeId(c) && c !== 'default') ct = c; } catch {} } let customCss = null; if (ct === 'custom') { try { const raw = localStorage.getItem('ok-custom-theme-v1'); if (raw) { const o = JSON.parse(raw); if (o?.css) { customCss = o.css; dark = !!o.dark; } } } catch {} if (!customCss) ct = null; } if (dark) document.documentElement.classList.add('dark'); if (ct) document.documentElement.setAttribute('data-color-theme', ct); if (customCss) { const s = document.createElement('style'); s.id = 'ok-custom-theme'; s.textContent = customCss; document.head.appendChild(s); } if (window.okDesktop) { document.documentElement.classList.add('electron-mode'); document.documentElement.classList.add(`electron-platform-${window.okDesktop.platform}`); } })();</script>
+  <!--
+    Language FOUC prevention. Reads the persisted interface language
+    synchronously before React mounts so the first painted frame carries the
+    right `lang` (which picks the font stack and shaper) and the right base
+    `dir` — a late direction flip moves the whole layout, not just a word.
+    Paired consumer/writer: `src/lib/use-apply-config-language.ts`
+    (`ok-language-v1`) — keep the key and the `locale` / `dir` field names in
+    sync; `src/lib/language-fouc-prepaint.dom.test.ts` runs this script over
+    that writer's real output to hold the two together.
+
+    The cached locale is painted as-is and never re-resolved here: turning an
+    OS language list back into a catalog needs the maximizing matcher, which is
+    bundle code. The `pref` field is written for the app, not read here.
+
+    `<html lang>` above is the no-cache default, so a first-ever launch paints
+    the bootstrap catalog's language rather than an empty attribute.
+
+    Single-line script body — same biome HTML-formatter constraint as the two
+    FOUC scripts above.
+  -->
+  <script>(() => { try { const raw = localStorage.getItem('ok-language-v1'); if (!raw) return; const o = JSON.parse(raw); if (typeof o?.locale !== 'string' || !/^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{2,8})*$/.test(o.locale)) return; document.documentElement.lang = o.locale; document.documentElement.dir = o.dir === 'rtl' ? 'rtl' : 'ltr'; } catch {} })();</script>
   <style>html { background-color: __OK_CHROME_BG_LIGHT__ } html.dark { background-color: __OK_CHROME_BG_DARK__ }</style>
 </head>
 

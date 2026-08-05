@@ -432,6 +432,14 @@ msgstr "{chars, plural, one {char} other {chars}}"
 msgid "{chunksRemaining, plural, one {# unresolved hunk} other {# unresolved hunks}}"
 msgstr "{chunksRemaining, plural, one {# unresolved hunk} other {# unresolved hunks}}"
 
+#: src/editor/utils/editor-strings.ts
+msgid "{componentLabel} (empty)"
+msgstr "{componentLabel} (empty)"
+
+#: src/editor/utils/editor-strings.ts
+msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
+msgstr "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# conflict} other {# conflicts}}"
@@ -659,6 +667,10 @@ msgstr "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
 msgstr "{owner}/{name} already exists"
+
+#: src/lib/share/publish-wizard.ts
+msgid "{owner}/{name} already exists. Pick a different name."
+msgstr "{owner}/{name} already exists. Pick a different name."
 
 #: src/components/SeedDialog.tsx
 msgid "{packName} initialized ({projectEntries, plural, one {# entry} other {# entries}})"
@@ -1033,6 +1045,14 @@ msgstr "A worktree folder for {shareBranch} already exists."
 msgid "A worktree folder for that branch already exists."
 msgstr "A worktree folder for that branch already exists."
 
+#: src/lib/native-menu-catalog.ts
+msgid "About"
+msgstr "About"
+
+#: src/lib/native-menu-catalog.ts
+msgid "About {appName}"
+msgstr "About {appName}"
+
 #: src/editor/slash-command/items.tsx
 msgid "Above"
 msgstr "Above"
@@ -1099,6 +1119,7 @@ msgid "Activity"
 msgstr "Activity"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
 msgstr "Actual Size"
 
@@ -1223,6 +1244,10 @@ msgstr "Add the <0>ok</0> command to your terminal"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
 msgstr "Add the next matching source selection."
+
+#: src/lib/native-menu-catalog.ts
+msgid "Add to Dictionary"
+msgstr "Add to Dictionary"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
@@ -1548,6 +1573,10 @@ msgstr "Asset"
 msgid "Asset reference"
 msgstr "Asset reference"
 
+#: src/editor/components/SrcAutocomplete.tsx
+msgid "Asset suggestions"
+msgstr "Asset suggestions"
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "Asset: {title}"
@@ -1802,6 +1831,10 @@ msgstr "breadcrumb"
 msgid "Bring a remote repository onto this machine."
 msgstr "Bring a remote repository onto this machine."
 
+#: src/lib/native-menu-catalog.ts
+msgid "Bring All to Front"
+msgstr "Bring All to Front"
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Broken internal links"
 msgstr "Broken internal links"
@@ -1913,6 +1946,10 @@ msgstr "Can't safely edit this project config"
 msgid "Can't safely edit this tool's config"
 msgstr "Can't safely edit this tool's config"
 
+#: src/lib/share/run-share-action.ts
+msgid "Can't share this path."
+msgstr "Can't share this path."
+
 #: src/comments/PropertyCommentButton.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
@@ -1965,6 +2002,10 @@ msgstr "Cancelled"
 #: src/components/EditorWorkspace.tsx
 msgid "Cancelled moving {0}."
 msgstr "Cancelled moving {0}."
+
+#: src/components/FileTree.tsx
+msgid "Cannot delete files with unresolved conflicts"
+msgstr "Cannot delete files with unresolved conflicts"
 
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
@@ -2075,6 +2116,10 @@ msgstr "Choose a skill folder"
 msgid "Choose agent"
 msgstr "Choose agent"
 
+#: src/editor/components/ColorPickerInput.tsx
+msgid "Choose color"
+msgstr "Choose color"
+
 #: src/components/ImportSkillForm.tsx
 msgid "Choose file"
 msgstr "Choose file"
@@ -2082,6 +2127,10 @@ msgstr "Choose file"
 #: src/components/ImportSkillForm.tsx
 msgid "Choose folder"
 msgstr "Choose folder"
+
+#: src/editor/components/IconPickerInput.tsx
+msgid "Choose icon"
+msgstr "Choose icon"
 
 #: src/components/TerminalNewChatButton.tsx
 msgid "Choose what a new session starts"
@@ -2133,7 +2182,12 @@ msgstr "Clear"
 msgid "Clear {keyName}"
 msgstr "Clear {keyName}"
 
+#: src/editor/components/ColorPickerInput.tsx
+msgid "Clear color"
+msgstr "Clear color"
+
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "Clear menu"
 
@@ -2228,6 +2282,7 @@ msgstr "Cloning..."
 #: src/components/ui/dialog.tsx
 #: src/components/ui/sheet.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Close"
 msgstr "Close"
 
@@ -2279,6 +2334,7 @@ msgid "Close terminal"
 msgstr "Close terminal"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "Close Window"
 
@@ -2484,6 +2540,10 @@ msgstr "Config sharing unavailable: {0}."
 msgid "Config sharing unchanged — see details below."
 msgstr "Config sharing unchanged — see details below."
 
+#: src/lib/install-onboarding-toast.ts
+msgid "Config sharing unchanged: {trackedCount, plural, one {# OK file} other {# OK files}} tracked upstream — see message below."
+msgstr "Config sharing unchanged: {trackedCount, plural, one {# OK file} other {# OK files}} tracked upstream — see message below."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Configuration problems"
 msgstr "Configuration problems"
@@ -2514,6 +2574,14 @@ msgstr "conflict"
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "Conflict"
+
+#: src/components/ConflictsSection.tsx
+msgid "Conflicted files"
+msgstr "Conflicted files"
+
+#: src/components/ConflictsSection.tsx
+msgid "Conflicts"
+msgstr "Conflicts"
 
 #. Primary button that writes MCP config for the selected AI tools
 #: src/components/AuthModal.tsx
@@ -2740,6 +2808,7 @@ msgstr "copy"
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Copy"
 msgstr "Copy"
 
@@ -2785,6 +2854,10 @@ msgstr "Copy full path, No workspace"
 msgid "Copy in"
 msgstr "Copy in"
 
+#: src/lib/native-menu-catalog.ts
+msgid "Copy link"
+msgstr "Copy link"
+
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
 msgid "Copy path"
@@ -2827,6 +2900,7 @@ msgid "Could not complete delete"
 msgstr "Could not complete delete"
 
 #: src/components/ShareButton.tsx
+#: src/lib/share/run-share-action.ts
 msgid "Could not construct share URL."
 msgstr "Could not construct share URL."
 
@@ -3061,6 +3135,10 @@ msgstr "Couldn't install {skillName}: {0}"
 msgid "Couldn't install from {0}: {1}"
 msgstr "Couldn't install from {0}: {1}"
 
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "Couldn't install OpenKnowledge skill — {message}"
+msgstr "Couldn't install OpenKnowledge skill — {message}"
+
 #. placeholder {0}: result.error
 #: src/components/skill-actions.tsx
 msgid "Couldn't install skill: {0}"
@@ -3078,6 +3156,10 @@ msgstr "Couldn't load {fileName}"
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't load conflict content for {filePath}. Try reloading the page."
 msgstr "Couldn't load conflict content for {filePath}. Try reloading the page."
+
+#: src/components/ConflictsSection.tsx
+msgid "Couldn't load conflicts — reload to retry."
+msgstr "Couldn't load conflicts — reload to retry."
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Couldn't load docs — type @ again to retry"
@@ -3152,6 +3234,10 @@ msgstr "Couldn't open the terminal — the comments are still waiting to send."
 msgid "Couldn't open the worktree. Try again."
 msgstr "Couldn't open the worktree. Try again."
 
+#: src/lib/share/publish-wizard.ts
+msgid "Couldn't prepare this project for publish."
+msgstr "Couldn't prepare this project for publish."
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
 msgstr "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
@@ -3160,11 +3246,20 @@ msgstr "Couldn't pull from GitHub. Check your connection and sign-in, then retry
 msgid "Couldn't re-place that comment."
 msgstr "Couldn't re-place that comment."
 
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "Couldn't reach {displayName} — please try again later."
+msgstr "Couldn't reach {displayName} — please try again later."
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "Couldn't reach {displayName} — try again?"
+msgstr "Couldn't reach {displayName} — try again?"
+
 #: src/components/ConnectingBanner.tsx
 msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
 msgstr "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
 
 #: src/components/PublishToGitHubDialog.tsx
+#: src/lib/share/publish-wizard.ts
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "Couldn't reach GitHub. Try again?"
 
@@ -3324,6 +3419,10 @@ msgstr "Couldn't start the agent thread — please try again."
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
 msgstr "Couldn't start the sync. Check your connection, then retry."
+
+#: src/lib/locale-load-failure-notice.ts
+msgid "Couldn't switch to {language}."
+msgstr "Couldn't switch to {language}."
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't switch to Only me"
@@ -3503,6 +3602,10 @@ msgstr "Create your first project"
 msgid "Created {0}"
 msgstr "Created {0}"
 
+#: src/lib/share/publish-wizard.ts
+msgid "Created {owner}/{name}, push failed."
+msgstr "Created {owner}/{name}, push failed."
+
 #: src/components/ProblemsPanel.tsx
 msgid "Created {target}"
 msgstr "Created {target}"
@@ -3575,8 +3678,13 @@ msgid "Customize how the editor looks and behaves."
 msgstr "Customize how the editor looks and behaves."
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Cut"
 msgstr "Cut"
+
+#: src/components/settings/field-controls.tsx
+msgid "Dark"
+msgstr "Dark"
 
 #: src/components/ExploreSkills.tsx
 msgid "Data"
@@ -3860,6 +3968,10 @@ msgstr "Disable external link previews"
 msgid "Disable semantic search"
 msgstr "Disable semantic search"
 
+#: src/lib/native-menu-catalog.ts
+msgid "Disable Spell Check"
+msgstr "Disable Spell Check"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Disable Themes"
 msgstr "Disable Themes"
@@ -4122,6 +4234,7 @@ msgstr "Each selected tool gets an OpenKnowledge MCP entry."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "Edit"
 
@@ -4355,6 +4468,10 @@ msgstr "Enable plugins"
 msgid "Enable semantic search"
 msgstr "Enable semantic search"
 
+#: src/lib/native-menu-catalog.ts
+msgid "Enable Spell Check"
+msgstr "Enable Spell Check"
+
 #: src/components/TerminalGate.tsx
 msgid "Enable terminal"
 msgstr "Enable terminal"
@@ -4458,6 +4575,7 @@ msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window,
 msgstr "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Exit"
 msgstr "Exit"
 
@@ -4872,6 +4990,7 @@ msgstr "Fields"
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/slash-command/component-items.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "File"
 msgstr "File"
 
@@ -5064,6 +5183,10 @@ msgstr "Folder name: {detail}"
 msgid "Folder properties"
 msgstr "Folder properties"
 
+#: src/lib/share/run-share-action.ts
+msgid "Folder share link copied."
+msgstr "Folder share link copied."
+
 #: src/components/LinksPanel.tsx
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Folder target: {linkTitle}. Click to open the overview."
@@ -5121,6 +5244,7 @@ msgid "Footnote"
 msgstr "Footnote"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Force Reload"
 msgstr "Force Reload"
 
@@ -5255,6 +5379,14 @@ msgstr "Git sync"
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub authentication failed. Try signing in again."
+
+#: src/lib/share/publish-wizard.ts
+msgid "GitHub connection expired. Connect again to continue."
+msgstr "GitHub connection expired. Connect again to continue."
+
+#: src/lib/share/publish-wizard.ts
+msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
+msgstr "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
@@ -5402,6 +5534,7 @@ msgid "Hello, world!"
 msgstr "Hello, world!"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Help"
 msgstr "Help"
 
@@ -5430,6 +5563,10 @@ msgstr "Hidden folder “{basename}”"
 #: src/components/TimelinePanel.tsx
 msgid "Hide"
 msgstr "Hide"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Hide {appName}"
+msgstr "Hide {appName}"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Hide advanced"
@@ -5477,6 +5614,10 @@ msgstr "Hide folder"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Hide HTML preview"
 msgstr "Hide HTML preview"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Hide Others"
+msgstr "Hide Others"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -5619,6 +5760,10 @@ msgstr "I already have it locally →"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "I'm switching to another tool"
 msgstr "I'm switching to another tool"
+
+#: src/editor/components/IconPickerInput.tsx
+msgid "Icon picker"
+msgstr "Icon picker"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -5785,6 +5930,10 @@ msgstr "Initialize starter pack"
 msgid "Initialized {0} but could not open it."
 msgstr "Initialized {0} but could not open it."
 
+#: src/lib/install-onboarding-toast.ts
+msgid "Initialized OpenKnowledge at {gitRoot} — opened parent of {subPath} because it contains a .git folder"
+msgstr "Initialized OpenKnowledge at {gitRoot} — opened parent of {subPath} because it contains a .git folder"
+
 #: src/components/CloneDialog.tsx
 msgid "Initializing project"
 msgstr "Initializing project"
@@ -5855,6 +6004,10 @@ msgstr "Install failed: {0}"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Install for Claude Chat & Cowork"
 msgstr "Install for Claude Chat & Cowork"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Install for Claude Chat & Cowork (desktop app)"
+msgstr "Install for Claude Chat & Cowork (desktop app)"
 
 #: src/components/command-palette-commands.ts
 msgid "Install for Claude Chat & Cowork (Desktop App)"
@@ -5988,6 +6141,10 @@ msgstr "Invalid input — pick a different folder."
 msgid "Invalid patch payload"
 msgstr "Invalid patch payload"
 
+#: src/lib/share/receive-flow.ts
+msgid "Invalid share URL."
+msgstr "Invalid share URL."
+
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
 msgstr "It didn't fit into my workflow"
@@ -6119,6 +6276,10 @@ msgstr "Label <0>(optional display text)</0>"
 msgid "Label <0>(visible link text)</0>"
 msgstr "Label <0>(visible link text)</0>"
 
+#: src/components/settings/settings-fields.ts
+msgid "Language"
+msgstr "Language"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
 msgstr "Latest edit"
@@ -6162,6 +6323,10 @@ msgstr "Let us follow up by email"
 msgid "Level"
 msgstr "Level"
 
+#: src/components/settings/field-controls.tsx
+msgid "Light"
+msgstr "Light"
+
 #: src/components/settings/settings-fields.ts
 msgid "Light, dark, or follow the OS."
 msgstr "Light, dark, or follow the OS."
@@ -6176,6 +6341,7 @@ msgid "Link"
 msgstr "Link"
 
 #: src/components/PublishToGitHubDialog.tsx
+#: src/lib/share/run-share-action.ts
 msgid "Link copied."
 msgstr "Link copied."
 
@@ -6187,6 +6353,10 @@ msgstr "Link preview settings not yet loaded — try again in a moment"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Link previews"
 msgstr "Link previews"
+
+#: src/lib/share/run-share-action.ts
+msgid "Link ready but could not copy to clipboard."
+msgstr "Link ready but could not copy to clipboard."
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Link target"
@@ -6394,6 +6564,10 @@ msgstr "Local commits are keeping this copy from updating"
 msgid "Local path"
 msgstr "Local path"
 
+#: src/lib/install-onboarding-toast.ts
+msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
+msgstr "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "Location"
@@ -6401,6 +6575,10 @@ msgstr "Location"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
 msgstr "Logs & system info"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Look Up \"{word}\""
+msgstr "Look Up \"{word}\""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Looking for <0>{lookingForUrl}</0>."
@@ -6475,6 +6653,10 @@ msgstr "Maximum {MAX_ATTACHMENTS} attachments"
 msgid "Maximum agents already running"
 msgstr "Maximum agents already running"
 
+#: src/lib/install-onboarding-toast.ts
+msgid "MCP auto-repair failed"
+msgstr "MCP auto-repair failed"
+
 #. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
 #. Group label above the per-editor project MCP list in Settings → This project → AI tools
 #. Section label above the editor checkbox list in the first-launch dialog — each row wires OpenKnowledge's MCP server into that tool
@@ -6514,6 +6696,7 @@ msgid "Message not sent: {0}"
 msgstr "Message not sent: {0}"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Minimize"
 msgstr "Minimize"
 
@@ -6937,6 +7120,10 @@ msgstr "New terminal"
 msgid "New Terminal"
 msgstr "New Terminal"
 
+#: src/lib/native-menu-catalog.ts
+msgid "New Terminal Window"
+msgstr "New Terminal Window"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "New thread with {0}"
@@ -7103,6 +7290,10 @@ msgstr "No history yet"
 msgid "No hub pages yet. Hubs appear once pages accumulate inbound graph links."
 msgstr "No hub pages yet. Hubs appear once pages accumulate inbound graph links."
 
+#: src/editor/components/IconPickerInput.tsx
+msgid "No icons match."
+msgstr "No icons match."
+
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "No Incoming"
@@ -7199,7 +7390,12 @@ msgstr "No problems found."
 msgid "No project templates yet. Create one to make it available everywhere in this project. Folder-scoped templates live on each folder's overview page."
 msgstr "No project templates yet. Create one to make it available everywhere in this project. Folder-scoped templates live on each folder's overview page."
 
+#: src/lib/native-menu-catalog.ts
+msgid "No recent files"
+msgstr "No recent files"
+
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "No recent projects"
 msgstr "No recent projects"
 
@@ -7528,6 +7724,10 @@ msgstr "Open a doc to share its URL."
 msgid "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
 msgstr "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
 
+#: src/lib/share/publish-wizard.ts
+msgid "Open a project first."
+msgstr "Open a project first."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "Open a project to edit."
@@ -7645,6 +7845,14 @@ msgstr "Open graph"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in current branch"
 msgstr "Open in current branch"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Open in default app"
+msgstr "Open in default app"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Open in file manager"
+msgstr "Open in file manager"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open in worktree"
@@ -7777,6 +7985,14 @@ msgstr "Open worktree"
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 
+#: src/lib/install-onboarding-toast.ts
+msgid "Opened existing OpenKnowledge project at {ancestorPath}"
+msgstr "Opened existing OpenKnowledge project at {ancestorPath}"
+
+#: src/lib/install-deep-link-listener.ts
+msgid "Opened on branch {branch}"
+msgstr "Opened on branch {branch}"
+
 #: src/components/NavigatorApp.tsx
 msgid "Opening {openingLabel}…"
 msgstr "Opening {openingLabel}…"
@@ -7792,6 +8008,10 @@ msgstr "Opening..."
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
 msgstr "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
+
+#: src/lib/install-onboarding-toast.ts
+msgid "OpenKnowledge integrations checked."
+msgstr "OpenKnowledge integrations checked."
 
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
@@ -7809,6 +8029,10 @@ msgstr "OpenKnowledge on GitHub"
 #: src/components/ReportBugDialogBody.tsx
 msgid "OpenKnowledge quit unexpectedly last time."
 msgstr "OpenKnowledge quit unexpectedly last time."
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."
+msgstr "OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
@@ -8005,6 +8229,7 @@ msgid "Part of the {plugin} plugin"
 msgstr "Part of the {plugin} plugin"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Paste"
 msgstr "Paste"
 
@@ -8064,6 +8289,10 @@ msgstr "Path cannot contain null bytes"
 #: src/components/NewItemDialog.tsx
 msgid "Path cannot start with \"/\""
 msgstr "Path cannot start with \"/\""
+
+#: src/lib/install-onboarding-toast.ts
+msgid "PATH install failed: {summary}"
+msgstr "PATH install failed: {summary}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "Path resolves outside project"
@@ -8447,9 +8676,17 @@ msgstr "Pulls may overwrite uncommitted edits in your local files."
 msgid "Push"
 msgstr "Push"
 
+#: src/lib/share/run-share-action.ts
+msgid "Push {branch} to GitHub before sharing."
+msgstr "Push {branch} to GitHub before sharing."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Push failed — check the server logs for details."
 msgstr "Push failed — check the server logs for details."
+
+#: src/lib/share/run-share-action.ts
+msgid "Push this branch to GitHub before sharing."
+msgstr "Push this branch to GitHub before sharing."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Pushing"
@@ -8470,6 +8707,14 @@ msgstr "Queued — sends when this run finishes"
 #: src/components/acp/ThreadView.tsx
 msgid "Queues behind the running turn"
 msgstr "Queues behind the running turn"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Quit"
+msgstr "Quit"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Quit {appName}"
+msgstr "Quit {appName}"
 
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
@@ -8551,7 +8796,12 @@ msgstr "recent"
 msgid "Recent"
 msgstr "Recent"
 
+#: src/lib/native-menu-catalog.ts
+msgid "Recent files"
+msgstr "Recent files"
+
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Recent project"
 msgstr "Recent project"
 
@@ -8584,6 +8834,7 @@ msgid "Recovered content"
 msgstr "Recovered content"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Redo"
 msgstr "Redo"
 
@@ -8648,6 +8899,8 @@ msgstr "Relevance"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/lib/locale-load-failure-notice.ts
+#: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "Reload"
 
@@ -8867,6 +9120,10 @@ msgstr "Reopen this window to sign in with your browser"
 msgid "Reopening \"{docName}\" with a fresh local collaboration cache."
 msgstr "Reopening \"{docName}\" with a fresh local collaboration cache."
 
+#: src/lib/install-onboarding-toast.ts
+msgid "repaired {names} MCP integration"
+msgstr "repaired {names} MCP integration"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Replace"
@@ -9013,6 +9270,14 @@ msgstr "Resolve"
 msgid "Resolve conflict in your terminal"
 msgstr "Resolve conflict in your terminal"
 
+#: src/components/FileTree.tsx
+msgid "Resolve the conflict on {files} before deleting."
+msgstr "Resolve the conflict on {files} before deleting."
+
+#: src/components/FileTree.tsx
+msgid "Resolve the conflict on {files}, +{overflow} more before deleting."
+msgstr "Resolve the conflict on {files}, +{overflow} more before deleting."
+
 #: src/comments/CommentsPanel.tsx
 msgid "Resolved"
 msgstr "Resolved"
@@ -9129,6 +9394,7 @@ msgstr "Retrieving…"
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
 #: src/components/ConnectingBanner.tsx
+#: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 #: src/components/TrashFailureModal.tsx
@@ -9397,6 +9663,10 @@ msgstr "Search files, folders, and commands for the current workspace."
 msgid "Search files, folders, or commands"
 msgstr "Search files, folders, or commands"
 
+#: src/editor/components/IconPickerInput.tsx
+msgid "Search icons..."
+msgstr "Search icons..."
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -9441,6 +9711,10 @@ msgstr "Search skills"
 #: src/components/NewItemDialog.tsx
 msgid "Search templates"
 msgstr "Search templates"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Search with Google"
+msgstr "Search with Google"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees"
@@ -9511,6 +9785,7 @@ msgid "Select all"
 msgstr "Select all"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Select All"
 msgstr "Select All"
 
@@ -9670,9 +9945,21 @@ msgstr "Server error: {status}"
 msgid "Server error: {status} {statusText}"
 msgstr "Server error: {status} {statusText}"
 
+#: src/hooks/use-folder-config.ts
+msgid "Server returned an incomplete folder response."
+msgstr "Server returned an incomplete folder response."
+
+#: src/hooks/use-folder-config.ts
+msgid "Server returned an incomplete templates response."
+msgstr "Server returned an incomplete templates response."
+
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
 msgstr "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Services"
+msgstr "Services"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Session ended"
@@ -9811,6 +10098,10 @@ msgstr "Shared with everyone on this project — committed to config.yml via git
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
 msgstr "Sharing a doc needs a GitHub repository. Create one for this project."
 
+#: src/lib/share/run-share-action.ts
+msgid "Sharing supports GitHub remotes only."
+msgstr "Sharing supports GitHub remotes only."
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Ship the editor with a"
 msgstr "Ship the editor with a"
@@ -9850,6 +10141,10 @@ msgstr "Show advanced"
 #: src/components/command-palette-commands.ts
 msgid "Show Agents"
 msgstr "Show Agents"
+
+#: src/lib/native-menu-catalog.ts
+msgid "Show All"
+msgstr "Show All"
 
 #: src/components/command-palette-commands.ts
 msgid "Show Bottom Dock"
@@ -9899,6 +10194,7 @@ msgid "Show HTML preview"
 msgstr "Show HTML preview"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Show in Explorer"
 msgstr "Show in Explorer"
 
@@ -10323,6 +10619,10 @@ msgstr "Steer now"
 msgid "Steering — waiting for the current run to stop…"
 msgstr "Steering — waiting for the current run to stop…"
 
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "Still couldn't reach {displayName} — try one more time?"
+msgstr "Still couldn't reach {displayName} — try one more time?"
+
 #: src/components/MountStalledAffordance.tsx
 msgid "Still loading"
 msgstr "Still loading"
@@ -10442,6 +10742,10 @@ msgstr "Switch project"
 #: src/components/AppMenubar.tsx
 msgid "Switch project…"
 msgstr "Switch project…"
+
+#: src/lib/share/run-share-action.ts
+msgid "Switch to a branch to share."
+msgstr "Switch to a branch to share."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Switch to Follow"
@@ -10595,6 +10899,11 @@ msgstr "Syncing"
 msgid "Syncing your changes"
 msgstr "Syncing your changes"
 
+#: src/components/settings/field-controls.tsx
+#: src/components/settings/LanguageSelect.tsx
+msgid "System"
+msgstr "System"
+
 #: src/components/TrashFailureModal.tsx
 msgid "System error"
 msgstr "System error"
@@ -10728,6 +11037,7 @@ msgstr "Templates available"
 #: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 #: src/components/TerminalPanel.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Terminal"
 msgstr "Terminal"
 
@@ -10904,6 +11214,14 @@ msgstr "The formula <0>c = √(a² + b²)</0> renders inline."
 #: src/components/SkillsSidebarSection.tsx
 msgid "the git exclude file isn't writable"
 msgstr "the git exclude file isn't writable"
+
+#: src/lib/locale-load-failure-notice.ts
+msgid "The interface is still in the language you were reading. Check your connection, then reload to try again."
+msgstr "The interface is still in the language you were reading. Check your connection, then reload to try again."
+
+#: src/components/settings/settings-fields.ts
+msgid "The language OpenKnowledge speaks; System follows your operating system. Your own notes stay in the language you wrote them in."
+msgstr "The language OpenKnowledge speaks; System follows your operating system. Your own notes stay in the language you wrote them in."
 
 #: src/components/TemplateProperties.tsx
 msgid "The menu label agents pick this template by (required)."
@@ -11154,6 +11472,10 @@ msgstr "This file is binary and can't be shown as text."
 msgid "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
 msgstr "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
 
+#: src/lib/share/receive-flow.ts
+msgid "This folder doesn't contain a git repository. Pick a different folder?"
+msgstr "This folder doesn't contain a git repository. Pick a different folder?"
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "This folder has unpushed changes. Recipients will see the last pushed version."
 msgstr "This folder has unpushed changes. Recipients will see the last pushed version."
@@ -11162,9 +11484,21 @@ msgstr "This folder has unpushed changes. Recipients will see the last pushed ve
 msgid "This folder hasn't synced to GitHub yet. The link will work after the next sync."
 msgstr "This folder hasn't synced to GitHub yet. The link will work after the next sync."
 
+#: src/lib/share/receive-flow.ts
+msgid "This folder is a clone of {actualOwner}/{actualRepo}, not {expectedOwner}/{expectedRepo}. Pick a different folder?"
+msgstr "This folder is a clone of {actualOwner}/{actualRepo}, not {expectedOwner}/{expectedRepo}. Pick a different folder?"
+
+#: src/lib/share/receive-flow.ts
+msgid "This folder is a clone of {expectedOwner}/{expectedRepo} on {actualHost}, not {expectedHost}. Pick a folder cloned from {expectedHost}?"
+msgstr "This folder is a clone of {expectedOwner}/{expectedRepo} on {actualHost}, not {expectedHost}. Pick a folder cloned from {expectedHost}?"
+
 #: src/components/FolderOverview.tsx
 msgid "This folder is empty."
 msgstr "This folder is empty."
+
+#: src/lib/share/receive-flow.ts
+msgid "This folder isn't a clone of {expectedOwner}/{expectedRepo}. Pick a different folder?"
+msgstr "This folder isn't a clone of {expectedOwner}/{expectedRepo}. Pick a different folder?"
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
@@ -11249,6 +11583,10 @@ msgstr "This project"
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
+
+#: src/lib/share/run-share-action.ts
+msgid "This project has no GitHub remote."
+msgstr "This project has no GitHub remote."
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
@@ -11401,10 +11739,12 @@ msgid "Toggle bold formatting."
 msgstr "Toggle bold formatting."
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Toggle Developer Tools"
 msgstr "Toggle Developer Tools"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Toggle Full Screen"
 msgstr "Toggle Full Screen"
 
@@ -11501,6 +11841,10 @@ msgstr "Try a prompt"
 msgid "Try again"
 msgstr "Try again"
 
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "Try one more time"
+msgstr "Try one more time"
+
 #: src/components/acp/working-status.ts
 msgid "Trying it out…"
 msgstr "Trying it out…"
@@ -11561,6 +11905,10 @@ msgstr "Two-page (odd)"
 msgid "Type"
 msgstr "Type"
 
+#: src/editor/TiptapEditor.tsx
+msgid "Type '/' for commands"
+msgstr "Type '/' for commands"
+
 #: src/components/CommandPalette.tsx
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "Type a query, then press <0>↵</0> to search your pages by meaning."
@@ -11597,6 +11945,7 @@ msgstr "Undid the last edit on {docName}"
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
 #: src/components/settings/SharingSection.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "Undo"
 
@@ -11628,6 +11977,7 @@ msgstr "Undo to this edit?"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 
+#: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
 msgstr "Uninstall OpenKnowledge"
@@ -11709,6 +12059,10 @@ msgstr "Update failed: {0}"
 #: src/components/SkillOriginInline.tsx
 msgid "Update from source"
 msgstr "Update from source"
+
+#: src/lib/share/receive-flow.ts
+msgid "Update OpenKnowledge to open this share."
+msgstr "Update OpenKnowledge to open this share."
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Update the destination and optional section anchor."
@@ -11931,6 +12285,7 @@ msgstr "via parent"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "View"
 
@@ -11953,6 +12308,10 @@ msgstr "View in source"
 #: src/editor/bubble-menu/ViewInSourceBubbleButton.tsx
 msgid "View in source markdown"
 msgstr "View in source markdown"
+
+#: src/lib/native-menu-catalog.ts
+msgid "View in Source Markdown"
+msgstr "View in Source Markdown"
 
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "View plugin"
@@ -12168,6 +12527,7 @@ msgid "Will replace existing OpenKnowledge entry"
 msgstr "Will replace existing OpenKnowledge entry"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "Window"
 
@@ -12414,12 +12774,17 @@ msgstr "Your user-level skill folders — available in every project on this mac
 msgid "Zip file"
 msgstr "Zip file"
 
+#: src/lib/native-menu-catalog.ts
+msgid "Zoom"
+msgstr "Zoom"
+
 #: src/editor/components/Mermaid.tsx
 #: src/editor/components/Pdf.tsx
 msgid "Zoom in"
 msgstr "Zoom in"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Zoom In"
 msgstr "Zoom In"
 
@@ -12429,5 +12794,6 @@ msgid "Zoom out"
 msgstr "Zoom out"
 
 #: src/components/AppMenubar.tsx
+#: src/lib/native-menu-catalog.ts
 msgid "Zoom Out"
 msgstr "Zoom Out"

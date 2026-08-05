@@ -68,8 +68,13 @@
  * background-throttling toggle (`ok:editor:background-throttle`), keying a
  * window's Chromium timers to its unsynced work — it could not fold onto the
  * sibling `ok:editor:*` snapshots (different cadence, and a fold would rebuild
- * the app menu on every keystroke-to-sync edge). Full rationale in the ratchet
- * test header.
+ * the app menu on every keystroke-to-sync edge). The 90→91 bump added the
+ * interface-language push (`ok:locale:set-preference`), which rebuilds the
+ * native menu bar when the user changes language — it could not fold onto
+ * `ok:theme:set-source` despite the near-identical contract, because the two
+ * fire on independent cadences and a fold would set `nativeTheme.themeSource`
+ * on a language change and rebuild the menu on a theme change. Full rationale
+ * in the ratchet test header.
  */
 
 import type {
@@ -79,6 +84,7 @@ import type {
   EditorId,
   HandoffFailureReason,
   HandoffScope,
+  LanguagePreference,
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
   OkBugReportCreateResult,
@@ -1155,6 +1161,28 @@ export interface RequestChannels {
    * correctness lives in the `ok:theme:applied` show-gate below.
    */
   'ok:theme:set-source': { args: [params: { source: OkThemeSource }]; result: { ok: true } };
+  /**
+   * Push the user's chosen interface language from renderer `ConfigProvider`
+   * to main, which re-resolves it and rebuilds the application menu so the
+   * native chrome tracks the picker without a restart.
+   *
+   * Value is user-intent (`'system'` or a supported tag), NOT the resolved
+   * locale — `'system'` IS the lever that delegates to the OS preferred-
+   * language list, so resolving at the call site would freeze a preference
+   * that is meant to keep following it. Same one-way contract as
+   * `ok:theme:set-source` above.
+   *
+   * Main does not need this to render a translated menu at boot: it reads the
+   * persisted preference off disk itself, because the menu is built before any
+   * renderer exists. This channel only carries SUBSEQUENT changes.
+   *
+   * Failure model is best-effort — a rejected push leaves the menu on the
+   * previous language and the next mutation re-fires.
+   */
+  'ok:locale:set-preference': {
+    args: [params: { preference: LanguagePreference }];
+    result: { ok: true };
+  };
   /**
    * Renderer→main fire-and-forget signal. The renderer fires this once
    * after ConfigProvider's first sync settles, and again on every

@@ -160,4 +160,17 @@ describe('EditorBreadcrumb (Tier-3 mount)', () => {
       expect(span.getAttribute('aria-current')).toBeNull();
     }
   });
+
+  test('folder segments take their direction from the folder name', () => {
+    // Folder names are the user's own words. `dir` inherits, so without an
+    // isolate here a right-to-left interface would re-order a Latin path.
+    render(<EditorBreadcrumb docName="meetings/2026/q1/notes" />);
+    const nav = screen.getByRole('navigation', { name: /breadcrumb/i });
+    const segments = [...nav.querySelectorAll('[data-slot="breadcrumb-page"]')];
+    expect(segments.length).toBe(3);
+    for (const segment of segments) {
+      const isolated = segment.querySelector('bdi');
+      expect(isolated?.textContent).toBe(segment.textContent);
+    }
+  });
 });

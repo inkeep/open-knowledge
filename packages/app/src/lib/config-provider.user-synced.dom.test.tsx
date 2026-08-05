@@ -21,7 +21,9 @@
 
 import type { ConfigBinding, OkignoreBinding, WriteScope } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { dynamicActivate } from './activate-locale';
+import { i18n } from './i18n';
 import { __resetServerInstanceStoreForTests, setServerInstanceId } from './server-instance-store';
 
 // One captured listener per binding scope so the test can fire the synced
@@ -58,6 +60,7 @@ let providerRecords: ProviderRecord[] = [];
 let mergeLayeredCalls: Array<[unknown, unknown, unknown]> = [];
 let mergedConfig: unknown = {};
 let useThemeBridgeCalls: Array<[unknown, string]> = [];
+let useLanguageBridgeCalls: Array<[unknown, unknown, boolean]> = [];
 let setThemeCalls: string[] = [];
 const buildAuthTokenCalls: Array<readonly unknown[]> = [];
 
@@ -69,6 +72,7 @@ function resetCaptures() {
   mergeLayeredCalls = [];
   mergedConfig = {};
   useThemeBridgeCalls = [];
+  useLanguageBridgeCalls = [];
   setThemeCalls = [];
   buildAuthTokenCalls.length = 0;
 }
@@ -117,6 +121,12 @@ function makeFakeOkignoreBinding(): OkignoreBinding {
 vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: (bridge: unknown, theme: string) => {
     useThemeBridgeCalls.push([bridge, theme]);
+  },
+}));
+
+vi.doMock('@/hooks/use-language-bridge', () => ({
+  useLanguageBridge: (bridge: unknown, preference: unknown, synced: boolean) => {
+    useLanguageBridgeCalls.push([bridge, preference, synced]);
   },
 }));
 
@@ -173,48 +183,22 @@ vi.doMock('@/lib/auth-token', () => ({
 // calls to produce the binding objects it then subscribes to. The fakes
 // return ConfigBindings whose `subscribeSynced` listener is captured per
 // scope so the test can trigger the false→true transition by hand.
-vi.doMock('@inkeep/open-knowledge-core', () => ({
+//
+// Spreading the real module first keeps this to the three seams the test
+// actually drives. A wholesale factory had to re-declare every core symbol
+// anything in ConfigProvider's transitive graph imports — the theme registry
+// that `@/lib/color-themes` re-exports, then the locale set and resolver the
+// language bridge reaches for — and each one it had not anticipated failed as a
+// hard named-import error somewhere unrelated to what was being tested.
+vi.doMock('@inkeep/open-knowledge-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@inkeep/open-knowledge-core')>()),
   bindConfigDoc: (_provider: unknown, scope: WriteScope) =>
     makeFakeConfigBinding(scope, scope === 'user' ? userHasSyncedSeed : false),
   bindOkignoreDoc: () => makeFakeOkignoreBinding(),
-  CONFIG_DOC_NAME_USER: '__user__/config.yml',
-  CONFIG_DOC_NAME_PROJECT: '__config__/project',
-  CONFIG_DOC_NAME_PROJECT_LOCAL: '__local__/project',
-  CONFIG_DOC_NAME_OKIGNORE: '__config__/okignore',
   mergeLayered: (user: unknown, project: unknown, projectLocal: unknown) => {
     mergeLayeredCalls.push([user, project, projectLocal]);
     return mergedConfig;
   },
-  // `@/lib/color-themes` (pulled in transitively via config-provider and
-  // SettingsDialogBody) now re-exports the theme registry from core, so the
-  // wholesale core mock must stub every re-exported symbol or color-themes'
-  // re-exports fail to resolve (a hard named-import error for `colorThemeMode`,
-  // which SettingsDialogBody imports statically).
-  colorThemeMode: (id?: string) => (id && id !== 'default' && id !== 'custom' ? 'dark' : undefined),
-  resolveColorThemeSelection: (appearance?: { colorTheme?: string }) => ({
-    light: appearance?.colorTheme ?? 'default',
-    dark: appearance?.colorTheme ?? 'default',
-  }),
-  resolveModePreference: (preference?: string, prefersDark?: boolean) =>
-    preference === 'light' || preference === 'dark' ? preference : prefersDark ? 'dark' : 'light',
-  expandPalette: () => ({}),
-  generateColorThemesCss: () => '',
-  isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
-  resolveThemePlugin: (id?: string) => ({ id: id ?? 'default', label: 'Default', kind: 'system' }),
-  THEME_PLUGINS: [],
-  // The base-theme tokens `defaultThemeTokens` composes for the Default tile's
-  // preview. Values are placeholders — no assertion here reads them; they only
-  // need to cover the token names the preview looks up.
-  CHROME_BG_LIGHT: '#fafafa',
-  CHROME_BG_DARK: '#171717',
-  PREVIEW_THEME_TOKENS: [
-    { name: '--background', light: '#ffffff', dark: '#0a0a0a' },
-    { name: '--primary', light: '#2563eb', dark: '#69a3ff' },
-    { name: '--border', light: '#e5e5e5', dark: '#2a2a2a' },
-    { name: '--chart-2', light: '#16a34a', dark: '#4ade80' },
-    { name: '--chart-3', light: '#ca8a04', dark: '#facc15' },
-    { name: '--chart-4', light: '#7c3aed', dark: '#a78bfa' },
-  ],
 }));
 
 // Module-level toggle for the second case (mount-time pre-synced seed).
@@ -251,6 +235,13 @@ function ConfigContextProbe() {
 describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
+  // Loading the Spanish catalog up front makes activation synchronous, so the
+  // language assertion below reads a committed state rather than racing a fetch.
+  beforeAll(async () => {
+    await dynamicActivate('es');
+    await dynamicActivate('en');
+  });
+
   beforeEach(() => {
     resetCaptures();
     lastContext = null;
@@ -259,10 +250,11 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
     consoleErrorSpy.mockRestore();
     Reflect.deleteProperty(window, 'okDesktop');
+    await dynamicActivate('en');
   });
 
   test('userSynced reads false until the binding fires its synced listener, then flips to true', () => {
@@ -392,6 +384,58 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
 
     expect(useThemeBridgeCalls.at(-1)).toEqual([bridge, 'system']);
     expect(setThemeCalls).toEqual([]);
+  });
+
+  test('the merged interface language reaches Lingui, and only once the user layer has synced', async () => {
+    mergedConfig = { appearance: { language: 'es' } };
+
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mergeLayeredCalls.length).toBeGreaterThan(0);
+    });
+    // The value is already merged and readable here; withholding it until the
+    // user layer syncs is what keeps a boot from activating the browser's
+    // language and then correcting itself.
+    expect(i18n.locale).toBe('en');
+
+    act(() => {
+      captures.get('user')?.syncedListener?.();
+    });
+
+    expect(i18n.locale).toBe('es');
+  });
+
+  test('the same unresolved preference is handed to the native-menu bridge', async () => {
+    // The renderer activates a catalog; main re-resolves and rebuilds its own
+    // menu. Both read the one merged value, and what crosses to main must be
+    // the user's INTENT — a resolved tag looks identical on the wire and
+    // silently stops following the OS.
+    const bridge = { nativeTheme: {} };
+    Object.defineProperty(window, 'okDesktop', { configurable: true, value: bridge });
+    mergedConfig = { appearance: { language: 'system' } };
+
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mergeLayeredCalls.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      captures.get('user')?.syncedListener?.();
+    });
+
+    await waitFor(() => {
+      expect(useLanguageBridgeCalls.at(-1)).toEqual([bridge, 'system', true]);
+    });
   });
 
   test('threads the server epoch from the store into every provider auth-token claim', async () => {

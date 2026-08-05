@@ -879,7 +879,7 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
     const view = findByLabel(template, 'View');
     const sub = view?.submenu as MenuItemConstructorOptions[] | undefined;
     expect(sub).toBeDefined();
-    const labels = sub?.map((i) => i.label ?? `[role:${i.role ?? 'sep'}]`) ?? [];
+    const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
     const showHiddenFilesIdx = labels.indexOf('Show hidden files');
     const expandAllIdx = labels.indexOf('Expand all');
     const resetZoomIdx = labels.indexOf('[role:resetZoom]');
@@ -1035,7 +1035,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Skills secti
     );
     const view = findByLabel(template, 'View');
     const sub = view?.submenu as MenuItemConstructorOptions[] | undefined;
-    const labels = sub?.map((i) => i.label ?? `[role:${i.role ?? 'sep'}]`) ?? [];
+    const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
     const hiddenIdx = labels.indexOf('Show hidden files');
     const okIdx = labels.indexOf('Show .ok folders');
     const onlyMdIdx = labels.indexOf('Show only markdown files');
@@ -1127,7 +1127,7 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
     );
     const view = findByLabel(template, 'View');
     const sub = view?.submenu as MenuItemConstructorOptions[] | undefined;
-    const labels = sub?.map((i) => i.label ?? `[role:${i.role ?? 'sep'}]`) ?? [];
+    const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
     const sidebarIdx = labels.indexOf('Hide sidebar');
     const showHiddenFilesIdx = labels.indexOf('Show hidden files');
     expect(sidebarIdx).toBeGreaterThan(-1);
@@ -1264,7 +1264,7 @@ describe('buildMenuTemplate — View → Show/Hide Bottom Dock', () => {
     );
     const view = findByLabel(template, 'View');
     const sub = view?.submenu as MenuItemConstructorOptions[] | undefined;
-    const labels = sub?.map((i) => i.label ?? `[role:${i.role ?? 'sep'}]`) ?? [];
+    const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
     const docPanelIdx = labels.indexOf('Hide document panel');
     const terminalIdx = labels.indexOf('Show Bottom Dock');
     const resetZoomIdx = labels.indexOf('[role:resetZoom]');
@@ -1337,7 +1337,7 @@ describe('buildMenuTemplate — View → Show/Hide Agents', () => {
       makeDeps({ onToggleTerminal: vi.fn(() => {}), onToggleAgentPanel: vi.fn(() => {}) }),
     );
     const sub = findByLabel(template, 'View')?.submenu as MenuItemConstructorOptions[] | undefined;
-    const labels = sub?.map((i) => i.label ?? `[role:${i.role ?? 'sep'}]`) ?? [];
+    const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
     expect(labels.indexOf('Show Agents')).toBeGreaterThan(labels.indexOf('Show Bottom Dock'));
   });
 });

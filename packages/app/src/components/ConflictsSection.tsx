@@ -21,6 +21,9 @@
  *     edges that flip `conflicts.json`. They converge in steady state; a
  *     brief mismatch window may exist during the propagation round-trip.
  */
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
+import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConflicts } from '@/hooks/use-conflicts';
@@ -37,6 +40,7 @@ function navigateToConflictedDoc(filePath: string) {
 
 export function ConflictsSection() {
   const { conflicts, loading, error } = useConflicts();
+  const { t } = useLingui();
 
   // Initial fetch in flight — render nothing rather than flash an empty
   // section that disappears once the fetch resolves.
@@ -57,7 +61,7 @@ export function ConflictsSection() {
     return (
       <section
         data-testid="conflicts-section"
-        aria-label="Conflicted files"
+        aria-label={t`Conflicted files`}
         className="border-b border-amber-200/60 bg-amber-50/40 px-2 py-2 dark:border-amber-900/40 dark:bg-amber-950/20"
       >
         <p
@@ -65,7 +69,7 @@ export function ConflictsSection() {
           className="px-2 py-1.5 text-[12px] text-amber-700 dark:text-amber-400"
         >
           <AlertTriangle aria-hidden="true" className="mr-1.5 inline size-3" />
-          Couldn&apos;t load conflicts — reload to retry.
+          <Trans>Couldn't load conflicts — reload to retry.</Trans>
         </p>
       </section>
     );
@@ -76,13 +80,13 @@ export function ConflictsSection() {
   return (
     <section
       data-testid="conflicts-section"
-      aria-label="Conflicted files"
+      aria-label={t`Conflicted files`}
       className="border-b border-amber-200/60 bg-amber-50/40 px-2 py-2 dark:border-amber-900/40 dark:bg-amber-950/20"
     >
       <header className="flex items-center justify-between px-2 pb-1.5">
         <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400">
           <AlertTriangle aria-hidden="true" className="size-3" />
-          Conflicts
+          <Trans>Conflicts</Trans>
         </span>
         <span
           data-testid="conflicts-section-count"

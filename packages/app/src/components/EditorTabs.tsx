@@ -1,5 +1,7 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { useDndContext } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -551,6 +553,12 @@ function DocumentTabButton({
       <button
         type="button"
         aria-label={buttonAccessibleLabel}
+        // The label is the user's own file path, so its direction comes from the
+        // path rather than from the interface language (see `UserText`). Applied
+        // to the button because the path is split across sibling spans for
+        // truncation — one isolate around all of them keeps the fragments in the
+        // order the name was written, instead of letting the chrome reorder them.
+        dir="auto"
         className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
         onClick={() => {
           activateTab(tabId);
@@ -1128,6 +1136,12 @@ export function EditorTabs({
                         <button
                           type="button"
                           aria-label={accessibleLabel}
+                          // The label is the user's own file path, so its direction comes
+                          // from the path rather than the interface language (see
+                          // `UserText`). On the button because the path is split across
+                          // sibling spans for truncation — one isolate around all of them
+                          // keeps the fragments in the order the name was written.
+                          dir="auto"
                           className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
                           onClick={() => activateTab(tabId)}
                           onDoubleClick={(event) => {
@@ -1242,6 +1256,12 @@ export function EditorTabs({
                         <button
                           type="button"
                           aria-label={accessibleLabel}
+                          // The label is the user's own file path, so its direction comes
+                          // from the path rather than the interface language (see
+                          // `UserText`). On the button because the path is split across
+                          // sibling spans for truncation — one isolate around all of them
+                          // keeps the fragments in the order the name was written.
+                          dir="auto"
                           className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
                           onClick={() => activateTab(tabId)}
                           onDoubleClick={(event) => {

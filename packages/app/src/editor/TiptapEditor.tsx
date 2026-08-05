@@ -9,6 +9,7 @@ import {
   hasNewEntries,
   MarkdownManager,
 } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension } from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -391,7 +392,11 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
       return ext;
     }),
     Placeholder.configure({
-      placeholder: placeholder ?? "Type '/' for commands",
+      // A getter, not a string: extensions are built once at editor
+      // construction, so a resolved string would pin the placeholder to
+      // whichever language was active then. TipTap re-invokes this whenever it
+      // recomputes the decoration, and `t` resolves against the live catalog.
+      placeholder: () => placeholder ?? t`Type '/' for commands`,
       showOnlyCurrent: true,
     }),
     // Skill docs: backticked bundle paths become clickable (display-only).

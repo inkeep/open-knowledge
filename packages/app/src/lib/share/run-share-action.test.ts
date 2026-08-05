@@ -11,17 +11,23 @@ import type {
   ShareConstructUrlResponse,
 } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { mapShareErrorToToast, requestShareConstructUrl, runShareAction } from './run-share-action';
+import {
+  mapShareErrorToToast,
+  requestShareConstructUrl,
+  runShareAction,
+  type ShareErrorToastReason,
+} from './run-share-action';
 
 interface MockDeps {
   fetchFn: typeof fetch;
   clipboardWrite: (text: string) => Promise<void>;
   toastSuccess: (msg: string) => void;
-  toastError: (msg: string) => void;
+  toastError: (msg: string, reason: ShareErrorToastReason) => void;
   logEvent: (msg: string) => void;
   clipboardTexts: string[];
   successToasts: string[];
   errorToasts: string[];
+  errorReasons: ShareErrorToastReason[];
   logs: string[];
   fetchCalls: Array<{ url: string; body: unknown }>;
 }
@@ -35,6 +41,7 @@ function makeDeps(opts: {
   const clipboardTexts: string[] = [];
   const successToasts: string[] = [];
   const errorToasts: string[] = [];
+  const errorReasons: ShareErrorToastReason[] = [];
   const logs: string[] = [];
   const fetchCalls: Array<{ url: string; body: unknown }> = [];
 
@@ -60,11 +67,15 @@ function makeDeps(opts: {
       clipboardTexts.push(text);
     },
     toastSuccess: (msg) => successToasts.push(msg),
-    toastError: (msg) => errorToasts.push(msg),
+    toastError: (msg, reason) => {
+      errorToasts.push(msg);
+      errorReasons.push(reason);
+    },
     logEvent: (msg) => logs.push(msg),
     clipboardTexts,
     successToasts,
     errorToasts,
+    errorReasons,
     logs,
     fetchCalls,
   };
@@ -534,5 +545,51 @@ describe('runShareAction — transport / clipboard failures', () => {
 
     expect(result).toEqual({ kind: 'transport-error' });
     expect(deps.errorToasts).toEqual(['Could not construct share URL.']);
+  });
+});
+
+describe('error toasts carry the failure class that produced them', () => {
+  // Callers that surface a failure another way suppress it by this reason.
+  // Matching on the message instead would break the moment the UI runs in a
+  // language whose copy is not the source text.
+  test('a clipboard write that fails is reported as a clipboard failure', async () => {
+    const deps = makeDeps({
+      fetchResponse: {
+        ok: true,
+        shareUrl: 'https://openknowledge.ai/d/Aaa',
+        sharedUrl: 'https://github.com/o/r/blob/main/a.md',
+        branch: 'main',
+      },
+      clipboardThrows: new Error('denied'),
+    });
+
+    await runShareAction(
+      { kind: 'doc', docName: 'a', hasRemote: true, onClickWhenNoRemote: () => {} },
+      deps,
+    );
+
+    expect(deps.errorReasons).toEqual(['clipboard']);
+  });
+
+  test('an unreachable server is reported as a transport failure', async () => {
+    const deps = makeDeps({ fetchStatus: 500 });
+
+    await runShareAction(
+      { kind: 'doc', docName: 'a', hasRemote: true, onClickWhenNoRemote: () => {} },
+      deps,
+    );
+
+    expect(deps.errorReasons).toEqual(['transport']);
+  });
+
+  test('a refusal the server explains is reported as a business failure', async () => {
+    const deps = makeDeps({ fetchResponse: { ok: false, error: 'detached-head' } });
+
+    await runShareAction(
+      { kind: 'doc', docName: 'a', hasRemote: true, onClickWhenNoRemote: () => {} },
+      deps,
+    );
+
+    expect(deps.errorReasons).toEqual(['business']);
   });
 });

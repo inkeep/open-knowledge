@@ -13,6 +13,7 @@
  */
 
 import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
+import { plural, t } from '@lingui/core/macro';
 import { toast as sonnerToast } from 'sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { relativeToProject } from '@/lib/project-paths';
@@ -38,7 +39,8 @@ export function installOnboardingToastListener(opts: {
   if (!bridge.onboarding) return undefined;
   return bridge.onboarding.onToast((payload) => {
     if (payload.kind === 'ancestor-promote') {
-      sonnerToast.success(`Opened existing OpenKnowledge project at ${payload.ancestorPath}`, {
+      const ancestorPath = payload.ancestorPath;
+      sonnerToast.success(t`Opened existing OpenKnowledge project at ${ancestorPath}`, {
         duration: TOAST_DURATION_MS,
       });
       return;
@@ -49,14 +51,16 @@ export function installOnboardingToastListener(opts: {
         const names = payload.mcp.editors
           .map((id) => EDITOR_LABELS[id as keyof typeof EDITOR_LABELS] ?? id)
           .join(', ');
-        parts.push(`repaired ${names} MCP integration`);
+        parts.push(t`repaired ${names} MCP integration`);
       } else if (payload.mcp.status === 'failed') {
-        parts.push('MCP auto-repair failed');
+        parts.push(t`MCP auto-repair failed`);
       }
       if (payload.path.status === 'installed') parts.push(payload.path.summary);
-      if (payload.path.status === 'failed')
-        parts.push(`PATH install failed: ${payload.path.summary}`);
-      const message = parts.length > 0 ? parts.join('; ') : 'OpenKnowledge integrations checked.';
+      if (payload.path.status === 'failed') {
+        const summary = payload.path.summary;
+        parts.push(t`PATH install failed: ${summary}`);
+      }
+      const message = parts.length > 0 ? parts.join('; ') : t`OpenKnowledge integrations checked.`;
       const hasFailure = payload.mcp.status === 'failed' || payload.path.status === 'failed';
       const pathTouched = payload.path.status !== 'none';
       sonnerToast[hasFailure ? 'error' : 'success'](message, {
@@ -74,8 +78,12 @@ export function installOnboardingToastListener(opts: {
       // refusal — surface a sticky error toast with the full
       // remediation. The desktop user can't `git rm --cached` from the UI
       // (yet); the toast gives them the exact CLI commands.
+      const trackedCount = payload.tracked.length;
       sonnerToast.error(
-        `Config sharing unchanged: ${payload.tracked.length} OK file(s) tracked upstream — see message below.`,
+        t`Config sharing unchanged: ${plural(trackedCount, {
+          one: '# OK file',
+          other: '# OK files',
+        })} tracked upstream — see message below.`,
         {
           duration: STICKY_TOAST_DURATION_MS,
           description: payload.remediation,
@@ -85,7 +93,7 @@ export function installOnboardingToastListener(opts: {
     }
     if (payload.kind === 'sharing-no-git') {
       sonnerToast.warning(
-        'Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo.',
+        t`Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo.`,
         { duration: TOAST_DURATION_MS },
       );
       return;
@@ -97,8 +105,9 @@ export function installOnboardingToastListener(opts: {
     // already guarantees descendant, but realpath edge cases on symlinked
     // trees are worth surviving without losing the toast).
     const subPath = relativeToProject(payload.gitRoot, payload.pickedPath) ?? payload.pickedPath;
+    const gitRoot = payload.gitRoot;
     sonnerToast.success(
-      `Initialized OpenKnowledge at ${payload.gitRoot} — opened parent of ${subPath} because it contains a .git folder`,
+      t`Initialized OpenKnowledge at ${gitRoot} — opened parent of ${subPath} because it contains a .git folder`,
       { duration: TOAST_DURATION_MS },
     );
   });

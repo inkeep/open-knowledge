@@ -78,6 +78,32 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.appearance?.theme).toBeUndefined();
   });
 
+  test("scope: 'user' (appearance.language) ignores a project-layer language entirely", () => {
+    // The interface language is a personal preference; a repository must not
+    // be able to decide what language its collaborators read the chrome in.
+    // This also pins the leaf's registration landing on the enum rather than
+    // on the `.optional()` wrapper — an unregistered leaf has no scope, so it
+    // would silently fall through to default precedence and the project value
+    // below would win.
+    const user = makeConfig({ appearance: {} });
+    const project = makeConfig({ appearance: { language: 'es' } });
+    const projectLocal = makeConfig({ appearance: { language: 'zh-Hans' } });
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.appearance?.language).toBeUndefined();
+  });
+
+  test("scope: 'user' (appearance.language) keeps the 'system' sentinel the user stored", () => {
+    // A concrete language in a lower layer must not overwrite 'system' —
+    // that would convert a preference that follows the OS into a frozen one.
+    const user = makeConfig({ appearance: { language: 'system' } });
+    const project = makeConfig({ appearance: { language: 'es' } });
+    const projectLocal = makeConfig({ appearance: { language: 'zh-Hans' } });
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.appearance?.language).toBe('system');
+  });
+
   test("scope: 'user' (editor.wordWrap) returns user preference even when other layers differ", () => {
     const user = makeConfig({ editor: { wordWrap: false } });
     const project = makeConfig({ editor: { wordWrap: true } });

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { isBuiltin } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -41,7 +42,7 @@ describe('preload bundle self-containment', () => {
     expect(Object.keys(await preloadInput())).toEqual(['index']);
   });
 
-  test('the built preload requires only module names, never a relative path', () => {
+  test('the built preload requires only specifiers the sandbox can resolve', () => {
     const built = resolve(desktopRoot, 'out', 'preload', 'index.js');
     if (!existsSync(built)) {
       // Unbuilt tree — the entry-count assertion above still guards the cause.
@@ -51,6 +52,17 @@ describe('preload bundle self-containment', () => {
       (match) => match[1],
     );
     expect(requires.length).toBeGreaterThan(0);
-    expect(requires.filter((specifier) => specifier?.startsWith('.'))).toEqual([]);
+    // A bare workspace specifier is as fatal as a relative path and less
+    // obvious: `import { X } from '@inkeep/open-knowledge-core'` looks
+    // identical to the type-only imports beside it, but a VALUE import emits a
+    // runtime `require()` the sandbox allowlist does not carry. The throw
+    // precedes `exposeInMainWorld`, so the symptom is the whole bridge missing
+    // rather than one broken field. Allowlist the resolvable names instead of
+    // only rejecting `./`.
+    expect(
+      requires.filter(
+        (specifier) => specifier !== undefined && specifier !== 'electron' && !isBuiltin(specifier),
+      ),
+    ).toEqual([]);
   });
 });

@@ -18,6 +18,8 @@
  * regardless of declared type — value shape wins for rendering.
  */
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import {
   FRONTMATTER_TAG_GRAMMAR_HINT,
   FRONTMATTER_TAG_VALUE_RE,
@@ -586,6 +588,10 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
                 type="button"
                 data-tag={chip}
                 aria-label={t`Open documents tagged #${chip}`}
+                // The tag is the user's own word and the leading `#` is
+                // direction-neutral, so without this a right-to-left interface
+                // would flip the hash to the far side of the tag.
+                dir="auto"
                 onClick={() => dispatchTagClickEvent(chip)}
                 className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
@@ -596,7 +602,7 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
               // links, bare URLs) inside the chip as clickable elements
               // instead of raw text. Plain-text chips fast-path through
               // the helper's `hasInlineLinks` short-circuit to a single
-              // `<span>`, so the only cost on the common case is one
+              // element, so the only cost on the common case is one
               // substring probe.
               <PropertyInlineLinks text={chip} />
             )}

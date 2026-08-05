@@ -22,6 +22,8 @@
  *     auto-dismisses after `SUCCESS_AUTO_DISMISS_MS`.
  */
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { ComponentProps, FC } from 'react';
 import { useEffect, useState } from 'react';

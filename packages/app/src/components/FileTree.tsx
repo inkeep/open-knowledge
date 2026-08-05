@@ -1,3 +1,5 @@
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import {
   CreateFolderSuccessSchema,
   CreatePageSuccessSchema,
@@ -136,6 +138,7 @@ import {
   resolveFileTreeSelection,
   resolveFileTreeSelectionAction,
 } from '@/components/file-tree-selection';
+import { FILE_TREE_USER_NAME_DIRECTION_CSS } from '@/components/file-tree-shared';
 import { selectTrashConfirmCopy, trashTargetDisplayName } from '@/components/file-tree-trash-copy';
 import {
   classifyEmptyTree,
@@ -426,7 +429,7 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
 // markdown icon stays gray when its row is selected. The full styling block lives
 // alongside the badge-injection processor in file-tree-extension-badge.ts so the
 // CSS + DOM-mutation contract stays in one place.
-const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
+const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}`;
 
 interface PendingCreate {
   kind: 'file' | 'folder';
@@ -3169,12 +3172,13 @@ export function FileTree({
     );
     if (blockingConflicts.length > 0) {
       const sample = blockingConflicts.slice(0, 3).map((c) => c.file);
-      const rest =
-        blockingConflicts.length > sample.length
-          ? `, +${blockingConflicts.length - sample.length} more`
-          : '';
-      toast.error('Cannot delete files with unresolved conflicts', {
-        description: `Resolve the conflict on ${sample.join(', ')}${rest} before deleting.`,
+      const files = sample.join(', ');
+      const overflow = blockingConflicts.length - sample.length;
+      toast.error(t`Cannot delete files with unresolved conflicts`, {
+        description:
+          overflow > 0
+            ? t`Resolve the conflict on ${files}, +${overflow} more before deleting.`
+            : t`Resolve the conflict on ${files} before deleting.`,
       });
       return;
     }

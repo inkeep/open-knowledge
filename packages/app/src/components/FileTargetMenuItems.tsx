@@ -155,7 +155,7 @@ export function FileTargetMenuItems({
             <FolderOpen aria-hidden="true" />
             <span className="flex-1">{reveal.label}</span>
             {reveal.hint ? (
-              <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
+              <span aria-hidden="true" className="ms-2 text-muted-foreground text-xs">
                 {reveal.hint}
               </span>
             ) : null}

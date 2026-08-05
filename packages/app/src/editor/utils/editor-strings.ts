@@ -2,9 +2,8 @@
  * Editor user-visible string helpers.
  *
  * Every user-visible label that varies by count / context goes through a
- * helper here so the future i18n pass has a single file to swap. Today
- * every helper emits English, using `Intl.PluralRules` for cardinal
- * agreement where it applies.
+ * helper here, so the count-agreement rules live in one place instead of
+ * being re-derived at each call site.
  *
  * Design: prefer LOCALE-NEUTRAL shapes ("with N items") over inflecting
  * the caller's noun, because inflection heuristics (the "+ 's'" pattern)
@@ -13,8 +12,7 @@
  */
 
 import type { PropDef } from '@inkeep/open-knowledge-core';
-
-const pluralRules = new Intl.PluralRules('en-US');
+import { plural, t } from '@lingui/core/macro';
 
 /**
  * Human-readable container summary used as an aria-label on block-
@@ -27,20 +25,24 @@ const pluralRules = new Intl.PluralRules('en-US');
  *
  * `childName` is intentionally ignored in the output prose. Inflecting
  * it ("with 3 cards") breaks for irregular plurals (Foot → Foots) and is
- * meaningless in any non-English locale. "item/items" is a fixed English
- * form whose future i18n swap is mechanical. Accepting `childName` in
- * the signature keeps the contract stable in case a future formatter
- * wants to use it.
+ * meaningless in any non-English locale. Accepting `childName` in the
+ * signature keeps the contract stable in case a future formatter wants
+ * to use it.
  */
 export function formatContainerAriaLabel(
   componentLabel: string,
   _childName: string | undefined,
   childCount: number,
 ): string {
-  if (childCount <= 0) return `${componentLabel} (empty)`;
-  const cat = pluralRules.select(childCount);
-  const noun = cat === 'one' ? 'item' : 'items';
-  return `${componentLabel} with ${childCount} ${noun}`;
+  if (childCount <= 0) return t`${componentLabel} (empty)`;
+  // The `plural` macro, not `Intl.PluralRules`: it selects against the ACTIVE
+  // catalog's own CLDR categories, so a locale with more than two (Arabic has
+  // six) gets the form its translator wrote rather than an English one/other
+  // split applied to translated text.
+  return t`${componentLabel} with ${plural(childCount, {
+    one: '# item',
+    other: '# items',
+  })}`;
 }
 
 /**

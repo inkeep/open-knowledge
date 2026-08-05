@@ -343,6 +343,10 @@ export {
   type MenuLabelKey,
   OPEN_KNOWLEDGE_GITHUB_URL,
 } from './constants/menu-labels.ts';
+export {
+  NATIVE_MENU_LABELS,
+  type NativeMenuLabelKey,
+} from './constants/native-menu-labels.ts';
 export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER } from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,
@@ -547,6 +551,32 @@ export {
   type UrnIpcLookup,
   withSkillPointer,
 } from './handoff/index.ts';
+// Interface locales — the single source of truth the config enum, the Lingui
+// catalog list and the locale matcher all derive from, plus the pure policy
+// every runtime resolves through and the browser's signal provider.
+// Browser-safe. The POSIX/Node signal provider is deliberately NOT here: it
+// reads `process.env`, so it ships from `./server.ts` instead.
+export { asBcp47Tag, type Bcp47Tag, toBcp47Tags } from './i18n/bcp47.ts';
+export {
+  type NavigatorLanguages,
+  readBrowserLanguages,
+} from './i18n/browser-locale-provider.ts';
+export { localeDirection, type TextDirection } from './i18n/direction.ts';
+export {
+  AUTO_DETECTABLE_LOCALES,
+  LAYOUT_DEFERRED_LOCALES,
+  type LanguagePreference,
+  PICKER_LOCALES,
+  SUPPORTED_LOCALES,
+  type SupportedLocale,
+} from './i18n/locales.ts';
+export {
+  FALLBACK_LOCALE,
+  type LocaleResolution,
+  type LocaleResolutionInput,
+  type LocaleSource,
+  resolveLocale,
+} from './i18n/resolve-locale.ts';
 export { selectFenceChar, widenFenceLength } from './markdown/code-fence.ts';
 export { MIN_CARRIED_EDGE_EMPTIES } from './markdown/doc-edge-blank-runs.ts';
 export {

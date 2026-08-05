@@ -42,6 +42,7 @@ import {
   type TerminalCli,
   withSkillPointer,
 } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { toast as sonnerToast } from 'sonner';
 // Import from `config-context` (the lightweight context module) rather than
 // `config-provider` so unit tests can `await import('./useHandoffDispatch')`
@@ -679,12 +680,12 @@ export function successToastMessage(displayName: string): string {
  */
 export function errorToastMessage(displayName: string, attempt = 1): string {
   if (attempt >= MAX_DISPATCH_ATTEMPTS) {
-    return `Couldn't reach ${displayName} — please try again later.`;
+    return t`Couldn't reach ${displayName} — please try again later.`;
   }
   if (attempt === MAX_DISPATCH_ATTEMPTS - 1) {
-    return `Still couldn't reach ${displayName} — try one more time?`;
+    return t`Still couldn't reach ${displayName} — try one more time?`;
   }
-  return `Couldn't reach ${displayName} — try again?`;
+  return t`Couldn't reach ${displayName} — try again?`;
 }
 
 /**
@@ -693,7 +694,7 @@ export function errorToastMessage(displayName: string, attempt = 1): string {
  */
 export function retryActionLabel(attempt: number): string | null {
   if (attempt >= MAX_DISPATCH_ATTEMPTS) return null;
-  return attempt === MAX_DISPATCH_ATTEMPTS - 1 ? 'Try one more time' : 'Retry';
+  return attempt === MAX_DISPATCH_ATTEMPTS - 1 ? t`Try one more time` : t`Retry`;
 }
 
 function buildStatsLine(
@@ -1028,19 +1029,22 @@ export async function runHandoffDispatch(
       installOutcome = await deps.ensureCoworkSkillInstalled();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      deps.toast.error(`Couldn't install OpenKnowledge skill — ${message}`);
+      deps.toast.error(t`Couldn't install OpenKnowledge skill — ${message}`);
       return { ok: false, reason: 'dispatch-error', detail: `install-error: ${message}` };
     }
     if (installOutcome.kind === 'installed-now') {
       deps.toast.success(
-        'OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again.',
+        t`OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again.`,
       );
       return { ok: true };
     }
     if (installOutcome.kind === 'install-failed') {
-      const detail = installOutcome.message ?? installOutcome.reason;
-      deps.toast.error(`Couldn't install OpenKnowledge skill — ${detail}`);
-      return { ok: false, reason: 'dispatch-error', detail: `install-failed: ${detail}` };
+      // Named `message` to match the sibling catch above: the macro derives the
+      // placeholder from the identifier, so `detail` would fork one sentence
+      // into two catalog entries for every locale.
+      const message = installOutcome.message ?? installOutcome.reason;
+      deps.toast.error(t`Couldn't install OpenKnowledge skill — ${message}`);
+      return { ok: false, reason: 'dispatch-error', detail: `install-failed: ${message}` };
     }
   }
 

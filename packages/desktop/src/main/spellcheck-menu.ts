@@ -34,7 +34,9 @@
  * plus callback dispatch without mounting Electron's Menu.
  */
 
+import { NATIVE_MENU_LABELS } from '@inkeep/open-knowledge-core';
 import type { BrowserWindow, EditFlags, Menu, MenuItemConstructorOptions } from 'electron';
+import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
 /**
  * The slice of Electron's `ContextMenuParams` the builder reads. Declared as a
@@ -77,6 +79,8 @@ export interface BuildSpellcheckMenuTemplateParams {
    */
   readonly canViewInSource: boolean;
   readonly actions: SpellcheckMenuActions;
+  /** Renders each row in the resolved interface language; English when absent. */
+  readonly translate?: MenuTranslator;
 }
 
 /**
@@ -93,27 +97,31 @@ export interface BuildSpellcheckMenuTemplateParams {
 const LOOKUP_LABEL_MAX = 50;
 const SEARCH_QUERY_MAX = 200;
 
-/**
- * Native-menu label for the view-in-source jump. The `</>` code glyph rides the
- * label text because native menu items carry no icon field, mirroring the code
- * affordance the renderer bubble menu shows for the same command.
- */
-const VIEW_IN_SOURCE_LABEL = 'View in Source Markdown';
-
 export function buildSpellcheckMenuTemplate(
   input: BuildSpellcheckMenuTemplateParams,
 ): MenuItemConstructorOptions[] {
   const { params, spellCheckEnabled, canViewInSource, actions } = input;
   const { misspelledWord, dictionarySuggestions, selectionText, editFlags } = params;
+  const translate = input.translate ?? translateEnglish;
+
+  // Role rows carry an explicit label because Electron's own are English
+  // literals in its bundle, with no OS lookup and no locale variation.
+  const roleRow = (
+    role: 'cut' | 'copy' | 'paste' | 'selectAll',
+    source: string,
+  ): MenuItemConstructorOptions => ({ role, label: translate(source) });
 
   const editSection: MenuItemConstructorOptions[] = [];
-  if (editFlags.canCut) editSection.push({ role: 'cut' });
-  if (editFlags.canCopy) editSection.push({ role: 'copy' });
-  if (editFlags.canPaste) editSection.push({ role: 'paste' });
-  if (editFlags.canSelectAll) editSection.push({ role: 'selectAll' });
+  if (editFlags.canCut) editSection.push(roleRow('cut', NATIVE_MENU_LABELS.roleCut));
+  if (editFlags.canCopy) editSection.push(roleRow('copy', NATIVE_MENU_LABELS.roleCopy));
+  if (editFlags.canPaste) editSection.push(roleRow('paste', NATIVE_MENU_LABELS.rolePaste));
+  if (editFlags.canSelectAll)
+    editSection.push(roleRow('selectAll', NATIVE_MENU_LABELS.roleSelectAll));
 
   const spellSection: MenuItemConstructorOptions[] = [];
   if (misspelledWord && spellCheckEnabled) {
+    // Dictionary suggestions are OS-supplied words in the text's own language;
+    // they are content, not chrome, so they pass through untranslated.
     for (const suggestion of dictionarySuggestions) {
       spellSection.push({
         label: suggestion,
@@ -123,20 +131,20 @@ export function buildSpellcheckMenuTemplate(
       });
     }
     spellSection.push({
-      label: 'Add to Dictionary',
+      label: translate(NATIVE_MENU_LABELS.addToDictionary),
       click: () => {
         actions.addToDictionary(misspelledWord);
       },
     });
     spellSection.push({
-      label: 'Disable Spell Check',
+      label: translate(NATIVE_MENU_LABELS.disableSpellCheck),
       click: () => {
         actions.setSpellCheckEnabled(false);
       },
     });
   } else if (!spellCheckEnabled) {
     spellSection.push({
-      label: 'Enable Spell Check',
+      label: translate(NATIVE_MENU_LABELS.enableSpellCheck),
       click: () => {
         actions.setSpellCheckEnabled(true);
       },
@@ -150,13 +158,13 @@ export function buildSpellcheckMenuTemplate(
       word.length > LOOKUP_LABEL_MAX ? `${word.slice(0, LOOKUP_LABEL_MAX).toWellFormed()}…` : word;
     const query = word.slice(0, SEARCH_QUERY_MAX).toWellFormed();
     lookupSection.push({
-      label: `Look Up "${labelWord}"`,
+      label: translate(NATIVE_MENU_LABELS.lookUpWord, { word: labelWord }),
       click: () => {
         actions.lookUp();
       },
     });
     lookupSection.push({
-      label: 'Search with Google',
+      label: translate(NATIVE_MENU_LABELS.searchWithGoogle),
       click: () => {
         actions.search(query);
       },
@@ -169,7 +177,7 @@ export function buildSpellcheckMenuTemplate(
   const viewSection: MenuItemConstructorOptions[] = canViewInSource
     ? [
         {
-          label: VIEW_IN_SOURCE_LABEL,
+          label: translate(NATIVE_MENU_LABELS.viewInSourceMarkdown),
           click: () => {
             actions.viewInSource();
           },

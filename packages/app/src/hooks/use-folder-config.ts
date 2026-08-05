@@ -1,4 +1,9 @@
 import { type TemplatesListEntry, TemplatesListSuccessSchema } from '@inkeep/open-knowledge-core';
+// The core macro, not `useLingui()`: these messages are produced inside a
+// fetch continuation owned by an effect. A hook-provided `t` would have to
+// enter that effect's dependency array, re-running the fetch on every locale
+// change; the core macro resolves against the active catalog at call time.
+import { t } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import { subscribeToTemplatesChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
@@ -135,7 +140,7 @@ export function useFolderConfig(folderPath: string | null): FolderConfigHandle {
         // covers the `null` JSON-literal case where `payload` itself is null
         // and `payload.folder` would throw "Cannot read properties of null".
         if (!payload || typeof payload !== 'object' || !payload.folder) {
-          setState({ status: 'error', message: 'Server returned an incomplete folder response.' });
+          setState({ status: 'error', message: t`Server returned an incomplete folder response.` });
           return;
         }
         setState({
@@ -213,7 +218,7 @@ export function useAllTemplates(): AsyncState<readonly TemplatesListEntry[]> {
           );
           setState({
             status: 'error',
-            message: 'Server returned an incomplete templates response.',
+            message: t`Server returned an incomplete templates response.`,
           });
           return;
         }

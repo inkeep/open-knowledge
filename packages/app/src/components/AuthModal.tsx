@@ -35,6 +35,8 @@
  * The identity field state is therefore lifted to this component so the
  * footer buttons can read it; the body panels below are presentational.
  */
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, Copy } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';

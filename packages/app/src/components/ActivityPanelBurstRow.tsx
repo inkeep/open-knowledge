@@ -10,6 +10,8 @@
  * disabled on the newest burst (nothing newer to undo) and when the session has
  * ended. The row is highlighted while its diff is the one open in the pane.
  */
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Loader2, Undo2 } from 'lucide-react';

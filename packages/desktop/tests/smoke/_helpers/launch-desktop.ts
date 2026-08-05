@@ -147,8 +147,17 @@ export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): Des
       ? { args: [...extraArgs], timeout, executablePath: target.targetPath }
       : { args: [target.targetPath, ...extraArgs], timeout };
 
-  // Spread conditionally rather than assigning `env: input.env`: an explicit
-  // `env: undefined` key is not the same as no key to Playwright, and the
-  // no-env call sites depend on inheriting the parent environment untouched.
-  return input.env === undefined ? base : { ...base, env: input.env };
+  // Every smoke launch runs in English. Several of these walk the real
+  // application menu by exact English label — they are release gates, not i18n
+  // tests — and the app now resolves its menu language from the running user's
+  // `~/.ok/global.yml` plus the OS preferred-language list. Without the pin, a
+  // developer who has chosen another language in Settings watches that whole
+  // tier fail on their machine and nowhere else.
+  //
+  // Spreading `process.env` rather than assigning `env: input.env` alone:
+  // Playwright REPLACES the child environment when `env` is given, so a bare
+  // `{ OK_LANG }` would strip PATH from every no-env call site. Callers that do
+  // pass `env` already spread `process.env` themselves; theirs still wins over
+  // the inherited copy, and only the language pin sits above it.
+  return { ...base, env: { ...process.env, ...input.env, OK_LANG: 'en' } };
 }

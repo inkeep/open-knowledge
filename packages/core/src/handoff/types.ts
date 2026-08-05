@@ -140,10 +140,14 @@ export interface TargetData {
   /** Download / install page URL — shown in the disabled tooltip. */
   readonly installUrl: string;
   /**
-   * One-line user-facing description, shown beneath `displayName` on
-   * card-shaped surfaces (post-init `AgentHandoffGrid`). Helps users pick
-   * between editors with similar names (Claude Cowork vs Claude).
-   * Omitted on dropdown/menu surfaces where vertical space is constrained.
+   * One-line description intended to sit beneath `displayName` on card-shaped
+   * surfaces, helping users pick between editors with similar names (Claude
+   * Cowork vs Claude). Dropdown/menu surfaces omit it — vertical space.
+   *
+   * No surface reads it today, which is why the values are plain English
+   * literals rather than catalog messages. A surface that starts rendering it
+   * must route it through the renderer's translation catalog first, or it will
+   * be the only English text on an otherwise translated card.
    */
   readonly tagline?: string;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
+import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
 import {
   ConfigSchema,
   checkEmbeddingsBaseUrl,
@@ -168,6 +169,30 @@ describe('appearance.sidebar view toggles', () => {
       showSkillsSection: false,
       showOkFolders: true,
     });
+  });
+});
+
+describe('appearance.language', () => {
+  test('accepts every enumerated locale plus the system sentinel', () => {
+    // Enumerating the core tuple rather than a hand-written list is the point:
+    // a leaf that re-declared its own tags would drift the moment a locale is
+    // added, and a user's stored language would stop parsing.
+    for (const locale of [...SUPPORTED_LOCALES, 'system']) {
+      const parsed = ConfigSchema.parse({ appearance: { language: locale } });
+      expect(parsed.appearance.language).toBe(locale);
+    }
+  });
+
+  test('rejects a language with no catalog behind it', () => {
+    const result = ConfigSchema.safeParse({ appearance: { language: 'ja' } });
+    expect(result.success).toBe(false);
+  });
+
+  test('is absent rather than defaulted when unset', () => {
+    // No `.default('system')`: an unset language and an explicit 'system' both
+    // follow the OS, so writing a default would only add a config key nobody
+    // asked for. Mirrors `appearance.theme`.
+    expect(ConfigSchema.parse({}).appearance.language).toBeUndefined();
   });
 });
 

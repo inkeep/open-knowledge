@@ -1,0 +1,56 @@
+// no-unwrapped-user-facing-string — every user-facing string reaches the catalogs.
+//
+// Suppress a legitimate case with:
+//   // biome-ignore lint/plugin/no-unwrapped-user-facing-string: <reason>
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+// GritQL regex matches the ENTIRE node text — `.*` brackets a substring, and
+// `(?s)` lets `.` cross newlines (JSX text and call arguments are multi-line).
+
+or {
+    // A bare string literal reaching a toast is user-facing copy whatever its
+    // shape, so this branch takes any literal — no prose heuristic. A wrapped
+    // argument (`t` macro) or a variable is not a quoted literal and is skipped.
+    `toast.$method($arg, $...)` as $call where {
+        $arg <: r"(?s)['\"].*['\"]",
+        register_diagnostic(
+            span = $call,
+            message = "Unwrapped user-facing string in a toast argument. Wrap it with the Lingui `t` macro — in a plain module call the macro inside the function, never at module top level, so it resolves against the active locale. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-unwrapped-user-facing-stringgrit"
+        )
+    },
+
+    // JSX text. Raw text in this codebase is overwhelmingly non-prose — shortcut
+    // tokens, code identifiers, paths, brand marks — while prose is already
+    // wrapped, so the candidate test is two letter-words separated by
+    // whitespace. That admits `Save`-style single-word labels as a known gap;
+    // widening to every literal would bury the signal under those token shapes.
+    jsx_text() as $text where {
+        $text <: r"(?s).*[A-Za-z]\s+[A-Za-z].*",
+        // `<Brand> icon` names a third-party mark; translating it renames the product.
+        not $text <: r"(?s)\s*[A-Za-z0-9()\-. ]* icon\s*",
+        not $text <: within `<Trans $...>$...</Trans>`,
+        register_diagnostic(
+            span = $text,
+            message = "Unwrapped user-facing string in JSX text. Wrap it with the Lingui `<Trans>` element so it reaches the catalogs. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-unwrapped-user-facing-stringgrit"
+        )
+    },
+
+    // Attributes that carry copy the reader hears or reads. Scoped by name so
+    // plain JS assignment (`const label = '…'`) stays out, same as
+    // microcopy-ellipsis. `$value` is the whole initializer clause including the
+    // `=`, so anchoring on `=` then a quote is what distinguishes a literal from
+    // an expression container — `aria-label={t\`…\`}` opens with `{` and is skipped.
+    jsx_attribute($name, $value) where {
+        $name <: or { `aria-label`, `placeholder`, `title`, `alt` },
+        $value <: r"(?s)=\s*['\"].*['\"]",
+        $value <: r"(?s).*[A-Za-z]\s+[A-Za-z].*",
+        not $value <: r"(?s)=\s*['\"][A-Za-z0-9()\-. ]* icon['\"]",
+        register_diagnostic(
+            span = $value,
+            message = "Unwrapped user-facing string in a UI-facing attribute. Wrap it with the Lingui `t` macro from `useLingui()` so it reaches the catalogs. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-unwrapped-user-facing-stringgrit"
+        )
+    }
+}

@@ -23,6 +23,7 @@ import {
   SharePublishOwnersResponseSchema,
   SharePublishResponseSchema,
 } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 
 const SHARE_PUBLISH_OWNERS_PATH = '/api/share/publish/owners';
 const SHARE_PUBLISH_NAME_CHECK_PATH = '/api/share/publish/name-check';
@@ -118,37 +119,37 @@ export function presentPublishError(
   switch (error) {
     case 'name-conflict':
       return {
-        banner: `${owner}/${name} already exists. Pick a different name.`,
+        banner: t`${owner}/${name} already exists. Pick a different name.`,
         next: { kind: 'edit-name' },
       };
     case 'saml-sso':
       return {
-        banner: `GitHub denied the request. You may need to authorize OpenKnowledge for ${owner} in your browser.`,
+        banner: t`GitHub denied the request. You may need to authorize OpenKnowledge for ${owner} in your browser.`,
         next: { kind: 'authorize-org', authorizeUrl: buildSamlSsoAuthorizeUrl(owner) },
       };
     case 'push-failed':
       return {
-        banner: `Created ${owner}/${name}, push failed.`,
+        banner: t`Created ${owner}/${name}, push failed.`,
         next: { kind: 'retry-push' },
       };
     case 'auth-required':
       return {
-        banner: 'GitHub connection expired. Connect again to continue.',
+        banner: t`GitHub connection expired. Connect again to continue.`,
         next: { kind: 'reauth' },
       };
     case 'init-failed':
       return {
-        banner: "Couldn't prepare this project for publish.",
+        banner: t`Couldn't prepare this project for publish.`,
         next: { kind: 'edit-form' },
       };
     case 'network':
       return {
-        banner: "Couldn't reach GitHub. Try again?",
+        banner: t`Couldn't reach GitHub. Try again?`,
         next: { kind: 'edit-form' },
       };
     case 'no-project':
       return {
-        banner: 'Open a project first.',
+        banner: t`Open a project first.`,
         next: { kind: 'edit-form' },
       };
   }
@@ -238,9 +239,9 @@ export function resolveNameCheckStatus(
     return response.available ? { kind: 'available' } : { kind: 'taken', owner, name };
   }
   if (response.error === 'auth-required') {
-    return { kind: 'error', banner: 'GitHub connection expired. Connect again to continue.' };
+    return { kind: 'error', banner: t`GitHub connection expired. Connect again to continue.` };
   }
-  return { kind: 'error', banner: "Couldn't reach GitHub. Try again?" };
+  return { kind: 'error', banner: t`Couldn't reach GitHub. Try again?` };
 }
 
 /**

@@ -18,10 +18,12 @@ export interface FieldDef {
   description?: MessageDescriptor;
   /**
    * Optional override: 'enum-toggle' renders enum as a ToggleGroup;
-   * 'theme-tiles' renders the IDE color-palette tile picker; default is a
-   * select-style toggle.
+   * 'theme-tiles' renders the IDE color-palette tile picker;
+   * 'language-select' renders the interface-language picker, whose options
+   * come from the reviewed picker set rather than from the schema enum;
+   * default is a select-style toggle.
    */
-  control?: 'enum-toggle' | 'theme-tiles';
+  control?: 'enum-toggle' | 'theme-tiles' | 'language-select';
 }
 
 export const FIELDS_USER_PREFERENCES: FieldDef[] = [
@@ -30,6 +32,12 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
     label: msg`Theme`,
     description: msg`Light, dark, or follow the OS.`,
     control: 'enum-toggle',
+  },
+  {
+    path: ['appearance', 'language'],
+    label: msg`Language`,
+    description: msg`The language OpenKnowledge speaks; System follows your operating system. Your own notes stay in the language you wrote them in.`,
+    control: 'language-select',
   },
   {
     path: ['editor', 'wordWrap'],

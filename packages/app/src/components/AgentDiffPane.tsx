@@ -12,6 +12,8 @@
  *
  * Undo is committed from the Activity panel's timeline, not here.
  */
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Loader2, PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';

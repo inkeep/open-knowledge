@@ -1,0 +1,38 @@
+// no-physical-direction-utility — chrome layout derives its side from the
+// reading direction, never from a hardcoded left or right.
+//
+// Suppress a legitimately physical site with:
+//   // biome-ignore lint/plugin/no-physical-direction-utility: <reason>
+// placed on the line above the class attribute (the attribute must be on its
+// own line — Biome has no slot for a comment between attributes on one line).
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+// Matches `className` and every `*ClassName` prop (`containerClassName`,
+// `overflowClassName`, …) in one predicate. `$value` is the whole initializer
+// clause, so a multi-line `className={cn('a', cond && 'ml-2')}` is covered by
+// the same branch as a plain string — the tokens are all inside that node.
+//
+// GritQL regex matches the ENTIRE node text, so `.*` brackets a substring and
+// `(?s)` lets `.` cross newlines. Two dialect notes, both measured against
+// Biome 2.4.15: capturing groups `(…)` silently never match, so alternation
+// must use `(?:…)`; and a literal `'` inside a character class also never
+// matches, so the quote delimiters below are written as `\x27` / `\x22`.
+//
+// The value shapes are Tailwind's own: a keyword, an arbitrary `[…]` value, or
+// a number that ENDS the token. Requiring a closing delimiter after the number
+// is what leaves `left-1/2` alone — paired with `-translate-x-1/2` that is the
+// centering anchor, and at 50% the offset is symmetric, so it already lays out
+// the same in both directions while the logical form would fight the translate.
+// `inset-x-*` is absent from the list for a stronger reason: Tailwind v4
+// compiles it to `inset-inline`, so it is already logical.
+jsx_attribute($name, $value) where {
+    $name <: r"(?s).*lassName",
+    $value <: r"(?s).*\b(?:ml|mr|pl|pr|left|right)-(?:auto|px|full|\[|[0-9]+(?:\.[0-9]+)?[\s\x22\x27\x60]).*",
+    register_diagnostic(
+        span = $value,
+        message = "Physical direction utility in a class string. Use the logical equivalent so the chrome follows the reading direction — `ms-`/`me-` for margin, `ps-`/`pe-` for padding, `start-`/`end-` for inset. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit"
+    )
+}

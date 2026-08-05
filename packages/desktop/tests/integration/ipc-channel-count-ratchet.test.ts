@@ -385,10 +385,25 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * unsynced-work transition — a fold would rebuild the menu on every
  * keystroke-to-sync edge.
  *
+ * Bumped from 90 to 91 for the interface-language push
+ * (`ok:locale:set-preference`): the renderer forwards the user's unresolved
+ * language preference so main re-resolves it and rebuilds the native menu bar
+ * live, which is the only way the menu tracks the picker without a restart.
+ *
+ * Folding onto `ok:theme:set-source` was the obvious move and is wrong. The two
+ * share a contract almost exactly — same provider, same unresolved-`'system'`
+ * one-way rule, same best-effort failure model — but they fire on independent
+ * cadences, so one slot would mean setting `nativeTheme.themeSource` on every
+ * language change and rebuilding the whole menu on every theme change. That is
+ * the same cadence-coupling the 90th channel's narrative rejected, and the menu
+ * rebuild is the more expensive of the two side effects. No other renderer→main
+ * appearance surface exists: `ok:menu-action` and `ok:theme:applied` both push
+ * the other direction.
+ *
  * The typed-ipc migration remains the committed end state, with the
  * `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 90;
+const REQUEST_CHANNEL_CAP = 91;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

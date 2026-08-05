@@ -26,6 +26,8 @@
  * unit-testable without React.
  */
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import type { ShareFreshness } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CircleHelp, Share2 } from 'lucide-react';
@@ -40,11 +42,7 @@ import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { formatShortcutBinding, formatShortcutBindingLabel } from '@/lib/keyboard-shortcuts';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
-import {
-  CLIPBOARD_ERROR_TOAST,
-  runShareAction,
-  type ShareTargetInput,
-} from '@/lib/share/run-share-action';
+import { runShareAction, type ShareTargetInput } from '@/lib/share/run-share-action';
 import { cn } from '@/lib/utils';
 import { ShareFreshnessWarning, shareFreshnessRowVisible } from './ShareFreshnessWarning';
 
@@ -115,11 +113,11 @@ export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
         {
           clipboardWrite: scheduleClipboardWrite,
           toastSuccess: (msg) => toast.success(msg),
-          toastError: (msg) => {
+          toastError: (msg, reason) => {
             // Suppress runShareAction's own clipboard-failure toast — we
             // surface the URL in a popover instead. Other error toasts
             // (transport / business errors) still fire normally.
-            if (msg === CLIPBOARD_ERROR_TOAST) return;
+            if (reason === 'clipboard') return;
             toast.error(msg);
           },
           logEvent: (msg) => console.log(msg),

@@ -41,6 +41,15 @@ export {
   type WriteConfigPatchSuccess,
   writeConfigPatch,
 } from './config/write-config-patch.ts';
+// The Node locale signal provider. Node-only for one reason — it reads
+// `process.env` — but that is enough to keep it out of the root barrel, since
+// the renderer bundles that barrel. The pure resolver it feeds stays browser-safe.
+export {
+  LOCALE_OVERRIDE_ENV_VAR,
+  type LocaleEnvironment,
+  type NodeLocaleSignal,
+  readNodeLocaleSignal,
+} from './i18n/node-locale-provider.ts';
 export {
   type AtomicWriteFsAdapter,
   type AtomicWriteOptions,

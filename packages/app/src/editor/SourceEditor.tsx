@@ -46,6 +46,7 @@ import {
   peekPendingSourceNavigation,
 } from './source-editor-navigation';
 import { sourceHeadingLines } from './source-heading-lines';
+import { sourceLineDirection } from './source-line-direction';
 import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
 import { sourceModeSetup } from './source-mode-setup';
 import { createSourcePolishExtension } from './source-polish';
@@ -257,6 +258,7 @@ export function SourceEditor({
             doc: ytext.toString(),
             extensions: [
               sourceModeSetup,
+              sourceLineDirection,
               // Search-result scroll. CM's default search `scrollToMatch` is
               // `EditorView.scrollIntoView(range)` (y:'nearest'), which no-ops in
               // full-page source mode: the editor renders at content height with no

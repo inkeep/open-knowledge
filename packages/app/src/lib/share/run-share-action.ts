@@ -5,6 +5,7 @@ import type {
   ShareFreshness,
 } from '@inkeep/open-knowledge-core';
 import { ShareConstructUrlResponseSchema } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { docNameToMarkdownPath } from '@/lib/doc-paths';
 
 const SHARE_CONSTRUCT_URL_PATH = '/api/share/construct-url';
@@ -33,6 +34,13 @@ export function buildFolderShareInput(folderRelativePath: string): ShareTargetIn
   return { kind: 'folder', folderRelativePath };
 }
 
+/**
+ * Which failure produced an error toast. Callers that surface one of these
+ * another way suppress it by reason rather than by comparing the message —
+ * a translated message is not a stable identity.
+ */
+export type ShareErrorToastReason = 'transport' | 'clipboard' | 'business';
+
 export interface ShareActionDeps {
   fetchFn?: typeof fetch;
   /**
@@ -46,7 +54,7 @@ export interface ShareActionDeps {
    */
   clipboardWrite: (text: string) => Promise<void>;
   toastSuccess: (msg: string) => void;
-  toastError: (msg: string) => void;
+  toastError: (msg: string, reason: ShareErrorToastReason) => void;
   logEvent: (msg: string) => void;
 }
 
@@ -61,14 +69,6 @@ export type RunShareActionResult =
   | { kind: 'clipboard-failed'; shareUrl: string; freshness?: ShareFreshness }
   | { kind: 'business-error'; error: ShareConstructUrlErrorCode; branch?: string }
   | { kind: 'transport-error' };
-
-const TRANSPORT_ERROR_TOAST = 'Could not construct share URL.';
-/**
- * Exported so callers that surface the share URL another way (e.g. the
- * ShareButton popover) can suppress this specific toast by identity instead
- * of duplicating the literal — keeping the cross-module coupling visible.
- */
-export const CLIPBOARD_ERROR_TOAST = 'Link ready but could not copy to clipboard.';
 
 export async function requestShareConstructUrl(
   body: ShareConstructUrlRequest,
@@ -93,17 +93,17 @@ export async function requestShareConstructUrl(
 export function mapShareErrorToToast(error: ShareConstructUrlErrorCode, branch?: string): string {
   switch (error) {
     case 'detached-head':
-      return 'Switch to a branch to share.';
+      return t`Switch to a branch to share.`;
     case 'branch-not-on-origin':
       return branch
-        ? `Push ${branch} to GitHub before sharing.`
-        : 'Push this branch to GitHub before sharing.';
+        ? t`Push ${branch} to GitHub before sharing.`
+        : t`Push this branch to GitHub before sharing.`;
     case 'non-github-remote':
-      return 'Sharing supports GitHub remotes only.';
+      return t`Sharing supports GitHub remotes only.`;
     case 'invalid-path':
-      return "Can't share this path.";
+      return t`Can't share this path.`;
     case 'no-remote':
-      return 'This project has no GitHub remote.';
+      return t`This project has no GitHub remote.`;
   }
 }
 
@@ -128,7 +128,7 @@ export async function runShareAction(
   try {
     response = await requestShareConstructUrl(body, deps.fetchFn);
   } catch {
-    deps.toastError(TRANSPORT_ERROR_TOAST);
+    deps.toastError(t`Could not construct share URL.`, 'transport');
     return { kind: 'transport-error' };
   }
 
@@ -140,7 +140,7 @@ export async function runShareAction(
       // failed. Use a distinct toast so the user knows the share link
       // exists (they can re-trigger or paste manually) rather than
       // assuming the share flow itself failed.
-      deps.toastError(CLIPBOARD_ERROR_TOAST);
+      deps.toastError(t`Link ready but could not copy to clipboard.`, 'clipboard');
       deps.logEvent('[share] action=link-construct result=clipboard-failed');
       return {
         kind: 'clipboard-failed',
@@ -148,7 +148,7 @@ export async function runShareAction(
         freshness: response.freshness,
       };
     }
-    deps.toastSuccess(input.kind === 'folder' ? 'Folder share link copied.' : 'Link copied.');
+    deps.toastSuccess(input.kind === 'folder' ? t`Folder share link copied.` : t`Link copied.`);
     deps.logEvent('[share] action=link-construct');
     return {
       kind: 'copied',
@@ -169,6 +169,6 @@ export async function runShareAction(
   }
 
   const branch = response.branch;
-  deps.toastError(mapShareErrorToToast(response.error, branch));
+  deps.toastError(mapShareErrorToToast(response.error, branch), 'business');
   return { kind: 'business-error', error: response.error, branch };
 }

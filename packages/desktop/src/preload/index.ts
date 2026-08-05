@@ -20,6 +20,7 @@
  */
 
 import type {
+  LanguagePreference,
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
@@ -225,6 +226,21 @@ function readConfigFromArgv(): OkDesktopConfig {
   // Present only on ephemeral single-file windows (`ok <file>`); every normal
   // project window omits the flag and coerces to `false`.
   const singleFile = parseArg('single-file') === '1';
+  // Present on the launcher, which has no config document to read the saved
+  // choice from. Left undefined elsewhere: windows that mount a
+  // `ConfigProvider` take the preference from config, and a stale copy pinned
+  // at window-open time would fight it.
+  //
+  // Forwarded verbatim instead of narrowed here. This file runs as a SANDBOXED
+  // preload (`sandbox: true`), so importing the supported-locale list to
+  // validate against would emit a runtime `require()` for a package the sandbox
+  // cannot resolve — and the throw lands before `exposeInMainWorld`, taking the
+  // whole bridge down rather than just this field. Main writes the flag from an
+  // already-narrowed preference and the renderer narrows again before
+  // activating, so an unknown tag still degrades to "resolve from the browser
+  // list" exactly as an absent one does. Keep every core import in this file
+  // type-only.
+  const languagePreference = parseArg('language-preference') as LanguagePreference | undefined;
   // Ephemeral single-file windows carry the doc to seed into the hash before
   // first paint; normal project windows omit it (`null` → seed is a no-op).
   const initialDoc = parseArg('initial-doc') ?? null;
@@ -258,6 +274,7 @@ function readConfigFromArgv(): OkDesktopConfig {
     freshlyCreated,
     ptyAvailable,
     ...(startupTraceparent !== undefined ? { startupTraceparent } : {}),
+    ...(languagePreference !== undefined ? { languagePreference } : {}),
   });
 }
 
@@ -388,6 +405,9 @@ const bridge: OkDesktopBridge = {
   restartServer: (projectPath: string) => invoke('ok:project:restart-server', projectPath),
 
   setThemeSource: (source: OkThemeSource) => invoke('ok:theme:set-source', { source }),
+
+  setLanguagePreference: (preference: LanguagePreference) =>
+    invoke('ok:locale:set-preference', { preference }),
 
   signalThemeApplied: (opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }) => {
     // Fire-and-forget renderer→main signal. Mirror of mcpWiring.signalReady's

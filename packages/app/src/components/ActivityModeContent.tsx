@@ -19,6 +19,8 @@
  * be unit-tested via `renderToString` without any portal / context /
  * fetch dependencies. The outer wrapper owns the hook + callbacks.
  */
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';

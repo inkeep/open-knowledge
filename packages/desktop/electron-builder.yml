@@ -36,6 +36,17 @@ extraResources:
   - from: "../cli/dist/public"
     to: "app"
     filter: ["**/*"]
+  # Compiled message catalogs for the MAIN process. The renderer's copies are
+  # bundled into its JS chunks by Vite, so main — which builds the native menu
+  # bar before any window exists — cannot borrow them; it reads these raw files
+  # off disk instead (main-i18n.ts). Same catalogs, one source of truth for the
+  # translations, two delivery mechanisms.
+  # The filter keeps ONLY `messages.json`: the sibling `.po` files are the
+  # translator-facing sources, several times larger, and nothing reads them at
+  # runtime. Guarded by tests/unit/electron-builder-locale-catalogs.test.ts.
+  - from: "../app/src/locales"
+    to: "locales"
+    filter: ["**/messages.json"]
   # M6a: ship the CLI bundle + wrapper so the packaged .app can host
   # `ok` on PATH via ELECTRON_RUN_AS_NODE=1. Filter keeps cli/dist/public/**
   # intact — `ok ui` from the wrapper reads it via $APP_PATH/Contents/

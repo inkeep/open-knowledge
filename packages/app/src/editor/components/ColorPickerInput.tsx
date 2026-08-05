@@ -15,6 +15,7 @@
  * caller's `treatEmptyAsUndefined` handling. A dedicated "Clear" button
  * surfaces when the value is non-empty.
  */
+import { useLingui } from '@lingui/react/macro';
 import { Eraser } from 'lucide-react';
 import { useRef } from 'react';
 import { Button } from '../../components/ui/button';
@@ -51,6 +52,7 @@ export function nativePickerValue(value: string): string {
 }
 
 export function ColorPickerInput({ id, value, onChange, autoFocus }: ColorPickerInputProps) {
+  const { t } = useLingui();
   const nativePickerRef = useRef<HTMLInputElement | null>(null);
 
   return (
@@ -93,7 +95,7 @@ export function ColorPickerInput({ id, value, onChange, autoFocus }: ColorPicker
           type="button"
           variant="outline"
           size="xs"
-          aria-label="Choose color"
+          aria-label={t`Choose color`}
           data-color-picker-trigger=""
           className="h-7 gap-1 px-2"
           onClick={() => nativePickerRef.current?.click()}
@@ -122,7 +124,7 @@ export function ColorPickerInput({ id, value, onChange, autoFocus }: ColorPicker
           type="button"
           variant="ghost"
           size="xs"
-          aria-label="Clear color"
+          aria-label={t`Clear color`}
           data-color-picker-clear=""
           className="h-7 px-1.5"
           onClick={() => onChange('')}

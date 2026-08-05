@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
+import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
 import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
 import { BASE16_SLOT_ROLES, BASE16_SLOTS } from '../theme/base16.ts';
 import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
@@ -245,6 +246,25 @@ export const ConfigSchema = z.looseObject({
           defaultScope: 'user',
           description:
             "Editor color theme: 'light', 'dark', or 'system' (follow the OS). A personal preference (user scope) — not shared with the project.",
+        })
+        .optional(),
+      // Stored UNRESOLVED: 'system' persists as 'system', never as whatever the
+      // OS reported when it was picked — resolving before storing turns a
+      // preference that follows the OS into one frozen to a single language.
+      // USER-scope for the same reason as `theme`: a project value would force
+      // one collaborator's reading language onto everyone. The tag list is
+      // DERIVED from `SUPPORTED_LOCALES` (`packages/core/src/i18n/locales.ts`)
+      // so a config value can never name a language with no catalog behind it.
+      // Chrome only — document bodies, titles, filenames and frontmatter stay
+      // in whatever language the user wrote them in.
+      language: z
+        .enum(['system', ...SUPPORTED_LOCALES])
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            "Interface language. 'system' follows the operating system. A personal preference (user scope) — not shared with the project, and never applied to document content.",
         })
         .optional(),
       // The IDE color palette layered on top of the light/dark `theme` mode

@@ -23,6 +23,11 @@
  * `appearance.theme` is dual-track: localStorage 'ok-theme-v1' stays as
  * the FOUC cache; config.yml is authoritative once set. Settings-pane
  * writes flow through `userBinding.patch()` so the two stay coherent.
+ *
+ * Drives the interface language the same way, via `useApplyConfigLanguage`.
+ * That one is applied imperatively onto the Lingui singleton rather than
+ * handed down as a prop, because `I18nProvider` is mounted above this
+ * provider — see the hook.
  */
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
@@ -41,6 +46,7 @@ import {
 import { useTheme } from 'next-themes';
 import { type ReactNode, useEffect, useState } from 'react';
 import * as Y from 'yjs';
+import { useLanguageBridge } from '@/hooks/use-language-bridge';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import { buildAuthToken } from './auth-token';
 import {
@@ -53,6 +59,7 @@ import {
 import { ConfigContext, type ConfigContextValue } from './config-context';
 import { useServerInstanceId } from './server-instance-store';
 import { useApplyConfigColorTheme } from './use-apply-config-color-theme';
+import { useApplyConfigLanguage } from './use-apply-config-language';
 import { useApplyConfigTheme } from './use-apply-config-theme';
 
 export { useConfigContext } from './config-context';
@@ -331,6 +338,26 @@ export function ConfigProvider({
     customSeed,
     enabled: colorThemeEnabled,
   });
+  // Bridge the interface language into the Lingui singleton. `'system'` and an
+  // absent value are resolved against the browser inside the hook, at
+  // activation — the config keeps the unresolved intent so the preference goes
+  // on following the OS. `userSynced` is what tells an absent preference apart
+  // from a user layer that has not loaded yet; see the hook for why that
+  // distinction is worth carrying.
+  useApplyConfigLanguage({
+    preference: merged?.appearance?.language,
+    userConfigSynced: userState?.synced ?? false,
+  });
+
+  // And push the same unresolved value to Electron main, which rebuilds the
+  // native menu bar in it. Separate from the hook above because the two act on
+  // different surfaces from one source: the renderer activates a catalog, main
+  // re-resolves and re-renders its own menu template.
+  useLanguageBridge(
+    typeof window !== 'undefined' ? window.okDesktop : undefined,
+    merged?.appearance?.language,
+    userState?.synced ?? false,
+  );
 
   // Push `appearance.theme` to Electron main's `nativeTheme.themeSource`
   // and signal the cold-launch show-gate via the shared `useThemeBridge`

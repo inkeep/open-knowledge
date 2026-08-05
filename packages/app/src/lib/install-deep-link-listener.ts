@@ -43,6 +43,7 @@
  * hot-module-replacement or teardown.
  */
 
+import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { encodeShareTargetForHash } from '@/lib/doc-hash';
@@ -85,8 +86,9 @@ export function deriveShareReceiveToast(
   // toast is dispatcher-disambiguation copy; without a real
   // disambiguation choice it is noise.
   if (evt.multiCandidate !== true) return null;
+  const branch = evt.branch;
   return {
-    message: `Opened on branch ${evt.branch}`,
+    message: t`Opened on branch ${branch}`,
     description: projectPath,
   };
 }

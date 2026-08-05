@@ -24,6 +24,7 @@
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import * as sonner from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { formatShortcutBinding, formatShortcutBindingLabel } from '@/lib/keyboard-shortcuts';
 import type { ShareTargetInput } from '@/lib/share/run-share-action';
@@ -149,6 +150,40 @@ describe('ShareButton', () => {
     // The copy button opens in the just-copied (check) state, reflecting the
     // auto-copy that already happened at click time.
     expect(screen.getByRole('button', { name: 'Copied!' })).not.toBeNull();
+  });
+
+  // The popover already tells the user the link is ready and offers a manual
+  // copy, so a toast saying the same thing is a duplicate. Which toast to
+  // swallow is decided from the failure class runShareAction reports, not from
+  // the message text — the text is translated and therefore not an identity.
+  // Spy on the real sonner rather than mocking it: the assertion is about what
+  // ShareButton asks for, and a stub would let a broken import pass.
+  test('swallows only the clipboard toast when the popover already carries the link', async () => {
+    const errorToast = vi.spyOn(sonner.toast, 'error');
+    renderShareButton({ kind: 'doc', docName: 'docs/readme' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share doc' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('share-button-popover')).not.toBeNull();
+    });
+
+    expect(errorToast).not.toHaveBeenCalled();
+    errorToast.mockRestore();
+  });
+
+  test('still raises a toast for a failure the popover does not explain', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ ok: false, error: 'detached-head' }))),
+    ) as never;
+    const errorToast = vi.spyOn(sonner.toast, 'error');
+    renderShareButton({ kind: 'doc', docName: 'docs/readme' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share doc' }));
+
+    await waitFor(() => {
+      expect(errorToast).toHaveBeenCalledTimes(1);
+    });
+    errorToast.mockRestore();
   });
 
   test('surfaces a manual-copy URL when clipboard write fails after constructing a share link', async () => {

@@ -1086,6 +1086,12 @@ importers:
       '@inkeep/open-knowledge-server':
         specifier: workspace:*
         version: link:../server
+      '@lingui/core':
+        specifier: ^6.0.1
+        version: 6.5.0(patch_hash=126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656)
+      '@lingui/message-utils':
+        specifier: ^6.0.1
+        version: 6.5.0
       '@napi-rs/keyring':
         specifier: ^1.3.0
         version: 1.3.0

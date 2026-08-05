@@ -8,6 +8,8 @@
  * bridge is available.
  */
 
+// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+
 import type { WorktreeSelectorEntry } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Check, FileText, Folder, GitBranch, Hash, Loader2, Sparkles } from 'lucide-react';
@@ -64,6 +66,7 @@ import { NewItemDialog } from '@/components/NewItemDialog';
 import { usePageList } from '@/components/PageListContext';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { SeedDialog } from '@/components/SeedDialog';
+import { UserText } from '@/components/UserText';
 import {
   CommandDialog,
   CommandEmpty,
@@ -187,16 +190,16 @@ export function NavigationItem({
         path={entry.path}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="truncate font-medium">
+        <UserText className="truncate font-medium">
           <HighlightedText query={query} text={title} />
-        </span>
-        <span className="truncate text-muted-foreground text-xs">
+        </UserText>
+        <UserText className="truncate text-muted-foreground text-xs">
           <HighlightedText query={query} text={entry.path} />
-        </span>
+        </UserText>
         {snippet ? (
-          <span className="max-h-10 overflow-hidden text-muted-foreground text-xs leading-relaxed">
+          <UserText className="max-h-10 overflow-hidden text-muted-foreground text-xs leading-relaxed">
             <HighlightedText query={query} text={snippet} />
-          </span>
+          </UserText>
         ) : null}
       </div>
     </CommandItem>
@@ -1353,7 +1356,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   data-testid={`command-palette-tag-${tag.name}`}
                 >
                   <Hash />
-                  <span className="min-w-0 flex-1 truncate font-medium">{tag.name}</span>
+                  <UserText className="min-w-0 flex-1 truncate font-medium">{tag.name}</UserText>
                   <span className="ml-auto shrink-0 text-[11px] text-muted-foreground tabular-nums">
                     <Plural value={tag.count} one="# doc" other="# docs" />
                   </span>
@@ -1401,8 +1404,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   >
                     <FileText className="mt-0.5" />
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="truncate font-medium">{title}</span>
-                      <span className="truncate text-muted-foreground text-xs">{doc.docName}</span>
+                      <UserText className="truncate font-medium">{title}</UserText>
+                      <UserText className="truncate text-muted-foreground text-xs">
+                        {doc.docName}
+                      </UserText>
                       {doc.matchingTags.length > 0 &&
                       // Only show the tag chip when the matching tag
                       // is a child of the queried prefix (rollup hit) —
@@ -1544,15 +1549,15 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                         >
                           <RowIcon className="mt-0.5" />
                           <div className="flex min-w-0 flex-col gap-1">
-                            <span className="truncate font-medium">{row.name}</span>
+                            <UserText className="truncate font-medium">{row.name}</UserText>
                             {worktreeOf !== null ? (
                               <span className="truncate text-muted-foreground text-xs">
                                 <Trans>worktree of {worktreeOf}</Trans>
                               </span>
                             ) : null}
-                            <span className="truncate text-muted-foreground text-xs">
+                            <UserText className="truncate text-muted-foreground text-xs">
                               {row.path}
-                            </span>
+                            </UserText>
                           </div>
                         </CommandItem>
                         <RecentRemoveButton
@@ -1580,10 +1585,16 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 >
                   <GitBranch className="mt-0.5" />
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="truncate font-medium">{entry.branch}</span>
-                    <span className="truncate text-muted-foreground text-xs">
-                      {entry.worktreePath ?? t`Create worktree`}
-                    </span>
+                    <UserText className="truncate font-medium">{entry.branch}</UserText>
+                    {entry.worktreePath === null ? (
+                      <span className="truncate text-muted-foreground text-xs">
+                        {t`Create worktree`}
+                      </span>
+                    ) : (
+                      <UserText className="truncate text-muted-foreground text-xs">
+                        {entry.worktreePath}
+                      </UserText>
+                    )}
                   </div>
                 </CommandItem>
               ))}

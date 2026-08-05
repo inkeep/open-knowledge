@@ -1221,6 +1221,30 @@
   margin-bottom: 0.5em;
 }
 
+/* Document text takes its writing direction from what the user wrote, never
+   from the interface language. `<html dir>` carries the chrome's direction and
+   `direction` inherits, so without this an Arabic interface would lay out an
+   English paragraph right-to-left, and an English interface would flatten
+   Arabic prose to left-to-right. `plaintext` resolves each block's base
+   direction from its own first strong character — the CSS form of `dir="auto"`,
+   and the only form available here because ProseMirror and CodeMirror own this
+   DOM and emit no attributes we could set.
+
+   Scoped to block-level nodes on purpose. `unicode-bidi` does not inherit, so
+   the editor root alone would only cover text directly inside it; applying it
+   to every descendant instead would isolate each inline mark as its own run and
+   reorder mixed-direction text WITHIN a sentence, which is the opposite of what
+   this is for.
+
+   WYSIWYG only. Source mode's direction comes from CodeMirror's
+   `perLineTextDirection` facet, not from here — CodeMirror keeps its own model
+   of the bidi order to place the caret, so a CSS-only override would move the
+   glyphs out from under the cursor. */
+.ProseMirror,
+.ProseMirror :is(p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, td, th, dt, dd, figcaption) {
+  unicode-bidi: plaintext;
+}
+
 /* The bottom "Ask AI" composer reuses a ProseMirror view but is a slim prompt
    field, not a document body: drop the 200px min-height and the drag-handle
    left margin/padding so it rests at one line and its text origin aligns with

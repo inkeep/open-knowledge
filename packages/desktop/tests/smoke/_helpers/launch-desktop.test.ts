@@ -92,18 +92,33 @@ describe('desktopLaunchOptions', () => {
     expect(opts.args.some((a) => a.endsWith('out/main/index.js'))).toBe(false);
   });
 
-  it('omits the env key entirely when the caller supplies none', () => {
-    // Load-bearing: 8 smoke launch sites pass no env. A default env would give
-    // them OK_DESKTOP_E2E_SMOKE, which dialog-helpers and the instance-name
-    // resolver read unconditionally.
+  it('inherits the parent environment when the caller supplies none', () => {
+    // Load-bearing: 8 smoke launch sites pass no env and depend on the parent
+    // environment reaching the child untouched. Playwright REPLACES the child
+    // env when the key is present, so the language pin below has to carry
+    // `process.env` with it rather than stand alone. What must NOT appear is a
+    // synthesized OK_DESKTOP_E2E_SMOKE — dialog-helpers and the instance-name
+    // resolver read it unconditionally.
     const opts = desktopLaunchOptions({ target: unpackaged });
-    expect('env' in opts).toBe(false);
+    expect(opts.env?.PATH).toBe(process.env.PATH);
+    expect(opts.env?.OK_DESKTOP_E2E_SMOKE).toBe(process.env.OK_DESKTOP_E2E_SMOKE);
   });
 
-  it('passes a supplied env through unmodified', () => {
+  it('pins the interface language to English on every launch', () => {
+    // These walk the real menu by exact English label; the app otherwise reads
+    // the running user's own language preference off `~/.ok/global.yml`.
+    expect(desktopLaunchOptions({ target: unpackaged }).env?.OK_LANG).toBe('en');
+    expect(desktopLaunchOptions({ target: packaged }).env?.OK_LANG).toBe('en');
+    expect(desktopLaunchOptions({ target: unpackaged, env: { OK_LANG: 'es' } }).env?.OK_LANG).toBe(
+      'en',
+    );
+  });
+
+  it('passes a supplied env through, over the inherited copy', () => {
     const env = { HOME: '/tmp/home', OK_DESKTOP_E2E_SMOKE: '1' };
     const opts = desktopLaunchOptions({ target: unpackaged, env });
-    expect(opts.env).toEqual(env);
+    expect(opts.env?.HOME).toBe('/tmp/home');
+    expect(opts.env?.OK_DESKTOP_E2E_SMOKE).toBe('1');
   });
 
   it('defaults the timeout to 30s and lets a caller override it', () => {

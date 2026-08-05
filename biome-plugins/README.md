@@ -256,6 +256,56 @@ Adding a host that needs a different install mechanism? Add it to `HOSTS_WITH_US
 
 Plugin: [`biome-plugins/no-blind-agent-host-fanout.grit`](no-blind-agent-host-fanout.grit). Fixture: [`biome-plugins/__fixtures__/no-blind-agent-host-fanout.fixture.tsx`](__fixtures__/no-blind-agent-host-fanout.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-blind-agent-host-fanout.test.ts`](../packages/app/tests/lint-plugins/no-blind-agent-host-fanout.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
+### `no-unwrapped-user-facing-string.grit`
+
+Localization discipline. Makes a hardcoded user-facing string a **build-visible defect** rather than a convention someone has to remember — the gap that let the app accumulate residual English while the `en` catalog grew past 2,800 entries. Three surfaces:
+
+- **Toast arguments** — `toast.error('…')`, `toast.success('…')`, any `toast.<method>` whose first argument is a string literal.
+- **JSX text children** — `<span>No documents match your search</span>`.
+- **UI-facing attributes** — `aria-label`, `placeholder`, `title`, `alt` with a string-literal value.
+
+The wrapped forms — `<Trans>…</Trans>`, `` t`…` `` from `useLingui()` / `@lingui/core/macro` — are not literals in the positions above and never fire.
+
+**The prose test, and why the branches differ.** The two JSX branches require **two letter-words separated by whitespace**; the toast branch takes any literal. That asymmetry is measured, not stylistic: a toast argument is unambiguously user-facing, whereas raw JSX text in this codebase is overwhelmingly *not* prose. Firing on every JSX literal produced 53 hits across the product tree of which **zero** were genuine copy — keyboard-shortcut tokens (`Ctrl+Shift+N`), code identifiers (`open-knowledge`), sample paths (`notes / release-plan.md`), and brand marks (`OpenKnowledge`). With the prose test the same sweep produced **4 hits, all real** (two `aria-label`s and one banner sentence in `ConflictsSection.tsx`, one toast in `FileTree.tsx`), which is the signal-to-noise ratio that makes a lint rule worth obeying. Note the two-word test also excludes tokens joined by punctuation, since `notes / release-plan.md` has no letter–space–letter run.
+
+`<Brand> icon` is exempt in-pattern: it is the accessible name of a third-party mark, and translating it renames the product.
+
+**Scoped via `overrides[].plugins`** to `packages/{app,desktop,plugin}/src/**`, `.ts` as well as `.tsx` — the toast branch's dominant shape is a plain `lib/` helper, not a component. Exemptions as negative `!`-globs: `!packages/app/src/editor/**` (ProseMirror/CodeMirror-managed views, whose placeholder and title strings are editor affordances), `!packages/app/src/components/ui/**` (shadcn primitive wrappers — attribute strings there are prop plumbing), and `!**/*.test.ts` / `!**/*.test.tsx` / `!**/*.dom.test.tsx`.
+
+The rule does NOT catch:
+
+- **Single-word JSX copy** — `<Button>Save</Button>`. The known cost of the prose test; nothing statically separates `Save` from `Discord`. The backstop is the Simplified-Chinese coverage sweep, where residual English is unmissable against Han script.
+- **Object-property and module-const strings** — `{ message: 'Server returned…' }`, `const TOAST = '…'`. This is the dominant shape of the pre-existing hardcoded-string backlog (`lib/handoff/targets.ts`, `hooks/use-folder-config.ts`, `lib/share/run-share-action.ts`), and widening to every string literal is exactly the false-positive rate that makes a rule get suppressed instead of obeyed. That backlog is a hand migration, not a rule.
+- **A JSX expression-child string literal** — `<span>{'Loading'}</span>`, or an attribute written `aria-label={'…'}`. The value node opens with `{`, which is what distinguishes a literal from a wrapped macro.
+- **Template literals** anywhere, including a toast `description`.
+- **The Electron main process's menu templates and CLI output** — object literals in `packages/desktop/src/main/**` and `packages/cli/src/**`. The CLI command surface is deliberately never localized.
+
+Plugin: [`biome-plugins/no-unwrapped-user-facing-string.grit`](no-unwrapped-user-facing-string.grit). Fixture: [`biome-plugins/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx`](__fixtures__/no-unwrapped-user-facing-string.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-unwrapped-user-facing-string.test.ts`](../packages/app/tests/lint-plugins/no-unwrapped-user-facing-string.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
+### `no-physical-direction-utility.grit`
+
+Reading-direction discipline. Chrome layout takes its side from the reading direction, never from a hardcoded left or right, so that adding a right-to-left locale is a catalog change rather than a chrome-wide retrofit. The rule flags physical **margin**, **padding**, and **inset** Tailwind utilities — `ml-`/`mr-`, `pl-`/`pr-`, `left-`/`right-` — and asks for `ms-`/`me-`, `ps-`/`pe-`, `start-`/`end-` instead. In a left-to-right locale the two compile to the same used value, so draining the backlog is a visual no-op today and correct later.
+
+**It matches class strings, not stylesheets.** That is where this codebase's physical properties live: the sweep that produced this rule found 148 of them in `className` values against 31 CSS declarations, and 24 of those 31 style the editor or the rendered document rather than the chrome. One `jsx_attribute` branch covers both spellings, because the bound node is the whole initializer clause — a plain `className="ml-2 flex"` and a multi-line `className={cn('…', cond && 'pr-1.5')}` are the same node to the pattern. The name is matched as `*lassName`, so component APIs that forward a second class string (`containerClassName`, `overflowClassName`) are in scope under their own names.
+
+**Two shapes look physical and are not, and both are measured rather than assumed:**
+
+- **`inset-x-*` is already logical.** Tailwind v4 compiles `inset-x-0` to `inset-inline: 0`. It is absent from the pattern for that reason, not as a carve-out.
+- **`left-1/2` is the centering anchor.** It exists to be cancelled by the `-translate-x-1/2` beside it, and at 50% the offset is symmetric, so it centers correctly in both directions; `start-1/2` would flip the anchor while the translate kept pulling the same way. The pattern requires a delimiter after a numeric value, which leaves every fractional inset alone — all 10 `left-1/2` sites in the tree carry that translate.
+
+**Scoped via `overrides[].plugins`** to `packages/{app,desktop,plugin}/src/**/*.tsx`. `.tsx` only: the single branch matches a JSX attribute, so a `.ts` glob would be dead scope rather than extra coverage. Exemptions as negative `!`-globs: `!packages/app/src/editor/**` (ProseMirror and CodeMirror own their DOM and take per-string direction from the text rather than from the chrome), `!packages/app/src/components/ui/**` (shadcn primitives are regenerated by `shadcn add`, so an edit there is overwritten on the next pull), and `!**/*.test.tsx` / `!**/*.dom.test.tsx`.
+
+**Pre-rule backlog (ratchet pattern).** The 81 files that pre-date the rule carry a file-level `// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — …` header, same contract as `no-raw-html-interactive-element`: the comment list across the codebase IS the visible backlog, and review treats each header as a backlog marker rather than a free pass. Drain a file by swapping `ml`/`mr` → `ms`/`me`, `pl`/`pr` → `ps`/`pe`, `left`/`right` → `start`/`end`, then deleting the header — the rule starts firing again immediately, so a partial pass that misses one utility fails the gate. 81 of the 292 chrome files in scope carry a header (148 utilities in total), so the rule is live on the other 211 today.
+
+The rule does NOT catch:
+
+- **Class strings outside a class prop** — `{ containerClassName: 'bottom-3 left-3' }` as an object-literal property, or a module-level `const ROW = 'ml-2 flex'`. Five sites in the tree: four object-literal properties in `GraphLegend.tsx`, one const in `editor-tabs-chrome.ts`. A hand fix, not a rule — the name predicate keys on a JSX attribute, and widening it to every string-valued property is the false-positive surface the negative cases below the fixture's group 6 exist to bound.
+- **Fractional insets** — `left-1/3` alongside the `left-1/2` the exclusion is aimed at. One site, and separating them costs more regex than it buys.
+- **CSS declarations** — `margin-left:` in `globals.css` (25 sites) or inside a `unsafeCSS` template literal (6, all in the file-tree and skill-cluster shadow styles). A `language css` plugin would reach the stylesheet — verified working in Biome 2.4.15 — but not the template literals, and 24 of the 25 stylesheet sites style the editor or the rendered document, surfaces this rule exempts anyway. One chrome site remains: `.tabs-strip-add`.
+- **Physical `border-*`, `rounded-*`, and `text-left`/`text-right`** — real direction hazards, outside this rule's margin/padding/inset scope.
+
+Plugin: [`biome-plugins/no-physical-direction-utility.grit`](no-physical-direction-utility.grit). Fixture: [`biome-plugins/__fixtures__/no-physical-direction-utility.fixture.tsx`](__fixtures__/no-physical-direction-utility.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts`](../packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
 ## Suppression
 
 Inline `// biome-ignore` comments silence individual diagnostics. The most specific form names the rule and the reason:
@@ -279,6 +329,10 @@ Current production suppressions:
 - `no-roundtrip-identity-oracle`: 0 sites
 - `no-inline-tolerance-class`: 0 sites
 - `no-uninstall-forbidden-import`: 0 sites
+- `no-unwrapped-user-facing-string`: 0 sites — the four hits it found on landing were wrapped rather than suppressed.
+- `no-physical-direction-utility`: 81 file-level `biome-ignore-all` headers across `packages/app/src/**` (pre-rule backlog awaiting the logical-property pass; see the rule's section above for the ratchet contract)
+
+**Where an inline `// biome-ignore` can and cannot sit.** A suppression comment needs a line of its own directly above the reported span, which is a property of the *formatting* rather than of the rule. On a JSX attribute that means the attribute must already be on its own line — biome has no slot for a comment between two attributes sharing a line, and reports `Suppression comment has no effect` if you try. A `{/* biome-ignore */}` child covers the element that follows it, not a text node that starts after that element, so JSX-text diagnostics generally need the attribute-style form or a file-level `biome-ignore-all`.
 
 ## Adding a new plugin
 

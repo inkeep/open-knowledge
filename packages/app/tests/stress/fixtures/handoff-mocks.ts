@@ -377,6 +377,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         // useThemeBridge — must not throw or the ConfigProvider subtree
         // unmounts before NavigationHandler can call pool.setActive(docName).
         setThemeSource: async (): Promise<{ ok: true }> => ({ ok: true }),
+        setLanguagePreference: async (): Promise<{ ok: true }> => ({ ok: true }),
         signalThemeApplied: (): void => {},
         dialog: {
           openFolder: async () => null,

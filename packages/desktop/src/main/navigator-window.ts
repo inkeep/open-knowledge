@@ -16,6 +16,7 @@
  *   - Dock click while no windows visible: re-open Navigator.
  */
 
+import type { LanguagePreference } from '@inkeep/open-knowledge-core';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { ShareNavigatorPayload } from './url-scheme.ts';
@@ -56,6 +57,13 @@ interface NavigatorDeps {
   /** App version, passed to the preload via additionalArguments. */
   appVersion: string;
   /**
+   * The saved interface-language choice, unresolved, passed to the preload via
+   * additionalArguments. The launcher has no config document to read it from,
+   * so this is its only source; without it the launcher renders English under
+   * a menu bar main has already translated.
+   */
+  languagePreference: LanguagePreference;
+  /**
    * Dual-signal window-show coordinator. Same registry the editor windows
    * use; navigator gets `kind: 'navigator'` so timeout warns are
    * distinguishable in diagnostic logs.
@@ -84,6 +92,7 @@ export function createNavigatorWindow(deps: NavigatorDeps): BrowserWindowLike {
       '--ok-api-origin=',
       '--ok-project-path=',
       '--ok-project-name=Project Navigator',
+      `--ok-language-preference=${deps.languagePreference}`,
     ],
     // Static launcher title — no project bound, so branded app name works
     // here. Editor windows override with their own `projectName` title.

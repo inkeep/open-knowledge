@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildOkFileTreeOptions,
+  FILE_TREE_USER_NAME_DIRECTION_CSS,
   MARKDOWN_FILE_ICON_ID,
   MARKDOWN_FILE_ICON_SYMBOL,
   OK_FILE_TREE_READONLY_UNSAFE_CSS,
@@ -18,6 +19,14 @@ describe('buildOkFileTreeOptions', () => {
     const opts = buildOkFileTreeOptions({ paths: ['a.md', 'b/c.ts'] });
     expect(opts.paths).toEqual(['a.md', 'b/c.ts']);
     expect(opts.unsafeCSS).toBe(OK_FILE_TREE_READONLY_UNSAFE_CSS);
+  });
+
+  test('the read-only base gives every row its own writing direction', () => {
+    // File names are the user's own words, and the tree renders them inside a
+    // third-party shadow root that inherits the chrome's direction. The main
+    // tree composes its own `unsafeCSS`, so it carries this separately — the
+    // real-browser check for that one lives in `user-text-direction.e2e.ts`.
+    expect(OK_FILE_TREE_READONLY_UNSAFE_CSS).toContain(FILE_TREE_USER_NAME_DIRECTION_CSS);
   });
 
   test('unsafeCSS override wins (the editable main tree passes its full composition)', () => {

@@ -19,7 +19,9 @@
  * shape + callback dispatch without mounting Electron's Menu/Tray.
  */
 
+import { MENU_LABELS, NATIVE_MENU_LABELS } from '@inkeep/open-knowledge-core';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
 type AssetMenuKind = 'asset' | 'wiki-link' | 'image';
 
@@ -40,37 +42,40 @@ interface AssetMenuActions {
  * a specific desktop.
  */
 export function revealMenuLabel(platform: NodeJS.Platform): string {
-  if (platform === 'darwin') return 'Reveal in Finder';
-  if (platform === 'win32') return 'Show in Explorer';
-  return 'Open in file manager';
+  if (platform === 'darwin') return MENU_LABELS.revealInFinder;
+  if (platform === 'win32') return NATIVE_MENU_LABELS.showInExplorer;
+  return NATIVE_MENU_LABELS.openInFileManager;
 }
 
 interface BuildAssetMenuTemplateParams {
   readonly kind: AssetMenuKind;
   readonly platform: NodeJS.Platform;
   readonly actions: AssetMenuActions;
+  /** Renders each row in the resolved interface language; English when absent. */
+  readonly translate?: MenuTranslator;
 }
 
 export function buildAssetMenuTemplate(
   params: BuildAssetMenuTemplateParams,
 ): MenuItemConstructorOptions[] {
   const { platform, actions } = params;
+  const translate = params.translate ?? translateEnglish;
   return [
     {
-      label: revealMenuLabel(platform),
+      label: translate(revealMenuLabel(platform)),
       click: () => {
         void actions.reveal();
       },
     },
     {
-      label: 'Open in default app',
+      label: translate(NATIVE_MENU_LABELS.openInDefaultApp),
       click: () => {
         void actions.openInDefault();
       },
     },
     { type: 'separator' },
     {
-      label: 'Copy link',
+      label: translate(NATIVE_MENU_LABELS.copyLink),
       click: () => {
         void actions.copyLink();
       },

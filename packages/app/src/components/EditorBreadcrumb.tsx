@@ -1,6 +1,7 @@
 import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
 import { MoreHorizontalIcon } from 'lucide-react';
 import { Fragment } from 'react';
+import { UserText } from '@/components/UserText';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -124,7 +125,9 @@ export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) 
                     <MoreHorizontalIcon className="size-3.5" />
                   </span>
                   {/* Keep the collapsed segments in the a11y reading order. */}
-                  <span className="sr-only">{node.hidden.join(' / ')}</span>
+                  <span className="sr-only">
+                    <UserText>{node.hidden.join(' / ')}</UserText>
+                  </span>
                 </BreadcrumbItem>
               ) : (
                 <BreadcrumbItem className="min-w-0">
@@ -133,7 +136,7 @@ export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) 
                     className="min-w-0 truncate font-normal text-muted-foreground/70"
                     title={node.value}
                   >
-                    {node.value}
+                    <UserText>{node.value}</UserText>
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               )}

@@ -173,14 +173,20 @@ function ReportRow({
   onReveal: (row: OkBugReportListRow) => void;
   onDelete: (row: OkBugReportListRow) => void;
 }) {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const busy = pending !== undefined;
   const when =
     row.createdAt === ''
       ? t`Unknown date`
-      : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-          new Date(row.createdAt),
-        );
+      : // The picked interface language, not the OS one — otherwise a user on an
+        // English machine who chose Spanish reads Spanish copy beside an
+        // English-formatted date. Empty until the catalog activates, and
+        // `new Intl.DateTimeFormat('')` throws, so fall back to the runtime's
+        // own locale for that window.
+        new Intl.DateTimeFormat(i18n.locale || undefined, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date(row.createdAt));
   return (
     <div className="flex items-start gap-2.5 rounded-md border px-3 py-2.5">
       <div className="min-w-0 flex-1 space-y-1">

@@ -88,6 +88,21 @@ describe('validatePatchScopes', () => {
     expect(violation?.actualScope).toBe('project');
   });
 
+  test('returns SCOPE_VIOLATION for appearance.language written by a project writer', () => {
+    // A committed config.yml must not be able to set what language its
+    // collaborators read the chrome in — the write is refused at the writer
+    // boundary, not merely dropped later during the layered merge.
+    const violation = validatePatchScopes({ appearance: { language: 'es' } }, 'project');
+    expect(violation?.code).toBe('SCOPE_VIOLATION');
+    expect(violation?.path).toEqual(['appearance', 'language']);
+    expect(violation?.expectedScope).toBe('user');
+    expect(violation?.actualScope).toBe('project');
+  });
+
+  test('accepts appearance.language written by a user writer', () => {
+    expect(validatePatchScopes({ appearance: { language: 'zh-Hans' } }, 'user')).toBeNull();
+  });
+
   test('returns SCOPE_VIOLATION for a user field written by a project-local writer', () => {
     const violation = validatePatchScopes({ appearance: { theme: 'light' } }, 'project-local');
     expect(violation?.code).toBe('SCOPE_VIOLATION');

@@ -61,11 +61,37 @@ export function createLucideSpriteSymbol(id: string, iconNode: IconNode): string
 }
 
 /**
- * The read-only-safe `unsafeCSS` base: colored-icon selected-fg rule + extension
- * badges + indent guides + sticky headers. This is everything a NON-editing tree
- * needs. The main tree extends this with its rename / drop / creation CSS.
+ * File and folder names are the user's own words, so each row's writing
+ * direction has to come from the name rather than from the interface language.
+ * `direction` inherits from `<html dir>` and crosses into Pierre's shadow root,
+ * so an Arabic interface would otherwise re-order a Latin filename.
+ *
+ * CSS rather than `dir="auto"` because Pierre renders the rows: `plaintext` is
+ * the CSS spelling of the same rule, resolving each row's base direction from
+ * its own first strong character. Rows are separate blocks, so this stays
+ * per-name — a folder of mixed-direction names does not adopt one direction.
+ *
+ * Both the label cell and the truncation nodes inside it are covered because
+ * `unicode-bidi` does not inherit and the innermost of them is what actually
+ * contains the text. Pierre's start-truncation variant sets `direction: rtl` on
+ * `[data-truncate-content]` as a truncation trick; OK's trees use end and
+ * middle truncation, so this never lands on top of it.
  */
-export const OK_FILE_TREE_READONLY_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
+export const FILE_TREE_USER_NAME_DIRECTION_CSS = `
+  [data-item-section='content'],
+  [data-item-section='content'] [data-truncate-content],
+  [data-item-section='content'] [data-truncate-content] > span {
+    unicode-bidi: plaintext;
+  }
+`;
+
+/**
+ * The read-only-safe `unsafeCSS` base: colored-icon selected-fg rule + extension
+ * badges + indent guides + sticky headers + per-name writing direction. This is
+ * everything a NON-editing tree needs. The main tree extends this with its
+ * rename / drop / creation CSS.
+ */
+export const OK_FILE_TREE_READONLY_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}`;
 
 export interface OkFileTreeOptionsInput {
   readonly paths: readonly string[];

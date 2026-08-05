@@ -75,6 +75,7 @@ import {
 import {
   CLIENT_VERSION_HEADER,
   hasUninstallFeedbackContent,
+  type LanguagePreference,
   OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
   projectSkillDecisionKey,
@@ -169,6 +170,11 @@ import {
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
+import {
+  readStoredLanguagePreference,
+  resolveDesktopLocale,
+  resolveDesktopLocaleForPushed,
+} from './boot-locale.ts';
 import { resolveBootRestoreDecision, resolveRestoreActions } from './boot-restore-decision.ts';
 import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
@@ -285,6 +291,7 @@ import {
 } from './ipc-handlers.ts';
 import { logIpcError } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
+import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
   type McpStartupRepairResult,
@@ -294,6 +301,7 @@ import {
   runMcpWiringOnFirstLaunch,
 } from './mcp-wiring.ts';
 import { installApplicationMenu } from './menu.ts';
+import type { MenuTranslator } from './menu-translator.ts';
 import { createNavigatorWindow, tryCloseNavigator } from './navigator-window.ts';
 import { runOkInit } from './ok-init.ts';
 import {
@@ -884,7 +892,7 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
       sendToRenderer(win.webContents, 'ok:menu-action', 'toggle-source');
     },
     popMenu: (input) => {
-      popSpellcheckMenu({ Menu, window: win }, input);
+      popSpellcheckMenu({ Menu, window: win }, { ...input, translate: currentMenuTranslator() });
     },
   });
 }
@@ -1796,6 +1804,16 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       : join(__dirname, '../renderer/index.html'),
     rendererDevUrl,
     appVersion: app.getVersion(),
+    // Read here rather than cached: the launcher can be reopened long after
+    // boot, and the saved choice may have changed in an editor window since.
+    // Unresolved — 'system' has to reach the renderer as 'system' so it
+    // re-resolves against the browser's current list.
+    languagePreference: readStoredLanguagePreference(osHomedir(), (message) =>
+      getLogger('navigator-window').warn(
+        { message },
+        'user config unreadable; launcher falls back to system',
+      ),
+    ),
     showGate,
     pendingPayload,
   });
@@ -2547,6 +2565,60 @@ let refreshInFlight: Promise<void> | null = null;
 let pendingRefresh = false;
 
 /**
+ * The active menu translator, built lazily on the first menu render and
+ * discarded whenever the renderer pushes a new language preference.
+ *
+ * Lazy rather than a boot step because the menu is the only consumer and it is
+ * built inside `runBootstrap` — resolving here means the very first menu bar
+ * paints translated, with no renderer round-trip and no extra ordering
+ * constraint in the bootstrap prefix. Resolution reads `~/.ok/global.yml`
+ * synchronously; it is one small file read per language change.
+ */
+let menuTranslator: MenuTranslator | null = null;
+
+/**
+ * The most recent preference a renderer pushed, or `null` when none has.
+ *
+ * The renderer pushes as soon as the config document changes, but that document
+ * reaches `~/.ok/global.yml` through the debounced persistence path — so at push
+ * time the file still holds the PREVIOUS language. Re-reading disk here would
+ * rebuild the menu in the language the user just left, and it would look like
+ * the menu simply does not follow the setting: the next reload re-pushes, by
+ * which point the write has landed, and the menu finally catches up.
+ *
+ * Held UNRESOLVED, so a `'system'` preference keeps tracking the OS — the
+ * resolve below re-runs against the current preferred-language list on every
+ * rebuild rather than freezing whatever it reported when the user chose.
+ */
+let pushedLanguagePreference: LanguagePreference | null = null;
+
+function currentMenuTranslator(): MenuTranslator {
+  if (menuTranslator === null) {
+    const locale =
+      pushedLanguagePreference === null
+        ? resolveDesktopLocale({
+            homedir: osHomedir(),
+            preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
+            env: process.env,
+          })
+        : // The pushed value is fresher than the file by construction.
+          resolveDesktopLocaleForPushed(pushedLanguagePreference, {
+            preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
+            env: process.env,
+          });
+    menuTranslator = createMenuTranslator(
+      resolveMenuCatalogDir({
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        mainDir: __dirname,
+      }),
+      locale,
+    );
+  }
+  return menuTranslator;
+}
+
+/**
  * Rebuild the application menu. Called on app boot AND whenever the recent-
  * projects list changes, so File → Open Recent stays current.
  */
@@ -2705,6 +2777,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
   // shouldn't crash the app.
   await installApplicationMenu({
     appName: app.name,
+    translate: currentMenuTranslator(),
     // Dev + any prerelease keep DevTools; only stable hides it. `app.isPackaged`
     // alone is the wrong gate (true for both channels); the version's channel
     // is the discriminator — stable promotion overrides the legacy commit's
@@ -4616,6 +4689,7 @@ function registerIpcHandlers() {
       {
         kind: params.kind,
         platform: process.platform,
+        translate: currentMenuTranslator(),
         actions: {
           reveal: async () => {
             await revealAssetSafely(
@@ -4809,6 +4883,20 @@ function registerIpcHandlers() {
   handle('ok:clipboard:write-text', async (_event, text) => {
     clipboard.writeText(text);
     return undefined;
+  });
+
+  handle('ok:locale:set-preference', async (_event, { preference }) => {
+    // The payload is user intent, stored and transported unresolved; resolution
+    // happens inside `currentMenuTranslator` at the point of activation, so a
+    // `'system'` preference keeps following the OS. Recording it is load-bearing
+    // rather than bookkeeping: the config document has not reached disk yet at
+    // this instant, so a rebuild that re-read the file would render the menu in
+    // the language the user just left.
+    pushedLanguagePreference = preference;
+    menuTranslator = null;
+    getLogger('menu-locale').info({ preference }, 'language preference pushed; rebuilding menu');
+    refreshApplicationMenu();
+    return { ok: true };
   });
 
   handle('ok:theme:set-source', async (_event, { source }) => {

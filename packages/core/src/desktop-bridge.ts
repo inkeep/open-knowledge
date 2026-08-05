@@ -18,6 +18,7 @@ import type {
 } from './git/worktree-selector-model.ts';
 import type { TerminalCli } from './handoff/terminal-launch.ts';
 import type { HandoffFailureReason, HandoffScope } from './handoff/types.ts';
+import type { LanguagePreference } from './i18n/locales.ts';
 import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
@@ -68,6 +69,21 @@ export interface OkDesktopConfig {
   readonly freshlyCreated: boolean;
   readonly startupTraceparent?: string;
   readonly ptyAvailable: boolean;
+  /**
+   * The saved interface-language choice, unresolved, as main read it off disk
+   * while starting this window.
+   *
+   * Windows that mount a `ConfigProvider` get the preference from config and
+   * ignore this. The launcher has no project and therefore no config document,
+   * so without a value here it renders the bootstrap catalog under a menu bar
+   * main has already translated — main resolves the preference before any
+   * window exists, which is the whole reason the menus are right.
+   *
+   * Unresolved on purpose: `'system'` has to arrive as `'system'` so the
+   * renderer re-resolves it against the browser's current list rather than
+   * freezing whatever the OS said when the window opened.
+   */
+  readonly languagePreference?: LanguagePreference;
 }
 
 /**
@@ -1158,6 +1174,21 @@ export interface OkDesktopBridge {
    * CRDT mutation re-fires.
    */
   setThemeSource(source: OkThemeSource): Promise<{ ok: true }>;
+
+  /**
+   * Push the user's chosen interface language to main, which rebuilds the
+   * native menu bar in it. Carries the user-intent value (`'system'` or a
+   * supported tag) verbatim — NEVER resolve `'system'` to a concrete locale at
+   * the call site, for the same reason `setThemeSource` must not: `'system'`
+   * IS the lever that delegates to the OS preferred-language list, and a
+   * resolved value silently stops following it.
+   *
+   * Main resolves the language for its own boot by reading the persisted
+   * preference off disk, because the menu is built before any renderer exists;
+   * this call only carries subsequent changes. Failure is best-effort — the
+   * menu stays on the previous language and the next mutation re-fires.
+   */
+  setLanguagePreference(preference: LanguagePreference): Promise<{ ok: true }>;
 
   /**
    * Fire-and-forget renderer→main signal that the theme has been applied

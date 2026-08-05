@@ -25,6 +25,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { UserText } from '@/components/UserText';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';
 import {
@@ -49,7 +50,7 @@ function hashFromTarget(target: string, anchor: string | null): string {
 
 interface PropertyInlineLinksProps {
   text: string;
-  /** Optional className passed through to the outer `<span>`. */
+  /** Optional className passed through to the outer element. */
   className?: string;
 }
 
@@ -58,15 +59,18 @@ export function PropertyInlineLinks({ text, className }: PropertyInlineLinksProp
   // this component already pre-check via `hasInlineLinks`, but render the
   // guard here too so the component is safe to drop in anywhere without
   // requiring callers to opt into the optimization.
+  // The isolate goes on the whole value, not on each link inside it: the links
+  // are fragments of one string the user wrote, so splitting them into separate
+  // direction contexts would reorder a sentence rather than protect it.
   if (!hasInlineLinks(text)) {
-    return <span className={className}>{text}</span>;
+    return <UserText className={className}>{text}</UserText>;
   }
 
   const segments = tokenizePropertyInlineLinks(text);
   return (
-    <span className={className} data-testid="property-inline-links">
+    <UserText className={className} data-testid="property-inline-links">
       {segments.map((seg, i) => renderSegment(seg, i))}
-    </span>
+    </UserText>
   );
 }
 

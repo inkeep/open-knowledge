@@ -23,6 +23,7 @@
  * PropPanel's `treatEmptyAsUndefined` logic as a delete signal for
  * optional props).
  */
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Command as CommandPrimitive } from 'cmdk';
 import { ChevronDown, X } from 'lucide-react';
 import { useState } from 'react';
@@ -48,6 +49,7 @@ interface IconPickerInputProps {
 }
 
 export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerInputProps) {
+  const { t } = useLingui();
   const [open, setOpen] = useState(false);
   // The text field is always the source of truth — the picker just
   // writes into it. Live-resolve the current value to a lucide icon for
@@ -82,7 +84,7 @@ export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerIn
             type="button"
             variant="outline"
             size="xs"
-            aria-label="Choose icon"
+            aria-label={t`Choose icon`}
             aria-haspopup="listbox"
             aria-expanded={open}
             data-icon-picker-trigger=""
@@ -103,10 +105,12 @@ export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerIn
           // user actually starts typing into it.
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
-          <Command label="Icon picker">
-            <CommandInput placeholder="Search icons..." className="h-8 text-sm" />
+          <Command label={t`Icon picker`}>
+            <CommandInput placeholder={t`Search icons...`} className="h-8 text-sm" />
             <CommandList className="max-h-64">
-              <CommandEmpty>No icons match.</CommandEmpty>
+              <CommandEmpty>
+                <Trans>No icons match.</Trans>
+              </CommandEmpty>
               {value.length > 0 && (
                 <CommandGroup>
                   <CommandItem

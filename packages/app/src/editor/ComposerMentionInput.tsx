@@ -32,6 +32,18 @@ function seedDocHasContent(doc: JSONContent | undefined): boolean {
   return blocks.some((block) => Array.isArray(block.content) && block.content.length > 0);
 }
 
+/**
+ * The slice of ProseMirror's view this file needs, duck-typed for the same
+ * reason `interaction-layer.tsx` does it: `editor.view` is a throwing proxy
+ * during construction and recycle/remount, while `editor.editorView` returns
+ * `undefined` when unset — but it is `private` on TipTap's class, so reaching
+ * it needs a structural type rather than a member access.
+ */
+interface ComposerEditorView {
+  dom: HTMLElement;
+  dispatch: (tr: unknown) => void;
+}
+
 export interface ComposerMentionInputHandle {
   focus: () => void;
   blur: () => void;
@@ -154,6 +166,38 @@ export function ComposerMentionInput({
       onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
     },
   });
+
+  // Repaint the chrome the editor captured at construction when the interface
+  // language changes. Two separate mechanisms, because they live in different
+  // layers: the placeholder is a ProseMirror decoration, which only recomputes
+  // on a transaction — and a locale switch dispatches none — while `aria-label`
+  // is a DOM attribute TipTap writes once from `editorProps`. Without this the
+  // composer keeps whatever language was active when it mounted, which reads as
+  // an untranslated string rather than a stale one.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    // Re-point the extension's own option rather than rebuilding the editor,
+    // which would discard the user's draft. Everything here runs in an effect
+    // because React Compiler rejects both a ref write and a ref-reading closure
+    // during render, which is what a getter-based placeholder would need.
+    const placeholderExtension = editor.extensionManager.extensions.find(
+      (extension) => extension.name === 'placeholder',
+    );
+    if (placeholderExtension) {
+      (placeholderExtension.options as { placeholder?: string }).placeholder = placeholder ?? '';
+    }
+    // `editor.view` is a throwing proxy during recycle/remount, so reach the
+    // non-throwing `editorView` field the same duck-typed way `interaction-
+    // layer.tsx` does — it is private on the class but returns `undefined`
+    // rather than throwing when unset, which is the property that matters here.
+    const view = (editor as unknown as { editorView?: ComposerEditorView }).editorView;
+    if (!view) return;
+    view.dom.setAttribute('aria-label', ariaLabel ?? '');
+    // Placeholder decorations only recompute on a transaction and a locale
+    // switch dispatches none. This one changes no document state, so it cannot
+    // enter undo history or fire the host's onUpdate content callbacks.
+    view.dispatch(editor.state.tr.setMeta('addToHistory', false));
+  }, [editor, placeholder, ariaLabel]);
 
   // Seed the host's empty-state from the initial draft text. `useEditor` does
   // not fire `onUpdate` for the `content` seed, so without this a restored draft

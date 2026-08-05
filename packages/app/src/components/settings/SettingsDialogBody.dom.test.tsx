@@ -5,6 +5,7 @@ import {
   type ConfigBinding,
   type ConfigPatch,
   ConfigSchema,
+  PICKER_LOCALES,
 } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -290,6 +291,110 @@ describe('SettingsDialogBody preferences runtime', () => {
 });
 
 /**
+ * Radix opens the listbox from the keyboard as well as from a pointer, and the
+ * keyboard path needs none of the pointer-capture APIs jsdom leaves out.
+ */
+async function openLanguagePicker(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = screen.getByRole('combobox', { name: 'Language' });
+  trigger.focus();
+  await user.keyboard('{ArrowDown}');
+  await waitFor(() => {
+    expect(screen.getByRole('listbox')).toBeDefined();
+  });
+}
+
+describe('SettingsDialogBody language picker', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('renders a Language row beside Theme, showing the stored preference', () => {
+    const config = ConfigSchema.parse({ appearance: { language: 'es' } });
+    const { binding } = makeBinding(config);
+    const { container } = renderPreferences(binding);
+
+    expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('español');
+    const fields = [...container.querySelectorAll('[data-field]')].map((el) =>
+      el.getAttribute('data-field'),
+    );
+    expect(fields.indexOf('appearance.language')).toBe(fields.indexOf('appearance.theme') + 1);
+  });
+
+  test('offers the reviewed picker set and none of the enumerated rest', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    renderPreferences(binding);
+
+    await openLanguagePicker(user);
+
+    expect(screen.getAllByRole('option').map((el) => el.textContent)).toEqual([
+      'System',
+      'English',
+      'español',
+      '简体中文',
+    ]);
+    // Hindi is enumerated in the config schema but has had no native review, so
+    // it must not be reachable from the picker.
+    expect(screen.queryByRole('option', { name: 'हिन्दी' })).toBeNull();
+  });
+
+  test('derives its locale options from the reviewed set in core', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    renderPreferences(binding);
+
+    await openLanguagePicker(user);
+
+    // Reading back the `lang` each option carries pins both the derivation and
+    // the tag assistive tech pronounces the name with. `null` is the System
+    // row, which names no language.
+    const tags = screen
+      .getAllByRole('option')
+      .map((el) => el.querySelector('[lang]')?.getAttribute('lang') ?? null);
+    expect(tags).toEqual([null, ...PICKER_LOCALES]);
+  });
+
+  test('commits the picked language through binding.patch', async () => {
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    renderPreferences(binding);
+
+    await openLanguagePicker(user);
+    await user.click(screen.getByRole('option', { name: 'español' }));
+
+    await waitFor(() => {
+      expect(patches).toEqual([{ appearance: { language: 'es' } }]);
+    });
+  });
+
+  test('picking System stores the sentinel rather than a resolved locale', async () => {
+    const user = userEvent.setup();
+    const config = ConfigSchema.parse({ appearance: { language: 'es' } });
+    const { binding, patches } = makeBinding(config);
+    renderPreferences(binding);
+
+    await openLanguagePicker(user);
+    await user.click(screen.getByRole('option', { name: 'System' }));
+
+    await waitFor(() => {
+      expect(patches).toEqual([{ appearance: { language: 'system' } }]);
+    });
+  });
+
+  test('a hand-set unpromoted locale still shows, without becoming an option', async () => {
+    const user = userEvent.setup();
+    const config = ConfigSchema.parse({ appearance: { language: 'hi' } });
+    const { binding } = makeBinding(config);
+    renderPreferences(binding);
+
+    expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('हिन्दी');
+
+    await openLanguagePicker(user);
+    expect(screen.queryByRole('option', { name: 'हिन्दी' })).toBeNull();
+  });
+});
+
+/**
  * Optimistic theme-apply path. The Theme ToggleGroup must flip
  * next-themes immediately on the originating client instead of waiting for
  * the patch -> user-config Y.Text -> ConfigProvider merged-effect round-trip.
@@ -334,10 +439,23 @@ function renderPreferencesWithTheme(binding: ConfigBinding) {
   );
 }
 
+/**
+ * What each theme value reads as on screen. The toggle renders a translated
+ * label rather than the config value, so the value alone no longer finds the
+ * control; under this runner the Lingui macros pass English through, which is
+ * what these are. Kept as a lookup so the call sites stay written in terms of
+ * the value they go on to assert against.
+ */
+const THEME_OPTION_LABELS: Record<string, string> = {
+  light: 'Light',
+  dark: 'Dark',
+  system: 'System',
+};
+
 function themeToggleItem(container: HTMLElement, option: string): HTMLElement {
   const field = container.querySelector('[data-field="appearance.theme"]');
   if (!field) throw new Error('appearance.theme field not rendered');
-  return within(field as HTMLElement).getByText(option);
+  return within(field as HTMLElement).getByText(THEME_OPTION_LABELS[option] ?? option);
 }
 
 describe('SettingsDialogBody theme toggle — optimistic apply', () => {
