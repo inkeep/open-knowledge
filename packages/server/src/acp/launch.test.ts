@@ -15,7 +15,9 @@ import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   AgentLaunchError,
+  isPathQualified,
   mergedEnv,
+  overlaySetsPath,
   preflightLaunch,
   type ResolvedLaunch,
   resolveWindowsCommand,
@@ -23,6 +25,7 @@ import {
   terminateAgentTree,
   windowsCmdWrap,
   withHostedAgentMarker,
+  withLoginShellPath,
 } from './launch.ts';
 
 describe('mergedEnv PATH augmentation', () => {
@@ -43,6 +46,49 @@ describe('mergedEnv PATH augmentation', () => {
 
   test('preserves non-PATH process.env entries', () => {
     expect(mergedEnv().HOME).toBe(process.env.HOME);
+  });
+
+  test('overlaySetsPath sees PATH under any spelling', () => {
+    expect(overlaySetsPath({ Path: '/x' })).toBe(true);
+    expect(overlaySetsPath({ PATH: '/x' })).toBe(true);
+    expect(overlaySetsPath({ HOME: '/x' })).toBe(false);
+    expect(overlaySetsPath(undefined)).toBe(false);
+  });
+});
+
+describe('withLoginShellPath', () => {
+  const key = 'PATH' in process.env ? 'PATH' : 'Path';
+
+  test('appends the login shell PATH to the launch env, key spelling preserved', () => {
+    const out = withLoginShellPath(
+      { cmd: 'npx', args: [], env: { [key]: '/usr/bin' }, kind: 'npx', pathFromOverlay: false },
+      `/nvm/bin${delimiter}/usr/bin`,
+    );
+    expect(out.env[key]).toBe(`/usr/bin${delimiter}/nvm/bin`);
+    expect(out.cmd).toBe('npx');
+  });
+
+  test('leaves the rest of the env untouched', () => {
+    const out = withLoginShellPath(
+      {
+        cmd: 'npx',
+        args: ['-y', 'pkg'],
+        env: { [key]: '/usr/bin', TOKEN: 'keep' },
+        kind: 'npx',
+        pathFromOverlay: false,
+      },
+      '/nvm/bin',
+    );
+    expect(out.env.TOKEN).toBe('keep');
+    expect(out.args).toEqual(['-y', 'pkg']);
+  });
+});
+
+describe('isPathQualified', () => {
+  test('a bare name is PATH-searched; a located command is not', () => {
+    expect(isPathQualified('npx')).toBe(false);
+    expect(isPathQualified('./agent')).toBe(true);
+    expect(isPathQualified('/opt/agent/bin/agent')).toBe(true);
   });
 });
 
@@ -68,6 +114,7 @@ const launchFor = (script: string, overlay?: Record<string, string>): ResolvedLa
   args: [script],
   env: plainEnv(overlay),
   kind: 'custom',
+  pathFromOverlay: overlaySetsPath(overlay),
 });
 
 async function waitFor(pred: () => boolean, ms: number, what: string): Promise<void> {
@@ -139,14 +186,26 @@ describe('preflightLaunch', () => {
   test('a path-qualified command that exists resolves', async () => {
     // process.execPath is an absolute, executable path → no PATH search.
     await expect(
-      preflightLaunch({ cmd: process.execPath, args: [], env: {}, kind: 'custom' }),
+      preflightLaunch({
+        cmd: process.execPath,
+        args: [],
+        env: {},
+        kind: 'custom',
+        pathFromOverlay: false,
+      }),
     ).resolves.toBeUndefined();
   });
 
   test('a missing npx surfaces an actionable Node.js hint', async () => {
     // Empty PATH guarantees `npx` cannot resolve on any platform.
     const err = await catchErr(
-      preflightLaunch({ cmd: 'npx', args: ['-y', 'x'], env: { PATH: '' }, kind: 'npx' }),
+      preflightLaunch({
+        cmd: 'npx',
+        args: ['-y', 'x'],
+        env: { PATH: '' },
+        kind: 'npx',
+        pathFromOverlay: true,
+      }),
     );
     expect(err).toBeInstanceOf(AgentLaunchError);
     expect((err as AgentLaunchError).code).toBe('command-not-found');
@@ -155,7 +214,13 @@ describe('preflightLaunch', () => {
 
   test('a missing uvx surfaces an actionable uv hint', async () => {
     const err = await catchErr(
-      preflightLaunch({ cmd: 'uvx', args: [], env: { PATH: '' }, kind: 'uvx' }),
+      preflightLaunch({
+        cmd: 'uvx',
+        args: [],
+        env: { PATH: '' },
+        kind: 'uvx',
+        pathFromOverlay: true,
+      }),
     );
     expect(err).toBeInstanceOf(AgentLaunchError);
     expect((err as AgentLaunchError).message).toContain('uv');
@@ -166,14 +231,26 @@ describe('preflightLaunch', () => {
     const name = process.platform === 'win32' ? 'fakeagent.cmd' : 'fakeagent';
     writeFileSync(join(dir, name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     await expect(
-      preflightLaunch({ cmd: 'fakeagent', args: [], env: { PATH: dir }, kind: 'custom' }),
+      preflightLaunch({
+        cmd: 'fakeagent',
+        args: [],
+        env: { PATH: dir },
+        kind: 'custom',
+        pathFromOverlay: true,
+      }),
     ).resolves.toBeUndefined();
   });
 
   test('a missing binary distribution reports the offending path', async () => {
     const missing = join(tmp(), 'does-not-exist-agent');
     const err = await catchErr(
-      preflightLaunch({ cmd: missing, args: [], env: {}, kind: 'binary' }),
+      preflightLaunch({
+        cmd: missing,
+        args: [],
+        env: {},
+        kind: 'binary',
+        pathFromOverlay: false,
+      }),
     );
     expect(err).toBeInstanceOf(AgentLaunchError);
     expect((err as AgentLaunchError).code).toBe('command-not-found');

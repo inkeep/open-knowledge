@@ -23,6 +23,7 @@ import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open
 import { tracedMkdir, tracedRename, tracedRm } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
+import { mergeLoginShellPath } from './login-shell-path.ts';
 import type { ManagedRuntime } from './managed-runtime.ts';
 import type { CustomAgentEntry, RegistryAgent, RegistryBinaryTarget } from './registry.ts';
 
@@ -31,6 +32,13 @@ export interface ResolvedLaunch {
   args: string[];
   env: Record<string, string>;
   kind: 'npx' | 'uvx' | 'binary' | 'custom';
+  /**
+   * True when this launch's PATH came from a manifest / custom-agent `env`
+   * overlay rather than the repaired inherited base. Such a PATH is a spawn-env
+   * contract that wins verbatim (see {@link mergedEnv}), so the login-shell
+   * fallback must leave it alone — the same reason base augmentation does.
+   */
+  pathFromOverlay: boolean;
 }
 
 export class AgentLaunchError extends Error {
@@ -87,6 +95,11 @@ export function mergedEnv(overlay?: Record<string, string>): Record<string, stri
   return { ...base, ...overlay };
 }
 
+/** True when `overlay` sets PATH under any spelling — see {@link ResolvedLaunch.pathFromOverlay}. */
+export function overlaySetsPath(overlay?: Record<string, string>): boolean {
+  return overlay !== undefined && Object.keys(overlay).some((k) => k.toLowerCase() === 'path');
+}
+
 /**
  * Stamp the hosted-agent marker onto an agent's spawn env.
  *
@@ -124,6 +137,7 @@ export async function resolveRegistryLaunch(
       args: ['-y', dist.npx.package, ...(dist.npx.args ?? [])],
       env: mergedEnv(dist.npx.env),
       kind: 'npx',
+      pathFromOverlay: overlaySetsPath(dist.npx.env),
     };
   }
   if (dist.uvx !== undefined) {
@@ -132,6 +146,7 @@ export async function resolveRegistryLaunch(
       args: [dist.uvx.package, ...(dist.uvx.args ?? [])],
       env: mergedEnv(dist.uvx.env),
       kind: 'uvx',
+      pathFromOverlay: overlaySetsPath(dist.uvx.env),
     };
   }
   if (dist.binary !== undefined) {
@@ -151,7 +166,13 @@ export async function resolveRegistryLaunch(
         `${agent.name} manifest cmd escapes its archive`,
       );
     }
-    return { cmd, args: [...(target.args ?? [])], env: mergedEnv(target.env), kind: 'binary' };
+    return {
+      cmd,
+      args: [...(target.args ?? [])],
+      env: mergedEnv(target.env),
+      kind: 'binary',
+      pathFromOverlay: overlaySetsPath(target.env),
+    };
   }
   throw new AgentLaunchError('no-distribution', `${agent.name} has no supported distribution`);
 }
@@ -162,6 +183,7 @@ export function resolveCustomLaunch(entry: CustomAgentEntry): ResolvedLaunch {
     args: [...(entry.args ?? [])],
     env: mergedEnv(entry.env),
     kind: 'custom',
+    pathFromOverlay: overlaySetsPath(entry.env),
   };
 }
 
@@ -181,12 +203,26 @@ export function rewriteLaunchToManagedRuntime(
 ): ResolvedLaunch {
   const env = { ...launch.env };
   env[pathKey(env)] = prependPath(runtime.binDir, envPath(env));
+  const pathFromOverlay = launch.pathFromOverlay;
   if (runtime.kind === 'node') {
     env.npm_config_cache = runtime.cacheDir;
-    return { cmd: runtime.npxBin, args: [...launch.args], env, kind: 'npx' };
+    return { cmd: runtime.npxBin, args: [...launch.args], env, kind: 'npx', pathFromOverlay };
   }
   env.UV_CACHE_DIR = runtime.cacheDir;
-  return { cmd: runtime.uvxBin, args: [...launch.args], env, kind: 'uvx' };
+  return { cmd: runtime.uvxBin, args: [...launch.args], env, kind: 'uvx', pathFromOverlay };
+}
+
+/**
+ * Rewrite a launch to also search the login shell's PATH — used when the
+ * inherited-plus-augmented PATH couldn't resolve the command but the user's
+ * terminal can (a version manager whose bin dir no static list can name; see
+ * `login-shell-path.ts`). Appended, never prepended, so every directory that
+ * already resolved keeps resolving to the same binary.
+ */
+export function withLoginShellPath(launch: ResolvedLaunch, loginShellPath: string): ResolvedLaunch {
+  const env = { ...launch.env };
+  env[pathKey(env)] = mergeLoginShellPath(envPath(env), loginShellPath, delimiter);
+  return { ...launch, env };
 }
 
 /** The env's PATH key (Windows spells it `Path`), for case-preserving overwrite. */
@@ -312,11 +348,20 @@ export function envPath(env: Record<string, string>): string | undefined {
   return process.env.PATH;
 }
 
+/**
+ * True when `cmd` names a location rather than a name to search for — binary
+ * distributions and path-qualified custom agents. Such a command is checked in
+ * place, so no amount of PATH repair changes its verdict.
+ */
+export function isPathQualified(cmd: string): boolean {
+  const win = process.platform === 'win32';
+  return isAbsolute(cmd) || cmd.includes('/') || (win && cmd.includes('\\'));
+}
+
 /** Resolve `cmd` to an executable the way the OS would at spawn time. */
 async function isLaunchable(cmd: string, pathEnv: string | undefined): Promise<boolean> {
   const win = process.platform === 'win32';
-  // A path-qualified command is checked in place — no PATH search.
-  if (isAbsolute(cmd) || cmd.includes('/') || (win && cmd.includes('\\'))) {
+  if (isPathQualified(cmd)) {
     return isExecutableFile(cmd);
   }
   const exts = win

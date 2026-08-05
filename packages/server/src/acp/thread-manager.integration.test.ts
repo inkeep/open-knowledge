@@ -63,6 +63,7 @@ function makeManager(
     unwatchedTurnKillMs?: number;
     isIgnoredPath?: (relPosix: string) => boolean;
     registry?: AcpRegistry;
+    resolveLoginShellPath?: () => Promise<string | null>;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -1747,4 +1748,63 @@ describe('AcpThreadManager prompt queueing', () => {
     expect(manager2.getInfo(info.threadId)).toBeDefined();
     expect(manager2.getInfo(info.threadId)?.queue).toBeUndefined();
   }, 40_000);
+});
+
+describe.skipIf(process.platform === 'win32')('login-shell PATH fallback', () => {
+  /**
+   * The nvm/fnm shape: the agent's command exists, but only in a directory
+   * that the inherited PATH and its static augmentation cannot name. The shim
+   * dir stands in for `~/.nvm/versions/node/<v>/bin` — reachable from a
+   * terminal, invisible to a Dock-launched server.
+   */
+  test('launches a command only the login shell can resolve', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const shimDir = tmp();
+    const command = `ok-login-shell-agent-${process.pid}`;
+    writeFileSync(join(shimDir, command), `#!/bin/sh\nexec node ${EXAMPLE_AGENT} "$@"\n`, {
+      mode: 0o755,
+    });
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([{ id: 'shell-agent', name: 'Shell Agent', command }]),
+    );
+
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => shimDir,
+    });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'shell-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    // Reaching 'ready' means preflight, spawn, and the ACP handshake all ran
+    // against a binary that only the injected login-shell PATH could find.
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+  }, 30_000);
+
+  test('a command missing from the login shell too still fails with the install hint', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'absent-agent', name: 'Absent Agent', command: `ok-absent-${process.pid}` },
+      ]),
+    );
+
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => tmp(),
+    });
+    const seen: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'absent-agent' } });
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') seen.push(frame.event);
+      if (frame.op === 'events') seen.push(...frame.events);
+    });
+    const errorEvent = (): Extract<ThreadEvent, { kind: 'status' }> | undefined =>
+      seen.find(
+        (e): e is Extract<ThreadEvent, { kind: 'status' }> =>
+          e.kind === 'status' && e.status === 'error',
+      );
+    await waitUntil(() => errorEvent() !== undefined, 10_000, 'error status');
+    expect(errorEvent()?.detail).toContain('was not found');
+  }, 20_000);
 });

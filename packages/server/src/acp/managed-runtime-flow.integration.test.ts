@@ -107,6 +107,7 @@ function makeManager(opts: {
   runtimeRoot: string;
   consentHome: string;
   fetchImpl: typeof fetch;
+  resolveLoginShellPath?: () => Promise<string | null>;
 }): AcpThreadManager {
   const manager = new AcpThreadManager({
     contentDir: opts.contentDir,
@@ -122,6 +123,7 @@ function makeManager(opts: {
       consentHome: opts.consentHome,
       fetchImpl: opts.fetchImpl,
     },
+    resolveLoginShellPath: opts.resolveLoginShellPath,
     log,
   });
   managers.push(manager);
@@ -265,6 +267,35 @@ describe('managed-runtime consent + download flow', () => {
     expect(errEvent?.detail).toContain('npx');
     expect(await findManagedRuntime('node', runtimeRoot)).toBeNull();
     expect((await readRuntimeConsent(consentHome)).node).toBeUndefined();
+  });
+
+  test('a manifest-supplied PATH is never widened by the login shell', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const consentHome = tmp();
+    let probes = 0;
+    const manager = makeManager({
+      contentDir,
+      localDir,
+      runtimeRoot,
+      consentHome,
+      fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64)),
+      resolveLoginShellPath: async () => {
+        probes += 1;
+        return '/should/never/be/consulted';
+      },
+    });
+
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    await collect(manager, info.threadId, events);
+
+    // NPX_AGENT pins its own PATH, which is a spawn-env contract: the launch
+    // gets exactly that PATH, so the fallback must not append to it and the
+    // download offer is still the right next step.
+    await waitFor(() => findConsentRequest(events) !== undefined, 5_000, 'consent request');
+    expect(probes).toBe(0);
   });
 
   test('a persisted grant skips the prompt entirely', async () => {

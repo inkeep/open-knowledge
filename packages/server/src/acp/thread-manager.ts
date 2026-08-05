@@ -72,6 +72,8 @@ import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
   AgentLaunchError,
+  envPath,
+  isPathQualified,
   preflightLaunch,
   type ResolvedLaunch,
   resolveCustomLaunch,
@@ -79,7 +81,9 @@ import {
   rewriteLaunchToManagedRuntime,
   spawnAcpAgent,
   terminateAgentTree,
+  withLoginShellPath,
 } from './launch.ts';
+import { getSharedLoginShellPathProvider } from './login-shell-path.ts';
 import {
   cleanupManagedRuntimeStaging,
   describeRuntime,
@@ -320,6 +324,14 @@ export interface AcpThreadManagerOptions {
     fetchImpl?: typeof fetch;
     consentHome?: string;
   };
+  /**
+   * The user's login-shell PATH, consulted only after a PATH-resolved command
+   * fails preflight and before any managed-runtime download is offered (see
+   * `login-shell-path.ts`). Resolves null when there is no answer. Injected by
+   * tests so the fallback's effect on a launch can be driven without spawning
+   * the developer's own shell; production defaults to the real one-shot probe.
+   */
+  resolveLoginShellPath?: () => Promise<string | null>;
   log: PinoLogger;
   maxThreads?: number;
   idleReapMs?: number;
@@ -354,11 +366,14 @@ export class AcpThreadManager {
   private readonly unwatchedTurnCancelMs: number;
   private readonly unwatchedTurnKillMs: number;
   private readonly persistence: ThreadPersistenceStore;
+  private readonly resolveLoginShellPath: () => Promise<string | null>;
   private destroyed = false;
   private initialized = false;
 
   constructor(opts: AcpThreadManagerOptions) {
     this.opts = opts;
+    this.resolveLoginShellPath =
+      opts.resolveLoginShellPath ?? getSharedLoginShellPathProvider(opts.log);
     this.maxThreads = opts.maxThreads ?? MAX_ACP_THREADS;
     this.idleReapMs = opts.idleReapMs ?? DEFAULT_IDLE_REAP_MS;
     this.unwatchedTurnCancelMs = opts.unwatchedTurnCancelMs ?? DEFAULT_UNWATCHED_TURN_CANCEL_MS;
@@ -775,12 +790,12 @@ export class AcpThreadManager {
   }
 
   /**
-   * Preflight the launch; on a missing npx/uvx interpreter, resolve a managed
-   * runtime (already-installed → persisted-consent → interactive consent →
-   * download) and return the rewritten launch. Returns null only when the
-   * thread closed mid-flight; throws an actionable {@link AgentLaunchError} on
-   * decline / unsupported platform / failed install (callers map it to an
-   * error status).
+   * Preflight the launch; on a command the inherited PATH can't resolve, try
+   * the login shell's PATH, then — for npx/uvx only — a managed runtime
+   * (already-installed → persisted-consent → interactive consent → download)
+   * and return the rewritten launch. Returns null only when the thread closed
+   * mid-flight; throws an actionable {@link AgentLaunchError} on decline /
+   * unsupported platform / failed install (callers map it to an error status).
    */
   private async ensureLaunchable(
     record: ThreadRecord,
@@ -791,6 +806,10 @@ export class AcpThreadManager {
       return launch;
     } catch (err) {
       if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') throw err;
+      // A terminal would have found it: adopt the login shell's PATH rather
+      // than download a runtime (or blame the user) for a tool they have.
+      const viaLoginShell = await this.retryWithLoginShellPath(launch);
+      if (viaLoginShell !== null) return viaLoginShell;
       // Only npx/uvx have a managed fallback — a binary/custom command doesn't.
       if (launch.kind !== 'npx' && launch.kind !== 'uvx') throw err;
       const runtimeKind = runtimeForInterpreter(launch.kind);
@@ -803,6 +822,41 @@ export class AcpThreadManager {
       await preflightLaunch(rewritten);
       return rewritten;
     }
+  }
+
+  /**
+   * Second chance for a command the inherited PATH couldn't resolve: append
+   * the login shell's PATH and preflight again. Returns the rewritten launch
+   * on success, or null when the fallback doesn't apply (path-qualified
+   * command, caller-supplied PATH), has nothing to add, or still can't find
+   * the command — in which case the caller carries on to the managed runtime.
+   */
+  private async retryWithLoginShellPath(launch: ResolvedLaunch): Promise<ResolvedLaunch | null> {
+    if (launch.pathFromOverlay || isPathQualified(launch.cmd)) return null;
+    const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
+    if (loginShellPath === null) return null;
+    const retry = withLoginShellPath(launch, loginShellPath);
+    if (envPath(retry.env) === envPath(launch.env)) return null;
+    try {
+      await preflightLaunch(retry);
+    } catch (err) {
+      // Only a launchability verdict means "keep going to the managed runtime".
+      // Anything else is a bug in the preflight itself and must stay visible.
+      if (!(err instanceof AgentLaunchError)) throw err;
+      // The user has a shell PATH and it still doesn't hold this command — the
+      // download offer that follows is the right outcome, but an operator
+      // reading the log should see that the second chance was taken and spent.
+      this.opts.log.debug(
+        { cmd: launch.cmd, kind: launch.kind },
+        '[acp] login-shell PATH did not resolve the command either',
+      );
+      return null;
+    }
+    this.opts.log.info(
+      { cmd: launch.cmd, kind: launch.kind },
+      '[acp] command resolved via the login-shell PATH; skipping the managed-runtime offer',
+    );
+    return retry;
   }
 
   /**

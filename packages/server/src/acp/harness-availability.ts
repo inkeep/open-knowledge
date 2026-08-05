@@ -8,7 +8,9 @@
  */
 
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
-import { AgentLaunchError, mergedEnv, preflightLaunch } from './launch.ts';
+import { getLogger } from '../logger.ts';
+import { AgentLaunchError, mergedEnv, preflightLaunch, withLoginShellPath } from './launch.ts';
+import { getSharedLoginShellPathProvider } from './login-shell-path.ts';
 
 export type HarnessAvailability = 'present' | 'not-found' | 'unknown';
 
@@ -35,18 +37,34 @@ export type AcpHarnessAvailability = Readonly<Partial<Record<TerminalCli, Harnes
 
 const DEFAULT_TTL_MS = 60_000;
 
-async function detectHarness(cli: TerminalCli): Promise<HarnessAvailability> {
+async function detectHarness(
+  cli: TerminalCli,
+  resolveLoginShellPath: () => Promise<string | null>,
+): Promise<HarnessAvailability> {
+  const launch = {
+    cmd: HARNESS_BINS[cli],
+    args: [],
+    env: mergedEnv(),
+    kind: 'custom' as const,
+    pathFromOverlay: false,
+  };
   try {
-    await preflightLaunch({
-      cmd: HARNESS_BINS[cli],
-      args: [],
-      env: mergedEnv(),
-      kind: 'custom',
-    });
+    await preflightLaunch(launch);
     return 'present';
   } catch (err) {
-    if (err instanceof AgentLaunchError && err.code === 'command-not-found') return 'not-found';
-    return 'unknown';
+    if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') return 'unknown';
+    // Same second chance the launch chain takes, and deliberately the same
+    // shared provider: reporting `not-found` for a harness that
+    // `ensureLaunchable` would go on to start is worse than no signal at all,
+    // because it steers defaulting away from an agent that works.
+    const loginShellPath = await resolveLoginShellPath().catch(() => null);
+    if (loginShellPath === null) return 'not-found';
+    try {
+      await preflightLaunch(withLoginShellPath(launch, loginShellPath));
+      return 'present';
+    } catch {
+      return 'not-found';
+    }
   }
 }
 
@@ -55,9 +73,13 @@ export function createAcpHarnessAvailabilityProbe(
     probe?: (cli: TerminalCli) => Promise<HarnessAvailability>;
     now?: () => number;
     ttlMs?: number;
+    /** Defaults to the process-shared probe the launch chain uses. */
+    resolveLoginShellPath?: () => Promise<string | null>;
   } = {},
 ): () => Promise<AcpHarnessAvailability> {
-  const probe = opts.probe ?? detectHarness;
+  const resolveLoginShellPath =
+    opts.resolveLoginShellPath ?? getSharedLoginShellPathProvider(getLogger('acp-harness'));
+  const probe = opts.probe ?? ((cli: TerminalCli) => detectHarness(cli, resolveLoginShellPath));
   const now = opts.now ?? Date.now;
   const ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
   const harnesses = [...new Set(Object.values(ACP_AGENT_HARNESS_CLIS))].filter(
