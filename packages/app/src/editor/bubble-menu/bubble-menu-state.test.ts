@@ -7,14 +7,16 @@
  * to the command palette.
  */
 
-import { LinkFidelity } from '@inkeep/open-knowledge-core';
+import { LinkFidelity, MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, Extension } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { markIdentityKey, markIdentityPlugin } from '../extensions/mark-identity';
 import { installDomGlobals } from '../walk-currency-test-harness';
-import { resolveAddLinkShortcutAction } from './bubble-menu-state';
+import { resolveAddLinkShortcutAction, shouldShowBubbleMenu } from './bubble-menu-state';
+
+const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 
 let restoreDomGlobals: (() => void) | null = null;
 
@@ -116,5 +118,68 @@ describe('resolveAddLinkShortcutAction', () => {
     editor.view.dispatch(editor.state.tr.insertText('a   b', 1, 1));
     select(editor, 2, 5);
     expect(resolveAddLinkShortcutAction(editor)).toBeNull();
+  });
+});
+
+/**
+ * Which selections the bar opens over.
+ *
+ * The distinction that matters is inline versus block. An inline atom carries
+ * every mark this bar applies, so counting its text is what lets a wiki link or
+ * a tag be selected and acted on. A block that keeps its content in attributes
+ * — a mermaid diagram, a math block — carries none of them, and a bar offering
+ * bold and superscript over a diagram is noise; those blocks have an Ask AI
+ * button on their own chrome instead.
+ */
+describe('shouldShowBubbleMenu — text held in attributes', () => {
+  function makeRichEditor(md: string): Editor {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const editor = new Editor({
+      element: host,
+      content: mdManager.parse(md),
+      extensions: sharedExtensions,
+    });
+    editors.push(editor);
+    return editor;
+  }
+
+  /** Select the whole first node of `typeName`. */
+  function selectNode(editor: Editor, typeName: string): void {
+    let target: number | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (target === null && node.type.name === typeName) target = pos;
+      return true;
+    });
+    if (target === null) throw new Error(`no ${typeName} in fixture`);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, target)),
+    );
+  }
+
+  test('opens over an inline atom, which carries the marks the bar applies', () => {
+    const editor = makeRichEditor('A [[page]] word.');
+    selectNode(editor, 'wikiLink');
+    expect(shouldShowBubbleMenu({ editor })).toBe(true);
+  });
+
+  test('does NOT open over a mermaid diagram', () => {
+    const editor = makeRichEditor('```mermaid\ngraph TD;\n  A-->B;\n```');
+    selectNode(editor, 'jsxComponent');
+    expect(shouldShowBubbleMenu({ editor })).toBe(false);
+  });
+
+  test('does NOT open over a math block', () => {
+    const editor = makeRichEditor('$$\nx = 1\n$$');
+    selectNode(editor, 'jsxComponent');
+    expect(shouldShowBubbleMenu({ editor })).toBe(false);
+  });
+
+  test('still opens over an ordinary text selection', () => {
+    const editor = makeRichEditor('Just ordinary words.');
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1, 5)),
+    );
+    expect(shouldShowBubbleMenu({ editor })).toBe(true);
   });
 });

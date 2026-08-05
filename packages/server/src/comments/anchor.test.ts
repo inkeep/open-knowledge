@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { assertAnchorConsistent, createAnchor, refind } from './anchor.ts';
+import {
+  assertAnchorConsistent,
+  bestByContext,
+  createAnchor,
+  literalSpans,
+  refind,
+} from './anchor.ts';
 
 describe('createAnchor', () => {
   test('captures the exact quote and surrounding context', () => {
@@ -189,5 +195,60 @@ describe('refind — a passage that was edited, not removed', () => {
     if (result.status === 'anchored') {
       expect(edited.slice(result.start, result.end)).toBe('needs space');
     }
+  });
+});
+
+/**
+ * Ranking a repeated passage whose only distinguishing context is in an
+ * adjacent block.
+ *
+ * The captured context joins blocks with a single `\n`; the body separates them
+ * with `\n\n` and spends `- ` on every list item. Scored byte-exact, that
+ * disagreed at the first seam character and returned zero for every candidate,
+ * so the ranking was inert and the caller took the first hit — persisting a
+ * comment on the third item against the first.
+ */
+describe('bestByContext across a block seam', () => {
+  const BODY = ['- hi', '- hi', '- hi', '', 'the marker paragraph', '', '- hi', '- hi'].join('\n');
+
+  /** `[start, end)` of the nth (1-based) list item's text. */
+  function nth(n: number): number {
+    let at = -1;
+    for (let i = 0; i < n; i += 1) at = BODY.indexOf('- hi', at + 1);
+    return at + 2;
+  }
+
+  test('the fixture really does repeat (guards the guard)', () => {
+    expect(literalSpans(BODY, 'hi').length).toBe(5);
+  });
+
+  test('ranks the item whose SUFFIX reaches the marker block', () => {
+    const hits = literalSpans(BODY, 'hi');
+    const ranked = bestByContext(BODY, hits, {
+      prefix: 'hi\nhi\n',
+      suffix: '\nthe marker paragraph\nhi\nhi',
+    });
+    expect(ranked[0]?.start).toBe(nth(3));
+  });
+
+  test('ranks the item whose PREFIX reaches the marker block', () => {
+    const hits = literalSpans(BODY, 'hi');
+    const ranked = bestByContext(BODY, hits, {
+      prefix: 'hi\nhi\nhi\nthe marker paragraph\n',
+      suffix: '\nhi',
+    });
+    expect(ranked[0]?.start).toBe(nth(4));
+  });
+
+  test('markdown emphasis inside the window is tolerated too', () => {
+    const body = ['- hi', '- hi', '', 'a **bold** marker', '', '- hi'].join('\n');
+    const hits = literalSpans(body, 'hi');
+    const ranked = bestByContext(body, hits, {
+      prefix: 'hi\n',
+      suffix: '\na bold marker\nhi',
+    });
+    let at = body.indexOf('- hi');
+    at = body.indexOf('- hi', at + 1);
+    expect(ranked[0]?.start).toBe(at + 2);
   });
 });

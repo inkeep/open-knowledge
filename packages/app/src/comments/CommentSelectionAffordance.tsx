@@ -19,6 +19,7 @@
  */
 
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+import { commentQuoteText } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { posToDOMRect } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
@@ -97,7 +98,13 @@ export function CommentSelectionAffordance({
       // "- **Peanut sauce:** 3 tbsp peanut butter" — a quote that is in no
       // document. The server matches rendered text against the markdown body
       // with syntax treated as elastic, so the plain text is what it wants.
-      const quote = editor.state.doc.textBetween(from, to, '\n').trim();
+      // `commentQuoteText`, not `textBetween`: an inline atom (wiki link, tag,
+      // image, inline math, footnote marker) and a promoted fence (mermaid,
+      // math) both keep their reader-visible text in attributes, so plain
+      // `textBetween` reads them as empty. Selecting one then produced no quote
+      // at all, and selecting prose AROUND one produced a quote with a hole the
+      // anchor resolver could not match.
+      const quote = commentQuoteText(editor.state.doc, from, to).trim();
       if (quote.length === 0) return;
       // Captured HERE, at the moment of the pick — this component is the only
       // place that knows which occurrence of a repeated passage was selected.

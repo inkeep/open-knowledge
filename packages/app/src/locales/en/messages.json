@@ -1176,6 +1176,7 @@
     "IFezUv": ["The audit could not be completed. Try again."],
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
+    "INp_z6": ["Comment or ask AI about this ", ["0"]],
     "IO8REi": ["Couldn't open \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Missing page — click to create"],
     "IQgeSn": ["Failed to save the schema field"],

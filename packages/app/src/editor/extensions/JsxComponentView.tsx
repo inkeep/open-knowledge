@@ -35,6 +35,7 @@
  */
 
 import {
+  commentLeafText,
   incrementJsxAutoConvertFailed,
   incrementJsxAutoConvertSucceeded,
   incrementJsxKeyboardDeleteFailed,
@@ -48,11 +49,21 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react';
-import { ArrowDown, ArrowUp, ExternalLink, Pencil, Settings2, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ExternalLink,
+  Pencil,
+  Settings2,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
+import { emitStartComment } from '@/comments/store';
 import { Button } from '@/components/ui/button';
+import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { hashFromDocName } from '@/lib/doc-hash';
 import {
   Popover,
@@ -253,6 +264,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   const wasSelected = useRef(false);
 
   const pos = typeof getPos === 'function' ? getPos() : undefined;
+  const isEmbedded = useIsEmbedded();
 
   let isChildOfComponent = false;
   let siblingIndex = 0;
@@ -1208,6 +1220,90 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               onClick={() => setEditModalOpen(true)}
             >
               <Pencil size={12} aria-hidden="true" />
+            </button>
+          ) : null}
+
+          {/* Ask AI — the same composer the text bubble menu's Ask AI opens,
+              reached the way a code block reaches it: from the block's own
+              chrome. A component that keeps its content in attributes rather
+              than as children (a mermaid diagram, a math block) has no text to
+              select, so the selection toolbar is not a route to it — and it
+              would be the wrong route anyway, since bold and links have nothing
+              to say about a diagram.
+
+              Images and embeds included. They DO raise the bubble menu on
+              selection, but it opens on its image branch, which carries the
+              alignment buttons and nothing else — so an image was the one block
+              with a selection toolbar and still no way to comment on it.
+
+              Gated on there actually BEING a quote — `commentLeafText` is the
+              same function the composer reads, so the button cannot appear in a
+              state where pressing it does nothing. That is not hypothetical: a
+              slash-inserted component arrives with `sourceRaw: ''` and nothing
+              but default props, so a freshly added Math block has no formula to
+              quote until it is typed into. It also subsumes the childless
+              check — a component with children returns `''` here and keeps the
+              selection toolbar as its route.
+
+              Hidden inside a host agent for the same reason the code block's is:
+              the comment queue is not reachable there. */}
+          {!isEmbedded && commentLeafText(node).length > 0 && typeof pos === 'number' ? (
+            <button
+              type="button"
+              className="jsx-chrome-btn"
+              aria-label={t`Comment or ask AI about this ${descriptor.displayName ?? descriptor.name}`}
+              data-testid="jsx-component-ask-ai-btn"
+              onClick={() => {
+                // The block itself is the subject — there is no selection
+                // inside a childless component to prefer over it.
+                try {
+                  editor.commands.setNodeSelection(pos);
+                } catch (err) {
+                  // Deliberately NOT the delete/move handlers' `RangeError`
+                  // narrowing. Those call `doc.resolve` / `doc.slice`, which do
+                  // throw `RangeError` on an out-of-bounds position. This one
+                  // does not reach either: `setNodeSelection` clamps through
+                  // `minMax` first, so a stale `pos` lands in bounds and fails
+                  // later inside `NodeSelection.create`, as a `TypeError` off
+                  // `$pos.nodeAfter`. Narrowing here would re-throw the very
+                  // race the catch is for, into `ComponentErrorBoundary`, which
+                  // converts the block to `rawMdxFallback` — the reader loses
+                  // the rendered component because a button missed.
+                  console.warn(
+                    JSON.stringify({
+                      event: 'jsx-component-chrome-ask-ai-failed',
+                      component: descriptor.name,
+                      rawComponentName: String(node.attrs.componentName ?? '').slice(0, 200),
+                      reason: err instanceof Error ? err.message.slice(0, 500) : String(err),
+                    }),
+                  );
+                  return;
+                }
+                // After the selection transaction has landed, so the composer
+                // captures the range this click just established.
+                requestAnimationFrame(() => {
+                  // Its own catch: this runs a frame later, outside the one
+                  // above, and `emitStartComment` dispatches synchronously — so
+                  // a listener reading `editor.state` on an editor destroyed
+                  // between the two frames throws here. Uncaught inside a rAF
+                  // that reaches `window.onerror` with no component and no
+                  // event key, which is not enough to triage from.
+                  try {
+                    emitStartComment();
+                  } catch (err) {
+                    console.warn(
+                      JSON.stringify({
+                        event: 'jsx-component-chrome-ask-ai-emit-failed',
+                        component: descriptor.name,
+                        rawComponentName: String(node.attrs.componentName ?? '').slice(0, 200),
+                        reason: err instanceof Error ? err.message.slice(0, 500) : String(err),
+                      }),
+                    );
+                  }
+                });
+              }}
+            >
+              <Sparkles size={12} aria-hidden="true" />
             </button>
           ) : null}
 

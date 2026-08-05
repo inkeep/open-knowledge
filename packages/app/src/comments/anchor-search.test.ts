@@ -10,8 +10,19 @@
  * shape (`text` + per-character positions) is trivially constructible.
  */
 
+import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
+import { getSchema } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { describe, expect, test } from 'vitest';
-import { findRangeInIndex } from './anchor-search';
+import {
+  buildTextIndex,
+  captureSelectionContext,
+  createAnchorResolver,
+  findRangeInIndex,
+} from './anchor-search';
+
+const mdManager = new MarkdownManager({ extensions: sharedExtensions });
+const schema = getSchema(sharedExtensions);
 
 /** Build the index `buildTextIndex` would produce, with PM positions offset by 1. */
 function indexOf(text: string): { text: string; positions: number[] } {
@@ -50,15 +61,18 @@ describe('findRangeInIndex — repeated quote', () => {
     expect(range?.from).toBe(FIRST + 1);
   });
 
-  test('identical context on both hits falls back to the nearest position hint', () => {
+  /**
+   * A stored `Anchor` carries a `start` measured against the MARKDOWN BODY.
+   * There is no rendered-offset tie-break for it to be mistaken for any more —
+   * a genuine tie takes the earliest hit, which is what the server does with
+   * the same tied set, so the two agree by construction rather than by luck.
+   */
+  test('a genuine tie takes the earliest hit, ignoring a stored body offset', () => {
     const doc = 'x TARGET y x TARGET y';
-    const second = doc.indexOf('TARGET', doc.indexOf('TARGET') + 1);
-    const range = findRangeInIndex(indexOf(doc), 'TARGET', {
-      prefix: 'x ',
-      suffix: ' y',
-      start: second,
-    });
-    expect(range?.from).toBe(second + 1);
+    const first = doc.indexOf('TARGET');
+    const second = doc.indexOf('TARGET', first + 1);
+    const anchor = { quote: 'TARGET', prefix: 'x ', suffix: ' y', start: second, end: 0 };
+    expect(findRangeInIndex(indexOf(doc), 'TARGET', anchor)?.from).toBe(first + 1);
   });
 
   test('a quote that is gone resolves to null', () => {
@@ -154,5 +168,238 @@ describe('findRangeInIndex — the passage was edited, not removed', () => {
         suffix: 'around the header.',
       }),
     ).toBeNull();
+  });
+});
+
+/**
+ * Nodes whose reader-visible text lives in attributes.
+ *
+ * The index is what the highlight and the scroll-to are computed from, so a
+ * node missing from it is a comment that anchors on the server and then cannot
+ * be shown in the document.
+ */
+describe('buildTextIndex — text held in attributes', () => {
+  function docOf(md: string): PMNode {
+    return schema.nodeFromJSON(mdManager.parse(md));
+  }
+
+  /** The node of `typeName` in `doc`, as `[from, to)`. */
+  function spanOf(doc: PMNode, typeName: string): { from: number; to: number } {
+    let span: { from: number; to: number } | null = null;
+    doc.descendants((node, pos) => {
+      if (span === null && node.type.name === typeName) {
+        span = { from: pos, to: pos + node.nodeSize };
+      }
+      return true;
+    });
+    if (span === null) throw new Error(`no ${typeName} in fixture`);
+    return span;
+  }
+
+  test('a wiki link contributes its target', () => {
+    expect(buildTextIndex(docOf('A [[page]] word.')).text).toBe('A page word.');
+  });
+
+  test('a tag contributes its `#` and name', () => {
+    expect(buildTextIndex(docOf('A #tagname word.')).text).toBe('A #tagname word.');
+  });
+
+  test('a mermaid fence stays OUT of the prose index', () => {
+    expect(buildTextIndex(docOf('```mermaid\ngraph TD;\n```')).text).toBe('');
+  });
+
+  test('a mermaid fence is in the component index', () => {
+    expect(
+      buildTextIndex(docOf('```mermaid\ngraph TD;\n```'), { includeBlockComponents: true }).text,
+    ).toBe('graph TD;');
+  });
+
+  test('a hit inside an inline atom resolves to the whole atom', () => {
+    const doc = docOf('A [[page]] word.');
+    const range = findRangeInIndex(buildTextIndex(doc), 'page');
+    expect(range).toEqual(spanOf(doc, 'wikiLink'));
+  });
+
+  /**
+   * The case that made the per-character position mapping load-bearing: a
+   * mermaid fence is two positions wide plus its content, so mapping every
+   * character to the node's start highlighted only its opening token.
+   */
+  test('a hit inside a promoted fence resolves to the whole node', () => {
+    const doc = docOf('```mermaid\ngraph TD;\n```');
+    const range = createAnchorResolver(doc)('graph TD;');
+    expect(range).toEqual(spanOf(doc, 'jsxComponent'));
+  });
+});
+
+/**
+ * Prose before diagram interiors.
+ *
+ * A diagram's interior is identifiers and edge labels, not prose, but it is
+ * full of common letter pairs. Searching it alongside the prose let a short
+ * quote match inside a drawing: a comment on the word "hi" resolved into a
+ * diagram containing "thinks", so its margin chip docked beside the diagram
+ * instead of beside the sentence it was about.
+ */
+describe('createAnchorResolver — a diagram never outbids the prose', () => {
+  const MD = [
+    '```mermaid',
+    'sequenceDiagram',
+    '  Note right of John: Bob thinks a long long time.',
+    '```',
+    '',
+    'hi',
+  ].join('\n');
+
+  function docOf(md: string): PMNode {
+    return schema.nodeFromJSON(mdManager.parse(md));
+  }
+
+  test('a short quote resolves to the paragraph, not into the diagram', () => {
+    const doc = docOf(MD);
+    let hiPos = -1;
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'hi') hiPos = pos;
+      return true;
+    });
+    expect(hiPos).toBeGreaterThanOrEqual(0);
+    expect(createAnchorResolver(doc)('hi')?.from).toBe(hiPos);
+  });
+
+  test('the diagram is still reachable by a quote only it can satisfy', () => {
+    const doc = docOf(MD);
+    let span: { from: number; to: number } | null = null;
+    doc.descendants((node, pos) => {
+      if (span === null && node.type.name === 'jsxComponent') {
+        span = { from: pos, to: pos + node.nodeSize };
+      }
+      return true;
+    });
+    const range = createAnchorResolver(doc)(
+      'sequenceDiagram\n  Note right of John: Bob thinks a long long time.',
+    );
+    expect(range).toEqual(span);
+  });
+});
+
+/**
+ * The reported failure, end to end: a comment on the FIRST of eight identical
+ * `hi`s highlighted a later one.
+ *
+ * Two things had to line up. The math block above the target erased the
+ * captured prefix — `textBetween` reads a block that keeps its text in
+ * attributes as empty — which dropped the decision to the tie-break; and the
+ * tie-break was reading the stored anchor's body offset as a rendered one,
+ * which points past the target.
+ *
+ * Both are closed now, and the first is why the prefix asserted below is no
+ * longer empty: capture reads the same substrate the quote does, so the block
+ * contributes its formula and the context decides on its own.
+ */
+describe('a repeated quote under a block that renders no text', () => {
+  const MD = ['$$', '1 + 1', '$$', '', 'hi', '', '> hello', '', ...Array(7).fill('- hi')].join(
+    '\n',
+  );
+
+  test('resolves to the occurrence that was commented on', () => {
+    const doc = schema.nodeFromJSON(mdManager.parse(MD));
+    const occurrences: number[] = [];
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'hi') occurrences.push(pos);
+      return true;
+    });
+    expect(occurrences.length).toBe(8);
+    const target = occurrences[0] as number;
+
+    const context = captureSelectionContext(doc, target, target + 2);
+    // The math block contributes its formula rather than nothing, so the
+    // decision no longer rests on a fallback at all.
+    expect(context.prefix).toContain('1 + 1');
+
+    // Exactly what the rail and the decorations pass: the stored anchor,
+    // body-measured `start` and all.
+    const anchor = { quote: 'hi', ...context, start: MD.indexOf('\nhi\n') + 1, end: 0 };
+    expect(createAnchorResolver(doc)('hi', anchor)?.from).toBe(target);
+  });
+});
+
+/**
+ * Context has to survive a block boundary.
+ *
+ * Captured context joins blocks with a newline; the index has nothing between
+ * them. Scoring them byte for byte meant any context reaching past the end of
+ * its own paragraph scored zero, so repeats were separated by the position
+ * tie-break rather than by the words around them — the thing actually captured
+ * to tell them apart.
+ */
+describe('context scoring across a block boundary', () => {
+  test('picks the occurrence whose neighbouring block matches', () => {
+    const MD = ['- hi', '- hi', '- hi', '', 'the marker paragraph', '', '- hi', '- hi'].join('\n');
+    const doc = schema.nodeFromJSON(mdManager.parse(MD));
+    const occurrences: number[] = [];
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'hi') occurrences.push(pos);
+      return true;
+    });
+    expect(occurrences.length).toBe(5);
+
+    // The third "hi" — the one directly above the marker paragraph. Its suffix
+    // is the only thing that distinguishes it, and only across a block break.
+    const target = occurrences[2] as number;
+    const context = captureSelectionContext(doc, target, target + 2);
+    expect(context.suffix).toContain('the marker paragraph');
+
+    expect(createAnchorResolver(doc)('hi', context)?.from).toBe(target);
+  });
+
+  test('and the one after the marker, which only its PREFIX separates', () => {
+    const MD = ['- hi', '- hi', '- hi', '', 'the marker paragraph', '', '- hi', '- hi'].join('\n');
+    const doc = schema.nodeFromJSON(mdManager.parse(MD));
+    const occurrences: number[] = [];
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'hi') occurrences.push(pos);
+      return true;
+    });
+    const target = occurrences[3] as number;
+    const context = captureSelectionContext(doc, target, target + 2);
+    expect(context.prefix).toContain('the marker paragraph');
+
+    expect(createAnchorResolver(doc)('hi', context)?.from).toBe(target);
+  });
+});
+
+/**
+ * Context capture reads the same substrate the quote does.
+ *
+ * `textBetween` reads an inline atom as empty, so a context window containing a
+ * wiki link or a tag came back with a hole exactly where the distinguishing
+ * word was — the same failure the quote fix closed, one field over, and it
+ * returned the wrong occurrence rather than merely a weaker score.
+ */
+describe('captureSelectionContext across an inline atom', () => {
+  const MD = ['- [[alpha]] done', '- [[beta]] done'].join('\n');
+
+  function occurrencesOfDone(doc: PMNode): number[] {
+    const out: number[] = [];
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text?.includes('done')) out.push(pos + node.text.indexOf('done'));
+      return true;
+    });
+    return out;
+  }
+
+  test('the prefix carries the wiki link that tells the two apart', () => {
+    const doc = schema.nodeFromJSON(mdManager.parse(MD));
+    const target = occurrencesOfDone(doc)[1] as number;
+    expect(captureSelectionContext(doc, target, target + 4).prefix).toContain('beta');
+  });
+
+  test('so the second occurrence resolves to itself, not the first', () => {
+    const doc = schema.nodeFromJSON(mdManager.parse(MD));
+    const hits = occurrencesOfDone(doc);
+    expect(hits.length).toBe(2);
+    const target = hits[1] as number;
+    const context = captureSelectionContext(doc, target, target + 4);
+    expect(createAnchorResolver(doc)('done', context)?.from).toBe(target);
   });
 });

@@ -37,6 +37,14 @@ interface CreateArgs {
   onCreated?: (threadId: string) => void;
 }
 
+/**
+ * The document the editor double models. Real text with real offsets, so the
+ * captured prefix and suffix are the ones this document would actually yield.
+ */
+const DOC_TEXT = 'Toss the tofu with cornstarch.';
+const QUOTE_FROM = DOC_TEXT.indexOf('the tofu');
+const QUOTE_TO = QUOTE_FROM + 'the tofu'.length;
+
 const captured = {
   created: [] as CreateArgs[],
   startComment: null as (() => void) | null,
@@ -115,18 +123,33 @@ function fakeEditor() {
     isDestroyed: false,
     state: {
       selection: {
-        from: 4,
-        to: 12,
+        from: QUOTE_FROM,
+        to: QUOTE_TO,
         empty: false,
         // The composer takes its span from `ranges`, not `from`/`to` — those
         // report the first range only, which on a table CellSelection is one
         // cell. A real Selection always carries `ranges`, so the double does
         // too; a single range is the TextSelection case this file covers.
-        ranges: [{ $from: { pos: 4 }, $to: { pos: 12 } }],
+        ranges: [{ $from: { pos: QUOTE_FROM }, $to: { pos: QUOTE_TO } }],
       },
       // `content.size` bounds the selection-context capture — a real PM node
       // always carries it, so the double has to as well.
-      doc: { textBetween: () => 'the tofu', content: { size: 40 } },
+      doc: {
+        // Both the quote and its surrounding context come from
+        // `commentQuoteText`, which walks the doc rather than calling
+        // `textBetween` — that is what lets an inline atom (a wiki link, a tag)
+        // contribute the text it keeps in attributes. So the double yields
+        // nodes, and yields the slice actually asked for: a window-insensitive
+        // double would let the context assertions below pass on a prefix and
+        // suffix no document could have produced.
+        nodesBetween: (from: number, to: number, fn: (node: unknown, pos: number) => void) => {
+          fn(
+            { isText: true, text: DOC_TEXT.slice(from, to), isBlock: false, isTextblock: false },
+            from,
+          );
+        },
+        content: { size: DOC_TEXT.length },
+      },
     },
     // Records the collapse so the test can assert the passage stops being
     // "selected for whatever you do next" once it has been filed.
@@ -157,14 +180,14 @@ describe('the comment composer', () => {
     fireEvent.click(screen.getByRole('button', { name: /add comment/i }));
 
     // The surrounding text rides along: it is what tells the server which
-    // occurrence was picked when the quoted words appear more than once. The
-    // double returns the same string for every range, so both sides read alike.
+    // occurrence was picked when the quoted words appear more than once — so
+    // these are the exact words either side of the pick in the document above.
     const [args] = captured.created;
     expect(args.docName).toBe('recipes/stir-fry');
     expect(args.quote).toBe('the tofu');
     expect(args.body).toBe('press it?');
-    expect(args.prefix).toBe('the tofu');
-    expect(args.suffix).toBe('the tofu');
+    expect(args.prefix).toBe('Toss ');
+    expect(args.suffix).toBe(' with cornstarch.');
     // No `onCreated` — filing it is the whole action, so nothing is handed on.
     expect(args.onCreated).toBeUndefined();
   });
@@ -203,7 +226,7 @@ describe('the comment composer', () => {
     fireEvent.change(field, { target: { value: 'press it?' } });
     fireEvent.keyDown(field, { key: 'Enter' });
 
-    expect(captured.collapsedTo).toEqual([12]); // the end of the picked range
+    expect(captured.collapsedTo).toEqual([QUOTE_TO]); // the end of the picked range
   });
 
   test('cancelling leaves the selection alone', async () => {

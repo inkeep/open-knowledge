@@ -64,7 +64,14 @@ function makeEditor({
   return {
     state: {
       selection: { empty: selectionEmpty, from: selectionFrom, to: selectionTo },
-      doc: { textBetween: () => (selectionEmpty ? '' : 'docs') },
+      // `shouldShowBubbleMenu` walks the doc via `commentQuoteText` so an
+      // inline atom counts as text-bearing; the double yields one text node.
+      doc: {
+        nodesBetween: (from: number, _to: number, fn: (node: unknown, pos: number) => void) => {
+          if (selectionEmpty) return;
+          fn({ isText: true, text: 'docs', isBlock: false, isTextblock: false }, from);
+        },
+      },
     },
     view: { hasFocus: () => viewFocused },
     // The claim reads the non-throwing `editorView` field (never the `view`

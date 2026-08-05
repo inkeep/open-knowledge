@@ -33,7 +33,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { getEditorView } from '@/editor/utils/get-editor-view';
 import { cn } from '@/lib/utils';
-import { buildTextIndex, findQuoteRange, findRangeInIndex } from './anchor-search';
+import { createAnchorResolver, findQuoteRange } from './anchor-search';
 import {
   propertyRowRect,
   revealPropertyValueRange,
@@ -136,12 +136,9 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
       const rect = container.getBoundingClientRect();
       const targets: { id: string; y: number }[] = [];
       if (open.length > 0) {
-        // ONE index for the whole pass. `findQuoteRange` builds one internally,
-        // so calling it per thread walked the entire document once per comment
-        // — and this runs on every scroll frame and every edit. Measured at 40
-        // comments in a 100k-character document that was ~35 ms a frame, about
-        // twenty times what resolving them against a shared index costs.
-        const index = buildTextIndex(editor.state.doc);
+        // ONE resolver for the whole pass — see `createAnchorResolver`, which
+        // owns the shared-index reasoning and the prose-before-components order.
+        const resolve = createAnchorResolver(editor.state.doc);
         for (const thread of open) {
           let y: number;
           if (thread.target.kind === 'property') {
@@ -152,7 +149,7 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
             y = rect.top + rect.height / 2;
           } else {
             if (thread.anchor === null) continue;
-            const range = findRangeInIndex(index, thread.anchor.quote, thread.anchor);
+            const range = resolve(thread.anchor.quote, thread.anchor);
             if (range === null) continue;
             try {
               // Viewport coords of the anchored text itself. Throws for a position

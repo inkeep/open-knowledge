@@ -2381,6 +2381,11 @@ msgstr "Comment on {address}"
 msgid "Comment on selection"
 msgstr "Comment on selection"
 
+#. placeholder {0}: descriptor.displayName ?? descriptor.name
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Comment or ask AI about this {0}"
+msgstr "Comment or ask AI about this {0}"
+
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Comment or ask AI about this code block"
 msgstr "Comment or ask AI about this code block"

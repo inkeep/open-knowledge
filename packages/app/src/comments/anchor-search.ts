@@ -12,9 +12,10 @@
  * A REPEATED quote is the case that matters: `indexOf` alone always returns the
  * first match, so a phrase appearing twice highlights and scrolls to the wrong
  * one. The stored `prefix`/`suffix` (widened at create time until the passage
- * was unique) disambiguate, mirroring how the server re-finds it — score each
- * candidate by how much surrounding context still matches, then fall back to
- * whichever sits nearest the last known position.
+ * was unique) disambiguate, scoring each candidate by how much surrounding
+ * context still matches — literally the same `contextMatchScore` the server
+ * ranks with, so the two cannot pick different occurrences of one thread. Ties
+ * fall to the earliest hit on both sides.
  *
  * The server's `start`/`end` can't be used directly here: those are offsets into
  * the markdown BODY, while this index is over RENDERED text, so markdown syntax
@@ -22,7 +23,14 @@
  * degrades gracefully when the surroundings have also changed.
  */
 
-import { findAllPassages, type PassageMatch } from '@inkeep/open-knowledge-core';
+import {
+  commentLeafText,
+  commentQuoteText,
+  contextMatchScore,
+  findAllPassages,
+  type PassageMatch,
+  rewriteCeiling,
+} from '@inkeep/open-knowledge-core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 interface TextIndex {
@@ -34,11 +42,27 @@ interface TextIndex {
 export interface AnchorContext {
   prefix?: string;
   suffix?: string;
-  /** Last known offset — a weak final tie-break when context can't separate hits. */
-  start?: number;
 }
 
-export function buildTextIndex(doc: PMNode): TextIndex {
+/**
+ * `includeBlockComponents` admits the text a BLOCK holds in its attributes — a
+ * mermaid diagram's chart, a math block's formula.
+ *
+ * Off by default, and that default is load-bearing. A diagram's interior is not
+ * prose: it is identifiers and edge labels that no reader is reading as part of
+ * the sentence next to it, but it is full of common letter pairs. Admitting it
+ * to the prose index let a short quote match INSIDE a diagram — a comment on
+ * the word "hi" landed on a diagram containing "thinks", and its margin chip
+ * docked beside the drawing instead of beside the sentence it was about.
+ *
+ * A comment ON a diagram still resolves: `findQuoteRange` retries with this on
+ * once the prose pass has come up empty, so the interior is reachable only by a
+ * quote that nothing in the prose could satisfy.
+ */
+export function buildTextIndex(
+  doc: PMNode,
+  { includeBlockComponents = false }: { includeBlockComponents?: boolean } = {},
+): TextIndex {
   let text = '';
   const positions: number[] = [];
   doc.descendants((node, pos) => {
@@ -46,6 +70,27 @@ export function buildTextIndex(doc: PMNode): TextIndex {
       for (let i = 0; i < node.text.length; i++) {
         text += node.text[i];
         positions.push(pos + i);
+      }
+      return true;
+    }
+    // Inline atoms carry text a reader sees but ProseMirror stores as
+    // attributes — a wiki link's label, a tag, an image's alt. Those ARE part
+    // of the sentence, so they belong in the prose index unconditionally;
+    // quotes are captured with them (see `commentQuoteText`), and without them
+    // a passage spanning one could never be highlighted here.
+    if (node.isBlock && !includeBlockComponents) return true;
+    const leaf = commentLeafText(node);
+    if (leaf.length > 0) {
+      // Every character maps to the node's own position except the last, which
+      // maps to its final one — `toRange` adds 1 to the last character's
+      // position, so this is what makes a hit anywhere inside resolve to the
+      // WHOLE node. For a one-wide inline atom the two are the same position;
+      // for a mermaid fence they are not, and mapping every character to `pos`
+      // would have highlighted only the node's opening token.
+      const last = pos + node.nodeSize - 1;
+      for (let i = 0; i < leaf.length; i++) {
+        text += leaf[i];
+        positions.push(i === leaf.length - 1 ? last : pos);
       }
     }
     return true;
@@ -63,34 +108,6 @@ function allOccurrences(haystack: string, needle: string): number[] {
   }
   return out;
 }
-
-/** Length of the longest common suffix of `a` and `b`. */
-function commonSuffixLen(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a[a.length - 1 - i] === b[b.length - 1 - i]) i += 1;
-  return i;
-}
-
-/** Length of the longest common prefix of `a` and `b`. */
-function commonPrefixLen(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a[i] === b[i]) i += 1;
-  return i;
-}
-
-/**
- * How much the passage may grow when recovered from its brackets.
- *
- * DRIFT WARNING: mirrors `MAX_REWRITE_GROWTH` / `REWRITE_GROWTH_FLOOR` in the
- * server's `anchor.ts`. The two run on different substrates — rendered text here,
- * the markdown body there — so they cannot share an implementation, but they
- * must agree on the policy or a passage recovers in the document and orphans on
- * dispatch, or the reverse.
- */
-const MAX_REWRITE_GROWTH = 4;
-const REWRITE_GROWTH_FLOOR = 64;
 
 /**
  * Locate a passage whose text changed, by the context still surrounding it.
@@ -127,7 +144,7 @@ function findBetweenBrackets(
   while (start < end && /\s/.test(text[start] ?? '')) start += 1;
   while (end > start && /\s/.test(text[end - 1] ?? '')) end -= 1;
   if (end <= start) return null;
-  const ceiling = Math.max(quote.length * MAX_REWRITE_GROWTH, quote.length + REWRITE_GROWTH_FLOOR);
+  const ceiling = rewriteCeiling(quote.length);
   if (end - start > ceiling) return null;
   return { start, end };
 }
@@ -172,9 +189,9 @@ export function findRangeInIndex(
   let best: PassageMatch[] = [];
   let bestScore = -1;
   for (const hit of hits) {
-    const score =
-      commonSuffixLen(prefix, index.text.slice(0, hit.start)) +
-      commonPrefixLen(suffix, index.text.slice(hit.end));
+    // `index.text` is rendered text, so there is no markdown syntax to be
+    // elastic about — only whitespace. Same function the server ranks with.
+    const score = contextMatchScore(index.text, hit, { prefix, suffix }, { syntaxIn: 'none' });
     if (score > bestScore) {
       bestScore = score;
       best = [hit];
@@ -182,23 +199,13 @@ export function findRangeInIndex(
       best.push(hit);
     }
   }
-  if (best.length === 1) return toRange(index, best[0]);
-
-  // Context couldn't separate them — take the one nearest the last known
-  // position. Body and rendered offsets aren't identical, but both advance
-  // monotonically through the document, so "nearest" still orders correctly.
-  const hint = context?.start;
-  if (hint === undefined) return toRange(index, best[0]);
-  let nearest = best[0];
-  let nearestDist = Number.POSITIVE_INFINITY;
-  for (const hit of best) {
-    const dist = Math.abs(hit.start - hint);
-    if (dist < nearestDist) {
-      nearestDist = dist;
-      nearest = hit;
-    }
-  }
-  return toRange(index, nearest);
+  // Context could not separate them — the earliest hit, which is exactly what
+  // the server's `bestByContext` caller does with the same tied set. There was
+  // once a nearest-known-position tie-break here; it took the offset off a
+  // stored anchor, which is measured against the markdown body, and compared it
+  // to rendered positions. No caller ever had an offset in the right units, so
+  // it only ever added a confident wrong answer to a genuine tie.
+  return toRange(index, best[0]);
 }
 
 /**
@@ -226,9 +233,15 @@ export function captureSelectionContext(
   from: number,
   to: number,
 ): { prefix: string; suffix: string } {
+  // `commentQuoteText`, for the same reason the QUOTE uses it: `textBetween`
+  // reads an inline atom as empty, so a window containing a wiki link or a tag
+  // came back with a hole where the distinguishing word was. Two list items
+  // reading `[[alpha]] done` and `[[beta]] done` produced the identical prefix
+  // ` done\n `, and the comment on the second anchored to the first — the same
+  // failure the quote fix closed, one field over.
   return {
-    prefix: doc.textBetween(Math.max(0, from - SELECTION_CONTEXT_LEN), from, '\n'),
-    suffix: doc.textBetween(to, Math.min(doc.content.size, to + SELECTION_CONTEXT_LEN), '\n'),
+    prefix: commentQuoteText(doc, Math.max(0, from - SELECTION_CONTEXT_LEN), from),
+    suffix: commentQuoteText(doc, to, Math.min(doc.content.size, to + SELECTION_CONTEXT_LEN)),
   };
 }
 
@@ -237,5 +250,30 @@ export function findQuoteRange(
   quote: string,
   context?: AnchorContext,
 ): { from: number; to: number } | null {
-  return findRangeInIndex(buildTextIndex(doc), quote, context);
+  return createAnchorResolver(doc)(quote, context);
+}
+
+/**
+ * Resolve many quotes against one document.
+ *
+ * Callers place every open thread in a single pass, on every scroll frame and
+ * every edit, so the indexes are built once for the pass rather than once per
+ * thread — walking a 100k-character document per comment was measured at about
+ * twenty times the cost.
+ *
+ * Two passes per quote, prose first (see `buildTextIndex` for why the order is
+ * the protection). The component index is built lazily: a document whose
+ * comments all land in prose — nearly all of them — never pays for it.
+ */
+export function createAnchorResolver(
+  doc: PMNode,
+): (quote: string, context?: AnchorContext) => { from: number; to: number } | null {
+  const prose = buildTextIndex(doc);
+  let components: TextIndex | null = null;
+  return (quote, context) => {
+    const inProse = findRangeInIndex(prose, quote, context);
+    if (inProse !== null) return inProse;
+    components ??= buildTextIndex(doc, { includeBlockComponents: true });
+    return findRangeInIndex(components, quote, context);
+  };
 }

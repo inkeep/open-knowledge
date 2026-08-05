@@ -108,11 +108,15 @@ export {
   type MenuPlatform,
   type MenuSection,
 } from './commands/command-identity.ts';
+export { commentLeafText, commentQuoteText } from './comments/leaf-text.ts';
 export {
+  type ContextMatchOptions,
+  contextMatchScore,
   findAllPassages,
   findPassage,
   type PassageMatch,
   type PassageMatchOptions,
+  rewriteCeiling,
 } from './comments/passage-match.ts';
 // Sync-mode vocabulary + resolution rules (off/follow/full). Browser+node compatible.
 export {

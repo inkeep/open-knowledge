@@ -17,7 +17,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/react';
 import { useEffect } from 'react';
 import { buildAnchorSegments, type PlacedAnchor } from './anchor-layers';
-import { buildTextIndex, findRangeInIndex } from './anchor-search';
+import { createAnchorResolver } from './anchor-search';
 import {
   emitOpenThreadPopover,
   getActiveThread,
@@ -75,10 +75,10 @@ function placeAnchors(docName: string, doc: PMNode, draft: DraftRange | null): P
     (t) => t.status === 'open' && t.target.kind === 'body' && t.anchor !== null,
   );
   if (threads.length > 0) {
-    const index = buildTextIndex(doc);
+    const resolve = createAnchorResolver(doc);
     for (const thread of threads) {
       if (thread.anchor === null) continue;
-      const range = findRangeInIndex(index, thread.anchor.quote, thread.anchor);
+      const range = resolve(thread.anchor.quote, thread.anchor);
       if (range === null) continue;
       placed.push({ id: thread.id, from: range.from, to: range.to });
     }

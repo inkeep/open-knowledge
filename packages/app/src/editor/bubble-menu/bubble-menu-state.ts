@@ -7,6 +7,7 @@
  * (BubbleMenuBar → LinkEditPopover → this module).
  */
 
+import { commentQuoteText } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/react';
 import { findMarkIdAt } from '../extensions/mark-identity';
 import { getFindReplaceState } from '../find-replace/tiptap-find-replace-extension';
@@ -24,7 +25,17 @@ export function shouldShowBubbleMenu({ editor }: { editor: Editor }): boolean {
   if (isFileNodeSelected(editor)) return true;
   if (editor.state.selection.empty) return false;
   const { from, to } = editor.state.selection;
-  const text = editor.state.doc.textBetween(from, to, ' ');
+  // `commentQuoteText` so a selection whose only content is an INLINE atom — a
+  // wiki link, a tag, inline math, a footnote marker — counts as text-bearing.
+  // Those nodes report no text of their own, so the bar (and with it the "Ask
+  // AI" entry) never appeared for them, and every mark this bar applies is one
+  // they legally carry.
+  //
+  // `inlineOnly` because a BLOCK that holds its text in attributes — a mermaid
+  // diagram, a math block — must NOT open this bar. Bold, links, and
+  // superscript have nothing to say about a diagram; those blocks carry their
+  // own chrome bar with an Ask AI button, the way a code block does.
+  const text = commentQuoteText(editor.state.doc, from, to, ' ', { inlineOnly: true });
   if (!text.trim()) return false;
   return true;
 }

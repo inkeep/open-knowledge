@@ -8,6 +8,7 @@
  * between multiple exact hits.
  */
 
+import { contextMatchScore, rewriteCeiling } from '@inkeep/open-knowledge-core';
 import type { Anchor } from './types.ts';
 
 /** Hypothesis uses 32 chars of context for web text; a reasonable markdown default. */
@@ -31,17 +32,6 @@ export type RefindResult =
       rewritten?: boolean;
     }
   | { status: 'orphaned' };
-
-/**
- * How much the passage may grow when recovered from its brackets.
- *
- * Editing inside a commented passage is normal ("needs space" → "needs more
- * space"); replacing whole paragraphs between the same two boundaries is not,
- * and silently swallowing them would attach the comment to text nobody pointed
- * at. Generous but finite: past this, treat it as a replacement and orphan.
- */
-const MAX_REWRITE_GROWTH = 4;
-const REWRITE_GROWTH_FLOOR = 64;
 
 /**
  * Build an anchor for the selection `[start, end)` against `body`. Captures the
@@ -105,11 +95,15 @@ export function literalSpans(haystack: string, needle: string): Span[] {
  * invents one, and with no context every candidate ties and the whole set comes
  * back untouched.
  *
- * Scoring is a raw common-character run on each side, deliberately tolerant:
- * the context may have been captured against RENDERED text while `body` is
- * markdown, so an exact comparison would collapse to zero the moment a `**`
- * falls inside the window. A partial run still ranks the right occurrence first,
- * and every candidate is scored the same way.
+ * Scoring is `contextMatchScore`, shared with the editor's copy of this
+ * decision so the two cannot rank the same thread differently. It has to be
+ * tolerant, and of more than this comment once claimed: the context was
+ * captured against RENDERED text while `body` is markdown, so an exact
+ * comparison collapses to zero not only when a `**` falls inside the window but
+ * — far more often — at the very first block seam, where the captured text has
+ * a single `\n` and the body has `\n\n`, `- `, `> ` or `#`. It scored zero for
+ * every candidate on any context reaching past its own block, which is most of
+ * them, and the ranking silently did nothing.
  */
 export function bestByContext<T extends Span>(
   body: string,
@@ -121,9 +115,8 @@ export function bestByContext<T extends Span>(
   let best: T[] = [];
   let bestScore = -1;
   for (const hit of hits) {
-    const score =
-      commonSuffixLen(prefix, body.slice(0, hit.start)) +
-      commonPrefixLen(suffix, body.slice(hit.end));
+    // `body` is markdown, so syntax is elastic here as well as whitespace.
+    const score = contextMatchScore(body, hit, { prefix, suffix }, { syntaxIn: 'haystack' });
     if (score > bestScore) {
       bestScore = score;
       best = [hit];
@@ -213,7 +206,7 @@ function refindBetweenBrackets(body: string, anchor: Anchor): RefindResult {
   if (end < start) return { status: 'orphaned' };
   // A passage edited down to nothing is a removal, not an edit.
   if (end === start) return { status: 'orphaned' };
-  const ceiling = Math.max(exact.length * MAX_REWRITE_GROWTH, exact.length + REWRITE_GROWTH_FLOOR);
+  const ceiling = rewriteCeiling(exact.length);
   if (end - start > ceiling) return { status: 'orphaned' };
   return { status: 'anchored', start, end, rewritten: true };
 }
@@ -242,20 +235,4 @@ function allOccurrences(haystack: string, needle: string): number[] {
 
 function isUniqueTriple(body: string, prefix: string, exact: string, suffix: string): boolean {
   return countOccurrences(body, prefix + exact + suffix) === 1;
-}
-
-/** Length of the longest common prefix of `a` and `b`. */
-function commonPrefixLen(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a[i] === b[i]) i += 1;
-  return i;
-}
-
-/** Length of the longest common suffix of `a` and `b`. */
-function commonSuffixLen(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a[a.length - 1 - i] === b[b.length - 1 - i]) i += 1;
-  return i;
 }
