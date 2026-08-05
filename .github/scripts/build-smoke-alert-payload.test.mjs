@@ -187,8 +187,9 @@ describe('workflow wiring', () => {
     expect(step).toMatch(/if \[\[ -z "\$webhook" \]\]; then[\s\S]{0,200}?return 0/);
     // A dead webhook warns; it must not mask the smoke failure that caused it.
     expect(step).toContain('::warning::${label} smoke alert failed to POST');
-    // The channel is actually driven.
-    expect(step).toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
+    // The channel is actually driven, and through the releases-first
+    // resolution rather than straight at the shared secret.
+    expect(step).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
   });
 
   test('a blocked release never pages Discord', () => {
@@ -200,7 +201,7 @@ describe('workflow wiring', () => {
 
   test('the annotation is emitted in addition to the page, not instead of it', () => {
     const step = alertStep();
-    const slackAt = step.indexOf('post "${SLACK_WEBHOOK_URL:-}" Slack');
+    const slackAt = step.indexOf('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
     const annotationAt = step.indexOf('::error::RELEASE BLOCKED');
     expect(slackAt).toBeGreaterThan(-1);
     expect(annotationAt).toBeGreaterThan(slackAt);

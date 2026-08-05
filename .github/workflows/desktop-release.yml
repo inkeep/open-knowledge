@@ -1634,11 +1634,12 @@ jobs:
       # A Slack incoming webhook is bound to one channel when it is installed,
       # and the payload below carries no `channel` field, so the destination is
       # decided entirely by which webhook URL this step posts to.
-      # SLACK_RELEASES_WEBHOOK_URL puts release notes in their own channel.
-      # SLACK_WEBHOOK_URL is the fallback, and is shared with the smoke alarms
-      # and refusal pages — those are pipeline ops rather than release notes,
-      # so they keep their own destination and must not be moved by rotating
-      # the shared secret. With neither set (a fork, or before either is
+      # SLACK_RELEASES_WEBHOOK_URL puts release notes in their own channel, and
+      # every release-pipeline page now prefers it too — the smoke alarms, the
+      # promotion pages, and the bug lane's refusal and drop notices all read
+      # as release traffic to the humans watching, so splitting them across two
+      # channels only made the product channel noisy. SLACK_WEBHOOK_URL stays
+      # the fallback everywhere. With neither set (a fork, or before either is
       # provisioned) the step no-ops cleanly; a Slack delivery error is
       # downgraded to a ::warning:: — the release is "done" once published, so
       # the announcement is strictly best-effort and must never fail an
@@ -1788,8 +1789,11 @@ jobs:
       # keeps the STUCK-DRAFT warning below; paging the release channel for
       # every beta hiccup would train readers to ignore the alert.
       #
-      # No new secret: SLACK_WEBHOOK_URL already exists and is consumed by the
-      # announcement step with the same unset -> ::notice:: -> skip tolerance.
+      # Same destination as the release announcement: this alert is the
+      # negative of that message (the release that did NOT ship), so it belongs
+      # with the notes rather than in the product channel. SLACK_WEBHOOK_URL
+      # remains the fallback, with the same unset -> ::notice:: -> skip
+      # tolerance.
       #
       # Slack only, deliberately — rationale lives in the module docstring of
       # .github/scripts/build-smoke-alert-payload.mjs. Ratcheted by
@@ -1797,6 +1801,7 @@ jobs:
       - name: Alert on a blocked release (FR5c)
         if: needs.prepare.outputs.channel == 'latest'
         env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SMOKE_VERDICT: ${{ needs.build-macos.outputs.smoke_verdict }}
           SMOKE_REASON: ${{ needs.build-macos.outputs.smoke_reason }}
@@ -1842,7 +1847,7 @@ jobs:
             fi
           }
 
-          post "${SLACK_WEBHOOK_URL:-}" Slack
+          post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack
           # The annotation is emitted IN ADDITION to the page, so the run page
           # tells the same story as the channel.
           echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} pipeline ${VERDICT} — ${REASON}. The Release stays a draft and npm latest is untouched."

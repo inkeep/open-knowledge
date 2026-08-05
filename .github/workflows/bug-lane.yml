@@ -174,11 +174,33 @@ jobs:
             echo "::warning::bug-lane: pnpm install --frozen-lockfile failed on the synthetic tree (${STABLE} + ${SURVIVING_REFS}); treated as a red verification."
             exit 0
           fi
-          if pnpm exec turbo run typecheck test --output-logs=errors-only; then
+          # ONE flake retry, matching the stance the PR tier already applies to
+          # this same suite. Single-shot would hold the synthetic tree to a
+          # STRICTER bar than the tree that gates main, and these tiers include
+          # process-lifecycle probes that spawn a real CLI, SIGKILL its parent
+          # and poll for the grandchild to exit — exactly the class that flakes
+          # under runner contention. Unretried, one such flake refuses a fix
+          # that is fine, and the refusal reads as a real incompatibility.
+          #
+          # `--continue` on the FIRST attempt is what keeps the retry cheap,
+          # and it is load-bearing against this job's own cancel window. turbo
+          # defaults to `--continue=never`: the first failure cancels every
+          # in-flight and unstarted task, so none of those cache and the retry
+          # re-runs them too — a failure late in the tiers would cost close to
+          # two full passes, and with `cancel-in-progress` a tick that outruns
+          # the next one is killed before it can page, which is the one outcome
+          # the install guard above exists to prevent. Running the first
+          # attempt to completion caches every task that genuinely passed, so
+          # the retry re-executes only what actually failed. `--force` is
+          # omitted for the same reason: it would discard those cached passes.
+          if pnpm exec turbo run typecheck test --continue --output-logs=errors-only; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"
+          elif pnpm exec turbo run typecheck test --output-logs=errors-only; then
+            echo "verdict=pass" >> "$GITHUB_OUTPUT"
+            echo "::warning::bug-lane: fast tiers passed on retry for ${STABLE} + ${SURVIVING_REFS} — the first attempt failed (flake-class); see its log before trusting this tick."
           else
             echo "verdict=fail" >> "$GITHUB_OUTPUT"
-            echo "::warning::bug-lane: fast tiers FAILED on ${STABLE} + ${SURVIVING_REFS} — the fix passes on main but not on the stable it would ship against. It stays on its cycle's path."
+            echo "::warning::bug-lane: fast tiers failed TWICE on ${STABLE} + ${SURVIVING_REFS} — not flake-class, so the fix likely assumes something the stable does not have. It stays on its cycle's path."
           fi
 
       - name: Dispatch the point release (or log what would ship)
@@ -225,25 +247,28 @@ jobs:
         # lane's most common non-trivial outcome and must not be log-only.
         if: env.BUG_LANE_ARMED == 'true' && steps.verify.outputs.verdict == 'pass' && steps.verify.outputs.dropped_refs != ''
         env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
           SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
           STABLE: ${{ steps.evaluate.outputs.stable }}
         run: |
           set -uo pipefail
-          if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
-            echo "::notice::SLACK_WEBHOOK_URL not set — drop notification skipped."
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::notice::No Slack webhook secret set — drop notification skipped."
             exit 0
           fi
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           TEXT="⚠️ Bug lane dropped ${DROPPED_REFS} (cherry-pick conflict with ${STABLE}); they ride their cycle's 24h path — investigate whether any needs a manual point release. Dispatched the self-contained subset ${SURVIVING_REFS}. ${RUN_URL}"
           payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
-          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
+          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL" \
             || echo "::warning::bug-lane drop notification failed to POST — the dispatch itself is unaffected."
 
       - name: Page on a refusal (armed only)
         if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail')
         env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
           SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
@@ -251,8 +276,9 @@ jobs:
           VERDICT: ${{ steps.verify.outputs.verdict }}
         run: |
           set -uo pipefail
-          if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
-            echo "::notice::SLACK_WEBHOOK_URL not set — refusal page skipped."
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::notice::No Slack webhook secret set — refusal page skipped."
             exit 0
           fi
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -262,12 +288,12 @@ jobs:
           if [[ "$VERDICT" == "conflict" ]]; then
             TEXT="⛔ Bug lane: no qualifying fix is self-contained over the stable — all of ${FIX_REFS} conflict. They ride their cycle's 24h path; investigate whether any needs a manual point release. ${RUN_URL}"
           else
-            TEXT="⛔ Bug lane: verification failed on the synthetic tree for ${SURVIVING_REFS} (red tiers or install failure)."
+            TEXT="⛔ Bug lane: verification failed on the synthetic tree for ${SURVIVING_REFS} — the fast tiers went red on BOTH attempts, or the install failed. Either way this is past flake-class: treat it as a real conflict with the stable, not a retryable blip."
             if [[ -n "${DROPPED_REFS}" ]]; then
               TEXT="${TEXT} Also dropped for conflict: ${DROPPED_REFS}."
             fi
             TEXT="${TEXT} The fixes ride their cycle's 24h path. ${RUN_URL}"
           fi
           payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
-          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
+          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL" \
             || echo "::warning::bug-lane refusal page failed to POST — the refusal itself still holds."

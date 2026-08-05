@@ -390,6 +390,7 @@ jobs:
         env:
           CANDIDATE: ${{ needs.evaluate.outputs.fast_tier_candidate }}
           VERDICT: ${{ steps.smoke.outputs.verdict }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           set -uo pipefail
@@ -399,14 +400,15 @@ jobs:
           # nobody is watching, which makes the gate decorative. Best-effort:
           # a failed POST is a warning, never a job failure — the refusal
           # itself already protected the release.
-          if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
-            echo "::notice::SLACK_WEBHOOK_URL not set — refusal page skipped."
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::notice::No Slack webhook secret set — refusal page skipped."
             exit 0
           fi
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           TEXT="⛔ Fast-tier DMG smoke REFUSED for ${CANDIDATE} (verdict=${VERDICT:-unknown}). The beta stays on the 24h soak; investigate the smoke before it promotes. ${RUN_URL}"
           payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
-          if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL"; then
+          if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
             echo "Posted the fast-tier refusal page."
           else
             echo "::warning::Fast-tier refusal page failed to POST — the refusal itself still holds."
@@ -462,6 +464,7 @@ jobs:
       - name: Page the release channel
         if: steps.alarm.outputs.alarm == 'true'
         env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           REASONS: ${{ steps.alarm.outputs.reasons }}
         run: |
@@ -483,5 +486,5 @@ jobs:
               echo "::warning::${label} aggregate alarm failed to POST — the alarm condition still holds."
             fi
           }
-          post "${SLACK_WEBHOOK_URL:-}" Slack
+          post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack
           echo "::warning::DMG smoke gate alarm: ${REASONS}"

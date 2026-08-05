@@ -24,6 +24,8 @@ const read = (name) => readFileSync(join(WORKFLOWS, name), 'utf8');
 const desktopRelease = read('desktop-release.yml');
 const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
+const bugLane = read('bug-lane.yml');
+const selectBeta = read('select-beta-to-promote.yml');
 
 /**
  * Ordered step names across the workflow, in FILE order. Under the fan-out
@@ -378,7 +380,7 @@ describe('a forced smoke failure pages Slack, not just an annotation', () => {
       desktopRelease.indexOf('- name: Alert on a blocked release'),
       desktopRelease.indexOf('- name: Warn on stuck draft'),
     );
-    expect(step).toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
+    expect(step).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
     expect(step).toContain('::error::RELEASE BLOCKED');
   });
 });
@@ -452,7 +454,68 @@ describe('the stable gate does not touch the beta cadence', () => {
   });
 });
 
-describe('release notes and pipeline ops route to independent webhooks', () => {
+describe('the bug lane verifies the synthetic tree at the same bar as main', () => {
+  const verify = bugLane.slice(
+    bugLane.indexOf('- name: Verify the synthetic tree'),
+    bugLane.indexOf('- name: Dispatch the point release'),
+  );
+
+  test('a red tier gets one retry before the tick is refused', () => {
+    // Single-shot here holds a candidate to a STRICTER bar than the tier that
+    // gates main, which retries each package once and treats a retry-pass as
+    // green. These tiers spawn real processes (an orphaned CLI reaped on host
+    // death), so one flake under runner contention refused a sound fix on
+    // 2026-08-04 and the page blamed the fix for it.
+    const runs = [...verify.matchAll(/turbo run typecheck test/g)];
+    expect(
+      runs.length,
+      'verify must invoke the tiers twice: once, then one flake retry',
+    ).toBe(2);
+    expect(verify).toContain('elif pnpm exec turbo run typecheck test');
+  });
+
+  test('the first attempt runs to completion so the retry stays incremental', () => {
+    // Load-bearing against this job's cancel window, not a style choice.
+    // turbo defaults to `--continue=never`, which cancels every in-flight and
+    // unstarted task on the first failure — none of those cache, so the retry
+    // re-runs them and a late failure costs close to two full passes. With
+    // `cancel-in-progress: true` a tick that outruns the next one is killed
+    // before it can page, losing the refusal entirely.
+    // Scoped to the invocation LINES, not the step text: the comment above
+    // them names both flags to explain the choice, and a ratchet that bans
+    // naming what it rules out just gets worked around.
+    const invocations = verify
+      .split('\n')
+      .filter((l) => l.includes('pnpm exec turbo run typecheck test'));
+    expect(invocations).toHaveLength(2);
+    const [first, retry] = invocations;
+    expect(first).toContain('--continue');
+    // `--force` on either would throw away exactly the cached passes that
+    // make the retry cheap.
+    expect(first).not.toContain('--force');
+    expect(retry).not.toContain('--force');
+  });
+
+  test('only a second consecutive failure mints verdict=fail', () => {
+    const failAt = verify.indexOf('verdict=fail');
+    const elifAt = verify.indexOf('elif pnpm exec turbo run typecheck test');
+    expect(elifAt).toBeGreaterThan(-1);
+    // The install-failure guard mints its own verdict=fail earlier; the one
+    // that matters here is the tier verdict, which must sit after the retry.
+    expect(verify.lastIndexOf('verdict=fail')).toBeGreaterThan(elifAt);
+    expect(failAt).toBeGreaterThan(-1);
+  });
+
+  test('the refusal page does not claim a cause it has not established', () => {
+    // The prior text asserted "the fix passes on main but not on the stable it
+    // would ship against" off a single red run, sending operators hunting for
+    // an incompatibility that was really a flake.
+    const page = bugLane.slice(bugLane.indexOf('- name: Page on a refusal'));
+    expect(page).not.toContain('the fix passes on main but not on the stable');
+  });
+});
+
+describe('every release-pipeline post prefers the releases webhook', () => {
   const announce = desktopRelease.slice(
     desktopRelease.indexOf('- name: Announce stable release to Slack'),
     desktopRelease.indexOf('- name: Announce stable release to Discord'),
@@ -482,13 +545,66 @@ describe('release notes and pipeline ops route to independent webhooks', () => {
     expect(announce).toContain('if [[ -z "$WEBHOOK_URL" ]]; then');
   });
 
-  test('the smoke alarm keeps the shared webhook, so moving the notes cannot drag it', () => {
-    // The alarm pages pipeline ops, not release notes; it must keep paging
-    // wherever it pages today even after the notes move channel.
+  test('the blocked-release alarm resolves the same way the announcement does', () => {
+    // The alarm is the negative of the announcement — the release that did NOT
+    // ship — so it reads as release traffic and belongs with the notes. What
+    // must never come back is a bare "$SLACK_WEBHOOK_URL" post: that still
+    // exits 0 while the page silently reappears in the product channel.
     const alert = desktopRelease.slice(
       desktopRelease.indexOf('- name: Alert on a blocked release'),
     );
-    expect(alert).toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
-    expect(alert).not.toContain('SLACK_RELEASES_WEBHOOK_URL');
+    expect(alert).toContain(
+      'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
+    );
+    expect(alert).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
+    expect(alert).not.toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
+  });
+
+  // The remaining four moved posts. Ratcheting only the blocked-release alert
+  // would leave the stated invariant — no step posts straight at the shared
+  // secret — unenforced for most of the steps that moved, and this is the
+  // regression class that exits 0 while the page reappears in the product
+  // channel, so it is invisible without a test.
+  const RESOLVED = 'WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"';
+  const stepAfter = (source, name, next) =>
+    source.slice(
+      source.indexOf(`- name: ${name}`),
+      next === undefined ? undefined : source.indexOf(`- name: ${next}`),
+    );
+
+  for (const { label, step } of [
+    {
+      label: "the bug lane's refusal page",
+      step: () => stepAfter(bugLane, 'Page on a refusal'),
+    },
+    {
+      label: "the bug lane's partial-drop notice",
+      step: () => stepAfter(bugLane, 'Notify on a partial drop', 'Page on a refusal'),
+    },
+    {
+      label: 'the fast-tier refusal',
+      step: () => stepAfter(selectBeta, 'Record a fast-tier refusal'),
+    },
+  ]) {
+    test(`${label} resolves the releases webhook first`, () => {
+      const s = step();
+      expect(s).toContain('SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}');
+      expect(s).toContain(RESOLVED);
+      expect(s).toContain('"$WEBHOOK_URL"');
+      // The bare forms this replaced. Either one reaching the curl again puts
+      // the page back in the product channel with nothing failing.
+      expect(s).not.toContain('--data "$payload" "$SLACK_WEBHOOK_URL"');
+      expect(s).not.toContain('if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then');
+    });
+  }
+
+  test('the aggregate smoke alarm resolves the releases webhook first', () => {
+    // This one posts through a `post` helper rather than a bare curl, so it
+    // carries the compound expansion at the call site instead of a WEBHOOK_URL
+    // assignment.
+    const alarm = stepAfter(selectBeta, 'Page the release channel');
+    expect(alarm).toContain('SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}');
+    expect(alarm).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
+    expect(alarm).not.toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
   });
 });
