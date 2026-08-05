@@ -41,7 +41,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -54,6 +54,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // CLI launches `mcp`; running the raw cli.ts graph through a loader is too slow
 // to come up inside the readiness window.
 const CLI_ENTRY = join(HERE, '..', '..', 'dist', 'cli.mjs');
+
+// Named so the failure messages below quote the budget they actually waited,
+// rather than a hardcoded number that silently starts lying the moment either
+// value is tuned. Both are generous multiples of what the work needs: the exit
+// budget is 12x `startHostLivenessWatch`'s 1s ppid poll, so blowing it is a
+// scheduling problem, not a cadence one.
+const STARTUP_BUDGET_MS = 6_000;
+const EXIT_BUDGET_MS = 12_000;
 
 function isAlive(pid: number): boolean {
   try {
@@ -71,6 +79,41 @@ function killQuietly(pid: number | undefined): void {
   } catch {
     // already gone
   }
+}
+
+/**
+ * Why a process-liveness assertion failed, gathered at the moment it failed.
+ *
+ * A bare `expect(exited).toBe(true)` reports "expected false to be true", which
+ * cannot separate the two failures that reach it, and they have opposite fixes:
+ * the ppid watch never firing (the grandchild was never reparented, so the
+ * signal it waits on never arrived) versus the watch firing and shutdown then
+ * hanging. The live ppid separates them — `1` proves reparenting DID happen, so
+ * the watch had its signal and the fault is downstream of detection. The suite
+ * already redirects the server's stderr to a file and never reads it; on a
+ * failure that file is the other half of the picture.
+ *
+ * Only ever called on the failing branch, so the two syscalls cost nothing on
+ * a green run.
+ */
+function diagnoseStuckChild(childPid: number, errPath: string): string {
+  let ppid: string;
+  try {
+    ppid = execFileSync('ps', ['-o', 'ppid=', '-p', String(childPid)], {
+      encoding: 'utf-8',
+    }).trim();
+  } catch {
+    // `ps` exits non-zero once the pid is gone, which is itself a useful
+    // answer: the process died between the poll giving up and this call.
+    ppid = 'gone';
+  }
+  let stderr: string;
+  try {
+    stderr = readFileSync(errPath, 'utf-8').trim();
+  } catch (err) {
+    stderr = `<unreadable: ${String(err)}>`;
+  }
+  return `pid=${childPid} ppid=${ppid || 'gone'} stderr=${stderr || '<empty>'}`;
 }
 
 async function pollUntil(
@@ -177,8 +220,13 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     // Sanity: the grandchild must come up and stay up while parented. If it
     // exits here, the harness is broken (e.g. spurious stdin EOF), not the
     // behavior under test — fail loudly rather than as a false GREEN.
-    const cameUp = await pollUntil(() => isAlive(childPid), 6_000, 100);
-    expect(cameUp).toBe(true);
+    const cameUp = await pollUntil(() => isAlive(childPid), STARTUP_BUDGET_MS, 100);
+    expect(
+      cameUp,
+      cameUp
+        ? ''
+        : `grandchild never came up within ${STARTUP_BUDGET_MS}ms — ${diagnoseStuckChild(childPid, mcpErr)}`,
+    ).toBe(true);
     // Prove it's a stable long-lived process while parented — but fail fast:
     // pollUntil returns true the instant it dies early, false after the full
     // 3s window if it stays alive (the desired outcome).
@@ -192,7 +240,12 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     // Contract: the grandchild must notice its host is gone and exit — the
     // ppid watch in startHostLivenessWatch detects the reparenting (no stdin
     // EOF arrives here) and fires shutdown(), which closes the keepalive WS.
-    const exited = await pollUntil(() => !isAlive(childPid), 12_000, 250);
-    expect(exited).toBe(true);
+    const exited = await pollUntil(() => !isAlive(childPid), EXIT_BUDGET_MS, 250);
+    expect(
+      exited,
+      exited
+        ? ''
+        : `orphan still alive ${EXIT_BUDGET_MS}ms after its host was SIGKILLed — ${diagnoseStuckChild(childPid, mcpErr)}. ppid=1 means the reparenting the watch keys on DID happen, so look downstream of detection (keepalive close, shutdown); any other ppid means it never happened and the watch never had its signal.`,
+    ).toBe(true);
   }, 40_000);
 });

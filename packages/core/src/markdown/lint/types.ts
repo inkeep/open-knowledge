@@ -1,4 +1,3 @@
-
 export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter'] as const;
 export type LintPluginId = (typeof LINT_PLUGIN_IDS)[number];
 
@@ -71,7 +70,6 @@ export interface FrontmatterSlice {
   enabled: boolean;
   schemas: ResolvedFrontmatterSchemaEntry[];
 }
-
 
 interface RuleOptionSpecBase {
   key: string;
