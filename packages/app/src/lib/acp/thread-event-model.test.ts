@@ -221,10 +221,44 @@ describe('buildThreadRenderModel', () => {
     ];
     const model = buildThreadRenderModel(events);
     const notices = model.items.filter((i) => i.kind === 'notice');
+    // A transcript recorded before the server classified failures carries only
+    // the headline string — it still renders, with nothing structured to show.
     expect(notices).toEqual([
-      { kind: 'notice', text: 'boom', tone: 'error' },
-      { kind: 'notice', text: 'sign in', tone: 'info' },
+      { kind: 'notice', text: 'boom', tone: 'error', failure: null },
+      { kind: 'notice', text: 'sign in', tone: 'info', failure: null },
     ]);
+  });
+
+  test('carries a structured failure onto the notice it produces', () => {
+    const failure = {
+      reason: 'auth-required' as const,
+      agentMessage: 'Authentication required',
+      machineDetail: '{"detail":"x"}',
+      authMethods: [{ id: 'test_login', name: 'Test Login', description: 'Sign in via test' }],
+    };
+    const model = buildThreadRenderModel([
+      ev({ kind: 'status', status: 'auth_required', detail: 'sign in required', failure, ts: 1 }),
+    ]);
+    const notice = model.items.find((i) => i.kind === 'notice');
+    if (notice?.kind !== 'notice') throw new Error('unreachable');
+    expect(notice.tone).toBe('info');
+    expect(notice.failure).toEqual(failure);
+  });
+
+  test('a failure with no detail string still produces a notice', () => {
+    const model = buildThreadRenderModel([
+      ev({
+        kind: 'status',
+        status: 'error',
+        failure: { reason: 'session-setup', agentMessage: 'no session for you' },
+        ts: 1,
+      }),
+    ]);
+    const notice = model.items.find((i) => i.kind === 'notice');
+    if (notice?.kind !== 'notice') throw new Error('unreachable');
+    expect(notice.text).toBe('');
+    expect(notice.tone).toBe('error');
+    expect(notice.failure).toMatchObject({ reason: 'session-setup' });
   });
 
   test('a terminal exit ends a dangling turn (crash-mid-stream transcript)', () => {

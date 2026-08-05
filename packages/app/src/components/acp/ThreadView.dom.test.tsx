@@ -38,9 +38,20 @@ const setConfigOption = vi.fn(
 );
 const setMode = vi.fn((_threadId: string, _modeId: string) => {});
 const prompt = vi.fn((_threadId: string, _content: string) => {});
-const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => {});
+const steer = vi.fn((_threadId: string, _content: string) => {});
+/** What the mocked `editQueued` hands back — a rejection stands in for the
+ *  server refusing an entry that already dispatched. */
+let editQueuedResult: Promise<void> = Promise.resolve();
+const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => editQueuedResult);
+const holdQueued = vi.fn((_threadId: string, _id: string, _held: boolean) => {});
 const removeQueued = vi.fn((_threadId: string, _id: string) => {});
+const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
+const retryThread = vi.fn(async (_threadId: string) => {});
+/** What the mocked `authenticateThread` hands back — a rejection stands in for
+ *  the agent refusing the sign-in. */
+let authenticateResult: Promise<void> = Promise.resolve();
+const authenticateThread = vi.fn((_threadId: string, _methodId: string) => authenticateResult);
 
 vi.doMock('@/lib/acp/thread-client', () => ({
   getAgentThreadClient: () => ({
@@ -48,7 +59,9 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     respondRuntimeConsent: () => {},
     cancel,
     prompt,
+    steer,
     editQueued,
+    holdQueued,
     removeQueued,
     setMode,
     setConfigOption,
@@ -59,6 +72,8 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     resumeThread: async () => {
       throw new Error('unused');
     },
+    retryThread,
+    authenticateThread,
   }),
   ThreadResumeError: class ThreadResumeError extends Error {
     readonly code: string;
@@ -69,6 +84,10 @@ vi.doMock('@/lib/acp/thread-client', () => ({
   },
   useAgentThread: () => ({ info: undefined, events: [], lastSeq: 5 }),
   useAgentThreadModel: () => model,
+}));
+
+vi.doMock('sonner', () => ({
+  toast: { error: toastError, success: vi.fn(), info: vi.fn() },
 }));
 
 vi.doMock('@/editor/DocumentContext', () => ({
@@ -165,9 +184,16 @@ afterEach(() => {
   setConfigOption.mockClear();
   setMode.mockClear();
   prompt.mockClear();
+  steer.mockClear();
   editQueued.mockClear();
+  editQueuedResult = Promise.resolve();
+  holdQueued.mockClear();
   removeQueued.mockClear();
+  toastError.mockClear();
   cancel.mockClear();
+  retryThread.mockClear();
+  authenticateThread.mockClear();
+  authenticateResult = Promise.resolve();
   model = null;
 });
 
@@ -1258,5 +1284,563 @@ describe('ThreadView message queue', () => {
     expect(editQueued).not.toHaveBeenCalled();
     expect(screen.queryByTestId('agent-thread-queued-input')).toBeNull();
     expect(screen.getByTestId('agent-thread-queued').textContent).toContain('keep me');
+  });
+});
+
+describe('ThreadView queue rescue on Stop', () => {
+  test('Stop folds every queued message back into the composer', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [
+            { id: 'q1', content: 'first correction', ts: 1 },
+            { id: 'q2', content: 'second correction', ts: 2 },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('agent-thread-cancel'));
+
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+    // The server drops the queue on cancel, so the words only survive here.
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('first correction\n\nsecond correction');
+  });
+
+  test('the Escape cancel path rescues the queue too, appended to the draft', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [{ id: 'q1', content: 'queued fix', ts: 1 }],
+        })}
+      />,
+    );
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'already typing' } });
+    fireEvent.keyDown(composer, { key: 'Escape' });
+
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+    expect(composer.value).toBe('already typing\n\nqueued fix');
+  });
+
+  test('an empty queue leaves the draft exactly as typed', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'just this' } });
+    fireEvent.keyDown(composer, { key: 'Escape' });
+
+    expect(composer.value).toBe('just this');
+  });
+});
+
+describe('ThreadView steer now', () => {
+  test('mid-turn with a draft, Steer now sends the correction and clears the composer', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    // Nothing typed: no steer affordance to mis-click, only Stop.
+    expect(screen.queryByTestId('agent-thread-steer')).toBeNull();
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: '  actually, do this instead  ' } });
+
+    // Both outcomes are offered side by side: wait your turn, or interrupt.
+    expect(screen.getByTestId('agent-thread-send').getAttribute('aria-label')).toBe(
+      'Queue message',
+    );
+    const steerButton = screen.getByTestId('agent-thread-steer');
+    expect(steerButton.getAttribute('aria-label')).toBe('Steer now');
+
+    fireEvent.click(steerButton);
+    expect(steer).toHaveBeenCalledWith('thread-1', 'actually, do this instead');
+    expect(prompt).not.toHaveBeenCalled();
+    expect(composer.value).toBe('');
+  });
+
+  test('Enter still queues — steering is only ever an explicit click', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer');
+    fireEvent.change(composer, { target: { value: 'queue me' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+
+    expect(prompt).toHaveBeenCalledWith('thread-1', 'queue me');
+    expect(steer).not.toHaveBeenCalled();
+  });
+
+  test('outside a turn there is nothing to steer away from', () => {
+    model = makeModel({ turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'plain send' },
+    });
+    expect(screen.queryByTestId('agent-thread-steer')).toBeNull();
+  });
+
+  test('a parked steer shows the waiting strip with the correction previewed', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({ status: 'running', steer: { content: 'use the other API', ts: 1 } })}
+      />,
+    );
+
+    const strip = screen.getByTestId('agent-thread-steer-pending');
+    expect(strip.textContent).toContain('waiting for the current run to stop');
+    expect(strip.textContent).toContain('use the other API');
+  });
+
+  test('Stop rescues the parked steer ahead of the queue', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          steer: { content: 'the correction', ts: 3 },
+          queue: [{ id: 'q1', content: 'queued after', ts: 4 }],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('agent-thread-cancel'));
+
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+    // Server-side both are dropped, so the composer is the only place the
+    // words survive — steer first, because that is the order it would have run.
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('the correction\n\nqueued after');
+  });
+});
+
+describe('ThreadView queued-message holds', () => {
+  const oneQueued = (content = 'original text', held?: boolean) =>
+    makeInfo({
+      status: 'running',
+      queue: [{ id: 'q1', content, ts: 1, ...(held === undefined ? {} : { held }) }],
+    });
+
+  test('opening the editor holds the row so the drain cannot take it', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    expect(holdQueued).toHaveBeenCalledWith('thread-1', 'q1', true);
+  });
+
+  test('cancelling the edit releases the hold', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    fireEvent.click(screen.getByTestId('agent-thread-queued-cancel-edit'));
+
+    expect(holdQueued).toHaveBeenLastCalledWith('thread-1', 'q1', false);
+    expect(editQueued).not.toHaveBeenCalled();
+  });
+
+  test('Escape releases the hold as well', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    fireEvent.keyDown(screen.getByTestId('agent-thread-queued-input'), { key: 'Escape' });
+
+    expect(holdQueued).toHaveBeenLastCalledWith('thread-1', 'q1', false);
+  });
+
+  test('saving changed text resubmits through the edit; the server clears the hold', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    fireEvent.change(screen.getByTestId('agent-thread-queued-input'), {
+      target: { value: 'sharper text' },
+    });
+    fireEvent.keyDown(screen.getByTestId('agent-thread-queued-input'), { key: 'Enter' });
+
+    expect(editQueued).toHaveBeenCalledWith('thread-1', 'q1', 'sharper text');
+    // A second release frame would race the edit's own clear.
+    expect(holdQueued).toHaveBeenCalledTimes(1);
+    expect(holdQueued).toHaveBeenCalledWith('thread-1', 'q1', true);
+  });
+
+  test('saving unchanged text just releases the hold — nothing to edit', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    fireEvent.keyDown(screen.getByTestId('agent-thread-queued-input'), { key: 'Enter' });
+
+    expect(editQueued).not.toHaveBeenCalled();
+    expect(holdQueued).toHaveBeenLastCalledWith('thread-1', 'q1', false);
+  });
+
+  test('a held row is marked as held and offers to send it', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued('parked text', true)} />);
+
+    const row = screen.getByTestId('agent-thread-queued');
+    expect(row.textContent).toContain('Held');
+    expect(row.getAttribute('data-held')).toBe('true');
+
+    fireEvent.click(within(row).getByTestId('agent-thread-queued-release'));
+    expect(holdQueued).toHaveBeenCalledWith('thread-1', 'q1', false);
+  });
+
+  test('an ordinary queued row carries no held marking', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    const row = screen.getByTestId('agent-thread-queued');
+    expect(row.getAttribute('data-held')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-queued-release')).toBeNull();
+  });
+
+  test('an edit that lost its race says so instead of vanishing', async () => {
+    editQueuedResult = Promise.reject(new Error('queued message already dispatched'));
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    fireEvent.change(screen.getByTestId('agent-thread-queued-input'), {
+      target: { value: 'too late' },
+    });
+    fireEvent.keyDown(screen.getByTestId('agent-thread-queued-input'), { key: 'Enter' });
+
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(String(toastError.mock.calls[0]?.[0])).toContain("wasn't applied");
+  });
+});
+
+describe('ThreadView send-vs-queue labelling', () => {
+  test('the queue header says when the messages actually go out', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [{ id: 'q1', content: 'waiting', ts: 1 }],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('agent-thread-queue').textContent).toContain(
+      'sends when this run finishes',
+    );
+  });
+
+  test('mid-turn the action button wears the queue icon and explains itself', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'queued while running' },
+    });
+
+    const send = screen.getByTestId('agent-thread-send');
+    // The aria-label alone was the only send-vs-queue tell; sighted users read
+    // the glyph.
+    expect(send.querySelector('svg')?.getAttribute('class')).toContain('list-plus');
+
+    await user.hover(send);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Queues behind the running turn');
+  });
+
+  test('outside a turn it is a plain send arrow with no queue tooltip', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'idle send' },
+    });
+
+    const send = screen.getByTestId('agent-thread-send');
+    expect(send.querySelector('svg')?.getAttribute('class')).toContain('arrow-up');
+
+    await user.hover(send);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
+
+describe('ThreadView retry', () => {
+  function failureNotice(
+    reason: 'auth-required' | 'connect' | 'session-setup' | 'prompt',
+  ): Extract<RenderedItem, { kind: 'notice' }> {
+    return {
+      kind: 'notice',
+      text: '',
+      tone: 'error',
+      failure: { reason, agentMessage: 'harness not installed' },
+    };
+  }
+
+  test('a startup failure offers Retry and re-runs the launch', async () => {
+    model = makeModel({ turnActive: false, items: [failureNotice('session-setup')] });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-retry'));
+    expect(retryThread).toHaveBeenCalledWith('thread-1');
+  });
+
+  // The session is live and the message is what failed — sending it again IS
+  // the retry, so a second control here would only be a worse way to do it.
+  test('a prompt failure offers no Retry', () => {
+    model = makeModel({ turnActive: false, items: [failureNotice('prompt')] });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    expect(screen.getByTestId('agent-thread-notice')).toBeDefined();
+    expect(screen.queryByTestId('agent-thread-retry')).toBeNull();
+  });
+
+  // A transcript accumulates a notice per failed attempt; Retry belongs to the
+  // one the user is looking at, not to every one they have ever seen.
+  test('only the last startup failure carries the button', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [failureNotice('connect'), failureNotice('session-setup')],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    expect(screen.getAllByTestId('agent-thread-notice')).toHaveLength(2);
+    const buttons = screen.getAllByTestId('agent-thread-retry');
+    expect(buttons).toHaveLength(1);
+    const notices = screen.getAllByTestId('agent-thread-notice');
+    expect(notices[1]?.contains(buttons[0] ?? null)).toBe(true);
+  });
+
+  test('an archived thread offers no Retry — that one resumes', () => {
+    model = makeModel({ turnActive: false, items: [failureNotice('session-setup')] });
+    render(<ThreadView info={makeInfo({ status: 'error', archived: true })} />);
+
+    expect(screen.queryByTestId('agent-thread-retry')).toBeNull();
+  });
+
+  test('an auth failure offers a sign-in button that authenticates in place', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    const button = screen.getByTestId('agent-thread-auth-method');
+    expect(button.getAttribute('data-auth-method-id')).toBe('test_login');
+    expect(button.textContent).toContain('Sign in with Test Login');
+    await userEvent.click(button);
+    expect(authenticateThread).toHaveBeenCalledWith('thread-1', 'test_login');
+    // Retry stays: "I signed in elsewhere, try again" is still a valid answer.
+    expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
+  });
+
+  test('a refused sign-in surfaces the reason and leaves the button usable', async () => {
+    authenticateResult = Promise.reject(new Error('wrong account'));
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    // Synchronous click: the pre-armed rejection has to meet its handler in
+    // this same tick, or Node reports it as unhandled before the click lands.
+    fireEvent.click(screen.getByTestId('agent-thread-auth-method'));
+
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(String(toastError.mock.calls[0]?.[0])).toContain('wrong account');
+    expect(screen.getByTestId('agent-thread-auth-method').hasAttribute('disabled')).toBe(false);
+  });
+
+  // A terminal/env_var sign-in happens in the user's own shell — a button OK
+  // can't complete would be a promise it has no way to keep.
+  test('a terminal-kind method is named, not offered as a button', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [
+              {
+                id: 'cli_login',
+                name: 'CLI Login',
+                description: 'Run `agent login`',
+                kind: 'terminal',
+              },
+            ],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    expect(screen.queryByTestId('agent-thread-auth-method')).toBeNull();
+    expect(screen.getByTestId('agent-thread-auth-manual').textContent).toContain('CLI Login');
+    expect(screen.getByTestId('agent-thread-auth-manual').textContent).toContain('agent login');
+    expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
+  });
+
+  // Signing in takes a detour through a browser; a draft written before it has
+  // to survive, so the field stays typable even though sending is still gated.
+  test('the composer stays typable while the thread waits on sign-in', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer');
+    expect(composer.hasAttribute('disabled')).toBe(false);
+    fireEvent.change(composer, { target: { value: 'draft while signing in' } });
+    expect((composer as HTMLTextAreaElement).value).toBe('draft while signing in');
+    expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(true);
+  });
+
+  // Clicking Sign in flips the status to `installing` — the same field the
+  // draft was written in must not go read-only underneath it.
+  test('the composer stays typable once the sign-in is under way', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ status: 'installing' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer');
+    expect(composer.hasAttribute('disabled')).toBe(false);
+    fireEvent.change(composer, { target: { value: 'kept across the sign-in' } });
+    expect((composer as HTMLTextAreaElement).value).toBe('kept across the sign-in');
+    expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(true);
+  });
+
+  test('a thread whose agent is gone for good has nothing left to type into', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ status: 'exited' })} />);
+
+    expect(screen.getByTestId('agent-thread-composer').hasAttribute('disabled')).toBe(true);
+  });
+
+  test('the header names the build OK launched', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          agent: { id: 'claude', name: 'Claude Agent', source: 'registry', version: '0.53.0' },
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('agent-thread-agent-version').textContent).toBe('0.53.0');
+  });
+});
+describe('ThreadView failure notices', () => {
+  function notice(
+    overrides?: Partial<Extract<RenderedItem, { kind: 'notice' }>>,
+  ): Extract<RenderedItem, { kind: 'notice' }> {
+    return {
+      kind: 'notice',
+      text: '',
+      tone: 'error',
+      failure: null,
+      ...overrides,
+    };
+  }
+
+  test('an auth failure reads as sign-in copy, quotes the agent, and hides the wire payload', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        notice({
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            agentMessage: 'Authentication required',
+            machineDetail: '{"detail":"run /login first"}',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    const card = screen.getByTestId('agent-thread-notice');
+    // "Claude Agent" reads as the brand in copy — the display name drops the suffix.
+    expect(card.textContent).toContain('Sign in to Claude to continue');
+    expect(card.textContent).toContain('Authentication required');
+    // The JSON payload is diagnostic, not headline copy: it stays behind the
+    // disclosure until the user asks for it.
+    expect(card.textContent).not.toContain('run /login first');
+    expect(screen.queryByTestId('agent-thread-notice-details')).toBeNull();
+
+    const toggle = screen.getByTestId('agent-thread-notice-details-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.click(toggle);
+
+    expect(screen.getByTestId('agent-thread-notice-details').textContent).toContain(
+      'run /login first',
+    );
+    expect(
+      screen.getByTestId('agent-thread-notice-details-toggle').getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  test('a session-setup failure names the step that broke', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        notice({
+          failure: {
+            reason: 'session-setup',
+            agentMessage: 'Failed to initialize session services',
+          },
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const card = screen.getByTestId('agent-thread-notice');
+    expect(card.textContent).toContain("Claude couldn't start a conversation");
+    expect(card.textContent).toContain('Failed to initialize session services');
+    // Nothing machine-readable was attached, so no disclosure is offered.
+    expect(screen.queryByTestId('agent-thread-notice-details-toggle')).toBeNull();
+  });
+
+  test('a legacy detail-only error still renders its raw text', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [notice({ text: 'session setup failed: boom' })],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const card = screen.getByTestId('agent-thread-notice');
+    expect(card.textContent).toBe('session setup failed: boom');
+    expect(screen.queryByTestId('agent-thread-notice-details-toggle')).toBeNull();
   });
 });

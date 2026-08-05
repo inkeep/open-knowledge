@@ -99,6 +99,199 @@ describe('batched event delivery', () => {
   });
 });
 
+describe('queue edit settlement', () => {
+  const info: ThreadInfo = {
+    threadId: 't1',
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: 'A',
+    status: 'running',
+    createdAt: 1,
+    lastActivityAt: 1,
+    lastSeq: -1,
+  };
+
+  /** Client with a stub socket, so sent frames are observable. */
+  function makeWiredClient(): {
+    client: AgentThreadClient;
+    sent: Array<Record<string, unknown>>;
+    frame: (f: ThreadServerFrame) => void;
+  } {
+    const client = new AgentThreadClient();
+    const sent: Array<Record<string, unknown>> = [];
+    const internals = client as unknown as {
+      ws: unknown;
+      handleFrame: (f: ThreadServerFrame) => void;
+    };
+    internals.ws = {
+      readyState: 1,
+      send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+    };
+    const frame = (f: ThreadServerFrame) => internals.handleFrame.call(client, f);
+    frame({ op: 'subscribed', threadId: 't1', fromSeq: 0, info });
+    return { client, sent, frame };
+  }
+
+  test('the ack carrying the reqId settles the edit as applied', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.editQueued('t1', 'q1', '  sharper text  ');
+    const edit = sent.find((f) => f.op === 'queue_edit');
+    // The reqId is what makes both the ack and a refusal answerable at all.
+    expect(edit).toMatchObject({ threadId: 't1', id: 'q1', content: 'sharper text' });
+    expect(typeof edit?.reqId).toBe('string');
+
+    frame({ op: 'queue_edited', reqId: edit?.reqId as string, threadId: 't1' });
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  test('a refusal rejects even when an unrelated info frame for the thread arrived first', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.editQueued('t1', 'q1', 'too late');
+    const reqId = sent.find((f) => f.op === 'queue_edit')?.reqId;
+    expect(typeof reqId).toBe('string');
+
+    // The regression: a batched `info` (a turn ending, a status flip) reaches
+    // the client before the server's refusal. Settling on it would report the
+    // edit as applied and leave the error with nowhere to go.
+    frame({ op: 'info', info: { ...info, lastActivityAt: 2 } });
+    frame({
+      op: 'error',
+      code: 'not-ready',
+      message: 'queued message already dispatched',
+      reqId: reqId as string,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toThrow(/already dispatched/);
+  });
+
+  test('info frames — this thread or another — never settle the edit; the ack does', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    let settled = false;
+    const pending = client.editQueued('t1', 'q1', 'sharper text');
+    void pending.then(() => {
+      settled = true;
+    });
+    frame({ op: 'info', info: { ...info, threadId: 'other' } });
+    frame({ op: 'info', info });
+    // An ack for a different edit is just as inert.
+    frame({ op: 'queue_edited', reqId: 'queue-edit-not-mine', threadId: 't1' });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    frame({
+      op: 'queue_edited',
+      reqId: sent.find((f) => f.op === 'queue_edit')?.reqId as string,
+      threadId: 't1',
+    });
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  test('an empty edit never reaches the wire', async () => {
+    const { client, sent } = makeWiredClient();
+    await expect(client.editQueued('t1', 'q1', '   ')).resolves.toBeUndefined();
+    expect(sent.some((f) => f.op === 'queue_edit')).toBe(false);
+  });
+
+  test('holdQueued sends the park/release frame verbatim', () => {
+    const { client, sent } = makeWiredClient();
+    client.holdQueued('t1', 'q1', true);
+    client.holdQueued('t1', 'q1', false);
+    expect(sent.filter((f) => f.op === 'queue_hold')).toEqual([
+      { op: 'queue_hold', threadId: 't1', id: 'q1', held: true },
+      { op: 'queue_hold', threadId: 't1', id: 'q1', held: false },
+    ]);
+  });
+});
+
+describe('retry and sign-in lifecycle', () => {
+  const info: ThreadInfo = {
+    threadId: 't1',
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: 'A',
+    status: 'error',
+    createdAt: 1,
+    lastActivityAt: 1,
+    lastSeq: -1,
+  };
+
+  /** Client with a stub socket, so sent frames are observable. */
+  function makeWiredClient(): {
+    client: AgentThreadClient;
+    sent: Array<Record<string, unknown>>;
+    frame: (f: ThreadServerFrame) => void;
+  } {
+    const client = new AgentThreadClient();
+    const sent: Array<Record<string, unknown>> = [];
+    const internals = client as unknown as {
+      ws: unknown;
+      handleFrame: (f: ThreadServerFrame) => void;
+    };
+    internals.ws = {
+      readyState: 1,
+      send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+    };
+    const frame = (f: ThreadServerFrame) => internals.handleFrame.call(client, f);
+    frame({ op: 'subscribed', threadId: 't1', fromSeq: 0, info });
+    return { client, sent, frame };
+  }
+
+  /** Both ops await `waitForOpen` before sending, so the frame lands a tick later. */
+  const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test('retryThread sends the op and resolves with the retried thread info', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.retryThread('t1');
+    await flush();
+    const retry = sent.find((f) => f.op === 'retry');
+    expect(retry).toMatchObject({ op: 'retry', threadId: 't1' });
+    expect(typeof retry?.reqId).toBe('string');
+
+    const ready: ThreadInfo = { ...info, status: 'ready' };
+    frame({ op: 'retried', reqId: retry?.reqId as string, info: ready });
+    await expect(pending).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  test('a retry the server refuses rejects with its message', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.retryThread('t1');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'retry')?.reqId as string;
+
+    frame({
+      op: 'error',
+      code: 'spawn-failed',
+      message: 'harness not installed',
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toThrow(/harness not installed/);
+  });
+
+  test('authenticateThread sends the method id and resolves with the signed-in info', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.authenticateThread('t1', 'test_login');
+    await flush();
+    const auth = sent.find((f) => f.op === 'authenticate');
+    expect(auth).toMatchObject({ op: 'authenticate', threadId: 't1', methodId: 'test_login' });
+    // The prefix is what an error frame is correlated by — it must not collide
+    // with another op's namespace.
+    expect(String(auth?.reqId)).toMatch(/^authenticate-/);
+
+    const ready: ThreadInfo = { ...info, status: 'ready' };
+    frame({ op: 'authenticated', reqId: auth?.reqId as string, info: ready });
+    await expect(pending).resolves.toMatchObject({ status: 'ready' });
+  });
+
+  test('a refused sign-in rejects with what the agent said', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.authenticateThread('t1', 'test_login');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'authenticate')?.reqId as string;
+
+    frame({ op: 'error', code: 'not-ready', message: 'wrong account', reqId, threadId: 't1' });
+    await expect(pending).rejects.toThrow(/wrong account/);
+  });
+});
+
 describe('createThread channel wait', () => {
   test('rejects with ThreadChannelUnavailableError when no URL is ever bound', async () => {
     const client = new AgentThreadClient();

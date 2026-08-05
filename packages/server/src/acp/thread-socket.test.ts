@@ -43,7 +43,11 @@ afterEach(async () => {
 });
 
 /** Same minimal capability-matrix agent as the manager integration suite. */
-function writeFixtureAgent(localDir: string, caps: string): void {
+function writeFixtureAgent(
+  localDir: string,
+  caps: string,
+  extraEnv?: Record<string, string>,
+): void {
   const agentPath = join(localDir, 'fixture-agent.mjs');
   writeFileSync(
     agentPath,
@@ -69,7 +73,17 @@ process.stdin.on('data', (chunk) => {
     } else if (msg.method === 'session/new') {
       reply({ sessionId: 'sess-fixed' });
     } else if (msg.method === 'session/prompt') {
-      reply({ stopReason: 'end_turn' });
+      if (caps.includes('gate-prompt')) {
+        (async () => {
+          const fs = await import('node:fs');
+          while (!fs.existsSync(process.env.FAKE_RELEASE)) {
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          reply({ stopReason: 'end_turn' });
+        })();
+      } else {
+        reply({ stopReason: 'end_turn' });
+      }
     } else if (msg.method === 'session/resume') {
       reply({});
     } else if (msg.id !== undefined) {
@@ -87,7 +101,7 @@ process.stdin.on('data', (chunk) => {
         name: 'Fixture',
         command: 'node',
         args: [agentPath],
-        env: { FAKE_CAPS: caps },
+        env: { FAKE_CAPS: caps, ...extraEnv },
       },
     ]),
   );
@@ -164,6 +178,9 @@ function makeManager(contentDir: string, localDir: string): AcpThreadManager {
     isExcludedPath: () => false,
     isIgnoredPath: () => false,
     log,
+    // Hermetic (see the thread-manager integration suite): every launch merges
+    // the login shell's PATH, and a test must not spawn the developer's shell.
+    resolveLoginShellPath: async () => null,
   });
   managers.push(manager);
   return manager;
@@ -269,13 +286,63 @@ describe('/collab/thread socket — history ops', () => {
     socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p0', content: 'hello' }));
     await waitStatus(manager, threadId, 'ready');
     socket.emit(JSON.stringify({ op: 'close', threadId }));
-    await waitStatus(manager, threadId, 'exited');
+    // The close op's own `threads` response is the signal that the close
+    // FINISHED: the 'exited' status flips mid-teardown, while the record is
+    // still marked closing, and a resume that lands in that window is refused
+    // for a reason that has nothing to do with what this test asserts.
+    await socket.awaitFrame('threads');
 
     socket.emit(JSON.stringify({ op: 'resume', threadId, reqId: 'r9' }));
     const err = await socket.awaitFrame('error');
     expect(err.code).toBe('resume-unsupported');
     expect(err.reqId).toBe('r9');
     expect(manager.getInfo(threadId)?.archived).toBe(true);
+    socket.close();
+  }, 45_000);
+
+  // The op is routed and its reqId echoed on the error path — the client
+  // matches its pending promise on that id, so a dropped reqId hangs the UI.
+  test('retry on a healthy thread answers the reqId with not-ready', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, '');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created');
+    const threadId = created.info.threadId;
+    await waitStatus(manager, threadId, 'ready');
+
+    socket.emit(JSON.stringify({ op: 'retry', threadId, reqId: 'rt1' }));
+    const err = await socket.awaitFrame('error');
+    expect(err.code).toBe('not-ready');
+    expect(err.reqId).toBe('rt1');
+    socket.close();
+  }, 45_000);
+
+  test('authenticate on a healthy thread answers the reqId with not-ready', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, '');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created');
+    const threadId = created.info.threadId;
+    await waitStatus(manager, threadId, 'ready');
+
+    socket.emit(
+      JSON.stringify({ op: 'authenticate', threadId, reqId: 'au1', methodId: 'test_login' }),
+    );
+    const err = await socket.awaitFrame('error');
+    expect(err.code).toBe('not-ready');
+    expect(err.reqId).toBe('au1');
     socket.close();
   }, 45_000);
 
@@ -369,6 +436,61 @@ describe('/collab/thread socket — history ops', () => {
   }, 45_000);
 });
 
+describe('/collab/thread socket — steer', () => {
+  test('steer routes to the manager; unknown thread and empty content fail distinctly', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, '');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    const errors = () =>
+      socket.frames.filter(
+        (f): f is Extract<ThreadServerFrame, { op: 'error' }> => f.op === 'error',
+      );
+    const awaitErrors = async (count: number): Promise<void> => {
+      const deadline = Date.now() + 10_000;
+      while (errors().length < count) {
+        if (Date.now() > deadline) throw new Error(`saw ${errors().length}/${count} errors`);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created', 20_000);
+    const threadId = created.info.threadId;
+    await waitStatus(manager, threadId, 'ready');
+
+    // Empty content fails structural parse and never reaches the manager.
+    socket.emit(JSON.stringify({ op: 'steer', threadId, reqId: 's0', content: '' }));
+    socket.emit(
+      JSON.stringify({ op: 'steer', threadId: 'missing', reqId: 's1', content: 'go left' }),
+    );
+    await awaitErrors(2);
+    expect(errors().map((f) => f.code)).toEqual(['bad-frame', 'unknown-thread']);
+    expect(errors()[1]).toMatchObject({ reqId: 's1', threadId: 'missing' });
+
+    // No turn is running, so the steer dispatches as an ordinary prompt.
+    socket.emit(JSON.stringify({ op: 'steer', threadId, reqId: 's2', content: 'go left' }));
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const echoed = socket.frames.some(
+        (f) =>
+          f.op === 'events' &&
+          f.events.some((e) => e.kind === 'user_message' && e.content === 'go left'),
+      );
+      if (echoed) break;
+      if (Date.now() > deadline) throw new Error('steer never reached the transcript');
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(errors()).toHaveLength(2);
+
+    socket.close();
+  }, 45_000);
+});
+
 describe('/collab/thread socket — queue ops', () => {
   test('queue_edit / queue_remove route to the manager; unknown thread → error frame', async () => {
     const manager = makeManager(tmp(), tmp());
@@ -400,4 +522,106 @@ describe('/collab/thread socket — queue ops', () => {
     expect(errors().map((f) => f.code)).toEqual(['unknown-thread', 'unknown-thread', 'bad-frame']);
     expect(errors()[0]?.threadId).toBe('missing');
   });
+
+  test('a queue_edit that lost its race answers the reqId; without one it stays silent', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, '');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created', 20_000);
+    const threadId = created.info.threadId;
+    const errors = () =>
+      socket.frames.filter(
+        (f): f is Extract<ThreadServerFrame, { op: 'error' }> => f.op === 'error',
+      );
+
+    // Nothing is queued on this thread, so every id is already-dispatched.
+    socket.emit(
+      JSON.stringify({ op: 'queue_edit', threadId, id: 'gone', content: 'my correction' }),
+    );
+    socket.emit(JSON.stringify({ op: 'queue_hold', threadId, id: 'gone', held: true }));
+    socket.emit(
+      JSON.stringify({
+        op: 'queue_edit',
+        threadId,
+        id: 'gone',
+        content: 'my correction',
+        reqId: 'qe-1',
+      }),
+    );
+
+    const deadline = Date.now() + 10_000;
+    while (errors().length === 0) {
+      if (Date.now() > deadline) throw new Error('no error frame for the reqId-carrying edit');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // Exactly one: the reqId-less edit and the hold are fire-and-forget.
+    expect(errors()).toHaveLength(1);
+    expect(errors()[0]).toMatchObject({
+      code: 'not-ready',
+      reqId: 'qe-1',
+      threadId,
+      message: 'queued message already dispatched',
+    });
+
+    socket.close();
+  }, 45_000);
+
+  test('a queue_edit that applies answers its reqId with a queue_edited ack', async () => {
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeFixtureAgent(localDir, 'gate-prompt', { FAKE_RELEASE: releasePath });
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created', 20_000);
+    const threadId = created.info.threadId;
+    const status = () => manager.getInfo(threadId)?.status;
+    let deadline = Date.now() + 15_000;
+    while (status() !== 'ready') {
+      if (Date.now() > deadline) throw new Error(`never ready (status ${status()})`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+
+    // First prompt parks on the gate; the second queues behind it.
+    socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p1', content: 'hold the turn' }));
+    deadline = Date.now() + 10_000;
+    while (status() !== 'running') {
+      if (Date.now() > deadline) throw new Error('turn never opened');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p2', content: 'queued text' }));
+    deadline = Date.now() + 10_000;
+    while ((manager.getInfo(threadId)?.queue ?? []).length === 0) {
+      if (Date.now() > deadline) throw new Error('prompt never queued');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const queued = manager.getInfo(threadId)?.queue?.[0];
+    if (queued === undefined) throw new Error('queue entry missing');
+
+    socket.emit(
+      JSON.stringify({
+        op: 'queue_edit',
+        threadId,
+        id: queued.id,
+        content: 'edited text',
+        reqId: 'qe-ok',
+      }),
+    );
+    const ack = await socket.awaitFrame('queue_edited', 10_000);
+    expect(ack).toMatchObject({ op: 'queue_edited', reqId: 'qe-ok', threadId });
+    expect(manager.getInfo(threadId)?.queue?.[0]?.content).toBe('edited text');
+
+    writeFileSync(releasePath, 'go');
+    socket.close();
+  }, 45_000);
 });

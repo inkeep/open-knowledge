@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   ACP_AGENT_HARNESS_CLIS,
+  type AcpHarnessCli,
   createAcpHarnessAvailabilityProbe,
   type HarnessAvailability,
 } from './harness-availability.ts';
@@ -21,18 +21,22 @@ describe('ACP harness availability', () => {
       'claude-acp': 'claude',
       'codex-acp': 'codex',
       cursor: 'cursor',
+      gemini: 'gemini',
       opencode: 'opencode',
+      'pi-acp': 'pi',
     });
   });
 
   test('probes every mapped harness once and caches the in-flight result', async () => {
-    const calls: TerminalCli[] = [];
+    const calls: AcpHarnessCli[] = [];
     let timestamp = 100;
-    const availability: Partial<Record<TerminalCli, HarnessAvailability>> = {
+    const availability: Partial<Record<AcpHarnessCli, HarnessAvailability>> = {
       claude: 'present',
       codex: 'not-found',
       cursor: 'unknown',
+      gemini: 'present',
       opencode: 'present',
+      pi: 'not-found',
     };
     const probe = createAcpHarnessAvailabilityProbe({
       probe: async (cli) => {
@@ -46,11 +50,11 @@ describe('ACP harness availability', () => {
     const first = probe();
     expect(probe()).toBe(first);
     expect(await first).toEqual(availability);
-    expect(calls).toEqual(['claude', 'codex', 'cursor', 'opencode']);
+    expect(calls).toEqual(['claude', 'codex', 'cursor', 'gemini', 'opencode', 'pi']);
 
     timestamp = 151;
     await probe();
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(12);
   });
 
   // Availability drives defaulting, so it has to agree with what the launch
@@ -61,7 +65,7 @@ describe('ACP harness availability', () => {
   test('a harness reachable only via the login shell reports present', async () => {
     const shimDir = mkdtempSync(join(tmpdir(), 'harness-avail-test-'));
     shims.push(shimDir);
-    for (const bin of ['claude', 'codex', 'cursor-agent', 'opencode']) {
+    for (const bin of ['claude', 'codex', 'cursor-agent', 'gemini', 'opencode', 'pi']) {
       writeFileSync(join(shimDir, bin), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     }
     const probe = createAcpHarnessAvailabilityProbe({
@@ -71,7 +75,9 @@ describe('ACP harness availability', () => {
       claude: 'present',
       codex: 'present',
       cursor: 'present',
+      gemini: 'present',
       opencode: 'present',
+      pi: 'present',
     });
   });
 

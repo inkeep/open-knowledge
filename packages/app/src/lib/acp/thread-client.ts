@@ -45,12 +45,24 @@ interface PendingCreate {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface PendingQueueEdit {
+  resolve: () => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 15_000;
 const CREATE_TIMEOUT_MS = 30_000;
 /** Resume resolves only after the full agent respawn + session handshake (npx cold boots take a while). */
 const RESUME_TIMEOUT_MS = 90_000;
+/** Retry re-runs the same launch, plus a fresh login-shell PATH probe. */
+const RETRY_TIMEOUT_MS = 90_000;
+/** Sign-in can park on a browser round trip before the session re-opens. */
+const AUTHENTICATE_TIMEOUT_MS = 180_000;
 const CHANNEL_WAIT_MS = 8_000;
+/** How long a queue edit waits for a refusal before it counts as applied. */
+const QUEUE_EDIT_TIMEOUT_MS = 10_000;
 
 /** A `resume` op the server rejected; `code` distinguishes "this agent can't
  *  resume old sessions" (offer a fresh thread) from transient failures. */
@@ -84,6 +96,9 @@ export class AgentThreadClient {
   private listeners = new Set<() => void>();
   private pendingCreates = new Map<string, PendingCreate>();
   private pendingResumes = new Map<string, PendingCreate>();
+  private pendingRetries = new Map<string, PendingCreate>();
+  private pendingAuths = new Map<string, PendingCreate>();
+  private pendingQueueEdits = new Map<string, PendingQueueEdit>();
   /** Archived threads the user explicitly opened as tabs this session. */
   private openedArchived = new Set<string>();
   private reqCounter = 0;
@@ -227,13 +242,48 @@ export class AgentThreadClient {
     this.send({ op: 'prompt', threadId, reqId: `prompt-${this.reqCounter}`, content });
   }
 
-  /** Edit a message waiting in the thread's queue (`ThreadInfo.queue`) in
-   *  place. The server confirms via an `info` frame; an entry that already
-   *  dispatched is silently left alone. */
-  editQueued(threadId: string, id: string, content: string): void {
+  /**
+   * Stop the running turn and send `content` as the next one. Fire-and-forget
+   * like `prompt`: the refreshed `info` (carrying the parked `steer`) is the
+   * confirmation, and a refusal comes back as an `error` frame on the reqId.
+   */
+  steer(threadId: string, content: string): void {
     const trimmed = content.trim();
     if (trimmed === '') return;
-    this.send({ op: 'queue_edit', threadId, id, content: trimmed });
+    this.reqCounter += 1;
+    this.send({ op: 'steer', threadId, reqId: `steer-${this.reqCounter}`, content: trimmed });
+  }
+
+  /**
+   * Edit a message waiting in the thread's queue (`ThreadInfo.queue`) in
+   * place, releasing any hold on it — saving is the resubmit. Resolves on the
+   * server's `queue_edited` ack; REJECTS on the refusal carrying this reqId,
+   * so the caller can tell the user the edit never landed instead of letting
+   * it vanish.
+   */
+  editQueued(threadId: string, id: string, content: string): Promise<void> {
+    const trimmed = content.trim();
+    if (trimmed === '') return Promise.resolve();
+    this.reqCounter += 1;
+    const reqId = `queue-edit-${this.reqCounter}`;
+    const promise = new Promise<void>((resolve, reject) => {
+      // Backstop for a server too old to ack (or a frame lost with the
+      // socket): silence for this long is read as applied, which is what the
+      // pre-ack protocol assumed anyway.
+      const timer = setTimeout(() => {
+        this.pendingQueueEdits.delete(reqId);
+        resolve();
+      }, QUEUE_EDIT_TIMEOUT_MS);
+      this.pendingQueueEdits.set(reqId, { resolve, reject, timer });
+    });
+    this.send({ op: 'queue_edit', threadId, id, content: trimmed, reqId });
+    return promise;
+  }
+
+  /** Park a queued message so the drain skips it (an open edit holds its
+   *  row), or release it back into line. */
+  holdQueued(threadId: string, id: string, held: boolean): void {
+    this.send({ op: 'queue_hold', threadId, id, held });
   }
 
   /** Remove a message from the thread's queue before it dispatches. */
@@ -341,6 +391,51 @@ export class AgentThreadClient {
     return promise;
   }
 
+  /**
+   * Retry a thread whose startup failed — same thread, same transcript, a
+   * fresh launch (the server re-probes the environment first, so a binary
+   * installed since the failure is picked up). Resolves once the agent is
+   * ready; rejects with the failure the retry landed on.
+   */
+  async retryThread(threadId: string): Promise<ThreadInfo> {
+    this.connectNow();
+    await this.waitForOpen(CHANNEL_WAIT_MS);
+    this.reqCounter += 1;
+    const reqId = `retry-${this.reqCounter}`;
+    const promise = new Promise<ThreadInfo>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRetries.delete(reqId);
+        reject(new Error('retry timed out'));
+      }, RETRY_TIMEOUT_MS);
+      this.pendingRetries.set(reqId, { resolve, reject, timer });
+    });
+    this.send({ op: 'retry', threadId, reqId });
+    return promise;
+  }
+
+  /**
+   * Complete an advertised sign-in on a thread parked in `auth_required`. The
+   * server authenticates on the agent's live connection and re-opens the
+   * session there, so nothing respawns and the transcript is untouched.
+   * Resolves once the thread is ready; rejects with what the sign-in failed
+   * on (the caller surfaces it — the thread stays on its notice).
+   */
+  async authenticateThread(threadId: string, methodId: string): Promise<ThreadInfo> {
+    this.connectNow();
+    await this.waitForOpen(CHANNEL_WAIT_MS);
+    this.reqCounter += 1;
+    const reqId = `authenticate-${this.reqCounter}`;
+    const promise = new Promise<ThreadInfo>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingAuths.delete(reqId);
+        reject(new Error('sign-in timed out'));
+      }, AUTHENTICATE_TIMEOUT_MS);
+      this.pendingAuths.set(reqId, { resolve, reject, timer });
+    });
+    this.send({ op: 'authenticate', threadId, reqId, methodId });
+    return promise;
+  }
+
   // ── internals ─────────────────────────────────────────────────────────
 
   /**
@@ -441,6 +536,24 @@ export class AgentThreadClient {
       pending.reject(new ThreadChannelUnavailableError());
     }
     this.pendingResumes.clear();
+    for (const pending of this.pendingRetries.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new ThreadChannelUnavailableError());
+    }
+    this.pendingRetries.clear();
+    for (const pending of this.pendingAuths.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new ThreadChannelUnavailableError());
+    }
+    this.pendingAuths.clear();
+    // A dropped socket says nothing about whether the edit applied — settling
+    // these as refusals would tell the user their words were lost on no
+    // evidence at all.
+    for (const pending of this.pendingQueueEdits.values()) {
+      clearTimeout(pending.timer);
+      pending.resolve();
+    }
+    this.pendingQueueEdits.clear();
     const ws = this.ws;
     this.ws = null;
     if (ws !== null) {
@@ -521,8 +634,37 @@ export class AgentThreadClient {
         this.upsertInfo(frame.info);
         return;
       }
+      case 'retried': {
+        const pending = this.pendingRetries.get(frame.reqId);
+        if (pending !== undefined) {
+          this.pendingRetries.delete(frame.reqId);
+          clearTimeout(pending.timer);
+          pending.resolve(frame.info);
+        }
+        this.upsertInfo(frame.info);
+        return;
+      }
+      case 'authenticated': {
+        const pending = this.pendingAuths.get(frame.reqId);
+        if (pending !== undefined) {
+          this.pendingAuths.delete(frame.reqId);
+          clearTimeout(pending.timer);
+          pending.resolve(frame.info);
+        }
+        this.upsertInfo(frame.info);
+        return;
+      }
       case 'subscribed': {
         this.upsertInfo(frame.info);
+        return;
+      }
+      case 'queue_edited': {
+        const pending = this.pendingQueueEdits.get(frame.reqId);
+        if (pending !== undefined) {
+          this.pendingQueueEdits.delete(frame.reqId);
+          clearTimeout(pending.timer);
+          pending.resolve();
+        }
         return;
       }
       case 'info': {
@@ -553,10 +695,31 @@ export class AgentThreadClient {
             pendingResume.reject(new ThreadResumeError(frame.code, frame.message));
             return;
           }
-          if (frame.reqId.startsWith('prompt-')) {
-            // A rejected prompt (thread archived/not ready, or the queue is
-            // full) never reaches the transcript — the composer already
-            // cleared, so without feedback the user's message just vanishes.
+          const pendingRetry = this.pendingRetries.get(frame.reqId);
+          if (pendingRetry !== undefined) {
+            this.pendingRetries.delete(frame.reqId);
+            clearTimeout(pendingRetry.timer);
+            pendingRetry.reject(new Error(frame.message));
+            return;
+          }
+          const pendingAuth = this.pendingAuths.get(frame.reqId);
+          if (pendingAuth !== undefined) {
+            this.pendingAuths.delete(frame.reqId);
+            clearTimeout(pendingAuth.timer);
+            pendingAuth.reject(new Error(frame.message));
+            return;
+          }
+          const pendingQueueEdit = this.pendingQueueEdits.get(frame.reqId);
+          if (pendingQueueEdit !== undefined) {
+            this.pendingQueueEdits.delete(frame.reqId);
+            clearTimeout(pendingQueueEdit.timer);
+            pendingQueueEdit.reject(new Error(frame.message));
+            return;
+          }
+          if (frame.reqId.startsWith('prompt-') || frame.reqId.startsWith('steer-')) {
+            // A rejected prompt or steer (thread archived/not ready, or the
+            // queue is full) never reaches the transcript — the composer
+            // already cleared, so without feedback the message just vanishes.
             toast.error(t`Message not sent: ${frame.message}`);
             return;
           }

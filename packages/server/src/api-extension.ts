@@ -9139,7 +9139,7 @@ export function createApiExtension(
     featured: z.boolean(),
     harness: z
       .object({
-        cli: z.enum(['claude', 'codex', 'cursor', 'opencode', 'pi']),
+        cli: z.enum(['claude', 'codex', 'cursor', 'gemini', 'opencode', 'pi']),
         availability: z.enum(['present', 'not-found', 'unknown']),
       })
       .optional(),

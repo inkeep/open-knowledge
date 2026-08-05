@@ -46,6 +46,43 @@ export type ThreadStatus =
 /** Runtimes OK can download on demand to launch an agent (see `managed-runtime.ts`). */
 export type ManagedRuntimeKind = 'node' | 'uv';
 
+/**
+ * One auth method the agent advertised at `initialize`, trimmed to what the
+ * client renders — and to the `id` that `authenticate` targets. Mirrors the
+ * SDK's `AuthMethod` union minus per-variant launch mechanics.
+ */
+export interface ThreadAuthMethod {
+  id: string;
+  name: string;
+  description?: string;
+  /**
+   * The SDK's `AuthMethod` discriminant, forwarded verbatim (`env_var`,
+   * `terminal`; absent means the agent drives its own sign-in). It decides
+   * whether OK can complete the sign-in over the protocol or the user has to
+   * go to their own terminal/environment first. Optional on the wire: events
+   * persisted before this field existed replay without it.
+   */
+  kind?: string;
+}
+
+/**
+ * Structured detail for a failure-shaped `status` event. The server has no
+ * i18n layer, so it must not compose user-facing prose from wire payloads;
+ * it labels the failure and forwards the agent's own message instead. The
+ * app renders translatable copy from `reason`, quotes `agentMessage`, and
+ * keeps `machineDetail` behind a disclosure — never in headline copy.
+ */
+export interface ThreadFailureDetail {
+  /** Which step failed — the app maps this to translatable copy. */
+  reason: 'auth-required' | 'connect' | 'session-setup' | 'prompt';
+  /** The failing side's own human-readable message, when one exists. */
+  agentMessage?: string;
+  /** Wire-level payload (JSON-RPC `data`, stderr tail) — disclosure-only. */
+  machineDetail?: string;
+  /** Advertised auth methods (present only on `auth-required`). */
+  authMethods?: ThreadAuthMethod[];
+}
+
 /** Agent identity as the catalog + thread UI render it. */
 export interface ThreadAgentInfo {
   /** Registry manifest id (or custom-agent id). */
@@ -56,6 +93,12 @@ export interface ThreadAgentInfo {
   iconUrl?: string;
   /** 'registry' manifest or user-configured 'custom' entry. */
   source: 'registry' | 'custom';
+  /**
+   * Manifest version of the build OK launched (registry agents only). The
+   * user's own terminal may hold a different one, so the thread header names
+   * which build is answering.
+   */
+  version?: string;
 }
 
 /**
@@ -67,6 +110,25 @@ export interface ThreadAgentInfo {
 export interface QueuedMessage {
   /** Server-assigned id — the handle `queue_edit` / `queue_remove` target. */
   id: string;
+  content: string;
+  ts: number;
+  /**
+   * Parked: the drain skips this entry and moves to the next one, but the
+   * entry keeps its place in the queue. An open edit holds its row, so a turn
+   * that ends mid-edit dispatches the rest of the queue rather than the stale
+   * text the user is halfway through replacing.
+   */
+  held?: boolean;
+}
+
+/**
+ * A correction parked while the run it corrects is being stopped for it
+ * ("Steer now"). Not a queue entry: it rides the turn-end continuation the
+ * cancel produces, so it lands as the very next turn while the queue keeps
+ * its place behind it. Ephemeral exactly like {@link QueuedMessage} — never
+ * persisted, dropped on cancel/error/exit.
+ */
+export interface SteerMessage {
   content: string;
   ts: number;
 }
@@ -105,6 +167,13 @@ export interface ThreadInfo {
    * drops the queue on cancel, agent error/exit, and archive.
    */
   queue?: QueuedMessage[];
+  /**
+   * The correction waiting for the current run to stop (see
+   * {@link SteerMessage}). At most one — a second steer replaces it, because
+   * the latest correction is the one the user means. Live-thread-only and
+   * never persisted.
+   */
+  steer?: SteerMessage;
 }
 
 /** One entry in a thread's event log. */
@@ -129,7 +198,14 @@ export type ThreadEvent =
     }
   | { kind: 'turn_started'; ts: number }
   | { kind: 'turn_ended'; stopReason: StopReason; ts: number }
-  | { kind: 'status'; status: ThreadStatus; detail?: string; ts: number }
+  | {
+      kind: 'status';
+      status: ThreadStatus;
+      detail?: string;
+      /** Structured failure detail; `detail` stays the legacy/fallback string. */
+      failure?: ThreadFailureDetail;
+      ts: number;
+    }
   | { kind: 'title_changed'; title: string; ts: number }
   | { kind: 'agent_stderr'; line: string; ts: number }
   | {
@@ -241,6 +317,17 @@ export type ThreadClientFrame =
   | { op: 'prompt'; threadId: string; reqId: string; content: string }
   | {
       /**
+       * Stop the running turn and send this instead. The correction parks on
+       * `ThreadInfo.steer` until the turn actually ends, then dispatches ahead
+       * of anything queued. With no turn running it is a plain prompt.
+       */
+      op: 'steer';
+      threadId: string;
+      reqId: string;
+      content: string;
+    }
+  | {
+      /**
        * Replace a queued message's content in place. Targets an entry of
        * `ThreadInfo.queue` by its server-assigned id; an unknown id is a
        * silent no-op (the entry raced its own dispatch — the transcript
@@ -250,6 +337,24 @@ export type ThreadClientFrame =
       threadId: string;
       id: string;
       content: string;
+      /**
+       * When present, the server answers on it either way: `queue_edited` on
+       * success, an `error` frame (`not-ready`) when the entry already
+       * dispatched — so the client can tell the user their edit never landed.
+       * Absent, the edit is fire-and-forget.
+       */
+      reqId?: string;
+    }
+  | {
+      /**
+       * Park a queued message so the drain skips it (`held: true`), or release
+       * it back into the drain (`held: false`). Held entries keep their FIFO
+       * position. Unknown id: no-op.
+       */
+      op: 'queue_hold';
+      threadId: string;
+      id: string;
+      held: boolean;
     }
   | {
       /** Remove a queued message before it dispatches. Unknown id: no-op. */
@@ -307,6 +412,31 @@ export type ThreadClientFrame =
       prompt?: string;
     }
   | {
+      /**
+       * Start a failed thread over in place: same thread, same transcript, a
+       * fresh launch. Refused unless the thread is live, sitting in a failure
+       * status, and holds no agent session — a thread that has one has a live
+       * agent that a silent respawn would strand. Responds with `retried`, or
+       * an `error` frame carrying this `reqId`.
+       */
+      op: 'retry';
+      threadId: string;
+      reqId: string;
+    }
+  | {
+      /**
+       * Complete an advertised sign-in on a thread parked in `auth_required`:
+       * the server sends ACP's `authenticate` on the SAME connection and then
+       * re-attempts the session open, so no respawn is involved. `methodId` is
+       * one of the `authMethods` the failure notice carried. Responds with
+       * `authenticated`, or an `error` frame carrying this `reqId`.
+       */
+      op: 'authenticate';
+      threadId: string;
+      reqId: string;
+      methodId: string;
+    }
+  | {
       /** Permanently delete an ARCHIVED thread's transcript (refused live). */
       op: 'delete';
       threadId: string;
@@ -317,6 +447,8 @@ export type ThreadClientFrame =
 export type ThreadServerFrame =
   | { op: 'created'; reqId: string; info: ThreadInfo }
   | { op: 'resumed'; reqId: string; info: ThreadInfo }
+  | { op: 'retried'; reqId: string; info: ThreadInfo }
+  | { op: 'authenticated'; reqId: string; info: ThreadInfo }
   | { op: 'subscribed'; threadId: string; fromSeq: number; info: ThreadInfo }
   | { op: 'event'; threadId: string; seq: number; event: ThreadEvent }
   | {
@@ -332,6 +464,18 @@ export type ThreadServerFrame =
       threadId: string;
       fromSeq: number;
       events: ThreadEvent[];
+    }
+  | {
+      /**
+       * Positive ack for a `queue_edit` that carried a `reqId`. The edit has
+       * no state of its own on the wire — the refreshed `info` merely reflects
+       * the queue — so without a frame that means "this request applied", a
+       * client correlating on `info` settles the edit the moment ANY info for
+       * the thread arrives and can never see the refusal that follows.
+       */
+      op: 'queue_edited';
+      reqId: string;
+      threadId: string;
     }
   | { op: 'info'; info: ThreadInfo }
   | { op: 'threads'; threads: ThreadInfo[] }
@@ -363,7 +507,9 @@ const CLIENT_OPS = new Set([
   'subscribe',
   'unsubscribe',
   'prompt',
+  'steer',
   'queue_edit',
+  'queue_hold',
   'queue_remove',
   'permission_response',
   'runtime_consent_response',
@@ -373,6 +519,8 @@ const CLIENT_OPS = new Set([
   'close',
   'rename',
   'resume',
+  'retry',
+  'authenticate',
   'delete',
   'list',
 ]);
@@ -429,8 +577,17 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
     case 'prompt':
       if (!str('threadId') || !str('reqId') || typeof frame.content !== 'string') return null;
       return frame as unknown as ThreadClientFrame;
+    // Unlike `prompt`, empty content is refused: a steer cancels a running
+    // turn, and doing that for nothing is a Stop wearing the wrong name.
+    case 'steer':
+      if (!str('threadId') || !str('reqId') || !str('content')) return null;
+      return frame as unknown as ThreadClientFrame;
     case 'queue_edit':
       if (!str('threadId') || !str('id') || !str('content')) return null;
+      if (frame.reqId !== undefined && !str('reqId')) return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'queue_hold':
+      if (!str('threadId') || !str('id') || typeof frame.held !== 'boolean') return null;
       return frame as unknown as ThreadClientFrame;
     case 'queue_remove':
       if (!str('threadId') || !str('id')) return null;
@@ -468,6 +625,12 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
     case 'resume':
       if (!str('threadId') || !str('reqId')) return null;
       if (frame.prompt !== undefined && typeof frame.prompt !== 'string') return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'retry':
+      if (!str('threadId') || !str('reqId')) return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'authenticate':
+      if (!str('threadId') || !str('reqId') || !str('methodId')) return null;
       return frame as unknown as ThreadClientFrame;
     case 'unsubscribe':
     case 'cancel':

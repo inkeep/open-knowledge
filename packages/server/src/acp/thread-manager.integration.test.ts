@@ -11,6 +11,7 @@
  * close path.
  */
 
+import type { ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -59,6 +60,8 @@ function makeManager(
   contentDir: string,
   localDir: string,
   extra?: {
+    steerStallMs?: number;
+    authenticateTimeoutMs?: number;
     unwatchedTurnCancelMs?: number;
     unwatchedTurnKillMs?: number;
     isIgnoredPath?: (relPosix: string) => boolean;
@@ -82,6 +85,9 @@ function makeManager(
     isExcludedPath: () => false,
     isIgnoredPath: () => false,
     log,
+    // Hermetic by default: every launch now merges the login shell's PATH, and
+    // a test must not spawn the developer's own shell to find out what it is.
+    resolveLoginShellPath: async () => null,
     ...extra,
   });
   managers.push(manager);
@@ -93,15 +99,24 @@ function internals(manager: AcpThreadManager): {
   sweep: () => void;
   pendingPermissionCount: (threadId: string) => number;
   turnActive: (threadId: string) => boolean;
+  child: (threadId: string) => ChildProcess | null | undefined;
 } {
   const m = manager as unknown as {
     reapIdleThreads: () => void;
-    threads: Map<string, { pendingPermissions: Map<unknown, unknown>; turnActive: boolean }>;
+    threads: Map<
+      string,
+      {
+        pendingPermissions: Map<unknown, unknown>;
+        turnActive: boolean;
+        child: ChildProcess | null;
+      }
+    >;
   };
   return {
     sweep: () => m.reapIdleThreads(),
     pendingPermissionCount: (threadId) => m.threads.get(threadId)?.pendingPermissions.size ?? 0,
     turnActive: (threadId) => m.threads.get(threadId)?.turnActive ?? false,
+    child: (threadId) => m.threads.get(threadId)?.child,
   };
 }
 
@@ -972,8 +987,12 @@ const request = (method, params) =>
 const notify = (update) =>
   write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'sess-1', update } });
 let clientCaps = {};
+let cancelled = false;
 async function handlePrompt(msg) {
+  cancelled = false;
   const finish = () => write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+  const finishCancelled = () =>
+    write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'cancelled' } });
 ${promptBody}
 }
 let buffer = '';
@@ -1000,6 +1019,9 @@ process.stdin.on('data', (chunk) => {
       reply({ protocolVersion: 1, agentCapabilities: {} });
     } else if (msg.method === 'session/new') {
       reply({ sessionId: 'sess-1' });
+    } else if (msg.method === 'session/cancel') {
+      // A notification, so no reply — the prompt loop is what reads the flag.
+      cancelled = true;
     } else if (msg.method === 'session/prompt') {
       handlePrompt(msg).catch((err) => {
         notify({
@@ -1590,6 +1612,11 @@ describe('AcpThreadManager prompt queueing', () => {
       .map((e) => e.event)
       .filter((e): e is Extract<ThreadEvent, { kind: 'user_message' }> => e.kind === 'user_message')
       .map((e) => e.content);
+  const stopReasons = (events: Collected): string[] =>
+    events
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: 'turn_ended' }> => e.kind === 'turn_ended')
+      .map((e) => e.stopReason);
 
   /** Agent that echoes each prompt and holds a WAIT-marked turn open until
    *  `releasePath` exists — the deterministic gate the queue forms behind. */
@@ -1603,6 +1630,34 @@ describe('AcpThreadManager prompt queueing', () => {
   if (text.includes('WAIT')) {
     const fs = await import('node:fs');
     while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+  finish();
+`,
+    );
+  }
+
+  /**
+   * The same gate, but this agent HONORS `session/cancel` the compliant way:
+   * it stops waiting and answers the in-flight prompt with stopReason
+   * 'cancelled'. The gate agent above ignores cancel entirely — between them
+   * they cover both halves of what real adapters do.
+   */
+  function writeCancelHonoringGateAgent(localDir: string, releasePath: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'steer-agent',
+      `
+  const text = (msg.params.prompt ?? []).map((b) => b.text ?? '').join('');
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ran:' + text + ';' } });
+  if (text.includes('WAIT')) {
+    const fs = await import('node:fs');
+    while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+      if (cancelled) {
+        finishCancelled();
+        return;
+      }
       await new Promise((r) => setTimeout(r, 20));
     }
   }
@@ -1667,6 +1722,112 @@ describe('AcpThreadManager prompt queueing', () => {
     await manager.closeThread(info.threadId);
   }, 40_000);
 
+  test('a held entry sits out the drain, then dispatches the moment it is released', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+
+    manager.sendPrompt(info.threadId, 'being rewritten');
+    manager.sendPrompt(info.threadId, 'ready to go');
+    const head = (manager.getInfo(info.threadId)?.queue ?? [])[0];
+    if (head === undefined) throw new Error('queue head missing');
+    expect(manager.holdQueued(info.threadId, head.id, true)).toBe(true);
+    expect(manager.holdQueued(info.threadId, 'no-such-id', true)).toBe(false);
+
+    // Turn ends: the drain skips the held head and takes the entry behind it.
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 2,
+      20_000,
+      `two turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      20_000,
+      `back to ready; got ${manager.getInfo(info.threadId)?.status}`,
+    );
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'ready to go']);
+    const parked = manager.getInfo(info.threadId)?.queue ?? [];
+    expect(parked.map((m) => m.content)).toEqual(['being rewritten']);
+    expect(parked[0]?.held).toBe(true);
+
+    // Released while nothing is running, it has no turn-end continuation left
+    // to ride — the release itself has to dispatch it.
+    expect(manager.holdQueued(info.threadId, head.id, false)).toBe(true);
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'ready to go', 'being rewritten']);
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      20_000,
+      'ready again',
+    );
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('saving an edit on a held entry releases it and sends the new text', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'first draft');
+    const entry = (manager.getInfo(info.threadId)?.queue ?? [])[0];
+    if (entry === undefined) throw new Error('queue entry missing');
+    manager.holdQueued(info.threadId, entry.id, true);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 1,
+      20_000,
+      'the gated turn ends',
+    );
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 20_000, 'ready');
+    expect(userMessages(events)).toEqual(['WAIT at the gate']);
+    expect(manager.getInfo(info.threadId)?.queue?.length).toBe(1);
+
+    // The save IS the resubmit: the hold clears with the content, and since the
+    // turn already ended the edit dispatches on the spot.
+    expect(manager.editQueued(info.threadId, entry.id, 'sharper draft')).toBe(true);
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 2,
+      20_000,
+      `two turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'sharper draft']);
+    expect(agentText(events)).toContain('ran:sharper draft;');
+    expect(agentText(events)).not.toContain('first draft');
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    // The entry is gone, so a second save on the same id is a lost race — the
+    // socket needs the `false` to tell the user their edit never landed.
+    expect(manager.editQueued(info.threadId, entry.id, 'too late')).toBe(false);
+    expect(manager.editQueued(info.threadId, 'no-such-id', 'ignored')).toBe(false);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
   test('cancel drops the whole queue; the cap rejects the overflow prompt', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -1721,11 +1882,14 @@ describe('AcpThreadManager prompt queueing', () => {
     expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
   }, 40_000);
 
-  test('the queue is never persisted — a rehydrated thread comes back empty', async () => {
+  test('neither the queue nor a parked steer is persisted — a rehydrated thread comes back empty', async () => {
     const contentDir = tmp();
     const localDir = tmp();
     writeGateAgent(localDir, join(localDir, 'release-turn'));
-    const manager = makeManager(contentDir, localDir);
+    // Long stall window: the steer has to still be PARKED when the thread
+    // archives, or the demotion would fold it into the queue and this test
+    // would only re-cover the queue.
+    const manager = makeManager(contentDir, localDir, { steerStallMs: 60_000 });
     // init() creates the threads dir — without it the archive's meta write has
     // nowhere to land and there is nothing for manager2 to rehydrate.
     await manager.init();
@@ -1737,16 +1901,240 @@ describe('AcpThreadManager prompt queueing', () => {
     await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
     manager.sendPrompt(info.threadId, 'queued while busy');
     expect(manager.getInfo(info.threadId)?.queue?.length).toBe(1);
+    // The gate agent ignores session/cancel, so the correction stays parked.
+    manager.steerPrompt(info.threadId, 'steered while busy');
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('steered while busy');
 
     await manager.closeThread(info.threadId);
 
     // A fresh manager over the same persistence dir rehydrates the archived
-    // thread from its meta. `buildMeta` strips the queue on the way out, so it
-    // must not come back — otherwise a restart resurrects undispatchable rows.
+    // thread from its meta. `buildMeta` strips both on the way out, so neither
+    // may come back — otherwise a restart resurrects undispatchable prompts.
     const manager2 = makeManager(contentDir, localDir);
     await manager2.init();
     expect(manager2.getInfo(info.threadId)).toBeDefined();
     expect(manager2.getInfo(info.threadId)?.queue).toBeUndefined();
+    expect(manager2.getInfo(info.threadId)?.steer).toBeUndefined();
+  }, 40_000);
+
+  test('a steer stops the run, goes first, and lets the queue drain behind it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeCancelHonoringGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'steer-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'queued before the steer');
+
+    manager.steerPrompt(info.threadId, 'do this instead');
+    // Parked, not queued — and the queue keeps its place behind it.
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('do this instead');
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'queued before the steer',
+    ]);
+
+    // Three turns: the cancelled one, the correction, then the queued message.
+    // The gate is never released — the cancel is what ends turn one.
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+
+    expect(stopReasons(events)[0]).toBe('cancelled');
+    expect(userMessages(events)).toEqual([
+      'WAIT at the gate',
+      'do this instead',
+      'queued before the steer',
+    ]);
+    const text = agentText(events);
+    expect(text.indexOf('ran:do this instead;')).toBeLessThan(
+      text.indexOf('ran:queued before the steer;'),
+    );
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      10_000,
+      'ready after the drain',
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('an ignored cancel demotes the steer to the front of the queue', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    // This gate agent never reads session/cancel — the stall fallback is the
+    // only thing that can rescue the correction.
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir, { steerStallMs: 200 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'queued first');
+
+    manager.steerPrompt(info.threadId, 'could not interrupt');
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('could not interrupt');
+
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.steer === undefined,
+      5_000,
+      'steer demoted',
+    );
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'could not interrupt',
+      'queued first',
+    ]);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(userMessages(events)).toEqual([
+      'WAIT at the gate',
+      'could not interrupt',
+      'queued first',
+    ]);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  /**
+   * The same ignore-the-cancel gate, but this agent answers the release by
+   * REJECTING the in-flight `session/prompt` instead of resolving it — the
+   * other half of what real adapters do with a cancel, and the path that
+   * lands in `dispatchPrompt`'s `.catch` with a cancel already requested.
+   */
+  function writeCancelRejectingGateAgent(localDir: string, releasePath: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'rejecting-agent',
+      `
+  const text = (msg.params.prompt ?? []).map((b) => b.text ?? '').join('');
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ran:' + text + ';' } });
+  if (text.includes('WAIT')) {
+    const fs = await import('node:fs');
+    while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'prompt aborted' } });
+    return;
+  }
+  finish();
+`,
+    );
+  }
+
+  test('a stall-demoted steer still drains when the agent answers the cancel by rejecting', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeCancelRejectingGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir, { steerStallMs: 200 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'rejecting-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+
+    manager.steerPrompt(info.threadId, 'demoted correction');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.steer === undefined,
+      5_000,
+      'the steer to demote to the queue',
+    );
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'demoted correction',
+    ]);
+
+    // The rejection ends the turn on the cancel path, which used to emit
+    // 'ready' and stop — leaving the demoted correction queued forever.
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 2,
+      20_000,
+      `two turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'demoted correction']);
+    expect(agentText(events)).toContain('ran:demoted correction;');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      10_000,
+      'ready after the drain',
+    );
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Stop clears a parked steer along with the queue', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    // Long stall window: the point is what Stop does, not what the fallback does.
+    const manager = makeManager(contentDir, localDir, { steerStallMs: 60_000 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT for cancel');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'queued behind');
+    manager.steerPrompt(info.threadId, 'never mind, do this');
+    expect(manager.getInfo(info.threadId)?.steer).toBeDefined();
+
+    manager.cancel(info.threadId);
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    // The gate agent ignores cancel — release it and confirm neither the steer
+    // nor the queue comes back to life through the turn-end continuation.
+    writeFileSync(releasePath, 'go');
+    await waitUntil(() => !internals(manager).turnActive(info.threadId), 10_000, 'turn ended');
+    expect(userMessages(events)).toEqual(['WAIT for cancel']);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('a steer with no turn running is just a send', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.steerPrompt(info.threadId, 'nothing to interrupt');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 1,
+      20_000,
+      'turn ended',
+    );
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+    expect(userMessages(events)).toEqual(['nothing to interrupt']);
+    expect(stopReasons(events)).toEqual(['end_turn']);
+
+    await manager.closeThread(info.threadId);
   }, 40_000);
 });
 
@@ -1807,4 +2195,704 @@ describe.skipIf(process.platform === 'win32')('login-shell PATH fallback', () =>
     await waitUntil(() => errorEvent() !== undefined, 10_000, 'error status');
     expect(errorEvent()?.detail).toContain('was not found');
   }, 20_000);
+});
+
+/**
+ * Agent that reports the PATH it was spawned with as its first message. The
+ * top-level command (`node`) resolves from the inherited PATH, so preflight
+ * succeeds without help — what this proves is what the agent's own nested
+ * lookups (`npx pi-acp` spawning `pi`) would see.
+ */
+function writePathEchoAgentEntry(localDir: string, id: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+    } else if (msg.method === 'session/new') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'path-echo-session' } });
+      write({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 'path-echo-session',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: process.env.PATH ?? '' },
+          },
+        },
+      });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+describe.skipIf(process.platform === 'win32')('login-shell PATH on a launchable command', () => {
+  /**
+   * The `npx pi-acp` shape: the top-level command is findable, the binary the
+   * adapter goes on to spawn is not. Preflight passes, so the failure-only
+   * fallback never fired and the nested lookup ran against a PATH that had
+   * never seen the user's profile.
+   */
+  test('a launch that preflights still carries the login-shell PATH', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const shimDir = tmp();
+    writePathEchoAgentEntry(localDir, 'path-echo');
+
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => shimDir,
+    });
+    const seen: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'path-echo' } });
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') seen.push(frame.event);
+      if (frame.op === 'events') seen.push(...frame.events);
+    });
+    const reportedPath = (): string | undefined => {
+      for (const event of seen) {
+        if (event.kind !== 'session_update') continue;
+        const update = event.update as {
+          sessionUpdate?: string;
+          content?: { type?: string; text?: string };
+        };
+        if (update.sessionUpdate !== 'agent_message_chunk') continue;
+        if (update.content?.type === 'text') return update.content.text;
+      }
+      return undefined;
+    };
+    await waitUntil(() => reportedPath() !== undefined, 15_000, "the agent's PATH");
+    // Reaching 'ready' at all means preflight resolved `node` without the shim.
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+    expect(reportedPath()).toContain(shimDir);
+  }, 30_000);
+});
+
+/**
+ * Agent that fails `session/new` until `markerPath` exists — the "install the
+ * thing the error told you to install, then retry" shape, made deterministic.
+ */
+function writeMarkerGatedAgentEntry(localDir: string, id: string, markerPath: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+import { existsSync } from 'node:fs';
+const MARKER = ${JSON.stringify(markerPath)};
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+    } else if (msg.method === 'session/new') {
+      if (existsSync(MARKER)) {
+        write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'marker-session' } });
+      } else {
+        write({
+          jsonrpc: '2.0',
+          id: msg.id,
+          error: { code: -32603, message: 'harness not installed' },
+        });
+      }
+    } else if (msg.method === 'session/prompt') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+describe('AcpThreadManager retry', () => {
+  test('a failed start retries in place and succeeds once the cause is fixed', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'installed');
+    writeMarkerGatedAgentEntry(localDir, 'gated', marker);
+
+    const manager = makeManager(contentDir, localDir);
+    const seen: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gated' } });
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') seen.push(frame.event);
+      if (frame.op === 'events') seen.push(...frame.events);
+    });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      15_000,
+      'the first start to fail',
+    );
+
+    // Still broken: the retry has to report the failure it landed on rather
+    // than resolve on a thread that is right back where it started.
+    await expect(manager.retryThread(info.threadId)).rejects.toThrow(/harness not installed/);
+    expect(manager.getInfo(info.threadId)?.status).toBe('error');
+
+    writeFileSync(marker, '');
+    const retried = await manager.retryThread(info.threadId);
+    expect(retried.status).toBe('ready');
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+
+    // The retried thread is a working thread, not just a green status.
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(
+      () => seen.some((e) => e.kind === 'turn_ended'),
+      15_000,
+      'the first turn to finish',
+    );
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+  }, 60_000);
+
+  test('retrying a thread parked on sign-in replaces the agent it kept alive', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'signed-in-elsewhere');
+    writeSilentAuthAgentEntry(localDir, 'silent-auth-retry', marker);
+
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'silent-auth-retry' },
+    });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'the sign-in prompt',
+    );
+
+    // Unlike every other failure, `auth_required` keeps its process alive so a
+    // sign-in costs no respawn — which makes the retry responsible for killing
+    // it. A leaked agent here is a real orphan, not a status artifact.
+    const original = internals(manager).child(info.threadId);
+    expect(original?.pid).toBeGreaterThan(0);
+
+    writeFileSync(marker, '');
+    const retried = await manager.retryThread(info.threadId);
+    expect(retried.status).toBe('ready');
+    expect(internals(manager).child(info.threadId)).not.toBe(original);
+    await waitUntil(
+      () => original?.exitCode !== null || original?.signalCode !== null,
+      10_000,
+      'the original agent process to die',
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('refuses a thread that started fine', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeExampleAgentEntry(localDir);
+
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    // A live session means a live agent — respawning under it would strand a
+    // process whose output the user can still see.
+    await expect(manager.retryThread(info.threadId)).rejects.toThrow(/did not fail to start/);
+  }, 40_000);
+
+  test('refuses an archived thread — that one resumes, it does not retry', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeMarkerGatedAgentEntry(localDir, 'gated-archive', join(tmp(), 'never-written'));
+
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gated-archive' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      15_000,
+      'the start to fail',
+    );
+    // A failed thread archives on close (its transcript is the only record of
+    // what went wrong), so the record is still addressable afterwards.
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    await expect(manager.retryThread(info.threadId)).rejects.toThrow(/archived/);
+  }, 40_000);
+});
+
+/**
+ * Agent that advertises an auth method at `initialize` and then rejects
+ * `session/new` with a baked-in JSON-RPC error — the wire shape that decides
+ * whether OK reads a failure as "sign in" or as a broken launch.
+ */
+function writeSessionFailingAgentEntry(
+  localDir: string,
+  id: string,
+  error: { code: number; message: string; data: unknown },
+): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const ERROR = ${JSON.stringify(error)};
+const AUTH_METHODS = [{ id: 'test_login', name: 'Test Login', description: 'Sign in via test' }];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS },
+      });
+    } else if (msg.method === 'session/new') {
+      write({ jsonrpc: '2.0', id: msg.id, error: ERROR });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+/**
+ * Agent that parks on sign-in and then lets it through: `session/new` fails
+ * with the auth code until an `authenticate` for `test_login` arrives, after
+ * which it opens a session normally. Advertises one agent-driven method and
+ * one `env_var` method so both discriminant shapes cross the wire.
+ */
+function writeAuthenticatingAgentEntry(localDir: string, id: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const AUTH_METHODS = [
+  { id: 'test_login', name: 'Test Login', description: 'Sign in via test' },
+  { id: 'test_env', name: 'Env Login', type: 'env_var', vars: [{ name: 'TEST_KEY' }] },
+];
+let signedIn = false;
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) => write({ jsonrpc: '2.0', id: msg.id, result });
+    const fail = (error) => write({ jsonrpc: '2.0', id: msg.id, error });
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS });
+    } else if (msg.method === 'authenticate') {
+      if (msg.params && msg.params.methodId === 'test_login') {
+        signedIn = true;
+        reply({});
+      } else {
+        fail({ code: -32602, message: 'unknown auth method', data: { detail: 'auth' } });
+      }
+    } else if (msg.method === 'session/new') {
+      if (signedIn) reply({ sessionId: 'sess-auth' });
+      else fail({ code: -32000, message: 'Authentication required', data: { detail: 'x' } });
+    } else if (msg.method === 'session/prompt') {
+      write({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 'sess-auth',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'pid ' + process.pid },
+          },
+        },
+      });
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+/**
+ * Agent parked on sign-in that NEVER answers `authenticate` — the abandoned
+ * browser-tab shape. `session/new` keeps failing with the auth code until
+ * `markerPath` exists, so a retry (which respawns) can still reach ready and
+ * the recovery paths around an unanswered sign-in are drivable end to end.
+ */
+function writeSilentAuthAgentEntry(localDir: string, id: string, markerPath: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+import { existsSync } from 'node:fs';
+const MARKER = ${JSON.stringify(markerPath)};
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const AUTH_METHODS = [{ id: 'test_login', name: 'Test Login' }];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS },
+      });
+    } else if (msg.method === 'authenticate') {
+      // No reply, ever: the sign-in went to a browser nobody came back from.
+    } else if (msg.method === 'session/new') {
+      if (existsSync(MARKER)) {
+        write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'silent-auth-session' } });
+      } else {
+        write({
+          jsonrpc: '2.0',
+          id: msg.id,
+          error: { code: -32000, message: 'Authentication required' },
+        });
+      }
+    } else if (msg.method === 'session/prompt') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+describe('AcpThreadManager auth classification', () => {
+  type StatusEvent = Extract<ThreadEvent, { kind: 'status' }>;
+
+  const collectStatuses = (into: StatusEvent[]) => (frame: ThreadServerFrame) => {
+    const push = (event: ThreadEvent): void => {
+      if (event.kind === 'status') into.push(event);
+    };
+    if (frame.op === 'event') push(frame.event);
+    if (frame.op === 'events') for (const event of frame.events) push(event);
+  };
+
+  const withStatus = (statuses: StatusEvent[], status: string): StatusEvent | undefined =>
+    statuses.find((e) => e.status === status);
+
+  test('an auth-required session/new failure parks on sign-in with the advertised methods', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeSessionFailingAgentEntry(localDir, 'auth-agent', {
+      code: -32000,
+      message: 'Authentication required',
+      data: { detail: 'x' },
+    });
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'auth-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    // The broadcast is batched, so the status event lands after the snapshot
+    // flips — wait for the event itself, which is what the app renders from.
+    await waitUntil(
+      () => withStatus(statuses, 'auth_required') !== undefined,
+      15_000,
+      `auth_required; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+    expect(manager.getInfo(info.threadId)?.status).toBe('auth_required');
+
+    const event = withStatus(statuses, 'auth_required');
+    expect(event?.failure?.reason).toBe('auth-required');
+    expect(event?.failure?.authMethods).toEqual([
+      { id: 'test_login', name: 'Test Login', description: 'Sign in via test' },
+    ]);
+    expect(event?.failure?.agentMessage).toBe('Authentication required');
+    expect(event?.failure?.machineDetail).toContain('"detail":"x"');
+    // The wire payload belongs in the disclosure, never in the headline the
+    // user reads first.
+    expect(event?.detail ?? '').not.toContain('"detail":"x"');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('a non-auth session/new failure is an error, not a sign-in prompt, and kills the agent', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeSessionFailingAgentEntry(localDir, 'broken-agent', {
+      code: -32603,
+      message: 'Failed to initialize session services',
+      data: { cause: 'services' },
+    });
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'broken-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(
+      () => withStatus(statuses, 'error') !== undefined,
+      15_000,
+      `error; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+    expect(manager.getInfo(info.threadId)?.status).toBe('error');
+
+    // An agent that advertises auth methods used to make every session failure
+    // look like a sign-in prompt — the classification now comes from the error
+    // code alone.
+    expect(withStatus(statuses, 'auth_required')).toBeUndefined();
+    const event = withStatus(statuses, 'error');
+    expect(event?.failure?.reason).toBe('session-setup');
+    expect(event?.failure?.agentMessage).toBe('Failed to initialize session services');
+    expect(event?.failure?.machineDetail).toContain('"cause":"services"');
+
+    // A session that never opened leaves the process nothing to do.
+    await waitUntil(
+      () => internals(manager).child(info.threadId) === null,
+      10_000,
+      'agent child torn down',
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('closing a failed thread archives it instead of erasing its evidence', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeSessionFailingAgentEntry(localDir, 'broken-agent', {
+      code: -32603,
+      message: 'Failed to initialize session services',
+      data: { cause: 'services' },
+    });
+    const manager = makeManager(contentDir, localDir);
+    // init() creates the threads dir the archive's meta write lands in.
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'broken-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'error', 15_000, 'error');
+
+    // The thread never took a user message (the composer is disabled on a
+    // failed start), so the empty-thread discard used to delete the only
+    // record of what went wrong.
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)).toBeDefined();
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+  }, 30_000);
+
+  test('signing in re-opens the session on the same agent process', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeAuthenticatingAgentEntry(localDir, 'signin-agent');
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'signin-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(
+      () => withStatus(statuses, 'auth_required') !== undefined,
+      15_000,
+      `auth_required; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+    // The SDK's discriminant rides the wire: the client has to tell a sign-in
+    // it can drive from one that needs the user's own environment.
+    expect(withStatus(statuses, 'auth_required')?.failure?.authMethods).toEqual([
+      { id: 'test_login', name: 'Test Login', description: 'Sign in via test' },
+      { id: 'test_env', name: 'Env Login', kind: 'env_var' },
+    ]);
+
+    // The child's identity IS the assertion: a thread parked on sign-in keeps
+    // its agent alive precisely so authenticating costs no respawn.
+    const child = internals(manager).child(info.threadId);
+    expect(child).toBeDefined();
+
+    const signedIn = await manager.authenticateThread(info.threadId, 'test_login');
+    expect(signedIn.status).toBe('ready');
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+    expect(internals(manager).child(info.threadId)).toBe(child);
+
+    // …and the session that opened behind the sign-in takes a real turn.
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    await waitUntil(() => !internals(manager).turnActive(info.threadId), 10_000, 'turn ended');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('a rejected sign-in parks the thread back on sign-in with a fresh notice', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeAuthenticatingAgentEntry(localDir, 'signin-agent');
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'signin-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    const authNotices = (): StatusEvent[] => statuses.filter((e) => e.status === 'auth_required');
+    await waitUntil(() => authNotices().length > 0, 15_000, 'auth_required');
+
+    await expect(manager.authenticateThread(info.threadId, 'not_a_method')).rejects.toThrow(
+      /unknown auth method/,
+    );
+    expect(manager.getInfo(info.threadId)?.status).toBe('auth_required');
+    // A refused sign-in is an answer the user can act on again, so it leaves
+    // its own notice — with the methods still offered.
+    await waitUntil(() => authNotices().length > 1, 10_000, 'a second sign-in notice');
+    const latest = authNotices().at(-1);
+    expect(latest?.failure?.reason).toBe('auth-required');
+    expect(latest?.failure?.agentMessage).toBe('unknown auth method');
+    expect(latest?.failure?.authMethods?.map((m) => m.id)).toEqual(['test_login', 'test_env']);
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('signing in a thread that never asked for one is refused', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeAuthenticatingAgentEntry(localDir, 'signin-agent');
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'signin-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+    await manager.authenticateThread(info.threadId, 'test_login');
+
+    await expect(manager.authenticateThread(info.threadId, 'test_login')).rejects.toThrow(
+      /not waiting for a sign-in/,
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('an unanswered sign-in gives up on its own and leaves the thread usable', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'signed-in-elsewhere');
+    writeSilentAuthAgentEntry(localDir, 'silent-auth', marker);
+    const manager = makeManager(contentDir, localDir, { authenticateTimeoutMs: 200 });
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'silent-auth' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+
+    // ACP puts no ceiling on `authenticate`; without one of our own an
+    // abandoned browser flow held the thread's latch forever.
+    await expect(manager.authenticateThread(info.threadId, 'test_login')).rejects.toThrow(
+      /didn't complete in time/,
+    );
+    expect(manager.getInfo(info.threadId)?.status).toBe('auth_required');
+    const latest = statuses.filter((e) => e.status === 'auth_required').at(-1);
+    expect(latest?.failure?.authMethods?.map((m) => m.id)).toEqual(['test_login']);
+
+    // …and the thread still takes a retry, which is the way out of it.
+    writeFileSync(marker, '');
+    const retried = await manager.retryThread(info.threadId);
+    expect(retried.status).toBe('ready');
+
+    const events: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      if (frame.op === 'events') events.push(...frame.events);
+    });
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(() => events.some((e) => e.kind === 'turn_ended'), 15_000, 'a completed turn');
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('a retry breaks an in-flight sign-in and owns the thread afterwards', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'signed-in-elsewhere');
+    writeSilentAuthAgentEntry(localDir, 'silent-auth', marker);
+    // No authenticate timeout worth waiting for — the retry is what ends it.
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'silent-auth' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+
+    const authNoticesBeforeRetry = statuses.filter((e) => e.status === 'auth_required').length;
+    // Captured as a settled value, not left dangling: the retry rejects it and
+    // an unobserved rejection would fail the run.
+    const signIn = manager
+      .authenticateThread(info.threadId, 'test_login')
+      .then(() => null)
+      .catch((err: unknown) => err);
+    expect(manager.getInfo(info.threadId)?.status).toBe('installing');
+
+    writeFileSync(marker, '');
+    const retried = await manager.retryThread(info.threadId);
+    expect(retried.status).toBe('ready');
+
+    // The sign-in stands down without a word — its own failure notice would
+    // otherwise overwrite the ready state the retry just established.
+    expect(String(await signIn)).toMatch(/restarted/);
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+    await waitUntil(
+      () => statuses.at(-1)?.status === 'ready',
+      10_000,
+      `ready to be the last status event; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+    expect(statuses.filter((e) => e.status === 'auth_required').length).toBe(
+      authNoticesBeforeRetry,
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
 });

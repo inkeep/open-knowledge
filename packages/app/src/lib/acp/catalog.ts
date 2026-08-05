@@ -21,7 +21,7 @@ export interface CatalogAgent {
   supported: boolean;
   featured: boolean;
   harness?: {
-    cli: 'claude' | 'codex' | 'cursor' | 'opencode' | 'pi';
+    cli: 'claude' | 'codex' | 'cursor' | 'gemini' | 'opencode' | 'pi';
     availability: 'present' | 'not-found' | 'unknown';
   };
 }

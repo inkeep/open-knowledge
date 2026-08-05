@@ -220,9 +220,21 @@ export function rewriteLaunchToManagedRuntime(
  * already resolved keeps resolving to the same binary.
  */
 export function withLoginShellPath(launch: ResolvedLaunch, loginShellPath: string): ResolvedLaunch {
-  const env = { ...launch.env };
-  env[pathKey(env)] = mergeLoginShellPath(envPath(env), loginShellPath, delimiter);
-  return { ...launch, env };
+  return { ...launch, env: withLoginShellPathEnv(launch.env, loginShellPath) };
+}
+
+/**
+ * {@link withLoginShellPath} for a bare spawn env — the ACP terminal surface,
+ * which builds its env from `mergedEnv` rather than from a `ResolvedLaunch`.
+ * Same append-only merge, same case-preserving PATH key.
+ */
+export function withLoginShellPathEnv(
+  env: Record<string, string>,
+  loginShellPath: string,
+): Record<string, string> {
+  const next = { ...env };
+  next[pathKey(next)] = mergeLoginShellPath(envPath(next), loginShellPath, delimiter);
+  return next;
 }
 
 /** The env's PATH key (Windows spells it `Path`), for case-preserving overwrite. */

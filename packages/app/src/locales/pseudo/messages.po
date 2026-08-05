@@ -318,6 +318,12 @@ msgstr ""
 msgid "{0} total"
 msgstr ""
 
+#. placeholder {0}: info.agent.name
+#. placeholder {1}: info.agent.version
+#: src/components/acp/ThreadView.tsx
+msgid "{0} version {1}"
+msgstr ""
+
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
 msgid "{0} was not moved."
@@ -375,6 +381,14 @@ msgstr ""
 
 #: src/components/EditorTabs.tsx
 msgid "{accessibleLabel} (conflict)"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start a conversation."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -3293,6 +3307,12 @@ msgstr ""
 msgid "Couldn't share skills: internal error. Please restart the app."
 msgstr ""
 
+#. placeholder {0}: info.agent.name
+#. placeholder {1}: errorText(err)
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't start {0}: {1}"
+msgstr ""
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr ""
@@ -5369,6 +5389,10 @@ msgstr ""
 msgid "Heads up: editing any rule or option here creates a <0>.markdownlint.json</0> file in your project to save your changes."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Held"
+msgstr ""
+
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Hello, world!"
 msgstr ""
@@ -5413,6 +5437,10 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "Hide Bottom Dock"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Hide details"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -8432,7 +8460,11 @@ msgid "Queue message"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
-msgid "Queued"
+msgid "Queued — sends when this run finishes"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Queues behind the running turn"
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -9089,6 +9121,7 @@ msgstr ""
 msgid "Retrieving…"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
 #: src/components/ConnectingBanner.tsx
@@ -9104,6 +9137,10 @@ msgstr ""
 
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Retrying…"
 msgstr ""
 
 #: src/components/settings/settings-fields.ts
@@ -9575,6 +9612,10 @@ msgstr ""
 msgid "Send to chat"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send when the agent is free"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send your report by email"
 msgstr ""
@@ -9810,6 +9851,10 @@ msgstr ""
 msgid "Show Bottom Dock"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show details"
+msgstr ""
+
 #: src/components/MermaidFileViewer.tsx
 msgid "Show diagram"
 msgstr ""
@@ -9963,6 +10008,20 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Sign in to {agentName} first"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Sign in to {agentName} to continue."
+msgstr ""
+
+#. placeholder {0}: method.name
+#: src/components/acp/ThreadView.tsx
+msgid "Sign in with {0}"
+msgstr ""
+
+#. placeholder {0}: errorText(err)
+#: src/components/acp/ThreadView.tsx
+msgid "Sign-in failed: {0}"
 msgstr ""
 
 #: src/components/AuthModal.tsx
@@ -10252,6 +10311,14 @@ msgstr ""
 msgid "Stays on this computer. Not committed to git."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Steer now"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Steering — waiting for the current run to stop…"
+msgstr ""
+
 #: src/components/MountStalledAffordance.tsx
 msgid "Still loading"
 msgstr ""
@@ -10291,6 +10358,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Stopping"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Stops the current run and sends this instead"
 msgstr ""
 
 #: src/components/settings/ProjectTemplatesSection.tsx
@@ -10729,6 +10800,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "That message already went out — your edit wasn't applied."
 msgstr ""
 
 #. placeholder {0}: item.displayName
@@ -12297,6 +12372,10 @@ msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy of branch <0>{branch}</0> is behind. Pull the latest changes, then open the link again."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Your message didn't reach {agentName}."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx

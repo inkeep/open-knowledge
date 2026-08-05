@@ -20,6 +20,7 @@ import type {
   PermissionOption,
   SessionUpdate,
   ThreadEvent,
+  ThreadFailureDetail,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 
 interface RenderedMessage {
@@ -67,8 +68,15 @@ export interface RenderedPermission {
 
 interface RenderedNotice {
   kind: 'notice';
+  /** The server's legacy headline string — empty for structured failures. */
   text: string;
   tone: 'info' | 'error';
+  /**
+   * Structured failure the view renders as translated copy plus a disclosure.
+   * Null for notices that carry only a server-composed string (older
+   * transcripts, and any failure site that hasn't been classified yet).
+   */
+  failure: ThreadFailureDetail | null;
 }
 
 /**
@@ -266,10 +274,17 @@ export class ThreadRenderModelBuilder {
             }
           }
         }
-        if (event.status === 'error' && event.detail) {
-          this.items.push({ kind: 'notice', text: event.detail, tone: 'error' });
-        } else if (event.status === 'auth_required' && event.detail) {
-          this.items.push({ kind: 'notice', text: event.detail, tone: 'info' });
+        if (event.status === 'error' || event.status === 'auth_required') {
+          // A structured failure alone is enough: the view composes its own
+          // copy from `reason`, so the server no longer has to ship a string.
+          if (event.failure !== undefined || (event.detail ?? '') !== '') {
+            this.items.push({
+              kind: 'notice',
+              text: event.detail ?? '',
+              tone: event.status === 'error' ? 'error' : 'info',
+              failure: event.failure ?? null,
+            });
+          }
         }
         break;
       case 'permission_request': {

@@ -11,6 +11,7 @@
 import type {
   QueuedMessage,
   SessionConfigOption,
+  ThreadFailureDetail,
   ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
@@ -21,6 +22,7 @@ import {
   ChevronRight,
   Download,
   FileText,
+  ListPlus,
   Loader2,
   MousePointer2,
   Search,
@@ -31,6 +33,7 @@ import {
   Trash2,
   Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   Fragment,
@@ -144,10 +147,29 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
   think: Sparkles,
 };
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** Display name for an agent — drops a trailing "Agent" so it reads as the brand
  *  ("Claude Agent" → "Claude"). */
 function agentDisplayName(name: string): string {
   return name.replace(/\s+Agent$/i, '');
+}
+
+/**
+ * Failures a fresh launch can plausibly clear — mirrors the server's
+ * `retryThread` guards (a thread that never opened a session). Everything
+ * else, including a prompt failure on a live session, gets no Retry.
+ */
+const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = new Set([
+  'connect',
+  'session-setup',
+  'auth-required',
+]);
+
+function isRetryableFailure(failure: ThreadFailureDetail): boolean {
+  return RETRYABLE_FAILURE_REASONS.has(failure.reason);
 }
 
 export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
@@ -191,6 +213,10 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   const [resumePending, setResumePending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const canPrompt = archived ? !resumePending : status === 'ready' && !turnActive;
+  // A live thread sitting in a failure status never opened a session, so the
+  // launch can simply be run again — see the server's `retryThread` guards.
+  const canRetry = !archived && (status === 'error' || status === 'auth_required');
+  const [retryPending, setRetryPending] = useState(false);
   // Mid-turn sends don't reject anymore — the server queues them behind the
   // active turn and drains FIFO (`ThreadInfo.queue`).
   const canQueue = !archived && turnActive;
@@ -262,13 +288,46 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   }, [cancelPending, turnActive]);
 
   const requestCancel = (): void => {
+    // Stop clears the queue and any parked steer server-side, and has to: a
+    // compliant agent answers the cancel through the same continuation that
+    // dispatches them, so anything retained would fire at the agent the user
+    // just stopped. Folding the words back into the composer is the rescue —
+    // they survive, nothing sends. The steer leads, because that is the order
+    // it was going to run in.
+    const rescued = [
+      ...(info.steer !== undefined ? [info.steer.content] : []),
+      ...(info.queue ?? []).map((message) => message.content),
+    ];
+    if (rescued.length > 0) {
+      const text = rescued.join('\n\n');
+      setDraft((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')}\n\n${text}`));
+    }
     client.cancel(info.threadId);
     setCancelPending(true);
+  };
+
+  /**
+   * Stop the running turn and send the draft as the next one. Always an
+   * explicit click — Enter stays the queue-behind-the-turn default, because
+   * interrupting a run is not something a habit keystroke should do.
+   */
+  const requestSteer = (): void => {
+    const text = draft.trim();
+    if (text === '') return;
+    client.steer(info.threadId, text);
+    setDraft('');
+    scrollApiRef.current?.scrollToEnd();
   };
 
   useEffect(() => {
     if (lastSeq !== null && initialSeqRef.current === null) initialSeqRef.current = lastSeq;
   }, [lastSeq]);
+
+  // A retry that succeeded leaves the failure status behind; the button it was
+  // spinning on is gone with it.
+  useEffect(() => {
+    if (!canRetry) setRetryPending(false);
+  }, [canRetry]);
 
   // Follow the agent's file: navigate the editor to the doc the agent is
   // working on, as it works. Live events only (see initialSeqRef above), and
@@ -433,6 +492,23 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
     setCommentsExpanded(false);
   };
 
+  const retryThread = (): void => {
+    setRetryPending(true);
+    void client
+      .retryThread(info.threadId)
+      .catch((err: unknown) => {
+        toast.error(t`Couldn't start ${info.agent.name}: ${errorText(err)}`);
+      })
+      .finally(() => setRetryPending(false));
+  };
+
+  // Sign-in runs on the agent's live connection — on success the server's
+  // `info` frame flips the thread to ready and the notice's action row goes
+  // with it, so there is nothing to navigate to here.
+  const authenticateThread = async (methodId: string): Promise<void> => {
+    await client.authenticateThread(info.threadId, methodId);
+  };
+
   const startFreshThread = (): void => {
     const prompt = failedPrompt ?? (draft.trim() === '' ? undefined : draft.trim());
     setResumeError(null);
@@ -454,6 +530,21 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         setFailedPrompt(prompt ?? null);
       });
   };
+
+  // Retry belongs to the failure the user is looking at — the LAST startup
+  // failure, once. An allowlist rather than "not a prompt failure": a reason
+  // added later is only retryable once someone decides it is, and a prompt
+  // failure never is (that session is live, and re-sending IS the retry).
+  let retryNoticeIndex = -1;
+  if (canRetry && model !== null) {
+    for (let index = model.items.length - 1; index >= 0; index -= 1) {
+      const item = model.items[index];
+      if (item?.kind === 'notice' && item.failure !== null && isRetryableFailure(item.failure)) {
+        retryNoticeIndex = index;
+        break;
+      }
+    }
+  }
 
   return (
     <div
@@ -505,6 +596,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
                       <ThreadItem
                         item={item}
                         threadId={info.threadId}
+                        agent={info.agent}
                         // Thread liveness, not turn liveness: the server keeps an
                         // unanswered request answerable until its timeout even after
                         // the prompt settles (and some agents ask outside a turn) —
@@ -512,6 +604,13 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
                         actionable={!archived && status !== 'exited' && status !== 'error'}
                         terminals={model.terminals}
                         permissionsByToolCall={model.permissionsByToolCall}
+                        showRetry={index === retryNoticeIndex}
+                        retryPending={retryPending}
+                        onRetry={retryThread}
+                        // Sign-in belongs to the same notice Retry does, and
+                        // only while the thread is still waiting on it.
+                        showAuth={index === retryNoticeIndex && status === 'auth_required'}
+                        onAuthenticate={authenticateThread}
                       />
                     </MessageScrollerItem>
                   );
@@ -549,6 +648,16 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
           </MessageScroller>
         </MessageScrollerProvider>
       )}
+      {info.steer !== undefined && !archived ? (
+        <div
+          className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+          data-testid="agent-thread-steer-pending"
+        >
+          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
+          <span className="min-w-0 flex-1 truncate text-foreground/80">{info.steer.content}</span>
+        </div>
+      ) : null}
       {cancelStalled && turnActive ? (
         <div
           className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
@@ -601,6 +710,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         turnActive={turnActive}
         cancelPending={cancelPending}
         onCancel={requestCancel}
+        onSteer={requestSteer}
         status={status}
         archived={archived}
         resumePending={resumePending}
@@ -643,6 +753,18 @@ function ThreadHeader({
         <Badge variant="gray" className="shrink-0 px-1.5 py-0 text-[10px]">
           {t`Archived`}
         </Badge>
+      ) : null}
+      {info.agent.version !== undefined && info.agent.version !== '' ? (
+        // Which build answered. OK launches the registry-pinned version, which
+        // is routinely not the one the user's own terminal runs — without this
+        // a version-specific bug has no visible attribution.
+        <span
+          className="shrink-0 text-[10px] text-muted-foreground tabular-nums"
+          title={t`${info.agent.name} version ${info.agent.version}`}
+          data-testid="agent-thread-agent-version"
+        >
+          {info.agent.version}
+        </span>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <Tooltip>
@@ -1142,16 +1264,30 @@ function ScrollToEndBridge({
 function ThreadItem({
   item,
   threadId,
+  agent,
   actionable,
   terminals,
   permissionsByToolCall,
+  showRetry,
+  retryPending,
+  onRetry,
+  showAuth,
+  onAuthenticate,
 }: {
   item: RenderedItem;
   threadId: string;
+  agent: ThreadInfo['agent'];
   /** The thread can still take answers (live agent, not archived/dead). */
   actionable: boolean;
   terminals: Record<string, RenderedTerminal>;
   permissionsByToolCall: Record<string, RenderedPermission>;
+  /** This notice is the one that offers Retry (at most one per transcript). */
+  showRetry: boolean;
+  retryPending: boolean;
+  onRetry: () => void;
+  /** …and the one that offers sign-in, while the thread still needs it. */
+  showAuth: boolean;
+  onAuthenticate: (methodId: string) => Promise<void>;
 }): ReactNode {
   switch (item.kind) {
     case 'message':
@@ -1175,19 +1311,184 @@ function ThreadItem({
       return <RuntimeConsentPrompt item={item} threadId={threadId} />;
     case 'notice':
       return (
-        <div
-          className={cn(
-            'rounded-md border px-2 py-1.5 text-xs',
-            item.tone === 'error'
-              ? 'border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400'
-              : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
-          )}
-          data-testid="agent-thread-notice"
-        >
-          {item.text}
-        </div>
+        <ThreadNotice
+          item={item}
+          agentName={agentDisplayName(agent.name)}
+          showRetry={showRetry}
+          retryPending={retryPending}
+          onRetry={onRetry}
+          showAuth={showAuth}
+          onAuthenticate={onAuthenticate}
+        />
       );
   }
+}
+
+/**
+ * A failure the user has to read: what broke, in OK's own words, with the
+ * agent's message quoted underneath and the wire payload behind a disclosure
+ * so a JSON blob never becomes the headline.
+ */
+function ThreadNotice({
+  item,
+  agentName,
+  showRetry,
+  retryPending,
+  onRetry,
+  showAuth,
+  onAuthenticate,
+}: {
+  item: Extract<RenderedItem, { kind: 'notice' }>;
+  agentName: string;
+  showRetry: boolean;
+  retryPending: boolean;
+  onRetry: () => void;
+  showAuth: boolean;
+  onAuthenticate: (methodId: string) => Promise<void>;
+}): ReactNode {
+  const { t } = useLingui();
+  const [showDetail, setShowDetail] = useState(false);
+  const [authPending, setAuthPending] = useState<string | null>(null);
+  const failure = item.failure;
+  const authMethods =
+    showAuth && failure !== null && failure.reason === 'auth-required'
+      ? (failure.authMethods ?? [])
+      : [];
+  // `env_var` / `terminal` methods are completed in the user's own shell or
+  // environment — OK can name them, but the protocol gives it no way to carry
+  // out the sign-in, so they get no button. Retry below is how the user says
+  // they did it. Everything else (including the default agent-driven kind) is
+  // an `authenticate` call OK can make itself.
+  const signInMethods = authMethods.filter((m) => m.kind !== 'terminal' && m.kind !== 'env_var');
+  const manualMethods = authMethods.filter((m) => m.kind === 'terminal' || m.kind === 'env_var');
+  const signIn = (methodId: string): void => {
+    setAuthPending(methodId);
+    void onAuthenticate(methodId)
+      .catch((err: unknown) => {
+        toast.error(t`Sign-in failed: ${errorText(err)}`);
+      })
+      .finally(() => setAuthPending(null));
+  };
+  // Exhaustive by construction: a new `reason` on the wire fails the build
+  // here instead of silently rendering the prompt-failure copy.
+  const failureHeadline = (reason: ThreadFailureDetail['reason']): string => {
+    switch (reason) {
+      case 'auth-required':
+        return t`Sign in to ${agentName} to continue.`;
+      case 'connect':
+        return t`${agentName} couldn't start.`;
+      case 'session-setup':
+        return t`${agentName} couldn't start a conversation.`;
+      case 'prompt':
+        return t`Your message didn't reach ${agentName}.`;
+      default: {
+        const exhaustive: never = reason;
+        return String(exhaustive);
+      }
+    }
+  };
+  const headline = failure === null ? null : failureHeadline(failure.reason);
+  return (
+    <div
+      className={cn(
+        'rounded-md border px-2 py-1.5 text-xs',
+        item.tone === 'error'
+          ? 'border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400'
+          : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
+      )}
+      data-testid="agent-thread-notice"
+    >
+      {failure === null ? (
+        item.text
+      ) : (
+        <>
+          <p>{headline}</p>
+          {failure.agentMessage !== undefined && failure.agentMessage !== '' ? (
+            <p className="mt-1 opacity-80">{failure.agentMessage}</p>
+          ) : null}
+          {failure.machineDetail !== undefined && failure.machineDetail !== '' ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-auto p-0 text-[11px] underline hover:bg-transparent"
+                onClick={() => setShowDetail((open) => !open)}
+                aria-expanded={showDetail}
+                data-testid="agent-thread-notice-details-toggle"
+              >
+                {showDetail ? t`Hide details` : t`Show details`}
+              </Button>
+              {showDetail ? (
+                <pre
+                  className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] opacity-70"
+                  data-testid="agent-thread-notice-details"
+                >
+                  {failure.machineDetail}
+                </pre>
+              ) : null}
+            </>
+          ) : null}
+          {manualMethods.length > 0 ? (
+            <ul className="mt-1.5 flex flex-col gap-0.5 opacity-80">
+              {manualMethods.map((method) => (
+                <li key={method.id} data-testid="agent-thread-auth-manual">
+                  {method.description !== undefined && method.description !== ''
+                    ? `${method.name} — ${method.description}`
+                    : method.name}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {signInMethods.length > 0 ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {signInMethods.map((method) => (
+                <Button
+                  key={method.id}
+                  type="button"
+                  size="sm"
+                  className="h-6 text-xs"
+                  disabled={authPending !== null}
+                  onClick={() => signIn(method.id)}
+                  data-testid="agent-thread-auth-method"
+                  data-auth-method-id={method.id}
+                >
+                  {authPending === method.id ? (
+                    <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  ) : null}
+                  {/* One method is the whole choice, so the button says what it
+                      does; several are a menu, and the names are the choice. */}
+                  {signInMethods.length === 1 ? t`Sign in with ${method.name}` : method.name}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {showRetry ? (
+            <div className="mt-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 text-xs"
+                disabled={retryPending}
+                onClick={onRetry}
+                data-testid="agent-thread-retry"
+              >
+                {retryPending ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                    {t`Retrying…`}
+                  </>
+                ) : (
+                  t`Retry`
+                )}
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
 }
 
 function MessageBubble({ item }: { item: Extract<RenderedItem, { kind: 'message' }> }): ReactNode {
@@ -2118,6 +2419,7 @@ function ThreadComposer({
   turnActive,
   cancelPending,
   onCancel,
+  onSteer,
   status,
   archived,
   resumePending,
@@ -2141,6 +2443,8 @@ function ThreadComposer({
   /** Stop was pressed and the turn hasn't ended yet. */
   cancelPending: boolean;
   onCancel: () => void;
+  /** Stop the running turn and send the draft as the next one. */
+  onSteer: () => void;
   status: ThreadInfo['status'];
   archived: boolean;
   /** A resume op is in flight (archived thread, message queued on it). */
@@ -2194,6 +2498,27 @@ function ThreadComposer({
   // state read this, or the two disagree. An attached batch counts as content:
   // the comments are the ask, so a send with nothing typed is a real send.
   const hasSendableContent = draft.trim() !== '' || hasQueuedComments;
+
+  // Mid-turn the same control queues rather than sends, so it stops wearing the
+  // send arrow — an aria-label the sighted user never reads was the only thing
+  // distinguishing the two outcomes.
+  const sendButton = (
+    <Button
+      type="button"
+      size="icon-sm"
+      className="rounded-lg"
+      disabled={!(canPrompt || canQueue) || !hasSendableContent}
+      onClick={onSubmit}
+      aria-label={canQueue ? t`Queue message` : t`Send`}
+      data-testid="agent-thread-send"
+    >
+      {canQueue ? (
+        <ListPlus className="size-4" aria-hidden="true" />
+      ) : (
+        <ArrowUp className="size-4" aria-hidden="true" />
+      )}
+    </Button>
+  );
 
   return (
     <div className="p-2">
@@ -2273,7 +2598,14 @@ function ThreadComposer({
           disabled={
             archived
               ? resumePending
-              : status !== 'ready' && status !== 'running' && status !== 'awaiting_permission'
+              : // Typable in every live state, including the ones that are only
+                // waiting on something: signing in takes a detour through a
+                // browser (and flips the status to `installing` while it does),
+                // a failed start is a Retry away from running, and a draft
+                // written across any of that must survive. Only a thread whose
+                // agent is gone for good has nothing left to say. Sending is
+                // still gated by canPrompt / canQueue.
+                status === 'exited'
           }
           // Borderless + transparent so the wrapper alone renders the field chrome
           // and focus ring (no doubled border/ring). Full width — the action bar
@@ -2322,18 +2654,39 @@ function ThreadComposer({
                     already known in the draft-present state where it's hidden. */}
                 <TooltipContent side="top">{t`Stop (Esc)`}</TooltipContent>
               </Tooltip>
+            ) : canQueue ? (
+              <>
+                {/* Steering sends the typed words, so it appears only when there
+                    are some — an attached comment batch has its own delivery
+                    rules (it stays queued until a turn actually runs it) and
+                    must not be interrupted onto a run being cancelled. */}
+                {draft.trim() !== '' ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={onSteer}
+                        aria-label={t`Steer now`}
+                        data-testid="agent-thread-steer"
+                      >
+                        <Zap className="size-4" aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{t`Stops the current run and sends this instead`}</TooltipContent>
+                  </Tooltip>
+                ) : null}
+                <Tooltip>
+                  <TooltipTrigger asChild>{sendButton}</TooltipTrigger>
+                  {/* The icon change alone says "not a plain send"; this says what
+                      actually happens to the message. */}
+                  <TooltipContent side="top">{t`Queues behind the running turn`}</TooltipContent>
+                </Tooltip>
+              </>
             ) : (
-              <Button
-                type="button"
-                size="icon-sm"
-                className="rounded-lg"
-                disabled={!(canPrompt || canQueue) || !hasSendableContent}
-                onClick={onSubmit}
-                aria-label={canQueue ? t`Queue message` : t`Send`}
-                data-testid="agent-thread-send"
-              >
-                <ArrowUp className="size-4" aria-hidden="true" />
-              </Button>
+              sendButton
             )}
           </div>
         </div>
@@ -2356,7 +2709,7 @@ function QueuedMessageList({
   return (
     <div className="mb-1.5 flex flex-col gap-1" data-testid="agent-thread-queue">
       <span className="px-1 font-medium text-[10px] text-muted-foreground/70 uppercase tracking-wide">
-        {t`Queued`}
+        {t`Queued — sends when this run finishes`}
       </span>
       {queue.map((message) => (
         <QueuedMessageRow key={message.id} threadId={threadId} message={message} />
@@ -2377,9 +2730,21 @@ function QueuedMessageRow({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
 
+  const held = message.held === true;
+
+  const release = (): void => client.holdQueued(threadId, message.id, false);
+
   const startEdit = (): void => {
+    // Hold before the editor opens: a turn ending mid-edit would otherwise
+    // dispatch the very text being replaced, and the edit would die with the
+    // row. Every exit from editing releases the hold or saves over it.
+    client.holdQueued(threadId, message.id, true);
     setValue(message.content);
     setEditing(true);
+  };
+  const cancelEdit = (): void => {
+    setEditing(false);
+    release();
   };
   const save = (): void => {
     const trimmed = value.trim();
@@ -2387,13 +2752,18 @@ function QueuedMessageRow({
       // Empty isn't a valid queued prompt. Treat Enter-on-empty as cancel —
       // exit editing and keep the original — rather than trapping the user in
       // edit mode with a silent no-op. Removing is its own explicit action.
-      setEditing(false);
+      cancelEdit();
       return;
     }
-    // The server confirms via an `info` frame; if the entry dispatched while
-    // the edit was open, the row unmounts and the transcript shows what ran.
-    if (trimmed !== message.content) client.editQueued(threadId, message.id, trimmed);
     setEditing(false);
+    if (trimmed === message.content) {
+      release();
+      return;
+    }
+    // Saving is the resubmit — the server clears the hold with the content.
+    void client.editQueued(threadId, message.id, trimmed).catch(() => {
+      toast.error(t`That message already went out — your edit wasn't applied.`);
+    });
   };
 
   if (editing) {
@@ -2411,7 +2781,7 @@ function QueuedMessageRow({
               save();
             } else if (event.key === 'Escape') {
               event.preventDefault();
-              setEditing(false);
+              cancelEdit();
             }
           }}
           autoFocus
@@ -2426,7 +2796,7 @@ function QueuedMessageRow({
             size="icon-sm"
             variant="ghost"
             className="size-6"
-            onClick={() => setEditing(false)}
+            onClick={cancelEdit}
             aria-label={t`Cancel editing`}
             data-testid="agent-thread-queued-cancel-edit"
           >
@@ -2451,12 +2821,41 @@ function QueuedMessageRow({
 
   return (
     <div
-      className="flex items-center gap-1 rounded-md border border-input/60 bg-muted/30 py-0.5 pl-2 pr-1"
+      className={cn(
+        'flex items-center gap-1 rounded-md border py-0.5 pl-2 pr-1',
+        held ? 'border-input/40 border-dashed bg-muted/20' : 'border-input/60 bg-muted/30',
+      )}
       data-testid="agent-thread-queued"
+      data-held={held ? 'true' : undefined}
     >
-      <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate text-sm',
+          held ? 'text-muted-foreground/60' : 'text-muted-foreground',
+        )}
+      >
         {message.content}
       </span>
+      {held ? (
+        <>
+          {/* A row the drain skips has to say so, or it reads as queued and the
+              user waits for a message that is never going anywhere. */}
+          <span className="shrink-0 font-medium text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+            {t`Held`}
+          </span>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="size-6 shrink-0 text-muted-foreground"
+            onClick={release}
+            aria-label={t`Send when the agent is free`}
+            data-testid="agent-thread-queued-release"
+          >
+            <Check className="size-3.5" aria-hidden="true" />
+          </Button>
+        </>
+      ) : null}
       <Button
         type="button"
         size="icon-sm"

@@ -27,10 +27,12 @@ import type { PinoLogger } from '../logger.ts';
 import {
   envPath,
   mergedEnv,
+  overlaySetsPath,
   resolveWindowsCommand,
   terminateAgentTree,
   windowsCmdWrap,
   withHostedAgentMarker,
+  withLoginShellPathEnv,
 } from './launch.ts';
 
 /** Retained-output default when the agent sends no `outputByteLimit`. */
@@ -119,6 +121,7 @@ export class AcpTerminalSet {
   private readonly emit: (event: ThreadEvent) => void;
   private readonly defaultCwd: string;
   private readonly log: PinoLogger;
+  private readonly loginShellPath: string | null;
   private disposed = false;
 
   constructor(opts: {
@@ -127,10 +130,19 @@ export class AcpTerminalSet {
     /** Transcript sink — the thread manager's `appendEvent`. */
     emit: (event: ThreadEvent) => void;
     log: PinoLogger;
+    /**
+     * The user's login-shell PATH, appended to every command's env. A
+     * GUI-launched server's inherited PATH can't name a version manager's bin
+     * dir, so a command the user runs fine in a terminal (`npm`, `pytest`)
+     * would fail here for a reason that has nothing to do with the command.
+     * Resolved once at construction: `create` answers the agent synchronously.
+     */
+    loginShellPath?: string | null;
   }) {
     this.defaultCwd = opts.defaultCwd;
     this.emit = opts.emit;
     this.log = opts.log;
+    this.loginShellPath = opts.loginShellPath ?? null;
   }
 
   /** Live (not yet exited) terminal count — a test/diagnostic seam. */
@@ -164,7 +176,7 @@ export class AcpTerminalSet {
     // `terminal: true`) would otherwise run `ok mcp`, or an env check, in a
     // process that never saw the marker — and fall back to handing the user a
     // URL, which is the failure this marker exists to prevent.
-    const env = withHostedAgentMarker(mergedEnv(overlay));
+    const env = withHostedAgentMarker(this.spawnEnv(overlay));
     const cwd =
       params.cwd != null
         ? isAbsolute(params.cwd)
@@ -293,6 +305,18 @@ export class AcpTerminalSet {
     this.disposed = true;
     const ids = [...this.terminals.keys()];
     await Promise.allSettled(ids.map((id) => this.release(id)));
+  }
+
+  /**
+   * Base env for a terminal command: the repaired inherited env plus the
+   * agent's overlay, with the login shell's PATH appended. An overlay that
+   * sets PATH is a spawn-env contract the agent stated explicitly (the same
+   * rule the agent launch chain applies), so it is left verbatim.
+   */
+  private spawnEnv(overlay: Record<string, string>): Record<string, string> {
+    const env = mergedEnv(overlay);
+    if (this.loginShellPath === null || overlaySetsPath(overlay)) return env;
+    return withLoginShellPathEnv(env, this.loginShellPath);
   }
 
   private mustGet(terminalId: string): TerminalRecord {

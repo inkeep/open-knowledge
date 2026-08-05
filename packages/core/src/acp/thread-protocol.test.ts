@@ -43,6 +43,34 @@ describe('parseThreadClientFrame', () => {
     ).toBeNull();
   });
 
+  test('steer requires threadId, reqId, and NON-empty content', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'steer', threadId: 't', reqId: 'r', content: 'do this instead' }),
+      ),
+    ).toMatchObject({ op: 'steer', threadId: 't', reqId: 'r', content: 'do this instead' });
+    // Unlike `prompt`, empty content is refused — a steer cancels a turn.
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'steer', threadId: 't', reqId: 'r', content: '' }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'steer', threadId: 't', reqId: 'r' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'steer', threadId: 't', content: 'x' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'steer', reqId: 'r', content: 'x' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'steer', threadId: 't', reqId: 'r', content: 7 }),
+      ),
+    ).toBeNull();
+  });
+
   test('queue_edit requires threadId, id, and non-empty content', () => {
     expect(
       parseThreadClientFrame(
@@ -59,6 +87,65 @@ describe('parseThreadClientFrame', () => {
     ).toBeNull();
     expect(
       parseThreadClientFrame(JSON.stringify({ op: 'queue_edit', id: 'q1', content: 'x' })),
+    ).toBeNull();
+  });
+
+  test('queue_edit carries an optional reqId, which must be a non-empty string', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({
+          op: 'queue_edit',
+          threadId: 't',
+          id: 'q1',
+          content: 'new text',
+          reqId: 'qe-1',
+        }),
+      ),
+    ).toMatchObject({ op: 'queue_edit', reqId: 'qe-1' });
+    // Absent is the fire-and-forget shape and stays valid — the parser adds no
+    // reqId of its own, so the socket keeps answering it silently.
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'new text' }),
+      ),
+    ).toEqual({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'new text' });
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'x', reqId: '' }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'x', reqId: 7 }),
+      ),
+    ).toBeNull();
+  });
+
+  test('queue_hold requires threadId, id, and a boolean held', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_hold', threadId: 't', id: 'q1', held: true }),
+      ),
+    ).toMatchObject({ op: 'queue_hold', threadId: 't', id: 'q1', held: true });
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_hold', threadId: 't', id: 'q1', held: false }),
+      ),
+    ).toMatchObject({ op: 'queue_hold', held: false });
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_hold', threadId: 't', id: 'q1' })),
+    ).toBeNull();
+    // A truthy string is the shape a hand-rolled client sends; it is not a hold.
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_hold', threadId: 't', id: 'q1', held: 'true' }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_hold', threadId: 't', held: true })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_hold', id: 'q1', held: true })),
     ).toBeNull();
   });
 
@@ -183,6 +270,44 @@ describe('parseThreadClientFrame', () => {
     expect(
       parseThreadClientFrame(
         JSON.stringify({ op: 'resume', threadId: 't', reqId: 'r', prompt: 7 }),
+      ),
+    ).toBeNull();
+  });
+
+  test('retry requires threadId and reqId', () => {
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'retry', threadId: 't', reqId: 'r' })),
+    ).toMatchObject({ op: 'retry', threadId: 't', reqId: 'r' });
+    expect(parseThreadClientFrame(JSON.stringify({ op: 'retry', threadId: 't' }))).toBeNull();
+    expect(parseThreadClientFrame(JSON.stringify({ op: 'retry', reqId: 'r' }))).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'retry', threadId: 't', reqId: '' })),
+    ).toBeNull();
+  });
+
+  test('authenticate requires threadId, reqId and methodId', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'authenticate', threadId: 't', reqId: 'r', methodId: 'm' }),
+      ),
+    ).toMatchObject({ op: 'authenticate', threadId: 't', reqId: 'r', methodId: 'm' });
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'authenticate', threadId: 't', reqId: 'r' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'authenticate', reqId: 'r', methodId: 'm' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'authenticate', threadId: 't', methodId: 'm' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'authenticate', threadId: 't', reqId: 'r', methodId: '' }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'authenticate', threadId: 't', reqId: 'r', methodId: 7 }),
       ),
     ).toBeNull();
   });

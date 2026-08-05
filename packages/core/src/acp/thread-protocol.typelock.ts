@@ -9,6 +9,7 @@
  */
 
 import type {
+  AuthMethod,
   ClientCapabilities,
   CreateTerminalRequest,
   EnvVariable,
@@ -73,6 +74,15 @@ export type PinPermissionOptionName = Expect<Equal<PermissionOption['name'], str
 // should adopt it.
 export type PinPermissionOutcome = Expect<
   Equal<RequestPermissionResponse['outcome']['outcome'], 'selected' | 'cancelled'>
+>;
+
+// Dependents: `threadAuthMethods` forwards this discriminant verbatim onto
+// `ThreadAuthMethod.kind`, and the sign-in notice offers a button only for
+// methods OUTSIDE these two variants — an `env_var` / `terminal` sign-in
+// needs the user's own environment or TUI, which the notice cannot supply.
+// A new variant would silently get a button that can't complete.
+export type PinAuthMethodKinds = Expect<
+  Equal<Extract<AuthMethod, { type: string }>['type'], 'env_var' | 'terminal'>
 >;
 
 // Dependents: the server maps a user-cancelled turn to `cancelled` and the

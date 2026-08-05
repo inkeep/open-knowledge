@@ -10,7 +10,10 @@
  * socket it is trusted to the same level as the mutating HTTP surface.
  */
 
-import type { ThreadServerFrame } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type {
+  ThreadErrorCode,
+  ThreadServerFrame,
+} from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { parseThreadClientFrame } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import type { PinoLogger } from '../logger.ts';
 import { type AcpThreadManager, ThreadOpError } from './thread-manager.ts';
@@ -86,6 +89,16 @@ export function attachAcpThreadSocket(
             await subscribeTo(frame.threadId, 0);
             return;
           }
+          case 'retry': {
+            const info = await manager.retryThread(frame.threadId);
+            send({ op: 'retried', reqId: frame.reqId, info });
+            return;
+          }
+          case 'authenticate': {
+            const info = await manager.authenticateThread(frame.threadId, frame.methodId);
+            send({ op: 'authenticated', reqId: frame.reqId, info });
+            return;
+          }
           case 'delete': {
             const sink = subscriptions.get(frame.threadId);
             if (sink !== undefined) {
@@ -108,8 +121,30 @@ export function attachAcpThreadSocket(
             manager.sendPrompt(frame.threadId, frame.content);
             return;
           }
+          case 'steer': {
+            manager.steerPrompt(frame.threadId, frame.content);
+            return;
+          }
           case 'queue_edit': {
-            manager.editQueued(frame.threadId, frame.id, frame.content);
+            const applied = manager.editQueued(frame.threadId, frame.id, frame.content);
+            // Both outcomes answer on the reqId when the client asked to be
+            // told. A positive ack is what makes the refusal reliable: the
+            // `info` frames this thread emits for unrelated reasons would
+            // otherwise settle the edit before the error could arrive.
+            if (frame.reqId !== undefined) {
+              if (applied) {
+                send({ op: 'queue_edited', reqId: frame.reqId, threadId: frame.threadId });
+              } else {
+                sendError('not-ready', 'queued message already dispatched', {
+                  reqId: frame.reqId,
+                  threadId: frame.threadId,
+                });
+              }
+            }
+            return;
+          }
+          case 'queue_hold': {
+            manager.holdQueued(frame.threadId, frame.id, frame.held);
             return;
           }
           case 'queue_remove': {
@@ -206,17 +241,7 @@ export function attachAcpThreadSocket(
 }
 
 function errorFrame(
-  code:
-    | 'bad-frame'
-    | 'unknown-thread'
-    | 'unknown-agent'
-    | 'capacity'
-    | 'spawn-failed'
-    | 'install-failed'
-    | 'agent-error'
-    | 'not-ready'
-    | 'resume-unsupported'
-    | 'internal',
+  code: ThreadErrorCode,
   message: string,
   extra?: { reqId?: string; threadId?: string },
 ): ThreadServerFrame {

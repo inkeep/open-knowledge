@@ -7,11 +7,12 @@ import { AcpTerminalSet } from './terminals.ts';
 const log = getLogger('acp-terminals-test');
 
 let sets: AcpTerminalSet[] = [];
-function makeSet(events: ThreadEvent[]): AcpTerminalSet {
+function makeSet(events: ThreadEvent[], loginShellPath?: string): AcpTerminalSet {
   const set = new AcpTerminalSet({
     defaultCwd: process.cwd(),
     emit: (event) => events.push(event),
     log,
+    ...(loginShellPath !== undefined ? { loginShellPath } : {}),
   });
   sets.push(set);
   return set;
@@ -73,6 +74,40 @@ describe('AcpTerminalSet', () => {
     await set.waitForExit(terminalId);
     expect(set.output(terminalId).output).toBe('1:kept');
   });
+
+  // A GUI-launched server's PATH can't name a version manager's bin dir, so a
+  // command the agent runs here would fail for a reason that has nothing to do
+  // with the command. The thread manager hands the set the login shell's PATH;
+  // this is where it has to land.
+  test('appends the login-shell PATH to a command env', async () => {
+    const events: ThreadEvent[] = [];
+    const set = makeSet(events, '/opt/only-in-the-login-shell');
+    const { terminalId } = set.create(node('process.stdout.write(String(process.env.PATH))'));
+    await set.waitForExit(terminalId);
+    const path = set.output(terminalId).output;
+    expect(path).toContain('/opt/only-in-the-login-shell');
+    // Appended, never prepended: everything that already resolved keeps
+    // resolving to the same binary.
+    expect(path.endsWith('/opt/only-in-the-login-shell')).toBe(true);
+  });
+
+  // An agent that states a PATH has stated a spawn-env contract — the same
+  // rule the agent launch chain applies to a manifest PATH overlay.
+  // Skipped on Windows: an overlay spelling `PATH` sits alongside the
+  // inherited `Path`, and which one the OS honors is not ours to assert.
+  test.skipIf(process.platform === 'win32')(
+    'a PATH the agent supplied wins over the login-shell PATH',
+    async () => {
+      const events: ThreadEvent[] = [];
+      const set = makeSet(events, '/opt/only-in-the-login-shell');
+      const { terminalId } = set.create({
+        ...node('process.stdout.write(String(process.env.PATH))'),
+        env: [{ name: 'PATH', value: '/agent/chose/this' }],
+      });
+      await set.waitForExit(terminalId);
+      expect(set.output(terminalId).output).toBe('/agent/chose/this');
+    },
+  );
 
   test('captures stderr interleaved and a non-zero exit code', async () => {
     const events: ThreadEvent[] = [];

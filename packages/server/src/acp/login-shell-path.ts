@@ -316,3 +316,15 @@ export function getSharedLoginShellPathProvider(log: PinoLogger): () => Promise<
   sharedProvider ??= createLoginShellPathProvider({ log });
   return sharedProvider;
 }
+
+/**
+ * Drop the process-wide memo so the next caller re-probes. A real answer is
+ * cached for the life of the server, which is right for a burst of launches
+ * and wrong the moment the machine changes underneath it: the user reads
+ * "install Node", installs it, and a retry would still be answered from the
+ * capture taken before the install. Retry is the one moment where paying for
+ * a fresh shell startup buys a different verdict, so it resets first.
+ */
+export function resetSharedLoginShellPathProvider(): void {
+  sharedProvider = null;
+}

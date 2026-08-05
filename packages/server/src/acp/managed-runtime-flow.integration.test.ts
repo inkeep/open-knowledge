@@ -123,7 +123,9 @@ function makeManager(opts: {
       consentHome: opts.consentHome,
       fetchImpl: opts.fetchImpl,
     },
-    resolveLoginShellPath: opts.resolveLoginShellPath,
+    // Hermetic default (see the thread-manager integration suite): never spawn
+    // the developer's own login shell from a test.
+    resolveLoginShellPath: opts.resolveLoginShellPath ?? (async () => null),
     log,
   });
   managers.push(manager);

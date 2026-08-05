@@ -86,6 +86,9 @@ function makeManager(
     getMcpStdioCommand: () => ({ command: 'open-knowledge', args: ['mcp', '--port', '4242'] }),
     probeHarnessManagedMcpEntry: probe,
     log,
+    // Hermetic by default: every launch now merges the login shell's PATH, and
+    // a test must not spawn the developer's own shell to find out what it is.
+    resolveLoginShellPath: async () => null,
   });
   managers.push(manager);
   return manager as unknown as BuildMcpServersSeam;

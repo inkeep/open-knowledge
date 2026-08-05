@@ -52,8 +52,11 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type {
   QueuedMessage,
+  SteerMessage,
   ThreadAgentInfo,
+  ThreadAuthMethod,
   ThreadEvent,
+  ThreadFailureDetail,
   ThreadInfo,
   ThreadServerFrame,
   ThreadStatus,
@@ -83,7 +86,10 @@ import {
   terminateAgentTree,
   withLoginShellPath,
 } from './launch.ts';
-import { getSharedLoginShellPathProvider } from './login-shell-path.ts';
+import {
+  getSharedLoginShellPathProvider,
+  resetSharedLoginShellPathProvider,
+} from './login-shell-path.ts';
 import {
   cleanupManagedRuntimeStaging,
   describeRuntime,
@@ -141,6 +147,21 @@ const REPLAY_CHUNK_SIZE = 512;
  */
 const DEFAULT_UNWATCHED_TURN_CANCEL_MS = 10 * 60 * 1000;
 const DEFAULT_UNWATCHED_TURN_KILL_MS = 20 * 60 * 1000;
+/**
+ * How long a parked steer waits for the agent to honor the cancel before it
+ * gives up on jumping the line. ACP has no steering primitive — `session/cancel`
+ * is a request, and an agent that ignores it would otherwise leave the
+ * correction parked forever. On expiry it demotes to the front of the queue,
+ * which is honest about what actually happens next.
+ */
+const DEFAULT_STEER_STALL_MS = 10_000;
+/**
+ * Ceiling on the ACP `authenticate` round trip. The call is unbounded by
+ * protocol and an agent-driven sign-in usually detours through a browser —
+ * an abandoned OAuth tab would otherwise leave the request pending forever,
+ * and with it the latch that keeps the thread from taking prompts.
+ */
+const DEFAULT_AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000;
 const STDERR_TAIL_LINES = 40;
 /**
  * `session/load` replays history BEFORE its response resolves per protocol,
@@ -151,6 +172,14 @@ const STDERR_TAIL_LINES = 40;
  */
 const RESUME_REPLAY_QUIESCENCE_MS = 300;
 const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
+/**
+ * JSON-RPC code of the SDK's `RequestError.authRequired()`. The ONLY signal
+ * that a `session/new` failure is an auth failure — an agent advertising
+ * `authMethods` at initialize is a static fact about the agent, not about
+ * this error, and branching on it labeled every Cursor/Gemini failure
+ * (including their internal -32603s) as "sign in first".
+ */
+const AUTH_REQUIRED_CODE = -32000;
 
 export class ThreadOpError extends Error {
   readonly code:
@@ -168,6 +197,19 @@ export class ThreadOpError extends Error {
   }
 }
 
+/** The bounded `authenticate` round trip ran out of time. Internal marker. */
+class AuthenticateTimeoutError extends Error {
+  constructor() {
+    super('authenticate timed out');
+    this.name = 'AuthenticateTimeoutError';
+  }
+}
+
+/** A retry took the thread over mid-sign-in; the sign-in stands down silently. */
+function threadRestartedDuringSignIn(): ThreadOpError {
+  return new ThreadOpError('not-ready', 'the thread was restarted during the sign-in');
+}
+
 type Subscriber = (frame: ThreadServerFrame) => void;
 
 interface ThreadRecord {
@@ -176,10 +218,26 @@ interface ThreadRecord {
   docName?: string;
   /** Agent reference used to launch — and re-launch on resume. */
   agentRef: { source: 'registry' | 'custom'; id: string };
+  /**
+   * The remembered settings the create frame carried. Every path that opens a
+   * session for this thread AFTER the first attempt (retry, post-`authenticate`
+   * re-open) replays them, so a recovered session lands on the user's chosen
+   * model/mode exactly like a first launch. Not persisted: a resumed session
+   * already carries the settings it was opened with.
+   */
+  launchSettings?: { config?: Record<string, string | boolean>; modeId?: string };
   /** Session cwd — agents key their session stores by it; resume passes it back verbatim. */
   cwd: string;
   child: ChildProcess | null;
   conn: ClientConnection | null;
+  /**
+   * The live connection's `initialize` response. Kept because a thread parked
+   * in `auth_required` re-opens its session on the SAME connection after
+   * `authenticate`, and that needs the capabilities (MCP transport) and the
+   * advertised auth methods again. Never persisted — it describes one
+   * process, and dies with it.
+   */
+  lastInit: InitializeResponse | null;
   sessionId: string | null;
   /** Writer id for CRDT attribution — `acp-<uuid>`, AGENT_ID_RE-safe. */
   agentSessionId: string;
@@ -192,6 +250,12 @@ interface ThreadRecord {
   /** The persisted log ends inside a turn (crash mid-stream) — resume appends a synthetic `turn_ended`. */
   midTurnOnDisk: boolean;
   resumeInFlight: boolean;
+  /**
+   * An `authenticate` round trip is open. Deliberately NOT `resumeInFlight`:
+   * that latch also gates `retryThread`, and retry is the one operation that
+   * must still work while a sign-in the user walked away from is parked.
+   */
+  authInFlight: boolean;
   /** Drop incoming `session_update`s (a `session/load` replay duplicating the retained log). */
   suppressUpdates: boolean;
   lastSuppressedAt: number;
@@ -217,6 +281,8 @@ interface ThreadRecord {
    *  rejection then reads as "cancelled", not an agent error (agents SHOULD
    *  resolve with stopReason 'cancelled', but some abort the request). */
   cancelRequested: boolean;
+  /** Countdown on a parked `info.steer` — fires only if the agent never stops. */
+  steerStallTimer: ReturnType<typeof setTimeout> | null;
   /** Since when the thread has had zero subscribers; null while watched. */
   unwatchedSince: number | null;
   /** The unwatched-turn backstop already sent its cancel for this stretch. */
@@ -335,6 +401,10 @@ export interface AcpThreadManagerOptions {
   log: PinoLogger;
   maxThreads?: number;
   idleReapMs?: number;
+  /** How long a parked steer waits for the cancel to land before demoting to the queue. */
+  steerStallMs?: number;
+  /** Ceiling on one ACP `authenticate` round trip before the sign-in gives up. */
+  authenticateTimeoutMs?: number;
   /** Unwatched-mid-turn backstop: politely cancel after this long with zero subscribers. */
   unwatchedTurnCancelMs?: number;
   /** …and force-close the thread if the turn is STILL running after this long. */
@@ -363,6 +433,8 @@ export class AcpThreadManager {
   private readonly reapTimer: ReturnType<typeof setInterval>;
   private readonly maxThreads: number;
   private readonly idleReapMs: number;
+  private readonly steerStallMs: number;
+  private readonly authenticateTimeoutMs: number;
   private readonly unwatchedTurnCancelMs: number;
   private readonly unwatchedTurnKillMs: number;
   private readonly persistence: ThreadPersistenceStore;
@@ -372,10 +444,15 @@ export class AcpThreadManager {
 
   constructor(opts: AcpThreadManagerOptions) {
     this.opts = opts;
+    // Looked up per call rather than captured: `retryThread` drops the
+    // process-wide memo so a binary installed since the failure is seen, and a
+    // captured provider would keep answering from the pre-install capture.
     this.resolveLoginShellPath =
-      opts.resolveLoginShellPath ?? getSharedLoginShellPathProvider(opts.log);
+      opts.resolveLoginShellPath ?? (() => getSharedLoginShellPathProvider(opts.log)());
     this.maxThreads = opts.maxThreads ?? MAX_ACP_THREADS;
     this.idleReapMs = opts.idleReapMs ?? DEFAULT_IDLE_REAP_MS;
+    this.steerStallMs = opts.steerStallMs ?? DEFAULT_STEER_STALL_MS;
+    this.authenticateTimeoutMs = opts.authenticateTimeoutMs ?? DEFAULT_AUTHENTICATE_TIMEOUT_MS;
     this.unwatchedTurnCancelMs = opts.unwatchedTurnCancelMs ?? DEFAULT_UNWATCHED_TURN_CANCEL_MS;
     this.unwatchedTurnKillMs = opts.unwatchedTurnKillMs ?? DEFAULT_UNWATCHED_TURN_KILL_MS;
     this.persistence = new ThreadPersistenceStore({
@@ -400,6 +477,12 @@ export class AcpThreadManager {
   async init(): Promise<void> {
     if (this.initialized) return;
     this.initialized = true;
+    // Warm the login-shell PATH capture off the launch path — every launch
+    // merges its answer into the spawn env, and the probe costs a shell
+    // startup (bounded, but seconds on a heavy profile).
+    void this.resolveLoginShellPath().catch(() => {
+      // No verdict is a normal outcome; the launch chain asks again.
+    });
     await this.persistence.init();
     const metas = await this.persistence.scan();
     for (const meta of metas) {
@@ -545,9 +628,11 @@ export class AcpThreadManager {
       },
       docName: params.docName,
       agentRef: { source: params.agent.source, id: params.agent.id },
+      launchSettings: params.settings,
       cwd: this.opts.contentDir,
       child: null,
       conn: null,
+      lastInit: null,
       sessionId: null,
       agentSessionId: `acp-${threadId}`,
       events: [],
@@ -556,6 +641,7 @@ export class AcpThreadManager {
       logResolution: null,
       midTurnOnDisk: false,
       resumeInFlight: false,
+      authInFlight: false,
       suppressUpdates: false,
       lastSuppressedAt: 0,
       subscribers: new Set(),
@@ -565,6 +651,7 @@ export class AcpThreadManager {
       terminals: null,
       turnActive: false,
       cancelRequested: false,
+      steerStallTimer: null,
       // Born unwatched — the creating socket subscribes right after `created`.
       unwatchedSince: now,
       unwatchedCancelSent: false,
@@ -616,7 +703,13 @@ export class AcpThreadManager {
       throw new ThreadOpError('unknown-agent', `agent '${agent.id}' is not in the registry`);
     }
     return {
-      info: { id: manifest.id, name: manifest.name, iconUrl: manifest.icon, source: 'registry' },
+      info: {
+        id: manifest.id,
+        name: manifest.name,
+        iconUrl: manifest.icon,
+        source: 'registry',
+        version: manifest.version,
+      },
       custom: null,
     };
   }
@@ -652,9 +745,28 @@ export class AcpThreadManager {
     launch = launchable;
     if (record.closed) return null;
 
+    // Resolved before the spawn because `terminal/create` answers the agent
+    // synchronously — the set needs the value in hand at construction.
+    const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
+    if (record.closed) return null;
+
+    // Fresh per spawn: a resume/retry respawns the agent, and terminals from
+    // the previous process are dead by construction (disposed on its exit).
+    // Built BEFORE the child handlers so the exit handler can dispose THIS
+    // spawn's set: a fast retry replaces `record.terminals` while the old
+    // child is still dying, and a handler reading the field would then dispose
+    // the new agent's live terminals on the old agent's exit.
+    const terminals = new AcpTerminalSet({
+      defaultCwd: record.cwd,
+      emit: (event) => this.appendEvent(record, event),
+      log: this.opts.log,
+      loginShellPath,
+    });
+
     this.emitStatus(record, 'spawning');
     const child = spawnAcpAgent(launch, record.cwd);
     record.child = child;
+    record.terminals = terminals;
 
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (chunk: string) => {
@@ -665,23 +777,36 @@ export class AcpThreadManager {
       }
     });
     child.on('error', (err) => {
-      this.emitStatus(record, 'error', `agent failed to start: ${err.message}`);
+      this.emitStatus(record, 'error', `agent failed to start: ${err.message}`, {
+        reason: 'connect',
+        agentMessage: err.message,
+      });
     });
     child.on('exit', (code, signal) => {
       record.child = null;
       // Commands the agent asked OK to run die with the agent — nothing
       // should keep executing for a conversation that can no longer see it.
-      record.terminals?.disposeAll().catch((err: unknown) => {
+      terminals.disposeAll().catch((err: unknown) => {
         this.opts.log.warn(
           { err, threadId: record.info.threadId },
           '[acp-threads] terminal cleanup on agent exit failed',
         );
       });
       if (record.closed || record.info.archived === true) return;
+      // A thread already in 'error' reported its failure (with the stderr
+      // tail attached) — the process dying afterwards, whether by itself or
+      // via the failed-startup teardown, is that failure's echo, not news.
+      // The prompts parked on the dead process are still owed an answer,
+      // though: without this an agent that died holding a permission request
+      // leaves it hanging until the 10-minute timeout.
+      if (record.info.status === 'error') {
+        this.failPendingPermissions(record);
+        return;
+      }
       const tail = record.stderrTail.slice(-10).join('\n');
       this.emitStatus(
         record,
-        record.info.status === 'error' ? 'error' : 'exited',
+        'exited',
         `agent exited (${signal ?? code ?? 'unknown'})${tail ? `\n${tail}` : ''}`,
       );
       this.failPendingPermissions(record);
@@ -694,15 +819,6 @@ export class AcpThreadManager {
       Writable.toWeb(child.stdin),
       Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>,
     );
-
-    // Fresh per spawn: a resume respawns the agent, and terminals from the
-    // previous process are dead by construction (disposed on its exit).
-    const terminals = new AcpTerminalSet({
-      defaultCwd: record.cwd,
-      emit: (event) => this.appendEvent(record, event),
-      log: this.opts.log,
-    });
-    record.terminals = terminals;
 
     const conn = acpClient({ name: 'open-knowledge' })
       .onRequest(acpMethods.client.session.requestPermission, (ctx) =>
@@ -783,9 +899,14 @@ export class AcpThreadManager {
         },
       });
     } catch (err) {
-      throw new ThreadOpError('spawn-failed', `initialize failed: ${describeAgentError(err)}`);
+      this.opts.log.warn(
+        { err, threadId: record.info.threadId },
+        '[acp-threads] initialize failed',
+      );
+      throw new ThreadOpError('spawn-failed', `initialize failed: ${agentErrorMessage(err)}`);
     }
     if (record.closed) return null;
+    record.lastInit = init;
     return { conn, init, launch };
   }
 
@@ -803,7 +924,13 @@ export class AcpThreadManager {
   ): Promise<ResolvedLaunch | null> {
     try {
       await preflightLaunch(launch);
-      return launch;
+      // Preflight only proves the TOP-LEVEL command resolves. The adapter goes
+      // on to spawn the real harness itself (`npx pi-acp` spawns `pi`), and
+      // that lookup runs against the env we hand it — so a launch that
+      // preflighted still needs the login shell's PATH, not just one that
+      // failed. The merge is append-only: it can add resolutions, never
+      // redirect a command that already resolved to a different binary.
+      return await this.withLoginShellPathIfEligible(launch);
     } catch (err) {
       if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') throw err;
       // A terminal would have found it: adopt the login shell's PATH rather
@@ -832,10 +959,7 @@ export class AcpThreadManager {
    * the command — in which case the caller carries on to the managed runtime.
    */
   private async retryWithLoginShellPath(launch: ResolvedLaunch): Promise<ResolvedLaunch | null> {
-    if (launch.pathFromOverlay || isPathQualified(launch.cmd)) return null;
-    const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
-    if (loginShellPath === null) return null;
-    const retry = withLoginShellPath(launch, loginShellPath);
+    const retry = await this.withLoginShellPathIfEligible(launch);
     if (envPath(retry.env) === envPath(launch.env)) return null;
     try {
       await preflightLaunch(retry);
@@ -857,6 +981,20 @@ export class AcpThreadManager {
       '[acp] command resolved via the login-shell PATH; skipping the managed-runtime offer',
     );
     return retry;
+  }
+
+  /**
+   * Append the login shell's PATH to a launch's env, or return it untouched
+   * when the fallback doesn't apply: a manifest/custom-agent PATH overlay is a
+   * spawn-env contract that wins verbatim, and a path-qualified command names
+   * its own location, so neither is ours to extend. A probe with no verdict
+   * (Windows, no `$SHELL`, a hung profile) also changes nothing.
+   */
+  private async withLoginShellPathIfEligible(launch: ResolvedLaunch): Promise<ResolvedLaunch> {
+    if (launch.pathFromOverlay || isPathQualified(launch.cmd)) return launch;
+    const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
+    if (loginShellPath === null) return launch;
+    return withLoginShellPath(launch, loginShellPath);
   }
 
   /**
@@ -1092,12 +1230,54 @@ export class AcpThreadManager {
     } catch (err) {
       const detail =
         err instanceof AgentLaunchError || err instanceof ThreadOpError ? err.message : String(err);
-      this.emitStatus(record, 'error', detail);
+      this.emitStatus(record, 'error', detail, {
+        reason: 'connect',
+        agentMessage: detail,
+        machineDetail: stderrTailDetail(record),
+      });
+      // Awaited, not fire-and-forget: a retry issued while the old process is
+      // still inside its kill grace would find `child` already nulled and
+      // no-op its own teardown, leaving two agents alive for one thread.
+      await this.teardownFailedAgent(record);
       return;
     }
     if (handshake === null) return;
     const { conn, init, launch } = handshake;
 
+    if (!(await this.openSession(record, conn, init, params.settings))) return;
+    // Startup latency is a known UX sore point (npx resolution + node boot +
+    // handshake, serialized) — keep it measurable per launch kind.
+    this.opts.log.info(
+      {
+        threadId: record.info.threadId,
+        agentId: record.info.agent.id,
+        launchKind: launch.kind,
+        msToReady: Date.now() - record.info.createdAt,
+      },
+      '[acp-threads] agent ready',
+    );
+
+    if (params.prompt !== undefined && params.prompt !== '') {
+      this.sendPrompt(record.info.threadId, params.prompt);
+    }
+  }
+
+  /**
+   * Open the agent session on an already-initialized connection: `session/new`,
+   * the remembered launch settings, then `ready`. Shared by the first start
+   * and by the post-`authenticate` second attempt, which re-runs exactly this
+   * sequence on the connection it already holds.
+   *
+   * Outcomes are reported as status events rather than thrown; the boolean
+   * says only whether the thread reached `ready` (false also covers a thread
+   * closed mid-flight).
+   */
+  private async openSession(
+    record: ThreadRecord,
+    conn: ClientConnection,
+    init: InitializeResponse,
+    settings?: { config?: Record<string, string | boolean>; modeId?: string },
+  ): Promise<boolean> {
     const mcpServers = await this.buildMcpServers(record, init);
     try {
       const session = await conn.agent.request(acpMethods.agent.session.new, {
@@ -1115,50 +1295,46 @@ export class AcpThreadManager {
         this.emitInfo(record);
       }
     } catch (err) {
-      const authMethods = (init.authMethods ?? [])
-        .map((m) => (typeof m === 'object' && m !== null ? (m as { name?: string }).name : null))
-        .filter((n): n is string => typeof n === 'string');
-      if (authMethods.length > 0) {
-        this.emitStatus(
-          record,
-          'auth_required',
-          `sign in first (${authMethods.join(' / ')}), then start a new thread — ${describeAgentError(err)}`,
-        );
+      const machineDetail = joinMachineDetail(agentErrorData(err), stderrTailDetail(record));
+      if (isAuthRequiredError(err)) {
+        this.emitStatus(record, 'auth_required', `sign in required: ${agentErrorMessage(err)}`, {
+          reason: 'auth-required',
+          agentMessage: agentErrorMessage(err),
+          machineDetail,
+          authMethods: threadAuthMethods(init.authMethods),
+        });
+        // The child stays alive on purpose: the connection is initialized and
+        // can take `authenticate` + a session/new retry without a respawn.
       } else {
-        this.emitStatus(record, 'error', `session setup failed: ${describeAgentError(err)}`);
+        this.emitStatus(record, 'error', `session setup failed: ${agentErrorMessage(err)}`, {
+          reason: 'session-setup',
+          agentMessage: agentErrorMessage(err),
+          machineDetail,
+        });
+        // A session that never opened leaves nothing for the process to do —
+        // without this it idles until the reaper, holding a live-thread slot.
+        // Awaited so a retry can't spawn a second agent alongside this one
+        // while it is still inside its kill grace.
+        await this.teardownFailedAgent(record);
       }
-      return;
+      return false;
     }
-    if (record.closed) return;
+    if (record.closed) return false;
 
-    if (params.settings?.config !== undefined) {
-      await this.applyInitialConfig(record, conn, params.settings.config);
-      if (record.closed) return;
+    if (settings?.config !== undefined) {
+      await this.applyInitialConfig(record, conn, settings.config);
+      if (record.closed) return false;
     }
-    if (params.settings?.modeId !== undefined) {
+    if (settings?.modeId !== undefined) {
       // After config: a model→option cascade may reshape the mode surface, so
       // validate the remembered mode against the settled session state.
-      await this.applyInitialMode(record, conn, params.settings.modeId);
-      if (record.closed) return;
+      await this.applyInitialMode(record, conn, settings.modeId);
+      if (record.closed) return false;
     }
 
     this.setPresence(record, 'idle');
     this.emitStatus(record, 'ready');
-    // Startup latency is a known UX sore point (npx resolution + node boot +
-    // handshake, serialized) — keep it measurable per launch kind.
-    this.opts.log.info(
-      {
-        threadId: record.info.threadId,
-        agentId: record.info.agent.id,
-        launchKind: launch.kind,
-        msToReady: Date.now() - record.info.createdAt,
-      },
-      '[acp-threads] agent ready',
-    );
-
-    if (params.prompt !== undefined && params.prompt !== '') {
-      this.sendPrompt(record.info.threadId, params.prompt);
-    }
+    return true;
   }
 
   /**
@@ -1294,13 +1470,191 @@ export class AcpThreadManager {
         // A rejected session/load|resume (unknown or expired sessionId, cwd
         // mismatch) — expected at steady state: agents expire their own
         // session stores (Claude defaults to 30 days).
+        this.opts.log.warn({ err, threadId }, '[acp-threads] resume rejected by the agent');
         throw new ThreadOpError(
           'resume-unsupported',
-          `couldn't resume the previous session: ${describeAgentError(err)}`,
+          `couldn't resume the previous session: ${agentErrorMessage(err)}`,
         );
       }
     } finally {
       t.resumeInFlight = false;
+    }
+  }
+
+  /**
+   * Start a failed thread over in place: same thread, same transcript, a fresh
+   * launch. Confined to threads that never opened an agent session — one that
+   * did has a live agent, and respawning under it would strand a process the
+   * user can still see the output of.
+   *
+   * Retry is also the moment a stale environment answer stops being free: the
+   * user reads "install Node", installs it, and comes back. So the login-shell
+   * PATH memo is dropped first, and the agent manifest is re-resolved rather
+   * than reused. Dropping that memo is process-global and deliberate: every
+   * other thread and probe pays one fresh login-shell startup afterwards,
+   * which is the right trade for the retry seeing what the user just installed.
+   *
+   * Resolves once the thread reaches `ready`; rejects with the failure the
+   * retry landed on, so the caller can say why the second attempt failed too.
+   */
+  async retryThread(threadId: string): Promise<ThreadInfo> {
+    if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
+    const t = this.mustGet(threadId);
+    if (t.info.archived === true) {
+      throw new ThreadOpError('not-ready', 'the thread is archived — resume it instead');
+    }
+    // `authInFlight` is a retryable state of its own: a sign-in the user
+    // abandoned in a browser tab shows as `installing`, and retry is the only
+    // way out of it. Breaking that latch is safe — closing the connection
+    // rejects the parked request, and `authenticateThread` stands down when it
+    // sees the connection it captured is no longer the record's.
+    if (t.info.status !== 'error' && t.info.status !== 'auth_required' && !t.authInFlight) {
+      throw new ThreadOpError('not-ready', 'this thread did not fail to start');
+    }
+    if (t.sessionId !== null) {
+      throw new ThreadOpError('not-ready', 'this thread already has an agent session');
+    }
+    if (t.resumeInFlight) {
+      throw new ThreadOpError('not-ready', 'a retry is already in progress');
+    }
+    t.resumeInFlight = true;
+    try {
+      resetSharedLoginShellPathProvider();
+      // Before anything is torn down: an unknown agent (or an unreachable
+      // registry) must reject the retry outright rather than leave the thread
+      // half-dismantled.
+      const { info: agentInfo, custom } = await this.resolveAgentInfo(t.agentRef);
+      // `auth_required` keeps its child alive on purpose (the connection can
+      // take an `authenticate` without a respawn) — a retry replaces it.
+      await this.teardownFailedAgent(t);
+      t.info.agent = agentInfo;
+      t.stderrTail = [];
+      t.cancelRequested = false;
+      t.turnActive = false;
+      this.emitStatus(t, 'installing');
+      try {
+        await this.startThread(t, { agent: t.agentRef, settings: t.launchSettings }, custom);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        this.emitStatus(t, 'error', detail, { reason: 'connect', agentMessage: detail });
+        throw new ThreadOpError('spawn-failed', detail);
+      }
+      if (t.closed) throw new ThreadOpError('not-ready', 'thread closed during retry');
+      // `startThread` reports every outcome as a status event rather than a
+      // throw, so the settled status is what says whether this worked.
+      const settled = this.getInfo(threadId)?.status;
+      if (settled === 'ready' || settled === 'running') {
+        this.opts.log.info(
+          { threadId, agentId: t.info.agent.id },
+          '[acp-threads] thread retry succeeded',
+        );
+        return { ...t.info };
+      }
+      throw new ThreadOpError('spawn-failed', lastFailureMessage(t) ?? 'the agent failed to start');
+    } finally {
+      t.resumeInFlight = false;
+    }
+  }
+
+  /**
+   * Complete an advertised sign-in on a thread parked in `auth_required`, then
+   * re-open the session on the SAME connection. The child was kept alive for
+   * exactly this: an initialized connection takes `authenticate` plus a second
+   * `session/new` without a respawn, so signing in costs the user nothing but
+   * the round trip.
+   *
+   * Resolves once the thread is ready; rejects with whatever the sign-in — or
+   * the session that followed it — failed on. A thread whose process is gone
+   * has nothing to authenticate against and is sent to Retry instead.
+   */
+  async authenticateThread(threadId: string, methodId: string): Promise<ThreadInfo> {
+    if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
+    const t = this.mustGet(threadId);
+    if (t.info.archived === true) {
+      throw new ThreadOpError('not-ready', 'the thread is archived — resume it instead');
+    }
+    if (t.info.status !== 'auth_required') {
+      throw new ThreadOpError('not-ready', 'this thread is not waiting for a sign-in');
+    }
+    const conn = t.conn;
+    const init = t.lastInit;
+    if (conn === null || init === null || t.child === null) {
+      throw new ThreadOpError(
+        'not-ready',
+        `${t.info.agent.name} is no longer running — use Retry to start it again`,
+      );
+    }
+    if (t.resumeInFlight) {
+      throw new ThreadOpError('not-ready', 'the thread is starting over — wait for the retry');
+    }
+    if (t.authInFlight) {
+      throw new ThreadOpError('not-ready', 'a sign-in is already in progress');
+    }
+    t.authInFlight = true;
+    try {
+      // There is no sign-in status of its own; `installing` is the progress
+      // signal every client already renders as "the agent is on its way".
+      this.emitStatus(t, 'installing');
+      try {
+        await this.requestAuthenticate(conn, methodId);
+      } catch (err) {
+        // A retry that ran while this sign-in was parked closed the connection
+        // (which is what rejected the request) and now owns the thread — its
+        // status is the live one, so this path must say nothing at all.
+        if (t.conn !== conn) throw threadRestartedDuringSignIn();
+        const timedOut = err instanceof AuthenticateTimeoutError;
+        const message = timedOut
+          ? `the sign-in didn't complete in time — try again`
+          : agentErrorMessage(err);
+        // Back to where the user was, with the methods still offered — a
+        // rejected (or abandoned) sign-in is a retryable answer, not a dead
+        // thread.
+        this.emitStatus(t, 'auth_required', `sign-in failed: ${message}`, {
+          reason: 'auth-required',
+          agentMessage: message,
+          machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(t)),
+          authMethods: threadAuthMethods(init.authMethods),
+        });
+        throw new ThreadOpError('not-ready', message);
+      }
+      if (t.closed) throw new ThreadOpError('not-ready', 'thread closed during sign-in');
+      if (t.conn !== conn) throw threadRestartedDuringSignIn();
+      // Same session-open sequence the launch runs, on the same connection —
+      // including the failure classification, so a still-unauthenticated agent
+      // parks on sign-in again and any other failure tears the process down.
+      // The create-time settings ride along so a session recovered through a
+      // sign-in opens on the same model/mode a first launch would have.
+      if (!(await this.openSession(t, conn, init, t.launchSettings))) {
+        throw new ThreadOpError(
+          'not-ready',
+          lastFailureMessage(t) ?? `${t.info.agent.name} still couldn't start a conversation`,
+        );
+      }
+      this.opts.log.info(
+        { threadId, agentId: t.info.agent.id, methodId },
+        '[acp-threads] thread signed in',
+      );
+      return { ...t.info };
+    } finally {
+      t.authInFlight = false;
+    }
+  }
+
+  /**
+   * One `authenticate` round trip, bounded. ACP puts no ceiling on it and an
+   * agent-driven sign-in usually detours through the browser, so an abandoned
+   * flow would otherwise hold the request — and the thread — open forever.
+   */
+  private async requestAuthenticate(conn: ClientConnection, methodId: string): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expiry = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new AuthenticateTimeoutError()), this.authenticateTimeoutMs);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([conn.agent.request(acpMethods.agent.authenticate, { methodId }), expiry]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
@@ -1321,6 +1675,7 @@ export class AcpThreadManager {
     }
     t.child = null;
     t.conn = null;
+    t.lastInit = null;
     t.closed = false;
     t.turnActive = false;
     this.opts.agentPresenceBroadcaster?.clearPresence(toBroadcasterKey(t.agentSessionId));
@@ -1354,6 +1709,9 @@ export class AcpThreadManager {
       // a prompt slipping in here would race the session/resume|load request.
       throw new ThreadOpError('not-ready', 'the thread is still resuming');
     }
+    if (t.authInFlight) {
+      throw new ThreadOpError('not-ready', 'the thread is still signing in');
+    }
     if (t.sessionId === null || t.conn === null) {
       throw new ThreadOpError('not-ready', 'thread has no live agent session');
     }
@@ -1376,33 +1734,150 @@ export class AcpThreadManager {
     this.dispatchPrompt(t, content, { echo: true });
   }
 
-  /** Replace a queued message's content in place. Unknown id: the entry
-   *  raced its own dispatch (or a cancel) — silent no-op; the transcript
-   *  already shows what actually ran. */
-  editQueued(threadId: string, id: string, content: string): void {
+  /**
+   * Stop the running turn and send `content` as the next one — "steer now".
+   *
+   * ACP has no mid-turn steering primitive: `session/cancel` is the only
+   * sanctioned control, and it is a request the agent may take its time
+   * over (or ignore). So the correction parks on `info.steer` and rides the
+   * turn-end continuation the cancel produces, ahead of anything queued.
+   * If the agent never stops, {@link demoteStalledSteer} converts it into an
+   * ordinary queued message rather than leaving it stranded.
+   */
+  steerPrompt(threadId: string, content: string): void {
     const t = this.mustGet(threadId);
-    const queue = t.info.queue ?? [];
-    if (!queue.some((m) => m.id === id)) return;
-    t.info.queue = queue.map((m) => (m.id === id ? { ...m, content } : m));
+    if (t.info.archived === true) {
+      throw new ThreadOpError('not-ready', 'the thread is archived — resume it first');
+    }
+    if (t.resumeInFlight) {
+      throw new ThreadOpError('not-ready', 'the thread is still resuming');
+    }
+    if (t.authInFlight) {
+      throw new ThreadOpError('not-ready', 'the thread is still signing in');
+    }
+    if (t.sessionId === null || t.conn === null) {
+      throw new ThreadOpError('not-ready', 'thread has no live agent session');
+    }
+    if (!t.turnActive) {
+      // Nothing to steer away from — a correction with no run to correct is
+      // just a message.
+      this.dispatchPrompt(t, content, { echo: true });
+      return;
+    }
+    // Latest correction wins: a second steer replaces the parked one (and its
+    // countdown) rather than lining up behind it.
+    this.clearSteer(t);
+    t.info.steer = { content, ts: Date.now() };
+    t.info.lastActivityAt = Date.now();
+    this.emitInfo(t);
+    const timer = setTimeout(() => this.demoteStalledSteer(t), this.steerStallMs);
+    timer.unref?.();
+    t.steerStallTimer = timer;
+    // The queue survives a steer: those messages were always meant for after
+    // this turn, and the steer only claims the slot in front of them.
+    this.cancelTurn(t, { clearQueue: false });
+  }
+
+  /**
+   * The cancel went unanswered for {@link steerStallMs}. Demote the parked
+   * correction to the FRONT of the queue: it still goes first, but the user
+   * now sees it as a queued row that says when it sends, instead of a promise
+   * of an interruption that never came.
+   */
+  private demoteStalledSteer(t: ThreadRecord): void {
+    t.steerStallTimer = null;
+    const steer = t.info.steer;
+    if (steer === undefined || t.closed || !t.turnActive) return;
+    t.info.steer = undefined;
+    // Deliberately allowed to exceed MAX_QUEUED_PROMPTS by one. That cap gates
+    // NEW sends; dropping a correction the user already committed to (or
+    // evicting someone else's queued message to make room) is the worse trade.
+    t.info.queue = [
+      { id: crypto.randomUUID(), content: steer.content, ts: steer.ts },
+      ...(t.info.queue ?? []),
+    ];
     this.emitInfo(t);
   }
 
-  /** Remove a queued message before it dispatches. Unknown id: no-op. */
-  removeQueued(threadId: string, id: string): void {
+  /** Drop any parked steer along with its stall countdown. Broadcast is the
+   *  caller's — most call sites are already emitting for another reason. */
+  private clearSteer(t: ThreadRecord): void {
+    if (t.steerStallTimer !== null) {
+      clearTimeout(t.steerStallTimer);
+      t.steerStallTimer = null;
+    }
+    t.info.steer = undefined;
+  }
+
+  /** Pop the parked steer, or null. Broadcast rides the dispatch that follows. */
+  private takeSteer(t: ThreadRecord): SteerMessage | null {
+    const steer = t.info.steer;
+    if (steer === undefined) return null;
+    this.clearSteer(t);
+    return steer;
+  }
+
+  /** Replace a queued message's content in place, releasing any hold — a save
+   *  IS the resubmit. `false` when the id is unknown: the entry raced its own
+   *  dispatch (or a cancel), so the transcript already shows what ran. */
+  editQueued(threadId: string, id: string, content: string): boolean {
+    const t = this.mustGet(threadId);
+    const queue = t.info.queue ?? [];
+    if (!queue.some((m) => m.id === id)) return false;
+    t.info.queue = queue.map((m) => (m.id === id ? { ...m, content, held: false } : m));
+    this.emitInfo(t);
+    this.drainIfIdle(t);
+    return true;
+  }
+
+  /** Park a queued message so the drain skips it (`held`), or release it back
+   *  into line. Unknown id: no-op returning `false`. */
+  holdQueued(threadId: string, id: string, held: boolean): boolean {
+    const t = this.mustGet(threadId);
+    const queue = t.info.queue ?? [];
+    if (!queue.some((m) => m.id === id)) return false;
+    t.info.queue = queue.map((m) => (m.id === id ? { ...m, held } : m));
+    this.emitInfo(t);
+    if (!held) this.drainIfIdle(t);
+    return true;
+  }
+
+  /** Remove a queued message before it dispatches. Unknown id: `false`. */
+  removeQueued(threadId: string, id: string): boolean {
     const t = this.mustGet(threadId);
     const queue = t.info.queue ?? [];
     const next = queue.filter((m) => m.id !== id);
-    if (next.length === queue.length) return;
+    if (next.length === queue.length) return false;
     t.info.queue = next.length > 0 ? next : undefined;
     this.emitInfo(t);
+    return true;
   }
 
-  /** Pop the next queued prompt, or null. Broadcast rides the dispatch that
-   *  follows (its status flip emits the refreshed info snapshot). */
+  /**
+   * Dispatch the next releasable entry when no turn is running. The normal
+   * drain point is the turn-end continuation; an entry that becomes
+   * dispatchable AFTER the turn ended (a hold released, an edit saved) has no
+   * such continuation left to ride and would otherwise wait forever.
+   */
+  private drainIfIdle(t: ThreadRecord): void {
+    if (t.turnActive || t.closed || t.resumeInFlight) return;
+    if (t.info.archived === true || t.sessionId === null || t.conn === null) return;
+    const next = this.takeNextQueued(t);
+    if (next === null) return;
+    this.dispatchPrompt(t, next.content, { echo: true });
+  }
+
+  /** Pop the next dispatchable queued prompt, or null. Held entries are
+   *  skipped in place — they keep their position for when they're released.
+   *  Broadcast rides the dispatch that follows (its status flip emits the
+   *  refreshed info snapshot). */
   private takeNextQueued(t: ThreadRecord): QueuedMessage | null {
     const queue = t.info.queue;
     if (queue === undefined || queue.length === 0) return null;
-    const [next, ...rest] = queue;
+    const index = queue.findIndex((m) => m.held !== true);
+    if (index === -1) return null;
+    const next = queue[index];
+    const rest = [...queue.slice(0, index), ...queue.slice(index + 1)];
     t.info.queue = rest.length > 0 ? rest : undefined;
     return next ?? null;
   }
@@ -1485,11 +1960,18 @@ export class AcpThreadManager {
           stopReason: response.stopReason,
           ts: Date.now(),
         });
-        // Drain the queue FIFO — skip the 'ready' blip so the status history
-        // reads running → running, matching what the user sees. Guarded on a
-        // live connection: an agent that died as the turn settled already
-        // dropped the queue via its terminal status.
+        // Deliver the steer, then drain the queue FIFO — skip the 'ready' blip
+        // so the status history reads running → running, matching what the user
+        // sees. Guarded on a live connection: an agent that died as the turn
+        // settled already dropped both via its terminal status.
         if (t.sessionId !== null && t.conn !== null) {
+          // The steer goes first by construction — the user stopped THIS run
+          // for it, so it cannot wait behind messages queued before it.
+          const steer = this.takeSteer(t);
+          if (steer !== null) {
+            this.dispatchPrompt(t, steer.content, { echo: true });
+            return;
+          }
           const next = this.takeNextQueued(t);
           if (next !== null) {
             this.dispatchPrompt(t, next.content, { echo: true });
@@ -1503,24 +1985,52 @@ export class AcpThreadManager {
         t.turnActive = false;
         if (t.closed) return;
         this.appendEvent(t, { kind: 'turn_ended', stopReason: 'cancelled', ts: Date.now() });
+        // Some agents answer a cancel by rejecting the prompt request rather
+        // than resolving it 'cancelled'. That is still the turn ending, so the
+        // steer is still owed — whatever the rejection turns out to mean.
+        if (t.sessionId !== null && t.conn !== null) {
+          const steer = this.takeSteer(t);
+          if (steer !== null) {
+            this.dispatchPrompt(t, steer.content, { echo: true });
+            return;
+          }
+        }
         if (t.cancelRequested) {
           // The user asked for this — an aborted request is a completed
           // cancel, not an agent failure.
           this.emitStatus(t, 'ready');
-        } else {
-          this.emitStatus(t, 'error', `prompt failed: ${describeAgentError(err)}`);
+          this.setPresence(t, 'idle');
+          // Last, so a prompt this dispatches keeps its own 'writing' presence:
+          // a steer that stall-demoted to the front of the queue is waiting on
+          // this very turn ending, and the rejection path has no other drain.
+          this.drainIfIdle(t);
+          return;
         }
+        this.emitStatus(t, 'error', `prompt failed: ${agentErrorMessage(err)}`, {
+          reason: 'prompt',
+          agentMessage: agentErrorMessage(err),
+          machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(t)),
+        });
         this.setPresence(t, 'idle');
       });
   }
 
   cancel(threadId: string): void {
-    const t = this.mustGet(threadId);
-    // Stop means "stop the plan", not just the current turn — queued
-    // messages go with it (before the conn guard, so a cancel racing agent
-    // death still clears).
-    if (t.info.queue !== undefined) {
+    this.cancelTurn(this.mustGet(threadId), { clearQueue: true });
+  }
+
+  /**
+   * Send the ACP cancel for the running turn. `clearQueue` is the whole
+   * difference between Stop and a steer: Stop means "stop the plan", so
+   * everything waiting goes with the turn; a steer only replaces what runs
+   * next, so the queue keeps its place behind the correction.
+   */
+  private cancelTurn(t: ThreadRecord, opts: { clearQueue: boolean }): void {
+    if (opts.clearQueue && (t.info.queue !== undefined || t.info.steer !== undefined)) {
+      // Before the conn guard, so a cancel racing agent death still clears.
+      // The app folds both back into the composer, so the words survive.
       t.info.queue = undefined;
+      this.clearSteer(t);
       this.emitInfo(t);
     }
     if (t.conn === null || t.sessionId === null) return;
@@ -1530,7 +2040,18 @@ export class AcpThreadManager {
     // only actually stops when we do (the agent is awaiting our response).
     this.failPendingPermissions(t);
     this.restoreRunningAfterPermission(t);
-    void t.conn.agent.notify(acpMethods.agent.session.cancel, { sessionId: t.sessionId });
+    // Caught, not `void`ed: the notification's write can still be in flight
+    // when the connection closes (a thread closed right after a Stop), and an
+    // unhandled rejection there would take the server process with it. A
+    // cancel that lost its connection has already had its effect.
+    t.conn.agent
+      .notify(acpMethods.agent.session.cancel, { sessionId: t.sessionId })
+      .catch((err: unknown) => {
+        this.opts.log.debug(
+          { err, threadId: t.info.threadId },
+          '[acp-threads] cancel notification never reached the agent',
+        );
+      });
   }
 
   setMode(threadId: string, modeId: string): void {
@@ -1753,6 +2274,7 @@ export class AcpThreadManager {
     const t = this.threads.get(threadId);
     if (t === undefined || t.info.archived === true || t.closed) return;
     t.closed = true; // Suppress exit/conn status handlers during teardown.
+    this.clearSteer(t);
     this.failPendingPermissions(t);
     this.failPendingRuntimeConsent(t);
     try {
@@ -1774,6 +2296,7 @@ export class AcpThreadManager {
     }
     t.child = null;
     t.conn = null;
+    t.lastInit = null;
     await t.terminals?.disposeAll();
     t.terminals = null;
     this.opts.agentPresenceBroadcaster?.clearPresence(toBroadcasterKey(t.agentSessionId));
@@ -1783,7 +2306,12 @@ export class AcpThreadManager {
     // Never-used thread (no user message ever recorded): discard it rather than
     // archive. The agent is dead above; drop the record and its (possibly
     // partial) persisted log so a spawned-but-untouched agent leaves no history.
-    if (!t.hadUserMessage) {
+    // EXCEPT a thread that failed to start: its transcript is the only record
+    // of what went wrong (a startup failure disables the composer, so such a
+    // thread can never receive a user message — discarding meant every failed
+    // launch erased its own evidence the moment the tab closed).
+    const failedStart = t.info.status === 'error' || t.info.status === 'auth_required';
+    if (!t.hadUserMessage && !failedStart) {
       this.threads.delete(threadId);
       t.subscribers.clear();
       if (t.flushTimer !== null) {
@@ -2096,15 +2624,78 @@ export class AcpThreadManager {
     }
   }
 
-  private emitStatus(t: ThreadRecord, status: ThreadStatus, detail?: string): void {
-    // A terminal status is the single choke point where queued prompts die —
+  private emitStatus(
+    t: ThreadRecord,
+    status: ThreadStatus,
+    detail?: string,
+    failure?: ThreadFailureDetail,
+  ): void {
+    // A terminal status is the single choke point where waiting prompts die —
     // whatever path got here (agent exit, connection loss, prompt failure,
-    // archive), messages must not fire into a dead agent.
-    if (status === 'exited' || status === 'error') t.info.queue = undefined;
+    // archive), messages must not fire into a dead agent. The parked steer
+    // goes with the queue: it exists to jump a run that no longer exists.
+    if (status === 'exited' || status === 'error') {
+      t.info.queue = undefined;
+      this.clearSteer(t);
+    }
     t.info.status = status;
     t.info.lastActivityAt = Date.now();
-    this.appendEvent(t, { kind: 'status', status, detail, ts: Date.now() });
+    if (status === 'error' || status === 'auth_required') {
+      // Failure statuses reach the server log too — without this line a
+      // failed launch left no operator-visible trace anywhere but the
+      // (user-deletable) thread transcript.
+      this.opts.log.warn(
+        {
+          threadId: t.info.threadId,
+          agentId: t.info.agent.id,
+          status,
+          detail,
+          reason: failure?.reason,
+        },
+        '[acp-threads] thread failure status',
+      );
+    }
+    this.appendEvent(t, {
+      kind: 'status',
+      status,
+      detail,
+      ...(failure !== undefined ? { failure } : {}),
+      ts: Date.now(),
+    });
     this.emitInfo(t);
+  }
+
+  /**
+   * Kill a failed thread's agent process and drop its connection while
+   * keeping the record (and its failure status) addressable — the user still
+   * needs to read the banner, and close/retry still need the thread.
+   */
+  private async teardownFailedAgent(t: ThreadRecord): Promise<void> {
+    const child = t.child;
+    const conn = t.conn;
+    // Captured before the field is cleared so a retry that spawns a fresh set
+    // in the meantime cannot have it disposed out from under it.
+    const terminals = t.terminals;
+    t.child = null;
+    t.conn = null;
+    t.lastInit = null;
+    t.terminals = null;
+    try {
+      conn?.close();
+    } catch {
+      // Already closed.
+    }
+    // Before the kill: the agent is going away, and a command it left running
+    // would otherwise outlive both it and the thread's ability to show output.
+    await terminals?.disposeAll().catch((err: unknown) => {
+      this.opts.log.warn(
+        { err, threadId: t.info.threadId },
+        '[acp-threads] terminal cleanup on failed-agent teardown failed',
+      );
+    });
+    if (child !== null) {
+      await terminateAgentTree(child, { graceMs: KILL_GRACE_MS });
+    }
   }
 
   private emitInfo(t: ThreadRecord): void {
@@ -2121,9 +2712,10 @@ export class AcpThreadManager {
   }
 
   private buildMeta(t: ThreadRecord): PersistedThreadMeta {
-    // The queue is ephemeral by contract — persisting it would resurrect
-    // ghost entries into an archived thread after a mid-turn crash.
-    const { queue: _ephemeral, ...info } = t.info;
+    // The queue and the parked steer are ephemeral by contract — persisting
+    // either would resurrect ghost prompts into an archived thread after a
+    // mid-turn crash.
+    const { queue: _queue, steer: _steer, ...info } = t.info;
     return {
       version: 1,
       info,
@@ -2282,14 +2874,15 @@ export async function confineToContentDir(
 function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
   const status = meta.info.status === 'error' ? 'error' : 'exited';
   return {
-    // `queue: undefined` belt-and-suspenders: buildMeta never persists one,
-    // but a meta written by a different build must not resurrect entries.
-    info: { ...meta.info, status, archived: true, queue: undefined },
+    // `queue`/`steer: undefined` belt-and-suspenders: buildMeta never persists
+    // either, but a meta written by a different build must not resurrect them.
+    info: { ...meta.info, status, archived: true, queue: undefined, steer: undefined },
     docName: meta.docName,
     agentRef: meta.agentRef,
     cwd: meta.cwd,
     child: null,
     conn: null,
+    lastInit: null,
     sessionId: meta.sessionId,
     agentSessionId: `acp-${meta.info.threadId}`,
     events: [],
@@ -2298,6 +2891,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     logResolution: null,
     midTurnOnDisk: false,
     resumeInFlight: false,
+    authInFlight: false,
     suppressUpdates: false,
     lastSuppressedAt: 0,
     subscribers: new Set(),
@@ -2307,6 +2901,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     terminals: null,
     turnActive: false,
     cancelRequested: false,
+    steerStallTimer: null,
     unwatchedSince: null,
     unwatchedCancelSent: false,
     pendingBroadcast: [],
@@ -2344,17 +2939,83 @@ function declinedRuntimeHint(runtimeKind: ManagedRuntimeKind): string {
   return `This agent needs \`${d.provides}\`, which isn't installed. OK can download a private copy of ${d.displayName} for you, or install ${d.displayName} yourself (${installUrl}) and it'll be used automatically.`;
 }
 
-function describeAgentError(err: unknown): string {
-  if (err instanceof Error) {
-    const data = (err as { data?: unknown }).data;
-    if (data !== undefined && data !== null) {
-      try {
-        return `${err.message} (${JSON.stringify(data).slice(0, 300)})`;
-      } catch {
-        return err.message;
-      }
-    }
-    return err.message;
+/**
+ * True when a request failed with the ACP auth-required code. Structural
+ * (`code` field) rather than `instanceof RequestError` so a dual-package
+ * SDK instance can't defeat the check.
+ */
+function isAuthRequiredError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === AUTH_REQUIRED_CODE
+  );
+}
+
+/** The failing side's own human-readable message — never wire payloads. */
+function agentErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** JSON-RPC `data` payload, serialized for the disclosure — never headline copy. */
+function agentErrorData(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const data = (err as { data?: unknown }).data;
+  if (data === undefined || data === null) return undefined;
+  try {
+    return JSON.stringify(data).slice(0, 300);
+  } catch {
+    return undefined;
   }
-  return String(err);
+}
+
+/** What the most recent failure status said — the reason a retried op rejects with. */
+function lastFailureMessage(t: ThreadRecord): string | undefined {
+  for (let i = t.events.length - 1; i >= 0; i -= 1) {
+    const event = t.events[i];
+    if (event === undefined || event.kind !== 'status') continue;
+    if (event.status !== 'error' && event.status !== 'auth_required') continue;
+    return event.detail ?? event.failure?.agentMessage;
+  }
+  return undefined;
+}
+
+/**
+ * The stderr the agent wrote — its real diagnostic, usually. The whole
+ * retained tail, not a slice of it: this feeds the failure disclosure, which
+ * exists precisely so the evidence is there when someone goes looking.
+ */
+function stderrTailDetail(t: ThreadRecord): string | undefined {
+  const tail = t.stderrTail.join('\n');
+  return tail === '' ? undefined : tail;
+}
+
+function joinMachineDetail(...parts: Array<string | undefined>): string | undefined {
+  const joined = parts.filter((p): p is string => p !== undefined && p !== '').join('\n');
+  return joined === '' ? undefined : joined;
+}
+
+/** Trim the SDK's `AuthMethod[]` to the wire shape the client renders. */
+function threadAuthMethods(methods: InitializeResponse['authMethods']): ThreadAuthMethod[] {
+  return (methods ?? []).flatMap((m) => {
+    if (typeof m !== 'object' || m === null) return [];
+    const { id, name, description, type } = m as {
+      id?: unknown;
+      name?: unknown;
+      description?: unknown;
+      type?: unknown;
+    };
+    if (typeof id !== 'string' || typeof name !== 'string') return [];
+    return [
+      {
+        id,
+        name,
+        ...(typeof description === 'string' ? { description } : {}),
+        // The SDK's discriminant travels as-is: an absent `type` means the
+        // agent handles the sign-in itself, which the client must be able to
+        // tell apart from `env_var` / `terminal` methods it can't complete.
+        ...(typeof type === 'string' ? { kind: type } : {}),
+      },
+    ];
+  });
 }
