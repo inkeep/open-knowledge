@@ -506,6 +506,71 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(failAt).toBeGreaterThan(-1);
   });
 
+  test('an unchanged refusal is paged once, not once per tick', () => {
+    // The refused ref stays in the pending pile and re-conflicts on every
+    // tick, so a page-per-tick emits the same message every 20 minutes until
+    // the cycle consumes it — five identical pages in two hours on 2026-08-05.
+    // The gate is the cache lookup; losing it restores the flood silently,
+    // because every individual page is still "correct".
+    const page = bugLane.slice(
+      bugLane.indexOf('- name: Page on a refusal'),
+      bugLane.indexOf('- name: Record that this refusal was paged'),
+    );
+    expect(page).toContain("steps.paged_before.outputs.cache-hit != 'true'");
+    expect(bugLane).toContain('actions/cache/save@');
+    expect(bugLane).toContain('actions/cache/restore@');
+  });
+
+  test('the marker is gated on DELIVERY, not on the page step succeeding', () => {
+    // The page step cannot fail: a dead webhook is downgraded to a warning
+    // (losing a notification must never fail a release job) and an unset
+    // secret returns early, so its conclusion is `success` in both cases while
+    // nothing reached anyone. Keying the marker on the step would cache the
+    // signature anyway and silence that refusal permanently — strictly worse
+    // than the per-tick flood it replaced, which self-healed next tick.
+    //
+    // Step ORDER is not the property: `Record` sits after `Page` either way,
+    // so an ordering assertion stays green while the guarantee is gone.
+    expect(bugLane).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
+    expect(bugLane).toContain('delivered=true');
+    for (const step of ['Record that this refusal was paged', 'Remember the refusal across ticks']) {
+      const body = bugLane.slice(
+        bugLane.indexOf(`- name: ${step}`),
+        bugLane.indexOf(`- name: ${step}`) + 400,
+      );
+      expect(body, `${step} must gate on delivery`).toContain(
+        "if: steps.page.outputs.delivered == 'true'",
+      );
+    }
+  });
+
+  test('the one page it does send says the following silence is deliberate', () => {
+    // Paging once and then going quiet is indistinguishable from resolved
+    // unless the message says so.
+    // Bounded to the Page step: an open-ended slice would also match the
+    // phrase in a later step or comment and pass while the message itself
+    // had lost it.
+    const page = bugLane.slice(
+      bugLane.indexOf('- name: Page on a refusal'),
+      bugLane.indexOf('- name: Record that this refusal was paged'),
+    );
+    expect(page).toContain('Further identical refusals stay silent');
+  });
+
+  test('a suppressed refusal still leaves a trace in the run', () => {
+    // The suppressing tick is the one with nothing else to show: no page, no
+    // marker write, green check. Its condition is the COMPLEMENT of the page
+    // step's, which is the regression worth pinning — swapping it to
+    // `!= 'true'` makes it fire alongside the page and never on the tick it
+    // exists for, and every other test here stays green.
+    const suppress = bugLane.slice(
+      bugLane.indexOf('- name: Note a suppressed refusal'),
+      bugLane.indexOf('- name: Page on a refusal'),
+    );
+    expect(suppress).toContain("if: steps.paged_before.outputs.cache-hit == 'true'");
+    expect(suppress).toContain('>> "$GITHUB_STEP_SUMMARY"');
+  });
+
   test('the refusal page does not claim a cause it has not established', () => {
     // The prior text asserted "the fix passes on main but not on the stable it
     // would ship against" off a single red run, sending operators hunting for

@@ -265,8 +265,74 @@ jobs:
           curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL" \
             || echo "::warning::bug-lane drop notification failed to POST — the dispatch itself is unaffected."
 
-      - name: Page on a refusal (armed only)
+      # A refusal is a STANDING ANSWER, not an event. The refused ref stays in
+      # the pending pile and re-qualifies and re-conflicts on every tick, so a
+      # page-per-tick turns one durable fact into a message every 20 minutes
+      # until the cycle's stable consumes it — ~70 identical pages, which is
+      # how a channel gets muted. Observed 2026-08-05: five identical pages for
+      # one deterministically-conflicting ref inside two hours.
+      #
+      # Page once per DISTINCT refusal instead. The signature is the verdict
+      # plus the refs it is about, so a genuinely new refusal — a different
+      # ref, or the same ref failing a different way — still pages at once.
+      # The cache is only a "have I said this already" marker; if it misses
+      # (eviction, or a tick cancelled between paging and saving) the lane
+      # re-pages, which is the safe direction to fail.
+      #
+      # The stable tag is DELIBERATELY not in the signature, so a refusal that
+      # survives a stable roll stays quiet rather than re-paging against the
+      # new stable. Two reasons. The operator's move does not change when the
+      # stable does — it is still "wait for the cycle, or point-release by
+      # hand" — and stables currently roll several times a day, so including it
+      # would restore a good fraction of the flood for a fact already reported.
+      # The suppression is bounded either way: a refused ref keeps its
+      # changeset pending only until a cut that DOES contain it ships, which
+      # the ordinary beta-to-stable cadence guarantees within a cycle. If that
+      # ever stops being true, put "$STABLE" back in the printf below.
+      - name: Refusal signature
+        id: refusal
         if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail')
+        env:
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+          FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
+        run: |
+          set -euo pipefail
+          sig="$(printf '%s|%s|%s' "$VERDICT" "$FIX_REFS" "$SURVIVING_REFS" | sha256sum | cut -c1-32)"
+          echo "sig=${sig}" >> "$GITHUB_OUTPUT"
+          echo "marker=${RUNNER_TEMP}/bug-lane-refusal-marker" >> "$GITHUB_OUTPUT"
+
+      - name: Has this refusal already been paged?
+        id: paged_before
+        if: steps.refusal.outputs.sig != ''
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.refusal.outputs.marker }}
+          key: bug-lane-refusal-${{ steps.refusal.outputs.sig }}
+          lookup-only: true
+
+      # Suppression has to be visible SOMEWHERE. Silencing the channel is the
+      # point, but a tick that suppresses otherwise finishes green with no
+      # trace, so an operator asking "is that conflict still standing?" has
+      # only an invisible cache hit to infer it from. The run summary costs no
+      # notification and answers that question in place.
+      - name: Note a suppressed refusal
+        if: steps.paged_before.outputs.cache-hit == 'true'
+        env:
+          SIG: ${{ steps.refusal.outputs.sig }}
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Bug lane — refusal still standing, page suppressed"
+            echo "Verdict \`${VERDICT}\`, signature \`${SIG}\`, already paged on an earlier tick."
+            echo "The channel stays quiet by design; this refusal re-pages only if it changes."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::bug-lane: refusal ${SIG} already paged; suppressing the duplicate page."
+
+      - name: Page on a refusal (armed only)
+        id: page
+        if: steps.refusal.outputs.sig != '' && steps.paged_before.outputs.cache-hit != 'true'
         env:
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -276,24 +342,54 @@ jobs:
           VERDICT: ${{ steps.verify.outputs.verdict }}
         run: |
           set -uo pipefail
+          # `delivered` is the ONLY thing the marker may key on. The step's own
+          # conclusion cannot stand in for it: a dead webhook is downgraded to
+          # a warning (losing a notification must never fail a release job), and
+          # an unset secret exits early, so this step reports success in both
+          # cases while nothing reached anyone.
+          delivered=false
           WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
           if [[ -z "$WEBHOOK_URL" ]]; then
             echo "::notice::No Slack webhook secret set — refusal page skipped."
-            exit 0
-          fi
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          # Name only the refs each verdict is actually about: on conflict the
-          # whole qualifying set conflicted; on fail only the survivors reached
-          # the verification stage.
-          if [[ "$VERDICT" == "conflict" ]]; then
-            TEXT="⛔ Bug lane: no qualifying fix is self-contained over the stable — all of ${FIX_REFS} conflict. They ride their cycle's 24h path; investigate whether any needs a manual point release. ${RUN_URL}"
           else
-            TEXT="⛔ Bug lane: verification failed on the synthetic tree for ${SURVIVING_REFS} — the fast tiers went red on BOTH attempts, or the install failed. Either way this is past flake-class: treat it as a real conflict with the stable, not a retryable blip."
-            if [[ -n "${DROPPED_REFS}" ]]; then
-              TEXT="${TEXT} Also dropped for conflict: ${DROPPED_REFS}."
+            RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            # Name only the refs each verdict is actually about: on conflict the
+            # whole qualifying set conflicted; on fail only the survivors reached
+            # the verification stage.
+            if [[ "$VERDICT" == "conflict" ]]; then
+              TEXT="⛔ Bug lane: no qualifying fix is self-contained over the stable — all of ${FIX_REFS} conflict. They ride their cycle's 24h path; investigate whether any needs a manual point release. ${RUN_URL}"
+            else
+              TEXT="⛔ Bug lane: verification failed on the synthetic tree for ${SURVIVING_REFS} — the fast tiers went red on BOTH attempts, or the install failed. Either way this is past flake-class: treat it as a real conflict with the stable, not a retryable blip."
+              if [[ -n "${DROPPED_REFS}" ]]; then
+                TEXT="${TEXT} Also dropped for conflict: ${DROPPED_REFS}."
+              fi
+              TEXT="${TEXT} The fixes ride their cycle's 24h path. ${RUN_URL}"
             fi
-            TEXT="${TEXT} The fixes ride their cycle's 24h path. ${RUN_URL}"
+            # Say that the silence which follows is deliberate. Without this a
+            # reader cannot tell "paged once, still refusing every tick" from
+            # "resolved", and would read the quiet channel as good news.
+            TEXT="${TEXT} Further identical refusals stay silent; the lane pages again only if the refusal changes."
+            payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
+            if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
+              delivered=true
+            else
+              echo "::warning::bug-lane refusal page failed to POST — the refusal still holds and stays un-marked, so the next tick pages it again."
+            fi
           fi
-          payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
-          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL" \
-            || echo "::warning::bug-lane refusal page failed to POST — the refusal itself still holds."
+          echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"
+
+      # Gated on DELIVERY, not on the page step's conclusion. The marker means
+      # "the operator has been told"; writing it after a failed POST would
+      # convert a transient Slack outage into permanent silence for that
+      # refusal — strictly worse than the per-tick flood this replaced, which
+      # at least self-healed on the next tick.
+      - name: Record that this refusal was paged
+        if: steps.page.outputs.delivered == 'true'
+        run: printf '%s\n' "${{ steps.refusal.outputs.sig }}" > "${{ steps.refusal.outputs.marker }}"
+
+      - name: Remember the refusal across ticks
+        if: steps.page.outputs.delivered == 'true'
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.refusal.outputs.marker }}
+          key: bug-lane-refusal-${{ steps.refusal.outputs.sig }}

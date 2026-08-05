@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   deriveEntryLevelResolution,
+  formatReleaseNotes,
   guardAnchor,
   guardDeltaMatchesFix,
   guardMainResetDeltaIds,
@@ -1399,5 +1400,43 @@ describe('point-release.yml contract with this script', () => {
     // could resolve to 'false' on an unattended path.
     expect(runStep).toMatch(/DRY_RUN: \$\{\{ inputs\.dry_run \}\}/);
     expect(source).toContain("process.env.DRY_RUN !== 'false'");
+  });
+});
+
+describe('formatReleaseNotes "Applied" line', () => {
+  const SHA = '896d38001a123ce9cf05808249d2f12894402850';
+  const appliedLine = (fixRefs) =>
+    formatReleaseNotes({
+      latestStableTag: 'v0.48.2',
+      mode: 'cherry-pick',
+      fixRefs,
+      changesetEntries: [],
+      addedIds: [],
+      removedIds: [],
+    })
+      .split('\n')
+      .find((l) => l.startsWith('Applied:'));
+
+  test('a ref that IS its sha prints the hash once, not twice', () => {
+    // The bug lane dispatches full SHAs, so ref === sha and the old
+    // `ref (sha)` shape rendered the same 40 characters twice in every
+    // point-release announcement that lane produced.
+    expect(appliedLine([{ ref: SHA, sha: SHA }])).toBe(`Applied: ${SHA}`);
+  });
+
+  test('a NAMED ref still shows what it resolved to', () => {
+    // The parenthetical earns its place when the reader cannot resolve the
+    // ref themselves; dropping it there would lose real information.
+    expect(appliedLine([{ ref: 'v0.47.1', sha: SHA }])).toBe(`Applied: v0.47.1 (${SHA})`);
+  });
+
+  test('a mixed batch keeps each form', () => {
+    const other = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+    expect(
+      appliedLine([
+        { ref: SHA, sha: SHA },
+        { ref: 'hotfix-tag', sha: other },
+      ]),
+    ).toBe(`Applied: ${SHA}, hotfix-tag (${other})`);
   });
 });

@@ -1078,7 +1078,11 @@ export function formatReleaseNotes(plan) {
       `commit(s), isolated from the changes still soaking on main.`,
     '',
     `Mode: ${plan.mode}`,
-    `Applied: ${plan.fixRefs.map((r) => `${r.ref} (${r.sha})`).join(', ')}`,
+    // `ref (sha)` is only worth printing when the ref is a NAME — a tag or
+    // branch the reader cannot resolve themselves. The bug lane dispatches
+    // full SHAs, where `ref` and `sha` are the same 40 characters and the
+    // parenthetical renders as the same hash twice.
+    `Applied: ${plan.fixRefs.map((r) => (r.ref === r.sha ? r.sha : `${r.ref} (${r.sha})`)).join(', ')}`,
   ];
   // Quote each added changeset's prose under the same level heading a stable's
   // aggregated notes use, so the announcement channels render both release
