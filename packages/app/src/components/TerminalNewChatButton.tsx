@@ -152,7 +152,7 @@ export function TerminalNewChatButton({
               type="button"
               variant="ghost"
               size="icon-xs"
-              aria-label={t`Choose what a new session starts`}
+              aria-label={t`Choose what a new tab starts`}
               data-testid="terminal-new-chat-menu"
               className="cursor-pointer rounded-l-none text-muted-foreground hover:text-foreground"
             >

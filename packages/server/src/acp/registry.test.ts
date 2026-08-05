@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLogger } from '../logger.ts';
-import { AcpRegistry, loadCustomAgents, registryPlatformKey } from './registry.ts';
+import {
+  AcpRegistry,
+  loadCustomAgents,
+  normalizeAgentDisplayName,
+  registryPlatformKey,
+} from './registry.ts';
 
 const log = getLogger('acp-registry-test');
 
@@ -71,6 +76,49 @@ describe('AcpRegistry', () => {
       }) as typeof fetch,
     });
     await expect(registry.getCatalog()).rejects.toThrow('offline');
+  });
+});
+
+describe('normalizeAgentDisplayName', () => {
+  test('title-cases a fully lowercase name', () => {
+    expect(normalizeAgentDisplayName('cursor', 'cursor')).toBe('Cursor');
+    expect(normalizeAgentDisplayName('qwen-code', 'qwen code')).toBe('Qwen Code');
+  });
+
+  test('keeps branded capitalization verbatim', () => {
+    expect(normalizeAgentDisplayName('github-copilot-cli', 'GitHub Copilot')).toBe(
+      'GitHub Copilot',
+    );
+    expect(normalizeAgentDisplayName('vtcode', 'VT Code')).toBe('VT Code');
+    expect(normalizeAgentDisplayName('sigit', 'siGit Code')).toBe('siGit Code');
+    expect(normalizeAgentDisplayName('pi-acp', 'pi ACP')).toBe('pi ACP');
+  });
+
+  test('leaves intentionally-lowercase brands alone', () => {
+    expect(normalizeAgentDisplayName('goose', 'goose')).toBe('goose');
+    expect(normalizeAgentDisplayName('fast-agent', 'fast-agent')).toBe('fast-agent');
+    expect(normalizeAgentDisplayName('crow-cli', 'crow-cli')).toBe('crow-cli');
+  });
+
+  test('falls back to the id for an empty name', () => {
+    expect(normalizeAgentDisplayName('cursor', '   ')).toBe('cursor');
+  });
+
+  test('applies at catalog ingest so every consumer sees one spelling', async () => {
+    const payload = JSON.stringify({
+      agents: [
+        { id: 'cursor', name: 'cursor', version: '1.0.0', distribution: {} },
+        { id: 'github-copilot-cli', name: 'GitHub Copilot', version: '1.0.0', distribution: {} },
+        { id: 'goose', name: 'goose', version: '1.0.0', distribution: {} },
+      ],
+    });
+    const registry = new AcpRegistry({
+      localDir: tmp(),
+      log,
+      fetchImpl: (async () => new Response(payload, { status: 200 })) as typeof fetch,
+    });
+    const { agents } = await registry.getCatalog();
+    expect(agents.map((a) => a.name)).toEqual(['Cursor', 'GitHub Copilot', 'goose']);
   });
 });
 

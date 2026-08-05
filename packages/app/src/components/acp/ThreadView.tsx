@@ -37,15 +37,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import {
-  Fragment,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from 'react';
+import { Fragment, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
@@ -97,6 +89,7 @@ import {
   rememberAgentConfigOption,
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
+import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
@@ -604,6 +597,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
                         // the prompt settles (and some agents ask outside a turn) —
                         // only a dead thread makes answering impossible.
                         actionable={!archived && status !== 'exited' && status !== 'error'}
+                        streaming={turnActive && index === model.items.length - 1}
                         terminals={model.terminals}
                         permissionsByToolCall={model.permissionsByToolCall}
                         showRetry={index === retryNoticeIndex}
@@ -637,11 +631,17 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
                   // already in the transcript above — show that the agent is on
                   // its way rather than a silent gap until the turn opens.
                   <div
-                    className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                    className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
                     data-testid="agent-thread-starting"
                   >
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                    <span>{t`Starting the agent…`}</span>
+                    <Loader2
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                    {/* `shimmer` sets `color: transparent`, which a container
+                        would inherit into the spinner's currentColor stroke —
+                        keep it scoped to the text. */}
+                    <span className="shimmer">{t`Starting the agent…`}</span>
                   </div>
                 ) : null}
               </MessageScrollerContent>
@@ -666,7 +666,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
           data-testid="agent-thread-cancel-stalled"
         >
           <span className="flex-1">
-            {t`The agent isn't stopping. Force stop closes this thread and quits the agent.`}
+            {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
           </span>
           <Button
             type="button"
@@ -687,8 +687,8 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         >
           <span className="flex-1">
             {resumeError.code === 'resume-unsupported'
-              ? t`${info.agent.name} can't continue this conversation — the transcript is kept, but the agent session is gone.`
-              : t`Couldn't resume this conversation: ${resumeError.message}`}
+              ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
+              : t`Couldn't resume this chat: ${resumeError.message}`}
           </span>
           <Button
             type="button"
@@ -698,7 +698,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
             onClick={startFreshThread}
             data-testid="agent-thread-resume-fallback-new"
           >
-            {t`New thread with ${info.agent.name}`}
+            {t`New chat with ${info.agent.name}`}
           </Button>
         </div>
       ) : null}
@@ -751,11 +751,6 @@ function ThreadHeader({
   return (
     <div className="flex items-center gap-2 px-3 pb-1.5 pt-0">
       <span className="min-w-0 truncate font-medium text-1sm">{info.title}</span>
-      {info.archived === true ? (
-        <Badge variant="gray" className="shrink-0 px-1.5 py-0 text-[10px]">
-          {t`Archived`}
-        </Badge>
-      ) : null}
       {info.agent.version !== undefined && info.agent.version !== '' ? (
         // Which build answered. OK launches the registry-pinned version, which
         // is routinely not the one the user's own terminal runs — without this
@@ -802,16 +797,51 @@ function ThreadHeader({
 
 type SelectConfigOption = Extract<SessionConfigOption, { type: 'select' }>;
 
-function selectOptionName(option: SelectConfigOption): string {
+function currentSelectEntry(
+  option: SelectConfigOption,
+): { value: string; name: string } | undefined {
   for (const entry of option.options) {
     if ('value' in entry) {
-      if (entry.value === option.currentValue) return entry.name;
+      if (entry.value === option.currentValue) return entry;
       continue;
     }
     const current = entry.options.find((candidate) => candidate.value === option.currentValue);
-    if (current !== undefined) return current.name;
+    if (current !== undefined) return current;
   }
-  return option.currentValue;
+  return undefined;
+}
+
+/**
+ * A raw wire id shown because the advertised list doesn't contain the current
+ * value — make it read like a label ("bypassPermissions" → "Bypass
+ * Permissions") rather than a camelCase/kebab token.
+ */
+function humanizeValueId(id: string): string {
+  const spaced = id
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function selectOptionName(option: SelectConfigOption): string {
+  return currentSelectEntry(option)?.name ?? humanizeValueId(option.currentValue);
+}
+
+/**
+ * The current value as the collapsed row / trigger should read it: the
+ * adapter's own display name, except where a bare "Default" can be resolved
+ * into what it actually is — via the hint table, or via the adapter's own
+ * data when the default entry's description names a concrete sibling.
+ */
+function selectOptionSummary(agentId: string, option: SelectConfigOption): string {
+  const entry = currentSelectEntry(option);
+  if (entry === undefined) return humanizeValueId(option.currentValue);
+  return (
+    configValueHint(agentId, option.id, entry.value) ??
+    resolveDefaultOptionLabel(option) ??
+    entry.name
+  );
 }
 
 function hasSelectValues(option: SelectConfigOption): boolean {
@@ -865,7 +895,7 @@ function deriveModeSurface(info: ThreadInfo): ModeSurface | null {
       currentId: modes.currentModeId,
       currentName:
         modes.availableModes.find((mode) => mode.id === modes.currentModeId)?.name ??
-        modes.currentModeId,
+        humanizeValueId(modes.currentModeId),
       values: modes.availableModes.map((mode) => ({ id: mode.id, name: mode.name })),
     };
   }
@@ -906,7 +936,9 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
         option.type === 'select' && option.category === 'model',
     ) ?? configOptions.find((option): option is SelectConfigOption => option.type === 'select');
   const triggerText =
-    primarySelect !== undefined ? selectOptionName(primarySelect) : (legacyModeName ?? t`Settings`);
+    primarySelect !== undefined
+      ? selectOptionSummary(info.agent.id, primarySelect)
+      : (legacyModeName ?? t`Settings`);
   const accentTooltip =
     permissiveMode && modeSurface !== null
       ? t`${modeSurface.currentName} lets ${info.agent.name} act without asking`
@@ -951,6 +983,7 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
           option.type === 'select' ? (
             <ConfigSelectSub
               key={option.id}
+              agentId={info.agent.id}
               option={option}
               onSelect={(value) => applyConfig(option, value)}
             />
@@ -964,6 +997,7 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
         )}
         {showLegacyModes ? (
           <ConfigSelectSub
+            agentId={info.agent.id}
             option={{
               id: 'legacy-mode',
               name: t`Agent mode`,
@@ -984,12 +1018,22 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
 }
 
 function ConfigSelectSub({
+  agentId,
   option,
   onSelect,
 }: {
+  agentId: string;
   option: SelectConfigOption;
   onSelect: (valueId: string) => void;
 }): ReactNode {
+  // A value the adapter describes keeps its description; a bare known
+  // "Default" gets the hint table's resolution as its secondary line.
+  const withHint = <E extends { value: string; name: string; description?: string | null }>(
+    entry: E,
+  ): E =>
+    entry.description
+      ? entry
+      : { ...entry, description: configValueHint(agentId, option.id, entry.value) ?? undefined };
   const entries: ReadonlyArray<(typeof option.options)[number]> = option.options;
   const flat = entries.filter(
     (entry): entry is Extract<(typeof entries)[number], { value: string }> => 'value' in entry,
@@ -1002,7 +1046,7 @@ function ConfigSelectSub({
       <DropdownMenuSubTrigger className="gap-2" data-testid={`agent-thread-config-${option.id}`}>
         <span className="min-w-0 flex-1 truncate">{option.name}</span>
         <span className="max-w-[11rem] truncate text-1sm text-muted-foreground">
-          {selectOptionName(option)}
+          {selectOptionSummary(agentId, option)}
         </span>
       </DropdownMenuSubTrigger>
       {/* Cap the height so a long option list (e.g. the pr-review personas)
@@ -1015,7 +1059,7 @@ function ConfigSelectSub({
         <DropdownMenuLabel>{option.name}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={option.currentValue} onValueChange={onSelect}>
           {flat.map((entry) => (
-            <ConfigRadioItem key={entry.value} entry={entry} />
+            <ConfigRadioItem key={entry.value} entry={withHint(entry)} />
           ))}
           {groups.map((group) => (
             <Fragment key={group.group}>
@@ -1025,7 +1069,7 @@ function ConfigSelectSub({
                 </DropdownMenuLabel>
               ) : null}
               {group.options.map((entry) => (
-                <ConfigRadioItem key={entry.value} entry={entry} />
+                <ConfigRadioItem key={entry.value} entry={withHint(entry)} />
               ))}
             </Fragment>
           ))}
@@ -1111,7 +1155,7 @@ function ThreadTranscriptSkeleton(): ReactNode {
   // region that already holds its text on first render is often not announced.
   const [announced, setAnnounced] = useState('');
   useEffect(() => {
-    setAnnounced(t`Loading the conversation`);
+    setAnnounced(t`Loading the chat`);
   }, [t]);
   return (
     <div className="flex flex-col gap-6 pt-2">
@@ -1182,9 +1226,11 @@ function ThreadEmptyState({
     );
   }
 
-  // Agent still coming up: the faded agent mark with a shimmering status line so
-  // the wait reads as "working". `shimmer` is a text-clipped gradient sweep, so
-  // it animates the label; the icon stays faded (an SVG has no text to clip).
+  // Agent still coming up: the agent mark breathes and the status line shimmers
+  // so the wait reads as "working". `shimmer` is a text-clipped gradient sweep
+  // with no effect on SVG/img, so the icon gets `animate-pulse` instead — its
+  // implicit 0%/100% keyframes take the element's own `opacity-25`, giving a
+  // subtle 0.25→0.5 breathe.
   const loadingMessage =
     status === 'installing'
       ? t`Installing ${agentName}…`
@@ -1196,7 +1242,7 @@ function ThreadEmptyState({
       <RegisteredAgentIcon
         agentId={agent.id}
         iconUrl={agent.iconUrl}
-        className="size-12 opacity-25 grayscale"
+        className="size-12 animate-pulse opacity-25 grayscale motion-reduce:animate-none"
       />
       <p className="shimmer text-sm">{loadingMessage}</p>
     </div>
@@ -1268,6 +1314,7 @@ function ThreadItem({
   threadId,
   agent,
   actionable,
+  streaming,
   terminals,
   permissionsByToolCall,
   showRetry,
@@ -1281,6 +1328,8 @@ function ThreadItem({
   agent: ThreadInfo['agent'];
   /** The thread can still take answers (live agent, not archived/dead). */
   actionable: boolean;
+  /** This item is the transcript tail of an active turn (still growing). */
+  streaming: boolean;
   terminals: Record<string, RenderedTerminal>;
   permissionsByToolCall: Record<string, RenderedPermission>;
   /** This notice is the one that offers Retry (at most one per transcript). */
@@ -1293,7 +1342,7 @@ function ThreadItem({
 }): ReactNode {
   switch (item.kind) {
     case 'message':
-      return <MessageBubble item={item} />;
+      return <MessageBubble item={item} streaming={streaming} />;
     case 'tool_call':
       return (
         <ToolCallCard
@@ -1324,6 +1373,66 @@ function ThreadItem({
         />
       );
   }
+}
+
+/**
+ * A thinking run, collapsed to one line. Collapsed even while streaming — the
+ * tool-call card's comment records why expand-while-running fails here (the
+ * fold-up yanks the bottom-pinned transcript), and the working avatar already
+ * signals liveness. The preview shows the tail line while streaming (it moves,
+ * so the row reads as live) and the head line once settled (it reads as the
+ * summary).
+ */
+function ThoughtBlock({
+  item,
+  streaming,
+}: {
+  item: Extract<RenderedItem, { kind: 'message' }>;
+  streaming: boolean;
+}): ReactNode {
+  const { t } = useLingui();
+  const [open, setOpen] = useState(false);
+  const lines = item.text.split('\n').filter((line) => line.trim().length > 0);
+  const preview = (streaming ? lines[lines.length - 1] : lines[0]) ?? '';
+  return (
+    <div data-testid="agent-thread-thought">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-auto w-full justify-start gap-1 px-0 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide hover:bg-transparent"
+        onClick={() => setOpen((value) => !value)}
+        // Disclosure per APG: `aria-expanded` alone — no `aria-controls`,
+        // whose IDREF would dangle while the body is unmounted.
+        aria-expanded={open}
+        data-testid="agent-thread-thought-toggle"
+      >
+        {open ? (
+          <ChevronDown className="size-3" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3" aria-hidden="true" />
+        )}
+        {t`Thinking`}
+        {open ? null : (
+          <span className="min-w-0 flex-1 truncate text-left font-normal text-xs normal-case italic tracking-normal">
+            {preview}
+          </span>
+        )}
+      </Button>
+      {open ? (
+        // Thoughts carry markdown like any other agent output, so they parse —
+        // otherwise an agent's bold summary line shows its literal `**`. But a
+        // thought must never compete with the reply for attention, so emphasis
+        // is flattened to one quiet weight and size: the markup still
+        // structures the text, it just can't shout. The flattening classes
+        // must stay on the element that directly wraps AgentMarkdown, whose
+        // own code-size rule deliberately yields to them.
+        <div className="px-1 text-muted-foreground text-xs italic **:font-normal! **:text-xs!">
+          <AgentMarkdown text={item.text} />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -1493,18 +1602,15 @@ function ThreadNotice({
   );
 }
 
-function MessageBubble({ item }: { item: Extract<RenderedItem, { kind: 'message' }> }): ReactNode {
+function MessageBubble({
+  item,
+  streaming,
+}: {
+  item: Extract<RenderedItem, { kind: 'message' }>;
+  streaming?: boolean;
+}): ReactNode {
   if (item.role === 'thought') {
-    // Thoughts carry markdown like any other agent output, so they parse —
-    // otherwise an agent's bold summary line shows its literal `**`. But a
-    // thought must never compete with the reply for attention, so emphasis is
-    // flattened to one quiet weight and size: the markup still structures the
-    // text, it just can't shout.
-    return (
-      <div className="px-1 text-muted-foreground text-xs italic **:font-normal! **:text-xs!">
-        <AgentMarkdown text={item.text} />
-      </div>
-    );
+    return <ThoughtBlock item={item} streaming={streaming === true} />;
   }
   const isUser = item.role === 'user';
   return (
@@ -1940,7 +2046,6 @@ function TerminalBlock({ terminal }: { terminal: RenderedTerminal }): ReactNode 
 function RawInputBlock({ text }: { text: string }): ReactNode {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const contentId = useId();
   return (
     <div data-testid="agent-thread-tool-raw-input">
       <Button
@@ -1949,8 +2054,9 @@ function RawInputBlock({ text }: { text: string }): ReactNode {
         size="sm"
         className="h-auto w-full justify-start gap-1 px-0 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide hover:bg-transparent"
         onClick={() => setOpen((value) => !value)}
+        // Disclosure per APG: `aria-expanded` alone — no `aria-controls`,
+        // whose IDREF would dangle while the body is unmounted.
         aria-expanded={open}
-        aria-controls={contentId}
       >
         {open ? (
           <ChevronDown className="size-3" aria-hidden="true" />
@@ -1960,10 +2066,7 @@ function RawInputBlock({ text }: { text: string }): ReactNode {
         {t`Input`}
       </Button>
       {open ? (
-        <pre
-          id={contentId}
-          className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground"
-        >
+        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground">
           {text}
         </pre>
       ) : null}
@@ -2591,7 +2694,7 @@ function ThreadComposer({
           placeholder={
             archived
               ? resumePending
-                ? t`Resuming the conversation`
+                ? t`Resuming the chat`
                 : t`Pick up where you left off`
               : status === 'auth_required'
                 ? t`Sign in to ${agentName} first`

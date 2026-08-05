@@ -127,6 +127,33 @@ export function registryPlatformKey(): string | null {
   return `${osKey}-${cpuKey}`;
 }
 
+/**
+ * Registry ids whose brands are intentionally all-lowercase (verified against
+ * each vendor's own site, 2026-08-05) — the one class of name the lowercase
+ * backstop below must leave alone.
+ */
+const LOWERCASE_BRAND_AGENT_IDS: ReadonlySet<string> = new Set(['goose', 'fast-agent', 'crow-cli']);
+
+/**
+ * Display names are publisher-authored registry data, mutable under us and
+ * occasionally shipped fully lowercase (a `cursor` manifest did exactly that).
+ * Branded capitalization ("GitHub Copilot", "VT Code", "siGit Code") must pass
+ * through verbatim — blanket title-casing would corrupt it — so the backstop
+ * title-cases only names containing no uppercase at all, minus the
+ * intentionally-lowercase brands above. Runs at catalog ingest so every
+ * consumer (catalog endpoint, thread metas, presence) sees one spelling.
+ */
+export function normalizeAgentDisplayName(id: string, name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return id;
+  if (LOWERCASE_BRAND_AGENT_IDS.has(id)) return trimmed;
+  if (trimmed !== trimmed.toLowerCase()) return trimmed;
+  return trimmed
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 function isRegistryAgent(value: unknown): value is RegistryAgent {
   if (typeof value !== 'object' || value === null) return false;
   const a = value as Record<string, unknown>;
@@ -149,7 +176,9 @@ function parseCatalogJson(text: string): RegistryAgent[] | null {
   }
   const agents = (parsed as { agents?: unknown })?.agents;
   if (!Array.isArray(agents)) return null;
-  return agents.filter(isRegistryAgent);
+  return agents
+    .filter(isRegistryAgent)
+    .map((agent) => ({ ...agent, name: normalizeAgentDisplayName(agent.id, agent.name) }));
 }
 
 export class AcpRegistry {

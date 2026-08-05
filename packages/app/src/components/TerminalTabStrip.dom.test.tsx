@@ -50,7 +50,7 @@ function renderStrip(props?: {
         newButton={stubNewButton(onNewButtonClick)}
         trailingControls={
           props?.withTrailing ? (
-            <button type="button" aria-label="Restore sessions">
+            <button type="button" aria-label="Reopen a past chat">
               H
             </button>
           ) : undefined
@@ -89,13 +89,13 @@ describe('TerminalTabStrip', () => {
   // names must differ by edge, not merely exist.
   test('names the tablist for its own panel so two open panels are distinguishable', () => {
     renderStrip({ edge: 'right' });
-    expect(screen.getByRole('tablist', { name: 'Agent sessions' })).toBeTruthy();
+    expect(screen.getByRole('tablist', { name: 'Agent chats' })).toBeTruthy();
     expect(screen.queryByRole('tablist', { name: 'Terminal sessions' })).toBeNull();
 
     cleanup();
     renderStrip({ edge: 'bottom' });
     expect(screen.getByRole('tablist', { name: 'Terminal sessions' })).toBeTruthy();
-    expect(screen.queryByRole('tablist', { name: 'Agent sessions' })).toBeNull();
+    expect(screen.queryByRole('tablist', { name: 'Agent chats' })).toBeNull();
   });
 
   test('hovering a tab surfaces the full (untruncated) title in a tooltip', async () => {
@@ -216,7 +216,7 @@ describe('TerminalTabStrip', () => {
 
   test('trailing controls render at the far right, immediately left of the collapse control', () => {
     renderStrip({ withTrailing: true });
-    const trailing = screen.getByRole('button', { name: 'Restore sessions' });
+    const trailing = screen.getByRole('button', { name: 'Reopen a past chat' });
     const newButton = screen.getByRole('button', { name: 'New session' });
     const collapse = screen.getByRole('button', { name: 'Collapse panel' });
     // The New button hugs the tabs on the left; the trailing control sits in the

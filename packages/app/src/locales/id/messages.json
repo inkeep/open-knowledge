@@ -27,6 +27,7 @@
     ],
     "-kKdCC": [["imported"], " keterampilan dipasang dari ", ["0"]],
     "-kbIAr": ["Tautan & gambar"],
+    "-l6jM7": ["Mulai obrolan dengan tombol ＋, atau luncurkan agen dari halaman."],
     "-lCAuQ": ["Memuat graf"],
     "-o5XAG": [
       "Dikirim secara pribadi ke tim OpenKnowledge, beserta catatan Anda dan versi aplikasinya. Tidak pernah dipublikasikan."
@@ -140,7 +141,6 @@
       "Beralih ke <0>lokal saja</0> akan ditolak sampai semuanya berhenti dilacak lewat<1> git rm --cached</1>."
     ],
     "1ZpfyB": ["Buka dengan AI ", ["displayName"], ", ", ["hint"]],
-    "1__I_U": ["Sesi agen"],
     "1a6ICf": ["Mengikuti suntingan agen"],
     "1bDVu5": ["Palet Perintah Ruang Kerja"],
     "1d1F11": ["Pilih semua berkas dan folder"],
@@ -184,6 +184,7 @@
     "2M0JF6": ["Pembaruan otomatis"],
     "2O5Z0r": ["Sembunyikan ", ["appName"]],
     "2QM24L": ["Semua tag"],
+    "2RnFoM": ["Tidak dapat melanjutkan obrolan ini: ", ["0"]],
     "2Snes1": ["Ini mengirim alamat tautannya keluar dari komputer Anda"],
     "2UgoBZ": ["hilang"],
     "2XQ8Ww": ["Buka pratinjau saat agen menyunting"],
@@ -245,6 +246,7 @@
     "3SDfZl": [
       "<0>Cermin — pilih sebuah sumber.</0> Atur <1>src</1> + <2>anchor</2> lewat panel properti agar mengarah ke <3><MirrorSource></3> di tempat lain."
     ],
+    "3SWNP8": ["Upaya bawaan model"],
     "3SZrdj": ["Periksa pembaruan…"],
     "3TSz9S": ["Perkecil"],
     "3V94ia": ["Komentar Anda tidak bisa dikirim — ruang kerjanya belum siap."],
@@ -268,7 +270,6 @@
     "3mFsc3": ["Pulihkan dengan perubahan remote"],
     "3nnyi_": [["0", "plural", { "other": ["Hapus ", "#", " item"] }]],
     "3o3tur": ["Isi awal"],
-    "3oEK1e": ["Melanjutkan percakapan"],
     "3oh0nQ": ["Galat .okignore bersarang di ", ["path"]],
     "3pU8e-": ["Sematkan tab"],
     "3s-k7L": [["0", "plural", { "other": ["Tampilkan ", "#", " alat lagi"] }]],
@@ -402,7 +403,6 @@
     "5soCUZ": ["Sunting pesan dalam antrean"],
     "5tcmwY": ["Tambahkan nilai"],
     "5vAI6Z": ["Tidak cocok dengan alur kerja saya"],
-    "5vYdh9": ["Utas baru dengan ", ["0"]],
     "5wV2qQ": ["dan lainnya"],
     "5y_9lO": ["Menunggu otorisasi"],
     "6-wLTJ": [["behind"], " di belakang origin"],
@@ -418,6 +418,7 @@
     ],
     "69KLIV": ["Escape"],
     "6Aih4U": ["Luring"],
+    "6FCixu": ["Buka kembali obrolan sebelumnya"],
     "6HCOwA": ["Gagal membuka."],
     "6KCH4m": ["Berkas tersembunyi"],
     "6LbUG7": ["Repositorinya bersifat pribadi dan akun GitHub Anda tidak punya akses ke sana."],
@@ -526,7 +527,6 @@
     "7m3Ade": ["pemasangan:"],
     "7qRHf0": ["Pasang untuk Claude Chat & Cowork"],
     "7uBlRT": ["Menyalin item pohon berkas yang sedang difokus agar Tempel bisa menggandakannya."],
-    "7vQdBK": ["Memuat percakapan"],
     "80c4-P": ["Kode disalin ke papan klip"],
     "81H_23": ["Tambahkan properti"],
     "851WA-": ["Ini bisa diatur di Pengaturan > Alat AI & CLI"],
@@ -671,7 +671,6 @@
     "AIC67-": [
       "Pakai ulang satu tab saat Anda mengeklik lewat bilah sisi. Bila mati, setiap klik terbuka di tabnya sendiri."
     ],
-    "AIVHDc": ["Pilih apa yang memulai sebuah sesi baru"],
     "AIn2Yv": ["CLI ", ["displayName"], ", ", ["hint"]],
     "AItsE5": ["Buka di sana"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
@@ -684,6 +683,7 @@
     "ASqqsQ": ["Maksimal ", ["MAX_ATTACHMENTS"], " lampiran"],
     "AT0e50": ["Simpan keduanya"],
     "ATGYL1": ["Alamat surel"],
+    "AUV-TY": ["Berpikir"],
     "AVW-K9": ["Gagal memuat halaman yatim"],
     "AWOSPo": ["Perbesar"],
     "AYoYhU": ["Pembaruan gagal: ", ["0"]],
@@ -768,9 +768,6 @@
     "C9TBvF": ["Tidak Ada Keluar"],
     "CB7c0Z": ["Simpan pesan dalam antrean"],
     "CBT70t": ["Tidak dapat menghapus berkas: ", ["0"]],
-    "CBsdhe": [
-      "Agennya tidak berhenti. Hentikan paksa akan menutup utas ini dan mengakhiri agennya."
-    ],
     "CCTop_": ["Terbaru"],
     "CD8lBW": ["Merapikan…"],
     "CFnavk": ["Proyek ini bukan repositori git, jadi worktree tidak tersedia."],
@@ -1072,6 +1069,7 @@
       "."
     ],
     "GK-IRZ": ["Tombol pembatalan dinonaktifkan — keadaan per sesi sudah dibersihkan dari memori."],
+    "GK5Ft_": [["0"], " · bawaan"],
     "GLxIKR": ["Cara push manual"],
     "GMaDTM": ["Gagal menyimpan pengaturan Slidev"],
     "GN6L5F": ["Nama berkas"],
@@ -1098,6 +1096,7 @@
       ["conflictName"],
       "” tidak dipasang — kamu sudah punya skill sendiri dengan nama itu. Ganti nama milikmu jika ingin versi dari paket."
     ],
+    "GjsGAu": ["Obrolan agen"],
     "GkYV_4": [["0"], " diganti nama → ", ["1"]],
     "Gp_twO": ["Jalur lokal"],
     "GrBgX_": [
@@ -1217,7 +1216,6 @@
     "IgN3LY": ["Pada teks terpilih di <0>", ["address"], "</0>"],
     "IgTwLt": ["Membuka dokumen ini di penyunting dan menciutkan graf."],
     "Ik-gP0": ["Judul H", ["level"], ": ", ["text"]],
-    "IlH15B": ["Mulai sesi dengan tombol ＋, atau jalankan agen dari sebuah halaman."],
     "Iq8zdU": ["Tutup terminal"],
     "IrB5AK": [
       "Pembersihan di sisi server gagal untuk ",
@@ -1603,9 +1601,6 @@
     "OYnx7O": ["Jalur tidak boleh diawali \"/\""],
     "OZavHH": ["semua yang ada di ", ["0"], "/"],
     "Oawo4U": ["Layanan laporan tidak dapat dihubungi."],
-    "OcBurH": [
-      "Pilih agen mana yang muncul di pemilih agen. Matikan salah satu untuk menyembunyikannya di mana pun."
-    ],
     "OdmsFg": ["Gagal menghapus item"],
     "OeAl1e": ["mis. assets/uploads"],
     "OfhWJH": ["Setel ulang"],
@@ -1658,6 +1653,7 @@
     "PVSwOe": ["Mengalihkan — menunggu proses saat ini berhenti…"],
     "PVUn_c": ["Buka folder"],
     "PVggyD": ["Skema frontmatter"],
+    "PWqtgd": ["Memuat obrolan"],
     "PYmp-0": ["Impor sebagai templat"],
     "PZn2LP": ["Simpan sumbernya"],
     "PZtgO0": ["Membuka worktree"],
@@ -1755,6 +1751,7 @@
     "R65q-K": [
       "Shell sungguhan dimatikan untuk proyek ini. Menyalakannya membuat perintah berjalan dengan seluruh akses akun pengguna macOS Anda."
     ],
+    "R6ABfU": ["Bekerja langsung, tanpa tahap perencanaan"],
     "R9IDFz": ["Mengganti nama folder di disk dan id yang dipakai agen untuk memanggilnya."],
     "RDjuBN": ["Penyiapan"],
     "RDrXh4": ["Atur pengaturan pengguna, proyek, dan integrasi."],
@@ -1813,7 +1810,6 @@
     "S33tz3": ["Tidak terhubung"],
     "S3qu11": ["Itu hanya percobaan atau proyek sekali pakai"],
     "S48xcO": ["tertunda"],
-    "S60KvX": ["Hapus percakapan ini?"],
     "S6eHlw": ["Buka proyek terlebih dahulu."],
     "S6l5dv": ["Pembuatan item baru tidak dapat dimulai"],
     "S9Vnum": ["Hapus ", ["patternText"]],
@@ -1825,7 +1821,6 @@
     "SInSnF": ["Referensi <0>", ["0"], "</0>"],
     "SItQRc": ["Bagaimana pendapat Anda tentang OpenKnowledge?"],
     "SOPwPh": ["Pulihkan hingga suntingan ini"],
-    "SQWJ-i": ["Pulihkan sesi"],
     "SRBk2G": ["Komentar itu tidak bisa ditambahkan."],
     "STTOnz": ["Tipe ", ["keyName"], ": nilai kompleks (bersarang; hanya-baca)"],
     "SUOoXn": ["Gagal membuka proyek."],
@@ -1847,6 +1842,7 @@
     "SiFgBx": ["dokumen yang cocok dengan ", ["0"]],
     "SiUUCS": ["Kecocokan berikutnya"],
     "SkMZlS": ["<0>", ["targetGitPath"], "</0> tidak bisa dihapus: ", ["removeGitError"]],
+    "SkTkKV": ["Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari agen."],
     "Skr_7L": ["Cari worktree"],
     "SlfejT": ["Galat"],
     "SqIoy_": ["Perbaikan otomatis — tidak ada masalah di sini yang punya perbaikan otomatis"],
@@ -1877,7 +1873,6 @@
     "T_wG4n": ["Kami tidak bisa memeriksa koneksi GitHub Anda."],
     "Ta25TG": ["Belum ada riwayat"],
     "TbjyhA": ["Dokumen"],
-    "TdfEV7": ["Diarsipkan"],
     "TdlVEN": [
       "Bidang ini membawa kata kunci skema tambahan yang tidak ditampilkan penyunting — semuanya dipertahankan saat disimpan."
     ],
@@ -1892,6 +1887,9 @@
       "Memberi tahu agen kapan harus memakai keterampilan ini. Anda bisa menyuntingnya nanti."
     ],
     "Tq3pcs": ["Pakai punya saya"],
+    "Tq9kNX": [
+      "Tidak ada obrolan terbuka. Buka kembali obrolan sebelumnya, atau mulai yang baru dengan tombol ＋."
+    ],
     "TsZmgr": ["Berkas di disk, dan id yang dipakai agen."],
     "TvY_XA": ["Dokumentasi"],
     "TwYboS": ["Menelusuri hasil pencarian sumber CodeMirror atau menutup panel pencariannya."],
@@ -2123,6 +2121,9 @@
     "XAyxsa": ["Ambil cabang remote"],
     "XBgr2S": ["Salin ke sini"],
     "XDzAnp": ["Terbuka di tab baru"],
+    "XFpEgc": [
+      "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, seperti Ask AI, Open with AI, dan tombol ＋ obrolan baru. Nonaktifkan agen untuk menyembunyikannya dari semuanya."
+    ],
     "XH30C4": ["dokumen"],
     "XIltnd": ["Keterampilan bernama \"", ["trimmed"], "\" sudah ada di sini"],
     "XJOV1Y": ["Aktivitas"],
@@ -2130,9 +2131,6 @@
     "XNBGZw": ["Pesan tidak terkirim: ", ["0"]],
     "XPJ0sN": ["Properti ", ["settingsDescriptorLabel"]],
     "XPqe3B": ["Buat tag baru #", ["tagValue"]],
-    "XQkJlB": [
-      "Tidak ada percakapan terbuka. Buka lagi yang lama, atau mulai sesi dengan tombol ＋."
-    ],
     "XRuL0i": ["Buat halaman"],
     "XSb9HS": ["Buang suntingan lokal, pulihkan versi yang terpasang"],
     "XT-L4j": ["Nyalakan sebuah agen untuk membuat dengan AI"],
@@ -2605,7 +2603,6 @@
     "dXCi3J": ["Ada yang rusak"],
     "dXOolp": ["Menyinkronkan perubahan Anda"],
     "dXWMFn": ["Menghapus keterampilan ini dari penyunting Anda."],
-    "dYCvMf": ["Percakapan ini tidak bisa dilanjutkan: ", ["0"]],
     "darW93": [
       [
         "pageCount",
@@ -2690,10 +2687,6 @@
     "ezUmoU": ["Nilai elemen yang diizinkan (kosong = apa saja)"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Pindahkan blok"],
-    "f3Nvg7": [
-      ["0"],
-      " tidak bisa melanjutkan percakapan ini — transkripnya tersimpan, tetapi sesi agennya sudah hilang."
-    ],
     "f65AOQ": ["Mulai dari"],
     "f8fH8W": ["Desain"],
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
@@ -2850,6 +2843,7 @@
     "hDoLrm": ["Hapus ", ["projectName"], " dari proyek terbaru"],
     "hGmuTc": ["Dokumen bertag #", ["tagDocsName"]],
     "hHMv6l": ["Hapus blok"],
+    "hHR0tt": ["Obrolan baru dengan ", ["0"]],
     "hItdtk": ["Pilih folder"],
     "hLKfZe": ["Pakai token saja"],
     "hLod4_": ["Ubah menjadi templat"],
@@ -3095,6 +3089,7 @@
     "kV2YZv": [
       "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
     ],
+    "kVgQUA": ["Hapus obrolan ini?"],
     "kYL1lH": ["Aktivitas agen"],
     "k_Dqw1": [["0", "plural", { "other": ["Tidak ada masalah di ", "#", " dokumen."] }]],
     "k_pade": [
@@ -3162,6 +3157,7 @@
       ") yang tidak akan menyentuh bagian lain sistem Anda."
     ],
     "l7X_SM": ["Kirim ke AI"],
+    "l87Deg": ["Pilih apa yang dimulai tab baru"],
     "l9s3IX": [["agentName"], " tidak dapat memulai percakapan."],
     "lAiyU_": ["Hanya dokumen saat ini yang memakai <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Berlangganan..."],
@@ -3193,6 +3189,7 @@
     ],
     "leF0i_": ["Berkas baru di keterampilan ini"],
     "leiGnv": [["dir"], " (symlink)"],
+    "lhRpUP": ["Melanjutkan obrolan"],
     "lhjq3G": ["Setel ulang ", ["labelText"], " ke bawaan"],
     "lj4cNf": [
       "Pilih keterampilan yang akan dipasang. Masing-masing masuk sebagai keterampilan milik Anda yang bisa disunting; hook, perintah, dan server MCP milik plugin tidak dipasang."
@@ -3277,6 +3274,10 @@
       "</1> di <2>",
       ["src"],
       "</2>."
+    ],
+    "ms4r8V": [
+      ["0"],
+      " tidak dapat melanjutkan obrolan ini — transkrip tetap tersimpan, tetapi sesi agen sudah hilang."
     ],
     "msOK6I": [
       "Repositori yang sudah Anda kloning mungkin tetap tersinkron lewat kredensial yang disimpan git sendiri, bahkan setelah Anda memutus koneksi."

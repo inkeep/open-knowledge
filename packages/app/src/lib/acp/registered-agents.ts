@@ -26,6 +26,12 @@ export interface RegisteredAgent {
    * agent from every launcher and its Settings toggle, so the two always agree.
    */
   readonly supported?: boolean;
+  /**
+   * When the user last explicitly picked this agent in a launcher. Absent for
+   * Settings-toggled and detected agents (and for entries persisted before the
+   * field existed) — those sort after every stamped agent.
+   */
+  readonly lastUsedAt?: number;
 }
 
 interface RegisteredAgentsState {
@@ -49,7 +55,8 @@ function isRegisteredAgent(value: unknown): value is RegisteredAgent {
     a.id !== '' &&
     typeof a.name === 'string' &&
     a.name !== '' &&
-    (a.iconUrl === undefined || typeof a.iconUrl === 'string')
+    (a.iconUrl === undefined || typeof a.iconUrl === 'string') &&
+    (a.lastUsedAt === undefined || typeof a.lastUsedAt === 'number')
   );
 }
 
@@ -156,8 +163,13 @@ export function registerAgent(
   const current = currentState();
   if (!makeDefault) {
     const exists = current.agents.some((a) => agentKey(a) === key);
+    // A visibility refresh must not erase pick recency — carry the stamp over.
     const agents = exists
-      ? current.agents.map((a) => (agentKey(a) === key ? agent : a))
+      ? current.agents.map((a) =>
+          agentKey(a) === key
+            ? { ...agent, ...(a.lastUsedAt !== undefined ? { lastUsedAt: a.lastUsedAt } : {}) }
+            : a,
+        )
       : [...current.agents, agent];
     const next: RegisteredAgentsState = { agents, defaultKey: current.defaultKey };
     writeToStorage(next);
@@ -165,21 +177,40 @@ export function registerAgent(
     return;
   }
   const rest = current.agents.filter((a) => agentKey(a) !== key);
-  const next: RegisteredAgentsState = { agents: [agent, ...rest], defaultKey: key };
+  const next: RegisteredAgentsState = {
+    agents: [{ ...agent, lastUsedAt: Date.now() }, ...rest],
+    defaultKey: key,
+  };
   writeToStorage(next);
   setState(next);
 }
 
 /**
- * Add live, machine-detected suggestions after the explicit shortlist without
+ * Recently used first (explicit picks stamp `lastUsedAt`), alphanumeric for
+ * the never-picked tail — one predictable order instead of three concatenated
+ * insertion histories (picks, Settings toggles, detected suggestions).
+ */
+function compareAgentsForDisplay(a: RegisteredAgent, b: RegisteredAgent): number {
+  const aUsed = a.lastUsedAt ?? 0;
+  const bUsed = b.lastUsedAt ?? 0;
+  if (aUsed !== bUsed) return bUsed - aUsed;
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * Merge live, machine-detected suggestions into the explicit shortlist without
  * persisting them. An explicit registration with the same id always wins.
+ * Output carries the display order (`compareAgentsForDisplay`) every picker
+ * renders verbatim.
  */
 export function mergeRegisteredAgentSuggestions(
   registered: readonly RegisteredAgent[],
   suggestions: readonly RegisteredAgent[],
 ): readonly RegisteredAgent[] {
   const explicitKeys = new Set(registered.map(agentKey));
-  return [...registered, ...suggestions.filter((agent) => !explicitKeys.has(agentKey(agent)))];
+  return [...registered, ...suggestions.filter((agent) => !explicitKeys.has(agentKey(agent)))].sort(
+    compareAgentsForDisplay,
+  );
 }
 
 /**

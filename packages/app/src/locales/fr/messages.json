@@ -43,6 +43,7 @@
     ],
     "-kKdCC": [["imported"], " compétences installées depuis ", ["0"]],
     "-kbIAr": ["Liens et images"],
+    "-l6jM7": ["Démarrez un chat avec le bouton ＋ ou lancez un agent depuis une page."],
     "-lCAuQ": ["Chargement du graphe"],
     "-o5XAG": [
       "Envoyé en privé à l'équipe OpenKnowledge, avec votre note et la version de l'application. Jamais publié publiquement."
@@ -168,7 +169,6 @@
       "Le passage à <0>local uniquement</0> sera refusé tant qu'ils ne seront pas retirés du suivi via<1> git rm --cached</1>."
     ],
     "1ZpfyB": ["Ouvrir avec l'IA ", ["displayName"], ", ", ["hint"]],
-    "1__I_U": ["Sessions d'agent"],
     "1a6ICf": ["Suivi des modifications de l'agent"],
     "1bDVu5": ["Palette de commandes de l'espace de travail"],
     "1d1F11": ["Sélectionner tous les fichiers et dossiers"],
@@ -218,6 +218,7 @@
     "2M0JF6": ["Mise à jour automatique"],
     "2O5Z0r": ["Masquer ", ["appName"]],
     "2QM24L": ["Toutes les étiquettes"],
+    "2RnFoM": ["Impossible de reprendre ce chat : ", ["0"]],
     "2Snes1": ["Ceci envoie l'adresse du lien hors de votre machine"],
     "2UgoBZ": ["disparu"],
     "2XQ8Ww": ["Ouvrir l'aperçu quand l'agent modifie"],
@@ -295,6 +296,7 @@
     "3SDfZl": [
       "<0>Miroir — choisissez une source.</0> Définissez <1>src</1> + <2>anchor</2> dans le panneau des propriétés pour pointer vers un <3><MirrorSource></3> ailleurs."
     ],
+    "3SWNP8": ["Effort par défaut du modèle"],
     "3SZrdj": ["Rechercher les mises à jour…"],
     "3TSz9S": ["Réduire"],
     "3V94ia": ["Impossible d'envoyer vos commentaires — l'espace de travail n'est pas prêt."],
@@ -332,7 +334,6 @@
       ]
     ],
     "3o3tur": ["Contenu de départ"],
-    "3oEK1e": ["Reprise de la conversation"],
     "3oh0nQ": ["Erreur dans le .okignore imbriqué de ", ["path"]],
     "3pU8e-": ["Épingler l'onglet"],
     "3s-k7L": [
@@ -505,7 +506,6 @@
     "5soCUZ": ["Modifier le message en file d'attente"],
     "5tcmwY": ["Ajouter une valeur"],
     "5vAI6Z": ["Cela ne correspondait pas à mon flux de travail"],
-    "5vYdh9": ["Nouveau fil avec ", ["0"]],
     "5wV2qQ": ["et plus encore"],
     "5y_9lO": ["En attente d'autorisation"],
     "6-wLTJ": [["behind"], " en retard sur origin"],
@@ -521,6 +521,7 @@
     ],
     "69KLIV": ["Échap"],
     "6Aih4U": ["Hors ligne"],
+    "6FCixu": ["Rouvrir un chat précédent"],
     "6HCOwA": ["Échec de l'ouverture."],
     "6KCH4m": ["Fichiers masqués"],
     "6LbUG7": ["Le dépôt est privé et votre compte GitHub n'y a pas accès."],
@@ -649,7 +650,6 @@
     "7uBlRT": [
       "Copie l'élément de l'arborescence ayant le focus pour que Coller puisse le dupliquer."
     ],
-    "7vQdBK": ["Chargement de la conversation"],
     "80c4-P": ["Code copié dans le presse-papiers"],
     "81H_23": ["Ajouter des propriétés"],
     "851WA-": ["Cela se configure dans Paramètres > Outils IA et CLI"],
@@ -824,7 +824,6 @@
     "AIC67-": [
       "Réutiliser un même onglet lors des clics dans les barres latérales. Désactivé, chaque clic ouvre son propre onglet."
     ],
-    "AIVHDc": ["Choisissez par quoi commence une nouvelle session"],
     "AIn2Yv": ["CLI ", ["displayName"], ", ", ["hint"]],
     "AItsE5": ["L'ouvrir là-bas"],
     "AKxFtn": [
@@ -843,6 +842,7 @@
     "ASqqsQ": [["MAX_ATTACHMENTS"], " pièces jointes maximum"],
     "AT0e50": ["Conserver les deux"],
     "ATGYL1": ["Adresse e-mail"],
+    "AUV-TY": ["Réflexion"],
     "AVW-K9": ["Échec du chargement des pages orphelines"],
     "AWOSPo": ["Zoom avant"],
     "AYoYhU": ["Échec de la mise à jour : ", ["0"]],
@@ -953,7 +953,6 @@
     "C9TBvF": ["Aucun lien sortant"],
     "CB7c0Z": ["Enregistrer le message en file d'attente"],
     "CBT70t": ["Impossible de supprimer le fichier : ", ["0"]],
-    "CBsdhe": ["L'agent ne s'arrête pas. Forcer l'arrêt ferme ce fil et quitte l'agent."],
     "CCTop_": ["Récents"],
     "CD8lBW": ["Rangement…"],
     "CFnavk": ["Ce projet n'est pas un dépôt git, les worktrees ne sont donc pas disponibles."],
@@ -1285,6 +1284,7 @@
     "GK-IRZ": [
       "Les boutons d'annulation sont désactivés — l'état par session a été récupéré par le ramasse-miettes."
     ],
+    "GK5Ft_": [["0"], " · par défaut"],
     "GLxIKR": ["Comment pousser manuellement"],
     "GMaDTM": ["Échec de l'enregistrement du paramètre Slidev"],
     "GN6L5F": ["Nom de fichier"],
@@ -1315,6 +1315,7 @@
       ["conflictName"],
       " » n’a pas été installée : vous avez déjà votre propre compétence portant ce nom. Renommez la vôtre si vous voulez la version du pack."
     ],
+    "GjsGAu": ["Chats d'agents"],
     "GkYV_4": [["0"], " renommé en ", ["1"]],
     "Gp_twO": ["Chemin local"],
     "GrBgX_": [
@@ -1449,7 +1450,6 @@
     "IgN3LY": ["Sur le texte sélectionné dans <0>", ["address"], "</0>"],
     "IgTwLt": ["Ouvre ce document dans l'éditeur et réduit le graphe."],
     "Ik-gP0": ["Titre de niveau ", ["level"], " : ", ["text"]],
-    "IlH15B": ["Démarrez une session avec le bouton ＋, ou lancez un agent depuis une page."],
     "Iq8zdU": ["Fermer le terminal"],
     "IrB5AK": [
       "Le nettoyage côté serveur a échoué pour ",
@@ -1879,9 +1879,6 @@
     "OYnx7O": ["Le chemin ne peut pas commencer par « / »"],
     "OZavHH": ["tout ce qui se trouve sous ", ["0"], "/"],
     "Oawo4U": ["Le service de rapports n'a pas pu être joint."],
-    "OcBurH": [
-      "Choisissez les agents qui apparaissent dans le sélecteur d'agents. En désactiver un le masque partout."
-    ],
     "OdmsFg": ["Échec de la suppression de l'élément"],
     "OeAl1e": ["par ex. assets/uploads"],
     "OfhWJH": ["Réinitialiser"],
@@ -1936,6 +1933,7 @@
     "PVSwOe": ["Réorientation : attente de l’arrêt de l’exécution en cours…"],
     "PVUn_c": ["Ouvrir le dossier"],
     "PVggyD": ["Schémas de frontmatter"],
+    "PWqtgd": ["Chargement du chat"],
     "PYmp-0": ["Importer comme modèle"],
     "PZn2LP": ["Conserver la source"],
     "PZtgO0": ["Ouverture du worktree"],
@@ -2051,6 +2049,7 @@
     "R65q-K": [
       "Le shell réel est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur macOS."
     ],
+    "R6ABfU": ["Travailler directement, sans étape de plan"],
     "R9IDFz": [
       "Renomme le dossier sur le disque ainsi que l'id que les agents utilisent pour l'invoquer."
     ],
@@ -2112,7 +2111,6 @@
     "S33tz3": ["Non connecté"],
     "S3qu11": ["C'était un essai ou un projet ponctuel"],
     "S48xcO": ["en attente"],
-    "S60KvX": ["Supprimer cette conversation ?"],
     "S6eHlw": ["Ouvrez d'abord un projet."],
     "S6l5dv": ["Impossible de commencer la création d'un nouvel élément"],
     "S9Vnum": ["Retirer ", ["patternText"]],
@@ -2124,7 +2122,6 @@
     "SInSnF": ["Référence <0>", ["0"], "</0>"],
     "SItQRc": ["Que pensez-vous d'OpenKnowledge ?"],
     "SOPwPh": ["Restaurer à cette modification"],
-    "SQWJ-i": ["Restaurer les sessions"],
     "SRBk2G": ["Impossible d'ajouter ce commentaire."],
     "STTOnz": ["Type de ", ["keyName"], " : valeur complexe (imbriquée ; lecture seule)"],
     "SUOoXn": ["Échec de l'ouverture du projet."],
@@ -2157,6 +2154,7 @@
     "SiFgBx": ["documents correspondant à ", ["0"]],
     "SiUUCS": ["Occurrence suivante"],
     "SkMZlS": ["Impossible de supprimer <0>", ["targetGitPath"], "</0> : ", ["removeGitError"]],
+    "SkTkKV": ["L'agent ne s'arrête pas. L'arrêt forcé ferme ce chat et quitte l'agent."],
     "Skr_7L": ["Rechercher des worktrees"],
     "SlfejT": ["Erreur"],
     "SqIoy_": ["Correction automatique — aucun problème ici n'a de correction automatique"],
@@ -2193,7 +2191,6 @@
     "T_wG4n": ["Nous n'avons pas pu vérifier votre connexion GitHub."],
     "Ta25TG": ["Pas encore d'historique"],
     "TbjyhA": ["Documents"],
-    "TdfEV7": ["Archivé"],
     "TdlVEN": [
       "Ce champ porte des mots-clés de schéma supplémentaires que l'éditeur n'affiche pas — ils sont préservés à l'enregistrement."
     ],
@@ -2208,6 +2205,9 @@
       "Indique aux agents quand recourir à cette compétence. Vous pourrez le modifier plus tard."
     ],
     "Tq3pcs": ["Garder la mienne"],
+    "Tq9kNX": [
+      "Aucun chat ouvert. Rouvrez-en un ancien ou démarrez-en un nouveau avec le bouton ＋."
+    ],
     "TsZmgr": ["Le fichier sur le disque, et l'id qu'utilisent les agents."],
     "TvY_XA": ["Documentation"],
     "TwYboS": [
@@ -2473,6 +2473,9 @@
     "XAyxsa": ["Extraire une branche distante"],
     "XBgr2S": ["Copier ici"],
     "XDzAnp": ["S'ouvre dans un nouvel onglet"],
+    "XFpEgc": [
+      "Choisissez quels agents apparaissent dans les menus d'agents de l'application, comme Ask AI, Open with AI et le bouton ＋ de nouveau chat. Désactivez un agent pour le masquer de tous ces menus."
+    ],
     "XH30C4": ["document"],
     "XIltnd": ["Une compétence nommée « ", ["trimmed"], " » existe déjà ici"],
     "XJOV1Y": ["Activité"],
@@ -2480,9 +2483,6 @@
     "XNBGZw": ["Message non envoyé : ", ["0"]],
     "XPJ0sN": ["Propriétés de ", ["settingsDescriptorLabel"]],
     "XPqe3B": ["Créer l'étiquette #", ["tagValue"]],
-    "XQkJlB": [
-      "Aucune conversation ouverte. Rouvrez-en une ancienne, ou démarrez une session avec le bouton ＋."
-    ],
     "XRuL0i": ["Créer la page"],
     "XSb9HS": ["Abandonner les modifications locales, restaurer la version installée"],
     "XT-L4j": ["Activez un agent pour créer avec l'IA"],
@@ -3026,7 +3026,6 @@
     "dXCi3J": ["Quelque chose s'est cassé"],
     "dXOolp": ["Synchronisation de vos modifications"],
     "dXWMFn": ["Retire cette compétence de vos éditeurs."],
-    "dYCvMf": ["Impossible de reprendre cette conversation : ", ["0"]],
     "darW93": [
       [
         "pageCount",
@@ -3139,10 +3138,6 @@
     "ezUmoU": ["Valeurs d'élément autorisées (vide = toutes)"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Déplacer le bloc"],
-    "f3Nvg7": [
-      ["0"],
-      " ne peut pas poursuivre cette conversation — la transcription est conservée, mais la session de l'agent a disparu."
-    ],
     "f65AOQ": ["Partir de"],
     "f8fH8W": ["Conception"],
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
@@ -3315,6 +3310,7 @@
     "hDoLrm": ["Retirer ", ["projectName"], " des projets récents"],
     "hGmuTc": ["Documents étiquetés #", ["tagDocsName"]],
     "hHMv6l": ["Supprimer le bloc"],
+    "hHR0tt": ["Nouveau chat avec ", ["0"]],
     "hItdtk": ["Parcourir le dossier"],
     "hLKfZe": ["Utiliser plutôt un jeton"],
     "hLod4_": ["Convertir en modèle"],
@@ -3569,6 +3565,7 @@
     "kV2YZv": [
       "Vous ne voyez pas <0>Compétences</0> ? Activez d'abord <1>Paramètres <2/> Fonctionnalités <3/> Exécution de code et création de fichiers</1>."
     ],
+    "kVgQUA": ["Supprimer ce chat ?"],
     "kYL1lH": ["Activité de l'agent"],
     "k_Dqw1": [
       [
@@ -3645,6 +3642,7 @@
       ") qui ne touchera pas au reste de votre système."
     ],
     "l7X_SM": ["Envoyer à l'IA"],
+    "l87Deg": ["Choisissez ce qu'ouvre un nouvel onglet"],
     "l9s3IX": [["agentName"], " n’a pas pu démarrer de conversation."],
     "lAiyU_": ["Seul le document actuel utilise <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Abonnement…"],
@@ -3680,6 +3678,7 @@
     ],
     "leF0i_": ["Nouveau fichier dans cette compétence"],
     "leiGnv": [["dir"], " (lien symbolique)"],
+    "lhRpUP": ["Reprise du chat"],
     "lhjq3G": ["Réinitialiser ", ["labelText"], " à la valeur par défaut"],
     "lj4cNf": [
       "Choisissez les compétences à installer. Chacune devient une compétence modifiable qui vous appartient ; les hooks, commandes et serveurs MCP du plugin ne sont pas installés."
@@ -3782,6 +3781,10 @@
       "</1> n'existe dans <2>",
       ["src"],
       "</2>."
+    ],
+    "ms4r8V": [
+      ["0"],
+      " ne peut pas poursuivre ce chat — la transcription est conservée, mais la session de l'agent n'existe plus."
     ],
     "msOK6I": [
       "Les dépôts que vous avez déjà clonés peuvent continuer à se synchroniser via les identifiants enregistrés par git, même après votre déconnexion."

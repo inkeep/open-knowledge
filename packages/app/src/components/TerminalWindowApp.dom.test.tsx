@@ -101,7 +101,7 @@ function bridgeWithMode(mode: string): OkDesktopBridge {
 // the same affordance the dock has (the window holds feature parity; only the
 // placement differs).
 async function addTerminalTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+  await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
   await user.click(await screen.findByRole('menuitem', { name: 'Terminal' }));
 }
 

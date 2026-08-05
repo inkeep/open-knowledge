@@ -214,7 +214,7 @@ export function ConfigureAgentsSection(): ReactNode {
           {t`Configure agents`}
         </h3>
         <p className="text-muted-foreground text-sm">
-          {t`Choose which agents appear in the agent selector. Turn one off to hide it everywhere.`}
+          {t`Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them.`}
         </p>
       </div>
 

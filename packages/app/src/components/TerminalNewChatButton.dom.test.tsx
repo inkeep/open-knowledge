@@ -76,7 +76,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
 
     expect(await screen.findByRole('menuitem', { name: 'Agent A' })).toBeDefined();
     expect(screen.getByRole('menuitem', { name: 'Agent B' })).toBeDefined();
@@ -99,7 +99,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     // Claude plus detected Codex. Undetected CLIs are absent.
     renderButton({ visibleClis: ['claude', 'codex'] });
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
 
     expect(await screen.findByRole('menuitem', { name: 'Claude CLI' })).toBeDefined();
     expect(screen.getByRole('menuitem', { name: 'Codex CLI' })).toBeDefined();
@@ -115,7 +115,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     renderButton({ showClis: false });
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
 
     expect(await screen.findByRole('menuitem', { name: 'Agent A' })).toBeDefined();
     expect(screen.queryByRole('menuitem', { name: 'Claude CLI' })).toBeNull();
@@ -126,7 +126,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     renderButton({ showAgents: false });
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
 
     expect(await screen.findByRole('menuitem', { name: 'Claude CLI' })).toBeDefined();
     expect(screen.queryByRole('menuitem', { name: 'Agent A' })).toBeNull();
@@ -137,7 +137,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     const { onPickCli, onLaunchSelected, onPickTerminal } = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
     await user.click(await screen.findByRole('menuitem', { name: 'OpenCode CLI' }));
 
     expect(onPickCli).toHaveBeenCalledTimes(1);
@@ -150,7 +150,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     const { onPickAgent, onLaunchSelected } = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Agent B' }));
 
     expect(onPickAgent).toHaveBeenCalledTimes(1);
@@ -162,7 +162,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     const { onOpenSettings } = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Configure agents' }));
 
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
@@ -172,7 +172,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     renderButton({ selected: { kind: 'agent', agent: AGENT_A } });
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
 
     expect(
       (await screen.findByRole('menuitem', { name: 'Agent A' })).getAttribute('aria-current'),
@@ -189,7 +189,7 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     const user = userEvent.setup();
     const { onPickTerminal, onPickCli, onLaunchSelected } = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Terminal' }));
 
     expect(onPickTerminal).toHaveBeenCalledTimes(1);

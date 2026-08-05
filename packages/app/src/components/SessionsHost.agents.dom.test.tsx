@@ -325,7 +325,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    await user.click(screen.getByRole('button', { name: 'Restore sessions' }));
+    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
     await user.click(await screen.findByTestId('agent-thread-history-open-arch'));
 
     expect(openArchivedThread).toHaveBeenCalledWith('arch');
@@ -340,9 +340,9 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    const restore = screen.getByRole('button', { name: 'Restore sessions' });
+    const restore = screen.getByRole('button', { name: 'Reopen a past chat' });
     await user.hover(restore);
-    expect((await screen.findByRole('tooltip')).textContent).toContain('Restore sessions');
+    expect((await screen.findByRole('tooltip')).textContent).toContain('Reopen a past chat');
 
     await user.click(restore);
     const deleteButton = await screen.findByRole('button', { name: 'Delete Old chat' });
@@ -357,7 +357,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    await user.click(screen.getByRole('button', { name: 'Restore sessions' }));
+    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
     await user.click(await screen.findByTestId('agent-thread-history-delete-arch'));
     // Delete is confirm-gated (no undo) — the first click only arms it.
     expect(deleteThread).not.toHaveBeenCalled();
@@ -381,7 +381,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
   test('the history menu is absent with no archived history', () => {
     render(<Harness />);
     setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
-    expect(screen.queryByRole('button', { name: 'Restore sessions' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reopen a past chat' })).toBeNull();
   });
 
   // Every "Ask AI" surface (Problems panel, selection bubble, code block, ⌘J/⇧⌘J)

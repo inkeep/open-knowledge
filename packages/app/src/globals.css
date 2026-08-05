@@ -115,10 +115,15 @@
 /*
  * Streamdown (ACP thread markdown) ships its utility classes inside its
  * prebuilt dist chunks, which no auto-detected source root covers — without
- * this line its blocks render unstyled. Glob (not index.js) because the
- * class strings live in the hashed chunk files, not the entry.
+ * these lines its blocks render unstyled. Globs (not index.js) because the
+ * class strings live in the hashed chunk files, not the entry. The paths are
+ * pnpm-isolated (the packages/app/node_modules symlinks), NOT root-hoisted:
+ * a root-relative ../../../node_modules glob matches nothing under pnpm and
+ * silently drops every streamdown-only utility — e.g. the -mt-10 that
+ * overlays the copy button on the code-block header, and the
+ * text-[var(--sdm-c,…)] token colors that syntax highlighting paints with.
  */
-@source "../../../node_modules/streamdown/dist/*.js";
+@source "../node_modules/streamdown/dist/*.js";
 
 /*
  * The HTML entries are the only place the `antialiased` body class is used,

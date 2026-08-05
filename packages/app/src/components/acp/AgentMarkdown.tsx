@@ -10,6 +10,7 @@
 import type { ReactNode } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Streamdown } from 'streamdown';
+import { codeHighlighter } from '@/lib/acp/code-highlighter';
 
 export function AgentMarkdown({ text }: { text: string }): ReactNode {
   return (
@@ -40,9 +41,18 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         // around it. Deliberately not `!`: the descendant selector already
         // outranks Streamdown's own class, which leaves an `!` override on a
         // wrapper — the thought bubble's flattening — free to win.
-        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_code]:text-1sm [&_pre]:text-1sm"
+        //
+        // The code-block-body overrides tighten Streamdown's p-4 a notch and
+        // cap tall blocks at max-h-80 with internal scroll, targeting the
+        // stable `data-streamdown` hooks rather than its Tailwind classes.
+        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto"
         lineNumbers={false}
         controls={{ code: { copy: true, download: false }, table: false, mermaid: false }}
+        // Shiki-backed syntax highlighting via the in-house curated-grammar
+        // plugin (not `@streamdown/code`, whose full-bundle shiki blows the
+        // all-chunks size budget). github-light/github-dark, follows the
+        // app's `.dark` variant; grammars load lazily on first code block.
+        plugins={{ code: codeHighlighter }}
         // Plain hardened anchors instead of Streamdown's confirm-modal flow:
         // both shells already gate external opens (web: target=_blank +
         // noreferrer; desktop: the asset-safety-net window-open handler with

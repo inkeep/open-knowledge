@@ -1287,6 +1287,126 @@ describe('ThreadView message queue', () => {
   });
 });
 
+describe('ThreadView thought collapse', () => {
+  const thought = {
+    kind: 'message' as const,
+    role: 'thought' as const,
+    text: 'First thought line\nLast thought line',
+    messageId: 'default',
+  };
+
+  test('collapsed by default with a tail-line preview while streaming', () => {
+    model = makeModel({ turnActive: true, items: [thought] });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // Streaming shows the tail line (it moves), not the head.
+    expect(toggle.textContent).toContain('Last thought line');
+    expect(toggle.textContent).not.toContain('First thought line');
+    // The full body is not mounted while collapsed.
+    expect(screen.getByTestId('agent-thread-thought').textContent).not.toContain(
+      'First thought line',
+    );
+  });
+
+  test('settled preview is the head line; expanding reveals the full text', async () => {
+    model = makeModel({ turnActive: false, items: [thought] });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain('First thought line');
+
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const block = screen.getByTestId('agent-thread-thought');
+    expect(block.textContent).toContain('First thought line');
+    expect(block.textContent).toContain('Last thought line');
+  });
+});
+
+describe('ThreadView config value hints', () => {
+  test("a bare adapter 'Default' resolves via the hint table on the row and in the flyout", async () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          configOptions: [
+            {
+              id: 'effort',
+              name: 'Effort',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'default',
+              // Mirrors the claude-acp adapter: no description on any entry.
+              options: [
+                { value: 'default', name: 'Default' },
+                { value: 'high', name: 'High' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    // The collapsed row summarizes what the default resolves to, not "Default".
+    const effortRow = screen.getByTestId('agent-thread-config-effort');
+    expect(effortRow.textContent).toContain("Model's default effort");
+
+    // In the flyout the hint is the secondary line under the adapter's name.
+    await userEvent.click(effortRow);
+    const entry = await screen.findByTestId('agent-thread-config-option-default');
+    expect(entry.textContent).toContain('Default');
+    expect(entry.textContent).toContain("Model's default effort");
+  });
+
+  test("a default sharing a sibling's description resolves to the sibling's name", async () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'default',
+              // Mirrors the claude-acp adapter: the default entry carries the
+              // exact description of the model it resolves to.
+              options: [
+                {
+                  value: 'default',
+                  name: 'Default (recommended)',
+                  description: 'Opus 5 with 1M context · Best for everyday, complex tasks',
+                },
+                {
+                  value: 'opus[1m]',
+                  name: 'Opus (1M context)',
+                  description: 'Opus 5 with 1M context · Best for everyday, complex tasks',
+                },
+                { value: 'sonnet', name: 'Sonnet', description: 'Sonnet 5 · Efficient' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    // The composer trigger names the resolved model, with default demoted to
+    // the secondary hint.
+    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    expect(trigger.textContent).toContain('Opus (1M context) · default');
+
+    await userEvent.click(trigger);
+    const modelRow = screen.getByTestId('agent-thread-config-model');
+    expect(modelRow.textContent).toContain('Opus (1M context) · default');
+  });
+});
+
 describe('ThreadView queue rescue on Stop', () => {
   test('Stop folds every queued message back into the composer', () => {
     model = makeModel({ turnActive: true });

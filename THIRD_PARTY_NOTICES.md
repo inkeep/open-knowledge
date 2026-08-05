@@ -1976,6 +1976,41 @@ Homepage: https://ui.shadcn.com
 
 Copyright (c) 2023 shadcn
 
+### `@shikijs/core@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/engine-javascript@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/engine-oniguruma@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/langs@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/themes@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/types@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/vscode-textmate@10.0.2`
+Homepage: https://github.com/shikijs/vscode-textmate
+
+Copyright (c) Microsoft Corporation
+
 ### `@simple-git/args-pathspec@1.0.3`
 Homepage: https://github.com/steveukx/git-js
 
@@ -4451,6 +4486,16 @@ Homepage: https://github.com/sindresorhus/onetime
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
+### `oniguruma-parser@0.12.2`
+Homepage: https://github.com/slevithan/oniguruma-parser
+
+Copyright (c) 2025-2026 Steven Levithan
+
+### `oniguruma-to-es@4.3.6`
+Homepage: https://github.com/slevithan/oniguruma-to-es
+
+Copyright (c) 2024-2026 Steven Levithan
+
 ### `open@11.0.0`
 Homepage: https://github.com/sindresorhus/open
 
@@ -4902,6 +4947,21 @@ Homepage: http://github.com/benjamn/recast
 
 Copyright (c) 2012 Ben Newman <bn@cs.stanford.edu>
 
+### `regex@6.1.0`
+Homepage: https://github.com/slevithan/regex
+
+Copyright (c) 2025 Steven Levithan
+
+### `regex-recursion@6.0.2`
+Homepage: https://github.com/slevithan/regex-recursion
+
+Copyright (c) 2025 Steven Levithan
+
+### `regex-utilities@2.3.0`
+Homepage: https://github.com/slevithan/regex-utilities
+
+Copyright (c) 2024 Steven Levithan
+
 ### `rehype-harden@1.1.8`
 Homepage: https://github.com/vercel-labs/markdown-sanitizers#readme
 
@@ -5091,6 +5151,11 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 Homepage: https://github.com/ljharb/shell-quote
 
 Copyright (c) 2013 James Halliday (mail@substack.net)
+
+### `shiki@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
 
 ### `side-channel@1.1.1`
 Homepage: https://github.com/ljharb/side-channel#readme

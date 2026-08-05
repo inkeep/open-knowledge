@@ -241,6 +241,11 @@ msgstr "{0, plural, other {再显示 # 个工具}}"
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, other {技能}}"
 
+#. placeholder {0}: sibling.name
+#: src/lib/acp/config-value-hints.ts
+msgid "{0} · default"
+msgstr "{0} · 默认"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -257,8 +262,8 @@ msgstr "{0}，第 {displayLine} 行"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
-msgstr "{0} 无法继续这次对话——记录已保留，但智能体会话已结束。"
+msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
+msgstr "{0} 无法继续此对话 — 聊天记录已保留，但智能体会话已丢失。"
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
@@ -1310,6 +1315,10 @@ msgstr "智能体"
 msgid "Agent activity"
 msgstr "智能体活动"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent chats"
+msgstr "智能体对话"
+
 #: src/components/FileTree.tsx
 msgid "Agent configuration file"
 msgstr "智能体配置文件"
@@ -1317,10 +1326,6 @@ msgstr "智能体配置文件"
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "智能体模式"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Agent sessions"
-msgstr "智能体会话"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
@@ -1508,10 +1513,6 @@ msgstr "已批准"
 #: src/components/acp/ThreadView.tsx
 msgid "Approved — {optionName}"
 msgstr "已批准 — {optionName}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Archived"
-msgstr "已归档"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
@@ -2137,8 +2138,8 @@ msgid "Choose icon"
 msgstr "选择图标"
 
 #: src/components/TerminalNewChatButton.tsx
-msgid "Choose what a new session starts"
-msgstr "选择新会话从什么开始"
+msgid "Choose what a new tab starts"
+msgstr "选择新标签页启动的内容"
 
 #: src/comments/CommentQueuePanel.tsx
 msgid "Choose where to send these comments"
@@ -2149,8 +2150,8 @@ msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool 
 msgstr "选择这个项目的 OpenKnowledge 配置（包括它与 AI 工具的连接）是随项目一起保存、让队友也能获得，还是只留在你的电脑上。"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
-msgstr "选择哪些智能体出现在智能体选择器中。关闭某个后，它会在所有地方隐藏。"
+msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
+msgstr "选择哪些智能体显示在应用的智能体菜单中，例如 Ask AI、Open with AI 和 ＋ 新对话按钮。关闭某个智能体即可在所有菜单中隐藏它。"
 
 #: src/components/handoff/AgentSplitButton.tsx
 msgid "Claude"
@@ -3358,8 +3359,8 @@ msgstr "无法重启服务器。请在这个文件夹中尝试 `ok start`。"
 
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't resume this conversation: {0}"
-msgstr "无法恢复这次对话：{0}"
+msgid "Couldn't resume this chat: {0}"
+msgstr "无法恢复此对话：{0}"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
@@ -3793,13 +3794,13 @@ msgstr "删除选中的项目"
 msgid "Delete selected table"
 msgstr "删除选中的表格"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Delete this chat?"
+msgstr "删除此对话？"
+
 #: src/comments/CommentsPanel.tsx
 msgid "Delete this comment"
 msgstr "删除这条评论"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this conversation?"
-msgstr "要删除这次对话吗？"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -6549,7 +6550,7 @@ msgid "Loading templates"
 msgstr "正在加载模板"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Loading the conversation"
+msgid "Loading the chat"
 msgstr "正在加载对话"
 
 #: src/components/TimelinePanel.tsx
@@ -6768,6 +6769,10 @@ msgstr "模型"
 #: src/components/settings/SearchSection.tsx
 msgid "Model: <0>{0}</0>"
 msgstr "模型：<0>{0}</0>"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Model's default effort"
+msgstr "模型默认的推理强度"
 
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -7040,6 +7045,11 @@ msgstr "新分支 <0>{trimmed}</0> 将基于当前提交创建，位于 <1>.ok/w
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "来自远程的新改动会自动出现在你的副本中。"
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with {0}"
+msgstr "与 {0} 的新对话"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -7147,11 +7157,6 @@ msgstr "新建终端"
 #: src/lib/native-menu-catalog.ts
 msgid "New Terminal Window"
 msgstr "新建终端窗口"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "New thread with {0}"
-msgstr "与 {0} 开始新会话"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewWorktreeDialog.tsx
@@ -7367,8 +7372,8 @@ msgid "No matching worktrees or branches."
 msgstr "没有匹配的 worktree 或分支。"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open conversations. Reopen a past one, or start a session with the ＋ button."
-msgstr "没有进行中的对话。可以重新打开一次旧对话，或用 ＋ 按钮开始一次会话。"
+msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
+msgstr "没有打开的对话。重新打开之前的对话，或使用 ＋ 按钮开始新对话。"
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9148,6 +9153,10 @@ msgstr "已渲染"
 msgid "Reopen"
 msgstr "重新打开"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Reopen a past chat"
+msgstr "重新打开之前的对话"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
 msgstr "重新打开已关闭的标签页"
@@ -9383,10 +9392,6 @@ msgstr "恢复失败"
 msgid "Restore failed — document unchanged"
 msgstr "恢复失败——文档未改变"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Restore sessions"
-msgstr "恢复会话"
-
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Restore to edit {burstNumber} of {docName}"
 msgstr "恢复到 {docName} 的第 {burstNumber} 次编辑"
@@ -9427,7 +9432,7 @@ msgid "Resume sync"
 msgstr "恢复同步"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Resuming the conversation"
+msgid "Resuming the chat"
 msgstr "正在恢复对话"
 
 #: src/components/acp/working-status.ts
@@ -10616,6 +10621,10 @@ msgstr "启动 {agentName}"
 msgid "Start {agentName}, {hint}"
 msgstr "启动 {agentName}，{hint}"
 
+#: src/components/SessionsHost.tsx
+msgid "Start a chat with the ＋ button, or launch an agent from a page."
+msgstr "使用 ＋ 按钮开始对话，或从页面启动智能体。"
+
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
@@ -10624,10 +10633,6 @@ msgstr "开始新对话"
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "开始一个新的 OpenKnowledge 项目。"
-
-#: src/components/SessionsHost.tsx
-msgid "Start a session with the ＋ button, or launch an agent from a page."
-msgstr "用 ＋ 按钮开始一次会话，或者从某个页面启动智能体。"
 
 #: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -11227,8 +11232,8 @@ msgid "The agent is working"
 msgstr "智能体正在工作"
 
 #: src/components/acp/ThreadView.tsx
-msgid "The agent isn't stopping. Force stop closes this thread and quits the agent."
-msgstr "智能体没有停下。强制停止会关闭这个线程并结束智能体。"
+msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
+msgstr "智能体没有停止。强制停止将关闭此对话并退出智能体。"
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
@@ -11428,6 +11433,10 @@ msgstr "这个窗口没有对应的项目文件夹，因此无法在这里启动
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "这些规则来自你项目的 <0>{configFile}</0> 文件，该文件完全决定了这个项目的检查行为。可以在这里开关规则并编辑它们的选项；更改会写回该文件。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Thinking"
+msgstr "思考中"
 
 #: src/components/acp/working-status.ts
 msgid "Thinking…"
@@ -12623,6 +12632,10 @@ msgstr "窗口"
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr "自动换行"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Work directly, no plan step"
+msgstr "直接工作，不先制定计划"
 
 #: src/components/BottomComposer.tsx
 msgid "Work through these comments"

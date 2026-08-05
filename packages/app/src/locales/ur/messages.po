@@ -241,6 +241,11 @@ msgstr "{0, plural, one {# مزید ٹول دکھائیں} other {# مزید ٹ�
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, one {مہارت} other {مہارتیں}}"
 
+#. placeholder {0}: sibling.name
+#: src/lib/acp/config-value-hints.ts
+msgid "{0} · default"
+msgstr "{0} · ڈیفالٹ"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -257,8 +262,8 @@ msgstr "{0} سطر {displayLine} پر"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
-msgstr "{0} یہ گفتگو جاری نہیں رکھ سکتا — ٹرانسکرپٹ محفوظ ہے، مگر ایجنٹ کا سیشن ختم ہو چکا ہے۔"
+msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
+msgstr "{0} اس چیٹ کو جاری نہیں رکھ سکتا — ٹرانسکرپٹ محفوظ ہے، لیکن ایجنٹ سیشن ختم ہو گیا ہے۔"
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
@@ -1310,6 +1315,10 @@ msgstr "ایجنٹ"
 msgid "Agent activity"
 msgstr "ایجنٹ کی سرگرمی"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent chats"
+msgstr "ایجنٹ چیٹس"
+
 #: src/components/FileTree.tsx
 msgid "Agent configuration file"
 msgstr "ایجنٹ کی کنفیگریشن فائل"
@@ -1317,10 +1326,6 @@ msgstr "ایجنٹ کی کنفیگریشن فائل"
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "ایجنٹ موڈ"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Agent sessions"
-msgstr "ایجنٹ سیشنز"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
@@ -1508,10 +1513,6 @@ msgstr "منظور شدہ"
 #: src/components/acp/ThreadView.tsx
 msgid "Approved — {optionName}"
 msgstr "منظور شدہ — {optionName}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Archived"
-msgstr "محفوظ شدہ"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
@@ -2137,8 +2138,8 @@ msgid "Choose icon"
 msgstr "آئیکن منتخب کریں"
 
 #: src/components/TerminalNewChatButton.tsx
-msgid "Choose what a new session starts"
-msgstr "منتخب کریں کہ نیا سیشن کس چیز سے شروع ہو"
+msgid "Choose what a new tab starts"
+msgstr "منتخب کریں کہ نیا ٹیب کیا شروع کرے"
 
 #: src/comments/CommentQueuePanel.tsx
 msgid "Choose where to send these comments"
@@ -2149,8 +2150,8 @@ msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool 
 msgstr "منتخب کریں کہ اس پروجیکٹ کا OpenKnowledge سیٹ اپ، بشمول اس کے AI ٹول کنکشنز، پروجیکٹ کے ساتھ محفوظ ہو تاکہ ساتھیوں کو بھی مل جائے، یا صرف آپ کے کمپیوٹر پر رہے۔"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
-msgstr "منتخب کریں کہ کون سے ایجنٹس ایجنٹ سلیکٹر میں دکھائی دیں۔ کسی ایک کو بند کر کے اسے ہر جگہ چھپا دیں۔"
+msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
+msgstr "منتخب کریں کہ ایپ کے ایجنٹ مینیوز میں کون سے ایجنٹ نظر آئیں، جیسے Ask AI، Open with AI اور ＋ نئی چیٹ کا بٹن۔ کسی ایجنٹ کو بند کرنے سے وہ ان سب سے چھپ جائے گا۔"
 
 #: src/components/handoff/AgentSplitButton.tsx
 msgid "Claude"
@@ -3358,8 +3359,8 @@ msgstr "سرور دوبارہ نہیں چل سکا۔ اس فولڈر میں `ok 
 
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't resume this conversation: {0}"
-msgstr "یہ گفتگو دوبارہ شروع نہیں ہو سکی: {0}"
+msgid "Couldn't resume this chat: {0}"
+msgstr "یہ چیٹ دوبارہ شروع نہیں ہو سکی: {0}"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
@@ -3793,13 +3794,13 @@ msgstr "منتخب آئٹمز حذف کریں"
 msgid "Delete selected table"
 msgstr "منتخب ٹیبل حذف کریں"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Delete this chat?"
+msgstr "یہ چیٹ حذف کریں؟"
+
 #: src/comments/CommentsPanel.tsx
 msgid "Delete this comment"
 msgstr "یہ تبصرہ حذف کریں"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this conversation?"
-msgstr "یہ گفتگو حذف کریں؟"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -6549,8 +6550,8 @@ msgid "Loading templates"
 msgstr "ٹیمپلیٹس لوڈ ہو رہے ہیں"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Loading the conversation"
-msgstr "گفتگو لوڈ ہو رہی ہے"
+msgid "Loading the chat"
+msgstr "چیٹ لوڈ ہو رہی ہے"
 
 #: src/components/TimelinePanel.tsx
 msgid "Loading timeline history"
@@ -6768,6 +6769,10 @@ msgstr "ماڈل"
 #: src/components/settings/SearchSection.tsx
 msgid "Model: <0>{0}</0>"
 msgstr "ماڈل: <0>{0}</0>"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Model's default effort"
+msgstr "ماڈل کی ڈیفالٹ کوشش"
 
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -7040,6 +7045,11 @@ msgstr "نئی برانچ <0>{trimmed}</0> موجودہ کمٹ سے بنے گی�
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "آپ کے ریموٹ کی نئی تبدیلیاں خودکار طور پر آپ کی نقل میں آ جاتی ہیں۔"
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with {0}"
+msgstr "{0} کے ساتھ نئی چیٹ"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -7147,11 +7157,6 @@ msgstr "نیا ٹرمینل"
 #: src/lib/native-menu-catalog.ts
 msgid "New Terminal Window"
 msgstr "نئی Terminal ونڈو"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "New thread with {0}"
-msgstr "{0} کے ساتھ نیا تھریڈ"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewWorktreeDialog.tsx
@@ -7367,8 +7372,8 @@ msgid "No matching worktrees or branches."
 msgstr "کوئی مماثل ورک ٹری یا برانچ نہیں۔"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open conversations. Reopen a past one, or start a session with the ＋ button."
-msgstr "کوئی گفتگو کھلی نہیں۔ کوئی پرانی دوبارہ کھولیں، یا ＋ بٹن سے سیشن شروع کریں۔"
+msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
+msgstr "کوئی کھلی چیٹ نہیں۔ پچھلی چیٹ دوبارہ کھولیں، یا ＋ بٹن سے نئی شروع کریں۔"
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9148,6 +9153,10 @@ msgstr "رینڈر شدہ"
 msgid "Reopen"
 msgstr "دوبارہ کھولیں"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Reopen a past chat"
+msgstr "پچھلی چیٹ دوبارہ کھولیں"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
 msgstr "بند کیا گیا ٹیب دوبارہ کھولیں"
@@ -9383,10 +9392,6 @@ msgstr "بحالی ناکام"
 msgid "Restore failed — document unchanged"
 msgstr "بحالی ناکام — دستاویز میں کوئی تبدیلی نہیں"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Restore sessions"
-msgstr "سیشنز بحال کریں"
-
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Restore to edit {burstNumber} of {docName}"
 msgstr "{docName} کی ترمیم {burstNumber} پر بحال کریں"
@@ -9427,8 +9432,8 @@ msgid "Resume sync"
 msgstr "مطابقت پذیری جاری رکھیں"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Resuming the conversation"
-msgstr "گفتگو دوبارہ شروع کی جا رہی ہے"
+msgid "Resuming the chat"
+msgstr "چیٹ دوبارہ شروع ہو رہی ہے"
 
 #: src/components/acp/working-status.ts
 msgid "Retrieving…"
@@ -10616,6 +10621,10 @@ msgstr "{agentName} شروع کریں"
 msgid "Start {agentName}, {hint}"
 msgstr "{agentName} شروع کریں، {hint}"
 
+#: src/components/SessionsHost.tsx
+msgid "Start a chat with the ＋ button, or launch an agent from a page."
+msgstr "＋ بٹن سے چیٹ شروع کریں، یا کسی صفحے سے ایجنٹ شروع کریں۔"
+
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
@@ -10624,10 +10633,6 @@ msgstr "نئی گفتگو شروع کریں"
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "نیا OpenKnowledge پروجیکٹ شروع کریں۔"
-
-#: src/components/SessionsHost.tsx
-msgid "Start a session with the ＋ button, or launch an agent from a page."
-msgstr "＋ بٹن سے سیشن شروع کریں، یا کسی صفحے سے ایجنٹ چلائیں۔"
 
 #: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -11227,8 +11232,8 @@ msgid "The agent is working"
 msgstr "ایجنٹ کام کر رہا ہے"
 
 #: src/components/acp/ThreadView.tsx
-msgid "The agent isn't stopping. Force stop closes this thread and quits the agent."
-msgstr "ایجنٹ رک نہیں رہا۔ زبردستی روکنا اس تھریڈ کو بند کر کے ایجنٹ کو ختم کر دیتا ہے۔"
+msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
+msgstr "ایجنٹ رک نہیں رہا۔ زبردستی روکنے سے یہ چیٹ بند ہو جائے گی اور ایجنٹ ختم ہو جائے گا۔"
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
@@ -11428,6 +11433,10 @@ msgstr "اس ونڈو کے لیے کوئی پروجیکٹ فولڈر نہیں، 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "یہ قواعد آپ کے پروجیکٹ کی <0>{configFile}</0> فائل سے آتے ہیں، جو اس پروجیکٹ کے لِنٹنگ کو مکمل طور پر چلاتی ہے۔ قواعد یہاں فعال یا بند کریں اور ان کے آپشنز میں ترمیم کریں؛ تبدیلیاں واپس فائل میں لکھی جاتی ہیں۔"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Thinking"
+msgstr "سوچ رہا ہے"
 
 #: src/components/acp/working-status.ts
 msgid "Thinking…"
@@ -12623,6 +12632,10 @@ msgstr "ونڈو"
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr "الفاظ کی لپیٹ"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Work directly, no plan step"
+msgstr "براہ راست کام کریں، منصوبہ بندی کے مرحلے کے بغیر"
 
 #: src/components/BottomComposer.tsx
 msgid "Work through these comments"

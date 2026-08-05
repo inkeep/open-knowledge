@@ -1,0 +1,15 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+In-app agent (ACP) polish from the July 31 bug bash — eleven quick wins.
+
+- **Code blocks in agent replies render correctly again.** A stale Tailwind source path (left over from the package-manager migration) silently dropped every style that ships inside the markdown renderer, leaving a large dead band between a code block's language label and its content, with the copy button floating in the gap. The copy button now sits on the language row and blocks size to their content, capped at a scrollable max height.
+- **Syntax highlighting in agent replies.** Code output was uniform monochrome; known languages now get theme-aware highlighting in light and dark (via the renderer's shiki plugin, code-split so it stays out of the main bundle).
+- **Thinking text is collapsed by default.** An agent's reasoning stream now folds to a one-line preview — the latest line while it streams, the first line once settled — with a click to expand. No more walls of internal monologue burying the reply.
+- **"Default" now says what it does.** Claude's model selector reads "Opus (1M context) · default" instead of "Default (recommended)" — resolved from the agent's own option data, so it tracks whatever the recommendation becomes. Bare defaults with no wire data (Claude's reasoning effort, Codex's collaboration mode) get a short built-in hint, and unknown raw ids render as readable labels ("bypassPermissions" → "Bypass Permissions"). Adapter-supplied names and descriptions always win when present.
+- **Agent picker: predictable order and consistent names.** Agents you've picked recently sort first (alphabetical after that), and registry display names are normalized at ingest — a manifest that ships an all-lowercase name ("cursor") is title-cased, while branded capitalization (GitHub Copilot, VT Code, goose) passes through untouched.
+- **Installing/starting states are visibly alive.** The agent mark now breathes alongside the shimmering status line (it was static), and the resume-row spinner no longer risks inheriting an invisible stroke. Both respect reduced-motion.
+- **One word for agent chats: "chat".** The dock mixed four nouns for the same thing — "Restore sessions", "Delete this conversation?", "New thread with…", "New … chat". Agent surfaces now say chat everywhere: the history button is "Reopen a past chat", the delete confirm "Delete this chat?", the resume fallback "New chat with…". Terminal tabs keep "session" — they aren't chats. The delete icon also no longer sticks open on the history menu's first row.
+- **Clearer agent-visibility copy.** Settings → Configure agents now names the menus an enabled agent appears in instead of "Turn one off to hide it everywhere."
+- **The "Archived" badge is gone.** A reopened past conversation no longer shows an ambiguous "Archived" chip — the chat was never read-only, and the composer's "Pick up where you left off" placeholder already says what matters: send a message and the conversation resumes.

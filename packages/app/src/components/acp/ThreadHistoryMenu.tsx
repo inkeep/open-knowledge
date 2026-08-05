@@ -58,7 +58,7 @@ export function ThreadHistoryMenu({
               variant="ghost"
               size="icon-xs"
               className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-              aria-label={t`Restore sessions`}
+              aria-label={t`Reopen a past chat`}
               data-testid="agent-thread-history"
             >
               <History aria-hidden="true" />
@@ -66,7 +66,7 @@ export function ThreadHistoryMenu({
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={8}>
-          {t`Restore sessions`}
+          {t`Reopen a past chat`}
         </TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="w-72 p-1">
@@ -78,9 +78,7 @@ export function ThreadHistoryMenu({
                 className="flex items-center gap-1.5 rounded-md bg-destructive/5 px-2 py-1"
                 data-testid="agent-thread-history-confirm"
               >
-                <span className="min-w-0 flex-1 truncate text-xs">
-                  {t`Delete this conversation?`}
-                </span>
+                <span className="min-w-0 flex-1 truncate text-xs">{t`Delete this chat?`}</span>
                 <Button
                   type="button"
                   size="sm"
@@ -133,7 +131,7 @@ export function ThreadHistoryMenu({
                       variant="ghost"
                       size="icon-xs"
                       aria-label={t`Delete ${thread.title}`}
-                      className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-focus-within:opacity-100 group-hover:opacity-100"
+                      className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
                       onClick={() => setConfirmingId(thread.threadId)}
                       data-testid={`agent-thread-history-delete-${thread.threadId}`}
                     >
@@ -179,7 +177,7 @@ export function ArchivedThreadChooser({
       data-testid="agent-thread-empty-chooser"
     >
       <p className="px-1 text-muted-foreground text-xs">
-        {t`No open conversations. Reopen a past one, or start a session with the ＋ button.`}
+        {t`No open chats. Reopen a past one, or start a new one with the ＋ button.`}
       </p>
       <div className="flex flex-col gap-0.5">
         {archived.map((thread) => (

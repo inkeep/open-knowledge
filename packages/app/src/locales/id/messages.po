@@ -241,6 +241,11 @@ msgstr "{0, plural, other {Tampilkan # alat lagi}}"
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, other {Keterampilan}}"
 
+#. placeholder {0}: sibling.name
+#: src/lib/acp/config-value-hints.ts
+msgid "{0} · default"
+msgstr "{0} · bawaan"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -257,8 +262,8 @@ msgstr "{0} di baris {displayLine}"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
-msgstr "{0} tidak bisa melanjutkan percakapan ini — transkripnya tersimpan, tetapi sesi agennya sudah hilang."
+msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
+msgstr "{0} tidak dapat melanjutkan obrolan ini — transkrip tetap tersimpan, tetapi sesi agen sudah hilang."
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
@@ -1306,6 +1311,10 @@ msgstr "Agen"
 msgid "Agent activity"
 msgstr "Aktivitas agen"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent chats"
+msgstr "Obrolan agen"
+
 #: src/components/FileTree.tsx
 msgid "Agent configuration file"
 msgstr "Berkas konfigurasi agen"
@@ -1313,10 +1322,6 @@ msgstr "Berkas konfigurasi agen"
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "Mode agen"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Agent sessions"
-msgstr "Sesi agen"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
@@ -1504,10 +1509,6 @@ msgstr "Disetujui"
 #: src/components/acp/ThreadView.tsx
 msgid "Approved — {optionName}"
 msgstr "Disetujui — {optionName}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Archived"
-msgstr "Diarsipkan"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
@@ -2133,8 +2134,8 @@ msgid "Choose icon"
 msgstr "Pilih ikon"
 
 #: src/components/TerminalNewChatButton.tsx
-msgid "Choose what a new session starts"
-msgstr "Pilih apa yang memulai sebuah sesi baru"
+msgid "Choose what a new tab starts"
+msgstr "Pilih apa yang dimulai tab baru"
 
 #: src/comments/CommentQueuePanel.tsx
 msgid "Choose where to send these comments"
@@ -2145,8 +2146,8 @@ msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool 
 msgstr "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
 
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
-msgstr "Pilih agen mana yang muncul di pemilih agen. Matikan salah satu untuk menyembunyikannya di mana pun."
+msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
+msgstr "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, seperti Ask AI, Open with AI, dan tombol ＋ obrolan baru. Nonaktifkan agen untuk menyembunyikannya dari semuanya."
 
 #: src/components/handoff/AgentSplitButton.tsx
 msgid "Claude"
@@ -3354,8 +3355,8 @@ msgstr "Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."
 
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't resume this conversation: {0}"
-msgstr "Percakapan ini tidak bisa dilanjutkan: {0}"
+msgid "Couldn't resume this chat: {0}"
+msgstr "Tidak dapat melanjutkan obrolan ini: {0}"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
@@ -3789,13 +3790,13 @@ msgstr "Hapus item terpilih"
 msgid "Delete selected table"
 msgstr "Hapus tabel terpilih"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Delete this chat?"
+msgstr "Hapus obrolan ini?"
+
 #: src/comments/CommentsPanel.tsx
 msgid "Delete this comment"
 msgstr "Hapus komentar ini"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this conversation?"
-msgstr "Hapus percakapan ini?"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -6545,8 +6546,8 @@ msgid "Loading templates"
 msgstr "Memuat templat"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Loading the conversation"
-msgstr "Memuat percakapan"
+msgid "Loading the chat"
+msgstr "Memuat obrolan"
 
 #: src/components/TimelinePanel.tsx
 msgid "Loading timeline history"
@@ -6764,6 +6765,10 @@ msgstr "Model"
 #: src/components/settings/SearchSection.tsx
 msgid "Model: <0>{0}</0>"
 msgstr "Model: <0>{0}</0>"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Model's default effort"
+msgstr "Upaya bawaan model"
 
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -7036,6 +7041,11 @@ msgstr "Cabang baru <0>{trimmed}</0> akan dibuat dari commit saat ini, di worktr
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "Perubahan baru dari remote Anda muncul di salinan Anda secara otomatis."
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with {0}"
+msgstr "Obrolan baru dengan {0}"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -7143,11 +7153,6 @@ msgstr "Terminal Baru"
 #: src/lib/native-menu-catalog.ts
 msgid "New Terminal Window"
 msgstr "Jendela Terminal baru"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "New thread with {0}"
-msgstr "Utas baru dengan {0}"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewWorktreeDialog.tsx
@@ -7363,8 +7368,8 @@ msgid "No matching worktrees or branches."
 msgstr "Tidak ada worktree atau cabang yang cocok."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open conversations. Reopen a past one, or start a session with the ＋ button."
-msgstr "Tidak ada percakapan terbuka. Buka lagi yang lama, atau mulai sesi dengan tombol ＋."
+msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
+msgstr "Tidak ada obrolan terbuka. Buka kembali obrolan sebelumnya, atau mulai yang baru dengan tombol ＋."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9144,6 +9149,10 @@ msgstr "Dirender"
 msgid "Reopen"
 msgstr "Buka lagi"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Reopen a past chat"
+msgstr "Buka kembali obrolan sebelumnya"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
 msgstr "Buka lagi tab yang ditutup"
@@ -9379,10 +9388,6 @@ msgstr "Gagal memulihkan"
 msgid "Restore failed — document unchanged"
 msgstr "Gagal memulihkan — dokumen tidak berubah"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Restore sessions"
-msgstr "Pulihkan sesi"
-
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Restore to edit {burstNumber} of {docName}"
 msgstr "Pulihkan hingga suntingan {burstNumber} pada {docName}"
@@ -9423,8 +9428,8 @@ msgid "Resume sync"
 msgstr "Lanjutkan sinkronisasi"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Resuming the conversation"
-msgstr "Melanjutkan percakapan"
+msgid "Resuming the chat"
+msgstr "Melanjutkan obrolan"
 
 #: src/components/acp/working-status.ts
 msgid "Retrieving…"
@@ -10612,6 +10617,10 @@ msgstr "Mulai {agentName}"
 msgid "Start {agentName}, {hint}"
 msgstr "Mulai {agentName}, {hint}"
 
+#: src/components/SessionsHost.tsx
+msgid "Start a chat with the ＋ button, or launch an agent from a page."
+msgstr "Mulai obrolan dengan tombol ＋, atau luncurkan agen dari halaman."
+
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
@@ -10620,10 +10629,6 @@ msgstr "Mulai obrolan baru"
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "Mulai proyek OpenKnowledge baru."
-
-#: src/components/SessionsHost.tsx
-msgid "Start a session with the ＋ button, or launch an agent from a page."
-msgstr "Mulai sesi dengan tombol ＋, atau jalankan agen dari sebuah halaman."
 
 #: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -11223,8 +11228,8 @@ msgid "The agent is working"
 msgstr "Agennya sedang bekerja"
 
 #: src/components/acp/ThreadView.tsx
-msgid "The agent isn't stopping. Force stop closes this thread and quits the agent."
-msgstr "Agennya tidak berhenti. Hentikan paksa akan menutup utas ini dan mengakhiri agennya."
+msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
+msgstr "Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari agen."
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
@@ -11424,6 +11429,10 @@ msgstr "Tidak ada folder proyek untuk jendela ini, jadi terminal tidak bisa dimu
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "Aturan-aturan ini berasal dari berkas <0>{configFile}</0> proyek Anda, yang sepenuhnya mengatur lint untuk proyek ini. Nyalakan atau matikan aturan dan sunting opsinya di sini; perubahannya ditulis kembali ke berkas itu."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Thinking"
+msgstr "Berpikir"
 
 #: src/components/acp/working-status.ts
 msgid "Thinking…"
@@ -12619,6 +12628,10 @@ msgstr "Jendela"
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr "Bungkus baris"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Work directly, no plan step"
+msgstr "Bekerja langsung, tanpa tahap perencanaan"
 
 #: src/components/BottomComposer.tsx
 msgid "Work through these comments"

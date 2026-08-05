@@ -31,6 +31,7 @@
     "-imiMK": ["Follow — updates flow in from your remote; your edits stay on this computer."],
     "-kKdCC": ["Installed ", ["imported"], " skills from ", ["0"]],
     "-kbIAr": ["Links & images"],
+    "-l6jM7": ["Start a chat with the ＋ button, or launch an agent from a page."],
     "-lCAuQ": ["Loading graph"],
     "-o5XAG": [
       "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
@@ -142,7 +143,6 @@
       "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
     ],
     "1ZpfyB": ["Open with AI ", ["displayName"], ", ", ["hint"]],
-    "1__I_U": ["Agent sessions"],
     "1a6ICf": ["Following the agent's edits"],
     "1bDVu5": ["Workspace Command Palette"],
     "1d1F11": ["Select all files and folders"],
@@ -184,6 +184,7 @@
     "2M0JF6": ["Auto-update"],
     "2O5Z0r": ["Hide ", ["appName"]],
     "2QM24L": ["All tags"],
+    "2RnFoM": ["Couldn't resume this chat: ", ["0"]],
     "2Snes1": ["This sends the link's address off your machine"],
     "2UgoBZ": ["gone"],
     "2XQ8Ww": ["Open preview when agent edits"],
@@ -248,6 +249,7 @@
     "3SDfZl": [
       "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
     ],
+    "3SWNP8": ["Model's default effort"],
     "3SZrdj": ["Check for updates…"],
     "3TSz9S": ["Minimize"],
     "3V94ia": ["Couldn't send your comments — the workspace isn't ready."],
@@ -271,7 +273,6 @@
     "3mFsc3": ["Restore with remote changes"],
     "3nnyi_": [["0", "plural", { "one": ["Delete"], "other": ["Delete ", "#", " items"] }]],
     "3o3tur": ["Starter content"],
-    "3oEK1e": ["Resuming the conversation"],
     "3oh0nQ": ["Nested .okignore error in ", ["path"]],
     "3pU8e-": ["Pin tab"],
     "3s-k7L": [
@@ -410,7 +411,6 @@
     "5soCUZ": ["Edit queued message"],
     "5tcmwY": ["Add value"],
     "5vAI6Z": ["It didn't fit into my workflow"],
-    "5vYdh9": ["New thread with ", ["0"]],
     "5wV2qQ": ["and more"],
     "5y_9lO": ["Waiting for authorization"],
     "6-wLTJ": [["behind"], " behind origin"],
@@ -424,6 +424,7 @@
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
     "69KLIV": ["Escape"],
     "6Aih4U": ["Offline"],
+    "6FCixu": ["Reopen a past chat"],
     "6HCOwA": ["Failed to open."],
     "6KCH4m": ["Hidden files"],
     "6LbUG7": ["The repository is private and your GitHub account doesn't have access to it."],
@@ -528,7 +529,6 @@
     "7m3Ade": ["installs:"],
     "7qRHf0": ["Install for Claude Chat & Cowork"],
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
-    "7vQdBK": ["Loading the conversation"],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
     "851WA-": ["This can be configured in Settings > AI tools & CLI"],
@@ -682,7 +682,6 @@
     "AIC67-": [
       "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
     ],
-    "AIVHDc": ["Choose what a new session starts"],
     "AIn2Yv": [["displayName"], " CLI, ", ["hint"]],
     "AItsE5": ["Open it there"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
@@ -695,6 +694,7 @@
     "ASqqsQ": ["Maximum ", ["MAX_ATTACHMENTS"], " attachments"],
     "AT0e50": ["Keep both"],
     "ATGYL1": ["Email address"],
+    "AUV-TY": ["Thinking"],
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
     "AYoYhU": ["Update failed: ", ["0"]],
@@ -793,7 +793,6 @@
     "C9TBvF": ["No Outgoing"],
     "CB7c0Z": ["Save queued message"],
     "CBT70t": ["Couldn't delete file: ", ["0"]],
-    "CBsdhe": ["The agent isn't stopping. Force stop closes this thread and quits the agent."],
     "CCTop_": ["Recent"],
     "CD8lBW": ["Tidying up…"],
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
@@ -1086,6 +1085,7 @@
       "."
     ],
     "GK-IRZ": ["Undo buttons are disabled — per-session state has been garbage-collected."],
+    "GK5Ft_": [["0"], " · default"],
     "GLxIKR": ["How to push manually"],
     "GMaDTM": ["Failed to save Slidev setting"],
     "GN6L5F": ["Filename"],
@@ -1112,6 +1112,7 @@
       ["conflictName"],
       "\" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version."
     ],
+    "GjsGAu": ["Agent chats"],
     "GkYV_4": ["Renamed ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Local path"],
     "GrBgX_": [
@@ -1220,7 +1221,6 @@
     "IgN3LY": ["On selected text in <0>", ["address"], "</0>"],
     "IgTwLt": ["Open this document in the editor and collapse the graph."],
     "Ik-gP0": ["Heading H", ["level"], ": ", ["text"]],
-    "IlH15B": ["Start a session with the ＋ button, or launch an agent from a page."],
     "Iq8zdU": ["Close terminal"],
     "IrB5AK": [
       "Server-side cleanup failed for ",
@@ -1605,9 +1605,6 @@
     "OYnx7O": ["Path cannot start with \"/\""],
     "OZavHH": ["everything under ", ["0"], "/"],
     "Oawo4U": ["The report service couldn't be reached."],
-    "OcBurH": [
-      "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
-    ],
     "OdmsFg": ["Failed to delete item"],
     "OeAl1e": ["e.g. assets/uploads"],
     "OfhWJH": ["Reset"],
@@ -1660,6 +1657,7 @@
     "PVSwOe": ["Steering — waiting for the current run to stop…"],
     "PVUn_c": ["Open folder"],
     "PVggyD": ["Frontmatter schemas"],
+    "PWqtgd": ["Loading the chat"],
     "PYmp-0": ["Import as template"],
     "PZn2LP": ["Keep source"],
     "PZtgO0": ["Opening worktree"],
@@ -1758,6 +1756,7 @@
     "R65q-K": [
       "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
     ],
+    "R6ABfU": ["Work directly, no plan step"],
     "R9IDFz": ["Renames the folder on disk and the id agents use to invoke it."],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
@@ -1817,7 +1816,6 @@
     "S33tz3": ["Not connected"],
     "S3qu11": ["It was a trial or one-off project"],
     "S48xcO": ["pending"],
-    "S60KvX": ["Delete this conversation?"],
     "S6eHlw": ["Open a project first."],
     "S6l5dv": ["Could not start creating a new item"],
     "S9Vnum": ["Remove ", ["patternText"]],
@@ -1829,7 +1827,6 @@
     "SInSnF": ["Reference <0>", ["0"], "</0>"],
     "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
-    "SQWJ-i": ["Restore sessions"],
     "SRBk2G": ["Couldn't add that comment."],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
@@ -1855,6 +1852,7 @@
     "SiFgBx": ["docs matching ", ["0"]],
     "SiUUCS": ["Next match"],
     "SkMZlS": ["Couldn't remove <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
+    "SkTkKV": ["The agent isn't stopping. Force stop closes this chat and quits the agent."],
     "Skr_7L": ["Search worktrees"],
     "SlfejT": ["Error"],
     "SqIoy_": ["Auto-fix — no problems here have an automatic fix"],
@@ -1885,7 +1883,6 @@
     "T_wG4n": ["We couldn't check your GitHub connection."],
     "Ta25TG": ["No history yet"],
     "TbjyhA": ["Docs"],
-    "TdfEV7": ["Archived"],
     "TdlVEN": [
       "This field carries additional schema keywords the editor does not show — they are preserved on save."
     ],
@@ -1898,6 +1895,7 @@
     "Tjc1pH": ["Section <0>(optional heading anchor)</0>"],
     "Tn5sik": ["Tells agents when to reach for this skill. You can edit it later."],
     "Tq3pcs": ["Keep mine"],
+    "Tq9kNX": ["No open chats. Reopen a past one, or start a new one with the ＋ button."],
     "TsZmgr": ["The file on disk, and the id agents use."],
     "TvY_XA": ["Documentation"],
     "TwYboS": ["Navigate CodeMirror source search results or dismiss the search panel."],
@@ -2119,6 +2117,9 @@
     "XAyxsa": ["Check out remote branch"],
     "XBgr2S": ["Copy in"],
     "XDzAnp": ["Opens in a new tab"],
+    "XFpEgc": [
+      "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
+    ],
     "XH30C4": ["document"],
     "XIltnd": ["A skill named \"", ["trimmed"], "\" already exists here"],
     "XJOV1Y": ["Activity"],
@@ -2126,7 +2127,6 @@
     "XNBGZw": ["Message not sent: ", ["0"]],
     "XPJ0sN": [["settingsDescriptorLabel"], " properties"],
     "XPqe3B": ["Create new tag #", ["tagValue"]],
-    "XQkJlB": ["No open conversations. Reopen a past one, or start a session with the ＋ button."],
     "XRuL0i": ["Create page"],
     "XSb9HS": ["Discard local edits, restore the installed version"],
     "XT-L4j": ["Turn on an agent to create with AI"],
@@ -2583,7 +2583,6 @@
     "dXCi3J": ["Something broke"],
     "dXOolp": ["Syncing your changes"],
     "dXWMFn": ["Removes this skill from your editors."],
-    "dYCvMf": ["Couldn't resume this conversation: ", ["0"]],
     "darW93": [
       [
         "pageCount",
@@ -2673,10 +2672,6 @@
     "ezUmoU": ["Allowed element values (empty = any)"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Move block"],
-    "f3Nvg7": [
-      ["0"],
-      " can't continue this conversation — the transcript is kept, but the agent session is gone."
-    ],
     "f65AOQ": ["Start from"],
     "f8fH8W": ["Design"],
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
@@ -2825,6 +2820,7 @@
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
+    "hHR0tt": ["New chat with ", ["0"]],
     "hItdtk": ["Browse folder"],
     "hLKfZe": ["Use a token instead"],
     "hLod4_": ["Convert to template"],
@@ -3055,6 +3051,7 @@
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
     ],
+    "kVgQUA": ["Delete this chat?"],
     "kYL1lH": ["Agent activity"],
     "k_Dqw1": [
       [
@@ -3122,6 +3119,7 @@
       ") that won't touch the rest of your system."
     ],
     "l7X_SM": ["Send to AI"],
+    "l87Deg": ["Choose what a new tab starts"],
     "l9s3IX": [["agentName"], " couldn't start a conversation."],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Subscribing..."],
@@ -3151,6 +3149,7 @@
     "lbkOif": ["Undo or redo visual-editor changes through TipTap collaboration history."],
     "leF0i_": ["New file in this skill"],
     "leiGnv": [["dir"], " (symlink)"],
+    "lhRpUP": ["Resuming the chat"],
     "lhjq3G": ["Reset ", ["labelText"], " to default"],
     "lj4cNf": [
       "Pick the skills to install. Each one lands as an editable skill you own; the plugin's hooks, commands, and MCP servers are not installed."
@@ -3238,6 +3237,10 @@
       "</1> exists in <2>",
       ["src"],
       "</2>."
+    ],
+    "ms4r8V": [
+      ["0"],
+      " can't continue this chat — the transcript is kept, but the agent session is gone."
     ],
     "msOK6I": [
       "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."

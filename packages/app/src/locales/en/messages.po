@@ -241,6 +241,11 @@ msgstr "{0, plural, one {Show # more tool} other {Show # more tools}}"
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, one {Skill} other {Skills}}"
 
+#. placeholder {0}: sibling.name
+#: src/lib/acp/config-value-hints.ts
+msgid "{0} · default"
+msgstr "{0} · default"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -257,8 +262,8 @@ msgstr "{0} at line {displayLine}"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
-msgstr "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
+msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
+msgstr "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
@@ -1310,6 +1315,10 @@ msgstr "Agent"
 msgid "Agent activity"
 msgstr "Agent activity"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent chats"
+msgstr "Agent chats"
+
 #: src/components/FileTree.tsx
 msgid "Agent configuration file"
 msgstr "Agent configuration file"
@@ -1317,10 +1326,6 @@ msgstr "Agent configuration file"
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "Agent mode"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Agent sessions"
-msgstr "Agent sessions"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
@@ -1508,10 +1513,6 @@ msgstr "Approved"
 #: src/components/acp/ThreadView.tsx
 msgid "Approved — {optionName}"
 msgstr "Approved — {optionName}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Archived"
-msgstr "Archived"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
@@ -2137,8 +2138,8 @@ msgid "Choose icon"
 msgstr "Choose icon"
 
 #: src/components/TerminalNewChatButton.tsx
-msgid "Choose what a new session starts"
-msgstr "Choose what a new session starts"
+msgid "Choose what a new tab starts"
+msgstr "Choose what a new tab starts"
 
 #: src/comments/CommentQueuePanel.tsx
 msgid "Choose where to send these comments"
@@ -2149,8 +2150,8 @@ msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool 
 msgstr "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
 
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
-msgstr "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
+msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
+msgstr "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
 
 #: src/components/handoff/AgentSplitButton.tsx
 msgid "Claude"
@@ -3358,8 +3359,8 @@ msgstr "Couldn't restart the server. Try `ok start` in this folder."
 
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't resume this conversation: {0}"
-msgstr "Couldn't resume this conversation: {0}"
+msgid "Couldn't resume this chat: {0}"
+msgstr "Couldn't resume this chat: {0}"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
@@ -3793,13 +3794,13 @@ msgstr "Delete selected items"
 msgid "Delete selected table"
 msgstr "Delete selected table"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Delete this chat?"
+msgstr "Delete this chat?"
+
 #: src/comments/CommentsPanel.tsx
 msgid "Delete this comment"
 msgstr "Delete this comment"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this conversation?"
-msgstr "Delete this conversation?"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -6549,8 +6550,8 @@ msgid "Loading templates"
 msgstr "Loading templates"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Loading the conversation"
-msgstr "Loading the conversation"
+msgid "Loading the chat"
+msgstr "Loading the chat"
 
 #: src/components/TimelinePanel.tsx
 msgid "Loading timeline history"
@@ -6768,6 +6769,10 @@ msgstr "Model"
 #: src/components/settings/SearchSection.tsx
 msgid "Model: <0>{0}</0>"
 msgstr "Model: <0>{0}</0>"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Model's default effort"
+msgstr "Model's default effort"
 
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -7040,6 +7045,11 @@ msgstr "New branch <0>{trimmed}</0> will be created from the current commit, in 
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "New changes from your remote appear in your copy automatically."
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with {0}"
+msgstr "New chat with {0}"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -7147,11 +7157,6 @@ msgstr "New Terminal"
 #: src/lib/native-menu-catalog.ts
 msgid "New Terminal Window"
 msgstr "New Terminal Window"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "New thread with {0}"
-msgstr "New thread with {0}"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewWorktreeDialog.tsx
@@ -7367,8 +7372,8 @@ msgid "No matching worktrees or branches."
 msgstr "No matching worktrees or branches."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open conversations. Reopen a past one, or start a session with the ＋ button."
-msgstr "No open conversations. Reopen a past one, or start a session with the ＋ button."
+msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
+msgstr "No open chats. Reopen a past one, or start a new one with the ＋ button."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9148,6 +9153,10 @@ msgstr "Rendered"
 msgid "Reopen"
 msgstr "Reopen"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Reopen a past chat"
+msgstr "Reopen a past chat"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
 msgstr "Reopen closed tab"
@@ -9383,10 +9392,6 @@ msgstr "Restore failed"
 msgid "Restore failed — document unchanged"
 msgstr "Restore failed — document unchanged"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Restore sessions"
-msgstr "Restore sessions"
-
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Restore to edit {burstNumber} of {docName}"
 msgstr "Restore to edit {burstNumber} of {docName}"
@@ -9427,8 +9432,8 @@ msgid "Resume sync"
 msgstr "Resume sync"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Resuming the conversation"
-msgstr "Resuming the conversation"
+msgid "Resuming the chat"
+msgstr "Resuming the chat"
 
 #: src/components/acp/working-status.ts
 msgid "Retrieving…"
@@ -10616,6 +10621,10 @@ msgstr "Start {agentName}"
 msgid "Start {agentName}, {hint}"
 msgstr "Start {agentName}, {hint}"
 
+#: src/components/SessionsHost.tsx
+msgid "Start a chat with the ＋ button, or launch an agent from a page."
+msgstr "Start a chat with the ＋ button, or launch an agent from a page."
+
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
@@ -10624,10 +10633,6 @@ msgstr "Start a new chat"
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "Start a new OpenKnowledge project."
-
-#: src/components/SessionsHost.tsx
-msgid "Start a session with the ＋ button, or launch an agent from a page."
-msgstr "Start a session with the ＋ button, or launch an agent from a page."
 
 #: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -11227,8 +11232,8 @@ msgid "The agent is working"
 msgstr "The agent is working"
 
 #: src/components/acp/ThreadView.tsx
-msgid "The agent isn't stopping. Force stop closes this thread and quits the agent."
-msgstr "The agent isn't stopping. Force stop closes this thread and quits the agent."
+msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
+msgstr "The agent isn't stopping. Force stop closes this chat and quits the agent."
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
@@ -11428,6 +11433,10 @@ msgstr "There's no project folder for this window, so a terminal can't start her
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Thinking"
+msgstr "Thinking"
 
 #: src/components/acp/working-status.ts
 msgid "Thinking…"
@@ -12623,6 +12632,10 @@ msgstr "Window"
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr "Word wrap"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Work directly, no plan step"
+msgstr "Work directly, no plan step"
 
 #: src/components/BottomComposer.tsx
 msgid "Work through these comments"

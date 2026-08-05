@@ -1630,7 +1630,7 @@ function EmptySessionsState() {
       className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-muted-foreground text-sm"
       data-testid="sessions-dock-empty"
     >
-      {t`Start a session with the ＋ button, or launch an agent from a page.`}
+      {t`Start a chat with the ＋ button, or launch an agent from a page.`}
     </div>
   );
 }

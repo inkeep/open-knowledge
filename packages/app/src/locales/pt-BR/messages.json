@@ -43,6 +43,7 @@
     ],
     "-kKdCC": [["imported"], " habilidades instaladas a partir de ", ["0"]],
     "-kbIAr": ["Links e imagens"],
+    "-l6jM7": ["Inicie um chat com o botão ＋ ou inicie um agente a partir de uma página."],
     "-lCAuQ": ["Carregando o grafo"],
     "-o5XAG": [
       "Enviado em particular para a equipe do OpenKnowledge, junto com sua nota e a versão do app. Nunca é publicado."
@@ -158,7 +159,6 @@
       "Mudar para <0>somente local</0> será recusado até que eles deixem de ser rastreados com<1> git rm --cached</1>."
     ],
     "1ZpfyB": ["Abrir com a IA ", ["displayName"], ", ", ["hint"]],
-    "1__I_U": ["Sessões de agente"],
     "1a6ICf": ["Acompanhando as edições do agente"],
     "1bDVu5": ["Paleta de comandos do espaço de trabalho"],
     "1d1F11": ["Selecionar todos os arquivos e pastas"],
@@ -204,6 +204,7 @@
     "2M0JF6": ["Atualização automática"],
     "2O5Z0r": ["Ocultar ", ["appName"]],
     "2QM24L": ["Todas as tags"],
+    "2RnFoM": ["Não foi possível retomar este chat: ", ["0"]],
     "2Snes1": ["Isto envia o endereço do link para fora do seu computador"],
     "2UgoBZ": ["sumiu"],
     "2XQ8Ww": ["Abrir a pré-visualização quando o agente editar"],
@@ -281,6 +282,7 @@
     "3SDfZl": [
       "<0>Espelho — escolha uma fonte.</0> Defina <1>src</1> + <2>anchor</2> no painel de propriedades para apontar para um <3><MirrorSource></3> em outro lugar."
     ],
+    "3SWNP8": ["Esforço padrão do modelo"],
     "3SZrdj": ["Buscar atualizações…"],
     "3TSz9S": ["Minimizar"],
     "3V94ia": ["Não deu para enviar seus comentários — o espaço de trabalho não está pronto."],
@@ -314,7 +316,6 @@
       ]
     ],
     "3o3tur": ["Conteúdo inicial"],
-    "3oEK1e": ["Retomando a conversa"],
     "3oh0nQ": ["Erro no .okignore aninhado em ", ["path"]],
     "3pU8e-": ["Fixar aba"],
     "3s-k7L": [
@@ -484,7 +485,6 @@
     "5soCUZ": ["Editar a mensagem na fila"],
     "5tcmwY": ["Adicionar valor"],
     "5vAI6Z": ["Não encaixou no meu jeito de trabalhar"],
-    "5vYdh9": ["Nova conversa com ", ["0"]],
     "5wV2qQ": ["e mais"],
     "5y_9lO": ["Aguardando a autorização"],
     "6-wLTJ": [["behind"], " atrás de origin"],
@@ -500,6 +500,7 @@
     ],
     "69KLIV": ["Esc"],
     "6Aih4U": ["Offline"],
+    "6FCixu": ["Reabrir um chat anterior"],
     "6HCOwA": ["Falha ao abrir."],
     "6KCH4m": ["Arquivos ocultos"],
     "6LbUG7": ["O repositório é privado e sua conta do GitHub não tem acesso a ele."],
@@ -620,7 +621,6 @@
     "7m3Ade": ["instalações:"],
     "7qRHf0": ["Instalar para o Claude Chat e Cowork"],
     "7uBlRT": ["Copia o item em foco na árvore de arquivos para que Colar possa duplicá-lo."],
-    "7vQdBK": ["Carregando a conversa"],
     "80c4-P": ["Código copiado para a área de transferência"],
     "81H_23": ["Adicionar propriedades"],
     "851WA-": ["Isto pode ser configurado em Configurações > Ferramentas de IA e CLI"],
@@ -789,7 +789,6 @@
     "AIC67-": [
       "Reaproveita uma aba quando você vai clicando pelas barras laterais. Desligado, cada clique abre uma aba própria."
     ],
-    "AIVHDc": ["Escolha com o que uma nova sessão começa"],
     "AIn2Yv": ["CLI do ", ["displayName"], ", ", ["hint"]],
     "AItsE5": ["Abrir por lá"],
     "AKxFtn": [
@@ -808,6 +807,7 @@
     "ASqqsQ": ["No máximo ", ["MAX_ATTACHMENTS"], " anexos"],
     "AT0e50": ["Manter os dois"],
     "ATGYL1": ["Endereço de e-mail"],
+    "AUV-TY": ["Pensando"],
     "AVW-K9": ["Falha ao carregar as páginas órfãs"],
     "AWOSPo": ["Aproximar"],
     "AYoYhU": ["Falha na atualização: ", ["0"]],
@@ -916,7 +916,6 @@
     "C9TBvF": ["Sem saída"],
     "CB7c0Z": ["Salvar a mensagem na fila"],
     "CBT70t": ["Não foi possível excluir o arquivo: ", ["0"]],
-    "CBsdhe": ["O agente não está parando. Parar à força fecha esta conversa e encerra o agente."],
     "CCTop_": ["Recentes"],
     "CD8lBW": ["Arrumando…"],
     "CFnavk": ["Este projeto não é um repositório git, então worktrees não estão disponíveis."],
@@ -1245,6 +1244,7 @@
     "GK-IRZ": [
       "Os botões de desfazer estão desativados — o estado por sessão foi liberado da memória."
     ],
+    "GK5Ft_": [["0"], " · padrão"],
     "GLxIKR": ["Como enviar manualmente"],
     "GMaDTM": ["Falha ao salvar a configuração do Slidev"],
     "GN6L5F": ["Nome do arquivo"],
@@ -1275,6 +1275,7 @@
       ["conflictName"],
       "” não foi instalada — você já tem uma skill própria com esse nome. Renomeie a sua se quiser a versão do pacote."
     ],
+    "GjsGAu": ["Chats de agentes"],
     "GkYV_4": [["0"], " renomeado → ", ["1"]],
     "Gp_twO": ["Caminho local"],
     "GrBgX_": [
@@ -1407,7 +1408,6 @@
     "IgN3LY": ["Sobre o texto selecionado em <0>", ["address"], "</0>"],
     "IgTwLt": ["Abre este documento no editor e recolhe o grafo."],
     "Ik-gP0": ["Título H", ["level"], ": ", ["text"]],
-    "IlH15B": ["Comece uma sessão com o botão ＋, ou dispare um agente a partir de uma página."],
     "Iq8zdU": ["Fechar terminal"],
     "IrB5AK": [
       "A limpeza no servidor falhou para ",
@@ -1829,9 +1829,6 @@
     "OYnx7O": ["O caminho não pode começar com \"/\""],
     "OZavHH": ["tudo dentro de ", ["0"], "/"],
     "Oawo4U": ["Não foi possível contatar o serviço de relatórios."],
-    "OcBurH": [
-      "Escolha quais agentes aparecem no seletor de agentes. Desligue um para escondê-lo em todo lugar."
-    ],
     "OdmsFg": ["Falha ao excluir o item"],
     "OeAl1e": ["ex.: assets/uploads"],
     "OfhWJH": ["Redefinir"],
@@ -1884,6 +1881,7 @@
     "PVSwOe": ["Redirecionando — aguardando a execução atual parar…"],
     "PVUn_c": ["Abrir pasta"],
     "PVggyD": ["Esquemas de frontmatter"],
+    "PWqtgd": ["Carregando o chat"],
     "PYmp-0": ["Importar como modelo"],
     "PZn2LP": ["Manter a fonte"],
     "PZtgO0": ["Abrindo o worktree"],
@@ -1995,6 +1993,7 @@
     "R65q-K": [
       "O shell real está desligado neste projeto. Ligá-lo executa comandos com todo o acesso da sua conta de usuário do macOS."
     ],
+    "R6ABfU": ["Trabalhar diretamente, sem etapa de planejamento"],
     "R9IDFz": ["Renomeia a pasta no disco e o id que os agentes usam para invocá-la."],
     "RDjuBN": ["Configuração"],
     "RDrXh4": ["Configure as opções de usuário, de projeto e de integrações."],
@@ -2054,7 +2053,6 @@
     "S33tz3": ["Não conectado"],
     "S3qu11": ["Era um teste ou um projeto pontual"],
     "S48xcO": ["pendente"],
-    "S60KvX": ["Excluir esta conversa?"],
     "S6eHlw": ["Abra um projeto primeiro."],
     "S6l5dv": ["Não foi possível começar a criar um novo item"],
     "S9Vnum": ["Remover ", ["patternText"]],
@@ -2066,7 +2064,6 @@
     "SInSnF": ["Referência <0>", ["0"], "</0>"],
     "SItQRc": ["O que você acha do OpenKnowledge?"],
     "SOPwPh": ["Restaurar até esta edição"],
-    "SQWJ-i": ["Restaurar as sessões"],
     "SRBk2G": ["Não deu para adicionar esse comentário."],
     "STTOnz": ["Tipo de ", ["keyName"], ": valor complexo (aninhado; somente leitura)"],
     "SUOoXn": ["Falha ao abrir o projeto."],
@@ -2099,6 +2096,7 @@
     "SiFgBx": ["documentos que correspondem a ", ["0"]],
     "SiUUCS": ["Próxima ocorrência"],
     "SkMZlS": ["Não deu para remover <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
+    "SkTkKV": ["O agente não está parando. A parada forçada fecha este chat e encerra o agente."],
     "Skr_7L": ["Buscar worktrees"],
     "SlfejT": ["Erro"],
     "SqIoy_": ["Correção automática — nenhum problema aqui tem correção automática"],
@@ -2135,7 +2133,6 @@
     "T_wG4n": ["Não foi possível verificar sua conexão com o GitHub."],
     "Ta25TG": ["Ainda não há histórico"],
     "TbjyhA": ["Documentos"],
-    "TdfEV7": ["Arquivado"],
     "TdlVEN": [
       "Este campo carrega palavras-chave de esquema adicionais que o editor não mostra — elas são preservadas ao salvar."
     ],
@@ -2148,6 +2145,7 @@
     "Tjc1pH": ["Seção <0>(âncora de título, opcional)</0>"],
     "Tn5sik": ["Diz aos agentes quando recorrer a esta habilidade. Você pode editar depois."],
     "Tq3pcs": ["Manter o meu"],
+    "Tq9kNX": ["Nenhum chat aberto. Reabra um anterior ou inicie um novo com o botão ＋."],
     "TsZmgr": ["O arquivo no disco, e o id que os agentes usam."],
     "TvY_XA": ["Documentação"],
     "TwYboS": ["Percorre os resultados de busca do CodeMirror ou fecha o painel de busca."],
@@ -2397,6 +2395,9 @@
     "XAyxsa": ["Extrair ramo remoto"],
     "XBgr2S": ["Copiar para cá"],
     "XDzAnp": ["Abre em uma nova aba"],
+    "XFpEgc": [
+      "Escolha quais agentes aparecem nos menus de agentes do aplicativo, como Ask AI, Open with AI e o botão ＋ de novo chat. Desative um agente para ocultá-lo de todos eles."
+    ],
     "XH30C4": ["documento"],
     "XIltnd": ["Já existe aqui uma habilidade chamada \"", ["trimmed"], "\""],
     "XJOV1Y": ["Atividade"],
@@ -2404,7 +2405,6 @@
     "XNBGZw": ["Mensagem não enviada: ", ["0"]],
     "XPJ0sN": ["Propriedades de ", ["settingsDescriptorLabel"]],
     "XPqe3B": ["Criar a nova tag #", ["tagValue"]],
-    "XQkJlB": ["Nenhuma conversa aberta. Reabra uma antiga ou comece uma sessão com o botão ＋."],
     "XRuL0i": ["Criar página"],
     "XSb9HS": ["Descartar as edições locais e restaurar a versão instalada"],
     "XT-L4j": ["Ligue um agente para criar com IA"],
@@ -2915,7 +2915,6 @@
     "dXCi3J": ["Algo quebrou"],
     "dXOolp": ["Sincronizando suas alterações"],
     "dXWMFn": ["Remove esta habilidade dos seus editores."],
-    "dYCvMf": ["Não deu para retomar esta conversa: ", ["0"]],
     "darW93": [
       [
         "pageCount",
@@ -3030,10 +3029,6 @@
     "ezUmoU": ["Valores de elemento permitidos (vazio = qualquer)"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Mover o bloco"],
-    "f3Nvg7": [
-      ["0"],
-      " não pode continuar esta conversa — a transcrição é mantida, mas a sessão do agente não existe mais."
-    ],
     "f65AOQ": ["Começar a partir de"],
     "f8fH8W": ["Design"],
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
@@ -3198,6 +3193,7 @@
     "hDoLrm": ["Remover ", ["projectName"], " dos projetos recentes"],
     "hGmuTc": ["Documentos com a tag #", ["tagDocsName"]],
     "hHMv6l": ["Excluir o bloco"],
+    "hHR0tt": ["Novo chat com ", ["0"]],
     "hItdtk": ["Escolher pasta"],
     "hLKfZe": ["Usar um token em vez disso"],
     "hLod4_": ["Converter em modelo"],
@@ -3446,6 +3442,7 @@
     "kV2YZv": [
       "Não vê <0>Habilidades</0>? Ative antes <1>Configurações <2/> Recursos <3/> Execução de código e criação de arquivos</1>."
     ],
+    "kVgQUA": ["Excluir este chat?"],
     "kYL1lH": ["Atividade do agente"],
     "k_Dqw1": [
       [
@@ -3524,6 +3521,7 @@
       ") que não vai mexer no resto do seu sistema."
     ],
     "l7X_SM": ["Enviar para a IA"],
+    "l87Deg": ["Escolha o que uma nova aba inicia"],
     "l9s3IX": [["agentName"], " não conseguiu iniciar uma conversa."],
     "lAiyU_": ["Só o documento atual usa <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Assinando..."],
@@ -3555,6 +3553,7 @@
     ],
     "leF0i_": ["Novo arquivo nesta habilidade"],
     "leiGnv": [["dir"], " (link simbólico)"],
+    "lhRpUP": ["Retomando o chat"],
     "lhjq3G": ["Redefinir ", ["labelText"], " para o padrão"],
     "lj4cNf": [
       "Escolha as habilidades a instalar. Cada uma chega como uma habilidade editável que é sua; os hooks, comandos e servidores MCP do plugin não são instalados."
@@ -3655,6 +3654,10 @@
       "</1> em <2>",
       ["src"],
       "</2>."
+    ],
+    "ms4r8V": [
+      ["0"],
+      " não pode continuar este chat — a transcrição foi mantida, mas a sessão do agente não existe mais."
     ],
     "msOK6I": [
       "Os repositórios que você já clonou podem continuar sincronizando pelas credenciais salvas do próprio git, mesmo depois de você desconectar."

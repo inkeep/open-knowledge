@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Plain `bun test` has no localStorage — install a minimal stub BEFORE the
 // module under test first touches it (reads are lazy, so import order is
@@ -51,11 +51,13 @@ describe('registered-agents store', () => {
     expect(getDefaultRegisteredAgent()).toBeNull();
   });
 
-  test('registerAgent sets the default and persists', () => {
+  test('registerAgent sets the default, stamps pick recency, and persists', () => {
     registerAgent(claude);
-    expect(getDefaultRegisteredAgent()).toEqual(claude);
+    expect(getDefaultRegisteredAgent()).toMatchObject(claude);
     const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-    expect(persisted.agents).toEqual([claude]);
+    expect(persisted.agents).toHaveLength(1);
+    expect(persisted.agents[0]).toMatchObject(claude);
+    expect(typeof persisted.agents[0].lastUsedAt).toBe('number');
     expect(persisted.defaultKey).toBe('registry:claude-acp');
   });
 
@@ -73,7 +75,7 @@ describe('registered-agents store', () => {
   test('survives reload from storage', () => {
     registerAgent(claude);
     reloadRegisteredAgentsFromStorage();
-    expect(getDefaultRegisteredAgent()).toEqual(claude);
+    expect(getDefaultRegisteredAgent()).toMatchObject(claude);
   });
 
   test('makeDefault:false registers for visibility without changing the default', () => {
@@ -88,6 +90,8 @@ describe('registered-agents store', () => {
   test('makeDefault:false updates an existing agent in place without reordering or re-defaulting', () => {
     registerAgent(claude);
     registerAgent(codex); // codex now default, order [codex, claude]
+    const stampBefore = storedAgents().find((a) => a.id === 'claude-acp')?.lastUsedAt;
+    expect(typeof stampBefore).toBe('number');
     registerAgent({ ...claude, name: 'Claude Renamed' }, { makeDefault: false });
     // Default stays codex; claude keeps its position; metadata refreshed.
     expect(getDefaultRegisteredAgent()?.id).toBe('codex-acp');
@@ -95,6 +99,10 @@ describe('registered-agents store', () => {
     expect(persisted.agents.map((a: RegisteredAgent) => a.id)).toEqual(['codex-acp', 'claude-acp']);
     expect(persisted.agents.find((a: RegisteredAgent) => a.id === 'claude-acp')?.name).toBe(
       'Claude Renamed',
+    );
+    // A visibility refresh must not erase pick recency — the sort runs on it.
+    expect(persisted.agents.find((a: RegisteredAgent) => a.id === 'claude-acp')?.lastUsedAt).toBe(
+      stampBefore,
     );
   });
 
@@ -138,8 +146,28 @@ describe('registered-agents store', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
     registerAgent(claude);
-    expect(getRegisteredAgentOptions()).toEqual([claude, codex]);
-    expect(getDefaultRegisteredAgent()).toEqual(claude);
+    expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual(['claude-acp', 'codex-acp']);
+    expect(getDefaultRegisteredAgent()).toMatchObject(claude);
+  });
+
+  test('presented order: recently picked first, alphanumeric tail', () => {
+    const cursor: RegisteredAgent = { source: 'registry', id: 'cursor', name: 'Cursor' };
+    const nowSpy = vi.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(1_000);
+    registerAgent(codex);
+    nowSpy.mockReturnValue(2_000);
+    registerAgent(claude);
+    nowSpy.mockRestore();
+    // Never-picked agents (Settings toggles, detected suggestions) trail the
+    // stamped ones alphabetically.
+    registerAgent({ source: 'registry', id: 'gemini', name: 'Gemini CLI' }, { makeDefault: false });
+    setDetectedRegisteredAgentSuggestions([cursor]);
+    expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual([
+      'claude-acp',
+      'codex-acp',
+      'cursor',
+      'gemini',
+    ]);
   });
 });
 

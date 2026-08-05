@@ -241,6 +241,11 @@ msgstr "{0, plural, zero {عرض # أداة إضافية} one {عرض أداة �
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, zero {مهارات} one {مهارة} two {مهارتان} few {مهارات} many {مهارةً} other {مهارة}}"
 
+#. placeholder {0}: sibling.name
+#: src/lib/acp/config-value-hints.ts
+msgid "{0} · default"
+msgstr "{0} · افتراضي"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -257,8 +262,8 @@ msgstr "{0} في السطر {displayLine}"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
-msgstr "لا يستطيع {0} متابعة هذه المحادثة — النص محفوظ، لكن جلسة الوكيل انتهت."
+msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
+msgstr "{0} لا يمكنه متابعة هذه المحادثة — النص محفوظ، لكن جلسة الوكيل لم تعد موجودة."
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
@@ -1310,6 +1315,10 @@ msgstr "وكيل"
 msgid "Agent activity"
 msgstr "نشاط الوكيل"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent chats"
+msgstr "محادثات الوكيل"
+
 #: src/components/FileTree.tsx
 msgid "Agent configuration file"
 msgstr "ملف إعداد الوكيل"
@@ -1317,10 +1326,6 @@ msgstr "ملف إعداد الوكيل"
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "وضع الوكيل"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Agent sessions"
-msgstr "جلسات الوكيل"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
@@ -1508,10 +1513,6 @@ msgstr "موافق عليه"
 #: src/components/acp/ThreadView.tsx
 msgid "Approved — {optionName}"
 msgstr "موافق عليه — {optionName}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Archived"
-msgstr "مؤرشف"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
@@ -2137,8 +2138,8 @@ msgid "Choose icon"
 msgstr "اختيار أيقونة"
 
 #: src/components/TerminalNewChatButton.tsx
-msgid "Choose what a new session starts"
-msgstr "اختر بما تبدأ الجلسة الجديدة"
+msgid "Choose what a new tab starts"
+msgstr "اختر ما تبدأ به علامة تبويب جديدة"
 
 #: src/comments/CommentQueuePanel.tsx
 msgid "Choose where to send these comments"
@@ -2149,8 +2150,8 @@ msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool 
 msgstr "اختر ما إذا كان إعداد OpenKnowledge لهذا المشروع، بما فيه اتصالات أدوات الذكاء الاصطناعي، يُحفظ مع المشروع ليحصل عليه زملاؤك أيضًا، أم يبقى على جهازك وحده."
 
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
-msgstr "اختر الوكلاء الذين يظهرون في منتقي الوكلاء. أوقف أحدهم لإخفائه في كل مكان."
+msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
+msgstr "اختر الوكلاء الذين يظهرون في قوائم الوكلاء في التطبيق، مثل Ask AI وOpen with AI وزر ＋ لمحادثة جديدة. أوقف وكيلاً لإخفائه منها جميعاً."
 
 #: src/components/handoff/AgentSplitButton.tsx
 msgid "Claude"
@@ -3358,7 +3359,7 @@ msgstr "تعذّرت إعادة تشغيل الخادم. جرّب `ok start` ف�
 
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't resume this conversation: {0}"
+msgid "Couldn't resume this chat: {0}"
 msgstr "تعذّر استئناف هذه المحادثة: {0}"
 
 #: src/components/settings/SearchSection.tsx
@@ -3793,13 +3794,13 @@ msgstr "حذف العناصر المحددة"
 msgid "Delete selected table"
 msgstr "حذف الجدول المحدد"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Delete this chat?"
+msgstr "هل تريد حذف هذه المحادثة؟"
+
 #: src/comments/CommentsPanel.tsx
 msgid "Delete this comment"
 msgstr "حذف هذا التعليق"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this conversation?"
-msgstr "هل تريد حذف هذه المحادثة؟"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -6549,8 +6550,8 @@ msgid "Loading templates"
 msgstr "يجري تحميل القوالب"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Loading the conversation"
-msgstr "يجري تحميل المحادثة"
+msgid "Loading the chat"
+msgstr "جارٍ تحميل المحادثة"
 
 #: src/components/TimelinePanel.tsx
 msgid "Loading timeline history"
@@ -6768,6 +6769,10 @@ msgstr "النموذج"
 #: src/components/settings/SearchSection.tsx
 msgid "Model: <0>{0}</0>"
 msgstr "النموذج: <0>{0}</0>"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Model's default effort"
+msgstr "الجهد الافتراضي للنموذج"
 
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -7040,6 +7045,11 @@ msgstr "سيُنشأ الفرع الجديد <0>{trimmed}</0> من الإيدا�
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "تظهر التغييرات الجديدة من مستودعك البعيد في نسختك تلقائيًا."
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with {0}"
+msgstr "محادثة جديدة مع {0}"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -7147,11 +7157,6 @@ msgstr "طرفية جديدة"
 #: src/lib/native-menu-catalog.ts
 msgid "New Terminal Window"
 msgstr "نافذة Terminal جديدة"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "New thread with {0}"
-msgstr "سلسلة جديدة مع {0}"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewWorktreeDialog.tsx
@@ -7367,8 +7372,8 @@ msgid "No matching worktrees or branches."
 msgstr "لا توجد أشجار عمل أو فروع مطابقة."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open conversations. Reopen a past one, or start a session with the ＋ button."
-msgstr "لا توجد محادثات مفتوحة. أعد فتح محادثة سابقة، أو ابدأ جلسة بزر ＋."
+msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
+msgstr "لا توجد محادثات مفتوحة. أعد فتح محادثة سابقة، أو ابدأ محادثة جديدة بزر ＋."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9148,6 +9153,10 @@ msgstr "معروض"
 msgid "Reopen"
 msgstr "إعادة فتح"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Reopen a past chat"
+msgstr "إعادة فتح محادثة سابقة"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
 msgstr "إعادة فتح التبويب المغلق"
@@ -9383,10 +9392,6 @@ msgstr "فشلت الاستعادة"
 msgid "Restore failed — document unchanged"
 msgstr "فشلت الاستعادة — لم يتغير المستند"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Restore sessions"
-msgstr "استعادة الجلسات"
-
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Restore to edit {burstNumber} of {docName}"
 msgstr "الاستعادة إلى التعديل {burstNumber} من {docName}"
@@ -9427,8 +9432,8 @@ msgid "Resume sync"
 msgstr "استئناف المزامنة"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Resuming the conversation"
-msgstr "يجري استئناف المحادثة"
+msgid "Resuming the chat"
+msgstr "جارٍ استئناف المحادثة"
 
 #: src/components/acp/working-status.ts
 msgid "Retrieving…"
@@ -10616,6 +10621,10 @@ msgstr "تشغيل {agentName}"
 msgid "Start {agentName}, {hint}"
 msgstr "تشغيل {agentName}، {hint}"
 
+#: src/components/SessionsHost.tsx
+msgid "Start a chat with the ＋ button, or launch an agent from a page."
+msgstr "ابدأ محادثة بزر ＋، أو شغّل وكيلاً من صفحة."
+
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
@@ -10624,10 +10633,6 @@ msgstr "بدء محادثة جديدة"
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "ابدأ مشروع OpenKnowledge جديدًا."
-
-#: src/components/SessionsHost.tsx
-msgid "Start a session with the ＋ button, or launch an agent from a page."
-msgstr "ابدأ جلسة بزر ＋، أو شغّل وكيلًا من صفحة."
 
 #: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -11227,8 +11232,8 @@ msgid "The agent is working"
 msgstr "الوكيل يعمل"
 
 #: src/components/acp/ThreadView.tsx
-msgid "The agent isn't stopping. Force stop closes this thread and quits the agent."
-msgstr "الوكيل لا يتوقف. الإيقاف القسري يغلق هذه السلسلة وينهي الوكيل."
+msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
+msgstr "الوكيل لا يتوقف. الإيقاف القسري يغلق هذه المحادثة وينهي الوكيل."
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
@@ -11428,6 +11433,10 @@ msgstr "لا يوجد مجلد مشروع لهذه النافذة، لذا لا 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "تأتي هذه القواعد من ملف <0>{configFile}</0> في مشروعك، وهو الذي يحكم الفحص لهذا المشروع بالكامل. شغّل القواعد أو أوقفها وحرّر خياراتها هنا؛ وتُكتب التغييرات في الملف."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Thinking"
+msgstr "يفكّر"
 
 #: src/components/acp/working-status.ts
 msgid "Thinking…"
@@ -12623,6 +12632,10 @@ msgstr "نافذة"
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr "التفاف النص"
+
+#: src/lib/acp/config-value-hints.ts
+msgid "Work directly, no plan step"
+msgstr "العمل مباشرة، دون خطوة تخطيط"
 
 #: src/components/BottomComposer.tsx
 msgid "Work through these comments"

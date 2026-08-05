@@ -356,7 +356,7 @@ export function TerminalTabStrip({
           // once, and two identically-named tablists give a screen-reader user no
           // way to tell them apart (WCAG 1.3.1). The standalone terminal window
           // has no edge and is a terminal, so it falls to the terminal name.
-          aria-label={rightEdge ? t`Agent sessions` : t`Terminal sessions`}
+          aria-label={rightEdge ? t`Agent chats` : t`Terminal sessions`}
           // Remap a vertical wheel to horizontal scroll so the main scroll wheel
           // moves the tabs sideways, matching the editor tab strip (which native
           // overflow-x alone doesn't do for a plain vertical wheel).
