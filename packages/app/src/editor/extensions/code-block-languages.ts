@@ -24,6 +24,7 @@ export const CODE_BLOCK_LANGUAGES: CodeLanguageOption[] = [
   { value: 'csharp', label: 'C#', aliases: ['cs'] },
   { value: 'css', label: 'CSS' },
   { value: 'diff', label: 'Diff', aliases: ['patch'] },
+  { value: 'gherkin', label: 'Gherkin', aliases: ['feature', 'cucumber', 'bdd'] },
   { value: 'go', label: 'Go', aliases: ['golang'] },
   { value: 'graphql', label: 'GraphQL', aliases: ['gql'] },
   { value: 'ini', label: 'INI', aliases: ['toml'] },

@@ -56,6 +56,10 @@ export const CODE_FILE_EXTENSIONS_TO_LANGUAGE: Readonly<Record<string, string>> 
   diff: 'diff',
   patch: 'diff',
 
+  // Gherkin — `.feature` is the standard extension for Cucumber/BDD
+  // scenario files (Feature/Scenario/Given/When/Then).
+  feature: 'gherkin',
+
   go: 'go',
 
   // GraphQL — `.gql` / `.graphql` both used in practice.

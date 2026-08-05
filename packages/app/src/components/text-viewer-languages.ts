@@ -69,6 +69,10 @@ async function resolveLanguage(canonical: string): Promise<Language | null> {
       return (await import('@codemirror/language')).StreamLanguage.define(
         (await import('@codemirror/legacy-modes/mode/diff')).diff,
       );
+    case 'gherkin':
+      return (await import('@codemirror/language')).StreamLanguage.define(
+        (await import('@codemirror/legacy-modes/mode/gherkin')).gherkin,
+      );
     case 'go':
       return (await import('@codemirror/language')).StreamLanguage.define(
         (await import('@codemirror/legacy-modes/mode/go')).go,

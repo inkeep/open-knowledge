@@ -11,13 +11,32 @@
 import { CodeBlockFidelity as BaseCodeBlockFidelity } from '@inkeep/open-knowledge-core';
 import { textblockTypeInputRule } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
+import gherkinGrammar from 'highlight.js/lib/languages/gherkin';
 import { common, createLowlight } from 'lowlight';
 import { CodeBlockView } from './CodeBlockView';
 import { type LowlightLike, LowlightPlugin } from './code-block-lowlight-plugin';
 
+/**
+ * Build the app's lowlight instance with the picker's out-of-`common`
+ * grammars pre-registered. Exported so a co-located test can iterate over
+ * `CODE_BLOCK_LANGUAGES` and assert every picker canonical resolves —
+ * without this guard, dropping the `register(...)` call would silently
+ * degrade the offending language to plaintext (the plugin's `includes(lang)`
+ * check returns false, `return`s, and the reader sees no paint but also no
+ * error or warning).
+ */
+export function createAppLowlight() {
+  const instance = createLowlight(common);
+  // `common` ships ~37 languages and does not include gherkin — the BDD
+  // `.feature` grammar shipped by highlight.js under its own entry point.
+  // Register any picker canonical that isn't in `common` here.
+  instance.register('gherkin', gherkinGrammar);
+  return instance;
+}
+
 // lowlight's typings expose the full hast `Root`; the plugin only consumes the
 // structural subset declared in `LowlightLike`.
-const lowlight = createLowlight(common) as unknown as LowlightLike;
+const lowlight = createAppLowlight() as unknown as LowlightLike;
 
 export const CodeBlockFidelity = BaseCodeBlockFidelity.extend({
   // No `addAttributes` override here. Setting a non-null schema default

@@ -27,6 +27,11 @@ describe('codeLanguageForExtension', () => {
     // in the text viewer with the CodeMirror JSON grammar rather than
     // falling through to the unhighlighted plaintext branch.
     expect(codeLanguageForExtension('json')).toBe('json');
+    // `.feature` is the Cucumber/BDD scenario-file convention; must land on
+    // the `gherkin` codeblock canonical so a sidebar-opened `.feature` file
+    // gets the gherkin CodeMirror grammar instead of falling through to
+    // plaintext.
+    expect(codeLanguageForExtension('feature')).toBe('gherkin');
     // `.html` / `.htm` / `.svg` deliberately fall through to the
     // existing inline-render / image-fallback paths — see the
     // comment in `code-languages.ts` for the XSS / dispatch rationale.
@@ -130,6 +135,7 @@ describe('CODE_FILE_EXTENSIONS — internal consistency', () => {
       'csharp',
       'css',
       'diff',
+      'gherkin',
       'go',
       'graphql',
       'ini',

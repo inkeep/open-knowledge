@@ -46,6 +46,18 @@ describe('normalizeCodeLanguage', () => {
     expect(normalizeCodeLanguage('elixir')).toBe('elixir');
   });
 
+  test('`gherkin` resolves + every alias funnels back to gherkin', () => {
+    // BDD scenario files live in `.feature` files (Cucumber convention);
+    // authors also reach for `cucumber` or `bdd` as shorthand. All three
+    // must land on the canonical `gherkin` ID so lowlight picks the right
+    // grammar — otherwise the picker would show Gherkin but the paint
+    // would silently degrade to plaintext.
+    expect(normalizeCodeLanguage('gherkin')).toBe('gherkin');
+    expect(normalizeCodeLanguage('feature')).toBe('gherkin');
+    expect(normalizeCodeLanguage('cucumber')).toBe('gherkin');
+    expect(normalizeCodeLanguage('bdd')).toBe('gherkin');
+  });
+
   test('`shell` resolves to canonical `shell` (NOT `bash`)', () => {
     // Guard against the dead-alias regression — `'shell'` is its own
     // highlight.js grammar (shell-session prompt + output) distinct from
