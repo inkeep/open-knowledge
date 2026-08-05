@@ -15,6 +15,7 @@ import {
   sharedExtensions as coreExtensions,
   DEFAULT_LINTER_CONFIG,
   type LintDiagnostic,
+  type LinterConfig,
   MarkdownManager,
 } from '@inkeep/open-knowledge-core';
 import { Editor } from '@tiptap/core';
@@ -404,5 +405,76 @@ describe('Problems-row navigation — scroll suppression', () => {
     clickProblemsRow(3);
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('decoration recovery after a content-equal rebuild', () => {
+  const DOC = 'lint-rebuild-doc';
+  /** The hard tab trips MD010 — the same body-anchored rule the e2e fixtures use. */
+  const BODY = '# Heading\n\nfirst paragraph\n\n\tindented with a hard tab\n';
+  const ENABLED_CONFIG: LinterConfig = {
+    enabled: true,
+    plugins: {
+      ...DEFAULT_LINTER_CONFIG.plugins,
+      markdownlint: { enabled: true, rules: { default: true } },
+    },
+  };
+  let editor: Editor | null = null;
+  let host: HTMLElement | null = null;
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ effective: ENABLED_CONFIG }),
+    ) as unknown as typeof fetch;
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new Editor({
+      element: host,
+      extensions: [
+        ...coreExtensions,
+        MarkdownLintDecorations.configure({ docName: DOC, getSource: () => BODY }),
+      ],
+      content: md.parse(BODY),
+    });
+  });
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+    host?.remove();
+    host = null;
+    globalThis.fetch = originalFetch;
+  });
+
+  const decoratedBlocks = () => host?.querySelectorAll('.ok-lint-block').length ?? 0;
+
+  test('a content-equal full replace reschedules the pass instead of orphaning the squiggle', async () => {
+    const ed = editor;
+    if (!ed) throw new Error('editor not mounted');
+    await vi.waitFor(() => expect(decoratedBlocks()).toBe(1), { timeout: 5_000 });
+    // Drain any pass the mount-time transactions already debounced: a pending
+    // timer would repaint after the replace below regardless of the reschedule
+    // predicate, and this test exists to pin the predicate.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(decoratedBlocks()).toBe(1);
+
+    // A server-side full-body replace whose body bytes are unchanged (e.g. an
+    // agent write that only edits frontmatter) reaches this view as new nodes
+    // carrying equal content: `doc.eq` reads it as "nothing changed", but the
+    // replace's mapping still destroys the node decorations on the range.
+    const state = ed.state;
+    const rebuilt = state.schema.nodeFromJSON(md.parse(BODY));
+    const before = state.doc;
+    ed.view.dispatch(state.tr.replaceWith(0, state.doc.content.size, rebuilt.content));
+    expect(ed.state.doc.eq(before)).toBe(true);
+    expect(ed.state.doc).not.toBe(before);
+    expect(decoratedBlocks()).toBe(0);
+
+    // The plugin must notice the step-bearing transaction and repaint from
+    // source; under a content-equality reschedule predicate the squiggle
+    // stays orphaned forever.
+    await vi.waitFor(() => expect(decoratedBlocks()).toBe(1), { timeout: 5_000 });
   });
 });

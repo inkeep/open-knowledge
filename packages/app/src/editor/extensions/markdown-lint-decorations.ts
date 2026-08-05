@@ -622,7 +622,18 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
 
           return {
             update(updatedView, prevState) {
-              if (!updatedView.state.doc.eq(prevState.doc)) schedule();
+              // Identity, not `.eq`: a server-side full-body replace whose body
+              // bytes are unchanged (e.g. an agent write that only edits
+              // frontmatter) can reach this view as a content-EQUAL rebuild —
+              // new top-level nodes carrying the same text. Its mapping still
+              // destroys the node decorations on the replaced ranges, but
+              // `.eq` compares content and reads the transaction as "no doc
+              // change", so nothing reschedules and the decorations stay gone
+              // until an unrelated edit. Doc identity changes exactly when a
+              // transaction carried real steps (meta-only dispatches — ours
+              // included — keep the same doc object), so this predicate is
+              // step-sensitive without self-looping on the decoration dispatch.
+              if (updatedView.state.doc !== prevState.doc) schedule();
             },
             destroy() {
               destroyed = true;
