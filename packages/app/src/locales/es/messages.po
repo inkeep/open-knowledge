@@ -939,6 +939,10 @@ msgstr "Una base de conocimiento que sigue el Open Knowledge Format de Google, u
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "Una línea con una nota al pie<0><1>[1]</1></0> y una definición que se muestra abajo."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "Un worktree vinculado de este repositorio"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "Una instantánea de memoria del fallo, y el artefacto que más nos ayuda. Puede contener contenido de documentos y no se puede ocultar, así que desmárcalo si prefieres no compartirlo."
@@ -3706,10 +3710,6 @@ msgstr "Datos"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "Fecha"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "por defecto"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8553,6 +8553,10 @@ msgstr "Informes anteriores"
 msgid "Previous tab"
 msgstr "Pestaña anterior"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "principal"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "Privado"
@@ -11358,6 +11362,10 @@ msgstr "El repositorio es privado y tu cuenta de GitHub no tiene acceso."
 msgid "The repository was moved, renamed, or deleted."
 msgstr "El repositorio se movió, se renombró o se eliminó."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "El directorio del clon original del repositorio"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "El archivo de esquema no existe o no se pudo cargar; al añadir un campo se crea."
@@ -12660,6 +12668,7 @@ msgid "Workspace navigation"
 msgstr "Navegación del espacio de trabajo"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "worktree"
 

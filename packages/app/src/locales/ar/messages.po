@@ -939,6 +939,10 @@ msgstr "قاعدة معرفة تتبع تنسيق Google Open Knowledge، وهو
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "سطر مع حاشية<0><1>[1]</1></0> وتعريف معروض أدناه."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "شجرة عمل مرتبطة بهذا المستودع"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "لقطة من الذاكرة وقت العطل، وهي الأداة الأكثر فائدة لنا. قد تحتوي على محتوى المستندات ولا يمكن إخفاؤه، لذا ألغِ تحديدها إن كنت تفضّل عدم مشاركتها."
@@ -3706,10 +3710,6 @@ msgstr "البيانات"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "التاريخ"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "افتراضي"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8553,6 +8553,10 @@ msgstr "التقارير السابقة"
 msgid "Previous tab"
 msgstr "التبويب السابق"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "الأساسي"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "خاص"
@@ -11358,6 +11362,10 @@ msgstr "المستودع خاص وحساب GitHub الخاص بك لا يملك 
 msgid "The repository was moved, renamed, or deleted."
 msgstr "نُقل المستودع أو أُعيدت تسميته أو حُذف."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "دليل النسخة الأصلية للمستودع"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "ملف المخطط غير موجود أو فشل تحميله — إضافة حقل تنشئه."
@@ -12660,6 +12668,7 @@ msgid "Workspace navigation"
 msgstr "التنقل في مساحة العمل"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "شجرة عمل"
 

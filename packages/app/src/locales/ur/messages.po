@@ -939,6 +939,10 @@ msgstr "ایک نالج بیس جو Google کے Open Knowledge Format کی پی�
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "ایک سطر جس میں فٹ نوٹ<0><1>[1]</1></0> اور نیچے دکھائی گئی تعریف ہے۔"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "اس ریپازٹری کا ایک منسلک ورک ٹری"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "کریش کے وقت کا میموری اسنیپ شاٹ، اور وہ نمونہ جو ہماری سب سے زیادہ مدد کرتا ہے۔ اس میں دستاویز کا مواد ہو سکتا ہے اور اسے چھپایا نہیں جا سکتا، اس لیے اگر آپ اسے شیئر نہیں کرنا چاہتے تو نشان ہٹا دیں۔"
@@ -3706,10 +3710,6 @@ msgstr "ڈیٹا"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "تاریخ"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "طے شدہ"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8553,6 +8553,10 @@ msgstr "پچھلی رپورٹس"
 msgid "Previous tab"
 msgstr "پچھلا ٹیب"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "بنیادی"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "نجی"
@@ -11358,6 +11362,10 @@ msgstr "ریپازٹری نجی ہے اور آپ کے GitHub اکاؤنٹ کو �
 msgid "The repository was moved, renamed, or deleted."
 msgstr "ریپازٹری منتقل ہو گئی، اس کا نام بدل گیا، یا وہ حذف ہو گئی۔"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "ریپازٹری کی اصل کلون ڈائریکٹری"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "اسکیما فائل موجود نہیں یا لوڈ نہیں ہو سکی — فیلڈ شامل کرنے سے یہ بن جاتی ہے۔"
@@ -12660,6 +12668,7 @@ msgid "Workspace navigation"
 msgstr "ورک اسپیس کی نیویگیشن"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "ورک ٹری"
 

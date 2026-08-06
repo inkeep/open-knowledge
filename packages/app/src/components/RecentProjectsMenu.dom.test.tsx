@@ -128,7 +128,9 @@ vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees }));
 const toastError = vi.fn((_msg: string) => {});
 vi.doMock('sonner', () => ({ toast: { error: toastError, success: vi.fn(() => {}) } }));
 
-function main(path: string, commonDir: string): RecentProjectEntry {
+// `branch` is a parameter, not a constant. Pinning it to 'main' is what hid
+// the mislabel: the original clone can have ANY branch checked out.
+function main(path: string, commonDir: string, branch = 'main'): RecentProjectEntry {
   return {
     path,
     name: path.split('/').pop() ?? path,
@@ -136,7 +138,7 @@ function main(path: string, commonDir: string): RecentProjectEntry {
     gitCommonDir: commonDir,
     mainRoot: path,
     isLinkedWorktree: false,
-    branch: 'main',
+    branch,
   };
 }
 function worktree(
@@ -452,7 +454,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
   });
 
-  test('the flyout lists the default (main) first, then the opened worktree; opening one opens its window', async () => {
+  test('the original clone is pinned first and badged `primary`, other opened worktrees are badged `worktree`; clicking one opens its window', async () => {
     const { bridge } = renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -461,14 +463,15 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     });
     fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
 
-    // main (default, pinned) is entry /repo; the dev worktree follows.
+    // The original clone (pinned) is entry /repo; the dev worktree follows.
     const mainEntry = await screen.findByTestId('project-switcher-flyout-entry-/repo');
     expect(mainEntry.textContent).toContain('main');
-    expect(mainEntry.textContent).toContain('default');
+    expect(mainEntry.textContent).toContain('primary');
     const devEntry = screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/dev');
     expect(devEntry.textContent).toContain('dev');
+    expect(devEntry.textContent).toContain('worktree');
 
-    // No per-row GitBranch icon — the "default" chip above (and "create
+    // No per-row GitBranch icon — the location badge above (and "create
     // worktree" on un-opened branches, covered elsewhere) carries the
     // distinction instead. The flyout's icons live on the search input, not on
     // every row.
@@ -487,6 +490,44 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         entryPoint: 'worktree',
       });
     });
+  });
+
+  test('the badge on the original clone survives having a feature branch checked out there (PRD-7330)', async () => {
+    // The defect: the flyout badged this row "default", which reads as a claim
+    // about the repository's default branch. Rows are branches; the flag behind
+    // the badge is a path comparison. Checking out a feature branch in the
+    // original clone therefore moved a default-branch claim onto that branch,
+    // while the REAL default branch sat elsewhere in the list offered as one to
+    // create a worktree for — the exact inverse of the truth.
+    renderMenu({
+      recents: [
+        main('/repo', '/repo/.git', 'theming-as-plugin'),
+        worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+      ],
+      worktreeModel: model([
+        {
+          branch: 'theming-as-plugin',
+          worktreePath: '/repo',
+          isCurrent: true,
+          isMain: true,
+          locked: false,
+        },
+        { branch: 'main', worktreePath: null, isCurrent: false, isMain: false, locked: false },
+      ]),
+    });
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+
+    // The original clone's row says where it is, not what branch is canonical.
+    const rootEntry = await screen.findByTestId('project-switcher-flyout-entry-/repo');
+    expect(rootEntry.textContent).toContain('theming-as-plugin');
+    expect(rootEntry.textContent).toContain('primary');
+    expect(rootEntry.textContent).not.toContain('default');
+
+    // And the repository's real default branch is not labelled the primary
+    // directory, because it isn't one.
+    const mainBranchRow = screen.getByTestId('project-switcher-flyout-entry-branch:main');
+    expect(mainBranchRow.textContent).not.toContain('primary');
+    expect(mainBranchRow.textContent).toContain('create worktree');
   });
 
   test('opened worktrees sort by recency (most-recently-opened first)', async () => {
@@ -536,7 +577,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       ]),
     });
     // Submenu row (not a plain row), and the chip counts the one opened, non-main
-    // worktree — the pinned "default" (main) is not itself counted.
+    // worktree — the pinned original clone is not itself counted.
     expect(screen.getByTestId('project-switcher-group-/repo')).not.toBeNull();
     expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain('1 worktree');
 
@@ -744,9 +785,9 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     ).not.toBeNull();
   });
 
-  test('the flyout’s pinned "default" entry also opens the project root (secondary path to the same action)', async () => {
+  test('the flyout’s pinned original-clone entry also opens the project root (secondary path to the same action)', async () => {
     // Clicking the project name is the primary one-click open (covered above);
-    // the repo's default/main checkout is also the pinned first flyout entry,
+    // the repo's original clone is also the pinned first flyout entry,
     // opening the same bare root with the `recents` entry point.
     const { bridge } = renderMenu({
       recents: [
@@ -804,10 +845,15 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     // Synthesized project has no pinned main entry (never opened); the dev
     // worktree is present.
     await screen.findByTestId('project-switcher-flyout-/repo');
-    expect(
-      screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/dev'),
-    ).not.toBeNull();
+    const devEntry = screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/dev');
+    expect(devEntry).not.toBeNull();
     expect(screen.queryByTestId('project-switcher-flyout-entry-/repo')).toBeNull();
+    // With no original-clone row in the group, the worktree must still be
+    // badged as one. A regression that flagged it as the original clone would
+    // both mislabel it and empty the count chip, and neither is visible from
+    // the row's presence alone.
+    expect(devEntry.textContent).toContain('worktree');
+    expect(devEntry.textContent).not.toContain('primary');
   });
 });
 
@@ -815,7 +861,7 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
   beforeEach(cleanup);
 
   // main (pinned) + two opened worktrees → three list rows to rove through:
-  //   [0] /repo (main, "default")   [1] newer   [2] older
+  //   [0] /repo (original clone, "primary")   [1] newer   [2] older
   function openThreeRowFlyout() {
     const utils = renderMenu({
       recents: [

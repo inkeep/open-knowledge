@@ -43,6 +43,30 @@ export interface WorktreeFlyoutEntry {
 }
 
 /**
+ * Where a flyout row's branch is checked out. A row states a fact about a
+ * DIRECTORY, never about the branch: `primary` means "checked out in the
+ * original clone", not "this is the repo's default branch". The two coincide
+ * only when the original clone happens to sit on the default branch, and a
+ * user is free to check out anything there from the command line.
+ */
+export type RowLocation = 'primary' | 'worktree' | 'none';
+
+/**
+ * Classify a row into exactly one location. Exhaustive by construction, so the
+ * renderer cannot grow a fourth, unlabelled state.
+ *
+ * Order is load-bearing: `opened` is tested BEFORE `isMain`. A row carrying
+ * both flags has no worktree to open, so it must keep its creation affordance;
+ * testing `isMain` first would silently swallow it. No current input produces
+ * that combination — the selector model only sets `isMain` when a worktree
+ * exists — but nothing enforces that invariant upstream.
+ */
+export function rowLocation(entry: Pick<WorktreeFlyoutEntry, 'isMain' | 'opened'>): RowLocation {
+  if (!entry.opened) return 'none';
+  return entry.isMain ? 'primary' : 'worktree';
+}
+
+/**
  * Ordered rows for a project's worktree side-flyout. The main worktree is pinned
  * to the top; opened worktrees follow by recency (most-recently-opened first,
  * using the Recents `lastOpenedAt`); create-on-demand branches (no worktree yet)
@@ -67,8 +91,9 @@ export function buildWorktreeFlyoutEntries(
     worktreeModel !== null && worktreeModel.mainRoot === group.project.mainRoot;
 
   // The main worktree is the project row's own checkout — represent it in the
-  // flyout so opening the default branch is a first-class, pinned choice. A
-  // synthesized project row (never opened) has no real path to open.
+  // flyout so opening the original clone is a first-class, pinned choice,
+  // whatever branch happens to be checked out there. A synthesized project row
+  // (never opened) has no real path to open, and yields no `primary` row at all.
   if (!group.projectSynthesized) {
     entries.push({
       branch: group.project.branch ?? null,

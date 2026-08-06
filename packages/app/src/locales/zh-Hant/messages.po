@@ -939,6 +939,10 @@ msgstr "遵循 Google Open Knowledge Format 的知識庫，一種整理知識的
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "一行帶註腳<0><1>[1]</1></0>的文字，定義顯示在下方。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "此儲存庫的一個連結 worktree"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "當機當下的記憶體快照，也是對我們幫助最大的檔案。它可能含有文件內容而且無法遮蔽，如果你不想分享，請取消勾選。"
@@ -3706,10 +3710,6 @@ msgstr "資料"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "日期"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "預設"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8553,6 +8553,10 @@ msgstr "先前的回報"
 msgid "Previous tab"
 msgstr "上一個分頁"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "主要"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "私人"
@@ -11358,6 +11362,10 @@ msgstr "這個儲存庫是私人的，你的 GitHub 帳戶沒有存取權。"
 msgid "The repository was moved, renamed, or deleted."
 msgstr "這個儲存庫被移動、重新命名或刪除了。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "儲存庫的原始複製目錄"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "結構描述檔案不存在或載入失敗——新增欄位就會建立它。"
@@ -12660,6 +12668,7 @@ msgid "Workspace navigation"
 msgstr "工作區導覽"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "worktree"
 

@@ -935,6 +935,10 @@ msgstr "एक ज्ञान आधार जो Google के Open Knowledge 
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "फ़ुटनोट<0><1>[1]</1></0> वाली एक पंक्ति और नीचे दिखाई गई परिभाषा।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "इस रिपॉज़िटरी की एक लिंक्ड वर्कट्री"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "क्रैश के समय का एक मेमोरी स्नैपशॉट, और वह कलाकृति जो हमारी सबसे ज़्यादा मदद करती है। इसमें दस्तावेज़ की सामग्री हो सकती है और इससे गोपनीय जानकारी हटाई नहीं जा सकती, इसलिए यदि आप इसे साझा नहीं करना चाहते तो इसे अनचेक कर दें।"
@@ -3702,10 +3706,6 @@ msgstr "डेटा"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "तारीख़"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "डिफ़ॉल्ट"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8549,6 +8549,10 @@ msgstr "पिछली रिपोर्ट"
 msgid "Previous tab"
 msgstr "पिछला टैब"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "प्राथमिक"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "निजी"
@@ -11354,6 +11358,10 @@ msgstr "रिपॉज़िटरी निजी है और आपके G
 msgid "The repository was moved, renamed, or deleted."
 msgstr "रिपॉज़िटरी हिलाई गई, उसका नाम बदला गया, या उसे हटा दिया गया।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "रिपॉज़िटरी की मूल क्लोन डायरेक्टरी"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "स्कीमा फ़ाइल मौजूद नहीं है या लोड नहीं हो सकी — कोई फ़ील्ड जोड़ने पर वह बन जाती है।"
@@ -12656,6 +12664,7 @@ msgid "Workspace navigation"
 msgstr "कार्यक्षेत्र नेविगेशन"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "वर्कट्री"
 

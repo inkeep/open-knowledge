@@ -939,6 +939,10 @@ msgstr "遵循 Google Open Knowledge Format 的知识库，一种整理知识的
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "一行带脚注<0><1>[1]</1></0>的文字，定义显示在下方。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "此仓库的一个链接 worktree"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "崩溃时的内存快照，也是对我们帮助最大的材料。它可能包含文档内容且无法隐去，如果你不想分享，请取消勾选。"
@@ -3706,10 +3710,6 @@ msgstr "数据"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "日期"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "默认"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8553,6 +8553,10 @@ msgstr "以往的报告"
 msgid "Previous tab"
 msgstr "上一个标签页"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "主要"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "私有"
@@ -11358,6 +11362,10 @@ msgstr "这个仓库是私有的，你的 GitHub 账户没有访问权限。"
 msgid "The repository was moved, renamed, or deleted."
 msgstr "这个仓库被移动、重命名或删除了。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "仓库的原始克隆目录"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "架构文件不存在或加载失败——添加字段会自动创建它。"
@@ -12660,6 +12668,7 @@ msgid "Workspace navigation"
 msgstr "工作区导航"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "worktree"
 

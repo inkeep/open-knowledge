@@ -935,6 +935,10 @@ msgstr "এমন একটি জ্ঞানভাণ্ডার যা Googl
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "একটি পাদটীকা<0><1>[1]</1></0> সহ একটি লাইন এবং নিচে দেখানো একটি সংজ্ঞা।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr "এই রিপোজিটরির একটি লিংকড ওয়ার্কট্রি"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr "ক্র্যাশের সময়কার একটি মেমরি স্ন্যাপশট, আর এটাই সেই উপাদান যা আমাদের সবচেয়ে বেশি সাহায্য করে। এতে নথির বিষয়বস্তু থাকতে পারে এবং তা থেকে গোপন তথ্য সরানো যায় না, তাই ভাগ করতে না চাইলে এটি অচিহ্নিত করে দিন।"
@@ -3702,10 +3706,6 @@ msgstr "তথ্য"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "তারিখ"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
-msgstr "ডিফল্ট"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8549,6 +8549,10 @@ msgstr "আগের রিপোর্ট"
 msgid "Previous tab"
 msgstr "আগের ট্যাব"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr "প্রাথমিক"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr "ব্যক্তিগত"
@@ -11354,6 +11358,10 @@ msgstr "রিপোজিটরিটি ব্যক্তিগত এবং 
 msgid "The repository was moved, renamed, or deleted."
 msgstr "রিপোজিটরিটি সরানো হয়েছে, নাম বদলানো হয়েছে, বা মুছে ফেলা হয়েছে।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr "রিপোজিটরির মূল ক্লোন ডিরেক্টরি"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "স্কিমা ফাইলটি নেই বা লোড করা যায়নি — একটি ফিল্ড যোগ করলে সেটি তৈরি হয়।"
@@ -12656,6 +12664,7 @@ msgid "Workspace navigation"
 msgstr "ওয়ার্কস্পেস নেভিগেশন"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr "ওয়ার্কট্রি"
 

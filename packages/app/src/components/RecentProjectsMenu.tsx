@@ -55,6 +55,8 @@ import {
   buildWorktreeFlyoutEntries,
   groupRecentsByRepo,
   type RecentRepoGroup,
+  type RowLocation,
+  rowLocation,
   type WorktreeFlyoutEntry,
 } from './project-switcher-recents';
 import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
@@ -236,8 +238,16 @@ function GroupRow({
   // Single source for BOTH the count chip and the flyout affordance: the same
   // builder rows the flyout list is built from, so the chip and the list can't
   // drift apart on which worktrees exist. We count opened, non-main worktrees —
-  // the main checkout is pinned in the flyout as "default" and isn't itself a
-  // switchable worktree — which matches the pre-migration `group.worktrees.length`
+  // the original clone is pinned in the flyout and isn't itself a switchable
+  // worktree — so the count matches the number of rows badged `worktree`.
+  //
+  // This predicate is also a safety boundary. A recents entry that has not been
+  // enriched yet carries `isMain: true` while actually being a linked worktree;
+  // it stays off screen only because that makes this count zero and the flyout
+  // does not render. Counting the pinned row would make a wrong badge reachable
+  // — fix the enrichment path first if this ever has to change.
+  //
+  // The count also matches the pre-migration `group.worktrees.length`
   // semantic while sourcing it from the git model (an opened worktree the model
   // knows about but Recents doesn't now surfaces the affordance). Hoisted here so
   // the builder runs once per group.
@@ -408,9 +418,10 @@ function FlyoutGroup({
         ) : null}
         {/* Opened, non-main worktree count + pluralized label ("3 worktrees" /
           "1 worktree"), counted off the same builder rows the flyout list is
-          built from (so the chip tracks the same worktree set the list shows;
-          the list additionally renders the pinned "default" + create-on-demand
-          branches, which the chip deliberately doesn't count). The digit stays
+          built from, so the chip counts exactly the rows the list badges
+          `worktree`. The list additionally renders the pinned original clone
+          and the create-on-demand branches, which the chip deliberately
+          doesn't count. The digit stays
           tabular-nums so the count column doesn't jitter; the disclosure chevron
           is supplied by DropdownMenuSubTrigger. No leading icon — "worktrees"
           already says what this is. */}
@@ -658,16 +669,7 @@ function WorktreeFlyout({
                   <span className="min-w-0 flex-1 truncate text-sm" title={label}>
                     {label}
                   </span>
-                  {entry.isMain ? (
-                    <span className="shrink-0 text-muted-foreground text-xs">{t`default`}</span>
-                  ) : !entry.opened ? (
-                    <span
-                      className="shrink-0 text-muted-foreground text-xs"
-                      title={t`Create a worktree from this branch`}
-                    >
-                      {t`create worktree`}
-                    </span>
-                  ) : null}
+                  <RowLocationBadge entry={entry} />
                   {entry.isCurrent ? <CurrentCheck /> : null}
                 </DropdownMenuItem>
               );
@@ -676,6 +678,43 @@ function WorktreeFlyout({
         </div>
       </DropdownMenuSubContent>
     </DropdownMenuPortal>
+  );
+}
+
+/**
+ * Where this row's branch is checked out. Every row carries exactly one of
+ * these, so no category is left to be inferred from a missing badge.
+ *
+ * The badge names a DIRECTORY, never a branch. `primary` means "checked out in
+ * the original clone" — it says nothing about which branch is the repository's
+ * default, which this surface has no way to know. That distinction is the whole
+ * point: the user can check out anything in their original clone from the
+ * command line, and the badge stays true when they do.
+ *
+ * `Record<RowLocation, …>` rather than a chain of ternaries so a new location
+ * cannot be added without supplying its copy.
+ */
+function RowLocationBadge({ entry }: { entry: WorktreeFlyoutEntry }) {
+  const { t } = useLingui();
+  const copy: Record<RowLocation, { label: string; description: string }> = {
+    primary: {
+      label: t`primary`,
+      description: t`The repository's original clone directory`,
+    },
+    worktree: {
+      label: t`worktree`,
+      description: t`A linked worktree of this repository`,
+    },
+    none: {
+      label: t`create worktree`,
+      description: t`Create a worktree from this branch`,
+    },
+  };
+  const { label, description } = copy[rowLocation(entry)];
+  return (
+    <span className="shrink-0 text-muted-foreground text-xs" title={description}>
+      {label}
+    </span>
   );
 }
 

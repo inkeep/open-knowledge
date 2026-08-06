@@ -935,6 +935,10 @@ msgstr ""
 msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr ""
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "A linked worktree of this repository"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
 msgstr ""
@@ -3701,10 +3705,6 @@ msgstr ""
 
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
-msgstr ""
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "default"
 msgstr ""
 
 #: src/components/settings/AttachmentsSection.tsx
@@ -8549,6 +8549,10 @@ msgstr ""
 msgid "Previous tab"
 msgstr ""
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "primary"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
 msgstr ""
@@ -11354,6 +11358,10 @@ msgstr ""
 msgid "The repository was moved, renamed, or deleted."
 msgstr ""
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The repository's original clone directory"
+msgstr ""
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr ""
@@ -12656,6 +12664,7 @@ msgid "Workspace navigation"
 msgstr ""
 
 #: src/components/NavigatorApp.tsx
+#: src/components/RecentProjectsMenu.tsx
 msgid "worktree"
 msgstr ""
 
