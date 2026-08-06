@@ -15,8 +15,15 @@
  *
  * Web mode uses today's `DeleteConfirmationDialog` copy via the `web` variant
  * of `selectTrashConfirmCopy` — keeps the verbatim copy Electron-scoped.
+ *
+ * VSCode parity is a claim about the **English** source. Every string here is
+ * a `t` / `plural` macro so the other locales get their own phrasing rather
+ * than an English confirm dialog in a translated app; the count-bearing titles
+ * are plurals because "1 file" and "3 files" do not share a form in most of
+ * the languages this app speaks.
  */
 
+import { plural, t } from '@lingui/core/macro';
 import type { FileTreeTarget } from '@/components/file-tree-operations';
 
 interface TrashConfirmCopy {
@@ -35,20 +42,25 @@ interface TrashConfirmCopy {
  * VSCode-verbatim Trash detail. macOS uses "this file" wording even for
  * folders + multi-target — matches VSCode (`getMoveToTrashMessage` in
  * `fileActions.ts`).
+ *
+ * A function, not a `const`: the macro at module scope would resolve once at
+ * import and then keep whatever language was active then.
  */
-export const TRASH_DETAIL_MACOS = 'You can restore this file from the Trash.';
+export function trashDetailMacos(): string {
+  return t`You can restore this file from the Trash.`;
+}
 
 export function buildTrashConfirmCopyElectron(
   targets: ReadonlyArray<FileTreeTarget>,
 ): TrashConfirmCopy {
-  const detail = TRASH_DETAIL_MACOS;
-  const confirmLabel = 'Move to Trash';
-  const confirmLabelBusy = 'Moving';
+  const detail = trashDetailMacos();
+  const confirmLabel = t`Move to Trash`;
+  const confirmLabelBusy = t`Moving`;
   if (targets.length === 0) {
     // Defensive — caller should never invoke with an empty target list, but
     // pinning a stable shape here keeps the dialog renderer simple.
     return {
-      title: 'Are you sure you want to delete the selected items?',
+      title: t`Are you sure you want to delete the selected items?`,
       detail,
       listedTargets: null,
       confirmLabel,
@@ -61,16 +73,17 @@ export function buildTrashConfirmCopyElectron(
       // Unreachable given length === 1; keeps the noUncheckedIndexedAccess
       // type-safety boundary honest without leaning on `!`.
       return {
-        title: 'Are you sure you want to delete the selected item?',
+        title: t`Are you sure you want to delete the selected item?`,
         detail,
         listedTargets: null,
         confirmLabel,
         confirmLabelBusy,
       };
     }
+    const name = only.name;
     if (only.kind === 'folder') {
       return {
-        title: `Are you sure you want to delete '${only.name}' and its contents?`,
+        title: t`Are you sure you want to delete '${name}' and its contents?`,
         detail,
         listedTargets: null,
         confirmLabel,
@@ -78,18 +91,23 @@ export function buildTrashConfirmCopyElectron(
       };
     }
     return {
-      title: `Are you sure you want to delete '${only.name}'?`,
+      title: t`Are you sure you want to delete '${name}'?`,
       detail,
       listedTargets: null,
       confirmLabel,
       confirmLabelBusy,
     };
   }
-  const hasFolder = targets.some((t) => t.kind === 'folder');
-  const hasFile = targets.some((t) => t.kind !== 'folder');
+  const hasFolder = targets.some((target) => target.kind === 'folder');
+  const hasFile = targets.some((target) => target.kind !== 'folder');
+  const count = targets.length;
   if (hasFolder && hasFile) {
     return {
-      title: `Are you sure you want to delete the following ${targets.length} files/directories and their contents?`,
+      title: plural(count, {
+        one: 'Are you sure you want to delete the following # file/directory and its contents?',
+        other:
+          'Are you sure you want to delete the following # files/directories and their contents?',
+      }),
       detail,
       listedTargets: targets,
       confirmLabel,
@@ -98,7 +116,10 @@ export function buildTrashConfirmCopyElectron(
   }
   if (hasFolder) {
     return {
-      title: `Are you sure you want to delete the following ${targets.length} directories and their contents?`,
+      title: plural(count, {
+        one: 'Are you sure you want to delete the following # directory and its contents?',
+        other: 'Are you sure you want to delete the following # directories and their contents?',
+      }),
       detail,
       listedTargets: targets,
       confirmLabel,
@@ -106,7 +127,10 @@ export function buildTrashConfirmCopyElectron(
     };
   }
   return {
-    title: `Are you sure you want to delete the following ${targets.length} files?`,
+    title: plural(count, {
+      one: 'Are you sure you want to delete the following # file?',
+      other: 'Are you sure you want to delete the following # files?',
+    }),
     detail,
     listedTargets: targets,
     confirmLabel,

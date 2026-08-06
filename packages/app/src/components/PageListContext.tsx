@@ -1,4 +1,5 @@
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import {
   buildPageIconsIndex,
@@ -275,7 +276,7 @@ export function PageListProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (requestId !== latestRequestIdRef.current) return;
         logLoadPagesError(err);
-        setError(err instanceof Error ? err.message : 'Failed to load pages');
+        setError(err instanceof Error ? err.message : t`Failed to load pages`);
       })
       .finally(() => {
         if (requestId !== latestRequestIdRef.current) return;

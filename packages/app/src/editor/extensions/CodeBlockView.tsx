@@ -215,9 +215,15 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
     rawMetaRef.current = rawMeta;
   }, [rawMeta]);
   const normalized = normalizeCodeLanguage(rawLanguage);
+  // Language names are proper nouns and stay as written; the two descriptive
+  // entries (`Plain text`, `Shell session`) carry a deferred `labelMessage`
+  // that resolves here, in render, so the picker follows a language switch.
+  const displayLabel = (lang: (typeof CODE_BLOCK_LANGUAGES)[number]) =>
+    lang.labelMessage ? t(lang.labelMessage) : lang.label;
+  const currentEntry = CODE_BLOCK_LANGUAGES.find((l) => l.value === normalized);
   const currentLabel = !rawLanguage
     ? t`Plain`
-    : (CODE_BLOCK_LANGUAGES.find((l) => l.value === normalized)?.label ?? rawLanguage);
+    : (currentEntry && displayLabel(currentEntry)) || rawLanguage;
   const previewToggled = metaHasToken(rawMeta, 'preview');
   const previewRenderable = normalized ? PREVIEWABLE_LANGUAGES.has(normalized) : false;
   const previewActive = shouldShowPreview(normalized, rawMeta);
@@ -546,7 +552,10 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
                     return (
                       <CommandItem
                         key={lang.value}
-                        value={`${lang.label} ${lang.value} ${lang.aliases?.join(' ') ?? ''}`}
+                        // The English label stays in the filter haystack beside
+                        // the translated one so a reader who knows the term
+                        // either way finds the entry.
+                        value={`${displayLabel(lang)} ${lang.label} ${lang.value} ${lang.aliases?.join(' ') ?? ''}`}
                         onSelect={() => {
                           const next = lang.value === PLAIN_TEXT ? null : lang.value;
                           updateAttributes({ language: next });
@@ -554,7 +563,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
                           editor.commands.focus();
                         }}
                       >
-                        <span className="flex-1">{lang.label}</span>
+                        <span className="flex-1">{displayLabel(lang)}</span>
                         {isActive ? <Check className="size-3.5" aria-hidden="true" /> : null}
                       </CommandItem>
                     );

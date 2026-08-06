@@ -4,6 +4,10 @@
  * future refactor that "improves" the phrasing cannot silently drift away
  * from VSCode parity.
  *
+ * The copy is Lingui-wrapped, and the app's vitest config aliases the macros
+ * to an English-passthrough shim — so these assertions pin the `en` source
+ * text, which is exactly what VSCode parity is a claim about.
+ *
  * VSCode source: `microsoft/vscode/blob/main/src/vs/workbench/contrib/files/browser/fileActions.ts`
  */
 
@@ -12,7 +16,7 @@ import type { FileTreeTarget } from '@/components/file-tree-operations';
 import {
   buildTrashConfirmCopyElectron,
   selectTrashConfirmCopy,
-  TRASH_DETAIL_MACOS,
+  trashDetailMacos,
   trashTargetDisplayName,
 } from '@/components/file-tree-trash-copy';
 
@@ -75,9 +79,9 @@ describe('file-tree-trash-copy — buildTrashConfirmCopyElectron VSCode-verbatim
   });
 
   test('detail line is macOS-verbatim (single + multi)', () => {
-    expect(TRASH_DETAIL_MACOS).toBe('You can restore this file from the Trash.');
-    expect(buildTrashConfirmCopyElectron([file('a')]).detail).toBe(TRASH_DETAIL_MACOS);
-    expect(buildTrashConfirmCopyElectron([file('a'), folder('b')]).detail).toBe(TRASH_DETAIL_MACOS);
+    expect(trashDetailMacos()).toBe('You can restore this file from the Trash.');
+    expect(buildTrashConfirmCopyElectron([file('a')]).detail).toBe(trashDetailMacos());
+    expect(buildTrashConfirmCopyElectron([file('a'), folder('b')]).detail).toBe(trashDetailMacos());
   });
 
   test('confirm button label is "Move to Trash" with "Moving" while in-flight', () => {

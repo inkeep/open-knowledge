@@ -1,4 +1,5 @@
 import { type SkillsListEntry, SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import {
   applyOptimisticSkillMoves,
@@ -102,7 +103,7 @@ export function useSkills(options?: { enabled?: boolean }): AsyncState<readonly 
             '[ok-skills] /api/skills response failed schema validation:',
             parsed.error.issues,
           );
-          setState({ status: 'error', message: 'Server returned an incomplete skills response.' });
+          setState({ status: 'error', message: t`Server returned an incomplete skills response.` });
           return;
         }
         lastKnownSkills = parsed.data.skills;

@@ -36,6 +36,9 @@
  * are reachable.
  */
 
+import type { MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+import { useLingui } from '@lingui/react/macro';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
@@ -49,12 +52,17 @@ type Align = 'center' | 'left' | 'right';
 
 const ALIGN_OPTIONS: ReadonlyArray<{
   value: Align;
-  label: string;
+  /**
+   * Deferred message — this list is module scope, so a `t` call would resolve
+   * at import time and the accessible names would never follow a language
+   * switch. Resolved per render below.
+   */
+  label: MessageDescriptor;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { value: 'left', label: 'Align left', icon: AlignLeft },
-  { value: 'center', label: 'Align center', icon: AlignCenter },
-  { value: 'right', label: 'Align right', icon: AlignRight },
+  { value: 'left', label: msg`Align left`, icon: AlignLeft },
+  { value: 'center', label: msg`Align center`, icon: AlignCenter },
+  { value: 'right', label: msg`Align right`, icon: AlignRight },
 ];
 
 /**
@@ -94,6 +102,9 @@ interface ImageAlignButtonsProps {
 }
 
 export function ImageAlignButtons({ editor }: ImageAlignButtonsProps) {
+  // Also the locale subscription: `I18nProvider` re-renders context consumers
+  // only, and `useEditorState` does not fire on a language switch.
+  const { t } = useLingui();
   const active = useEditorState({
     editor,
     selector: (ctx) => readActiveImageAlign(ctx.editor),
@@ -120,7 +131,7 @@ export function ImageAlignButtons({ editor }: ImageAlignButtonsProps) {
               <Button
                 variant="ghost"
                 size="icon-xs"
-                aria-label={label}
+                aria-label={t(label)}
                 aria-pressed={isActive}
                 className={isActive ? 'bg-accent text-primary' : 'text-accent-foreground'}
                 onMouseDown={(e) => {
@@ -196,7 +207,7 @@ export function ImageAlignButtons({ editor }: ImageAlignButtonsProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={8}>
-              {label}
+              {t(label)}
             </TooltipContent>
           </Tooltip>
         );

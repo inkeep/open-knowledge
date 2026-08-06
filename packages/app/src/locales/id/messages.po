@@ -474,6 +474,18 @@ msgstr "{count, plural, other {# peserta lagi dari dokumen lain}}"
 msgid "{count, plural, one {# more participant} other {# more participants}}"
 msgstr "{count, plural, other {# peserta lagi}}"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # directory and its contents?} other {Are you sure you want to delete the following # directories and their contents?}}"
+msgstr "{count, plural, other {Yakin ingin menghapus # folder berikut beserta isinya?}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file?} other {Are you sure you want to delete the following # files?}}"
+msgstr "{count, plural, other {Yakin ingin menghapus # berkas berikut?}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
+msgstr "{count, plural, other {Yakin ingin menghapus # berkas/folder berikut beserta isinya?}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, other {Menyerahkan # masalah ke agen AI Anda, termasuk yang tidak punya perbaikan otomatis.}}"
@@ -1365,6 +1377,18 @@ msgstr "Alat AI"
 msgid "AI tools & CLI"
 msgstr "Alat AI & CLI"
 
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align center"
+msgstr "Rata tengah"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align left"
+msgstr "Rata kiri"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align right"
+msgstr "Rata kanan"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Aligned {editor} to the source (its bytes are backed up)"
 msgstr "{editor} diselaraskan dengan sumbernya (bitanya sudah dicadangkan)"
@@ -1523,6 +1547,14 @@ msgstr "Disetujui — {optionName}"
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Yakin ingin mengubah berkas ini menjadi templat? Berkas aslinya akan dihapus. Tindakan ini tidak bisa dibatalkan."
 
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}' and its contents?"
+msgstr "Yakin ingin menghapus \"{name}\" beserta isinya?"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}'?"
+msgstr "Yakin ingin menghapus \"{name}\"?"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "Yakin ingin menghapus {folderName}/ dan semua berkas di dalamnya? Tindakan ini tidak bisa dibatalkan."
@@ -1534,6 +1566,14 @@ msgstr "Yakin ingin menghapus {itemName}? Tindakan ini tidak bisa dibatalkan."
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {targetCount} selected items? Folders and all files inside them will be deleted. This action cannot be undone."
 msgstr "Yakin ingin menghapus {targetCount} item terpilih? Folder dan semua berkas di dalamnya akan dihapus. Tindakan ini tidak bisa dibatalkan."
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected item?"
+msgstr "Yakin ingin menghapus item yang dipilih?"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected items?"
+msgstr "Yakin ingin menghapus item yang dipilih?"
 
 #: src/components/BottomComposer.tsx
 msgid "Ask"
@@ -1920,6 +1960,7 @@ msgstr "Bawaan (hanya-baca)"
 msgid "Bullet list"
 msgstr "Daftar berpoin"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Bullet List"
 msgstr "Daftar Berpoin"
@@ -1939,6 +1980,10 @@ msgstr "Berdasarkan tag"
 #: src/components/settings/SearchSection.tsx
 msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
 msgstr "Embedding dalam cache milik endpoint dan model yang menghasilkannya, jadi ini membangun ulang indeksnya dari nol."
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Callouts draw attention to key information."
+msgstr "Kotak sorot menarik perhatian ke informasi penting."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
@@ -2225,6 +2270,10 @@ msgstr "Klik avatar seorang agen di bilah kehadiran untuk melihat sesinya."
 msgid "Click to add and fill them in"
 msgstr "Klik untuk menambahkan dan mengisinya"
 
+#: src/editor/slash-command/component-items.tsx
+msgid "Click to expand"
+msgstr "Klik untuk membuka"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr "Klik untuk memasang di {label}"
@@ -2237,13 +2286,30 @@ msgstr "Kloning"
 msgid "Clone complete — opening project"
 msgstr "Kloning selesai — membuka proyek"
 
+#: src/lib/share/clone-controller.ts
+msgid "Clone ended unexpectedly."
+msgstr "Kloning berakhir secara tidak terduga."
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — check the URL and try again ({status})"
+msgstr "Kloning gagal — periksa URL lalu coba lagi ({status})"
+
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone failed — connection error"
 msgstr "Kloning gagal — galat koneksi"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — empty response body"
+msgstr "Kloning gagal — badan respons kosong"
 
 #: src/components/CloneDialog.tsx
 msgid "Clone failed: {cloneError}"
 msgstr "Kloning gagal: {cloneError}"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed: {title}"
+msgstr "Kloning gagal: {title}"
 
 #: src/components/CloneDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -2255,6 +2321,7 @@ msgid "Clone happens in the Project Navigator. Reclick the share link there."
 msgstr "Kloning dilakukan di Navigator Proyek. Klik ulang tautan berbaginya di sana."
 
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone stream ended unexpectedly — check if the clone completed"
 msgstr "Aliran kloning berakhir tak terduga — periksa apakah kloningnya selesai"
 
@@ -2364,6 +2431,7 @@ msgstr "Kode"
 msgid "Code block"
 msgstr "Blok kode"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Code Block"
 msgstr "Blok Kode"
@@ -2440,6 +2508,10 @@ msgstr "Bagian yang bisa diciutkan dengan ringkasan yang bisa diklik."
 #: src/components/settings/settings-fields.ts
 msgid "Color theme"
 msgstr "Tema warna"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Column options"
+msgstr "Opsi kolom"
 
 #: src/components/CommandPalette.tsx
 msgid "Command failed."
@@ -3775,6 +3847,10 @@ msgstr "Hapus blok"
 msgid "Delete code block"
 msgstr "Hapus blok kode"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete column"
+msgstr "Hapus kolom"
+
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
 msgstr "Hapus Permanen"
@@ -3782,6 +3858,10 @@ msgstr "Hapus Permanen"
 #: src/components/BugReportHistory.tsx
 msgid "Delete report"
 msgstr "Hapus laporan"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete row"
+msgstr "Hapus baris"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Delete schema file {file}"
@@ -3798,6 +3878,10 @@ msgstr "Hapus item terpilih"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected table"
 msgstr "Hapus tabel terpilih"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete table"
+msgstr "Hapus tabel"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -4761,6 +4845,10 @@ msgstr "Gagal mengaktifkan pencarian semantik — {detail}"
 msgid "Failed to enable sync — {detail}"
 msgstr "Gagal mengaktifkan sinkronisasi — {detail}"
 
+#: src/lib/transports/auth-query-transport.ts
+msgid "Failed to fetch repositories"
+msgstr "Gagal mengambil repositori"
+
 #: src/components/FileTree.tsx
 msgid "Failed to import template"
 msgstr "Gagal mengimpor templat"
@@ -4808,6 +4896,10 @@ msgstr "Gagal memuat halaman yatim"
 #: src/components/LinksPanel.tsx
 msgid "Failed to load outgoing links"
 msgstr "Gagal memuat tautan keluar"
+
+#: src/components/PageListContext.tsx
+msgid "Failed to load pages"
+msgstr "Gagal memuat halaman"
 
 #: src/editor/components/Pdf.tsx
 msgid "Failed to load PDF"
@@ -5514,14 +5606,17 @@ msgstr "Sulit dipakai"
 msgid "Having a look around…"
 msgstr "Melihat-lihat sekitar…"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
 msgstr "Judul 1"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 2"
 msgstr "Judul 2"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 3"
 msgstr "Judul 3"
@@ -5548,6 +5643,7 @@ msgid "Headings"
 msgstr "Judul"
 
 #: src/components/AutoSyncEnableWarning.tsx
+#: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "Perhatian"
 
@@ -5579,6 +5675,10 @@ msgstr "Membantu agen pemrograman Anda mengenali proyek OpenKnowledge dan mengar
 #: src/components/FileTree.tsx
 msgid "Hidden “{basename}”"
 msgstr "“{basename}” disembunyikan"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Hidden content goes here."
+msgstr "Konten tersembunyi ada di sini."
 
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -6000,9 +6100,25 @@ msgstr "Menyisipkan rujukan catatan kaki + kerangka definisi yang sesuai."
 msgid "Insert a markdown hard break."
 msgstr "Menyisipkan ganti baris paksa markdown."
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column left"
+msgstr "Sisipkan kolom di kiri"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column right"
+msgstr "Sisipkan kolom di kanan"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Insert link"
 msgstr "Sisipkan tautan"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row above"
+msgstr "Sisipkan baris di atas"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row below"
+msgstr "Sisipkan baris di bawah"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -6170,6 +6286,14 @@ msgstr "Masukan tidak valid — pilih folder lain."
 #: src/components/PropertyPanel.tsx
 msgid "Invalid patch payload"
 msgstr "Muatan patch tidak valid"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response"
+msgstr "Respons server tidak valid"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response shape"
+msgstr "Bentuk respons server tidak valid"
 
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
@@ -6630,6 +6754,18 @@ msgstr "Jadikan basis pengetahuan ini tersedia sebagai Keterampilan Claude."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "Jadikan ini sumbernya — folder asli keterampilan ini pindah ke sini"
 
+#: src/lib/seed-client.ts
+msgid "Malformed apply response"
+msgstr "Respons apply salah bentuk"
+
+#: src/lib/seed-client.ts
+msgid "Malformed listPacks response"
+msgstr "Respons listPacks salah bentuk"
+
+#: src/lib/seed-client.ts
+msgid "Malformed plan response"
+msgstr "Respons plan salah bentuk"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -6895,6 +7031,7 @@ msgstr "Pergi ke hasil pencarian penyunting visual sebelumnya."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
 msgid "Move to Trash"
 msgstr "Pindahkan ke Tempat Sampah"
 
@@ -6931,6 +7068,10 @@ msgstr "{label} dipindahkan ke panel baru di sebelah kanan."
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "templat dipindahkan"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Moving"
+msgstr "Memindahkan"
 
 #: src/components/acp/working-status.ts
 msgid "Mulling…"
@@ -7537,6 +7678,11 @@ msgstr "Tidak satu pun masalah ini punya perbaikan otomatis. Coba Perbaiki semua
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
 msgstr "Belum dijawab"
+
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+msgid "Not attached to desktop bridge"
+msgstr "Tidak terhubung ke bridge desktop"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Not available on this platform"
@@ -8265,6 +8411,7 @@ msgstr "Atau pakai paket awal"
 msgid "Ordered list"
 msgstr "Daftar berurut"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Ordered List"
 msgstr "Daftar Berurut"
@@ -8405,6 +8552,10 @@ msgstr "panel {0}"
 msgid "Paragraph"
 msgstr "Paragraf"
 
+#: src/editor/utils/severity.ts
+msgid "parse error"
+msgstr "galat penguraian"
+
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Parse failed"
 msgstr "Penguraian gagal"
@@ -8532,6 +8683,10 @@ msgstr "Menghapus <0>{targetGitPath}</0> secara permanen beserta seluruh riwayat
 msgid "Permission denied"
 msgstr "Izin ditolak"
 
+#: src/lib/acp/thread-event-model.ts
+msgid "Permission required"
+msgstr "Perlu izin"
+
 #: src/components/AuthModal.tsx
 msgid "Personal access token"
 msgstr "Token akses pribadi"
@@ -8593,6 +8748,10 @@ msgstr "Sematkan tab"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
 msgstr "Polos"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Plain text"
+msgstr "Teks biasa"
 
 #. placeholder {0}: plan.length
 #: src/components/acp/ThreadView.tsx
@@ -8918,6 +9077,7 @@ msgstr "Keluar"
 msgid "Quit {appName}"
 msgstr "Keluar dari {appName}"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr "Kutipan"
@@ -9296,6 +9456,10 @@ msgstr "Mengganti nama"
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
 msgstr "Mengganti nama mengubah berkas di disk dan id yang dipakai agen untuk memilih templat ini."
+
+#: src/editor/utils/severity.ts
+msgid "render error"
+msgstr "galat render"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -9676,6 +9840,10 @@ msgstr "Peran"
 msgid "root"
 msgstr "akar"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Row options"
+msgstr "Opsi baris"
+
 #: src/components/LintConfigEditor.tsx
 msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "Penyuntingan aturan tersedia untuk konfigurasi markdownlint di akar proyek"
@@ -9715,6 +9883,10 @@ msgstr "Menjalankan audit proyek"
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "Folder yang sama dengan berkas saat ini"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Sample image"
+msgstr "Contoh gambar"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
@@ -10151,9 +10323,33 @@ msgstr "Galat server: {status}"
 msgid "Server error: {status} {statusText}"
 msgstr "Galat server: {status} {statusText}"
 
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed duplicate response."
+msgstr "Server mengembalikan respons duplikasi yang salah bentuk."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed import response."
+msgstr "Server mengembalikan respons impor yang salah bentuk."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed response."
+msgstr "Server mengembalikan respons yang salah bentuk."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed upload response."
+msgstr "Server mengembalikan respons unggahan yang salah bentuk."
+
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete folder response."
 msgstr "Server mengembalikan respons folder yang tidak lengkap."
+
+#: src/hooks/use-skill-targets.ts
+msgid "Server returned an incomplete skill-targets response."
+msgstr "Server mengembalikan respons target skill yang tidak lengkap."
+
+#: src/hooks/use-skills.ts
+msgid "Server returned an incomplete skills response."
+msgstr "Server mengembalikan respons skill yang tidak lengkap."
 
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
@@ -10307,6 +10503,10 @@ msgstr "Membagikan sebuah dokumen memerlukan repositori GitHub. Buat satu untuk 
 #: src/lib/share/run-share-action.ts
 msgid "Sharing supports GitHub remotes only."
 msgstr "Berbagi hanya mendukung remote GitHub."
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Shell session"
+msgstr "Sesi shell"
 
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Ship the editor with a"
@@ -11195,6 +11395,7 @@ msgstr "Ambil versi remote"
 msgid "Task list"
 msgstr "Daftar tugas"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "Daftar Tugas"
@@ -11319,6 +11520,7 @@ msgid "Testing"
 msgstr "Menguji"
 
 #: src/components/PropertyWidgets.tsx
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 msgid "Text"
 msgstr "Teks"
 
@@ -11526,6 +11728,10 @@ msgstr "Folder milik keterampilan itu sendiri — sumber tempat lokasi lain meny
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder ({path}) — the source other locations copy or link from"
 msgstr "Folder milik keterampilan itu sendiri ({path}) — sumber tempat lokasi lain menyalin atau menaut"
+
+#: src/lib/skills-api.ts
+msgid "The skills list did not match its schema."
+msgstr "Daftar skill tidak cocok dengan skemanya."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The source folder itself does not move."
@@ -11999,6 +12205,14 @@ msgstr "Tampilkan atau Sembunyikan Alat Pengembang"
 msgid "Toggle Full Screen"
 msgstr "Layar Penuh"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header column"
+msgstr "Alihkan kolom header"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header row"
+msgstr "Alihkan baris header"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle heading levels 1 through 6."
 msgstr "Menyalakan atau mematikan tingkat judul 1 sampai 6."
@@ -12058,6 +12272,10 @@ msgstr "Menyalakan atau mematikan format garis bawah."
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "Terlalu lambat"
+
+#: src/lib/acp/thread-event-model.ts
+msgid "Tool call"
+msgstr "Panggilan alat"
 
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
@@ -12243,10 +12461,18 @@ msgstr "Copot OpenKnowledge?"
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr "\"{0}\" dicopot dari {1}"
 
+#: src/editor/utils/severity.ts
+msgid "unknown"
+msgstr "tidak diketahui"
+
 #: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr "Tidak diketahui"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "unknown build failure"
+msgstr "kegagalan build tidak diketahui"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Unknown component: {componentName} — source editable below"
@@ -12261,7 +12487,11 @@ msgid "Unknown date"
 msgstr "Tanggal tidak diketahui"
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+#: src/lib/share/clone-controller.ts
 #: src/lib/transports/auth-transport.ts
+#: src/lib/transports/clone-transport.ts
 msgid "Unknown error"
 msgstr "Galat tidak diketahui"
 
@@ -12869,6 +13099,10 @@ msgstr "Anda bisa melampirkan hingga {MAX_ATTACHMENTS} gambar."
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."
+
+#: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Trash."
+msgstr "Anda dapat memulihkan berkas ini dari Tempat Sampah."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "You cancelled loading \"{docName}\"."

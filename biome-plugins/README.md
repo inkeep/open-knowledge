@@ -258,27 +258,38 @@ Plugin: [`biome-plugins/no-blind-agent-host-fanout.grit`](no-blind-agent-host-fa
 
 ### `no-unwrapped-user-facing-string.grit`
 
-Localization discipline. Makes a hardcoded user-facing string a **build-visible defect** rather than a convention someone has to remember — the gap that let the app accumulate residual English while the `en` catalog grew past 2,800 entries. Three surfaces:
+Localization discipline. Makes a hardcoded user-facing string a **build-visible defect** rather than a convention someone has to remember — the gap that let the app accumulate residual English while the `en` catalog grew past 2,800 entries. Four surfaces:
 
 - **Toast arguments** — `toast.error('…')`, `toast.success('…')`, any `toast.<method>` whose first argument is a string literal.
 - **JSX text children** — `<span>No documents match your search</span>`.
 - **UI-facing attributes** — `aria-label`, `placeholder`, `title`, `alt` with a string-literal value.
+- **UI-facing object properties** — `{ label: 'Delete table' }`, `{ description: 'Link to a page or external URL' }`. Same six names as the attribute branch plus `label` and `description`.
 
 The wrapped forms — `<Trans>…</Trans>`, `` t`…` `` from `useLingui()` / `@lingui/core/macro` — are not literals in the positions above and never fire.
+
+**Why object position needed its own branch.** `{ title: '…' }` renders the same words `title="…"` renders, but the attribute branch cannot see it, and that shape was where the residual English actually was: a sweep found 50 of them (menu items, picker entries, hover-preview panels, user-shown error envelopes) against zero the other three branches could reach. The name scope is what keeps it usable — the same measurement that produced the JSX prose test applies here, since an unscoped literal rule fires on every `className`, `data-testid`, and identifier in the tree. With the six names and the prose test, the branch found **1 hit in `packages/app/src`** after the migration landed, and that one is a deliberate non-copy label carrying a `biome-ignore`.
+
+**Implementation note.** Biome's GritQL exposes no object-member node kind (its JS node vocabulary is `call_expression`, `member_expression`, `jsx_attribute`, … — there is no `pair`), so the branch is written as the code snippet `` `$name: $value` ``. That binds to JS object-literal pairs only: a TypeScript member such as `label: 'left' | 'right'` inside a `type` or `interface` is a different node and is structurally out of reach, which is what keeps string-literal union types from firing.
+
+**Where a `msg` descriptor is the fix instead of `t`.** When the object is module scope — a `const` array of menu items, a severity table, a language list — a `t` call in it resolves once at import and then keeps whatever language was active then, however correctly it is wrapped. `I18nProvider` re-renders context *consumers*, not the whole tree, so nothing corrects it later. Hold a `msg` descriptor in the object and resolve it with `t(descriptor)` at render, in a component that calls `useLingui()`; that hook call is also what subscribes the component to the locale change. `BlockTypeSelector.tsx` and `editor/utils/severity.ts` are the reference shapes.
 
 **The prose test, and why the branches differ.** The two JSX branches require **two letter-words separated by whitespace**; the toast branch takes any literal. That asymmetry is measured, not stylistic: a toast argument is unambiguously user-facing, whereas raw JSX text in this codebase is overwhelmingly *not* prose. Firing on every JSX literal produced 53 hits across the product tree of which **zero** were genuine copy — keyboard-shortcut tokens (`Ctrl+Shift+N`), code identifiers (`open-knowledge`), sample paths (`notes / release-plan.md`), and brand marks (`OpenKnowledge`). With the prose test the same sweep produced **4 hits, all real** (two `aria-label`s and one banner sentence in `ConflictsSection.tsx`, one toast in `FileTree.tsx`), which is the signal-to-noise ratio that makes a lint rule worth obeying. Note the two-word test also excludes tokens joined by punctuation, since `notes / release-plan.md` has no letter–space–letter run.
 
 `<Brand> icon` is exempt in-pattern: it is the accessible name of a third-party mark, and translating it renames the product.
 
-**Scoped via `overrides[].plugins`** to `packages/{app,desktop,plugin}/src/**`, `.ts` as well as `.tsx` — the toast branch's dominant shape is a plain `lib/` helper, not a component. Exemptions as negative `!`-globs: `!packages/app/src/editor/**` (ProseMirror/CodeMirror-managed views, whose placeholder and title strings are editor affordances), `!packages/app/src/components/ui/**` (shadcn primitive wrappers — attribute strings there are prop plumbing), and `!**/*.test.ts` / `!**/*.test.tsx` / `!**/*.dom.test.tsx`.
+**Scoped via `overrides[].plugins`** to `packages/{app,desktop,plugin}/src/**`, `.ts` as well as `.tsx` — the toast branch's dominant shape is a plain `lib/` helper, not a component. Exemptions as negative `!`-globs: `!packages/app/src/editor/**` (ProseMirror/CodeMirror-managed views, whose placeholder and title strings are editor affordances), `!packages/app/src/components/ui/**` (shadcn primitive wrappers — attribute strings there are prop plumbing), `!packages/desktop/src/main/**` (the Electron main process — see below), and `!**/*.test.ts` / `!**/*.test.tsx` / `!**/*.dom.test.tsx`.
+
+`packages/desktop/src/main/**` is excluded because `lingui extract` reads `packages/app/src` only, so a `t` macro written there reaches no catalog; main's one translated surface, the native menus, goes through `main-i18n.ts`, which looks its labels up by hash against the renderer's compiled catalogs. The object-property branch fires on 20 of main's `dialog.showMessageBox` templates and OTel metric descriptions, and asking for a fix that does not exist is how a rule earns a blanket suppression. Main's four sibling dirs (`preload` / `renderer` / `shared` / `utility`) stay in scope.
 
 The rule does NOT catch:
 
 - **Single-word JSX copy** — `<Button>Save</Button>`. The known cost of the prose test; nothing statically separates `Save` from `Discord`. The backstop is the Simplified-Chinese coverage sweep, where residual English is unmissable against Han script.
-- **Object-property and module-const strings** — `{ message: 'Server returned…' }`, `const TOAST = '…'`. This is the dominant shape of the pre-existing hardcoded-string backlog (`lib/handoff/targets.ts`, `hooks/use-folder-config.ts`, `lib/share/run-share-action.ts`), and widening to every string literal is exactly the false-positive rate that makes a rule get suppressed instead of obeyed. That backlog is a hand migration, not a rule.
+- **Object properties outside the six scoped names** — `{ message: 'Server returned…' }`, `{ error: '…' }`, `{ detail: '…' }`. Measured rather than assumed: those three names are dominated by log lines and developer diagnostics (`{ detail: 'copilot is terminal-only; launch via requestTerminalLaunch' }`), so scoping them in would make the rule's first act a demand to translate something no reader ever sees. The user-shown members of that set were wrapped by hand.
+- **Module-const strings** — `const TOAST = '…'`. Not a property; a separate shape, and one where a `t` at module scope would be a freeze rather than a fix.
+- **A ternary or call in property position** — `{ error: e instanceof Error ? e.message : 'Unknown error' }`. GritQL regexes match the whole node's text, so the value has to *be* a literal; a value that merely *contains* one would also match `{ label: cn('a b') }`.
 - **A JSX expression-child string literal** — `<span>{'Loading'}</span>`, or an attribute written `aria-label={'…'}`. The value node opens with `{`, which is what distinguishes a literal from a wrapped macro.
 - **Template literals** anywhere, including a toast `description`.
-- **The Electron main process's menu templates and CLI output** — object literals in `packages/desktop/src/main/**` and `packages/cli/src/**`. The CLI command surface is deliberately never localized.
+- **The CLI command surface** — `packages/cli/src/**`, deliberately never localized.
 
 Plugin: [`biome-plugins/no-unwrapped-user-facing-string.grit`](no-unwrapped-user-facing-string.grit). Fixture: [`biome-plugins/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx`](__fixtures__/no-unwrapped-user-facing-string.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-unwrapped-user-facing-string.test.ts`](../packages/app/tests/lint-plugins/no-unwrapped-user-facing-string.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
@@ -329,7 +340,7 @@ Current production suppressions:
 - `no-roundtrip-identity-oracle`: 0 sites
 - `no-inline-tolerance-class`: 0 sites
 - `no-uninstall-forbidden-import`: 0 sites
-- `no-unwrapped-user-facing-string`: 0 sites — the four hits it found on landing were wrapped rather than suppressed.
+- `no-unwrapped-user-facing-string`: 1 site — `components/settings/lint-plugin-meta.ts` (`Frontmatter schemas`, the plugin's name beside `markdownlint`; `frontmatter` is a `GLOSSARY.md` never-translate term). Everything else the rule has ever found — the four hits on landing, the 50 the object-property branch was written for — was wrapped rather than suppressed.
 - `no-physical-direction-utility`: 81 file-level `biome-ignore-all` headers across `packages/app/src/**` (pre-rule backlog awaiting the logical-property pass; see the rule's section above for the ratchet contract)
 
 **Where an inline `// biome-ignore` can and cannot sit.** A suppression comment needs a line of its own directly above the reported span, which is a property of the *formatting* rather than of the rule. On a JSX attribute that means the attribute must already be on its own line — biome has no slot for a comment between two attributes sharing a line, and reports `Suppression comment has no effect` if you try. A `{/* biome-ignore */}` child covers the element that follows it, not a text node that starts after that element, so JSX-text diagnostics generally need the attribute-style form or a file-level `biome-ignore-all`.

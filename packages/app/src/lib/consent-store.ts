@@ -15,6 +15,7 @@
  * Web / CLI distribution: `bridge` is undefined and `install` is a no-op.
  */
 
+import { t } from '@lingui/core/macro';
 import type {
   OkDesktopBridge,
   OkOnboardingConfirmRequest,
@@ -91,25 +92,25 @@ export function createConsentStore(): ConsentStore {
     // selections and retry from the same open dialog.
     async confirm(request): Promise<OkOnboardingResult> {
       const b = bridge;
-      if (!b) return { ok: false, error: 'Not attached to desktop bridge' };
+      if (!b) return { ok: false, error: t`Not attached to desktop bridge` };
       try {
         const result = await b.onboarding.confirm(request);
         if (result.ok) clearCurrent();
         return result;
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+        return { ok: false, error: err instanceof Error ? err.message : t`Unknown error` };
       }
     },
 
     async cancel(): Promise<OkOnboardingResult> {
       const b = bridge;
-      if (!b) return { ok: false, error: 'Not attached to desktop bridge' };
+      if (!b) return { ok: false, error: t`Not attached to desktop bridge` };
       try {
         const result = await b.onboarding.cancel();
         if (result.ok) clearCurrent();
         return result;
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+        return { ok: false, error: err instanceof Error ? err.message : t`Unknown error` };
       }
     },
 

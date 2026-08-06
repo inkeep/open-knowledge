@@ -52,5 +52,29 @@ or {
             span = $value,
             message = "Unwrapped user-facing string in a UI-facing attribute. Wrap it with the Lingui `t` macro from `useLingui()` so it reaches the catalogs. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-unwrapped-user-facing-stringgrit"
         )
+    },
+
+    // The same copy, one syntax over: `{ title: '…' }` renders the words
+    // `title="…"` renders, so it is the same defect and gets the same
+    // diagnostic. Scoped by name for the same reason the attribute branch is
+    // — an unscoped literal rule fires on every `className`, `data-testid`,
+    // and identifier in the tree. The set is the attribute branch's four plus
+    // `label` / `description`, which is where object-position copy actually
+    // lives in this codebase (menu items, picker entries, preview panels).
+    //
+    // Biome's GritQL exposes no object-member node kind, so the `$name:
+    // $value` snippet is the pattern. It binds only to JS object-literal
+    // pairs — a TypeScript member (`label: 'left' | 'right'` in a `type`) is
+    // not one and does not fire, which is what keeps string-literal union
+    // types out.
+    `$name: $value` where {
+        $name <: or { `'aria-label'`, `placeholder`, `title`, `alt`, `label`, `description` },
+        $value <: r"(?s)['\"].*['\"]",
+        $value <: r"(?s).*[A-Za-z]\s+[A-Za-z].*",
+        not $value <: r"(?s)['\"][A-Za-z0-9()\-. ]* icon['\"]",
+        register_diagnostic(
+            span = $value,
+            message = "Unwrapped user-facing string in a UI-facing object property. Wrap it with the Lingui `t` macro — or, when the object is module scope, hold a `msg` descriptor here and resolve it at render, so a language switch is not frozen out. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-unwrapped-user-facing-stringgrit"
+        )
     }
 }

@@ -41,6 +41,9 @@
  */
 
 import { autoUpdate, computePosition, offset } from '@floating-ui/dom';
+import type { MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+import { useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/react';
 import {
   ArrowDown,
@@ -80,7 +83,14 @@ interface ActiveCell {
 }
 
 interface MenuItem {
-  label: string;
+  /** Stable React key — the label is a descriptor and the resolved text moves with the locale. */
+  id: string;
+  /**
+   * Deferred message. The item lists are built outside a component, so the
+   * label has to stay a descriptor and resolve at render; a `t` call here
+   * would freeze the menu in whatever language was active at module load.
+   */
+  label: MessageDescriptor;
   icon: LucideIcon;
   run: (editor: Editor) => void;
   /** Render a separator above this item (groups destructive actions). */
@@ -92,29 +102,38 @@ function columnItems(showHeaderToggle: boolean): MenuItem[] {
     ...(showHeaderToggle
       ? [
           {
-            label: 'Toggle header column',
+            id: 'toggle-header-column',
+            label: msg`Toggle header column`,
             icon: Columns3,
             run: (e: Editor) => e.chain().focus().toggleHeaderColumn().run(),
           },
         ]
       : []),
     {
-      label: 'Insert column left',
+      id: 'insert-column-left',
+      label: msg`Insert column left`,
       icon: ArrowLeft,
       run: (e) => e.chain().focus().addColumnBefore().run(),
     },
     {
-      label: 'Insert column right',
+      id: 'insert-column-right',
+      label: msg`Insert column right`,
       icon: ArrowRight,
       run: (e) => e.chain().focus().addColumnAfter().run(),
     },
     {
-      label: 'Delete column',
+      id: 'delete-column',
+      label: msg`Delete column`,
       icon: Trash2,
       separatorBefore: true,
       run: (e) => e.chain().focus().deleteColumn().run(),
     },
-    { label: 'Delete table', icon: Grid2x2X, run: (e) => e.chain().focus().deleteTable().run() },
+    {
+      id: 'delete-table',
+      label: msg`Delete table`,
+      icon: Grid2x2X,
+      run: (e) => e.chain().focus().deleteTable().run(),
+    },
   ];
 }
 
@@ -123,29 +142,38 @@ function rowItems(showHeaderToggle: boolean): MenuItem[] {
     ...(showHeaderToggle
       ? [
           {
-            label: 'Toggle header row',
+            id: 'toggle-header-row',
+            label: msg`Toggle header row`,
             icon: TableProperties,
             run: (e: Editor) => e.chain().focus().toggleHeaderRow().run(),
           },
         ]
       : []),
     {
-      label: 'Insert row above',
+      id: 'insert-row-above',
+      label: msg`Insert row above`,
       icon: ArrowUp,
       run: (e) => e.chain().focus().addRowBefore().run(),
     },
     {
-      label: 'Insert row below',
+      id: 'insert-row-below',
+      label: msg`Insert row below`,
       icon: ArrowDown,
       run: (e) => e.chain().focus().addRowAfter().run(),
     },
     {
-      label: 'Delete row',
+      id: 'delete-row',
+      label: msg`Delete row`,
       icon: Trash2,
       separatorBefore: true,
       run: (e) => e.chain().focus().deleteRow().run(),
     },
-    { label: 'Delete table', icon: Grid2x2X, run: (e) => e.chain().focus().deleteTable().run() },
+    {
+      id: 'delete-table',
+      label: msg`Delete table`,
+      icon: Grid2x2X,
+      run: (e) => e.chain().focus().deleteTable().run(),
+    },
   ];
 }
 
@@ -207,6 +235,10 @@ function CellHandle({
   items: MenuItem[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Reading the macro `t` here is also what subscribes this component to
+  // Lingui's change event: `I18nProvider` re-renders context consumers only,
+  // so without a hook call the menu would keep the language it mounted in.
+  const { t } = useLingui();
   // Controlled Radix open state — the drag hook coordinates against it so
   // a pending drag never flashes the menu open. The hook's pointerup calls
   // onClickGesture when the gesture stayed under the drag threshold, and
@@ -283,7 +315,7 @@ function CellHandle({
                   ? 'h-3 w-7 rounded-full p-0 text-gray-700 dark:text-muted-foreground bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-600 dark:hover:text-gray-100 relative cursor-grab before:absolute before:-inset-[6px] before:content-[""]'
                   : 'h-7 w-3 rounded-full p-0 text-gray-700 dark:text-muted-foreground bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 hover:text-foreground dark:hover:bg-gray-600 dark:hover:text-gray-100 relative cursor-grab before:absolute before:-inset-[6px] before:content-[""]'
               }
-              aria-label={axis === 'column' ? 'Column options' : 'Row options'}
+              aria-label={axis === 'column' ? t`Column options` : t`Row options`}
             >
               <HandleIcon className="size-3.5" aria-hidden />
             </Button>
@@ -297,11 +329,11 @@ function CellHandle({
             className="w-auto min-w-44 whitespace-nowrap"
           >
             {items.map((item) => (
-              <Fragment key={item.label}>
+              <Fragment key={item.id}>
                 {item.separatorBefore && <DropdownMenuSeparator />}
                 <DropdownMenuItem onSelect={() => item.run(editor)}>
                   <item.icon aria-hidden />
-                  {item.label}
+                  {t(item.label)}
                 </DropdownMenuItem>
               </Fragment>
             ))}

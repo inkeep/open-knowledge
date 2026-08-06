@@ -15,6 +15,7 @@
  */
 
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import type {
   OkDesktopBridge,
   OkLocalOpAuthReposResponse,
@@ -153,7 +154,7 @@ export function httpAuthQueryTransport(): AuthQueryTransport {
         // the generic fallback. Mirrors the auth-transport.ts and
         // clone-transport.ts pre-stream pattern.
         const title = await extractProblemTitle(res);
-        return { ok: false, error: title ?? 'Failed to fetch repositories' };
+        return { ok: false, error: title ?? t`Failed to fetch repositories` };
       }
       // CLI emits a single `{repos: [...]}` line; relay forwards as-is.
       // No streaming reader needed — read the whole body and parse.
@@ -163,10 +164,10 @@ export function httpAuthQueryTransport(): AuthQueryTransport {
       // generic "Failed to fetch" when the server emitted a problem.
       if (data && data.type === 'error' && data.problem && typeof data.problem === 'object') {
         const p = data.problem as { title?: string; detail?: string };
-        return { ok: false, error: p.detail || p.title || 'Failed to fetch repositories' };
+        return { ok: false, error: p.detail || p.title || t`Failed to fetch repositories` };
       }
       if (!data || !Array.isArray(data.repos)) {
-        return { ok: false, error: 'Failed to fetch repositories' };
+        return { ok: false, error: t`Failed to fetch repositories` };
       }
       const repos: { full_name: string; clone_url: string; private: boolean }[] = [];
       for (const r of data.repos) {

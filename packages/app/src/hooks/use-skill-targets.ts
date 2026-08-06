@@ -3,6 +3,7 @@ import {
   type SkillTargetsGetSuccess,
   SkillTargetsGetSuccessSchema,
 } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import { emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
@@ -60,7 +61,7 @@ export function useSkillTargets(): SkillTargetsHandle {
           );
           setState({
             status: 'error',
-            message: 'Server returned an incomplete skill-targets response.',
+            message: t`Server returned an incomplete skill-targets response.`,
           });
           return;
         }

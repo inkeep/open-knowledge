@@ -656,7 +656,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
           className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${style.badgeClass}`}
           title={reason}
         >
-          {style.label}
+          {t(style.label)}
         </span>
         <button
           type="button"

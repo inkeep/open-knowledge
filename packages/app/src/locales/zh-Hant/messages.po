@@ -474,6 +474,18 @@ msgstr "{count, plural, other {另有 # 位跨文件參與者}}"
 msgid "{count, plural, one {# more participant} other {# more participants}}"
 msgstr "{count, plural, other {另有 # 位參與者}}"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # directory and its contents?} other {Are you sure you want to delete the following # directories and their contents?}}"
+msgstr "{count, plural, other {確定要刪除以下 # 個資料夾及其內容嗎？}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file?} other {Are you sure you want to delete the following # files?}}"
+msgstr "{count, plural, other {確定要刪除以下 # 個檔案嗎？}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
+msgstr "{count, plural, other {確定要刪除以下 # 個檔案/資料夾及其內容嗎？}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, other {把這 # 個問題交給你的 AI 代理，包括沒有自動修正方式的部分。}}"
@@ -1369,6 +1381,18 @@ msgstr "AI 工具"
 msgid "AI tools & CLI"
 msgstr "AI 工具與 CLI"
 
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align center"
+msgstr "置中對齊"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align left"
+msgstr "靠左對齊"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align right"
+msgstr "靠右對齊"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Aligned {editor} to the source (its bytes are backed up)"
 msgstr "已把 {editor} 對齊到原始碼（它的位元組已備份）"
@@ -1527,6 +1551,14 @@ msgstr "已核准 — {optionName}"
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "確定要把這個檔案轉換成範本嗎？原始檔案會被刪除。這個動作無法復原。"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}' and its contents?"
+msgstr "確定要刪除「{name}」及其內容嗎？"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}'?"
+msgstr "確定要刪除「{name}」嗎？"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "確定要刪除 {folderName}/ 以及裡面的所有檔案嗎？這個動作無法復原。"
@@ -1538,6 +1570,14 @@ msgstr "確定要刪除 {itemName} 嗎？這個動作無法復原。"
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {targetCount} selected items? Folders and all files inside them will be deleted. This action cannot be undone."
 msgstr "確定要刪除選取的 {targetCount} 個項目嗎？資料夾以及裡面的所有檔案都會被刪除。這個動作無法復原。"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected item?"
+msgstr "確定要刪除所選項目嗎？"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected items?"
+msgstr "確定要刪除所選的項目嗎？"
 
 #: src/components/BottomComposer.tsx
 msgid "Ask"
@@ -1924,6 +1964,7 @@ msgstr "內建（唯讀）"
 msgid "Bullet list"
 msgstr "項目符號清單"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Bullet List"
 msgstr "項目符號清單"
@@ -1943,6 +1984,10 @@ msgstr "依標籤"
 #: src/components/settings/SearchSection.tsx
 msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
 msgstr "快取的嵌入向量屬於產生它們的端點和模型，所以這會從頭重建索引。"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Callouts draw attention to key information."
+msgstr "標註框用於突顯關鍵資訊。"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
@@ -2229,6 +2274,10 @@ msgstr "在協作狀態列中點一下某個代理的頭像，即可查看它的
 msgid "Click to add and fill them in"
 msgstr "點擊新增並填寫"
 
+#: src/editor/slash-command/component-items.tsx
+msgid "Click to expand"
+msgstr "點擊展開"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr "點一下即可安裝到 {label}"
@@ -2241,13 +2290,30 @@ msgstr "複製"
 msgid "Clone complete — opening project"
 msgstr "複製完成——正在開啟專案"
 
+#: src/lib/share/clone-controller.ts
+msgid "Clone ended unexpectedly."
+msgstr "複製意外結束。"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — check the URL and try again ({status})"
+msgstr "複製失敗——請檢查 URL 後重試（{status}）"
+
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone failed — connection error"
 msgstr "複製失敗——連線出錯"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — empty response body"
+msgstr "複製失敗——回應內容為空"
 
 #: src/components/CloneDialog.tsx
 msgid "Clone failed: {cloneError}"
 msgstr "複製失敗：{cloneError}"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed: {title}"
+msgstr "複製失敗：{title}"
 
 #: src/components/CloneDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -2259,6 +2325,7 @@ msgid "Clone happens in the Project Navigator. Reclick the share link there."
 msgstr "複製是在「專案導覽器」中進行的。請到那裡重新點一下分享連結。"
 
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone stream ended unexpectedly — check if the clone completed"
 msgstr "複製串流意外中斷——請確認複製是否已完成"
 
@@ -2368,6 +2435,7 @@ msgstr "程式碼"
 msgid "Code block"
 msgstr "程式碼區塊"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Code Block"
 msgstr "程式碼區塊"
@@ -2444,6 +2512,10 @@ msgstr "帶可點擊摘要的可摺疊區塊。"
 #: src/components/settings/settings-fields.ts
 msgid "Color theme"
 msgstr "配色主題"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Column options"
+msgstr "欄選項"
 
 #: src/components/CommandPalette.tsx
 msgid "Command failed."
@@ -3779,6 +3851,10 @@ msgstr "刪除區塊"
 msgid "Delete code block"
 msgstr "刪除程式碼區塊"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete column"
+msgstr "刪除欄"
+
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
 msgstr "永久刪除"
@@ -3786,6 +3862,10 @@ msgstr "永久刪除"
 #: src/components/BugReportHistory.tsx
 msgid "Delete report"
 msgstr "刪除回報"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete row"
+msgstr "刪除列"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Delete schema file {file}"
@@ -3802,6 +3882,10 @@ msgstr "刪除選取的項目"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected table"
 msgstr "刪除選取的表格"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete table"
+msgstr "刪除表格"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -4765,6 +4849,10 @@ msgstr "開啟語意搜尋失敗——{detail}"
 msgid "Failed to enable sync — {detail}"
 msgstr "開啟同步失敗——{detail}"
 
+#: src/lib/transports/auth-query-transport.ts
+msgid "Failed to fetch repositories"
+msgstr "取得儲存庫清單失敗"
+
 #: src/components/FileTree.tsx
 msgid "Failed to import template"
 msgstr "匯入範本失敗"
@@ -4812,6 +4900,10 @@ msgstr "載入孤立頁面失敗"
 #: src/components/LinksPanel.tsx
 msgid "Failed to load outgoing links"
 msgstr "載入外連連結失敗"
+
+#: src/components/PageListContext.tsx
+msgid "Failed to load pages"
+msgstr "載入頁面失敗"
 
 #: src/editor/components/Pdf.tsx
 msgid "Failed to load PDF"
@@ -5518,14 +5610,17 @@ msgstr "不好用"
 msgid "Having a look around…"
 msgstr "四處看看…"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
 msgstr "標題 1"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 2"
 msgstr "標題 2"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 3"
 msgstr "標題 3"
@@ -5552,6 +5647,7 @@ msgid "Headings"
 msgstr "標題"
 
 #: src/components/AutoSyncEnableWarning.tsx
+#: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "提醒"
 
@@ -5583,6 +5679,10 @@ msgstr "幫助你的程式碼代理辨識 OpenKnowledge 專案，並把讀寫都
 #: src/components/FileTree.tsx
 msgid "Hidden “{basename}”"
 msgstr "已隱藏「{basename}」"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Hidden content goes here."
+msgstr "隱藏的內容放在這裡。"
 
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -6004,9 +6104,25 @@ msgstr "插入一個註腳參照，以及對應的定義草稿。"
 msgid "Insert a markdown hard break."
 msgstr "插入一個 markdown 強制換行。"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column left"
+msgstr "在左側插入欄"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column right"
+msgstr "在右側插入欄"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Insert link"
 msgstr "插入連結"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row above"
+msgstr "在上方插入列"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row below"
+msgstr "在下方插入列"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -6174,6 +6290,14 @@ msgstr "輸入無效——請換一個資料夾。"
 #: src/components/PropertyPanel.tsx
 msgid "Invalid patch payload"
 msgstr "修補內容無效"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response"
+msgstr "伺服器回應無效"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response shape"
+msgstr "伺服器回應結構無效"
 
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
@@ -6634,6 +6758,18 @@ msgstr "把這個知識庫當成 Claude 技能提供出去。"
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "把這裡設為來源——技能真正的資料夾會搬到這裡"
 
+#: src/lib/seed-client.ts
+msgid "Malformed apply response"
+msgstr "套用回應格式錯誤"
+
+#: src/lib/seed-client.ts
+msgid "Malformed listPacks response"
+msgstr "listPacks 回應格式錯誤"
+
+#: src/lib/seed-client.ts
+msgid "Malformed plan response"
+msgstr "計畫回應格式錯誤"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -6899,6 +7035,7 @@ msgstr "跳到視覺化編輯器的上一個尋找結果。"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
 msgid "Move to Trash"
 msgstr "移到垃圾桶"
 
@@ -6935,6 +7072,10 @@ msgstr "已將 {label} 移動到右側的新窗格。"
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "已移動範本"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Moving"
+msgstr "移動中"
 
 #: src/components/acp/working-status.ts
 msgid "Mulling…"
@@ -7541,6 +7682,11 @@ msgstr "這些問題都沒有自動修正的方式。可以試試「用 AI 全�
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
 msgstr "未回答"
+
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+msgid "Not attached to desktop bridge"
+msgstr "未連接到桌面橋接"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Not available on this platform"
@@ -8269,6 +8415,7 @@ msgstr "或者用入門套件"
 msgid "Ordered list"
 msgstr "編號清單"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Ordered List"
 msgstr "編號清單"
@@ -8409,6 +8556,10 @@ msgstr "窗格 {0}"
 msgid "Paragraph"
 msgstr "段落"
 
+#: src/editor/utils/severity.ts
+msgid "parse error"
+msgstr "解析錯誤"
+
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Parse failed"
 msgstr "解析失敗"
@@ -8536,6 +8687,10 @@ msgstr "會永久刪除 <0>{targetGitPath}</0> 以及它全部的 git 記錄。�
 msgid "Permission denied"
 msgstr "權限不足"
 
+#: src/lib/acp/thread-event-model.ts
+msgid "Permission required"
+msgstr "需要授權"
+
 #: src/components/AuthModal.tsx
 msgid "Personal access token"
 msgstr "個人存取權杖"
@@ -8596,6 +8751,10 @@ msgstr "釘選分頁"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
+msgstr "純文字"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Plain text"
 msgstr "純文字"
 
 #. placeholder {0}: plan.length
@@ -8922,6 +9081,7 @@ msgstr "結束"
 msgid "Quit {appName}"
 msgstr "結束 {appName}"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr "引用"
@@ -9300,6 +9460,10 @@ msgstr "正在重新命名"
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
 msgstr "重新命名會改變磁碟上的檔案，以及代理挑選這個範本時使用的 id。"
+
+#: src/editor/utils/severity.ts
+msgid "render error"
+msgstr "算繪錯誤"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -9680,6 +9844,10 @@ msgstr "角色"
 msgid "root"
 msgstr "根目錄"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Row options"
+msgstr "列選項"
+
 #: src/components/LintConfigEditor.tsx
 msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "只有專案根目錄的 markdownlint 設定才能編輯規則"
@@ -9719,6 +9887,10 @@ msgstr "正在執行專案稽核"
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "和目前檔案相同的資料夾"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Sample image"
+msgstr "範例圖片"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
@@ -10155,9 +10327,33 @@ msgstr "伺服器錯誤：{status}"
 msgid "Server error: {status} {statusText}"
 msgstr "伺服器錯誤：{status} {statusText}"
 
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed duplicate response."
+msgstr "伺服器回傳的複本回應格式錯誤。"
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed import response."
+msgstr "伺服器回傳的匯入回應格式錯誤。"
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed response."
+msgstr "伺服器回傳的回應格式錯誤。"
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed upload response."
+msgstr "伺服器回傳的上傳回應格式錯誤。"
+
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete folder response."
 msgstr "伺服器傳回的資料夾回應不完整。"
+
+#: src/hooks/use-skill-targets.ts
+msgid "Server returned an incomplete skill-targets response."
+msgstr "伺服器回傳的技能目標回應不完整。"
+
+#: src/hooks/use-skills.ts
+msgid "Server returned an incomplete skills response."
+msgstr "伺服器回傳的技能回應不完整。"
 
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
@@ -10311,6 +10507,10 @@ msgstr "分享文件需要一個 GitHub 儲存庫。請為這個專案建立一�
 #: src/lib/share/run-share-action.ts
 msgid "Sharing supports GitHub remotes only."
 msgstr "分享僅支援 GitHub 遠端儲存庫。"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Shell session"
+msgstr "Shell 工作階段"
 
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Ship the editor with a"
@@ -11199,6 +11399,7 @@ msgstr "採用上游版本"
 msgid "Task list"
 msgstr "工作清單"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "工作清單"
@@ -11323,6 +11524,7 @@ msgid "Testing"
 msgstr "正在測試"
 
 #: src/components/PropertyWidgets.tsx
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 msgid "Text"
 msgstr "文字"
 
@@ -11530,6 +11732,10 @@ msgstr "技能自己的資料夾——其他位置從這裡複製或連結"
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder ({path}) — the source other locations copy or link from"
 msgstr "技能自己的資料夾（{path}）——其他位置從這裡複製或連結"
+
+#: src/lib/skills-api.ts
+msgid "The skills list did not match its schema."
+msgstr "技能清單與其結構定義不符。"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The source folder itself does not move."
@@ -12003,6 +12209,14 @@ msgstr "切換開發者工具"
 msgid "Toggle Full Screen"
 msgstr "切換全螢幕"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header column"
+msgstr "切換標題欄"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header row"
+msgstr "切換標題列"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle heading levels 1 through 6."
 msgstr "切換 1 到 6 級標題。"
@@ -12062,6 +12276,10 @@ msgstr "切換底線格式。"
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "太慢了"
+
+#: src/lib/acp/thread-event-model.ts
+msgid "Tool call"
+msgstr "工具呼叫"
 
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
@@ -12247,10 +12465,18 @@ msgstr "要解除安裝 OpenKnowledge 嗎？"
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr "已從 {1} 解除安裝「{0}」"
 
+#: src/editor/utils/severity.ts
+msgid "unknown"
+msgstr "未知"
+
 #: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr "未知"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "unknown build failure"
+msgstr "未知的建置失敗"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Unknown component: {componentName} — source editable below"
@@ -12265,7 +12491,11 @@ msgid "Unknown date"
 msgstr "日期不明"
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+#: src/lib/share/clone-controller.ts
 #: src/lib/transports/auth-transport.ts
+#: src/lib/transports/clone-transport.ts
 msgid "Unknown error"
 msgstr "未知的錯誤"
 
@@ -12873,6 +13103,10 @@ msgstr "你最多可以附加 {MAX_ATTACHMENTS} 張圖片。"
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "之後可以在<0>「設定 → 同步」</0>中變更。"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Trash."
+msgstr "你可以從垃圾桶還原此檔案。"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "You cancelled loading \"{docName}\"."

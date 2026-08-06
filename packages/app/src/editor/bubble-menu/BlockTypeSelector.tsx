@@ -1,3 +1,6 @@
+import type { MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+import { useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import {
@@ -22,7 +25,11 @@ import {
 
 interface BlockType {
   name: string;
-  label: string;
+  /**
+   * Deferred message. `blockTypes` is module scope, so a `t` call here would
+   * resolve once at import and never follow a language switch.
+   */
+  label: MessageDescriptor;
   icon: React.ComponentType<{ className?: string }>;
   isActive: (editor: Editor) => boolean;
   command: (editor: Editor) => void;
@@ -31,35 +38,35 @@ interface BlockType {
 const blockTypes: BlockType[] = [
   {
     name: 'paragraph',
-    label: 'Text',
+    label: msg`Text`,
     icon: Pilcrow,
     isActive: (editor) => editor.isActive('paragraph') && !editor.isActive('list'),
     command: (editor) => editor.chain().focus().setParagraph().run(),
   },
   {
     name: 'heading1',
-    label: 'Heading 1',
+    label: msg`Heading 1`,
     icon: Heading1,
     isActive: (editor) => editor.isActive('heading', { level: 1 }),
     command: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
   },
   {
     name: 'heading2',
-    label: 'Heading 2',
+    label: msg`Heading 2`,
     icon: Heading2,
     isActive: (editor) => editor.isActive('heading', { level: 2 }),
     command: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
   },
   {
     name: 'heading3',
-    label: 'Heading 3',
+    label: msg`Heading 3`,
     icon: Heading3,
     isActive: (editor) => editor.isActive('heading', { level: 3 }),
     command: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
   },
   {
     name: 'bulletList',
-    label: 'Bullet List',
+    label: msg`Bullet List`,
     icon: List,
     isActive: (editor) =>
       editor.isActive('list', { ordered: false }) &&
@@ -69,14 +76,14 @@ const blockTypes: BlockType[] = [
   },
   {
     name: 'orderedList',
-    label: 'Ordered List',
+    label: msg`Ordered List`,
     icon: ListOrdered,
     isActive: (editor) => editor.isActive('list', { ordered: true }),
     command: (editor) => editor.chain().focus().toggleOrderedList().run(),
   },
   {
     name: 'taskList',
-    label: 'Task List',
+    label: msg`Task List`,
     icon: ListTodo,
     isActive: (editor) =>
       editor.isActive('listItem', { checked: true }) ||
@@ -85,14 +92,14 @@ const blockTypes: BlockType[] = [
   },
   {
     name: 'blockquote',
-    label: 'Quote',
+    label: msg`Quote`,
     icon: Quote,
     isActive: (editor) => editor.isActive('blockquote'),
     command: (editor) => editor.chain().focus().toggleBlockquote().run(),
   },
   {
     name: 'codeBlock',
-    label: 'Code Block',
+    label: msg`Code Block`,
     icon: SquareCode,
     isActive: (editor) => editor.isActive('codeBlock'),
     // Default to JavaScript at creation so syntax highlighting fires on
@@ -106,6 +113,9 @@ const blockTypes: BlockType[] = [
 ];
 
 export function BlockTypeSelector({ editor }: { editor: Editor }) {
+  // Also the locale subscription: `I18nProvider` re-renders context consumers
+  // only, and `useEditorState` does not fire on a language switch.
+  const { t } = useLingui();
   const { current, activeStates } = useEditorState({
     editor,
     selector: (ctx) => {
@@ -127,7 +137,7 @@ export function BlockTypeSelector({ editor }: { editor: Editor }) {
           className="gap-1 px-2 text-sm font-medium text-accent-foreground/80"
         >
           <CurrentIcon className="size-3.5" />
-          <span>{current.label}</span>
+          <span>{t(current.label)}</span>
           <ChevronDown className="size-3 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
@@ -148,7 +158,7 @@ export function BlockTypeSelector({ editor }: { editor: Editor }) {
               }}
             >
               <Icon className="size-4" />
-              <span>{bt.label}</span>
+              <span>{t(bt.label)}</span>
             </DropdownMenuItem>
           );
         })}

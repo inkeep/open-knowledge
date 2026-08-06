@@ -22,6 +22,7 @@
  *   - `ok: false` → the build itself failed. Nothing useful happened.
  */
 
+import { t } from '@lingui/core/macro';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { parseApiError } from '../parse-api-error.ts';
 
@@ -149,17 +150,17 @@ export function httpSkillInstaller(opts: HttpSkillInstallerOptions = {}): SkillI
         return {
           ok: false,
           reason: 'parse-error',
-          message: err instanceof Error ? err.message : 'Invalid server response',
+          message: err instanceof Error ? err.message : t`Invalid server response`,
         };
       }
       if (!body || typeof body.status !== 'string') {
-        return { ok: false, reason: 'parse-error', message: 'Invalid server response shape' };
+        return { ok: false, reason: 'parse-error', message: t`Invalid server response shape` };
       }
       if (body.status === 'failed') {
         return {
           ok: false,
           reason: 'build-failed',
-          message: body.buildError ?? 'unknown build failure',
+          message: body.buildError ?? t`unknown build failure`,
         };
       }
       // 'installed', 'built', or 'skip-current'.

@@ -12,6 +12,7 @@
  */
 
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import type { OkDesktopBridge, OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
 import { createBufferedAsyncStream } from './buffered-async-stream';
 
@@ -73,11 +74,17 @@ export function httpCloneTransport(): CloneTransport {
               // Pre-stream RFC 9457 problem+json: surface the typed `title`
               // so the user sees why clone failed (rate limit, auth, etc.)
               // instead of a generic "check the URL" message.
-              let message = `Clone failed — check the URL and try again (${res.status})`;
+              const status = res.status;
+              let message = t`Clone failed — check the URL and try again (${status})`;
               try {
                 const body = (await res.json()) as unknown;
                 const result = ProblemDetailsSchema.safeParse(body);
-                if (result.success) message = `Clone failed: ${result.data.title}`;
+                // Server-authored, English either way — the frame around it is
+                // still the reader's language.
+                if (result.success) {
+                  const title = result.data.title;
+                  message = t`Clone failed: ${title}`;
+                }
               } catch {
                 /* keep generic message */
               }
@@ -85,7 +92,7 @@ export function httpCloneTransport(): CloneTransport {
               return;
             }
             if (!res.body) {
-              push({ type: 'error', message: 'Clone failed — empty response body' });
+              push({ type: 'error', message: t`Clone failed — empty response body` });
               return;
             }
             const reader = res.body.getReader();
@@ -129,7 +136,7 @@ export function httpCloneTransport(): CloneTransport {
                   'problem' in parsed
                 ) {
                   const p = (parsed as { problem: { title?: string; detail?: string } }).problem;
-                  push({ type: 'error', message: p?.detail || p?.title || 'Unknown error' });
+                  push({ type: 'error', message: p?.detail || p?.title || t`Unknown error` });
                   // Stop processing further lines in this chunk — push() of an
                   // error event aborts the buffered-async-stream's signal, so
                   // the outer while breaks on the next iteration
@@ -145,12 +152,12 @@ export function httpCloneTransport(): CloneTransport {
             if (!signal.aborted) {
               push({
                 type: 'error',
-                message: 'Clone stream ended unexpectedly — check if the clone completed',
+                message: t`Clone stream ended unexpectedly — check if the clone completed`,
               });
             }
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') return;
-            push({ type: 'error', message: 'Clone failed — connection error' });
+            push({ type: 'error', message: t`Clone failed — connection error` });
           }
         })();
       });

@@ -55,6 +55,27 @@ export function Positive4() {
   );
 }
 
+// (5) The same copy in object position. A menu item's `label`, a picker
+//     entry's `title`, a preview panel's `description`, an image's `alt`,
+//     and a quoted `'aria-label'` key all render the words the attribute
+//     forms render.
+export function Positive5() {
+  return [
+    { label: 'Delete table', icon: null },
+    { title: 'Heads up' },
+    { description: 'Link to a page or external URL' },
+    { alt: 'Sample image' },
+    { placeholder: 'Search your documents' },
+    { 'aria-label': 'Close the dialog' },
+  ];
+}
+
+// (6) Nested one level down — the rule spans the value wherever the object
+//     sits, not just at the top of a literal.
+export function Positive6() {
+  return { preview: { description: 'Notion-style inline row for a file' } };
+}
+
 // === Negative cases — must NOT fire ===
 
 // (1) The canonical wrapped forms: `<Trans>` children and the `t` macro.
@@ -126,4 +147,34 @@ export function Negative6() {
       <div aria-label="Claude icon" />
     </div>
   );
+}
+
+// (7) Object properties whose value is already a macro, and the token shapes
+//     the same prose test excludes in attribute position. `Save` is one word,
+//     `Heading 1` has no letter–space–letter run, and `Claude icon` is a
+//     third-party mark.
+export function Negative7() {
+  return [
+    { label: t`Delete table` },
+    { title: t`Heads up` },
+    { label: 'Save', title: 'Heading 1' },
+    { alt: 'Claude icon', description: 'markdownlint' },
+    { placeholder: 'my-knowledge-base', title: 'notes / release-plan.md' },
+  ];
+}
+
+// (8) Property names the rule deliberately does not scope. `className` and
+//     `data-testid` carry no copy, and widening to every string-valued
+//     property is the false-positive rate the name scope exists to bound.
+export function Negative8() {
+  return { className: 'flex items-center gap-2', 'data-testid': 'delete target row' };
+}
+
+// (9) TypeScript member positions. A string-literal union in a `type` or
+//     `interface` declares a value domain, not copy — the pattern binds to
+//     object-literal pairs, so these are structurally out of reach rather
+//     than filtered out.
+export type NegativeAlign = { label: 'left side' | 'right side' };
+export interface NegativeShape {
+  title: 'a fixed title';
 }

@@ -474,6 +474,18 @@ msgstr "{count, plural, zero {# مشارك إضافي عبر المستندات}
 msgid "{count, plural, one {# more participant} other {# more participants}}"
 msgstr "{count, plural, zero {# مشارك إضافي} one {مشارك إضافي واحد} two {مشاركان إضافيان} few {# مشاركين إضافيين} many {# مشاركًا إضافيًا} other {# مشارك إضافي}}"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # directory and its contents?} other {Are you sure you want to delete the following # directories and their contents?}}"
+msgstr "{count, plural, zero {هل تريد بالتأكيد حذف المجلدات التالية ومحتوياتها؟} one {هل تريد بالتأكيد حذف المجلد التالي ومحتوياته؟} two {هل تريد بالتأكيد حذف المجلدين التاليين ومحتوياتهما؟} few {هل تريد بالتأكيد حذف المجلدات # التالية ومحتوياتها؟} many {هل تريد بالتأكيد حذف # مجلدًا من المجلدات التالية ومحتوياتها؟} other {هل تريد بالتأكيد حذف # مجلد من المجلدات التالية ومحتوياتها؟}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file?} other {Are you sure you want to delete the following # files?}}"
+msgstr "{count, plural, zero {هل تريد بالتأكيد حذف الملفات التالية؟} one {هل تريد بالتأكيد حذف الملف التالي؟} two {هل تريد بالتأكيد حذف الملفين التاليين؟} few {هل تريد بالتأكيد حذف الملفات # التالية؟} many {هل تريد بالتأكيد حذف # ملفًا من الملفات التالية؟} other {هل تريد بالتأكيد حذف # ملف من الملفات التالية؟}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
+msgstr "{count, plural, zero {هل تريد بالتأكيد حذف الملفات/المجلدات التالية ومحتوياتها؟} one {هل تريد بالتأكيد حذف الملف/المجلد التالي ومحتوياته؟} two {هل تريد بالتأكيد حذف العنصرين التاليين ومحتوياتهما؟} few {هل تريد بالتأكيد حذف العناصر # التالية ومحتوياتها؟} many {هل تريد بالتأكيد حذف # عنصرًا من الملفات/المجلدات التالية ومحتوياتها؟} other {هل تريد بالتأكيد حذف # عنصر من الملفات/المجلدات التالية ومحتوياتها؟}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, zero {يسلّم المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} one {يسلّم المشكلة الواحدة إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} two {يسلّم المشكلتين إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} few {يسلّم كل المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} many {يسلّم كل المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} other {يسلّم كل المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.}}"
@@ -1369,6 +1381,18 @@ msgstr "أدوات الذكاء الاصطناعي"
 msgid "AI tools & CLI"
 msgstr "أدوات الذكاء الاصطناعي وواجهة سطر الأوامر"
 
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align center"
+msgstr "محاذاة إلى الوسط"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align left"
+msgstr "محاذاة إلى اليسار"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align right"
+msgstr "محاذاة إلى اليمين"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Aligned {editor} to the source (its bytes are backed up)"
 msgstr "تمت مواءمة {editor} مع المصدر (نُسخت بايتاته احتياطيًا)"
@@ -1527,6 +1551,14 @@ msgstr "موافق عليه — {optionName}"
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "هل أنت متأكد أنك تريد تحويل هذا الملف إلى قالب؟ سيُحذف الملف الأصلي. لا يمكن التراجع عن هذا الإجراء."
 
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}' and its contents?"
+msgstr "هل تريد بالتأكيد حذف ‏«{name}» ومحتوياته؟"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}'?"
+msgstr "هل تريد بالتأكيد حذف ‏«{name}»؟"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "هل أنت متأكد أنك تريد حذف {folderName}/ وكل الملفات بداخله؟ لا يمكن التراجع عن هذا الإجراء."
@@ -1538,6 +1570,14 @@ msgstr "هل أنت متأكد أنك تريد حذف {itemName}؟ لا يمكن
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {targetCount} selected items? Folders and all files inside them will be deleted. This action cannot be undone."
 msgstr "هل أنت متأكد أنك تريد حذف {targetCount} عنصرًا محددًا؟ ستُحذف المجلدات وكل الملفات بداخلها. لا يمكن التراجع عن هذا الإجراء."
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected item?"
+msgstr "هل تريد بالتأكيد حذف العنصر المحدد؟"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected items?"
+msgstr "هل تريد بالتأكيد حذف العناصر المحددة؟"
 
 #: src/components/BottomComposer.tsx
 msgid "Ask"
@@ -1924,6 +1964,7 @@ msgstr "مدمج (للقراءة فقط)"
 msgid "Bullet list"
 msgstr "قائمة نقطية"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Bullet List"
 msgstr "قائمة نقطية"
@@ -1943,6 +1984,10 @@ msgstr "حسب الوسم"
 #: src/components/settings/SearchSection.tsx
 msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
 msgstr "ترتبط التضمينات المخزَّنة بنقطة النهاية والنموذج اللذين أنتجاها، لذا يعيد هذا بناء الفهرس من الصفر."
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Callouts draw attention to key information."
+msgstr "تلفت المربعات التنبيهية الانتباه إلى المعلومات الأساسية."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
@@ -2229,6 +2274,10 @@ msgstr "انقر صورة وكيل في شريط الحضور لعرض جلست�
 msgid "Click to add and fill them in"
 msgstr "انقر لإضافتها وتعبئتها"
 
+#: src/editor/slash-command/component-items.tsx
+msgid "Click to expand"
+msgstr "انقر للتوسيع"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr "انقر للتثبيت في {label}"
@@ -2241,13 +2290,30 @@ msgstr "استنساخ"
 msgid "Clone complete — opening project"
 msgstr "اكتمل الاستنساخ — يجري فتح المشروع"
 
+#: src/lib/share/clone-controller.ts
+msgid "Clone ended unexpectedly."
+msgstr "انتهى الاستنساخ بشكل غير متوقع."
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — check the URL and try again ({status})"
+msgstr "فشل الاستنساخ — تحقق من الرابط وحاول مرة أخرى ({status})"
+
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone failed — connection error"
 msgstr "فشل الاستنساخ — خطأ في الاتصال"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — empty response body"
+msgstr "فشل الاستنساخ — نص الاستجابة فارغ"
 
 #: src/components/CloneDialog.tsx
 msgid "Clone failed: {cloneError}"
 msgstr "فشل الاستنساخ: {cloneError}"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed: {title}"
+msgstr "فشل الاستنساخ: {title}"
 
 #: src/components/CloneDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -2259,6 +2325,7 @@ msgid "Clone happens in the Project Navigator. Reclick the share link there."
 msgstr "يتم الاستنساخ في متصفح المشاريع. أعد النقر على رابط المشاركة هناك."
 
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone stream ended unexpectedly — check if the clone completed"
 msgstr "انتهى بث الاستنساخ على نحو غير متوقع — تحقق مما إذا كان الاستنساخ قد اكتمل"
 
@@ -2368,6 +2435,7 @@ msgstr "كود"
 msgid "Code block"
 msgstr "كتلة كود"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Code Block"
 msgstr "كتلة كود"
@@ -2444,6 +2512,10 @@ msgstr "قسم قابل للطي بملخص قابل للنقر."
 #: src/components/settings/settings-fields.ts
 msgid "Color theme"
 msgstr "سمة الألوان"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Column options"
+msgstr "خيارات العمود"
 
 #: src/components/CommandPalette.tsx
 msgid "Command failed."
@@ -3779,6 +3851,10 @@ msgstr "حذف الكتلة"
 msgid "Delete code block"
 msgstr "حذف كتلة الكود"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete column"
+msgstr "حذف العمود"
+
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
 msgstr "حذف نهائي"
@@ -3786,6 +3862,10 @@ msgstr "حذف نهائي"
 #: src/components/BugReportHistory.tsx
 msgid "Delete report"
 msgstr "حذف التقرير"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete row"
+msgstr "حذف الصف"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Delete schema file {file}"
@@ -3802,6 +3882,10 @@ msgstr "حذف العناصر المحددة"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected table"
 msgstr "حذف الجدول المحدد"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete table"
+msgstr "حذف الجدول"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -4765,6 +4849,10 @@ msgstr "فشل تفعيل البحث الدلالي — {detail}"
 msgid "Failed to enable sync — {detail}"
 msgstr "فشل تفعيل المزامنة — {detail}"
 
+#: src/lib/transports/auth-query-transport.ts
+msgid "Failed to fetch repositories"
+msgstr "تعذر جلب المستودعات"
+
 #: src/components/FileTree.tsx
 msgid "Failed to import template"
 msgstr "فشل استيراد القالب"
@@ -4812,6 +4900,10 @@ msgstr "فشل تحميل الصفحات اليتيمة"
 #: src/components/LinksPanel.tsx
 msgid "Failed to load outgoing links"
 msgstr "فشل تحميل الروابط الصادرة"
+
+#: src/components/PageListContext.tsx
+msgid "Failed to load pages"
+msgstr "تعذر تحميل الصفحات"
 
 #: src/editor/components/Pdf.tsx
 msgid "Failed to load PDF"
@@ -5518,14 +5610,17 @@ msgstr "صعب الاستخدام"
 msgid "Having a look around…"
 msgstr "يجري إلقاء نظرة…"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
 msgstr "عنوان 1"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 2"
 msgstr "عنوان 2"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 3"
 msgstr "عنوان 3"
@@ -5552,6 +5647,7 @@ msgid "Headings"
 msgstr "العناوين"
 
 #: src/components/AutoSyncEnableWarning.tsx
+#: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "تنبيه"
 
@@ -5583,6 +5679,10 @@ msgstr "يساعد وكيل البرمجة لديك على التعرف على �
 #: src/components/FileTree.tsx
 msgid "Hidden “{basename}”"
 msgstr "أُخفي “{basename}”"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Hidden content goes here."
+msgstr "يوضع المحتوى المخفي هنا."
 
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -6004,9 +6104,25 @@ msgstr "أدرج مرجع حاشية مع بذرة تعريف مطابقة."
 msgid "Insert a markdown hard break."
 msgstr "أدرج فاصل سطر صريحًا في Markdown."
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column left"
+msgstr "إدراج عمود إلى اليسار"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column right"
+msgstr "إدراج عمود إلى اليمين"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Insert link"
 msgstr "إدراج رابط"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row above"
+msgstr "إدراج صف أعلاه"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row below"
+msgstr "إدراج صف أدناه"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -6174,6 +6290,14 @@ msgstr "إدخال غير صالح — اختر مجلدًا مختلفًا."
 #: src/components/PropertyPanel.tsx
 msgid "Invalid patch payload"
 msgstr "حمولة تصحيح غير صالحة"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response"
+msgstr "استجابة الخادم غير صالحة"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response shape"
+msgstr "بنية استجابة الخادم غير صالحة"
 
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
@@ -6634,6 +6758,18 @@ msgstr "أتِح قاعدة المعرفة هذه كمهارة Claude."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "اجعل هذا هو المصدر — ينتقل مجلد المهارة الحقيقي إلى هنا"
 
+#: src/lib/seed-client.ts
+msgid "Malformed apply response"
+msgstr "استجابة التطبيق مشوّهة"
+
+#: src/lib/seed-client.ts
+msgid "Malformed listPacks response"
+msgstr "استجابة listPacks مشوّهة"
+
+#: src/lib/seed-client.ts
+msgid "Malformed plan response"
+msgstr "استجابة الخطة مشوّهة"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -6899,6 +7035,7 @@ msgstr "انتقل إلى نتيجة البحث السابقة في المحرر
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
 msgid "Move to Trash"
 msgstr "النقل إلى المهملات"
 
@@ -6935,6 +7072,10 @@ msgstr "تم نقل {label} إلى جزء جديد على اليمين."
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "نقل قالبًا"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Moving"
+msgstr "جارٍ النقل"
 
 #: src/components/acp/working-status.ts
 msgid "Mulling…"
@@ -7541,6 +7682,11 @@ msgstr "لا يوجد لأي من هذه المشكلات إصلاح تلقائ�
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
 msgstr "بلا إجابة"
+
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+msgid "Not attached to desktop bridge"
+msgstr "غير متصل بجسر سطح المكتب"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Not available on this platform"
@@ -8269,6 +8415,7 @@ msgstr "أو استخدم حزمة بداية"
 msgid "Ordered list"
 msgstr "قائمة مرتّبة"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Ordered List"
 msgstr "قائمة مرتّبة"
@@ -8409,6 +8556,10 @@ msgstr "الجزء {0}"
 msgid "Paragraph"
 msgstr "فقرة"
 
+#: src/editor/utils/severity.ts
+msgid "parse error"
+msgstr "خطأ في التحليل"
+
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Parse failed"
 msgstr "فشل التحليل"
@@ -8536,6 +8687,10 @@ msgstr "يحذف <0>{targetGitPath}</0> وكل سجل git الخاص به نها
 msgid "Permission denied"
 msgstr "الإذن مرفوض"
 
+#: src/lib/acp/thread-event-model.ts
+msgid "Permission required"
+msgstr "الإذن مطلوب"
+
 #: src/components/AuthModal.tsx
 msgid "Personal access token"
 msgstr "رمز وصول شخصي"
@@ -8597,6 +8752,10 @@ msgstr "تثبيت التبويب"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
 msgstr "عادي"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Plain text"
+msgstr "نص عادي"
 
 #. placeholder {0}: plan.length
 #: src/components/acp/ThreadView.tsx
@@ -8922,6 +9081,7 @@ msgstr "إنهاء"
 msgid "Quit {appName}"
 msgstr "إنهاء {appName}"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr "اقتباس"
@@ -9300,6 +9460,10 @@ msgstr "تجري إعادة التسمية"
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
 msgstr "تغيّر إعادة التسمية الملف على القرص والمعرّف الذي يستخدمه الوكلاء لاختيار هذا القالب."
+
+#: src/editor/utils/severity.ts
+msgid "render error"
+msgstr "خطأ في العرض"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -9680,6 +9844,10 @@ msgstr "الدور"
 msgid "root"
 msgstr "الجذر"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Row options"
+msgstr "خيارات الصف"
+
 #: src/components/LintConfigEditor.tsx
 msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "تحرير القواعد متاح لإعداد markdownlint في جذر المشروع"
@@ -9719,6 +9887,10 @@ msgstr "تجري مراجعة المشروع"
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "المجلد نفسه للملف الحالي"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Sample image"
+msgstr "صورة نموذجية"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
@@ -10155,9 +10327,33 @@ msgstr "خطأ في الخادم: {status}"
 msgid "Server error: {status} {statusText}"
 msgstr "خطأ في الخادم: {status} {statusText}"
 
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed duplicate response."
+msgstr "أعاد الخادم استجابة نسخ مشوّهة."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed import response."
+msgstr "أعاد الخادم استجابة استيراد مشوّهة."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed response."
+msgstr "أعاد الخادم استجابة مشوّهة."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed upload response."
+msgstr "أعاد الخادم استجابة رفع مشوّهة."
+
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete folder response."
 msgstr "أعاد الخادم استجابة مجلد غير مكتملة."
+
+#: src/hooks/use-skill-targets.ts
+msgid "Server returned an incomplete skill-targets response."
+msgstr "أعاد الخادم استجابة وجهات المهارات غير مكتملة."
+
+#: src/hooks/use-skills.ts
+msgid "Server returned an incomplete skills response."
+msgstr "أعاد الخادم استجابة مهارات غير مكتملة."
 
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
@@ -10311,6 +10507,10 @@ msgstr "تتطلب مشاركة مستند مستودع GitHub. أنشئ واح�
 #: src/lib/share/run-share-action.ts
 msgid "Sharing supports GitHub remotes only."
 msgstr "لا تدعم المشاركة سوى المستودعات البعيدة على GitHub."
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Shell session"
+msgstr "جلسة Shell"
 
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Ship the editor with a"
@@ -11199,6 +11399,7 @@ msgstr "أخذ نسخة المستودع البعيد"
 msgid "Task list"
 msgstr "قائمة مهام"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "قائمة مهام"
@@ -11323,6 +11524,7 @@ msgid "Testing"
 msgstr "يجري الاختبار"
 
 #: src/components/PropertyWidgets.tsx
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 msgid "Text"
 msgstr "نص"
 
@@ -11530,6 +11732,10 @@ msgstr "مجلد المهارة نفسه — المصدر الذي تنسخ من
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder ({path}) — the source other locations copy or link from"
 msgstr "مجلد المهارة نفسه ({path}) — المصدر الذي تنسخ منه المواقع الأخرى أو ترتبط به"
+
+#: src/lib/skills-api.ts
+msgid "The skills list did not match its schema."
+msgstr "لا تطابق قائمة المهارات مخططها."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The source folder itself does not move."
@@ -12003,6 +12209,14 @@ msgstr "تبديل أدوات المطوّر"
 msgid "Toggle Full Screen"
 msgstr "تبديل ملء الشاشة"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header column"
+msgstr "تبديل عمود الرأس"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header row"
+msgstr "تبديل صف الرأس"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle heading levels 1 through 6."
 msgstr "بدّل مستويات العناوين من 1 إلى 6."
@@ -12062,6 +12276,10 @@ msgstr "بدّل تنسيق التسطير."
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "بطيء جدًا"
+
+#: src/lib/acp/thread-event-model.ts
+msgid "Tool call"
+msgstr "استدعاء أداة"
 
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
@@ -12247,10 +12465,18 @@ msgstr "هل تلغي تثبيت OpenKnowledge؟"
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr "أُلغي تثبيت «{0}» من {1}"
 
+#: src/editor/utils/severity.ts
+msgid "unknown"
+msgstr "غير معروف"
+
 #: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr "غير معروف"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "unknown build failure"
+msgstr "فشل غير معروف في البناء"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Unknown component: {componentName} — source editable below"
@@ -12265,7 +12491,11 @@ msgid "Unknown date"
 msgstr "تاريخ غير معروف"
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+#: src/lib/share/clone-controller.ts
 #: src/lib/transports/auth-transport.ts
+#: src/lib/transports/clone-transport.ts
 msgid "Unknown error"
 msgstr "خطأ غير معروف"
 
@@ -12873,6 +13103,10 @@ msgstr "يمكنك إرفاق ما يصل إلى {MAX_ATTACHMENTS} صور."
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "يمكنك تغيير هذا لاحقًا من <0>الإعدادات ← المزامنة</0>."
+
+#: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Trash."
+msgstr "يمكنك استعادة هذا الملف من المهملات."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "You cancelled loading \"{docName}\"."

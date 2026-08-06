@@ -474,6 +474,18 @@ msgstr "{count, plural, one {আরও # ক্রস-নথি অংশগ্�
 msgid "{count, plural, one {# more participant} other {# more participants}}"
 msgstr "{count, plural, one {আরও # অংশগ্রহণকারী} other {আরও # অংশগ্রহণকারী}}"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # directory and its contents?} other {Are you sure you want to delete the following # directories and their contents?}}"
+msgstr "{count, plural, one {আপনি কি নিশ্চিতভাবে নিচের # ফোল্ডার এবং তার বিষয়বস্তু মুছতে চান?} other {আপনি কি নিশ্চিতভাবে নিচের # ফোল্ডার এবং সেগুলির বিষয়বস্তু মুছতে চান?}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file?} other {Are you sure you want to delete the following # files?}}"
+msgstr "{count, plural, one {আপনি কি নিশ্চিতভাবে নিচের # ফাইলটি মুছতে চান?} other {আপনি কি নিশ্চিতভাবে নিচের # ফাইল মুছতে চান?}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
+msgstr "{count, plural, one {আপনি কি নিশ্চিতভাবে নিচের # ফাইল/ফোল্ডার এবং তার বিষয়বস্তু মুছতে চান?} other {আপনি কি নিশ্চিতভাবে নিচের # ফাইল/ফোল্ডার এবং সেগুলির বিষয়বস্তু মুছতে চান?}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, one {# সমস্যাটি আপনার AI এজেন্টের হাতে তুলে দেয়, যার কোনো স্বয়ংক্রিয় সমাধান নেই সেটিসহ।} other {সব # সমস্যা আপনার AI এজেন্টের হাতে তুলে দেয়, যেগুলোর কোনো স্বয়ংক্রিয় সমাধান নেই সেগুলোসহ।}}"
@@ -1365,6 +1377,18 @@ msgstr "AI টুল"
 msgid "AI tools & CLI"
 msgstr "AI টুল ও CLI"
 
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align center"
+msgstr "মাঝে সারিবদ্ধ করুন"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align left"
+msgstr "বাঁয়ে সারিবদ্ধ করুন"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align right"
+msgstr "ডানে সারিবদ্ধ করুন"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Aligned {editor} to the source (its bytes are backed up)"
 msgstr "{editor}-কে উৎসের সঙ্গে মেলানো হয়েছে (এর বাইটের ব্যাকআপ নেওয়া আছে)"
@@ -1523,6 +1547,14 @@ msgstr "অনুমোদিত — {optionName}"
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "আপনি কি নিশ্চিত যে এই ফাইলটিকে টেমপ্লেটে রূপান্তর করতে চান? মূল ফাইলটি মুছে ফেলা হবে। এই কাজ ফেরানো যাবে না।"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}' and its contents?"
+msgstr "আপনি কি নিশ্চিতভাবে '{name}' এবং তার বিষয়বস্তু মুছতে চান?"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}'?"
+msgstr "আপনি কি নিশ্চিতভাবে '{name}' মুছতে চান?"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "আপনি কি নিশ্চিত যে {folderName}/ এবং এর ভেতরের সব ফাইল মুছে ফেলতে চান? এই কাজ ফেরানো যাবে না।"
@@ -1534,6 +1566,14 @@ msgstr "আপনি কি নিশ্চিত যে {itemName} মুছে
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {targetCount} selected items? Folders and all files inside them will be deleted. This action cannot be undone."
 msgstr "আপনি কি নিশ্চিত যে নির্বাচিত {targetCount}টি আইটেম মুছে ফেলতে চান? ফোল্ডার ও তার ভেতরের সব ফাইল মুছে যাবে। এই কাজ ফেরানো যাবে না।"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected item?"
+msgstr "আপনি কি নিশ্চিতভাবে নির্বাচিত আইটেমটি মুছতে চান?"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected items?"
+msgstr "আপনি কি নিশ্চিতভাবে নির্বাচিত আইটেমগুলি মুছতে চান?"
 
 #: src/components/BottomComposer.tsx
 msgid "Ask"
@@ -1920,6 +1960,7 @@ msgstr "অন্তর্নির্মিত (শুধু পড়ার �
 msgid "Bullet list"
 msgstr "বুলেট তালিকা"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Bullet List"
 msgstr "বুলেট তালিকা"
@@ -1939,6 +1980,10 @@ msgstr "ট্যাগ অনুসারে"
 #: src/components/settings/SearchSection.tsx
 msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
 msgstr "ক্যাশ করা এমবেডিং যে এন্ডপয়েন্ট ও মডেল সেগুলো তৈরি করেছে তারই, তাই এটি সূচি একেবারে গোড়া থেকে গড়ে।"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Callouts draw attention to key information."
+msgstr "কলআউট মূল তথ্যের দিকে মনোযোগ আকর্ষণ করে।"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
@@ -2225,6 +2270,10 @@ msgstr "কোনো এজেন্টের সেশন দেখতে উ�
 msgid "Click to add and fill them in"
 msgstr "এগুলি যোগ করে পূরণ করতে ক্লিক করুন"
 
+#: src/editor/slash-command/component-items.tsx
+msgid "Click to expand"
+msgstr "প্রসারিত করতে ক্লিক করুন"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr "{label}-এ ইনস্টল করতে ক্লিক করুন"
@@ -2237,13 +2286,30 @@ msgstr "ক্লোন করুন"
 msgid "Clone complete — opening project"
 msgstr "ক্লোন সম্পূর্ণ — প্রকল্প খোলা হচ্ছে"
 
+#: src/lib/share/clone-controller.ts
+msgid "Clone ended unexpectedly."
+msgstr "ক্লোন অপ্রত্যাশিতভাবে শেষ হয়েছে।"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — check the URL and try again ({status})"
+msgstr "ক্লোন ব্যর্থ — URL যাচাই করে আবার চেষ্টা করুন ({status})"
+
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone failed — connection error"
 msgstr "ক্লোন ব্যর্থ — সংযোগ ত্রুটি"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — empty response body"
+msgstr "ক্লোন ব্যর্থ — রেসপন্স বডি খালি"
 
 #: src/components/CloneDialog.tsx
 msgid "Clone failed: {cloneError}"
 msgstr "ক্লোন ব্যর্থ: {cloneError}"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed: {title}"
+msgstr "ক্লোন ব্যর্থ: {title}"
 
 #: src/components/CloneDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -2255,6 +2321,7 @@ msgid "Clone happens in the Project Navigator. Reclick the share link there."
 msgstr "ক্লোন Project Navigator-এ হয়। শেয়ার লিংকে সেখানেই আবার ক্লিক করুন।"
 
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone stream ended unexpectedly — check if the clone completed"
 msgstr "ক্লোন স্ট্রিম অপ্রত্যাশিতভাবে শেষ হয়েছে — ক্লোন সম্পূর্ণ হয়েছে কি না দেখুন"
 
@@ -2364,6 +2431,7 @@ msgstr "কোড"
 msgid "Code block"
 msgstr "কোড ব্লক"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Code Block"
 msgstr "কোড ব্লক"
@@ -2440,6 +2508,10 @@ msgstr "ক্লিকযোগ্য সারাংশসহ গুটিয�
 #: src/components/settings/settings-fields.ts
 msgid "Color theme"
 msgstr "রঙের থিম"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Column options"
+msgstr "কলাম বিকল্প"
 
 #: src/components/CommandPalette.tsx
 msgid "Command failed."
@@ -3775,6 +3847,10 @@ msgstr "ব্লক মুছুন"
 msgid "Delete code block"
 msgstr "কোড ব্লক মুছুন"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete column"
+msgstr "কলাম মুছুন"
+
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
 msgstr "স্থায়ীভাবে মুছুন"
@@ -3782,6 +3858,10 @@ msgstr "স্থায়ীভাবে মুছুন"
 #: src/components/BugReportHistory.tsx
 msgid "Delete report"
 msgstr "রিপোর্ট মুছুন"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete row"
+msgstr "সারি মুছুন"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Delete schema file {file}"
@@ -3798,6 +3878,10 @@ msgstr "নির্বাচিত আইটেম মুছুন"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected table"
 msgstr "নির্বাচিত টেবিল মুছুন"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete table"
+msgstr "টেবিল মুছুন"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -4761,6 +4845,10 @@ msgstr "অর্থভিত্তিক অনুসন্ধান চাল�
 msgid "Failed to enable sync — {detail}"
 msgstr "সিঙ্ক চালু করতে ব্যর্থ — {detail}"
 
+#: src/lib/transports/auth-query-transport.ts
+msgid "Failed to fetch repositories"
+msgstr "রিপোজিটরি আনা যায়নি"
+
 #: src/components/FileTree.tsx
 msgid "Failed to import template"
 msgstr "টেমপ্লেট আমদানি করতে ব্যর্থ"
@@ -4808,6 +4896,10 @@ msgstr "অনাথ পাতা লোড করতে ব্যর্থ"
 #: src/components/LinksPanel.tsx
 msgid "Failed to load outgoing links"
 msgstr "বহির্গামী লিংক লোড করতে ব্যর্থ"
+
+#: src/components/PageListContext.tsx
+msgid "Failed to load pages"
+msgstr "পৃষ্ঠা লোড করা যায়নি"
 
 #: src/editor/components/Pdf.tsx
 msgid "Failed to load PDF"
@@ -5514,14 +5606,17 @@ msgstr "ব্যবহার করা কঠিন"
 msgid "Having a look around…"
 msgstr "চারপাশে দেখা হচ্ছে…"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
 msgstr "শিরোনাম ১"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 2"
 msgstr "শিরোনাম ২"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 3"
 msgstr "শিরোনাম ৩"
@@ -5548,6 +5643,7 @@ msgid "Headings"
 msgstr "শিরোনাম"
 
 #: src/components/AutoSyncEnableWarning.tsx
+#: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "খেয়াল রাখুন"
 
@@ -5579,6 +5675,10 @@ msgstr "আপনার কোডিং এজেন্টকে OpenKnowledge �
 #: src/components/FileTree.tsx
 msgid "Hidden “{basename}”"
 msgstr "লুকানো “{basename}”"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Hidden content goes here."
+msgstr "লুকানো বিষয়বস্তু এখানে থাকে।"
 
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -6000,9 +6100,25 @@ msgstr "একটি পাদটীকা রেফারেন্স + মি�
 msgid "Insert a markdown hard break."
 msgstr "একটি markdown কঠিন বিরতি ঢোকান।"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column left"
+msgstr "বাঁয়ে কলাম যোগ করুন"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column right"
+msgstr "ডানে কলাম যোগ করুন"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Insert link"
 msgstr "লিংক ঢোকান"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row above"
+msgstr "উপরে সারি যোগ করুন"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row below"
+msgstr "নিচে সারি যোগ করুন"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -6170,6 +6286,14 @@ msgstr "অবৈধ ইনপুট — অন্য ফোল্ডার ব�
 #: src/components/PropertyPanel.tsx
 msgid "Invalid patch payload"
 msgstr "অবৈধ প্যাচ পেলোড"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response"
+msgstr "সার্ভারের প্রতিক্রিয়া অবৈধ"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response shape"
+msgstr "সার্ভারের প্রতিক্রিয়ার গঠন অবৈধ"
 
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
@@ -6630,6 +6754,18 @@ msgstr "এই জ্ঞানভাণ্ডারটি একটি Claude Sk
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "এটিকে উৎস বানান — স্কিলের আসল ফোল্ডার এখানে সরে আসে"
 
+#: src/lib/seed-client.ts
+msgid "Malformed apply response"
+msgstr "অ্যাপ্লাই প্রতিক্রিয়ার গঠন ত্রুটিপূর্ণ"
+
+#: src/lib/seed-client.ts
+msgid "Malformed listPacks response"
+msgstr "listPacks প্রতিক্রিয়ার গঠন ত্রুটিপূর্ণ"
+
+#: src/lib/seed-client.ts
+msgid "Malformed plan response"
+msgstr "প্ল্যান প্রতিক্রিয়ার গঠন ত্রুটিপূর্ণ"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -6895,6 +7031,7 @@ msgstr "দৃশ্য-সম্পাদকের আগের খোঁজা
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
 msgid "Move to Trash"
 msgstr "ট্র্যাশে পাঠান"
 
@@ -6931,6 +7068,10 @@ msgstr "{label}-কে ডান পাশের নতুন প্যানে
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "টেমপ্লেট সরানো হয়েছে"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Moving"
+msgstr "সরানো হচ্ছে"
 
 #: src/components/acp/working-status.ts
 msgid "Mulling…"
@@ -7537,6 +7678,11 @@ msgstr "এই সমস্যাগুলোর কোনোটিরই স্
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
 msgstr "উত্তর দেওয়া হয়নি"
+
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+msgid "Not attached to desktop bridge"
+msgstr "ডেস্কটপ ব্রিজের সাথে সংযুক্ত নয়"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Not available on this platform"
@@ -8265,6 +8411,7 @@ msgstr "নয়তো একটি স্টার্টার প্যাক
 msgid "Ordered list"
 msgstr "ক্রমিক তালিকা"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Ordered List"
 msgstr "ক্রমিক তালিকা"
@@ -8405,6 +8552,10 @@ msgstr "প্যান {0}"
 msgid "Paragraph"
 msgstr "অনুচ্ছেদ"
 
+#: src/editor/utils/severity.ts
+msgid "parse error"
+msgstr "পার্স ত্রুটি"
+
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Parse failed"
 msgstr "পার্স ব্যর্থ"
@@ -8532,6 +8683,10 @@ msgstr "<0>{targetGitPath}</0> এবং এর পুরো git ইতিহা
 msgid "Permission denied"
 msgstr "অনুমতি নেই"
 
+#: src/lib/acp/thread-event-model.ts
+msgid "Permission required"
+msgstr "অনুমতি প্রয়োজন"
+
 #: src/components/AuthModal.tsx
 msgid "Personal access token"
 msgstr "ব্যক্তিগত প্রবেশ টোকেন"
@@ -8593,6 +8748,10 @@ msgstr "ট্যাব পিন করুন"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
 msgstr "সাদামাটা"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Plain text"
+msgstr "সাধারণ টেক্সট"
 
 #. placeholder {0}: plan.length
 #: src/components/acp/ThreadView.tsx
@@ -8918,6 +9077,7 @@ msgstr "প্রস্থান"
 msgid "Quit {appName}"
 msgstr "{appName} থেকে প্রস্থান"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr "উদ্ধৃতি"
@@ -9296,6 +9456,10 @@ msgstr "নাম বদলানো হচ্ছে"
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
 msgstr "নাম বদলালে ডিস্কের ফাইল এবং এজেন্টরা এই টেমপ্লেটটি বাছতে যে id ব্যবহার করে দুটোই বদলে যায়।"
+
+#: src/editor/utils/severity.ts
+msgid "render error"
+msgstr "রেন্ডার ত্রুটি"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -9676,6 +9840,10 @@ msgstr "ভূমিকা"
 msgid "root"
 msgstr "রুট"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Row options"
+msgstr "সারির বিকল্প"
+
 #: src/components/LintConfigEditor.tsx
 msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "নিয়ম সম্পাদনা প্রকল্পের রুট markdownlint কনফিগের জন্য পাওয়া যায়"
@@ -9715,6 +9883,10 @@ msgstr "প্রকল্প নিরীক্ষা চালানো হচ
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "বর্তমান ফাইলের একই ফোল্ডার"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Sample image"
+msgstr "নমুনা ছবি"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
@@ -10151,9 +10323,33 @@ msgstr "সার্ভার ত্রুটি: {status}"
 msgid "Server error: {status} {statusText}"
 msgstr "সার্ভার ত্রুটি: {status} {statusText}"
 
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed duplicate response."
+msgstr "সার্ভার একটি ত্রুটিপূর্ণ গঠনের ডুপ্লিকেট প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed import response."
+msgstr "সার্ভার একটি ত্রুটিপূর্ণ গঠনের ইমপোর্ট প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed response."
+msgstr "সার্ভার একটি ত্রুটিপূর্ণ গঠনের প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed upload response."
+msgstr "সার্ভার একটি ত্রুটিপূর্ণ গঠনের আপলোড প্রতিক্রিয়া ফেরত দিয়েছে।"
+
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete folder response."
 msgstr "সার্ভার অসম্পূর্ণ ফোল্ডার প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/hooks/use-skill-targets.ts
+msgid "Server returned an incomplete skill-targets response."
+msgstr "সার্ভার একটি অসম্পূর্ণ স্কিল-টার্গেট প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/hooks/use-skills.ts
+msgid "Server returned an incomplete skills response."
+msgstr "সার্ভার একটি অসম্পূর্ণ স্কিল প্রতিক্রিয়া ফেরত দিয়েছে।"
 
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
@@ -10307,6 +10503,10 @@ msgstr "নথি ভাগ করতে একটি GitHub রিপোজি�
 #: src/lib/share/run-share-action.ts
 msgid "Sharing supports GitHub remotes only."
 msgstr "শেয়ারিং শুধু GitHub রিমোট সমর্থন করে।"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Shell session"
+msgstr "Shell সেশন"
 
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Ship the editor with a"
@@ -11195,6 +11395,7 @@ msgstr "আপস্ট্রিমেরটি নিন"
 msgid "Task list"
 msgstr "কাজের তালিকা"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "কাজের তালিকা"
@@ -11319,6 +11520,7 @@ msgid "Testing"
 msgstr "পরীক্ষা করা হচ্ছে"
 
 #: src/components/PropertyWidgets.tsx
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 msgid "Text"
 msgstr "লেখা"
 
@@ -11526,6 +11728,10 @@ msgstr "স্কিলের নিজের ফোল্ডার — যে �
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder ({path}) — the source other locations copy or link from"
 msgstr "স্কিলের নিজের ফোল্ডার ({path}) — যে উৎস থেকে অন্য জায়গাগুলো অনুলিপি করে বা লিংক করে"
+
+#: src/lib/skills-api.ts
+msgid "The skills list did not match its schema."
+msgstr "স্কিল তালিকা তার স্কিমার সাথে মেলেনি।"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The source folder itself does not move."
@@ -11999,6 +12205,14 @@ msgstr "ডেভেলপার টুল চালু বা বন্ধ ক�
 msgid "Toggle Full Screen"
 msgstr "পূর্ণ পর্দা চালু বা বন্ধ করুন"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header column"
+msgstr "হেডার কলাম টগল করুন"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header row"
+msgstr "হেডার সারি টগল করুন"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle heading levels 1 through 6."
 msgstr "শিরোনামের স্তর ১ থেকে ৬ চালু বা বন্ধ করুন।"
@@ -12058,6 +12272,10 @@ msgstr "নিম্নরেখার বিন্যাস চালু বা
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "খুব ধীর"
+
+#: src/lib/acp/thread-event-model.ts
+msgid "Tool call"
+msgstr "টুল কল"
 
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
@@ -12243,10 +12461,18 @@ msgstr "OpenKnowledge সরাবেন?"
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr "\"{0}\"-কে {1} থেকে সরানো হয়েছে"
 
+#: src/editor/utils/severity.ts
+msgid "unknown"
+msgstr "অজানা"
+
 #: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr "অজানা"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "unknown build failure"
+msgstr "অজানা বিল্ড ব্যর্থতা"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Unknown component: {componentName} — source editable below"
@@ -12261,7 +12487,11 @@ msgid "Unknown date"
 msgstr "অজানা তারিখ"
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+#: src/lib/share/clone-controller.ts
 #: src/lib/transports/auth-transport.ts
+#: src/lib/transports/clone-transport.ts
 msgid "Unknown error"
 msgstr "অজানা ত্রুটি"
 
@@ -12869,6 +13099,10 @@ msgstr "আপনি সর্বোচ্চ {MAX_ATTACHMENTS}টি ছবি 
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "আপনি এটি পরে <0>Settings → Sync</0>-এ বদলাতে পারেন।"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Trash."
+msgstr "আপনি এই ফাইলটি ট্র্যাশ থেকে পুনরুদ্ধার করতে পারেন।"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "You cancelled loading \"{docName}\"."

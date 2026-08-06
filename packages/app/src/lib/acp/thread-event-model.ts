@@ -14,6 +14,11 @@
  *
  * Kept pure (no React) so it is unit-testable and the components stay thin
  * renderers over this model.
+ *
+ * The two title fallbacks below resolve at fold time rather than at render,
+ * because `title` is a plain string the follow-file matcher also reads. The
+ * cost is that rows folded before a language switch keep the language they
+ * were folded in — a historical transcript row, which the next fold corrects.
  */
 
 import type {
@@ -22,6 +27,7 @@ import type {
   ThreadEvent,
   ThreadFailureDetail,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { t } from '@lingui/core/macro';
 
 interface RenderedMessage {
   kind: 'message';
@@ -292,7 +298,7 @@ export class ThreadRenderModelBuilder {
         const permission: RenderedPermission = {
           kind: 'permission',
           requestId: event.requestId,
-          title: event.toolCall.title ?? 'Permission required',
+          title: event.toolCall.title ?? t`Permission required`,
           toolKind: event.toolCall.kind ?? 'other',
           options: event.options,
           resolved: null,
@@ -460,7 +466,7 @@ export class ThreadRenderModelBuilder {
         const call: RenderedToolCall = {
           kind: 'tool_call',
           toolCallId: update.toolCallId,
-          title: update.title ?? 'Tool call',
+          title: update.title ?? t`Tool call`,
           toolKind: update.kind ?? 'other',
           status: (update.status as RenderedToolCall['status']) ?? 'pending',
           diffs: [],

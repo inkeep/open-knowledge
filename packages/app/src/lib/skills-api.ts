@@ -12,6 +12,7 @@ import type {
   SkillsSearchSuccess,
 } from '@inkeep/open-knowledge-core';
 import { SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
 
@@ -126,7 +127,7 @@ export async function listSkills(
   const parsed = SkillsListSuccessSchema.safeParse(body);
   return parsed.success
     ? { ok: true, skills: parsed.data.skills }
-    : { ok: false, error: 'The skills list did not match its schema.' };
+    : { ok: false, error: t`The skills list did not match its schema.` };
 }
 
 /**
@@ -226,7 +227,7 @@ export async function editExternalSkill(input: {
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const body = (await res.json().catch(() => null)) as { docName?: unknown } | null;
     if (!body || typeof body.docName !== 'string') {
-      return { ok: false, error: 'Server returned a malformed response.' };
+      return { ok: false, error: t`Server returned a malformed response.` };
     }
     return { ok: true, docName: body.docName };
   } catch (err) {
@@ -336,7 +337,7 @@ export async function importSkill(input: {
     // payload (e.g. a proxy returned HTML on a 200) is a failure, not a success
     // we paper over by echoing the raw source as the skill name.
     if (!payload || typeof payload.name !== 'string') {
-      return { ok: false, error: 'Server returned a malformed import response.' };
+      return { ok: false, error: t`Server returned a malformed import response.` };
     }
     emitSkillsChanged();
     return {
@@ -378,7 +379,7 @@ export async function importSkillsBulk(input: {
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const payload = (await res.json().catch(() => null)) as SkillsImportBulkSuccess | null;
     if (!payload || !Array.isArray(payload.results)) {
-      return { ok: false, error: 'Server returned a malformed import response.' };
+      return { ok: false, error: t`Server returned a malformed import response.` };
     }
     emitSkillsChanged();
     return { ok: true, ...payload };
@@ -418,7 +419,7 @@ export async function uploadSkill(
       warnings?: string[];
     } | null;
     if (!payload || typeof payload.name !== 'string') {
-      return { ok: false, error: 'Server returned a malformed upload response.' };
+      return { ok: false, error: t`Server returned a malformed upload response.` };
     }
     emitSkillsChanged();
     return {
@@ -469,7 +470,7 @@ export async function duplicateSkill(input: {
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const payload = (await res.json().catch(() => null)) as { name?: unknown } | null;
     if (typeof payload?.name !== 'string') {
-      return { ok: false, error: 'Server returned a malformed duplicate response.' };
+      return { ok: false, error: t`Server returned a malformed duplicate response.` };
     }
     emitSkillsChanged();
     return { ok: true, name: payload.name };

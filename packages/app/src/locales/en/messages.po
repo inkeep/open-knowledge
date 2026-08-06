@@ -474,6 +474,18 @@ msgstr "{count, plural, one {# more cross-doc participant} other {# more cross-d
 msgid "{count, plural, one {# more participant} other {# more participants}}"
 msgstr "{count, plural, one {# more participant} other {# more participants}}"
 
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # directory and its contents?} other {Are you sure you want to delete the following # directories and their contents?}}"
+msgstr "{count, plural, one {Are you sure you want to delete the following # directory and its contents?} other {Are you sure you want to delete the following # directories and their contents?}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file?} other {Are you sure you want to delete the following # files?}}"
+msgstr "{count, plural, one {Are you sure you want to delete the following # file?} other {Are you sure you want to delete the following # files?}}"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
+msgstr "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
@@ -1369,6 +1381,18 @@ msgstr "AI tools"
 msgid "AI tools & CLI"
 msgstr "AI tools & CLI"
 
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align center"
+msgstr "Align center"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align left"
+msgstr "Align left"
+
+#: src/editor/bubble-menu/ImageAlignButtons.tsx
+msgid "Align right"
+msgstr "Align right"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Aligned {editor} to the source (its bytes are backed up)"
 msgstr "Aligned {editor} to the source (its bytes are backed up)"
@@ -1527,6 +1551,14 @@ msgstr "Approved — {optionName}"
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}' and its contents?"
+msgstr "Are you sure you want to delete '{name}' and its contents?"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete '{name}'?"
+msgstr "Are you sure you want to delete '{name}'?"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
 msgstr "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
@@ -1538,6 +1570,14 @@ msgstr "Are you sure you want to delete {itemName}? This action cannot be undone
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {targetCount} selected items? Folders and all files inside them will be deleted. This action cannot be undone."
 msgstr "Are you sure you want to delete {targetCount} selected items? Folders and all files inside them will be deleted. This action cannot be undone."
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected item?"
+msgstr "Are you sure you want to delete the selected item?"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Are you sure you want to delete the selected items?"
+msgstr "Are you sure you want to delete the selected items?"
 
 #: src/components/BottomComposer.tsx
 msgid "Ask"
@@ -1924,6 +1964,7 @@ msgstr "Built-in (read-only)"
 msgid "Bullet list"
 msgstr "Bullet list"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Bullet List"
 msgstr "Bullet List"
@@ -1943,6 +1984,10 @@ msgstr "By tag"
 #: src/components/settings/SearchSection.tsx
 msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
 msgstr "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Callouts draw attention to key information."
+msgstr "Callouts draw attention to key information."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
@@ -2229,6 +2274,10 @@ msgstr "Click an agent's avatar in the presence bar to view their session."
 msgid "Click to add and fill them in"
 msgstr "Click to add and fill them in"
 
+#: src/editor/slash-command/component-items.tsx
+msgid "Click to expand"
+msgstr "Click to expand"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr "Click to install in {label}"
@@ -2241,13 +2290,30 @@ msgstr "Clone"
 msgid "Clone complete — opening project"
 msgstr "Clone complete — opening project"
 
+#: src/lib/share/clone-controller.ts
+msgid "Clone ended unexpectedly."
+msgstr "Clone ended unexpectedly."
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — check the URL and try again ({status})"
+msgstr "Clone failed — check the URL and try again ({status})"
+
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone failed — connection error"
 msgstr "Clone failed — connection error"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed — empty response body"
+msgstr "Clone failed — empty response body"
 
 #: src/components/CloneDialog.tsx
 msgid "Clone failed: {cloneError}"
 msgstr "Clone failed: {cloneError}"
+
+#: src/lib/transports/clone-transport.ts
+msgid "Clone failed: {title}"
+msgstr "Clone failed: {title}"
 
 #: src/components/CloneDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -2259,6 +2325,7 @@ msgid "Clone happens in the Project Navigator. Reclick the share link there."
 msgstr "Clone happens in the Project Navigator. Reclick the share link there."
 
 #: src/components/CloneDialog.tsx
+#: src/lib/transports/clone-transport.ts
 msgid "Clone stream ended unexpectedly — check if the clone completed"
 msgstr "Clone stream ended unexpectedly — check if the clone completed"
 
@@ -2368,6 +2435,7 @@ msgstr "Code"
 msgid "Code block"
 msgstr "Code block"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Code Block"
 msgstr "Code Block"
@@ -2444,6 +2512,10 @@ msgstr "Collapsible section with a clickable summary."
 #: src/components/settings/settings-fields.ts
 msgid "Color theme"
 msgstr "Color theme"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Column options"
+msgstr "Column options"
 
 #: src/components/CommandPalette.tsx
 msgid "Command failed."
@@ -3779,6 +3851,10 @@ msgstr "Delete block"
 msgid "Delete code block"
 msgstr "Delete code block"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete column"
+msgstr "Delete column"
+
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
 msgstr "Delete Permanently"
@@ -3786,6 +3862,10 @@ msgstr "Delete Permanently"
 #: src/components/BugReportHistory.tsx
 msgid "Delete report"
 msgstr "Delete report"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete row"
+msgstr "Delete row"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Delete schema file {file}"
@@ -3802,6 +3882,10 @@ msgstr "Delete selected items"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected table"
 msgstr "Delete selected table"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Delete table"
+msgstr "Delete table"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -4765,6 +4849,10 @@ msgstr "Failed to enable semantic search — {detail}"
 msgid "Failed to enable sync — {detail}"
 msgstr "Failed to enable sync — {detail}"
 
+#: src/lib/transports/auth-query-transport.ts
+msgid "Failed to fetch repositories"
+msgstr "Failed to fetch repositories"
+
 #: src/components/FileTree.tsx
 msgid "Failed to import template"
 msgstr "Failed to import template"
@@ -4812,6 +4900,10 @@ msgstr "Failed to load orphan pages"
 #: src/components/LinksPanel.tsx
 msgid "Failed to load outgoing links"
 msgstr "Failed to load outgoing links"
+
+#: src/components/PageListContext.tsx
+msgid "Failed to load pages"
+msgstr "Failed to load pages"
 
 #: src/editor/components/Pdf.tsx
 msgid "Failed to load PDF"
@@ -5518,14 +5610,17 @@ msgstr "Hard to use"
 msgid "Having a look around…"
 msgstr "Having a look around…"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
 msgstr "Heading 1"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 2"
 msgstr "Heading 2"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Heading 3"
 msgstr "Heading 3"
@@ -5552,6 +5647,7 @@ msgid "Headings"
 msgstr "Headings"
 
 #: src/components/AutoSyncEnableWarning.tsx
+#: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "Heads up"
 
@@ -5583,6 +5679,10 @@ msgstr "Helps your coding agent recognize OpenKnowledge projects and route reads
 #: src/components/FileTree.tsx
 msgid "Hidden “{basename}”"
 msgstr "Hidden “{basename}”"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Hidden content goes here."
+msgstr "Hidden content goes here."
 
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -6004,9 +6104,25 @@ msgstr "Insert a footnote reference + matching definition stub."
 msgid "Insert a markdown hard break."
 msgstr "Insert a markdown hard break."
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column left"
+msgstr "Insert column left"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert column right"
+msgstr "Insert column right"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Insert link"
 msgstr "Insert link"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row above"
+msgstr "Insert row above"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Insert row below"
+msgstr "Insert row below"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
@@ -6174,6 +6290,14 @@ msgstr "Invalid input — pick a different folder."
 #: src/components/PropertyPanel.tsx
 msgid "Invalid patch payload"
 msgstr "Invalid patch payload"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response"
+msgstr "Invalid server response"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "Invalid server response shape"
+msgstr "Invalid server response shape"
 
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
@@ -6634,6 +6758,18 @@ msgstr "Make this knowledge base available as a Claude Skill."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "Make this the source — the skill's real folder moves here"
 
+#: src/lib/seed-client.ts
+msgid "Malformed apply response"
+msgstr "Malformed apply response"
+
+#: src/lib/seed-client.ts
+msgid "Malformed listPacks response"
+msgstr "Malformed listPacks response"
+
+#: src/lib/seed-client.ts
+msgid "Malformed plan response"
+msgstr "Malformed plan response"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -6899,6 +7035,7 @@ msgstr "Move to the previous visual-editor find result."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
 msgid "Move to Trash"
 msgstr "Move to Trash"
 
@@ -6935,6 +7072,10 @@ msgstr "Moved {label} to a new pane on the right."
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "moved template"
+
+#: src/components/file-tree-trash-copy.ts
+msgid "Moving"
+msgstr "Moving"
 
 #: src/components/acp/working-status.ts
 msgid "Mulling…"
@@ -7541,6 +7682,11 @@ msgstr "None of these problems have an automatic fix. Try Fix all with AI."
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
 msgstr "Not answered"
+
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+msgid "Not attached to desktop bridge"
+msgstr "Not attached to desktop bridge"
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Not available on this platform"
@@ -8269,6 +8415,7 @@ msgstr "Or use a starter pack"
 msgid "Ordered list"
 msgstr "Ordered list"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Ordered List"
 msgstr "Ordered List"
@@ -8409,6 +8556,10 @@ msgstr "pane {0}"
 msgid "Paragraph"
 msgstr "Paragraph"
 
+#: src/editor/utils/severity.ts
+msgid "parse error"
+msgstr "parse error"
+
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Parse failed"
 msgstr "Parse failed"
@@ -8536,6 +8687,10 @@ msgstr "Permanently deletes <0>{targetGitPath}</0> and all its git history. Work
 msgid "Permission denied"
 msgstr "Permission denied"
 
+#: src/lib/acp/thread-event-model.ts
+msgid "Permission required"
+msgstr "Permission required"
+
 #: src/components/AuthModal.tsx
 msgid "Personal access token"
 msgstr "Personal access token"
@@ -8597,6 +8752,10 @@ msgstr "Pin tab"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
 msgstr "Plain"
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Plain text"
+msgstr "Plain text"
 
 #. placeholder {0}: plan.length
 #: src/components/acp/ThreadView.tsx
@@ -8922,6 +9081,7 @@ msgstr "Quit"
 msgid "Quit {appName}"
 msgstr "Quit {appName}"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr "Quote"
@@ -9300,6 +9460,10 @@ msgstr "Renaming"
 #: src/components/TemplateForm.tsx
 msgid "Renaming changes the file on disk and the id agents use to pick this template."
 msgstr "Renaming changes the file on disk and the id agents use to pick this template."
+
+#: src/editor/utils/severity.ts
+msgid "render error"
+msgstr "render error"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -9680,6 +9844,10 @@ msgstr "Role"
 msgid "root"
 msgstr "root"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Row options"
+msgstr "Row options"
+
 #: src/components/LintConfigEditor.tsx
 msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "Rule editing is available for the project's root markdownlint config"
@@ -9719,6 +9887,10 @@ msgstr "Running project audit"
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "Same folder as current file"
+
+#: src/editor/slash-command/component-items.tsx
+msgid "Sample image"
+msgstr "Sample image"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
@@ -10155,9 +10327,33 @@ msgstr "Server error: {status}"
 msgid "Server error: {status} {statusText}"
 msgstr "Server error: {status} {statusText}"
 
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed duplicate response."
+msgstr "Server returned a malformed duplicate response."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed import response."
+msgstr "Server returned a malformed import response."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed response."
+msgstr "Server returned a malformed response."
+
+#: src/lib/skills-api.ts
+msgid "Server returned a malformed upload response."
+msgstr "Server returned a malformed upload response."
+
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete folder response."
 msgstr "Server returned an incomplete folder response."
+
+#: src/hooks/use-skill-targets.ts
+msgid "Server returned an incomplete skill-targets response."
+msgstr "Server returned an incomplete skill-targets response."
+
+#: src/hooks/use-skills.ts
+msgid "Server returned an incomplete skills response."
+msgstr "Server returned an incomplete skills response."
 
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
@@ -10311,6 +10507,10 @@ msgstr "Sharing a doc needs a GitHub repository. Create one for this project."
 #: src/lib/share/run-share-action.ts
 msgid "Sharing supports GitHub remotes only."
 msgstr "Sharing supports GitHub remotes only."
+
+#: src/editor/extensions/code-block-languages.ts
+msgid "Shell session"
+msgstr "Shell session"
 
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Ship the editor with a"
@@ -11199,6 +11399,7 @@ msgstr "Take upstream"
 msgid "Task list"
 msgstr "Task list"
 
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "Task List"
@@ -11323,6 +11524,7 @@ msgid "Testing"
 msgstr "Testing"
 
 #: src/components/PropertyWidgets.tsx
+#: src/editor/bubble-menu/BlockTypeSelector.tsx
 msgid "Text"
 msgstr "Text"
 
@@ -11530,6 +11732,10 @@ msgstr "The skill's own folder — the source other locations copy or link from"
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder ({path}) — the source other locations copy or link from"
 msgstr "The skill's own folder ({path}) — the source other locations copy or link from"
+
+#: src/lib/skills-api.ts
+msgid "The skills list did not match its schema."
+msgstr "The skills list did not match its schema."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The source folder itself does not move."
@@ -12003,6 +12209,14 @@ msgstr "Toggle Developer Tools"
 msgid "Toggle Full Screen"
 msgstr "Toggle Full Screen"
 
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header column"
+msgstr "Toggle header column"
+
+#: src/editor/table-controls/TableCellHandles.tsx
+msgid "Toggle header row"
+msgstr "Toggle header row"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle heading levels 1 through 6."
 msgstr "Toggle heading levels 1 through 6."
@@ -12062,6 +12276,10 @@ msgstr "Toggle underline formatting."
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "Too slow"
+
+#: src/lib/acp/thread-event-model.ts
+msgid "Tool call"
+msgstr "Tool call"
 
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
@@ -12247,10 +12465,18 @@ msgstr "Uninstall OpenKnowledge?"
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr "Uninstalled \"{0}\" from {1}"
 
+#: src/editor/utils/severity.ts
+msgid "unknown"
+msgstr "unknown"
+
 #: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr "Unknown"
+
+#: src/lib/handoff/skill-installer.ts
+msgid "unknown build failure"
+msgstr "unknown build failure"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Unknown component: {componentName} — source editable below"
@@ -12265,7 +12491,11 @@ msgid "Unknown date"
 msgstr "Unknown date"
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/consent-store.ts
+#: src/lib/mcp-consent-store.ts
+#: src/lib/share/clone-controller.ts
 #: src/lib/transports/auth-transport.ts
+#: src/lib/transports/clone-transport.ts
 msgid "Unknown error"
 msgstr "Unknown error"
 
@@ -12873,6 +13103,10 @@ msgstr "You can attach up to {MAX_ATTACHMENTS} images."
 #: src/components/AutoSyncOnboardingDialog.tsx
 msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "You can change this later in <0>Settings → Sync</0>."
+
+#: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Trash."
+msgstr "You can restore this file from the Trash."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "You cancelled loading \"{docName}\"."

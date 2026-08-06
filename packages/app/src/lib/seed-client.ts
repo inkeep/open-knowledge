@@ -1,4 +1,5 @@
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import type {
   OkPackId,
   OkScaffoldApplyResult,
@@ -102,7 +103,7 @@ export function seedClient(): SeedClientShape {
       }
       const body = (await res.json().catch(() => null)) as { plan?: OkScaffoldPlan } | null;
       if (!body?.plan) {
-        return { ok: false, error: { kind: 'internal', message: 'Malformed plan response' } };
+        return { ok: false, error: { kind: 'internal', message: t`Malformed plan response` } };
       }
       return { ok: true, plan: body.plan };
     },
@@ -122,7 +123,7 @@ export function seedClient(): SeedClientShape {
         result?: OkScaffoldApplyResult;
       } | null;
       if (!body?.result) {
-        return { ok: false, error: { kind: 'internal', message: 'Malformed apply response' } };
+        return { ok: false, error: { kind: 'internal', message: t`Malformed apply response` } };
       }
       // Pack skill landed in `.ok/skills/` — refresh any mounted Skills list.
       emitSkillsChanged();
@@ -137,7 +138,7 @@ export function seedClient(): SeedClientShape {
       if (!body || !Array.isArray(body.packs)) {
         return {
           ok: false,
-          error: { kind: 'internal', message: 'Malformed listPacks response' },
+          error: { kind: 'internal', message: t`Malformed listPacks response` },
         };
       }
       return { ok: true, packs: body.packs };

@@ -8,14 +8,15 @@
  * a hardcoded user-facing string a build-visible defect instead of a convention
  * a contributor has to remember.
  *
- * The fixture pairs 8 positive cases across the rule's three branches (2 toast
- * arguments, 2 JSX text nodes, 4 UI-facing attributes) with 6 negative groups
- * (`<Trans>` children direct and nested, the `t` macro in both child and
- * attribute position, shortcut/code/path/brand tokens, `<Brand> icon` marks,
- * format-token placeholders, and non-literal toast arguments). Exact equality
- * catches a weakened pattern (count drops) and a widened one (a negative starts
- * firing). The per-branch counts catch the compensating case a total cannot:
- * one branch losing a case while another gains one.
+ * The fixture pairs 15 positive cases across the rule's four branches (2 toast
+ * arguments, 2 JSX text nodes, 4 UI-facing attributes, 7 UI-facing object
+ * properties) with 9 negative groups (`<Trans>` children direct and nested,
+ * the `t` macro in child / attribute / object position, shortcut/code/path/
+ * brand tokens, `<Brand> icon` marks, format-token placeholders, non-literal
+ * toast arguments, unscoped property names, and TypeScript member positions).
+ * Exact equality catches a weakened pattern (count drops) and a widened one (a
+ * negative starts firing). The per-branch counts catch the compensating case a
+ * total cannot: one branch losing a case while another gains one.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -29,10 +30,18 @@ const FIXTURE_REL = 'biome-plugins/__fixtures__/no-unwrapped-user-facing-string.
 const PLUGIN_REL = './biome-plugins/no-unwrapped-user-facing-string.grit';
 
 function checkFixture(): string {
-  const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
-    cwd: REPO_ROOT,
-    encoding: 'utf-8',
-  });
+  // `--max-diagnostics` is load-bearing, not tuning: biome's default cap is 20
+  // and the fixture already carries more than that between this rule's own
+  // hits and the a11y / suppression diagnostics its declarations attract. At
+  // the default, the counts below would silently measure the cap.
+  const result = spawnSync(
+    'pnpm',
+    ['exec', 'biome', 'check', '--max-diagnostics=200', FIXTURE_REL],
+    {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    },
+  );
   // Surface a spawn failure explicitly: without this, `status` is null on a
   // `pnpm exec` spawn error and the `not.toBe(0)` below passes vacuously,
   // masking the failure as "0 diagnostics".
@@ -47,8 +56,8 @@ function countMatches(output: string, pattern: RegExp): number {
 }
 
 describe('no-unwrapped-user-facing-string GritQL plugin', () => {
-  test('fires on exactly 8 unwrapped user-facing strings (and on no negative case)', () => {
-    expect(countMatches(checkFixture(), /Unwrapped user-facing string/g)).toBe(8);
+  test('fires on exactly 15 unwrapped user-facing strings (and on no negative case)', () => {
+    expect(countMatches(checkFixture(), /Unwrapped user-facing string/g)).toBe(15);
   });
 
   test('each branch carries its own share of the count', () => {
@@ -56,6 +65,9 @@ describe('no-unwrapped-user-facing-string GritQL plugin', () => {
     expect(countMatches(output, /Unwrapped user-facing string in a toast argument/g)).toBe(2);
     expect(countMatches(output, /Unwrapped user-facing string in JSX text/g)).toBe(2);
     expect(countMatches(output, /Unwrapped user-facing string in a UI-facing attribute/g)).toBe(4);
+    expect(
+      countMatches(output, /Unwrapped user-facing string in a UI-facing object property/g),
+    ).toBe(7);
   });
 
   test('the diagnostic names the fix and links this rule section of the docs', () => {
@@ -100,6 +112,9 @@ describe('no-unwrapped-user-facing-string GritQL plugin', () => {
     for (const excluded of [
       '!packages/app/src/editor/**',
       '!packages/app/src/components/ui/**',
+      // Electron main. `lingui extract` reads packages/app/src only, so the
+      // object-property branch would demand a fix that does not exist there.
+      '!packages/desktop/src/main/**',
       '!**/*.test.ts',
       '!**/*.test.tsx',
       '!**/*.dom.test.tsx',

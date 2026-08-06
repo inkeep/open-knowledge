@@ -215,6 +215,13 @@
       //    copy (matches the no-raw-html-interactive-element exemption).
       //  - packages/app/src/components/ui/** — shadcn primitive wrappers; their
       //    attribute strings are prop plumbing, not copy.
+      //  - packages/desktop/src/main/** — the Electron main process. `lingui
+      //    extract` reads packages/app/src only, so a `t` macro here reaches no
+      //    catalog; main's one translated surface (the native menus) goes
+      //    through `main-i18n.ts`, which looks labels up by hash against the
+      //    renderer's compiled catalogs. Firing on its dialog templates would
+      //    ask for a fix that does not exist. The other four sibling dirs
+      //    (preload / renderer / shared / utility) stay in scope.
       //  - *.test.ts / *.test.tsx / *.dom.test.tsx — test fixtures aren't user-facing.
       "includes": [
         "packages/app/src/**/*.ts",
@@ -225,6 +232,7 @@
         "packages/plugin/src/**/*.tsx",
         "!packages/app/src/editor/**",
         "!packages/app/src/components/ui/**",
+        "!packages/desktop/src/main/**",
         "!**/*.test.ts",
         "!**/*.test.tsx",
         "!**/*.dom.test.tsx",

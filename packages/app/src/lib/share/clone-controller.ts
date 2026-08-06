@@ -122,13 +122,13 @@ export function createCloneController(deps: CloneControllerDeps): ShareReceiveCl
         // Stream ended without a terminal event — surface as a failure so the
         // dialog's error view renders rather than the user seeing a silent freeze.
         toast.dismiss(toastId);
-        return { kind: 'error', detail: 'Clone ended unexpectedly.' };
+        return { kind: 'error', detail: t`Clone ended unexpectedly.` };
       } catch (err) {
         // A throw here means the transport itself failed (synchronous start()
         // failure, or the async iterator threw) rather than emitting a typed
         // error event — a contract violation worth a diagnostic line.
         console.warn('[clone-controller] clone transport threw', err);
-        const message = err instanceof Error ? err.message : 'Unknown error';
+        const message = err instanceof Error ? err.message : t`Unknown error`;
         toast.dismiss(toastId);
         return { kind: 'error', detail: message };
       }

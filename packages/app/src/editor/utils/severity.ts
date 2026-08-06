@@ -20,6 +20,9 @@
  * logic in one testable place.
  */
 
+import type { MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+
 type Severity = 'info' | 'warn' | 'error';
 
 export function classifySeverity(reason: string | undefined): Severity {
@@ -34,25 +37,29 @@ interface SeverityStyle {
   wrapperClass: string;
   /** Tailwind classes applied to the status badge. */
   badgeClass: string;
-  /** Short uppercase label shown in the badge. */
-  label: string;
+  /**
+   * Short label shown in the badge, deferred. This table is module scope, so a
+   * `t` call would resolve once at import; `RawMdxFallbackCMView` resolves the
+   * descriptor per render instead.
+   */
+  label: MessageDescriptor;
 }
 
 export const SEVERITY_STYLES: Record<Severity, SeverityStyle> = {
   info: {
     wrapperClass: 'border-muted-foreground/30 bg-muted/30',
     badgeClass: 'text-muted-foreground bg-muted',
-    label: 'unknown',
+    label: msg`unknown`,
   },
   warn: {
     wrapperClass:
       'border-amber-400/60 dark:border-amber-500/40 bg-amber-50/50 dark:bg-amber-900/10',
     badgeClass: 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30',
-    label: 'render error',
+    label: msg`render error`,
   },
   error: {
     wrapperClass: 'border-destructive/60 bg-destructive/5',
     badgeClass: 'text-destructive bg-destructive/10',
-    label: 'parse error',
+    label: msg`parse error`,
   },
 };

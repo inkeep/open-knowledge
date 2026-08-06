@@ -57,42 +57,51 @@ import videoPreview from './preview-assets/video-preview.png';
  */
 interface PreviewConfig {
   description: MessageDescriptor;
-  props?: Record<string, unknown>;
-  children?: ReactNode;
+  /**
+   * Thunks rather than values because several previews carry sample *prose*
+   * (a Callout's title and body, an image's alt text) that a reader reads and
+   * has to see in their own language. This table is module scope, so a `t`
+   * call sitting in a plain object literal would resolve once at import and
+   * then keep whatever language was active then; called from
+   * `getComponentItems` (which the menu re-runs on every open) it resolves
+   * against the live locale instead.
+   */
+  props?: () => Record<string, unknown>;
+  children?: () => ReactNode;
   render?: () => ReactNode;
 }
 
 const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
   Callout: {
     description: msg`Highlight tips, warnings, and notes.`,
-    props: { type: 'note', title: 'Heads up' },
-    children: 'Callouts draw attention to key information.',
+    props: () => ({ type: 'note', title: t`Heads up` }),
+    children: () => t`Callouts draw attention to key information.`,
   },
   Accordion: {
     description: msg`Collapsible section with a clickable summary.`,
-    props: { title: 'Click to expand', defaultOpen: true },
-    children: 'Hidden content goes here.',
+    props: () => ({ title: t`Click to expand`, defaultOpen: true }),
+    children: () => t`Hidden content goes here.`,
   },
   Toggle: {
     description: msg`Collapsible content block (Notion-style toggle).`,
-    props: { title: 'Click to expand', defaultOpen: true },
-    children: 'Hidden content goes here.',
+    props: () => ({ title: t`Click to expand`, defaultOpen: true }),
+    children: () => t`Hidden content goes here.`,
   },
   img: {
     description: msg`Embed an image with optional alt text.`,
-    props: { src: imagePreview, alt: 'Sample image' },
+    props: () => ({ src: imagePreview, alt: t`Sample image` }),
   },
   video: {
     description: msg`Embed a video with native player controls.`,
-    props: { controls: true, poster: videoPreview },
+    props: () => ({ controls: true, poster: videoPreview }),
   },
   audio: {
     description: msg`Embed an audio file with native player controls.`,
-    props: { controls: true },
+    props: () => ({ controls: true }),
   },
   Math: {
     description: msg`Block math equation rendered with KaTeX from a LaTeX source string.`,
-    props: { formula: 'c = \\pm\\sqrt{a^2 + b^2}' },
+    props: () => ({ formula: 'c = \\pm\\sqrt{a^2 + b^2}' }),
   },
   Embed: {
     description: msg`Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox).`,
@@ -626,7 +635,8 @@ export function getComponentItems(): SlashCommandItem[] {
       ? {
           description: t(config.description),
           render:
-            config.render ?? (() => <Component {...config.props}>{config.children}</Component>),
+            config.render ??
+            (() => <Component {...config.props?.()}>{config.children?.()}</Component>),
         }
       : undefined;
 
