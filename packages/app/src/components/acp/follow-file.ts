@@ -131,23 +131,60 @@ function docTargetFromCommand(command: string, workspace: Workspace | null): str
 }
 
 /**
- * Follow-target options. `commandTargetExists` gates COMMAND-derived targets
- * (the `exec`/shell `command` string path) on the doc actually existing: a
- * read of a missing file (`cat log.md` on a doc that was never created) must
- * not navigate — the editor would open a blank create-on-open tab, which is
- * exactly how a live build ended parked on an empty "log" page. Write-shaped
- * targets (`document`/`documents`/`to`/`docName`) are deliberately NOT gated:
- * they routinely name docs that don't exist YET (the write creates them).
+ * Follow-target options. `docExists` gates READ-shaped targets on the doc
+ * actually existing: a read of a missing file must not navigate — the editor
+ * would open a blank create-on-open tab. Two read-shaped sources are gated:
+ * the `exec`/shell `command` string path (`cat log.md` on a doc that was never
+ * created, which parked the editor on an empty "log" page), and the
+ * `locations[]` path of non-`edit` tool calls (a native read/search/exec whose
+ * newest location names a doc that never existed, which opened a blank "main"
+ * page). Write-shaped targets (`document`/`documents`/`to`/`docName`, and
+ * `edit`/`move` locations) are deliberately NOT gated: they routinely name
+ * docs that don't exist YET (the write creates them). When the predicate is
+ * absent (the page list is still loading, or its fetch failed and we can't
+ * distinguish missing from unknown) targets pass through ungated — unknown is
+ * not the same as missing.
  */
 export interface FollowTargetOptions {
-  commandTargetExists?: (docName: string) => boolean;
+  docExists?: (docName: string) => boolean;
 }
 
 /**
- * DocName from an OK MCP tool call's rawInput, or null when the call is not
- * an OK MCP doc operation. Deletions return null — navigating to a document
- * that is being removed is never what follow mode means.
+ * Structural subset of `PageListContextValue` this module reads. Kept narrow
+ * on purpose — the follow-file layer never touches the wider PageList API
+ * (slug indexes, folder paths, refetch), so accepting only what it consumes
+ * keeps the ThreadView call site substitutable without wiring the full
+ * context shape through.
  */
+export interface PageListPredicateInput {
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly pages: ReadonlySet<string>;
+}
+
+/**
+ * Derive the follow-file predicate options from a page-list snapshot. The
+ * predicate is only armed when the snapshot is authoritative: the cold
+ * fetch has resolved (`!loading`) AND it did NOT error (`error === null`).
+ * A failed fetch may leave `pages` empty (cold-load failure) or stale
+ * (background refetch failure keeps the last-good set — see
+ * `PageListContext`); in either case the set is not authoritative and
+ * treating it as such would mask every doc as missing (cold) or
+ * misclassify a just-created doc as missing (stale) and silently disable
+ * all read-shaped follow until the next successful refetch — unknown is
+ * not the same as missing.
+ * Optional variant: the dock renders in hosts/tests without the provider,
+ * so `null` degrades to an empty options object (predicate absent →
+ * ungated, previous behavior).
+ */
+export function pageListFollowOptions(
+  pageList: PageListPredicateInput | null,
+): FollowTargetOptions {
+  if (pageList === null || pageList.loading || pageList.error !== null) return {};
+  const pages = pageList.pages;
+  return { docExists: (docName: string) => pages.has(docName) };
+}
+
 /**
  * Unwrap an OK MCP call's rawInput into `{ tool, args }`. Codex reports
  * `{ server, tool, arguments }`; other adapters name the tool at `name`, pass
@@ -176,6 +213,11 @@ function unwrapMcpInput(
   return { tool, args };
 }
 
+/**
+ * DocName from an OK MCP tool call's rawInput, or null when the call is not
+ * an OK MCP doc operation. Deletions return null — navigating to a document
+ * that is being removed is never what follow mode means.
+ */
 function mcpDocTarget(
   rawInput: unknown,
   title: string,
@@ -223,11 +265,7 @@ function mcpDocTarget(
   const command = stringField(args, 'command');
   if (command !== null) {
     const target = docTargetFromCommand(command, workspace);
-    if (
-      target !== null &&
-      options.commandTargetExists !== undefined &&
-      !options.commandTargetExists(target)
-    ) {
+    if (target !== null && options.docExists !== undefined && !options.docExists(target)) {
       return null;
     }
     return target;
@@ -248,12 +286,25 @@ export function followTargetFromToolCall(
   const mcp = mcpDocTarget(call.rawInput, call.title, workspace, options);
   if (mcp !== null) return mcp;
   if (workspace === null) return null;
+  // A location-derived target from a non-write-shaped call (read/search/exec/…)
+  // only navigates to a doc that exists — the newest location of such a call
+  // can name a file that was never created (a git branch name, a phantom path
+  // from the prompt), which would otherwise open a blank create-on-open tab.
+  // `edit` is the create case (it names the doc it is about to write) and
+  // `move` is the rename case (its newest location IS the destination — by
+  // definition not in the page list yet); both stay ungated, matching the
+  // write-shaped MCP targets above (`document.path` for edit, flat `to` for
+  // move). Every other ACP toolKind is treated as read-shaped and gated.
+  const gateMissingLocation =
+    call.toolKind !== 'edit' && call.toolKind !== 'move' && options.docExists !== undefined;
   // Newest location wins — long calls append locations as they progress.
   for (let i = call.locations.length - 1; i >= 0; i--) {
     const location = call.locations[i];
     if (location === undefined) continue;
     const docName = docNameFromAbsolutePath(location.path, workspace);
-    if (docName !== null) return docName;
+    if (docName === null) continue;
+    if (gateMissingLocation && !options.docExists?.(docName)) return null;
+    return docName;
   }
   return null;
 }

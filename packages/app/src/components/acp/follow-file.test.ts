@@ -5,6 +5,7 @@ import {
   docNameFromAbsolutePath,
   followTargetFromToolCall,
   latestFollowTarget,
+  pageListFollowOptions,
 } from './follow-file';
 
 const posix: Workspace = { contentDir: '/home/me/notes', pathSeparator: '/' };
@@ -288,13 +289,9 @@ describe('followTargetFromToolCall — exec command strings', () => {
       rawInput: { tool: 'exec', arguments: { command: 'cat log.md' } },
     });
     const exists = (docName: string) => docName !== 'log';
-    expect(
-      followTargetFromToolCall(missingRead, posix, { commandTargetExists: exists }),
-    ).toBeNull();
+    expect(followTargetFromToolCall(missingRead, posix, { docExists: exists })).toBeNull();
     // The same read WITH the doc present follows normally.
-    expect(followTargetFromToolCall(missingRead, posix, { commandTargetExists: () => true })).toBe(
-      'log',
-    );
+    expect(followTargetFromToolCall(missingRead, posix, { docExists: () => true })).toBe('log');
     // No predicate (page list still loading) → ungated, previous behavior.
     expect(followTargetFromToolCall(missingRead, posix)).toBe('log');
     // Write targets may name docs that don't exist YET — never gated.
@@ -307,7 +304,7 @@ describe('followTargetFromToolCall — exec command strings', () => {
           },
         }),
         posix,
-        { commandTargetExists: () => false },
+        { docExists: () => false },
       ),
     ).toBe('brand/new-page');
   });
@@ -329,7 +326,7 @@ describe('followTargetFromToolCall — exec command strings', () => {
         rawInput: { tool: 'exec', arguments: { command: 'cat log.md' } },
       },
     ];
-    expect(latestFollowTarget(items, posix, { commandTargetExists: (d) => d !== 'log' })).toBe(
+    expect(latestFollowTarget(items, posix, { docExists: (d) => d !== 'log' })).toBe(
       'articles/caffeine',
     );
   });
@@ -438,6 +435,115 @@ describe('followTargetFromToolCall — exec command strings', () => {
   });
 });
 
+describe('followTargetFromToolCall — location existence gate', () => {
+  test('a non-edit call whose newest location is a MISSING doc never navigates', () => {
+    // Live-run regression: a read-shaped tool call resolved to a phantom doc
+    // ("main"), and follow parked the editor on a blank create-on-open tab.
+    // Read/search/exec locations are gated on existence.
+    const missingLocation = call({
+      toolKind: 'read',
+      locations: [{ path: '/home/me/notes/main.md' }],
+    });
+    const exists = (docName: string) => docName !== 'main';
+    expect(followTargetFromToolCall(missingLocation, posix, { docExists: exists })).toBeNull();
+    // The same read WITH the doc present follows normally.
+    expect(followTargetFromToolCall(missingLocation, posix, { docExists: () => true })).toBe(
+      'main',
+    );
+    // No predicate (page list still loading) → ungated, previous behavior.
+    expect(followTargetFromToolCall(missingLocation, posix)).toBe('main');
+  });
+
+  test('non-edit locations gate at the newest miss — no fall-through to an older valid location', () => {
+    // Per-call semantic: on a gated miss the newest location wins the veto
+    // and the call yields null; the loop must NOT `continue` to an older
+    // location. A "be more helpful" refactor that swapped `return null` for
+    // `continue` would let the editor silently follow a stale older path,
+    // and the transcript-level `latestFollowTarget` fall-back (its own test
+    // below) would never get a chance to route to the previous tool call.
+    const missingNewest = call({
+      toolKind: 'read',
+      locations: [
+        { path: '/home/me/notes/articles/existing.md' },
+        { path: '/home/me/notes/main.md' },
+      ],
+    });
+    expect(
+      followTargetFromToolCall(missingNewest, posix, { docExists: (d) => d !== 'main' }),
+    ).toBeNull();
+  });
+
+  test('every read-shaped toolKind (execute/search/other/read) is gated on location existence', () => {
+    // The gate is `toolKind !== 'edit' && toolKind !== 'move'` — a narrowing
+    // to `toolKind === 'read'` would re-open the phantom-tab class for
+    // execute/search/other calls. The original live-run was an execute-shaped
+    // call whose newest location resolved to `main`. Table-drive over the
+    // read-shaped kinds so a future kind (`browse`?) needing exemption is
+    // explicit at THIS gate, not silently masked.
+    const gated = (docName: string) => docName !== 'main';
+    for (const kind of ['execute', 'search', 'other', 'read'] as const) {
+      const c = call({
+        toolKind: kind,
+        locations: [{ path: '/home/me/notes/main.md' }],
+      });
+      expect(followTargetFromToolCall(c, posix, { docExists: gated })).toBeNull();
+    }
+  });
+
+  test('a move call names the destination — its location stays ungated (the rename case)', () => {
+    // `move`'s newest location IS the destination path — by definition not
+    // in the page list yet — so gating it on existence would suppress the
+    // follow of every rename. The MCP path already treats `stringField(args,
+    // 'to')` as write-shaped (ungated); the native-locations path must
+    // agree. Without this exemption, `ok mv old new` reported through
+    // `locations[]` would silently stop following once the rename lands.
+    expect(
+      followTargetFromToolCall(
+        call({
+          toolKind: 'move',
+          locations: [{ path: '/home/me/notes/renamed/destination.md' }],
+        }),
+        posix,
+        { docExists: () => false },
+      ),
+    ).toBe('renamed/destination');
+  });
+
+  test('an edit call may name a doc that does not exist YET — its location is not gated', () => {
+    // The create case: a native write/edit names the doc it is about to
+    // create, so following it before it lands is correct.
+    expect(
+      followTargetFromToolCall(
+        call({ toolKind: 'edit', locations: [{ path: '/home/me/notes/brand/new-page.md' }] }),
+        posix,
+        { docExists: () => false },
+      ),
+    ).toBe('brand/new-page');
+  });
+
+  test('latestFollowTarget falls back past a gated missing read location to the last write', () => {
+    const items = [
+      {
+        kind: 'tool_call',
+        toolKind: 'edit',
+        title: 'write',
+        locations: [{ path: '/home/me/notes/articles/caffeine.md' }],
+        rawInput: undefined,
+      },
+      {
+        kind: 'tool_call',
+        toolKind: 'read',
+        title: 'read',
+        locations: [{ path: '/home/me/notes/main.md' }],
+        rawInput: undefined,
+      },
+    ];
+    expect(latestFollowTarget(items, posix, { docExists: (d) => d !== 'main' })).toBe(
+      'articles/caffeine',
+    );
+  });
+});
+
 describe('latestFollowTarget', () => {
   test('the last tool call with a resolvable target wins', () => {
     const items = [
@@ -452,5 +558,59 @@ describe('latestFollowTarget', () => {
 
   test('null when nothing followable happened', () => {
     expect(latestFollowTarget([{ kind: 'message' }], posix)).toBeNull();
+  });
+});
+
+describe('pageListFollowOptions', () => {
+  test('null pageList (no provider — dock in hosts/tests) → no predicate', () => {
+    // The ThreadView is rendered from surfaces that don't wrap it in a
+    // PageListProvider (docks, standalone previews); the follow-file layer
+    // must degrade to ungated navigation there, not throw.
+    expect(pageListFollowOptions(null)).toEqual({});
+  });
+
+  test('loading pageList → no predicate (unknown ≠ missing during cold fetch)', () => {
+    const opts = pageListFollowOptions({ loading: true, error: null, pages: new Set() });
+    expect(opts).toEqual({});
+  });
+
+  test('errored pageList → no predicate (failed fetch cannot distinguish missing from unknown)', () => {
+    // Load-bearing regression guard: if this drops back to `{ docExists:
+    // pages.has }` on a failed fetch, follow-file silently stops for all
+    // read-shaped targets until the next successful refetch — the empty
+    // `pages` set gates every doc as missing. `error !== null` must keep
+    // the predicate absent so the transient failure degrades to previous
+    // ungated behavior instead of a silent user-visible stop.
+    const opts = pageListFollowOptions({
+      loading: false,
+      error: 'Network error',
+      pages: new Set(),
+    });
+    expect(opts).toEqual({});
+  });
+
+  test('errored pageList with non-empty pages → still no predicate', () => {
+    // Even if the snapshot carries stale docs from a prior successful fetch,
+    // an active error means we cannot trust the set as authoritative — the
+    // safe pass-through is ungated, matching the loading branch.
+    const opts = pageListFollowOptions({
+      loading: false,
+      error: 'stale',
+      pages: new Set(['a']),
+    });
+    expect(opts).toEqual({});
+  });
+
+  test('loaded + no error → predicate delegates to `pages.has`', () => {
+    const opts = pageListFollowOptions({
+      loading: false,
+      error: null,
+      pages: new Set(['articles/caffeine', 'plans/launch']),
+    });
+    expect(opts.docExists).toBeDefined();
+    expect(opts.docExists?.('articles/caffeine')).toBe(true);
+    expect(opts.docExists?.('plans/launch')).toBe(true);
+    expect(opts.docExists?.('main')).toBe(false);
+    expect(opts.docExists?.('')).toBe(false);
   });
 });

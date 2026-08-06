@@ -112,7 +112,12 @@ import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
-import { latestFollowTarget, loadFollowFilePref, saveFollowFilePref } from './follow-file';
+import {
+  latestFollowTarget,
+  loadFollowFilePref,
+  pageListFollowOptions,
+  saveFollowFilePref,
+} from './follow-file';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
 import { transcriptItemId } from './transcript-item-id';
@@ -215,14 +220,12 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   // Mid-turn sends don't reject anymore — the server queues them behind the
   // active turn and drains FIFO (`ThreadInfo.queue`).
   const canQueue = !archived && turnActive;
-  // Command-derived follow targets (exec `cat foo.md`) only navigate to docs
-  // that exist — a read of a missing file would open a blank create-on-open
-  // tab. Skipped while the page list is still loading (unknown ≠ missing).
-  // Optional variant: the dock renders in hosts/tests without the provider.
-  const pageList = useOptionalPageList();
-  const pages = pageList !== null && !pageList.loading ? pageList.pages : null;
-  const followOptions =
-    pages !== null ? { commandTargetExists: (docName: string) => pages.has(docName) } : {};
+  // Read-shaped follow targets (exec `cat foo.md`, or a non-`edit` call's
+  // newest location) only navigate to docs that exist — a read of a missing
+  // file would open a blank create-on-open tab. `pageListFollowOptions`
+  // arms the predicate only when the page-list snapshot is authoritative;
+  // the exact loading/error rules live at the helper (unit-tested there).
+  const followOptions = pageListFollowOptions(useOptionalPageList());
   const transcriptFollowTarget =
     model !== null ? latestFollowTarget(model.items, workspace, followOptions) : null;
 
