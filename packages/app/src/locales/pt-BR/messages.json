@@ -1858,9 +1858,6 @@
     "OETysD": [
       "Ainda não há páginas de índice. Os índices aparecem quando as páginas acumulam links de entrada no grafo."
     ],
-    "OFBmkg": [
-      "Busca arquivos, comandos, projetos e ações de passagem para a IA. Com um texto selecionado no editor visual, este atalho adiciona um link em vez disso."
-    ],
     "OJOA7Z": ["⋯ ", ["0"], " linhas inalteradas"],
     "OJTOUj": ["Requer ", ["brand"], "."],
     "OJeiSH": ["Falha ao adicionar a propriedade"],
@@ -1915,6 +1912,9 @@
     "P6lAT3": ["Pasta de destino: ", ["linkTitle"], ". Clique para abrir a visão geral."],
     "P8AnMN": ["Procurando o Slidev"],
     "PB4upl": ["Buscar a ocorrência anterior"],
+    "PBQwGb": [
+      "Busca arquivos, comandos, projetos e ações de passagem para a IA. O atalho K adiciona um link em vez disso quando há texto selecionado no editor visual; o atalho P sempre abre a paleta de comandos."
+    ],
     "PBwmDJ": ["Buscando por significado"],
     "PBxg_E": ["Agora não"],
     "PCSkw2": ["Habilidades"],

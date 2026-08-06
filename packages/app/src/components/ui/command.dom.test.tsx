@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -68,5 +68,51 @@ describe('CommandDialog runtime contracts', () => {
     for (const token of ['transition-[opacity,scale]', 'placement-', 'data-placement']) {
       expect(surfaces).not.toContain(token);
     }
+  });
+
+  // cmdk's vim bindings map Ctrl+P / Ctrl+K to "select previous item" inside
+  // every Command root. The binding keys off `event.ctrlKey` alone, with no
+  // platform check, so it fires on macOS too — these two tests run the real
+  // library on whatever platform CI happens to be.
+  //
+  // The default-on case is the control: it proves the harness can observe the
+  // selection moving, so the opted-out case asserting it does NOT move is a
+  // real signal rather than a test that could never fail.
+  async function renderTwoItemCommand(vimBindings?: boolean) {
+    const { Command, CommandInput, CommandItem, CommandList } = await import('./command');
+    render(
+      <Command {...(vimBindings === undefined ? {} : { vimBindings })}>
+        <CommandInput placeholder="Search" />
+        <CommandList>
+          <CommandItem value="alpha">alpha</CommandItem>
+          <CommandItem value="beta">beta</CommandItem>
+        </CommandList>
+      </Command>,
+    );
+    const input = document.querySelector('[data-slot="command-input"]') as HTMLElement;
+    // Move off the first row so a "select previous" has somewhere to go.
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    return input;
+  }
+
+  const selectedValue = () =>
+    document.querySelector('[data-slot="command-item"][data-selected="true"]')?.textContent;
+
+  test('cmdk moves the selection on Ctrl+P when vim bindings are left at their default', async () => {
+    const input = await renderTwoItemCommand();
+    expect(selectedValue()).toBe('beta');
+
+    fireEvent.keyDown(input, { key: 'p', ctrlKey: true });
+
+    expect(selectedValue()).toBe('alpha');
+  });
+
+  test('opting out of vim bindings leaves the selection untouched on Ctrl+P', async () => {
+    const input = await renderTwoItemCommand(false);
+    expect(selectedValue()).toBe('beta');
+
+    fireEvent.keyDown(input, { key: 'p', ctrlKey: true });
+
+    expect(selectedValue()).toBe('beta');
   });
 });

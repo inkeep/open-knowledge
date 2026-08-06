@@ -1908,9 +1908,6 @@
     "OETysD": [
       "Pas encore de pages pivots. Les pivots apparaissent une fois que les pages accumulent des liens entrants dans le graphe."
     ],
-    "OFBmkg": [
-      "Recherchez des fichiers, des commandes, des projets et des actions de transfert vers l'IA. Si du texte est sélectionné dans l'éditeur visuel, ce raccourci ajoute un lien à la place."
-    ],
     "OJOA7Z": ["⋯ ", ["0"], " lignes inchangées"],
     "OJTOUj": ["Nécessite ", ["brand"], "."],
     "OJeiSH": ["Échec de l'ajout de la propriété"],
@@ -1965,6 +1962,9 @@
     "P6lAT3": ["Dossier cible : ", ["linkTitle"], ". Cliquez pour ouvrir la synthèse."],
     "P8AnMN": ["Recherche de Slidev"],
     "PB4upl": ["Occurrence précédente"],
+    "PBQwGb": [
+      "Recherchez des fichiers, des commandes, des projets et des actions de transfert vers l'IA. Le raccourci K ajoute un lien à la place lorsque du texte est sélectionné dans l'éditeur visuel ; le raccourci P ouvre toujours la palette de commandes."
+    ],
     "PBwmDJ": ["Recherche par le sens"],
     "PBxg_E": ["Pas maintenant"],
     "PCSkw2": ["Compétences"],

@@ -10034,8 +10034,8 @@ msgid "Search failed. Try again."
 msgstr "搜尋失敗。請再試一次。"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
-msgstr "搜尋檔案、指令、專案和 AI 交接動作。如果在視覺化編輯器中選了文字，這組按鍵會改成加入連結。"
+msgid "Search files, commands, projects, and AI handoff actions. The K chord adds a link instead when text is selected in the visual editor; the P chord always opens the palette."
+msgstr "搜尋檔案、指令、專案和 AI 交接動作。在視覺化編輯器中選取文字時，K 組合鍵會改成加入連結；P 組合鍵一律開啟指令面板。"
 
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, and commands for the current workspace."

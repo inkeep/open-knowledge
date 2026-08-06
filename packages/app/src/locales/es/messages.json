@@ -1880,9 +1880,6 @@
     "OETysD": [
       "Todavía no hay páginas índice. Los índices aparecen cuando las páginas acumulan enlaces entrantes en el grafo."
     ],
-    "OFBmkg": [
-      "Busca archivos, comandos, proyectos y acciones de traspaso a la IA. Con texto seleccionado en el editor visual, este atajo añade un enlace en su lugar."
-    ],
     "OJOA7Z": ["⋯ ", ["0"], " líneas sin cambios"],
     "OJTOUj": ["Requiere ", ["brand"], "."],
     "OJeiSH": ["No se pudo añadir la propiedad"],
@@ -1937,6 +1934,9 @@
     "P6lAT3": ["Carpeta de destino: ", ["linkTitle"], ". Haz clic para abrir la vista general."],
     "P8AnMN": ["Buscando Slidev"],
     "PB4upl": ["Buscar la coincidencia anterior"],
+    "PBQwGb": [
+      "Busca archivos, comandos, proyectos y acciones de traspaso a la IA. El atajo K añade un enlace en su lugar cuando hay texto seleccionado en el editor visual; el atajo P siempre abre la paleta de comandos."
+    ],
     "PBwmDJ": ["Buscando por significado"],
     "PBxg_E": ["Ahora no"],
     "PCSkw2": ["Habilidades"],

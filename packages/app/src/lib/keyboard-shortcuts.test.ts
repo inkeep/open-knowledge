@@ -620,6 +620,69 @@ describe('keyboard shortcut registry', () => {
     expect(matchesKeyboardShortcut(exactCmdK, 'command-palette', 'mac')).toBe(true);
   });
 
+  test('opens the command palette on exact Cmd/Ctrl+P as well as Cmd/Ctrl+K', () => {
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: 'p' },
+        'command-palette',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, altKey: false, key: 'p' },
+        'command-palette',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    // Same exact-chord discipline as the ⌘K binding: no extra modifiers, and
+    // a bare P is just typing.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: true, key: 'p' },
+        'command-palette',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: false, altKey: false, key: 'p' },
+        'command-palette',
+        'mac',
+      ),
+    ).toBe(false);
+    // ⇧⌘P belongs to switch-project (the Project Navigator), not the palette.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'p' },
+        'command-palette',
+        'mac',
+      ),
+    ).toBe(false);
+  });
+
+  test('Cmd/Ctrl+P reaches the palette unconditionally — add-link never claims it', () => {
+    // The point of the ⌘P binding: LinkEditPopover claims exact ⌘K on window
+    // capture and stops propagation, so with a WYSIWYG selection ⌘K never
+    // reaches the palette. ⌘P is matched by the palette alone, which is what
+    // keeps a keyboard path to the palette open in that state. If someone
+    // adds ⌘P to add-link's bindings, that property is gone and this fails.
+    const exactCmdP = { metaKey: true, ctrlKey: false, altKey: false, key: 'p' };
+    expect(matchesKeyboardShortcut(exactCmdP, 'command-palette', 'mac')).toBe(true);
+    expect(matchesKeyboardShortcut(exactCmdP, 'add-link', 'mac')).toBe(false);
+
+    const exactCtrlP = { metaKey: false, ctrlKey: true, altKey: false, key: 'p' };
+    expect(matchesKeyboardShortcut(exactCtrlP, 'command-palette', 'windowsLinux')).toBe(true);
+    expect(matchesKeyboardShortcut(exactCtrlP, 'add-link', 'windowsLinux')).toBe(false);
+  });
+
+  test('keeps Cmd+K as the displayed command-palette chord', () => {
+    // Chips and tooltips render bindings[0]; ⌘P is the unadvertised alias, so
+    // adding it must not change what the UI teaches.
+    expect(formatShortcut('command-palette', 'mac')).toBe('⌘ K');
+    expect(formatShortcut('command-palette', 'windowsLinux')).toBe('Ctrl K');
+  });
+
   test('matches source-aware replace shortcuts per platform', () => {
     expect(
       matchesKeyboardShortcut(

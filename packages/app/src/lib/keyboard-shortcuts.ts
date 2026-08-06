@@ -108,16 +108,33 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     // CAPTURE phase and stops propagation when it applies. Any future
     // capture-phase ⌘K handler must slot into that ordering consciously —
     // the registry itself has no phase concept.
+    //
+    // ⌘P is the UNCONDITIONAL twin of the shared ⌘K, and that is the whole
+    // point of it: LinkEditPopover claims exact ⌘K on capture and calls
+    // stopImmediatePropagation, so with a WYSIWYG selection the palette is
+    // otherwise unreachable from the keyboard. ⌘P is matched only here, never
+    // by `add-link`, so it always reaches this listener — keep it out of
+    // add-link's bindings or that property is lost.
+    //
+    // On the web host this chord is the browser's Print accelerator, so the
+    // palette listener's preventDefault is load-bearing rather than tidiness.
+    // Bare ⌘P is interceptable in every major browser; ⌘⇧P is NOT (Firefox
+    // reserves it for private browsing), so don't rehome this onto Shift.
     id: 'command-palette',
     category: 'general',
     title: msg`Command palette`,
-    description: msg`Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead.`,
+    description: msg`Search files, commands, projects, and AI handoff actions. The K chord adds a link instead when text is selected in the visual editor; the P chord always opens the palette.`,
     scope: msg`Global`,
     bindings: [
       {
         mac: '⌘ K',
         windowsLinux: 'Ctrl K',
         match: { key: 'k', mod: true },
+      },
+      {
+        mac: '⌘ P',
+        windowsLinux: 'Ctrl P',
+        match: { key: 'p', mod: true },
       },
     ],
   },

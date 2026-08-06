@@ -68,7 +68,7 @@ Links work the way they do in the editors you already know:
 - **Type a URL, then press space or enter.** A full URL (`https://…`, `www.…`, or an email address) becomes a link when you press space or enter after it. Plain words and filenames like `AGENTS.md` are left alone, and one `Cmd+Z` turns a conversion back into plain text.
 - **Paste or drag in a URL.** Pasted (or dropped) on its own, it becomes a link. Pasted over selected text, it links that text instead — the text stays, the URL becomes its destination. `Cmd+Shift+V` pastes plain, with no linking.
 - **Type `[text](url)`.** Closing the parenthesis converts the markdown shorthand into a real link; `Cmd+Z` restores the literal text.
-- **Press `Cmd+K` with text selected.** The link popover opens with the URL field focused, pre-filled from your clipboard when it holds a URL. With the cursor inside an existing link, `Cmd+K` opens that link for editing. With no selection, `Cmd+K` keeps opening the command palette, as everywhere else.
+- **Press `Cmd+K` with text selected.** The link popover opens with the URL field focused, pre-filled from your clipboard when it holds a URL. With the cursor inside an existing link, `Cmd+K` opens that link for editing. With no selection, `Cmd+K` keeps opening the command palette, as everywhere else. To reach the command palette while text is selected, use `Cmd+P` (`Ctrl+P` on Windows / Linux), which always opens it.
 
 ## Right-click menu and spell check
 
@@ -212,7 +212,9 @@ Open tabs, pane order, sizes, and the focused pane are restored with the project
 
 ## Command palette
 
-`Cmd+K` opens the command palette in both the desktop app and the browser. Type to jump to any file or folder, run create commands, open the graph or settings, or dispatch to an agent; recently opened entries surface first. In the desktop app it also switches projects and worktrees.
+`Cmd+K` opens the command palette in both the desktop app and the browser, and `Cmd+P` (`Ctrl+P` on Windows / Linux) does the same from anywhere — including while text is selected in the visual editor, where `Cmd+K` adds a link instead. Type to jump to any file or folder, run create commands, open the graph or settings, or dispatch to an agent; recently opened entries surface first. In the desktop app it also switches projects and worktrees.
+
+In the browser, `Cmd+P` is normally the print shortcut; OpenKnowledge takes it for the palette, so print from the browser's own menu instead.
 
 Remove a recent project from the list by hovering its row and clicking the ×, or right-clicking for a **Remove from recent projects** menu — the same controls are on the sidebar's **Switch project** dropdown and in the Project Navigator. A recent whose folder was deleted or moved off disk isn't greyed out; it's cleared automatically the next time you open it, with a brief notice, instead of opening a broken window.
 
@@ -247,7 +249,7 @@ Keyboard shortcuts (use `Ctrl` on Windows / Linux in place of `Cmd`, unless the 
 | `Cmd+J` | Show / Hide the docked terminal (desktop app). With text selected, stages the passage into the AI CLI's input instead — nothing runs until you press Enter. |
 | `` Ctrl+` `` | Show / Hide the docked terminal too — the VS Code / Zed chord, literal `Ctrl` on every platform. Works even while a terminal holds focus. With text selected it stages the passage like `Cmd+J` instead of toggling. |
 | `Cmd+Shift+J` | Open an additional terminal tab (desktop app). With text selected, stages the passage into the new tab's AI CLI input. |
-| `Cmd+K` | Open the [command palette](#command-palette). |
+| `Cmd+P` | Open the [command palette](#command-palette) from anywhere — unlike `Cmd+K`, it opens the palette even while text is selected in the visual editor. |
 | `Cmd+L` | Open and focus the [Ask AI](#ask-ai) composer (desktop app). |
 | `Cmd+F` | Find in the visual editor. |
 | `Cmd+Option+F` | Find and replace (`Ctrl+H` on Windows / Linux). |

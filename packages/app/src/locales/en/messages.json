@@ -1628,9 +1628,6 @@
     "ODGGlj": ["Folder name: ", ["detail"]],
     "OEEQKT": ["Good"],
     "OETysD": ["No hub pages yet. Hubs appear once pages accumulate inbound graph links."],
-    "OFBmkg": [
-      "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
-    ],
     "OJOA7Z": ["⋯ ", ["0"], " unchanged lines"],
     "OJTOUj": ["Requires ", ["brand"], "."],
     "OJeiSH": ["Failed to add property"],
@@ -1685,6 +1682,9 @@
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
     "P8AnMN": ["Checking for Slidev"],
     "PB4upl": ["Find previous match"],
+    "PBQwGb": [
+      "Search files, commands, projects, and AI handoff actions. The K chord adds a link instead when text is selected in the visual editor; the P chord always opens the palette."
+    ],
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
     "PCSkw2": ["Skills"],

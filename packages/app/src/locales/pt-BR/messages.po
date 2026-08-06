@@ -10030,8 +10030,8 @@ msgid "Search failed. Try again."
 msgstr "A busca falhou. Tente de novo."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
-msgstr "Busca arquivos, comandos, projetos e ações de passagem para a IA. Com um texto selecionado no editor visual, este atalho adiciona um link em vez disso."
+msgid "Search files, commands, projects, and AI handoff actions. The K chord adds a link instead when text is selected in the visual editor; the P chord always opens the palette."
+msgstr "Busca arquivos, comandos, projetos e ações de passagem para a IA. O atalho K adiciona um link em vez disso quando há texto selecionado no editor visual; o atalho P sempre abre a paleta de comandos."
 
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, and commands for the current workspace."

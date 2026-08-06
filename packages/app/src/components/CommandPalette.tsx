@@ -1,6 +1,8 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
 /**
- * CommandPalette — workspace omnibar opened by Cmd+K / Ctrl+K.
+ * CommandPalette — workspace omnibar opened by Cmd+K / Ctrl+K, or by
+ * Cmd+P / Ctrl+P. The P chord is unconditional; the K chord yields to
+ * link-authoring when the visual editor has a selection.
  *
  * The palette is available on both web and Electron hosts. Workspace
  * navigation (files, folders, create commands, graph, open-in-agent) is
@@ -466,18 +468,23 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       ? []
       : searchWorkspaceEntries(workspaceEntries, trimmedDeferredQuery, 8);
 
-  // Cmd+K / Ctrl+K global opener. Attached once per bridge instance; React
-  // Compiler handles the no-stale-closure-on-re-render concern via reactivity.
+  // Global palette opener — Cmd+K / Ctrl+K and Cmd+P / Ctrl+P. Attached once
+  // per bridge instance; React Compiler handles the no-stale-closure-on-
+  // re-render concern via reactivity.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const isTrigger = matchesKeyboardShortcut(e, 'command-palette');
       if (!isTrigger) return;
+      // preventDefault before the overlay gate, not after: ⌘P is the browser's
+      // Print accelerator on the web host, so the chord has to be suppressed
+      // even when we then decline to open (see keyboard-shortcuts.ts). Ordering
+      // it after the gate leaked the Print dialog whenever another layer was up.
+      e.preventDefault();
       // Asymmetric gate, because ⌘K is a toggle: while the palette is up it IS
       // the top layer and the chord has to keep dismissing it, but while it is
       // closed any other open layer owns the keyboard and the palette must not
       // stack on top of it.
       if (!open && isOverlayLayerOpen()) return;
-      e.preventDefault();
       onOpenChange(!open);
     }
     window.addEventListener('keydown', onKey);
@@ -1119,6 +1126,15 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         className="sm:max-w-2xl"
         commandProps={{
           shouldFilter: false,
+          // cmdk's vim bindings map Ctrl+P and Ctrl+K to "select previous
+          // item" inside every Command root. Both collide with our openers on
+          // Windows/Linux, where the palette chords ARE Ctrl+P / Ctrl+K, so a
+          // second press would move the highlight as well as toggle. Off, so
+          // the chord means exactly one thing on every platform. One boolean
+          // gates all four vim chords, so this also drops Ctrl+N / Ctrl+J
+          // (select next), which collided with nothing — cmdk offers no
+          // narrower opt-out.
+          vimBindings: false,
           className:
             '[&_[cmdk-input-wrapper]_svg]:h-4 [&_[cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4',
         }}

@@ -571,6 +571,17 @@ describe('CommandPalette DOM behavior', () => {
     expect(commandDialogProps.at(-1)?.placement).toBeUndefined();
   });
 
+  test('CommandPalette opts out of cmdk vim bindings', async () => {
+    // Pins the wiring, not the behavior: command.dom.test.tsx proves against
+    // the real cmdk what vimBindings:false DOES, but nothing there observes
+    // whether this component passes it. Without this assertion, deleting the
+    // opt-out from CommandPalette's commandProps leaves the whole suite green
+    // while Ctrl+P silently regains cmdk's select-previous on Windows/Linux.
+    await renderPalette();
+
+    expect(commandDialogProps.at(-1)?.commandProps?.vimBindings).toBe(false);
+  });
+
   test('during cold load, a typed query shows a preparing state and never fires the body search', async () => {
     pageListLoading = true;
     await renderPalette({ bridge: null });
@@ -1331,6 +1342,13 @@ describe('CommandPalette ⌘K — overlay gate', () => {
     fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
   }
 
+  // Both platform variants; the registry matcher is platform-aware, so exactly
+  // one of the two is the live chord on any given run.
+  function pressCommandP() {
+    fireEvent.keyDown(document.body, { key: 'p', metaKey: true });
+    fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true });
+  }
+
   test('closes itself on ⌘K while it is the open layer', async () => {
     const { onOpenChange } = await renderPalette({ bridge: createBridge() });
 
@@ -1373,5 +1391,74 @@ describe('CommandPalette ⌘K — overlay gate', () => {
     pressCommandK();
 
     expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  // The ⌘P happy paths, symmetric with the ⌘K pair above. The registry unit
+  // tests cover the matcher in isolation; these cover the chord actually
+  // reaching this component's window listener and driving onOpenChange —
+  // which is the behavior the feature is named for.
+  test('opens on ⌘P with nothing else open', async () => {
+    const { CommandPalette } = await import('./CommandPalette');
+    const onOpenChange = vi.fn(() => {});
+    render(
+      <CommandPalette bridge={createBridge() as never} open={false} onOpenChange={onOpenChange} />,
+    );
+
+    pressCommandP();
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  test('closes itself on ⌘P while it is the open layer', async () => {
+    const { onOpenChange } = await renderPalette({ bridge: createBridge() });
+
+    pressCommandP();
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test('suppresses the browser default on the palette chord even when another dialog owns the keyboard', async () => {
+    // ⌘P / Ctrl+P matches the palette opener AND is the browser's Print
+    // accelerator on the web host. When another layer owns the keyboard the
+    // palette declines to open — but it must still preventDefault, or the
+    // browser Print dialog leaks in exactly that state (e.g. Settings open).
+    // Regression guard for the preventDefault-before-decline ordering.
+    const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
+      '@/components/ui/dialog'
+    );
+    const { CommandPalette } = await import('./CommandPalette');
+    const onOpenChange = vi.fn(() => {});
+    render(
+      <>
+        <CommandPalette bridge={createBridge() as never} open={false} onOpenChange={onOpenChange} />
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>Settings body</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      </>,
+    );
+    await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
+
+    // Fire both platform variants; exactly one matches the detected platform
+    // (⌘P on mac, Ctrl+P on Windows/Linux) and that one must be suppressed.
+    const cmdP = new KeyboardEvent('keydown', {
+      key: 'p',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const ctrlP = new KeyboardEvent('keydown', {
+      key: 'p',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(document.body, cmdP);
+    fireEvent(document.body, ctrlP);
+
+    expect(cmdP.defaultPrevented || ctrlP.defaultPrevented).toBe(true);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });
