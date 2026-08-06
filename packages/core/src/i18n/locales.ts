@@ -52,6 +52,11 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
  * A stored preference naming an enumerated-but-unpromoted locale stays valid
  * and resolves normally — that is what lets a translator run the app in their
  * own language to check their own work.
+ *
+ * Adding a tag to this tuple is the whole of a promotion; the picker, the
+ * completeness gate and the review record all derive from it. What has to
+ * happen first, and what gets recorded, is
+ * `packages/app/src/locales/REVIEW.md`.
  */
 export const PICKER_LOCALES = ['en', 'es', 'zh-Hans'] as const satisfies readonly SupportedLocale[];
 

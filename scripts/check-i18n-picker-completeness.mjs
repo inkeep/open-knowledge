@@ -158,6 +158,7 @@ function main() {
   console.error('');
   console.error('  Either finish the catalog, or take the locale out of PICKER_LOCALES');
   console.error(`  in ${LOCALES_TS} until someone who reads it has reviewed it.`);
+  console.error('  Review and promotion process: packages/app/src/locales/REVIEW.md');
   console.error('  Locked terminology: packages/app/src/locales/GLOSSARY.md');
   return 1;
 }
