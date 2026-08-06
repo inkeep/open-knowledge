@@ -168,40 +168,89 @@ function collectSysinfo(): Record<string, unknown> {
   return info;
 }
 
+// The writers that share `~/.ok/logs`, and whether their record schema can
+// carry a `project` field at all. Only the CLI logger's pino base sets one; the
+// desktop logger's base has no such key and the MCP stderr mirror is plain text
+// rather than JSON — so a slug predicate is *inapplicable* to those families,
+// not false for them, and must not decide whether they belong in a bundle.
+// Anything absent from this table is treated as untaggable and retained, so a
+// new writer joining this directory is collected without a collector change.
+//
+// Each prefix is owned independently, so a rename has three possible homes:
+//   cli      `packages/cli/src/cli.ts` passes the name to the
+//            `<name>.<date>.log` factory in `packages/server/src/file-logger.ts`,
+//            which takes it from its caller rather than owning it
+//   desktop  `packages/desktop/src/main/desktop-logger.ts` hardcodes its own
+//   mcp      `packages/cli/src/mcp/stderr-mirror.ts` hardcodes its own
+// TypeScript cannot see across those package boundaries, so a rename there has
+// to be mirrored here; a stale entry degrades to "untaggable → retained",
+// never to a dropped file.
+const USER_LOG_FAMILIES = [
+  { prefix: 'cli', projectTagged: true },
+  { prefix: 'desktop', projectTagged: false },
+  { prefix: 'mcp', projectTagged: false },
+] as const satisfies readonly { prefix: string; projectTagged: boolean }[];
+
+// Prefix-anchored rather than suffix-anchored so rotated files (`cli.<date>.log.2`)
+// stay in the family that owns them.
+function isProjectTaggable(file: string): boolean {
+  const name = basename(file);
+  return USER_LOG_FAMILIES.some((f) => f.projectTagged && name.startsWith(`${f.prefix}.`));
+}
+
 /**
  * User-level log files (`~/.ok/logs/*.log`), optionally narrowed to one
  * project. Shared with the full bundle so both report levels harvest the same
  * set — on desktop these carry the renderer console, which reaches no other
  * sink.
  *
- * The slug filter is best-effort: when no file matches it, every file is
- * returned rather than none, because a log that predates project tagging is
- * still better evidence than an empty bundle.
+ * Narrowing reaches only the log families whose records can carry a `project`
+ * field; a family the slug cannot describe survives regardless of it. Within
+ * the taggable family the filter stays best-effort: when no file matches the
+ * slug, every file is returned rather than none, because a log that predates
+ * project tagging is still better evidence than an empty bundle.
  */
 export function collectUserLogFiles(projectSlug: string | null, logsDir: string): string[] {
   return collectLogs(projectSlug, logsDir).files;
 }
 
-function collectLogs(projectSlug: string | null, logsDir: string): { files: string[] } {
-  if (!existsSync(logsDir)) return { files: [] };
+function collectLogs(
+  projectSlug: string | null,
+  logsDir: string,
+): { files: string[]; excludedByProjectSlug: number } {
+  if (!existsSync(logsDir)) return { files: [], excludedByProjectSlug: 0 };
 
-  let files = readdirSync(logsDir)
+  const files = readdirSync(logsDir)
     .filter((f) => f.endsWith('.log') || /\.log\.\d+$/.test(f))
     .map((f) => join(logsDir, f));
 
-  if (projectSlug && files.length > 0) {
-    const filtered = files.filter((f) => {
-      try {
-        const content = readFileSync(f, 'utf8');
-        return content.includes(`"project":"${projectSlug}"`);
-      } catch {
-        return true;
-      }
-    });
-    if (filtered.length > 0) files = filtered;
-  }
+  if (!projectSlug) return { files, excludedByProjectSlug: 0 };
 
-  return { files };
+  const taggable = files.filter(isProjectTaggable);
+  // Retention is the fail-safe answer for a log we listed but then couldn't
+  // read: the likeliest cause is a writer rotating it between the readdir and
+  // the open, and an undecidable slug match must not silently discard
+  // evidence. Tracked apart from the matches so that retention stays a
+  // decision about this one file — counted as a match it would also speak for
+  // the whole family, suppressing the keep-everything fallback and discarding
+  // the readable siblings it was meant to protect.
+  const unreadable: string[] = [];
+  const matching = taggable.filter((f) => {
+    try {
+      return readFileSync(f, 'utf8').includes(`"project":"${projectSlug}"`);
+    } catch {
+      unreadable.push(f);
+      return false;
+    }
+  });
+
+  if (matching.length === 0) return { files, excludedByProjectSlug: 0 };
+
+  const kept = new Set([...matching, ...unreadable]);
+  return {
+    files: files.filter((f) => !isProjectTaggable(f) || kept.has(f)),
+    excludedByProjectSlug: taggable.length - kept.size,
+  };
 }
 
 function collectLockDir(cwd: string): { files: string[] } {
@@ -298,7 +347,10 @@ export async function collectStandardBundle(
   // Always present so a recipient can distinguish "not an Electron host"
   // (null) from a bundle predating the field (absent).
   sysinfo.desktop = opts.desktop ?? null;
-  const { files: logFiles } = collectLogs(projectSlug, userLogsDir);
+  const { files: logFiles, excludedByProjectSlug: logFilesExcludedByProjectSlug } = collectLogs(
+    projectSlug,
+    userLogsDir,
+  );
   const { files: lockFiles } = opts.projectDir ? collectLockDir(opts.projectDir) : { files: [] };
   const { files: localSinkFiles } = opts.projectDir
     ? collectLocalSinkLogs(opts.projectDir)
@@ -307,6 +359,9 @@ export async function collectStandardBundle(
   logger?.info(
     {
       logFileCount: logFiles.length,
+      // The bundled MANIFEST lists only what was written, so without this the
+      // narrowing decision leaves no trace a triager could read.
+      logFilesExcludedByProjectSlug,
       lockFileCount: lockFiles.length,
       localSinkFileCount: localSinkFiles.length,
     },
@@ -392,6 +447,19 @@ export async function collectStandardBundle(
   zipfile.addBuffer(Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'), 'MANIFEST.json');
 
   const totalRedacted = redactions.reduce((sum, r) => sum + r.lineCount, 0);
+
+  // The families the slug cannot narrow are per-machine, per-day singletons, so
+  // a project-scoped bundle still carries whatever else the machine was doing
+  // that day. Secret scrubbing does not narrow this — it matches credentials,
+  // not document titles or content — so the scope has to be stated rather than
+  // left to be inferred from the `Project:` header.
+  // Only meaningful against a declared project scope: an unscoped bundle
+  // narrows nothing and is user-wide throughout, so there is no narrower
+  // reading for the note to correct.
+  const userWideLogEntries = projectSlug
+    ? bundleFiles.filter((f) => f.startsWith('logs/') && !isProjectTaggable(f))
+    : [];
+
   const readme = [
     '# Bug Report Bundle',
     '',
@@ -405,6 +473,16 @@ export async function collectStandardBundle(
     '',
     '## Privacy',
     '',
+    ...(userWideLogEntries.length > 0
+      ? [
+          'Scope: some collected logs are user-wide rather than project-scoped.',
+          'These are written once per machine per day and can contain activity',
+          'from other projects open on this machine, including captured console',
+          'output:',
+          ...userWideLogEntries.map((f) => `- ${f}`),
+          '',
+        ]
+      : []),
     ...(redact
       ? [
           'This bundle was auto-redacted before packaging.',

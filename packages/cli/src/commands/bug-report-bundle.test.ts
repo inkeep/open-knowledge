@@ -7,10 +7,12 @@
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  type BundleLogger,
   collectStandardBundle,
+  collectUserLogFiles,
   defaultBugReportZipPath,
   okBugReportsDir,
 } from './bug-report-bundle.ts';
@@ -184,6 +186,25 @@ describe('collectStandardBundle — redaction', () => {
   });
 });
 
+// Record shapes of the three writers that share `~/.ok/logs`. Only the CLI
+// logger's pino base carries a `project` field. The desktop logger's base has
+// no such key, and the MCP stderr mirror is plain text rather than JSON — so a
+// slug predicate is *inapplicable* to those two families, not false for them,
+// and cannot decide whether they belong in a bundle.
+const CLI_LOG_MATCHING_SLUG =
+  '{"level":30,"time":"2026-08-05T10:00:00.000Z","pid":51000,"runtime":"cli","project":"bundle-proj","name":"cli","command":"start"}\n';
+const CLI_LOG_OTHER_PROJECT =
+  '{"level":30,"time":"2026-08-04T10:00:00.000Z","pid":50000,"runtime":"cli","project":"someone-else","name":"cli","command":"start"}\n';
+const DESKTOP_LOG_LINE =
+  '{"level":30,"time":"2026-08-05T10:00:00.000Z","pid":46323,"runtime":"desktop","name":"desktop","subsystem":"boot","event":"desktop.boot","version":"0.48.7"}\n';
+const MCP_MIRROR_LINE = '2026-08-05T10:00:00.000Z [mcp] stdio server ready\n';
+// The desktop log is the only sink for the captured renderer console, which can
+// serialize arbitrary application data — including another project's slug in the
+// exact shape the CLI predicate looks for. That coincidence must not reclassify
+// the file, so taggability is decided from the writer that owns the filename and
+// never from the bytes.
+const DESKTOP_LOG_WITH_FOREIGN_SLUG_IN_CONSOLE = `${DESKTOP_LOG_LINE}{"level":30,"time":"2026-08-05T10:00:01.000Z","pid":46323,"runtime":"desktop","name":"desktop","subsystem":"renderer","event":"renderer.console","args":[{"project":"someone-else"}]}\n`;
+
 describe('collectStandardBundle — user-level logs', () => {
   test('includes .log and rotated .log.N files, skipping other extensions', async () => {
     const userLogsDir = makeTmpDir();
@@ -202,8 +223,8 @@ describe('collectStandardBundle — user-level logs', () => {
 
   test('narrows user logs to those mentioning the project slug when any match', async () => {
     const userLogsDir = makeTmpDir();
-    writeFileSync(join(userLogsDir, 'match.log'), '{"project":"bundle-proj"}\n');
-    writeFileSync(join(userLogsDir, 'other.log'), '{"project":"someone-else"}\n');
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), '{"project":"bundle-proj"}\n');
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), '{"project":"someone-else"}\n');
     const projectDir = makeProjectDir('bundle-proj');
     const outputPath = join(makeTmpDir(), 'report.zip');
 
@@ -215,14 +236,14 @@ describe('collectStandardBundle — user-level logs', () => {
     });
 
     const entries = listZipEntries(zipPath);
-    expect(entries).toContain('logs/match.log');
-    expect(entries).not.toContain('logs/other.log');
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).not.toContain('logs/cli.2026-08-04.log');
   });
 
   test('keeps every user log when none mention the project slug', async () => {
     const userLogsDir = makeTmpDir();
-    writeFileSync(join(userLogsDir, 'a.log'), 'no slug here\n');
-    writeFileSync(join(userLogsDir, 'b.log'), 'none here either\n');
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), 'no slug here\n');
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), 'none here either\n');
     const projectDir = makeProjectDir('bundle-proj');
     const outputPath = join(makeTmpDir(), 'report.zip');
 
@@ -234,8 +255,292 @@ describe('collectStandardBundle — user-level logs', () => {
     });
 
     const entries = listZipEntries(zipPath);
-    expect(entries).toContain('logs/a.log');
-    expect(entries).toContain('logs/b.log');
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).toContain('logs/cli.2026-08-04.log');
+  });
+
+  test('keeps log families that cannot carry a project slug when another log matches', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    writeFileSync(join(userLogsDir, 'mcp.2026-08-05.log'), MCP_MIRROR_LINE);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath, summary } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).toContain('logs/desktop.2026-08-05.log');
+    expect(entries).toContain('logs/mcp.2026-08-05.log');
+
+    // The MANIFEST is the triager's inventory and records only what was
+    // written, so a family missing here is indistinguishable from one that
+    // never existed.
+    const manifest = JSON.parse(readZipEntry(zipPath, 'MANIFEST.json'));
+    expect(manifest.files).toEqual(summary.files);
+    expect(manifest.files).toContain('logs/desktop.2026-08-05.log');
+    expect(manifest.files).toContain('logs/mcp.2026-08-05.log');
+  });
+
+  test('still excludes a project-taggable log belonging to another project', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), CLI_LOG_OTHER_PROJECT);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    writeFileSync(join(userLogsDir, 'mcp.2026-08-05.log'), MCP_MIRROR_LINE);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).toContain('logs/desktop.2026-08-05.log');
+    expect(entries).toContain('logs/mcp.2026-08-05.log');
+    expect(entries).not.toContain('logs/cli.2026-08-04.log');
+  });
+
+  test('keeps a desktop log whose captured console mentions another project', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(
+      join(userLogsDir, 'desktop.2026-08-05.log'),
+      DESKTOP_LOG_WITH_FOREIGN_SLUG_IN_CONSOLE,
+    );
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).toContain('logs/desktop.2026-08-05.log');
+  });
+
+  test('keeps a log family the collector does not recognize', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), CLI_LOG_OTHER_PROJECT);
+    writeFileSync(
+      join(userLogsDir, 'future-writer.2026-08-05.log'),
+      'a writer nobody listed yet\n',
+    );
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/future-writer.2026-08-05.log');
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).not.toContain('logs/cli.2026-08-04.log');
+  });
+
+  test('narrows rotated CLI logs too', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log.1'), CLI_LOG_OTHER_PROJECT);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).not.toContain('logs/cli.2026-08-04.log.1');
+  });
+
+  test('an unreadable taggable entry does not drop its siblings', async () => {
+    const userLogsDir = makeTmpDir();
+    // A directory named like a log: readdirSync lists it and the extension
+    // filter admits it, but reading it throws EISDIR. Portable and unprivileged,
+    // unlike chmod 000, which no-ops when the suite runs as root.
+    mkdirSync(join(userLogsDir, 'cli.2026-08-04.log'));
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    expect(existsSync(zipPath)).toBe(true);
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/cli.2026-08-05.log');
+    expect(entries).toContain('logs/desktop.2026-08-05.log');
+    expect(entries).not.toContain('logs/cli.2026-08-04.log');
+  });
+
+  test('an unreadable taggable entry does not suppress the keep-all fallback', async () => {
+    const userLogsDir = makeTmpDir();
+    // Same unreadable-directory trick, but now nothing readable carries the
+    // slug. Retaining the undecidable file must not read as a match: if it
+    // does, the "no match keeps everything" fallback never fires and the one
+    // readable CLI log is discarded on a slug decision nobody could make.
+    mkdirSync(join(userLogsDir, 'cli.2026-08-03.log'));
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), CLI_LOG_OTHER_PROJECT);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/cli.2026-08-04.log');
+    expect(entries).toContain('logs/desktop.2026-08-05.log');
+  });
+});
+
+describe('collectUserLogFiles — shared collector', () => {
+  // The full bundle tier reaches the same file set through this exported
+  // collector rather than through collectStandardBundle, so a fix applied at
+  // the bundle call site alone would leave that tier still dropping families.
+  test('keeps log families that cannot carry a project slug', () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    writeFileSync(join(userLogsDir, 'mcp.2026-08-05.log'), MCP_MIRROR_LINE);
+
+    const names = collectUserLogFiles('bundle-proj', userLogsDir)
+      .map((f) => basename(f))
+      .sort();
+
+    expect(names).toEqual(['cli.2026-08-05.log', 'desktop.2026-08-05.log', 'mcp.2026-08-05.log']);
+  });
+
+  // Retention alone is satisfied by a collector that ignores the slug
+  // entirely, which would leak another project's command history into a
+  // bundle the user forwards to support. Only an exclusion at this tier
+  // proves the slug argument still reaches the shared filter.
+  test('still narrows the taggable family to the requested project', () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), CLI_LOG_OTHER_PROJECT);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+
+    const names = collectUserLogFiles('bundle-proj', userLogsDir)
+      .map((f) => basename(f))
+      .sort();
+
+    expect(names).toEqual(['cli.2026-08-05.log', 'desktop.2026-08-05.log']);
+  });
+});
+
+describe('collectStandardBundle — narrowing diagnostics', () => {
+  test('counts only the taggable logs the slug ruled out', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), CLI_LOG_OTHER_PROJECT);
+    writeFileSync(join(userLogsDir, 'cli.2026-08-03.log.1'), CLI_LOG_OTHER_PROJECT);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const infoPayloads: Record<string, unknown>[] = [];
+    const logger: BundleLogger = {
+      info: (payload) => {
+        infoPayloads.push(payload);
+      },
+      warn: () => {},
+    };
+
+    await collectStandardBundle({ projectDir, redact: true, outputPath, userLogsDir, logger });
+
+    // The bundled MANIFEST records only what was written, so this count is the
+    // only signal separating "the slug excluded them" from "they never existed".
+    // The retained desktop log must not inflate it: an untaggable family was
+    // never a candidate for exclusion.
+    const collected = infoPayloads.find((p) => 'logFilesExcludedByProjectSlug' in p);
+    expect(collected?.logFilesExcludedByProjectSlug).toBe(2);
+    expect(collected?.logFileCount).toBe(2);
+  });
+});
+
+describe('collectStandardBundle — bundle scope disclosure', () => {
+  test('names the retained user-wide log families in a project-scoped bundle', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    writeFileSync(join(userLogsDir, 'mcp.2026-08-05.log'), MCP_MIRROR_LINE);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    // The README header names a single project, so a reader would otherwise
+    // take the whole bundle to be scoped to it. The two families the slug
+    // cannot narrow are per-machine singletons and must say so next to the
+    // "safe to attach" claim they qualify.
+    const readme = readZipEntry(zipPath, 'README.md');
+    expect(readme).toContain('user-wide rather than project-scoped');
+
+    // Scope the entry assertions to the disclosure block: the Contents section
+    // lists every file including the cli log, so asserting over the whole
+    // README would pass whatever the note actually said.
+    const scopeNote = readme.slice(readme.indexOf('Scope: some collected logs'));
+    const listed = scopeNote
+      .split('\n')
+      .filter((l) => l.startsWith('- '))
+      .map((l) => l.slice(2))
+      .sort();
+    expect(listed).toEqual(['logs/desktop.2026-08-05.log', 'logs/mcp.2026-08-05.log']);
+  });
+
+  test('omits the scope note when only project-taggable logs were collected', async () => {
+    const userLogsDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    const projectDir = makeProjectDir('bundle-proj');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const readme = readZipEntry(zipPath, 'README.md');
+    expect(readme).not.toContain('user-wide rather than project-scoped');
   });
 });
 
@@ -261,6 +566,11 @@ describe('collectStandardBundle — system-wide (no projectDir)', () => {
 
     const readme = readZipEntry(zipPath, 'README.md');
     expect(readme).toContain('Project: (unscoped)');
+
+    // The scope note exists to correct a narrower reading of the bundle. An
+    // unscoped bundle narrows nothing, so there is no such reading to correct
+    // and the note would contradict the header directly above it.
+    expect(readme).not.toContain('user-wide rather than project-scoped');
   });
 });
 
