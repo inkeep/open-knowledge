@@ -1077,7 +1077,10 @@ export function formatReleaseNotes(plan) {
     `Point release over ${plan.latestStableTag}: the current stable plus ${plan.fixRefs.length} applied ` +
       `commit(s), isolated from the changes still soaking on main.`,
     '',
-    `Mode: ${plan.mode}`,
+    // No `Mode:` line. Whether the operator reached this stable by cherry-pick
+    // or by revert is release mechanics; it reads as noise in the Slack and
+    // Discord announcements, which inline this body verbatim. The workflow run
+    // summary still records the mode for whoever is auditing the lane.
     // `ref (sha)` is only worth printing when the ref is a NAME — a tag or
     // branch the reader cannot resolve themselves. The bug lane dispatches
     // full SHAs, where `ref` and `sha` are the same 40 characters and the

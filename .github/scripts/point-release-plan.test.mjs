@@ -807,6 +807,21 @@ describe('runPointRelease cascade', () => {
     expect(notes).not.toContain('Changesets added:');
   });
 
+  test('the release notes leave the assembly mode out of the announced body', () => {
+    // Slack and Discord inline this body verbatim, and how the operator
+    // assembled the stable is not something a reader of the announcement acts
+    // on. The workflow run summary keeps the mode for the audit trail.
+    const picked = cherryPickIo();
+    runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, picked);
+    expect(picked.releases[0].notes).not.toMatch(/^Mode:/m);
+    expect(picked.releases[0].notes).not.toContain('cherry-pick');
+
+    const reverted = makeIo();
+    runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, reverted);
+    expect(reverted.releases[0].notes).not.toMatch(/^Mode:/m);
+    expect(reverted.releases[0].notes).not.toContain('revert');
+  });
+
   test('an unreadable changeset degrades its notes entry to the id rather than refusing', () => {
     const io = makeIo({
       changesets: {
