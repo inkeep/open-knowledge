@@ -1,3 +1,4 @@
+
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,7 @@ const BLOCK_COUNTS = [100, 1000, 5000, 10000, 20000] as const;
 const BASELINE_ONLY_COUNTS = [500, 2500] as const;
 
 const SEED = 0xf1de1117;
+
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -35,6 +37,7 @@ function pickWeighted<T>(rand: () => number, items: readonly [T, number][]): T {
   }
   return items[items.length - 1][0];
 }
+
 
 const WORDS = [
   'lorem',
@@ -153,6 +156,7 @@ function mdxBlock(rand: () => number): string {
   return `<${name}>\n\n${sentence(rand)}\n\n</${name}>`;
 }
 
+
 type BlockKind = 'paragraph' | 'heading' | 'list' | 'code' | 'table' | 'mdx';
 
 const MIX: readonly [BlockKind, number][] = [
@@ -190,6 +194,7 @@ function generateDocument(blockCount: number, seed: number): string {
   }
   return `${blocks.join('\n\n')}\n`;
 }
+
 
 function main(): void {
   for (const count of [...BLOCK_COUNTS, ...BASELINE_ONLY_COUNTS]) {

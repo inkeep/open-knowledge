@@ -32,6 +32,10 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "@inkeep/open-knowledge-docs#build": {
+      "dependsOn": ["^build", "typecheck"],
+      "outputs": ["dist/**", ".next/**"]
+    },
     "test": {
       "dependsOn": ["^build"],
       "cache": true,
@@ -47,6 +51,11 @@
         "../../test-support/*.ts",
         "../test-support/*.ts"
       ]
+    },
+    "@inkeep/open-knowledge#test": {
+      "dependsOn": ["^build", "build"],
+      "cache": true,
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "tests/contract/**/*.ts"]
     },
     "@inkeep/md-conformance#test": {
       "dependsOn": ["^build"],
