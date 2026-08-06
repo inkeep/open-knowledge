@@ -1,0 +1,71 @@
+---
+title: Translate the interface
+icon: LuLanguages
+description: Review one of our machine-translated interface languages and make it selectable in the app.
+---
+
+OpenKnowledge's interface exists in eleven languages. A few of them are offered in **Settings → Preferences → Language**; the rest were machine-translated and nobody who reads them has checked them yet.
+
+Closing that gap is what this page is asking for. If you read one of the unreviewed languages, a review pass over its translations is the most useful thing you can do for it, and it is what moves that language into the picker.
+
+Which language is in which state lives in the `appearance.language` row of the [configuration reference](/docs/reference/configuration#schema). That table is the source of truth, so this page doesn't repeat it.
+
+## Review is the bar, not completeness
+
+Completeness is not the gap. Every language already has a translation for every string in the interface, and a change that adds a new string is refused unless it translates that string into every language in the same change. Nothing is blank, the placeholders line up, the plural forms are all present.
+
+What machine translation does not reliably produce is prose that reads naturally and terminology a user of that language would actually recognize. No test we can write sees that failure, and neither can anyone here. Only a reader of the language does.
+
+So the question that decides whether a language appears in the picker is not whether its catalog is full — they all are. It is whether someone who reads that language has read it. Offering a language in the picker says we stand behind it, and for most of them nobody here can. When a native speaker reviews a catalog and we merge that review, the language goes into the picker.
+
+## Run OpenKnowledge in the language you're checking
+
+You don't have to wait for a language to be promoted to see it. Set it by hand in `~/.ok/global.yml`:
+
+```yaml
+appearance:
+  language: bn
+```
+
+Any of the eleven works here, in the picker or not. That is deliberate — a translator has to be able to look at their own work. Use the tag exactly as it appears in the configuration reference (`zh-Hans`, `pt-BR`, and so on). The editor picks the change up without a restart.
+
+On the desktop app, the `OK_LANG` environment variable additionally overrides the **native menus** for a single run, which is the quickest way to check menu translations without touching config. The rest of the window follows `appearance.language`, so set both if you want everything in one language at once.
+
+<Callout type="warn" title="Arabic and Urdu are a special case">
+`ar` and `ur` have full, maintained translations, but the interface still lays itself out left to right. Until right-to-left layout is built, the words will be right and everything around them will be wrong, and there is no useful way to review the result visually. Corrections to the text are still welcome; a layout review isn't possible yet.
+</Callout>
+
+## Make the change
+
+Translations live in [`inkeep/open-knowledge`](https://github.com/inkeep/open-knowledge), one gettext catalog per language:
+
+```
+packages/app/src/locales/<locale>/messages.po
+```
+
+1. **Edit the `msgstr` values.** Leave every `msgid` alone — that is the English source string, and the key the app uses to look the translation up. An empty `msgstr` means "untranslated" and falls back to English, so don't blank one out to flag a problem; open an issue instead.
+
+2. **Follow the glossary.** [`GLOSSARY.md`](https://github.com/inkeep/open-knowledge/blob/main/packages/app/src/locales/GLOSSARY.md), in the same folder, pins one form per language for the words that recur everywhere (*document*, *folder*, *branch*, and so on) and lists what is never translated at all: the product name, format names such as Markdown and YAML, and placeholders like `{count}`. If a glossary entry is wrong for your language, change that row and sweep every message that uses it in the same pull request. A catalog holding two words for one concept is worse than either word on its own.
+
+3. **Regenerate the compiled catalogs.** The app loads a compiled `messages.json` beside each `.po`, and CI fails when the two disagree:
+
+   ```bash
+   cd packages/app && pnpm run i18n
+   ```
+
+   Commit both files.
+
+4. **Open a pull request.** Say which language you reviewed and whether you speak it natively. That is the part we can't get any other way, and it is what promotes the language.
+
+[CONTRIBUTING.md](https://github.com/inkeep/open-knowledge/blob/main/CONTRIBUTING.md) covers the rest: toolchain, `pnpm run check`, and the Contributor License Agreement.
+
+## What is and isn't translated
+
+- **The application's own chrome** — menus, buttons, settings, dialogs, notifications — is what these catalogs cover.
+- **Your content is never translated.** Document bodies, titles, file and folder names, frontmatter values and tags stay exactly as you wrote them, in every language.
+- **The CLI's commands, flags and machine-readable output stay English** on purpose, so scripts keep working whatever the machine's locale is.
+- **This documentation site is English only** for now.
+
+## A language that isn't on the list
+
+Open an [issue](https://github.com/inkeep/open-knowledge/issues) before starting work on one. Each language adds a permanent obligation on every string written from then on, so adding one is a decision rather than a merge. The ask is genuinely welcome, though: knowing which languages people want is how the list grows.
