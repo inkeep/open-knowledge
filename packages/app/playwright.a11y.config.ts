@@ -1,4 +1,6 @@
+import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
+import { resolveWorkerCount } from './playwright.config.ts';
 
 /**
  * A11y Playwright config — per-worker fixture isolation (same shape as
@@ -25,6 +27,15 @@ import { defineConfig } from '@playwright/test';
  * because it exposes what a11y needs (per-worker server + API helpers).
  */
 
+/**
+ * Off-CI worker count is derived from the same per-worker density as the main
+ * suite rather than left to Playwright's default, because this config consumes
+ * the identical per-worker fixture: each worker owns a full Vite + Hocuspocus +
+ * Chromium stack, not just a browser. `check:full:parallel` runs this tier
+ * concurrently with the e2e tier at `--concurrency=100%`, so an unbounded
+ * default here would re-import the oversubscription the main config now avoids.
+ */
+
 const isCI = !!process.env.CI;
 
 export default defineConfig({
@@ -35,7 +46,7 @@ export default defineConfig({
   failOnFlakyTests: false,
   forbidOnly: isCI,
   fullyParallel: true,
-  workers: isCI ? 4 : undefined,
+  workers: isCI ? 4 : resolveWorkerCount(availableParallelism()),
   reporter: [['html', { open: 'never' }], ['list'], ...(isCI ? [['github'] as const] : [])],
   use: {
     // `baseURL` is populated by the worker-scoped fixture in

@@ -3,7 +3,7 @@
  *
  * Replaces the previous single shared `webServer` block in
  * `playwright.config.ts` with a `{ scope: 'worker' }` fixture that spawns its
- * own `bun run dev` process on a kernel-allocated port + unique tmpdir per
+ * own `pnpm run dev` process on a kernel-allocated port + unique tmpdir per
  * worker. Eliminates cross-worker CPU contention on one shared Vite+Hocuspocus
  * instance (the residual flake class an earlier mitigation could not fully
  * eliminate).
@@ -384,7 +384,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const contentDir = mkdtempSync(join(tmpdir(), `ok-w${workerInfo.workerIndex}-`));
       // Per-worker Vite optimized-dependency cacheDir — the third per-process
       // shared resource alongside the port and the content dir. Without it,
-      // every spawned `bun run dev` falls back to Vite's default
+      // every spawned `pnpm run dev` falls back to Vite's default
       // `<root>/node_modules/.vite`, which the dependency optimizer is
       // single-writer over; cross-worker re-optimization deletes chunk files
       // that peer browsers are mid-import on, 404'ing `/src/main.tsx`'s ESM
@@ -420,7 +420,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // Vite's load-bearing boot diagnostics (dep-scan failures, restart
       // notices, "new dependencies optimized") go to stdout. Capture it to
       // a kernel-level file fd — no pipe backpressure (a `pipe` without a
-      // consumer fills its 64KB buffer and hangs bun under verbose output),
+      // consumer fills its 64KB buffer and stalls the writer under verbose
+      // output),
       // and boot failures get the log tail attached below instead of the
       // old 'ignore' black hole.
       const serverLog = openServerLog(`w${workerInfo.workerIndex}`);

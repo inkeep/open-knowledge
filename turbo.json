@@ -35,7 +35,18 @@
     "test": {
       "dependsOn": ["^build"],
       "cache": true,
-      "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "tests/contract/**/*.ts"]
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "tests/contract/**/*.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "tests/integration/idb-preload.ts",
+        "../../test-support/*.ts",
+        "../test-support/*.ts"
+      ]
     },
     "@inkeep/md-conformance#test": {
       "dependsOn": ["^build"],
@@ -46,6 +57,8 @@
         "src/**/*.json",
         "tests/contract/**/*.ts",
         "corpora/**/*.json",
+        "vitest.config.ts",
+        "../../test-support/*.ts",
         "../server/src/**/*.ts"
       ]
     },
@@ -59,6 +72,10 @@
         "tests/dom/**/*.tsx",
         "vitest.dom.config.ts",
         "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "tests/integration/idb-preload.ts",
+        "../../test-support/*.ts",
         "../core/src/**/*.ts",
         "../server/src/**/*.ts",
         "../md-conformance/src/**/*.ts",
@@ -74,6 +91,11 @@
         "src/**/*.tsx",
         "tests/**/*.ts",
         "tests/**/*.tsx",
+        "playwright.config.ts",
+        "vitest.integration.config.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "../../test-support/*.ts",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
         "../../biome.jsonc",
@@ -89,6 +111,12 @@
         "tests/integration/**/*.ts",
         "tests/meta/**/*.ts",
         "tests/lint-plugins/**/*.ts",
+        "playwright.config.ts",
+        "vitest.integration.config.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "../../test-support/*.ts",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts"
       ]
@@ -102,6 +130,12 @@
         "tests/integration/**/*.ts",
         "tests/meta/**/*.ts",
         "tests/lint-plugins/**/*.ts",
+        "playwright.config.ts",
+        "vitest.integration.config.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "../../test-support/*.ts",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts"
       ]
@@ -114,6 +148,10 @@
         "src/editor/**/*.tsx",
         "tests/conversion/**/*.ts",
         "tests/integration/**/*.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "../../test-support/*.ts",
         "../core/src/**/*.ts",
         "../server/src/**/*.ts"
       ]
@@ -133,6 +171,11 @@
         "src/editor/**/*.ts",
         "src/editor/**/*.tsx",
         "tests/stress/component-blocks.perf.test.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "tests/integration/idb-preload.ts",
+        "../../test-support/*.ts",
         "../core/src/**/*.ts"
       ]
     },
@@ -153,7 +196,12 @@
     "test:perf:regression:unit": {
       "dependsOn": [],
       "cache": true,
-      "inputs": ["tests/perf/regression-gate.ts", "tests/perf/regression-gate.test.ts"]
+      "inputs": [
+        "tests/perf/regression-gate.ts",
+        "tests/perf/regression-gate.test.ts",
+        "vitest.config.ts",
+        "../../test-support/*.ts"
+      ]
     },
     "test:perf:regression": {
       "dependsOn": [],
@@ -175,7 +223,9 @@
         "src/metrics/parse-health.ts",
         "src/markdown/**/*.ts",
         "tests/health/parse-health-gate.ts",
-        "tests/health/parse-health-gate.test.ts"
+        "tests/health/parse-health-gate.test.ts",
+        "vitest.config.ts",
+        "../../test-support/*.ts"
       ]
     },
     "test:health": {

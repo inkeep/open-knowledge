@@ -1,9 +1,10 @@
+import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
 
 /**
  * Per-worker server isolation: there is no `webServer` block — instead a
  * worker-scoped fixture at `tests/stress/_helpers/fixtures.ts`. Each
- * Playwright worker spawns its own `bun run dev` process on a
+ * Playwright worker spawns its own `pnpm run dev` process on a
  * kernel-allocated port + unique tmpdir, eliminating the cross-worker CPU
  * contention that created a structural flake class under shared webServer.
  *
@@ -29,6 +30,39 @@ import { defineConfig } from '@playwright/test';
  * multiplier.
  */
 const isCI = !!process.env.CI;
+
+/**
+ * Logical CPUs one worker occupies. Since the per-worker-server migration a
+ * worker is not just a browser: it owns a Vite dev server, a Hocuspocus CRDT
+ * server, a parse-worker pool, two filesystem watchers, AND its Chromium.
+ * Playwright's built-in default (`max(1, floor(os.cpus().length / 2))`) is
+ * calibrated for the stock topology it ships with — many browser-only workers
+ * sharing one `webServer` —
+ * so inheriting it here provisions ~2x the application stacks the host can
+ * actually serve. The resulting saturation does not fail any single test
+ * deterministically; it makes whichever worker loses the scheduler lottery
+ * miss its budget, which is why the failures were always timeouts on an
+ * arbitrary test and never assertion mismatches.
+ *
+ * 4 is the density CI was calibrated at (`workers: 4` on a 16+-vCPU runner,
+ * see the `workers` comment below). Deriving the off-CI count from the same
+ * ratio keeps every host running the topology the budgets were measured
+ * against, instead of a machine-dependent one.
+ */
+export const LOGICAL_CPUS_PER_WORKER = 4;
+
+/**
+ * Worker count for a host with `logicalCpus` logical CPUs, at the density
+ * above. Never returns 0 — any host with fewer than
+ * 2 × LOGICAL_CPUS_PER_WORKER (8) logical CPUs runs the suite on a single
+ * worker, serially.
+ * Exported (with `LOGICAL_CPUS_PER_WORKER`) so the density contract is
+ * pinned by `tests/meta/playwright-worker-density.test.ts` rather than
+ * re-derived by a reader.
+ */
+export function resolveWorkerCount(logicalCpus: number): number {
+  return Math.max(1, Math.floor(logicalCpus / LOGICAL_CPUS_PER_WORKER));
+}
 
 export default defineConfig({
   testDir: './tests/stress',
@@ -72,8 +106,11 @@ export default defineConfig({
   // per-worker server isolation together make fullyParallel fully safe.
   // If the CI runner tier changes back to 2 vCPU (e.g., ubuntu-64gb quota
   // exhausted), re-downgrade to workers=1.
+  //
+  // Off-CI the count is derived from the same per-worker density rather than
+  // left to Playwright's shared-server default — see LOGICAL_CPUS_PER_WORKER.
   fullyParallel: true,
-  workers: isCI ? 4 : undefined,
+  workers: isCI ? 4 : resolveWorkerCount(availableParallelism()),
   reporter: [['html', { open: 'never' }], ['list'], ...(isCI ? [['github'] as const] : [])],
   use: {
     // `baseURL` is populated by the worker-scoped fixture in
