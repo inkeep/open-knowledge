@@ -830,14 +830,6 @@ export interface FileTreeHandle {
    */
   isCreationTargetCleared(): boolean;
   /**
-   * Clear the creation target imperatively — the same effect as clicking the
-   * tree's empty space, but driven from outside the tree (the sidebar's empty
-   * area below the sections, now that the tree is sized flush to its rows). New
-   * file / New folder then land at the project root; the focused row's ring is
-   * neutralized via the host attribute. Re-couples on the next navigation.
-   */
-  clearCreationTarget(): void;
-  /**
    * Subscribe to changes that affect `getFolderState()` — folder list
    * mutations from `/api/documents` polling AND per-folder expand/
    * collapse from the Pierre tree model — and to `isCreationTargetCleared()`.
@@ -850,19 +842,7 @@ export interface FileTreeHandle {
  * Must be mounted inside a `SidebarProvider` — `useSidebar()` throws otherwise.
  * Today only `FileSidebar` mounts it, which is always inside the provider.
  */
-export function FileTree({
-  ref,
-  onContentHeightChange,
-}: {
-  ref?: Ref<FileTreeHandle | null>;
-  /**
-   * Reports the tree's total content height (px) — the virtualized scroller's
-   * scrollHeight, which is the full row count's height regardless of viewport.
-   * Lets a parent size the tree pane to its content (so it doesn't fill / bottom-
-   * dock siblings) while pierre still virtualizes once the pane hits its cap.
-   */
-  onContentHeightChange?: (px: number) => void;
-}) {
+export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
   const { t, i18n } = useLingui();
   const {
     activeDocName,
@@ -1681,65 +1661,6 @@ export function FileTree({
     // row effect already uses.
     treePathsSignature,
   );
-
-  // Feed the parent pane the tree's true content height so a short tree sits
-  // flush above the Skills section (no bottom-dock / header overlap) and a long
-  // one virtualizes + scrolls internally under the 70vh cap.
-  //
-  // The honest content height is the virtualizer's total-size, which it writes
-  // as an inline `height` on `[data-file-tree-virtualized-list]`. We can NOT use
-  // the scroller's scrollHeight / clientHeight: the shadow stylesheet stretches
-  // the list to `min-height: 100%` (so the drop target fills the pane), so every
-  // box metric clamps to the current pane height — feeding that back ratchets
-  // the pane to its 50vh bootstrap and never shrinks (the bug this fixes). The
-  // inline style is the only metric that reflects rows, not the container.
-  //
-  // Because the list's border-box stays clamped, a ResizeObserver never fires on
-  // content changes — watch the inline `style` attribute with a MutationObserver
-  // instead, plus model events (expand / collapse / add / remove) and resize.
-  useEffect(() => {
-    if (!onContentHeightChange) return;
-    let raf = 0;
-    let attachRaf = 0;
-    const getList = () =>
-      (fileTreeHostRef.current
-        ?.querySelector(FILE_TREE_TAG_NAME)
-        ?.shadowRoot?.querySelector('[data-file-tree-virtualized-list]') as HTMLElement | null) ??
-      null;
-    const report = () => {
-      const list = getList();
-      if (!list) return;
-      // Report 0 for a genuinely empty tree (collapses the pane so Skills sits
-      // flush); skip only the pre-paint state where the virtualizer hasn't set
-      // a height yet (the MutationObserver re-fires once it does).
-      const h = Number.parseFloat(list.style.height);
-      if (Number.isFinite(h)) onContentHeightChange(h);
-    };
-    const measure = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(report);
-    };
-    const mo = new MutationObserver(report);
-    const tryAttach = () => {
-      const list = getList();
-      if (list) {
-        mo.observe(list, { attributes: true, attributeFilter: ['style'] });
-        report();
-      } else {
-        attachRaf = requestAnimationFrame(tryAttach);
-      }
-    };
-    tryAttach();
-    const unsub = model.subscribe(measure);
-    window.addEventListener('resize', measure);
-    return () => {
-      cancelAnimationFrame(raf);
-      cancelAnimationFrame(attachRaf);
-      mo.disconnect();
-      unsub();
-      window.removeEventListener('resize', measure);
-    };
-  }, [onContentHeightChange, model]);
 
   // Re-couple the creation target to the active item whenever navigation moves
   // it — opening a row, following a link, switching tabs. `baseActiveTreePath`
@@ -2814,9 +2735,6 @@ export function FileTree({
       },
       isCreationTargetCleared() {
         return creationDirClearedRef.current;
-      },
-      clearCreationTarget() {
-        setCreationDirCleared(true);
       },
       subscribe(listener: () => void) {
         // The Pierre tree model's subscribe fires on ALL tree-state changes:

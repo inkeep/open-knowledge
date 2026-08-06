@@ -1,4 +1,3 @@
-
 import { FRONTMATTER_RE, stripFrontmatter } from '../extensions/frontmatter.ts';
 import { carriedEdgeEmpties, type DocEdgeEmpties } from '../markdown/doc-edge-blank-runs.ts';
 

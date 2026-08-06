@@ -1,4 +1,3 @@
-
 import picomatch from 'picomatch';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../constants/doc-extensions.ts';
 

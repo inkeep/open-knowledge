@@ -15,18 +15,46 @@ import type { Page } from '@playwright/test';
 import { expect, resetContentToFixtureBaseline, test } from './_helpers';
 
 const SIDEBAR = '[data-slot="sidebar-container"]';
+/**
+ * Scoped to the Files collapsible on purpose: the Skills tree is also a Pierre
+ * tree and carries the same `data-file-tree-virtualized-scroll` internally, so
+ * the bare attribute names "a tree's scroll region", not "the file list's".
+ * Only one is mounted at a time today, which makes the bare form correct by
+ * luck rather than by construction. Skills renders no Collapsible, so this
+ * ancestor is the file list's unambiguous handle.
+ */
+const TREE_SCROLL = '[data-slot="collapsible-content"] [data-file-tree-virtualized-scroll]';
 
 /**
- * Click the sidebar's empty filler below the sections — the deselect-to-root hit
- * target. The file tree is sized flush to its rows (no empty space of its own),
- * so the leftover sidebar space below Files + Skills owns this gesture.
+ * Click the empty area below the last row, inside the tree's own scroll region —
+ * the deselect-to-root hit target. The pane fills the sidebar body, so a tree
+ * shorter than the pane leaves clickable slack under its rows.
+ *
+ * Rows are absolutely positioned by the virtualizer, so DOM order is not visual
+ * order — take the lowest row edge rather than the last row in the document.
  */
 async function clickEmptyTreeArea(page: Page): Promise<void> {
-  const filler = page.locator('[data-sidebar-empty-deselect]');
-  await expect(filler).toBeVisible();
-  const box = await filler.boundingBox();
-  if (!box) throw new Error('sidebar deselect filler has no bounding box');
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const scroll = page.locator(TREE_SCROLL);
+  await expect(scroll).toBeVisible();
+  const region = await scroll.evaluate((el) => {
+    const scrollRect = el.getBoundingClientRect();
+    const lowestRowBottom = Array.from(el.querySelectorAll('[data-item-path]')).reduce(
+      (lowest, row) => Math.max(lowest, row.getBoundingClientRect().bottom),
+      scrollRect.top,
+    );
+    return {
+      x: scrollRect.left + scrollRect.width / 2,
+      top: lowestRowBottom,
+      bottom: scrollRect.bottom,
+    };
+  });
+  const slack = region.bottom - region.top;
+  if (slack < 4) {
+    throw new Error(
+      `no empty area below the last row to click (${slack}px) — the tree fills its pane`,
+    );
+  }
+  await page.mouse.click(region.x, (region.top + region.bottom) / 2);
 }
 
 /**
@@ -63,10 +91,10 @@ async function createFileAndGetDocName(
 test.describe('file-tree deselect-to-root', () => {
   // The worker server is shared across the whole suite and `seedDocs`'
   // `testReset()` only clears the `test-doc` doc, so without this reset every
-  // prior spec's docs pile up in this worker's tree. A full tree fills the
-  // sidebar and shrinks the empty deselect filler to nothing (it flex-grows only
-  // into leftover space), pushing `clickEmptyTreeArea`'s target out of view.
-  // Start each test from the boot-seeded baseline instead.
+  // prior spec's docs pile up in this worker's tree. Enough rows fill the tree's
+  // scroll region edge to edge, leaving no empty area below the last row for
+  // `clickEmptyTreeArea` to aim at. Start each test from the boot-seeded
+  // baseline instead.
   test.beforeEach(async ({ workerServer }) => {
     await resetContentToFixtureBaseline(workerServer.baseURL, workerServer.contentDir);
   });

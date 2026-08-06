@@ -170,11 +170,6 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // exactly when the child's `useImperativeHandle` attaches; that re-render
   // is what re-runs the subscription effect with a non-null handle.
   const [tree, setTree] = useState<FileTreeHandle | null>(null);
-  // Measured file-tree content height (px) — the pane is sized flush to this
-  // (capped) so the virtualized tree is exactly as tall as its files and the
-  // Skills section sits directly beneath them with no gap. The tree still
-  // virtualizes + scrolls internally once content exceeds the cap.
-  const [treeContentHeight, setTreeContentHeight] = useState<number | null>(null);
 
   // Active-doc context drives the create buttons' parent dir so the template
   // cascade resolves with folder-scoped templates included. Without this the
@@ -959,14 +954,12 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             </div>
             <SidebarContent>
               <ConflictsSection />
-              {/* Project files, under a collapsible header named for the project
-                  — a true peer to the Skills section above it. The content pane
-                  is sized to the tree's measured content height (capped at 70vh),
-                  so a short tree sits flush above Skills (no bottom-dock) and a
-                  long tree virtualizes + scrolls internally; SidebarContent
-                  scrolls both sections together. `50vh` is the bootstrap height
-                  before the first measurement lands. */}
-              {/* Skills sits ABOVE the project files. */}
+              {/* Project files, under a collapsible header named for the project.
+                  The pane fills the sidebar body: Skills and Files are mutually
+                  exclusive (Skills returns null outside skills mode), so nothing
+                  else competes for the height, and the tree's own scroll region
+                  keeps the empty area below the last row that the deselect-to-root
+                  click needs. */}
               {/* View-preference gate on the section render only: with the
                   section hidden, skill docs stay reachable (links, search,
                   direct routes) and open with full editor chrome. */}
@@ -981,8 +974,24 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                 // `px-0` overrides the SidebarGroup base `p-2`'s horizontal
                 // inset — Pierre's `--trees-padding-inline-override`
                 // (file-tree-density.ts) already lands the rows at 8px.
-                <Collapsible defaultOpen className="group/files flex shrink-0 flex-col">
-                  <SidebarGroup className="min-h-0 px-0">
+                // `data-[state=open]:flex-1` and not a plain `flex-1`: collapsed,
+                // the group must shrink to its header row, or the collapsed
+                // section would still hold the whole sidebar body open.
+                //
+                // The paired `min-h-48` floor (header row + ~5 tree rows) is
+                // load-bearing, not cosmetic. `ConflictsSection` is a sibling
+                // that renders one unbounded row per conflict with no cap and no
+                // internal scroll, so its automatic minimum size is its full
+                // content height and it cannot yield. Without a floor here the
+                // file list is the only item the flex shrink algorithm can take
+                // from, and enough conflicts drive it to zero instead of making
+                // SidebarContent scroll. Measured at 720px: ~15 conflicts left a
+                // 89px sliver and ~25 left nothing at all.
+                <Collapsible
+                  defaultOpen
+                  className="group/files flex min-h-0 flex-col data-[state=open]:min-h-48 data-[state=open]:flex-1"
+                >
+                  <SidebarGroup className="min-h-0 flex-1 px-0">
                     {/* Overarching project row. The create/view actions sit inline
                       with the folder they act on rather than in the window
                       chrome, so it reads as "this folder, these actions" — and
@@ -1158,38 +1167,12 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                         ) : null}
                       </div>
                     </SidebarGroupLabel>
-                    <CollapsibleContent
-                      className="flex max-h-[70vh] flex-col overflow-hidden"
-                      style={{
-                        // Sized flush to the tree's measured content height so the
-                        // tree stays compact and the deselect filler fills the rest;
-                        // `max-h-[70vh]` caps it so a long tree virtualizes +
-                        // scrolls instead. The deselect-to-root hit target moved to
-                        // the empty filler below (a flush tree leaves no empty space
-                        // of its own to click). `50vh` bootstraps before the first
-                        // measurement lands.
-                        height: treeContentHeight != null ? `${treeContentHeight}px` : '50vh',
-                      }}
-                    >
-                      <FileTree ref={setTree} onContentHeightChange={setTreeContentHeight} />
+                    <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                      <FileTree ref={setTree} />
                     </CollapsibleContent>
                   </SidebarGroup>
                 </Collapsible>
               )}
-              {/* Deselect-to-root hit target. With the tree sized flush to its
-                  rows there's no empty space inside it to click, so the leftover
-                  sidebar space below the sections takes over: clicking it clears
-                  the creation target (New file / New folder then land at the
-                  project root) and neutralizes the focused row's ring, exactly
-                  like the old empty-tree-area click. Flex-grows to fill whatever
-                  space the two sections leave; collapses to nothing (and the
-                  sidebar scrolls) once they exceed the viewport. */}
-              <div
-                aria-hidden
-                data-sidebar-empty-deselect
-                className="min-h-8 flex-1 cursor-default"
-                onClick={() => tree?.clearCreationTarget()}
-              />
             </SidebarContent>
             <SidebarFooter className="px-0">
               <OnboardingCardMount />
