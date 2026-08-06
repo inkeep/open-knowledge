@@ -599,6 +599,7 @@ import {
 import { errnoCode, parseQuery } from './http/handler-utils.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
+import { createLocalApiDispatch, type LocalApiDispatch } from './http/local-api-dispatch.ts';
 import { methodRouter } from './http/method-router.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
@@ -2784,7 +2785,7 @@ export interface CommentDocHooks {
 
 export function createApiExtension(
   options: ApiExtensionOptions,
-): Extension & { nativeApi: NativeApiHandle } {
+): Extension & { nativeApi: NativeApiHandle; localApi: LocalApiDispatch } {
   const { durabilityState, remotePublicHost } = options;
   // Every local-op call site in this factory inherits the remote-origin
   // widening through this shadow — one choke point, zero per-site churn.
@@ -22328,11 +22329,59 @@ export function createApiExtension(
     },
   };
 
+  // In-process dispatch for MCP tools mounted on this same server process.
+  // Allowlist: endpoints whose handlers are thin marshaling over a
+  // capability service (`services/*`) or the derived-document-index reads —
+  // for these the HTTP self-call collapses to a function call with the same
+  // handler producing the same wire body. Everything else (CRDT paired
+  // writes, rename, rollback/restore, sync/conflicts, history, lint/audit,
+  // template + skill CRUD) has no extracted service yet and stays on HTTP;
+  // extend this set as further capabilities extract.
+  const MCP_LOCAL_API_PATHS: ReadonlySet<string> = new Set([
+    // searchService
+    '/api/search',
+    // fileOpsService
+    '/api/delete-path',
+    '/api/create-folder',
+    // versionOpsService
+    '/api/save-version',
+    // skillImportService
+    '/api/skill/import',
+    // skillPlacementOps / skillInstallOps
+    '/api/skill/install',
+    // assetService (multipart body rides the synthetic request into busboy)
+    '/api/upload',
+    // derived-document-index reads (native link-graph group)
+    '/api/orphans',
+    '/api/hubs',
+    '/api/backlinks',
+    '/api/forward-links',
+    '/api/dead-links',
+    '/api/suggest-links',
+  ]);
+  // Every collapsed path must resolve to a handler at construction — a typo
+  // here, or a later route rename, would otherwise fall back to HTTP forever
+  // with no signal. Same posture as `assertSingleRouterOwnership` above.
+  for (const path of MCP_LOCAL_API_PATHS) {
+    if (routes[path] === undefined && linkGraphRoutes.table.resolve(path)?.dispatch === undefined) {
+      throw new Error(`MCP_LOCAL_API_PATHS has no handler for ${path}`);
+    }
+  }
+  const localApi = createLocalApiDispatch({
+    resolve: (pathname) => {
+      if (!MCP_LOCAL_API_PATHS.has(pathname)) return undefined;
+      const legacy = routes[pathname];
+      if (legacy !== undefined) return legacy;
+      return linkGraphRoutes.table.resolve(pathname)?.dispatch;
+    },
+  });
+
   return {
     priority: 100, // Higher priority — API routes run before static file serving
     async onRequest({ request, response }: { request: IncomingMessage; response: ServerResponse }) {
       await runApiPipeline(request, response);
     },
     nativeApi,
+    localApi,
   };
 }

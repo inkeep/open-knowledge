@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { validateAgentId } from './agent-id.ts';
 import type { Config } from './config/schema.ts';
 import { MCP_SERVER_NAME } from './constants.ts';
+import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
 import {
   type AgentIdentity,
   MCP_CONNECTION_ID_HEADER,
@@ -35,6 +36,15 @@ export interface McpHttpHandlerOptions {
   config: Config;
   /** Returns the base URL of this running HTTP server, without the `/mcp` suffix. */
   getServerUrl: () => string;
+  /**
+   * In-process `/api/*` dispatch (`ServerInstance.localApi`). When present,
+   * tools whose endpoints are backed by the extracted capability services
+   * invoke the handler in-process instead of round-tripping HTTP to their
+   * own listener; paths outside the collapsed allowlist fall back to HTTP.
+   * The stdio `ok mcp` proxy never has this — it talks to a separate server
+   * process and stays on HTTP.
+   */
+  localApi?: LocalApiDispatch;
   log?: {
     info?: (obj: object, msg: string) => void;
     warn?: (obj: object, msg: string) => void;
@@ -119,6 +129,7 @@ function createSessionServer(
   const configuredRoot = opts.projectDir ?? opts.contentDir;
   registerAllTools(server, {
     serverUrl: async () => opts.getServerUrl(),
+    localApi: opts.localApi,
     resolveCwd: async (explicit?: string) => {
       if (explicit === undefined) return configuredRoot;
       const result = resolveWithinRoot(configuredRoot, explicit);

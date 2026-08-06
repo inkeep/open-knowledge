@@ -19,6 +19,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Config } from '../../config/schema.ts';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { resolveWithinRoot } from './path-safety.ts';
 
@@ -558,7 +559,10 @@ export function normalizeDocName(
  * automatically pick up new typed extensions (e.g. `colliding[]`) without a
  * per-tool change.
  */
-function normalizeResponse(res: Response, body: unknown): { ok: boolean; [key: string]: unknown } {
+function normalizeResponse(
+  res: { ok: boolean; status: number },
+  body: unknown,
+): { ok: boolean; [key: string]: unknown } {
   // 2xx success path takes precedence over body-shape inspection.
   // `res.ok` is the wire-level success/error discriminator; the
   // problem+json shape and the non-object reject are only consulted on
@@ -648,6 +652,75 @@ function normalizeResponse(res: Response, body: unknown): { ok: boolean; [key: s
 }
 
 /**
+ * Transport target for the Hocuspocus API helpers. A plain URL string keeps
+ * the HTTP path (the stdio `ok mcp` proxy — a separate process from the
+ * server). The object form additionally carries the in-process dispatch
+ * (`ServerInstance.localApi`) available when the MCP session runs inside
+ * the server process itself: collapsed endpoints then invoke their handler
+ * as a function call, and paths outside the collapsed allowlist fall back
+ * to HTTP against `url`. Both transports share the JSON-parse +
+ * `normalizeResponse` tail, so the tool-facing result is identical either
+ * way the same wire bytes arrive.
+ */
+export type ApiTarget = string | { url: string; local: LocalApiDispatch };
+
+/** Build an {@link ApiTarget}: in-process dispatch when available, else HTTP. */
+export function apiTarget(url: string, local: LocalApiDispatch | undefined): ApiTarget {
+  return local ? { url, local } : url;
+}
+
+/**
+ * Run a collapsed call through the in-process dispatch, applying the same
+ * response normalization as the HTTP path. Returns `null` when the path is
+ * outside the collapsed allowlist (caller falls back to HTTP).
+ * `includeHttpStatus` mirrors `httpGet`'s extra `httpStatus` field, which
+ * `httpSend` deliberately does not carry.
+ */
+async function localApiCall(
+  local: LocalApiDispatch,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  serializedBody: string | undefined,
+  includeHttpStatus: boolean,
+): Promise<{ ok: boolean; [key: string]: unknown } | null> {
+  let raw: { status: number; bodyText: string } | null;
+  try {
+    raw = await local(
+      method,
+      path,
+      serializedBody !== undefined
+        ? { body: serializedBody, contentType: 'application/json' }
+        : undefined,
+    );
+  } catch (err) {
+    return { ok: false, error: `Server unreachable: ${err instanceof Error ? err.message : err}` };
+  }
+  if (raw === null) return null;
+  const ok = raw.status >= 200 && raw.status <= 299;
+  let body: unknown;
+  try {
+    body = JSON.parse(raw.bodyText);
+  } catch (parseErr) {
+    const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    const statusFields = includeHttpStatus ? { httpStatus: raw.status } : {};
+    if (ok) {
+      return {
+        ok: false,
+        ...statusFields,
+        error: `Server returned 2xx response with non-JSON body: ${detail}`,
+      };
+    }
+    return {
+      ok: false,
+      ...statusFields,
+      error: `Server returned HTTP ${raw.status} with non-JSON body: ${detail}`,
+    };
+  }
+  const normalized = normalizeResponse({ ok, status: raw.status }, body);
+  return includeHttpStatus ? { ...normalized, httpStatus: raw.status } : normalized;
+}
+
+/**
  * HTTP GET helper for Hocuspocus API calls.
  * Returns `{ ok: false, error }` on network failure or non-JSON response.
  * Translates RFC 9457 problem+json + flat-success bodies into the
@@ -655,12 +728,17 @@ function normalizeResponse(res: Response, body: unknown): { ok: boolean; [key: s
  * `normalizeResponse` above.
  */
 export async function httpGet(
-  baseUrl: string,
+  base: ApiTarget,
   path: string,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
+  if (typeof base !== 'string') {
+    const local = await localApiCall(base.local, 'GET', path, undefined, true);
+    if (local !== null) return local;
+    base = base.url;
+  }
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(30_000) });
+    res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(30_000) });
   } catch (err) {
     return { ok: false, error: `Server unreachable: ${err instanceof Error ? err.message : err}` };
   }
@@ -707,13 +785,13 @@ export async function httpGet(
  * (e.g. search's `backend` / `degraded`).
  */
 export async function httpGetRows(
-  baseUrl: string,
+  base: ApiTarget,
   path: string,
   field: string,
 ): Promise<
   { error: string } | { rows: Array<Record<string, unknown>>; data: Record<string, unknown> }
 > {
-  const result = await httpGet(baseUrl, path);
+  const result = await httpGet(base, path);
   if (!result.ok) {
     return { error: typeof result.error === 'string' ? result.error : 'request failed' };
   }
@@ -733,7 +811,7 @@ export async function httpGetRows(
  */
 async function httpSend(
   method: 'POST' | 'PUT' | 'DELETE',
-  baseUrl: string,
+  base: ApiTarget,
   path: string,
   body?: Record<string, unknown>,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
@@ -751,9 +829,14 @@ async function httpSend(
       };
     }
   }
+  if (typeof base !== 'string') {
+    const local = await localApiCall(base.local, method, path, serializedBody, false);
+    if (local !== null) return local;
+    base = base.url;
+  }
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}${path}`, {
+    res = await fetch(`${base}${path}`, {
       method,
       headers: serializedBody !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: serializedBody,
@@ -785,26 +868,26 @@ async function httpSend(
 }
 
 export function httpPost(
-  baseUrl: string,
+  base: ApiTarget,
   path: string,
   body?: Record<string, unknown>,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
-  return httpSend('POST', baseUrl, path, body);
+  return httpSend('POST', base, path, body);
 }
 
 export function httpPut(
-  baseUrl: string,
+  base: ApiTarget,
   path: string,
   body?: Record<string, unknown>,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
-  return httpSend('PUT', baseUrl, path, body);
+  return httpSend('PUT', base, path, body);
 }
 
 export function httpDelete(
-  baseUrl: string,
+  base: ApiTarget,
   path: string,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
-  return httpSend('DELETE', baseUrl, path);
+  return httpSend('DELETE', base, path);
 }
 
 /**

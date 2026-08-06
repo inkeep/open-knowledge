@@ -9,11 +9,13 @@
  *   - template → `DELETE /api/template` (server, attributed) [Requires: Hocuspocus]
  */
 import { z } from 'zod';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
+  apiTarget,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpDelete,
   httpPost,
@@ -54,6 +56,7 @@ interface DeleteDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
   identityRef?: { current: AgentIdentity };
+  localApi?: LocalApiDispatch;
 }
 
 interface DeleteOneResult {
@@ -82,7 +85,7 @@ async function deleteOneDoc(
   // `Error: ${r.error}`.
   if (!normalized.ok)
     return { docName: rawDocName, ok: false, error: normalized.error.replace(/^Error:\s*/, '') };
-  const result = await httpPost(url, '/api/delete-path', {
+  const result = await httpPost(apiTarget(url, deps.localApi), '/api/delete-path', {
     kind: 'file',
     path: normalized.docName,
     ...agentIdentityFields(deps.identityRef?.current),
@@ -311,7 +314,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
 
       // Folder.
       if (args.folder !== undefined) {
-        const result = await httpPost(url, '/api/delete-path', {
+        const result = await httpPost(apiTarget(url, deps.localApi), '/api/delete-path', {
           kind: 'folder',
           path: folderPath,
           ...agentIdentityFields(deps.identityRef?.current),
@@ -327,7 +330,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
       // Asset.
       if (args.asset !== undefined) {
         const path = args.asset.path.replace(/^\/+/, '').replace(/\/+$/, '');
-        const result = await httpPost(url, '/api/delete-path', {
+        const result = await httpPost(apiTarget(url, deps.localApi), '/api/delete-path', {
           kind: 'asset',
           path,
           ...agentIdentityFields(deps.identityRef?.current),

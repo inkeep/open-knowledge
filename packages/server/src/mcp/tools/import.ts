@@ -17,10 +17,12 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { parseSkillsShSource } from '@inkeep/open-knowledge-core/skills-catalog';
 import { z } from 'zod';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
+  apiTarget,
   httpPost,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
@@ -49,6 +51,7 @@ interface ImportDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
   identityRef?: { current: AgentIdentity };
+  localApi?: LocalApiDispatch;
 }
 
 export function register(server: ServerInstance, deps: ImportDeps): void {
@@ -130,7 +133,7 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
       );
       if (!context.ok) return context.result;
 
-      const result = await httpPost(context.url, '/api/skill/import', {
+      const result = await httpPost(apiTarget(context.url, deps.localApi), '/api/skill/import', {
         source: args.source,
         ...(args.skill !== undefined ? { skill: args.skill } : {}),
         // Acquire only. The placement below runs through the install path so
@@ -157,7 +160,7 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
       // math here. A failure leaves the skill acquired at its source folder —
       // reported, not silently swallowed, so the caller knows to retry the
       // placement rather than the fetch.
-      const placed = await httpPost(context.url, '/api/skill/install', {
+      const placed = await httpPost(apiTarget(context.url, deps.localApi), '/api/skill/install', {
         ...(args.scope !== undefined ? { scope: args.scope } : {}),
         name,
         add: args.add,

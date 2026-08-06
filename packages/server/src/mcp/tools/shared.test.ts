@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { z } from 'zod';
 
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
@@ -566,6 +567,85 @@ describe('httpPost', () => {
     const result = await httpPost(baseUrl, '/not-json-5xx');
     expect(result.ok).toBe(false);
     expect(result.error).toContain('HTTP 500');
+  });
+});
+
+// ── ApiTarget object form (in-process local dispatch) ──
+//
+// The composition layer between the tools and `createLocalApiDispatch`:
+// a dispatch result must ride the same normalization tail as HTTP, a
+// `null` must fall back to HTTP against `url`, a throw must surface as the
+// transport-failure diagnostic, and the `httpStatus` field must keep its
+// GET-only asymmetry.
+
+describe('ApiTarget local dispatch', () => {
+  const jsonDispatch =
+    (status: number, body: unknown): LocalApiDispatch =>
+    async () => ({ status, bodyText: JSON.stringify(body) });
+
+  test('httpGet: dispatch result is normalized and carries httpStatus', async () => {
+    const result = await httpGet(
+      { url: 'http://localhost:1', local: jsonDispatch(200, { data: 'hello' }) },
+      '/api/anything',
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data).toBe('hello');
+    expect(result.httpStatus).toBe(200);
+  });
+
+  test('httpPost: dispatch result is normalized and omits httpStatus', async () => {
+    const result = await httpPost(
+      { url: 'http://localhost:1', local: jsonDispatch(200, { received: true }) },
+      '/api/anything',
+      { key: 'value' },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.received).toBe(true);
+    expect(result.httpStatus).toBeUndefined();
+  });
+
+  test('problem+json from the dispatch normalizes like the HTTP path', async () => {
+    const result = await httpPost(
+      {
+        url: 'http://localhost:1',
+        local: jsonDispatch(404, {
+          type: 'urn:ok:error:doc-not-found',
+          title: 'Not found.',
+          status: 404,
+        }),
+      },
+      '/api/anything',
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Not found.');
+    expect(result.status).toBe(404);
+  });
+
+  test('null from the dispatch falls back to HTTP against url', async () => {
+    const nullDispatch: LocalApiDispatch = async () => null;
+    const result = await httpGet({ url: baseUrl, local: nullDispatch }, '/flat-success');
+    expect(result.ok).toBe(true);
+    expect(result.data).toBe('hello');
+  });
+
+  test('dispatch throw surfaces as the transport-failure diagnostic', async () => {
+    const throwDispatch: LocalApiDispatch = async () => {
+      throw new Error('boom');
+    };
+    const result = await httpPost(
+      { url: 'http://localhost:1', local: throwDispatch },
+      '/api/anything',
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Server unreachable: boom');
+  });
+
+  test('non-JSON 2xx bodyText: contract-violation error with httpStatus on GET', async () => {
+    const htmlDispatch: LocalApiDispatch = async () => ({ status: 200, bodyText: '<html>' });
+    const result = await httpGet({ url: 'http://localhost:1', local: htmlDispatch }, '/api/x');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('2xx response with non-JSON body');
+    expect(result.httpStatus).toBe(200);
   });
 });
 

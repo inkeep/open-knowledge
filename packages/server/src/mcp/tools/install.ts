@@ -19,10 +19,12 @@ import {
   type SkillScope,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
+  apiTarget,
   errorTextWithDetail,
   httpPost,
   httpPut,
@@ -95,6 +97,7 @@ interface InstallDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
   identityRef?: { current: AgentIdentity };
+  localApi?: LocalApiDispatch;
 }
 
 export function register(server: ServerInstance, deps: InstallDeps): void {
@@ -229,13 +232,17 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       // it records no skill-wide default — a later `add` still follows the form
       // the skill already uses.
       for (const target of args.convert ?? []) {
-        const converted = await httpPost(context.url, '/api/skill/install', {
-          ...(args.scope !== undefined ? { scope: args.scope } : {}),
-          name: args.name,
-          convert: { target, mode: args.mode },
-          ...(args.summary !== undefined ? { summary: args.summary } : {}),
-          ...agentIdentityFields(deps.identityRef?.current),
-        });
+        const converted = await httpPost(
+          apiTarget(context.url, deps.localApi),
+          '/api/skill/install',
+          {
+            ...(args.scope !== undefined ? { scope: args.scope } : {}),
+            name: args.name,
+            convert: { target, mode: args.mode },
+            ...(args.summary !== undefined ? { summary: args.summary } : {}),
+            ...agentIdentityFields(deps.identityRef?.current),
+          },
+        );
         if (!converted.ok) return textResult(errorTextWithDetail(converted), true);
       }
       // A pure convert changes no membership, so there is no location math to
@@ -261,7 +268,7 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       // would also convert the claude and codex symlinks the caller never named.
       // This tool's `mode` is scoped to `add`, so it is applied below as a
       // per-location convert — the same verb the app uses for one row.
-      const result = await httpPost(context.url, '/api/skill/install', {
+      const result = await httpPost(apiTarget(context.url, deps.localApi), '/api/skill/install', {
         ...(args.scope !== undefined ? { scope: args.scope } : {}),
         name: args.name,
         ...(args.add !== undefined ? { add: args.add } : {}),
@@ -275,7 +282,7 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       // Shape ONLY the locations just added. An already-correct form converges
       // server-side, so re-stating it is a no-op rather than a rewrite.
       for (const target of args.mode !== undefined ? (args.add ?? []) : []) {
-        const shaped = await httpPost(context.url, '/api/skill/install', {
+        const shaped = await httpPost(apiTarget(context.url, deps.localApi), '/api/skill/install', {
           ...(args.scope !== undefined ? { scope: args.scope } : {}),
           name: args.name,
           convert: { target, mode: args.mode },

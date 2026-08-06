@@ -330,6 +330,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
         projectDir: contentDir,
         config: ConfigSchema.parse({}),
         getServerUrl: () => `http://127.0.0.1:${port}`,
+        localApi: srv.localApi,
       });
 
   // Wire up HTTP server + WebSocket via the canonical helper so the harness

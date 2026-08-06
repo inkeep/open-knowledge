@@ -133,6 +133,7 @@ import type {
 import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
+import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkillDirs } from './in-place-skills.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
@@ -409,6 +410,14 @@ export interface ServerInstance {
    * MUST wire this in, or the ported routes 404 out of the legacy dispatch.
    */
   nativeApi: NativeApiHandle;
+  /**
+   * In-process `/api/*` dispatch for the MCP tools mounted on this server
+   * process (`mcp-http.ts`) — collapses tool self-calls onto the extracted
+   * capability services without a TCP round trip. Allowlist-gated inside the
+   * api extension; paths outside the collapsed set resolve `null` and the
+   * tool falls back to HTTP.
+   */
+  localApi: LocalApiDispatch;
   cc1Broadcaster: CC1Broadcaster;
   agentFocusBroadcaster: AgentFocusBroadcaster;
   agentPresenceBroadcaster: AgentPresenceBroadcaster;
@@ -1059,6 +1068,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   // `mountMcpAndApi` (and the Vite dev plugin) so the Hono app can claim the
   // ported paths ahead of the strangler catch-all.
   let nativeApi: NativeApiHandle;
+  let localApi: LocalApiDispatch;
   // Set at boot when the loss detector is enabled; shared by the agent-session
   // manager (agent-undo) and the file-watcher intake path (dirty-open-doc).
   let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
@@ -1953,6 +1963,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
     hocuspocus.configuration.extensions.push(apiExtension);
     nativeApi = apiExtension.nativeApi;
+    localApi = apiExtension.localApi;
 
     // Bridge loss-hardening wiring: resolve the defer-guard kill-switch
     // and construct the content-free loss ring once at boot. Reading the
@@ -4603,6 +4614,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     durabilityState,
     sessionManager,
     nativeApi,
+    localApi,
     cc1Broadcaster,
     agentFocusBroadcaster,
     agentPresenceBroadcaster,

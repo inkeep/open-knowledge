@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import {
   buildListResolver,
   docNameFromPath,
@@ -20,6 +21,7 @@ import {
 } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  apiTarget,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpPost,
   outputSchemaWithText,
@@ -54,6 +56,7 @@ interface SearchDeps {
   resolveCwd: (explicit?: string) => Promise<string>;
   config: ConfigOrResolver;
   serverUrl: ServerUrlOrResolver;
+  localApi?: LocalApiDispatch;
 }
 
 const SCOPE_VALUES = ['page', 'folder', 'content', 'file'] as const;
@@ -306,7 +309,11 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
         };
         if (args.scopes) body.scopes = args.scopes;
 
-        const result = (await httpPost(url, '/api/search', body)) as SearchApiResponse;
+        const result = (await httpPost(
+          apiTarget(url, deps.localApi),
+          '/api/search',
+          body,
+        )) as SearchApiResponse;
         if (!result.ok) {
           // `result.error` is guaranteed to be a string by
           // `normalizeResponse` — RFC 9457 `title`, body's

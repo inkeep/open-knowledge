@@ -9,9 +9,12 @@
 
 import { ORPHAN_MODES, type OrphanMode } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import { buildListResolver, type PreviewUrlDeps, resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  type ApiTarget,
+  apiTarget,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
   looseObjectArray,
@@ -65,6 +68,7 @@ interface HubsPayload {
 export interface LinksDeps extends PreviewUrlDeps {
   serverUrl: ServerUrlOrResolver;
   config: ConfigOrResolver;
+  localApi?: LocalApiDispatch;
 }
 
 interface LinksArgs {
@@ -164,7 +168,7 @@ export function register(server: ServerInstance, deps: LinksDeps): void {
       const { resolve } = await buildListResolver(deps, cwd);
 
       const outcomes = await Promise.all(
-        kinds.map((kind) => runKind(kind, args, url, cwd, deps, resolve)),
+        kinds.map((kind) => runKind(kind, args, apiTarget(url, deps.localApi), cwd, deps, resolve)),
       );
 
       const merged: Record<string, unknown> = {};
@@ -198,37 +202,37 @@ export function register(server: ServerInstance, deps: LinksDeps): void {
 function runKind(
   kind: LinkKind,
   args: LinksArgs,
-  url: string,
+  target: ApiTarget,
   cwd: string,
   deps: LinksDeps,
   resolve: ListResolve,
 ): Promise<KindOutcome> {
   switch (kind) {
     case 'backlinks':
-      return runBacklinks(args, url, resolve);
+      return runBacklinks(args, target, resolve);
     case 'forward':
-      return runForwardLinks(args, url, resolve);
+      return runForwardLinks(args, target, resolve);
     case 'dead':
-      return runDeadLinks(args, url, resolve);
+      return runDeadLinks(args, target, resolve);
     case 'orphans':
-      return runOrphans(args, url, resolve);
+      return runOrphans(args, target, resolve);
     case 'hubs':
-      return runHubs(args, url, resolve);
+      return runHubs(args, target, resolve);
     case 'suggest':
-      return runSuggest(args, url, cwd, deps);
+      return runSuggest(args, target, cwd, deps);
   }
 }
 
 async function runBacklinks(
   args: LinksArgs,
-  url: string,
+  target: ApiTarget,
   resolve: ListResolve,
 ): Promise<KindOutcome> {
   if (!args.document) return { ok: false, error: 'kind=backlinks requires `document`.' };
   const normalized = normalizeDocName(args.document);
   if (!normalized.ok) return { ok: false, error: normalized.error };
   const result = await httpGet(
-    url,
+    target,
     `/api/backlinks?docName=${encodeURIComponent(normalized.docName)}`,
   );
   if (!result.ok) return { ok: false, error: String(result.error) };
@@ -248,14 +252,14 @@ async function runBacklinks(
 
 async function runForwardLinks(
   args: LinksArgs,
-  url: string,
+  target: ApiTarget,
   resolve: ListResolve,
 ): Promise<KindOutcome> {
   if (!args.document) return { ok: false, error: 'kind=forward requires `document`.' };
   const normalized = normalizeDocName(args.document);
   if (!normalized.ok) return { ok: false, error: normalized.error };
   const result = await httpGet(
-    url,
+    target,
     `/api/forward-links?docName=${encodeURIComponent(normalized.docName)}`,
   );
   if (!result.ok) return { ok: false, error: String(result.error) };
@@ -277,7 +281,7 @@ async function runForwardLinks(
 
 async function runDeadLinks(
   args: LinksArgs,
-  url: string,
+  target: ApiTarget,
   resolve: ListResolve,
 ): Promise<KindOutcome> {
   const params = new URLSearchParams();
@@ -287,7 +291,7 @@ async function runDeadLinks(
     params.append('sourceDocName', normalized.docName);
   }
   const query = params.toString();
-  const result = await httpGet(url, `/api/dead-links${query ? `?${query}` : ''}`);
+  const result = await httpGet(target, `/api/dead-links${query ? `?${query}` : ''}`);
   if (!result.ok) return { ok: false, error: String(result.error) };
   const { ok: _ok, ...rest } = result;
   const data = rest as DeadLinksPayload;
@@ -318,11 +322,11 @@ async function runDeadLinks(
 
 async function runOrphans(
   args: LinksArgs,
-  url: string,
+  target: ApiTarget,
   resolve: ListResolve,
 ): Promise<KindOutcome> {
   const query = args.mode ? `?mode=${encodeURIComponent(args.mode)}` : '';
-  const result = await httpGet(url, `/api/orphans${query}`);
+  const result = await httpGet(target, `/api/orphans${query}`);
   if (!result.ok) return { ok: false, error: String(result.error) };
   const { ok: _ok, ...rest } = result;
   const data = rest as OrphansPayload;
@@ -338,9 +342,13 @@ async function runOrphans(
   return { ok: true, data: { orphans } };
 }
 
-async function runHubs(args: LinksArgs, url: string, resolve: ListResolve): Promise<KindOutcome> {
+async function runHubs(
+  args: LinksArgs,
+  target: ApiTarget,
+  resolve: ListResolve,
+): Promise<KindOutcome> {
   const query = args.limit ? `?limit=${encodeURIComponent(String(args.limit))}` : '';
-  const result = await httpGet(url, `/api/hubs${query}`);
+  const result = await httpGet(target, `/api/hubs${query}`);
   if (!result.ok) return { ok: false, error: String(result.error) };
   const { ok: _ok, ...rest } = result;
   const data = rest as HubsPayload;
@@ -358,7 +366,7 @@ async function runHubs(args: LinksArgs, url: string, resolve: ListResolve): Prom
 
 async function runSuggest(
   args: LinksArgs,
-  url: string,
+  target: ApiTarget,
   cwd: string,
   deps: LinksDeps,
 ): Promise<KindOutcome> {
@@ -366,7 +374,7 @@ async function runSuggest(
   const normalized = normalizeDocName(args.document);
   if (!normalized.ok) return { ok: false, error: normalized.error };
   const result = await httpGet(
-    url,
+    target,
     `/api/suggest-links?docName=${encodeURIComponent(normalized.docName)}`,
   );
   if (!result.ok) return { ok: false, error: String(result.error) };

@@ -36,6 +36,7 @@ import { mergePatch } from '../../content/frontmatter-merge.ts';
 import { parentFolderOf } from '../../content/nested-folder-rules.ts';
 import { applySubstitution, todayIsoUtc } from '../../content/substitution.ts';
 import { resolveTemplatesAvailable } from '../../content/templates-resolver.ts';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import {
   formatAdvisoryBriefs,
@@ -49,6 +50,7 @@ import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
+  apiTarget,
   docExtensionOnDisk,
   documentResultBaseShape,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
@@ -107,6 +109,7 @@ interface WriteDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
   identityRef?: { current: AgentIdentity };
+  localApi?: LocalApiDispatch;
 }
 
 interface DocSpec {
@@ -425,7 +428,7 @@ async function handleFolder(
 ) {
   if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
   const identity = deps.identityRef?.current;
-  const result = await httpPost(url, '/api/create-folder', {
+  const result = await httpPost(apiTarget(url, deps.localApi), '/api/create-folder', {
     path: folder.path,
     ...(summary !== undefined ? { summary } : {}),
     ...agentIdentityFields(identity),
@@ -552,19 +555,63 @@ async function handleAsset(
 
   let resBody: { ok: boolean; status: number; data?: Record<string, unknown>; error?: string };
   try {
-    const res = await fetch(`${url}/api/upload${qs ? `?${qs}` : ''}`, {
-      method: 'POST',
-      body: form,
-    });
-    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    resBody = res.ok
-      ? { ok: true, status: res.status, data: data ?? {} }
+    const uploadPath = `/api/upload${qs ? `?${qs}` : ''}`;
+    let status: number;
+    let bodyText: string;
+    // In-process dispatch when mounted on the server: the multipart body is
+    // encoded once via `Request` (boundary lands in the content-type header)
+    // and rides the synthetic request into the same busboy handler HTTP
+    // reaches. The stdio proxy has no `localApi` and keeps the fetch. Both
+    // arms reduce to (status, bodyText) so the parse and mapping below are
+    // shared — the transports cannot diverge in how a response is read.
+    const localApi = deps.localApi;
+    const local = localApi
+      ? await (async () => {
+          const encoded = new Request('http://localhost/api/upload', {
+            method: 'POST',
+            body: form,
+          });
+          const contentType = encoded.headers.get('content-type') ?? 'multipart/form-data';
+          const bytes = new Uint8Array(await encoded.arrayBuffer());
+          return localApi('POST', uploadPath, { body: bytes, contentType });
+        })()
+      : null;
+    if (local !== null) {
+      status = local.status;
+      bodyText = local.bodyText;
+    } else {
+      const res = await fetch(`${url}${uploadPath}`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(30_000),
+      });
+      status = res.status;
+      bodyText = await res.text();
+    }
+    const ok = status >= 200 && status <= 299;
+    let data: Record<string, unknown> | null;
+    try {
+      data = JSON.parse(bodyText) as Record<string, unknown>;
+    } catch (parseErr) {
+      // A non-JSON body on this JSON endpoint is a contract violation even
+      // on 2xx — surfacing it beats reporting success with no usable embed
+      // reference. Same diagnostic shape as `httpGet`/`httpSend`.
+      const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      return textResult(
+        ok
+          ? `Error: Server returned 2xx response with non-JSON body: ${detail}`
+          : `Error: Server returned HTTP ${status} with non-JSON body: ${detail}`,
+        true,
+      );
+    }
+    resBody = ok
+      ? { ok: true, status, data: data ?? {} }
       : {
           ok: false,
-          status: res.status,
+          status,
           error:
             (data && (typeof data.title === 'string' ? data.title : (data.error as string))) ||
-            `Upload failed (HTTP ${res.status}).`,
+            `Upload failed (HTTP ${status}).`,
         };
   } catch (err) {
     return textResult(`Error: upload request failed: ${(err as Error).message}`, true);

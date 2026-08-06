@@ -31,6 +31,7 @@
  */
 
 import { createEnsureSingleFileSession } from '../../ensure-single-file-session.ts';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { getCurrentMcpLogger, type McpLogger } from '../logger.ts';
 import { createLoggedServer } from '../tool-logging.ts';
@@ -76,6 +77,15 @@ interface RegisterAllToolsOptions {
   serverUrl?: ServerUrlOrResolver;
   /** Resolves the cwd for a given tool call (see `ResolveCwd` docs). */
   resolveCwd: ResolveCwd;
+  /**
+   * In-process `/api/*` dispatch (`ServerInstance.localApi`), present only
+   * when the MCP server runs inside the project server process
+   * (`mcp-http.ts`). Tools whose endpoints are backed by the extracted
+   * capability services then invoke the handler in-process instead of
+   * HTTP-round-tripping to their own listener; the stdio proxy omits this
+   * and stays on HTTP.
+   */
+  localApi?: LocalApiDispatch;
   config: ConfigOrResolver;
   identityRef?: { current: AgentIdentity };
   logger?: McpLogger;
@@ -130,6 +140,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     resolveCwd: named('search'),
     config: opts.config,
     serverUrl: opts.serverUrl,
+    localApi: opts.localApi,
   });
   // Unified link-graph reader — replaces the six dedicated getters
   // (get_backlinks, get_forward_links, get_dead_links, get_orphans, get_hubs,
@@ -138,6 +149,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('links'),
+    localApi: opts.localApi,
   });
   // Markdown lint — surface rule violations (single doc or project-wide audit);
   // `fix: true` applies auto-fixes through the agent-write spine, so it takes
@@ -167,6 +179,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('write'),
     identityRef: opts.identityRef,
+    localApi: opts.localApi,
   });
   registerEdit(registrationServer, {
     serverUrl: opts.serverUrl,
@@ -179,6 +192,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('delete'),
     identityRef: opts.identityRef,
+    localApi: opts.localApi,
   });
   // `move` — move/rename a document, folder, or asset; probes the content
   // directory to set `kind` and rewrites the link graph.
@@ -195,6 +209,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('install'),
     identityRef: opts.identityRef,
+    localApi: opts.localApi,
   });
   // `import` — acquire a skill from skills.sh / github / git URL / local path into
   // `.ok/skills` as versioned content (the marketplace on-ramp). Pairs with
@@ -204,6 +219,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('import'),
     identityRef: opts.identityRef,
+    localApi: opts.localApi,
   });
   registerHistory(registrationServer, {
     serverUrl: opts.serverUrl,
@@ -224,6 +240,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('checkpoint'),
     identityRef: opts.identityRef,
+    localApi: opts.localApi,
   });
   registerRestoreVersion(registrationServer, {
     serverUrl: opts.serverUrl,

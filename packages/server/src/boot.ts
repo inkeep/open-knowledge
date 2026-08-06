@@ -755,6 +755,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         projectDir: opts.projectDir ?? opts.contentDir,
         config: opts.config,
         getServerUrl: () => `http://${mcpHost}:${boundPort}`,
+        localApi: serverInstance.localApi,
         log,
       });
 

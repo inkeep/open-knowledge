@@ -8,9 +8,11 @@
  * `restore_version` is the per-doc restore counterpart.
  */
 import { z } from 'zod';
+import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  apiTarget,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpPost,
   outputSchemaWithText,
@@ -37,6 +39,7 @@ export interface CheckpointDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
   identityRef?: { current: AgentIdentity };
+  localApi?: LocalApiDispatch;
 }
 
 export function register(server: ServerInstance, deps: CheckpointDeps): void {
@@ -69,7 +72,7 @@ export function register(server: ServerInstance, deps: CheckpointDeps): void {
       if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
       const identity = deps.identityRef?.current;
-      const result = await httpPost(url, '/api/save-version', {
+      const result = await httpPost(apiTarget(url, deps.localApi), '/api/save-version', {
         ...(args.summary !== undefined ? { summary: args.summary } : {}),
         ...(identity
           ? {
