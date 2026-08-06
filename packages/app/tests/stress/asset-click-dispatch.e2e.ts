@@ -29,8 +29,10 @@ import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createPngBuffer,
+  escapeRegExp,
   expect,
   test,
+  uniqueAssetName,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
 
@@ -98,20 +100,13 @@ async function dropFileIntoEditor(
   );
 }
 
-// 1x1 transparent PNG. Salt with the file-name so the server's same-dir
-// sha256 dedup (`findDuplicateAsset` in `api-extension.ts`) cannot collapse
-// our drops onto a byte-identical upload from a sister stress file sharing
-// the worker's contentDir. Byte-identical within this file
-// so internal dedup behaviour stays predictable.
-const TINY_PNG_BYTES = Array.from(createPngBuffer('asset-click-dispatch'));
-
 // Minimal valid PDF bytes — PDF 1.4 header + catalog + trailer. Chromium's
 // built-in PDF viewer accepts this shape; adversarial tests would want a
 // larger corpus but a valid 1-page PDF is enough to verify server Content-
-// Type + URL resolution.
-const TINY_PDF_BYTES = Array.from(
-  Buffer.from(
-    `%PDF-1.4
+// Type + URL resolution. A per-test salt is appended as a trailing `%`
+// comment (ignored by PDF readers, and after the `%PDF-` header `file-type`
+// sniffs on) so no two tests upload byte-identical PDFs.
+const TINY_PDF_SOURCE = `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj
@@ -124,16 +119,26 @@ xref
 trailer<</Size 4/Root 1 0 R>>
 startxref
 140
-%%EOF`,
-    'utf-8',
-  ),
-);
+%%EOF`;
 
 test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', () => {
   let docName: string;
+  // Per-test token shared by the docName, every asset this test uploads, and
+  // the byte salts. Uploads land in the worker-shared contentDir keyed by
+  // filename, so a per-test docName is not enough isolation: a name a sibling
+  // spec already stored under different bytes comes back with a `-1`
+  // collision suffix, and bytes a sibling already stored come back under the
+  // sibling's name via same-dir sha256 dedup. Minting both a unique name
+  // (`uniqueAssetName`) and unique bytes (the `runId` salt) closes both.
+  let runId: string;
+  let tinyPng: number[];
+  let tinyPdf: number[];
 
   test.beforeEach(async ({ page, api }) => {
-    docName = `asset-dispatch-${randomUUID().slice(0, 8)}`;
+    runId = randomUUID().slice(0, 8);
+    tinyPng = Array.from(createPngBuffer(`asset-click-dispatch-${runId}`));
+    tinyPdf = Array.from(Buffer.from(`${TINY_PDF_SOURCE}\n%${runId}\n`, 'utf-8'));
+    docName = `asset-dispatch-${runId}`;
     await api.createPage(`${docName}.md`);
     await api.replaceDoc(docName, '# Dispatch test\n');
     await page.goto(`/#/${docName}`);
@@ -298,18 +303,17 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     // (not a racey `.ProseMirror` querySelector that can resolve to a
     // cached doc's editor under the Activity pool) and dispatches dragover
     // then drop so TipTap's FileHandler extension completes its sequence.
-    await dropFileIntoEditor(page, TINY_PNG_BYTES, 'photo.png', 'image/png');
+    const pngName = uniqueAssetName('photo.png', runId);
+    await dropFileIntoEditor(page, tinyPng, pngName, 'image/png');
 
-    await expect
-      .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toContain('photo.png');
+    await expect.poll(async () => await getSourceText(page), { timeout: 5_000 }).toContain(pngName);
 
     // Scope to the editor AND content-qualify by src: ProseMirror inserts
     // hidden trailing-hack / mark-cursor `<img class="ProseMirror-separator">`
     // widgets inside `.ProseMirror`, so a bare `img` (or `.ProseMirror img`)
-    // `.first()` resolves to a sourceless separator. The `[src*="photo.png"]`
-    // qualifier matches only the dropped image — separators carry no src.
-    const img = page.locator('.ProseMirror img[src*="photo.png"]').first();
+    // `.first()` resolves to a sourceless separator. The `[src*=…]` qualifier
+    // matches only the dropped image — separators carry no src.
+    const img = page.locator(`.ProseMirror img[src*="${pngName}"]`).first();
     await img.waitFor({ state: 'visible', timeout: 5_000 });
 
     // Clicking an image should NOT open a new tab. `waitForEvent` rejects
@@ -372,24 +376,26 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
     await page.click('.ProseMirror:not(.composer-prosemirror)');
 
-    await dropFileIntoEditor(page, TINY_PNG_BYTES, 'photo.png', 'image/png');
+    const pngName = uniqueAssetName('photo.png', runId);
+    await dropFileIntoEditor(page, tinyPng, pngName, 'image/png');
 
-    // Wait for Y.Text to carry a photo.png reference — image-extension
-    // drops emit the canonical `<img src="…/photo.png" />` JSX shape
-    // (alt is omitted on drop so the chrome-bar gear nudge fires). The
-    // substring assertion is shape-tolerant.
-    await expect
-      .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toContain('photo.png');
+    // Wait for Y.Text to carry the asset reference — image-extension drops
+    // emit the canonical `<img src="…/<pngName>" />` JSX shape (alt is
+    // omitted on drop so the chrome-bar gear nudge fires). The substring
+    // assertion is shape-tolerant.
+    await expect.poll(async () => await getSourceText(page), { timeout: 5_000 }).toContain(pngName);
 
     // Content-qualify by src so the locator skips ProseMirror's hidden
     // `<img class="ProseMirror-separator">` widgets (sourceless, naturalWidth
     // always 0). A bare `.ProseMirror img` `.first()` resolves to a separator
-    // and the naturalWidth poll below could never pass. `[src*="photo.png"]`
-    // stays src-shape-agnostic — it matches whether the rendered URL is the
-    // correct `/docs/sub-XXX/photo.png` or a broken root-relative one — so
-    // the naturalWidth assertion is what fails if a URL regression exists.
-    const img = page.locator('.ProseMirror img[src*="photo.png"]').first();
+    // and the naturalWidth poll below could never pass. `[src*=…]` stays
+    // src-shape-agnostic — it matches whether the rendered URL is the correct
+    // `/docs/sub-XXX/<pngName>` or a broken root-relative one — so the
+    // naturalWidth assertion is what fails if a URL regression exists. The
+    // per-test name is load-bearing for that: under a shared `photo.png`, a
+    // sibling spec's decodable root-level upload satisfies naturalWidth for a
+    // root-relative src and the regression guard passes on the wrong bytes.
+    const img = page.locator(`.ProseMirror img[src*="${pngName}"]`).first();
     await img.waitFor({ state: 'attached', timeout: 5_000 });
 
     // THE assertion: naturalWidth > 0 means the bytes loaded + decoded.
@@ -428,16 +434,15 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
     await page.click('.ProseMirror:not(.composer-prosemirror)');
 
-    await dropFileIntoEditor(page, TINY_PDF_BYTES, 'doc.pdf', 'application/pdf');
+    const pdfName = uniqueAssetName('doc.pdf', runId);
+    await dropFileIntoEditor(page, tinyPdf, pdfName, 'application/pdf');
 
-    await expect
-      .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toContain('doc.pdf');
+    await expect.poll(async () => await getSourceText(page), { timeout: 5_000 }).toContain(pdfName);
 
     // Settlement signal: wait for the source to carry the wiki-embed
-    // canonical form `![[doc.pdf]]`. This is what Observer A emits once it
+    // canonical form `![[<pdfName>]]`. This is what Observer A emits once it
     // has serialized the dropped `wikiLinkEmbed` atom; it does NOT require
-    // Observer B's re-parse + JSX swap. The earlier 5s poll for 'doc.pdf'
+    // Observer B's re-parse + JSX swap. The earlier 5s poll for the bare name
     // can be satisfied by intermediate states (markdown link forms etc.);
     // the wiki-embed bracket form is the post-Observer-A canonical and is
     // sufficient to prove the drop pipeline finished its server-bound work.
@@ -456,12 +461,12 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     // serve-middleware response, not the JSX paint.
     await expect
       .poll(async () => await getSourceText(page), { timeout: 30_000 })
-      .toContain('![[doc.pdf]]');
+      .toContain(`![[${pdfName}]]`);
 
     // Reconstruct the expected URL from test inputs: subdirDoc is
     // `docs/sub-XXXXXX/notes`, the dropped file lives in the doc's
-    // directory as `doc.pdf`, so the served URL is `/docs/sub-XXXXXX/doc.pdf`.
-    const expectedHref = `/${subdirDoc.split('/').slice(0, -1).join('/')}/doc.pdf`;
+    // directory, so the served URL is `/docs/sub-XXXXXX/<pdfName>`.
+    const expectedHref = `/${subdirDoc.split('/').slice(0, -1).join('/')}/${pdfName}`;
 
     // Full round-trip assertion: fetch the URL directly and verify the
     // server serves the PDF correctly (not SPA-fallback HTML).
@@ -561,19 +566,25 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     // dispatch happens at sirv via mrmime; the test asserts HREF SHAPE
     // only (full round-trip Content-Type requires the filewatcher's
     // dirCount to propagate — a timing-dependent surface).
+    // Salt bytes trail the `ftyp` box so the sniff still sees `ftypM4V ` while
+    // no two tests upload a byte-identical M4V.
     const TINY_M4V_BYTES = Array.from(
-      Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypM4V '), Buffer.alloc(8, 0)]),
+      Buffer.concat([
+        Buffer.from([0, 0, 0, 0x18]),
+        Buffer.from('ftypM4V '),
+        Buffer.alloc(8, 0),
+        Buffer.from(runId, 'utf-8'),
+      ]),
     );
-    await dropFileIntoEditor(page, TINY_M4V_BYTES, 'clip.m4v', 'video/mp4');
+    const m4vName = uniqueAssetName('clip.m4v', runId);
+    await dropFileIntoEditor(page, TINY_M4V_BYTES, m4vName, 'video/mp4');
 
-    await expect
-      .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toContain('clip.m4v');
+    await expect.poll(async () => await getSourceText(page), { timeout: 5_000 }).toContain(m4vName);
     const text = await getSourceText(page);
     // Source emits the lowercase `<video>` JSX shape (descriptor render via
     // Video.tsx). Server-absolute src so the browser resolves it against
     // origin under hash routing, not against the doc's hash fragment.
-    expect(text).toMatch(/<video\s+src="\/docs\/sub-[^/]+\/clip\.m4v"/);
+    expect(text).toMatch(new RegExp(`<video\\s+src="/docs/sub-[^/]+/${escapeRegExp(m4vName)}"`));
     // `controls={true}` matches the canonical `<video>` descriptor's
     // declared default; emit-time omit-on-default strips the attribute on
     // the canonical serialize path. Renderer applies controls=true on
@@ -583,10 +594,10 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     // The Video NodeView renders the lowercase `<video>` element. Pin its
     // server-absolute src — it was doc-relative (broken under
     // hash routing).
-    const videoEl = page.locator('.ProseMirror video[src*="/clip.m4v"]').first();
+    const videoEl = page.locator(`.ProseMirror video[src*="/${m4vName}"]`).first();
     await videoEl.waitFor({ state: 'visible', timeout: 5_000 });
     const src = await videoEl.getAttribute('src');
-    expect(src).toMatch(/^\/docs\/sub-[^/]+\/clip\.m4v$/);
+    expect(src).toMatch(new RegExp(`^/docs/sub-[^/]+/${escapeRegExp(m4vName)}$`));
 
     // Full round-trip: fetching the embedded URL streams the file bytes
     // with `Content-Disposition: inline` + `Content-Type: video/mp4`

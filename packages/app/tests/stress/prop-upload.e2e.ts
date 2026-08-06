@@ -49,6 +49,7 @@ import {
   createPngBuffer,
   expect,
   test,
+  uniqueAssetName,
   waitForActiveProviderSynced,
 } from './_helpers';
 
@@ -125,7 +126,7 @@ interface UploadCase {
   initialSrc: string;
   /** Two distinct payloads — the test uploads both in sequence to exercise
    *  initial replace AND second replace through the same wiring. */
-  payloads: Array<{ name: string; mimeType: string; buffer: Buffer }>;
+  payloads: (runId: string) => Array<{ name: string; mimeType: string; buffer: Buffer }>;
 }
 
 const cases: Record<'img' | 'video' | 'audio', UploadCase> = {
@@ -136,10 +137,22 @@ const cases: Record<'img' | 'video' | 'audio', UploadCase> = {
     initialSrc: 'initial.png',
     // Distinct salts so the two payloads differ in sha256; HEAD's `/api/upload`
     // same-dir dedup would otherwise collapse byte-identical buffers to one
-    // stored file, leaving src unchanged on the second upload.
-    payloads: [
-      { name: 'first.png', mimeType: 'image/png', buffer: createPngBuffer('first') },
-      { name: 'second.png', mimeType: 'image/png', buffer: createPngBuffer('second') },
+    // stored file, leaving src unchanged on the second upload. The per-test
+    // `runId` extends that isolation across specs: uploads are keyed by
+    // filename in the worker-shared contentDir, so a bare `first.png` can come
+    // back with a `-1` collision suffix (sibling stored that name) or under a
+    // sibling's name via dedup (sibling stored these bytes).
+    payloads: (runId: string) => [
+      {
+        name: uniqueAssetName('first.png', runId),
+        mimeType: 'image/png',
+        buffer: createPngBuffer(`first-${runId}`),
+      },
+      {
+        name: uniqueAssetName('second.png', runId),
+        mimeType: 'image/png',
+        buffer: createPngBuffer(`second-${runId}`),
+      },
     ],
   },
   video: {
@@ -147,9 +160,17 @@ const cases: Record<'img' | 'video' | 'audio', UploadCase> = {
     endpoint: '/api/upload',
     initialMarkdown: '<video src="initial.mp4" controls />',
     initialSrc: 'initial.mp4',
-    payloads: [
-      { name: 'first.mp4', mimeType: 'video/mp4', buffer: createMp4Buffer('first') },
-      { name: 'second.mp4', mimeType: 'video/mp4', buffer: createMp4Buffer('second') },
+    payloads: (runId: string) => [
+      {
+        name: uniqueAssetName('first.mp4', runId),
+        mimeType: 'video/mp4',
+        buffer: createMp4Buffer(`first-${runId}`),
+      },
+      {
+        name: uniqueAssetName('second.mp4', runId),
+        mimeType: 'video/mp4',
+        buffer: createMp4Buffer(`second-${runId}`),
+      },
     ],
   },
   audio: {
@@ -157,9 +178,17 @@ const cases: Record<'img' | 'video' | 'audio', UploadCase> = {
     endpoint: '/api/upload',
     initialMarkdown: '<audio src="initial.mp3" controls />',
     initialSrc: 'initial.mp3',
-    payloads: [
-      { name: 'first.mp3', mimeType: 'audio/mpeg', buffer: createMp3Buffer('first') },
-      { name: 'second.mp3', mimeType: 'audio/mpeg', buffer: createMp3Buffer('second') },
+    payloads: (runId: string) => [
+      {
+        name: uniqueAssetName('first.mp3', runId),
+        mimeType: 'audio/mpeg',
+        buffer: createMp3Buffer(`first-${runId}`),
+      },
+      {
+        name: uniqueAssetName('second.mp3', runId),
+        mimeType: 'audio/mpeg',
+        buffer: createMp3Buffer(`second-${runId}`),
+      },
     ],
   },
 };
@@ -176,7 +205,10 @@ for (const kind of ['img', 'video', 'audio'] as const) {
     api,
     workerServer,
   }) => {
-    const docName = `prop-upload-${kind}-${randomUUID().slice(0, 8)}`;
+    // Per-test token shared by the docName and every asset this test uploads.
+    const runId = randomUUID().slice(0, 8);
+    const payloads = c.payloads(runId);
+    const docName = `prop-upload-${kind}-${runId}`;
     await api.seedDocs([{ name: docName, markdown: c.initialMarkdown }]);
     await page.goto(`/#/${docName}`);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -198,9 +230,9 @@ for (const kind of ['img', 'video', 'audio'] as const) {
 
     // First upload — initial → first payload.
     await fileInput.setInputFiles({
-      name: c.payloads[0].name,
-      mimeType: c.payloads[0].mimeType,
-      buffer: c.payloads[0].buffer,
+      name: payloads[0].name,
+      mimeType: payloads[0].mimeType,
+      buffer: payloads[0].buffer,
     });
     const srcAfterFirst = await waitForSrcChange(page, c.tag, normalizedInitialSrc);
     expect(srcAfterFirst).not.toBe(c.initialSrc);
@@ -210,21 +242,21 @@ for (const kind of ['img', 'video', 'audio'] as const) {
     // peer-dir assets resolve correctly under hash routing. Mirror of the
     // drop path's `resolvedSrc = `/${assetContentPath}``.
     expect(srcAfterFirst.startsWith('/')).toBe(true);
-    expect(srcAfterFirst).toContain(c.payloads[0].name.replace(/\.\w+$/, ''));
+    expect(srcAfterFirst).toContain(payloads[0].name.replace(/\.\w+$/, ''));
     // Strip the leading `/` before joining with the contentDir.
     expect(existsSync(join(workerServer.contentDir, srcAfterFirst.replace(/^\//, '')))).toBe(true);
 
     // Second upload — first payload → second payload. Same wiring path,
     // but starting from a populated src (initial-vs-update parity).
     await fileInput.setInputFiles({
-      name: c.payloads[1].name,
-      mimeType: c.payloads[1].mimeType,
-      buffer: c.payloads[1].buffer,
+      name: payloads[1].name,
+      mimeType: payloads[1].mimeType,
+      buffer: payloads[1].buffer,
     });
     const srcAfterSecond = await waitForSrcChange(page, c.tag, srcAfterFirst);
     expect(srcAfterSecond).not.toBe(srcAfterFirst);
     expect(srcAfterSecond.startsWith('/')).toBe(true);
-    expect(srcAfterSecond).toContain(c.payloads[1].name.replace(/\.\w+$/, ''));
+    expect(srcAfterSecond).toContain(payloads[1].name.replace(/\.\w+$/, ''));
     expect(existsSync(join(workerServer.contentDir, srcAfterSecond.replace(/^\//, '')))).toBe(true);
   });
 }
@@ -270,7 +302,10 @@ test('UPLOAD-IMG-SUBDIR-01: subdir-doc upload renders <img> that fetches the ass
   // missing prerequisite instead of the upload step.
   expect(existsSync(join(workerServer.contentDir, 'sidebar-folder', 'nested-doc.md'))).toBe(true);
 
-  const docName = `sidebar-folder/upload-${randomUUID().slice(0, 8)}`;
+  // Per-test token shared by the docName and the uploaded asset.
+  const runId = randomUUID().slice(0, 8);
+  const payload = cases.img.payloads(runId)[0];
+  const docName = `sidebar-folder/upload-${runId}`;
   await api.seedDocs([{ name: docName, markdown: cases.img.initialMarkdown }]);
   await page.goto(`/#/${docName}`);
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -289,9 +324,9 @@ test('UPLOAD-IMG-SUBDIR-01: subdir-doc upload renders <img> that fetches the ass
   await fileInput.waitFor({ state: 'attached', timeout: 5000 });
 
   await fileInput.setInputFiles({
-    name: cases.img.payloads[0].name,
-    mimeType: cases.img.payloads[0].mimeType,
-    buffer: cases.img.payloads[0].buffer,
+    name: payload.name,
+    mimeType: payload.mimeType,
+    buffer: payload.buffer,
   });
 
   const newSrc = await waitForSrcChange(page, 'img', normalizedInitialSrc);

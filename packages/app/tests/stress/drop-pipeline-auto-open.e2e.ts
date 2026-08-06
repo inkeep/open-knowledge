@@ -32,8 +32,10 @@ import {
   createMp3Buffer,
   createMp4Buffer,
   createPngBuffer,
+  escapeRegExp,
   expect,
   test,
+  uniqueAssetName,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
 
@@ -111,39 +113,41 @@ async function getSourceText(page: Page): Promise<string> {
 // `image-upload/index.ts` is shared across types today; cells stay separate
 // so a per-type refactor is forced to keep the contract intact for each.
 
-// Per-test-file salt on the magic-byte fixtures so the server's same-dir
-// sha256 dedup (`findDuplicateAsset` in `api-extension.ts`) cannot collapse
-// our drops onto a byte-identical upload from a sister stress file sharing
-// the worker's contentDir. Without salts, asset-embed.e2e.ts's TINY_PNG
-// bytes (same base64) land first and our `photo.png` drop returns a deduped
-// `shot.png` src — failing the `sourceMarker` assertion below. The salt
-// only appends bytes after the format-defining magic header, so the file
-// still type-sniffs as the intended format. Bug shape characterized in
-// `upload-fixtures.ts` docstring.
+// Uploads land in the worker-shared contentDir keyed by filename, and every
+// spec that runs on the same worker shares it. Two isolation axes are needed,
+// and each closes a different failure:
+//
+//   - a per-test asset NAME (`uniqueAssetName`): a name a sibling spec already
+//     stored under different bytes comes back with a `-1` collision suffix.
+//   - a per-test byte SALT: bytes a sibling already stored come back under the
+//     sibling's name via same-dir sha256 dedup (`findDuplicateAsset`), so a
+//     `photo.png` drop can resolve to a sibling's `shot.png` and the drop
+//     never exercises a fresh store. The salt only appends bytes after the
+//     format-defining magic header, so the file still type-sniffs as intended.
+//
+// With both in place the source assertion below pins the exact name — a
+// collision fails loudly instead of being absorbed by a `-\d+` tolerance.
 const cases = [
   {
     name: 'png-image',
     label: 'image/png',
     filename: 'photo.png',
     mime: 'image/png',
-    bytes: () => Array.from(createPngBuffer('drop-noautoopen-png')),
-    sourceMarker: /photo(?:-\d+)?\.png/,
+    bytes: (runId: string) => Array.from(createPngBuffer(`drop-noautoopen-png-${runId}`)),
   },
   {
     name: 'mp4-video',
     label: 'video/mp4',
     filename: 'clip.mp4',
     mime: 'video/mp4',
-    bytes: () => Array.from(createMp4Buffer('drop-noautoopen-mp4')),
-    sourceMarker: /clip(?:-\d+)?\.mp4/,
+    bytes: (runId: string) => Array.from(createMp4Buffer(`drop-noautoopen-mp4-${runId}`)),
   },
   {
     name: 'mp3-audio',
     label: 'audio/mpeg',
     filename: 'sound.mp3',
     mime: 'audio/mpeg',
-    bytes: () => Array.from(createMp3Buffer('drop-noautoopen-mp3')),
-    sourceMarker: /sound(?:-\d+)?\.mp3/,
+    bytes: (runId: string) => Array.from(createMp3Buffer(`drop-noautoopen-mp3-${runId}`)),
   },
 ] as const;
 
@@ -153,14 +157,18 @@ test.describe('Drop pipeline does not auto-open the descriptor PropPanel', () =>
       page,
       api,
     }) => {
-      const docName = `drop-noautoopen-${c.name}-${Math.random().toString(36).slice(2, 10)}`;
+      // Per-test token shared by the docName, the asset name, and the byte
+      // salt (see the `cases` header for why both name and bytes must differ).
+      const runId = Math.random().toString(36).slice(2, 10);
+      const assetName = uniqueAssetName(c.filename, runId);
+      const docName = `drop-noautoopen-${c.name}-${runId}`;
       await api.createPage(`${docName}.md`);
       await page.goto(`/#/${docName}`);
       await waitForProvider(page);
       await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
       await page.click('.ProseMirror:not(.composer-prosemirror)');
 
-      await dropFileIntoEditor(page, c.bytes(), c.filename, c.mime);
+      await dropFileIntoEditor(page, c.bytes(runId), assetName, c.mime);
 
       // The drop completes when the source carries a reference to the file.
       // Y.XmlFragment → Y.Text Observer A serializes the inserted node; once
@@ -169,7 +177,7 @@ test.describe('Drop pipeline does not auto-open the descriptor PropPanel', () =>
       // has executed.
       await expect
         .poll(async () => await getSourceText(page), { timeout: 5_000 })
-        .toMatch(c.sourceMarker);
+        .toMatch(new RegExp(escapeRegExp(assetName)));
 
       // THE assertion: PropPanel does NOT auto-open. `[data-prop-panel]` is
       // only rendered when the descriptor's Popover open state is true,
