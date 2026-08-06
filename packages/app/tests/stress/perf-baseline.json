@@ -34,5 +34,14 @@
     "capturedAt": "2026-04-20",
     "capturedFrom": "V2 SPEC §7 M4 + §2 G4 target — mode-toggle P95 < 200ms prod. CV:hidden probe AC22 MET at 204ms first / 115ms repeat dev. Target: < 200ms prod.",
     "notes": "US-009 .ok-mode-hidden CSS swap. Absolute floor 200ms = spec G4."
+  },
+  "f0ShellSnapCoupling": {
+    "couplingP50": 3.18,
+    "couplingObservedMax": 4.08,
+    "couplingCeiling": 5.5,
+    "absoluteBackstopMs": 1500,
+    "capturedAt": "2026-08-05",
+    "capturedFrom": "local M-series, 40 warm-nav samples across two contention arms — 8 samples at workers=1 and 32 at workers=4 (matching the CI worker count). Ratio-shaped baseline, so it is NOT subject to the median-of-5-CI-runs rule that absolute p50Ms keys are; see perf-baseline-update.md §Ratio-shaped baselines.",
+    "notes": "F0 shell-snap coupling = shellSnap(mark-heavy doc) / shellSnap(trivial doc), both measured in the same run on the same machine. Contention arm moved the absolute legs +30.5% (heavy) and +35.2% (light) but the quotient only -4.4% (3.374 -> 3.226), with near-identical spread (2.87-4.08 vs 2.80-4.04) — that invariance is the whole point of the ratio and is what a fixed-millisecond budget could not deliver (the prior 500ms constant was 1.9x local-healthy but ~0.99x CI-healthy, so it went red on correct code). Ceiling 5.5 is set so that a doubling of the coupling fails from ANYWHERE in the observed healthy spread, not just from the median: 2 x the lowest healthy sample (2.804) is 5.608, which still trips. That whole-spread bar is required because the suite runs retries:2 with failOnFlakyTests:false, so a gate that only reddens on some runs of a regressed system goes green on retry and detects nothing. Cost of the tighter ceiling is headroom: 1.35x above the worst observed healthy sample (vs 1.47x at ceiling 6), still ~6.8 sigma out on the measured spread. absoluteBackstopMs 1500 covers only the regression class that inflates both legs equally; it is ~3x the observed CI healthy p90 and sits below the 2s in-page poll ceiling so it reports as a budget failure rather than a lost measurement. Recalibrate from the [F0] log line, not from a single red run."
   }
 }

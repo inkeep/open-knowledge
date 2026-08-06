@@ -8,9 +8,41 @@
  * fixture resolves `page.goto('/…')` against it.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
+
+const PERF_BASELINE: {
+  f0ShellSnapCoupling: { couplingCeiling: number; absoluteBackstopMs: number };
+} = JSON.parse(
+  readFileSync(join(fileURLToPath(import.meta.url), '..', 'perf-baseline.json'), 'utf-8'),
+);
+
+/**
+ * Ceiling on `shellSnap(mark-heavy doc) / shellSnap(trivial doc)`.
+ *
+ * Both terms are the same code path measured in the same run on the same
+ * machine; they differ only in the weight of the editor mount the navigation
+ * kicks off. A uniformly slower or busier runner scales both and leaves the
+ * quotient alone, which is exactly what an absolute wall-clock budget cannot
+ * do — that budget's headroom silently evaporates as runner speed drifts,
+ * which is how the previous 500ms constant went red on healthy code.
+ */
+const SHELL_SNAP_COUPLING_CEILING = PERF_BASELINE.f0ShellSnapCoupling.couplingCeiling;
+
+/**
+ * Absolute ceiling on the heavy-doc shell snap.
+ *
+ * The coupling ratio is blind to a regression that slows every navigation
+ * equally (both terms grow, quotient holds) — an O(n^2) sidebar re-render
+ * would pass it. This backstop covers that class only. It is deliberately far
+ * above observed healthy values so it is never the flaky term; the ratio, not
+ * this number, is what catches the shell-waits-for-editor bug.
+ */
+const SHELL_SNAP_BACKSTOP_MS = PERF_BASELINE.f0ShellSnapCoupling.absoluteBackstopMs;
 
 async function openFromSidebar(
   page: Page,
@@ -77,6 +109,60 @@ async function openFromSidebar(
 
 function sidebarItem(page: Page, filename: string) {
   return page.getByRole('treeitem', { name: filename, exact: true });
+}
+
+/**
+ * Time a warm sidebar navigation from the trusted click to the moment the
+ * row's `aria-selected` flips — the shell-snap signal.
+ *
+ * The clock lives entirely in-page (capture-phase click listener +
+ * MutationObserver), so Playwright's protocol latency and the poll
+ * granularity below sit outside the measured window. That matters because
+ * callers divide two of these against each other: any measurement overhead
+ * that leaked in would land in only one term and corrupt the quotient.
+ *
+ * Callers must ensure the target doc is already warm — a cold mount measures
+ * a different code path than the cache-HIT reparent.
+ */
+async function measureShellSnapMs(page: Page, filename: string): Promise<number> {
+  const row = sidebarItem(page, filename);
+  // Resolve Playwright's actionability work before timing so scrolling and
+  // locator stability do not count against the measured window.
+  await row.click({ trial: true });
+  await row.evaluate((target) => {
+    window.__f0Result = null;
+    window.__f0Start = undefined;
+    if (!(target instanceof HTMLElement)) return;
+    const observer = new MutationObserver(() => {
+      const start = window.__f0Start;
+      if (target.getAttribute('aria-selected') === 'true' && start !== undefined) {
+        window.__f0Result = { shellMs: performance.now() - start };
+        observer.disconnect();
+      }
+    });
+    observer.observe(target, { attributes: true, attributeFilter: ['aria-selected'] });
+    window.addEventListener(
+      'click',
+      () => {
+        window.__f0Start = performance.now();
+      },
+      { capture: true, once: true },
+    );
+  });
+  await row.click();
+  // 2s poll ceiling: above this the shell is so far gone that the measured
+  // number stops mattering. Keep it above SHELL_SNAP_BACKSTOP_MS so a blown
+  // backstop reports as a budget failure with the real number rather than as
+  // an opaque "never captured".
+  await expect
+    .poll(async () => (await page.evaluate(() => window.__f0Result)) !== null, {
+      timeout: 2_000,
+      intervals: [25, 50, 100],
+    })
+    .toBe(true);
+  const result = await page.evaluate(() => window.__f0Result);
+  if (!result) throw new Error(`shell-snap result not captured for ${filename}`);
+  return result.shellMs;
 }
 
 const FILLER_LINE = 'Filler paragraph to force scrollable content. '.repeat(10);
@@ -157,81 +243,46 @@ test.describe('docs-open — hybrid navigation UX', () => {
     // This is the load-bearing SHELL signal — completely independent of the
     // editor subtree rendering. If shell state is decoupled from editor
     // mount, this flips in one frame.
-    const bigRow = sidebarItem(page, 'big.md');
     // Pre-assertion: small.md is currently active in the sidebar.
     await expect(sidebarItem(page, 'small.md')).toHaveAttribute('aria-selected', 'true');
 
-    // Resolve Playwright's actionability work before timing so scrolling and
-    // locator stability do not count against the shell response budget.
-    await bigRow.click({ trial: true });
-
-    // Install an in-page timer that starts on the real browser click and
-    // observes the row's aria-selected mutation. Starting from the trusted
-    // event excludes Playwright's protocol latency while preserving the
-    // application's actual navigation path.
-    await bigRow.evaluate((target) => {
-      window.__f0Result = null;
-      if (!(target instanceof HTMLElement)) return;
-      window.__f0Start = undefined;
-      const observer = new MutationObserver(() => {
-        const start = window.__f0Start;
-        if (target.getAttribute('aria-selected') === 'true' && start !== undefined) {
-          window.__f0Result = { shellMs: performance.now() - start };
-          observer.disconnect();
-        }
-      });
-      observer.observe(target, {
-        attributes: true,
-        attributeFilter: ['aria-selected'],
-      });
-      window.addEventListener(
-        'click',
-        () => {
-          window.__f0Start = performance.now();
-        },
-        { capture: true, once: true },
-      );
-    });
-    await bigRow.click();
-
-    // Poll for the shell-snap result; the MutationObserver fills it as soon
-    // as aria-selected moves. 2s timeout is generous enough to avoid flake
-    // while still failing hard on the bug class (3s editor mount).
-    await expect
-      .poll(async () => (await page.evaluate(() => window.__f0Result)) !== null, {
-        timeout: 2_000,
-        intervals: [25, 50, 100],
-      })
-      .toBe(true);
-
-    const result = await page.evaluate(() => window.__f0Result);
-    if (!result) throw new Error('F0 result not captured');
-
-    // Record editor-content arrival time as well, so the assertion can
-    // express "shell snap << editor mount" rather than a magic wall-clock
-    // budget. The shell-snap bug manifests as shell+editor arriving
-    // together (shellMs ≈ editorMs) rather than shell arriving much
-    // earlier (shellMs << editorMs).
-    const editorStart = await page.evaluate(() => performance.now());
+    // Heavy leg: navigating to the mark-heavy doc starts an expensive editor
+    // mount. If shell state is coupled to that mount, this is where it shows.
+    const shellHeavyMs = await measureShellSnapMs(page, 'big.md');
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Big Doc' }),
     ).toBeVisible({
       timeout: 30_000,
     });
-    const editorMs = await page.evaluate(
-      (start) => performance.now() - start,
-      editorStart - (result.shellMs - 0),
-    );
-    // Log for diagnostic visibility in CI output.
-    console.log(`[F0] shellMs=${result.shellMs.toFixed(1)} editorMs=${editorMs.toFixed(1)}`);
 
-    // Shell-snap budget: 500ms. Measured baseline with useDeferredValue
-    // decoupling is ~260ms on this test doc (shell) vs ~305ms (editor).
-    // Without decoupling the measured value was ~1370ms — a shell-waits-
-    // for-editor regression blows the budget by >2×. 500ms leaves CI
-    // worker headroom (warmer is slower, Chromium event dispatch can add
-    // 50-100ms) while still failing hard on the bug class.
-    expect(result.shellMs).toBeLessThan(500);
+    // Light leg: the same navigation code path, but the editor mount it
+    // starts is trivial. This is the control — it holds steady whether or not
+    // the shell is coupled, so it reads as "what a shell snap costs on THIS
+    // machine right now" and serves as the contention denominator below.
+    const shellLightMs = await measureShellSnapMs(page, 'small.md');
+    await expect(
+      page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Small' }),
+    ).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const coupling = shellHeavyMs / shellLightMs;
+    // Log for diagnostic visibility in CI output. These three numbers are the
+    // raw material for any future recalibration — keep them printed.
+    console.log(
+      `[F0] shellHeavyMs=${shellHeavyMs.toFixed(1)} shellLightMs=${shellLightMs.toFixed(1)} coupling=${coupling.toFixed(3)}`,
+    );
+
+    // Primary gate. Healthy code keeps the heavy leg a bounded multiple of
+    // the light leg because the shell re-render only competes with the editor
+    // mount for the main thread; it does not wait on it. Coupling the two
+    // makes the heavy leg scale with editor weight while the light leg stays
+    // flat, so the quotient — not either term alone — is the bug signal.
+    expect(coupling).toBeLessThan(SHELL_SNAP_COUPLING_CEILING);
+
+    // Secondary gate; see SHELL_SNAP_BACKSTOP_MS. Catches only the regression
+    // class that inflates both legs together, which the quotient cannot see.
+    expect(shellHeavyMs).toBeLessThan(SHELL_SNAP_BACKSTOP_MS);
   });
 
   test('F0b: warm reopen of a V2-admit doc shows NO EditorSkeleton', async ({ page, api }) => {
