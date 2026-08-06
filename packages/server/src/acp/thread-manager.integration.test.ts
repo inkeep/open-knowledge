@@ -20,6 +20,8 @@ import type {
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
+import * as Y from 'yjs';
+import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
 import { AcpPermissionStore } from './permissions.ts';
@@ -67,6 +69,8 @@ function makeManager(
     isIgnoredPath?: (relPosix: string) => boolean;
     registry?: AcpRegistry;
     resolveLoginShellPath?: () => Promise<string | null>;
+    agentPresenceBroadcaster?: AgentPresenceBroadcaster;
+    sessionManager?: AgentSessionManager;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -2895,4 +2899,120 @@ describe('AcpThreadManager auth classification', () => {
 
     await manager.closeThread(info.threadId);
   }, 40_000);
+});
+
+describe('AcpThreadManager agent presence', () => {
+  type Collected = Array<{ seq: number; event: ThreadEvent }>;
+  const collect = (into: Collected) => (frame: ThreadServerFrame) => {
+    if (frame.op === 'event') into.push({ seq: frame.seq, event: frame.event });
+    if (frame.op === 'events') {
+      for (const [i, event] of frame.events.entries()) {
+        into.push({ seq: frame.fromSeq + i, event });
+      }
+    }
+  };
+
+  interface RecordedPresence {
+    key: string;
+    entry: { icon: string; currentDoc: string; mode: string; displayName: string };
+  }
+
+  function recordingBroadcaster(into: RecordedPresence[]): AgentPresenceBroadcaster {
+    return {
+      setPresence: (key: string, entry: RecordedPresence['entry']) => into.push({ key, entry }),
+      clearPresence: () => {},
+    } as unknown as AgentPresenceBroadcaster;
+  }
+
+  /** Enough of a session for `handleFsWrite`'s markdown branch to apply a write. */
+  function stubSessionManager(docs: Map<string, Y.Doc>): AgentSessionManager {
+    return {
+      getSession: async (docName: string, agentId: string) => {
+        let doc = docs.get(docName);
+        if (doc === undefined) {
+          doc = new Y.Doc();
+          docs.set(docName, doc);
+        }
+        return { dc: { document: doc }, origin: { agentId }, agentId };
+      },
+      closeAllForAgent: async () => {},
+    } as unknown as AgentSessionManager;
+  }
+
+  test('a turn that writes nothing publishes no presence at all', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    // A turn that only talks — the example agent parks on a permission prompt,
+    // which is not the path under test here.
+    writeRequestingAgentEntry(
+      localDir,
+      'chatty-agent',
+      `
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hello' } });
+  finish();
+`,
+    );
+    const published: RecordedPresence[] = [];
+    const manager = makeManager(contentDir, localDir, {
+      agentPresenceBroadcaster: recordingBroadcaster(published),
+    });
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'chatty-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'say hello');
+    await waitUntil(() => events.some((e) => e.event.kind === 'turn_ended'), 20_000, 'turn end');
+    await manager.closeThread(info.threadId);
+
+    // Ready, turn start, and turn settle used to publish an entry each, which
+    // blinked a chip into the presence bar and back out every prompt. The
+    // agent's own MCP connection carries persistent presence already.
+    expect(published).toEqual([]);
+  }, 45_000);
+
+  test('an ACP fs write publishes presence for that doc, under the agent brand icon', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    // The id doubles as the presence icon lookup, so name it as the registry
+    // does — that is the shape the icon table has to resolve.
+    writeRequestingAgentEntry(
+      localDir,
+      'codex-acp',
+      `
+  const { join } = await import('node:path');
+  await request('fs/write_text_file', {
+    path: join(process.cwd(), 'notes', 'planted.md'),
+    content: '# planted by the agent',
+  });
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'wrote it' } });
+  finish();
+`,
+    );
+    const published: RecordedPresence[] = [];
+    const manager = makeManager(contentDir, localDir, {
+      agentPresenceBroadcaster: recordingBroadcaster(published),
+      sessionManager: stubSessionManager(new Map()),
+    });
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'codex-acp' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'plant a note');
+    await waitUntil(() => events.some((e) => e.event.kind === 'turn_ended'), 20_000, 'turn end');
+
+    // Exactly one entry — the write. No adapter-side MCP entry stands in for
+    // an ACP-native fs write, and follow-the-file reads this.
+    expect(published).toHaveLength(1);
+    expect(published[0]?.entry.currentDoc).toBe('notes/planted');
+    expect(published[0]?.entry.mode).toBe('writing');
+    // Before the icon table learned the registry ids, every ACP agent landed
+    // on the generic 'bot' mark.
+    expect(published[0]?.entry.icon).toBe('openai');
+
+    await manager.closeThread(info.threadId);
+  }, 45_000);
 });

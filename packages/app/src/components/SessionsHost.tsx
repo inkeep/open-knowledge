@@ -466,6 +466,10 @@ export function SessionsHost({
   );
   const liveThreadCount = openThreadTabs.filter((info) => info.archived !== true).length;
   const threadInfoById = new Map(openThreadTabs.map((info) => [info.threadId, info]));
+  // Reopening an archived conversation leaves it archived, so it stays listed in
+  // history while its tab is open. The history menu needs the open set to keep
+  // delete off those rows.
+  const openThreadIds = new Set(threadInfoById.keys());
 
   // Reopen an archived conversation as a tab (history menu / empty-dock chooser).
   // The store adds it to the open set; the reconcile + activation effects bring it
@@ -1462,7 +1466,11 @@ export function SessionsHost({
   // left of the collapse button — shown only with archived history to return to.
   const trailingControls =
     hostThreads && archivedThreads.length > 0 ? (
-      <ThreadHistoryMenu archived={archivedThreads} onOpenThread={openArchivedThread} />
+      <ThreadHistoryMenu
+        archived={archivedThreads}
+        openThreadIds={openThreadIds}
+        onOpenThread={openArchivedThread}
+      />
     ) : null;
 
   // Render the strip (with the ＋ split button + a starting/empty body) whenever

@@ -271,9 +271,10 @@ function AgentAvatar({
   // touch targets.
   const writing = !crossDoc && heldWriting;
 
-  // Sentinel currentDoc values (`(connected)` from the keepalive WS bootstrap,
-  // `(agent thread)` from a doc-less in-app thread) are non-null so the entry
-  // survives the client-side filter, but they don't represent a real document.
+  // Sentinel currentDoc values (`(connected)` from the keepalive WS bootstrap;
+  // `(agent thread)` retained defensively — thread presence now publishes only
+  // on real doc writes) are non-null so the entry survives the client-side
+  // filter, but they don't represent a real document.
   // `isPresenceSentinelDocName` matches the sentinel set exactly — `isSafeDocName`
   // (api-extension.ts) permits `(` in real docNames (e.g. `(WIP) draft`,
   // `(2026-05-13) standup`), so a leading-`(` heuristic would over-suppress the

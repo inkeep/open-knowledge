@@ -853,6 +853,24 @@ describe('ThreadView tool-call status', () => {
     expect(screen.queryByRole('button', { name: /Run tests/ })).toBeNull();
     expect(screen.getByTestId('agent-thread-tool-call').textContent).toContain('Run tests');
   });
+
+  test('an Open Knowledge call says what it did, not the name the adapter sent', () => {
+    model = makeModel({
+      items: [
+        toolCall({
+          status: 'completed',
+          title: 'mcp__open-knowledge__write',
+          toolKind: 'other',
+          rawInput: { document: { path: 'meetings/standup.md' } },
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const row = screen.getByTestId('agent-thread-tool-call').textContent ?? '';
+    expect(row).toContain('OpenKnowledge wrote to meetings/standup');
+    expect(row).not.toContain('mcp__open-knowledge__write');
+  });
 });
 
 describe('ThreadView permission merged into its tool call', () => {

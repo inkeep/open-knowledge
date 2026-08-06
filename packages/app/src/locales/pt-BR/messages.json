@@ -48,6 +48,7 @@
     "-o5XAG": [
       "Enviado em particular para a equipe do OpenKnowledge, junto com sua nota e a versão do app. Nunca é publicado."
     ],
+    "-oHckY": ["OpenKnowledge leu a configuração ", ["key"]],
     "-q4abP": [
       "Resultados limitados — este espaço de trabalho tem mais arquivos do que a busca consegue indexar. Um arquivo que falte pode ser efeito do limite, não um erro de digitação."
     ],
@@ -353,6 +354,7 @@
     "4DcimZ": ["Atualizado ", ["lastSyncedRelative"]],
     "4E9jPa": ["Crie seu primeiro projeto"],
     "4EZrJN": ["Regras"],
+    "4ErgAf": ["OpenKnowledge instalou uma habilidade"],
     "4GWjF8": [
       "Não deu para descobrir para onde enviar os comentários — eles continuam aguardando."
     ],
@@ -377,6 +379,7 @@
       "Escolha as habilidades a instalar. Cada uma chega como uma habilidade editável que é sua."
     ],
     "4mLBx9": ["As assinaturas não estão disponíveis agora."],
+    "4mp6Tv": ["OpenKnowledge listou as habilidades instaladas"],
     "4niEzY": [
       "HTML incorporado em modo isolado — escreva HTML e veja a pré-visualização renderizada ao vivo."
     ],
@@ -446,6 +449,7 @@
     "5ZbJFS": ["Sua versão atual é salva antes, então isto é reversível."],
     "5_j-DA": ["Encerrar o terminal"],
     "5aahsI": ["nada (", ["0"], " não é um padrão válido)"],
+    "5b3WD-": ["OpenKnowledge salvou um ponto de verificação"],
     "5e1Dri": ["O rótulo de menu pelo qual os agentes escolhem este modelo (obrigatório)."],
     "5gr_ev": [
       "Vira o conteúdo do documento quando alguém cria um documento a partir deste modelo. Digite <0>",
@@ -586,6 +590,7 @@
       "<0>ok</0> não vai funcionar em terminais externos até você adicioná-lo depois pelo menu Arquivo. O terminal integrado e as ferramentas de IA do OpenKnowledge continuam funcionando."
     ],
     "7PzzBU": ["Usuário"],
+    "7S7FNA": ["OpenKnowledge verificou o projeto"],
     "7Y9yTo": [["owner"], "/", ["name"], " foi criado, mas o envio falhou."],
     "7YRrJ9": [
       "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
@@ -594,6 +599,7 @@
       "Nenhum agente selecionado — as habilidades ficam salvas, mas não são instaladas em lugar nenhum."
     ],
     "7_bFEL": ["Arraste ", ["patternText"], " para reordenar"],
+    "7aNk5D": ["OpenKnowledge editou ", ["subject"]],
     "7apDiJ": [
       "Uma pasta chamada <0>",
       ["sanitized"],
@@ -612,6 +618,7 @@
       "."
     ],
     "7cAW1G": ["Nenhuma chave de API definida para este endpoint. Adicione uma acima."],
+    "7czmD1": ["OpenKnowledge consultou a paleta de edição"],
     "7d1a0d": ["Público"],
     "7dZnmw": ["Relevância"],
     "7hctf2": ["Descreva o projeto que você quer criar"],
@@ -695,6 +702,7 @@
     ],
     "8vCZcs": ["Falha ao abrir o arquivo."],
     "8vETh9": ["Mostrar"],
+    "90-wKT": ["OpenKnowledge leu o histórico de ", ["subject"]],
     "92rbk2": ["O espelho está carregando <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Ocultar Agentes"],
     "96G6Re": ["Nova pasta"],
@@ -783,6 +791,7 @@
       "Não há servidor de colaboração para este worktree — rode <0>ok start</0> aqui ou abra o projeto de novo."
     ],
     "AB4qw9": ["Novo terminal"],
+    "ABq-cq": ["OpenKnowledge criou um link de compartilhamento"],
     "ACKMCN": ["Falha ao carregar as configurações da habilidade: ", ["0"]],
     "ACjxWW": ["Zoom"],
     "AE7BY3": ["A sessão de terminal terminou."],
@@ -824,6 +833,7 @@
     "AeHuzT": [
       "# Um padrão por linha.\\n# Exemplos:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
     ],
+    "AeLo3p": ["OpenKnowledge resolveu um conflito em ", ["subject"]],
     "AeXO77": ["Conta"],
     "AhoGwP": ["Configurar as integrações do OpenKnowledge"],
     "AiNMQ7": [
@@ -913,6 +923,13 @@
     "C0hoX6": ["Sempre incluído"],
     "C3Zc44": ["Explorar habilidades"],
     "C62P6b": ["Seleção do editor"],
+    "C7waqI": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " documento"], "many": ["#", " documentos"], "other": ["#", " documentos"] }
+      ]
+    ],
     "C9TBvF": ["Sem saída"],
     "CB7c0Z": ["Salvar a mensagem na fila"],
     "CBT70t": ["Não foi possível excluir o arquivo: ", ["0"]],
@@ -1013,12 +1030,14 @@
     "DbILZA": [
       "Sem correspondências. Alguns arquivos ficam fora da busca (arquivos ocultos ou ignorados)."
     ],
+    "DcFr-y": ["OpenKnowledge excluiu um documento"],
     "DcLaew": ["Tema personalizado"],
     "DeDYLr": ["Link wiki não reconhecido"],
     "DgcGrb": [
       ["fileCount", "plural", { "one": ["arquivo"], "many": ["arquivos"], "other": ["arquivos"] }]
     ],
     "DhLHEb": ["Falha ao carregar a atividade"],
+    "DhT_PK": ["OpenKnowledge importou uma habilidade"],
     "DiFKSL": ["Contando arquivos markdown"],
     "DiZ3pq": ["Seletor de ícones"],
     "Dnn2XG": ["Automático"],
@@ -1134,6 +1153,7 @@
     ],
     "Ev2r9A": ["Sem resultados"],
     "EvPX7f": ["Abre um seletor de pastas para escolher onde clonar o repositório."],
+    "EvXKHE": ["OpenKnowledge pesquisou na base de conhecimento"],
     "Evq3lu": ["Modo órfãs"],
     "ExPiRQ": ["Vai para o próximo diagnóstico de análise do CodeMirror."],
     "ExUzM4": ["habilidade \"", ["0"], "\""],
@@ -1165,6 +1185,7 @@
     "FNTx6u": ["Buscar \"", ["semanticSubmitQuery"], "\" por significado"],
     "FOGD7m": ["Crie algo excelente."],
     "FRYB1Q": ["/api/config devolveu um corpo malformado"],
+    "FS4Udk": ["OpenKnowledge executou um comando"],
     "FTBN5g": [
       "Como os achados de validação aparecem no projeto. Estas escolhas ficam salvas no config.yml e são compartilhadas com todos os colaboradores pelo git."
     ],
@@ -1197,6 +1218,7 @@
     "FvMSms": [
       "Renomear muda o arquivo no disco e o id que os agentes usam para escolher este modelo."
     ],
+    "Fx9aOF": ["OpenKnowledge editou um documento"],
     "Fxf4jq": ["Descrição (opcional)"],
     "Fy4GgU": [
       "Explique como seu código funciona para que colegas e agentes de IA se orientem. Bom para documentar a arquitetura, as partes principais e as perguntas que todo novo colaborador faz."
@@ -1261,6 +1283,7 @@
     "G_hVTP": ["Ativar os temas"],
     "G_mWXb": ["Filtrar idiomas"],
     "GamjcN": ["Modelo salvo"],
+    "Gb_h4G": ["OpenKnowledge excluiu ", ["subject"]],
     "GceAYf": [["label"], " movido para um novo painel à direita."],
     "GemPfn": [
       "Falha ao interpretar a resposta de erro dos links de saída (HTTP ",
@@ -1489,6 +1512,7 @@
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " arquivos"],
     "K8-WWn": ["Mover entre as células da tabela"],
     "K9J00P": ["Falha ao clonar — erro de conexão"],
+    "KDrbNG": ["OpenKnowledge consultou os links de ", ["subject"]],
     "KDuPiY": ["Enviando ", ["fileName"]],
     "KDw4GX": ["Tente de novo"],
     "KFd4xz": ["ausente"],
@@ -1712,6 +1736,7 @@
       ["conflictHosts"],
       " — você já tem ali uma skill própria com esse nome. Renomeie a sua se quiser a versão do pacote."
     ],
+    "MvWBwz": ["OpenKnowledge escreveu em ", ["subject"]],
     "My0wYT": [
       "Quando você passa o cursor sobre um link externo, a URL dele é enviada ao site de destino para buscar os metadados de pré-visualização da página — uma requisição por link pré-visualizado."
     ],
@@ -2000,6 +2025,7 @@
     "RG4XHV": ["Copiar o prompt de ", ["0"]],
     "RGCCrg": ["Copiar link de compartilhamento"],
     "RGkNeJ": ["Inicializar um pacote inicial"],
+    "RGptDW": ["OpenKnowledge moveu um documento"],
     "RJ3a8Z": ["Procurando <0>", ["lookingForUrl"], "</0>."],
     "RLNIgv": ["O servidor retornou uma resposta de modelos incompleta."],
     "RLYckQ": ["Parar (Esc)"],
@@ -2116,6 +2142,7 @@
       "Desfaz ou refaz suas próprias edições, deixando intactas as de colaboradores e agentes."
     ],
     "TEEPPF": ["Vai substituir a entrada existente do OpenKnowledge"],
+    "TEJiKw": ["OpenKnowledge verificou ", ["subject"]],
     "TJnkyf": ["o ok ui respondeu, mas o server.lock ainda não tem porta"],
     "TKQ7K-": ["Instalar"],
     "TLIO3j": ["Liga ou desliga o itálico."],
@@ -2181,6 +2208,7 @@
       "."
     ],
     "UJEFJY": ["Não foi possível iniciar ", ["0"], ": ", ["1"]],
+    "UL-9ej": ["OpenKnowledge abriu a pré-visualização ao vivo"],
     "UL8A9w": ["Tag"],
     "UNwKSz": ["Atualização automática ligada para \"", ["name"], "\""],
     "UPWItY": ["Uma pasta contendo SKILL.md."],
@@ -2232,6 +2260,7 @@
     "UfW9Kr": [
       "Suas consultas de busca e o texto completo das páginas correspondentes são enviados ao seu provedor de embeddings (OpenAI por padrão) para calcular os embeddings."
     ],
+    "Ug2xzC": ["OpenKnowledge leu o histórico de edições"],
     "Ugvy4O": ["Expandir todos os grupos de arquivos"],
     "UhpfxY": ["Deslocar para a esquerda"],
     "UkQGhd": ["Ocultar substituir"],
@@ -2255,6 +2284,7 @@
         { "one": ["há ", "#", " min"], "many": ["há ", "#", " min"], "other": ["há ", "#", " min"] }
       ]
     ],
+    "V0mbgd": ["Feche a aba deste chat para excluí-lo"],
     "V2Gmie": [
       "Estas regras vêm do arquivo <0>",
       ["configFile"],
@@ -2357,6 +2387,7 @@
     ],
     "Waiy-j": ["A personalidade, os valores e a voz do agente."],
     "WamGNs": ["Falha ao carregar o PDF: ", ["error"]],
+    "WbWtif": ["OpenKnowledge instalou ", ["subject"]],
     "Wboy1j": ["~/.myteam/skills"],
     "WcWS__": ["Baixar arquivo"],
     "Wcv-Zi": ["Deixe esta base de conhecimento disponível como uma habilidade do Claude."],
@@ -2596,6 +2627,7 @@
     "Zue_jx": ["Faltam escopos obrigatórios no seu token do GitHub. Tente entrar de novo."],
     "Zul8Ry": ["nunca"],
     "ZvzbDF": ["Adicione-o diretamente a este projeto."],
+    "ZwpggY": ["OpenKnowledge leu as configurações do projeto"],
     "_0JUKX": ["Relatar erros exige o app de desktop do OpenKnowledge."],
     "_2cM9E": ["recente"],
     "_5qBNl": ["Ferramentas de IA e CLI"],
@@ -2639,6 +2671,7 @@
       "Cópia somente leitura de um bloco MirrorSource de outro documento. Edite na fonte e ela se atualiza ao vivo."
     ],
     "_XWY2J": ["Terminal desativado"],
+    "_YWqV2": ["OpenKnowledge resolveu um conflito"],
     "_ayOfA": [
       "Uma base de conhecimento que segue o Open Knowledge Format do Google, uma forma comum de organizar o que você sabe. Escolha isto se quiser que suas notas funcionem bem com outras ferramentas que entendem o formato."
     ],
@@ -2668,6 +2701,7 @@
       ["folderName"],
       "/ e todos os arquivos dentro dela? Esta ação não pode ser desfeita."
     ],
+    "a5gwRt": ["OpenKnowledge executou ", ["command"]],
     "a7P3nH": [
       "Pessoal deste dispositivo — guardado na sua configuração de usuário, não compartilhado."
     ],
@@ -2834,6 +2868,7 @@
     "cVKnqL": ["Não deu para ler os comentários que aguardam envio: ", ["0"]],
     "cZGNlb": ["Adicionar outro padrão"],
     "cZI5AL": ["OK Desktop"],
+    "caiyaU": ["OpenKnowledge restaurou uma versão anterior"],
     "caw8gO": [
       [
         "strandedCommitCount",
@@ -3188,6 +3223,7 @@
     "hCOLSd": [
       "Mantenha um registro escrito de como seu produto é construído. Um lugar para propor ideias, registrar decisões, escrever especificações e anotar o que você aprendeu depois que algo quebrou."
     ],
+    "hCattk": ["OpenKnowledge importou ", ["source"]],
     "hDEaQu": ["Conecte o OpenKnowledge às outras ferramentas que você usa."],
     "hDKtoF": ["há ", ["diffHrs"], " h"],
     "hDoLrm": ["Remover ", ["projectName"], " dos projetos recentes"],
@@ -3200,6 +3236,7 @@
     "hLy8b1": ["Atualizado para a versão ", ["version"]],
     "hQXiDc": ["Buscar ramos..."],
     "hQjvzi": ["Um arquivo .zip ou .skill."],
+    "hS0wC4": ["OpenKnowledge restaurou uma versão anterior de ", ["subject"]],
     "hSBIG-": ["Um título, uma descrição, tags — qualquer coisa que descreva esta pasta."],
     "hSySVc": ["Falha na passagem da instalação: ", ["msg"]],
     "hVAkI8": ["Executar no terminal"],
@@ -3249,6 +3286,7 @@
     "i3f2kh": ["Nenhum comando corresponde."],
     "i6ng22": ["Mudar para Acompanhar"],
     "i92eAT": ["Vamos criar um repositório e começar a sincronizar — sem precisar de terminal."],
+    "i94lQe": ["OpenKnowledge verificou se há conflitos"],
     "i9OyGp": ["Desfazer ou refazer"],
     "i9TPUi": [
       "Este ",
@@ -3293,6 +3331,7 @@
       ]
     ],
     "iaPtht": ["copiar"],
+    "ibE3-O": ["OpenKnowledge criou um link de compartilhamento para ", ["subject"]],
     "idD8Ev": ["Salvo"],
     "idni-S": ["Valores de ", ["keyName"]],
     "ig5vUe": ["Falha ao carregar o arquivo"],
@@ -3848,6 +3887,7 @@
     "paCw0z": ["tudo dentro das pastas ", ["0"], "/ que estão em ", ["1"], "/"],
     "pajIrl": ["Não foi possível desligar o terminal: ", ["0"]],
     "pbwTg6": ["há ", ["seconds"], " s"],
+    "pbyEp3": ["OpenKnowledge moveu ", ["subject"], " para ", ["destination"]],
     "pckX1A": [
       ["0", "plural", { "one": ["#", " uso"], "many": ["#", " usos"], "other": ["#", " usos"] }]
     ],
@@ -4114,6 +4154,7 @@
     "tAPZEx": ["Abaixo"],
     "tHKQ6j": ["Renomeando"],
     "tKlWWY": ["Emoji"],
+    "tLX6LY": ["OpenKnowledge escreveu um documento"],
     "tN5WTS": ["O provedor recusou a requisição. Verifique a chave de API e o id do modelo."],
     "tP5DDk": ["Aplicar link"],
     "tUvUfp": ["Use uma pasta que você já tem."],
@@ -4269,6 +4310,7 @@
       ["0"],
       "). Verifique a chave de API e o id do modelo."
     ],
+    "vallqD": ["OpenKnowledge consultou o grafo de links"],
     "vbK_ZG": ["Barra lateral Arquivos"],
     "vbMHjo": ["Ir para a linha ", ["0"]],
     "ve8vEM": ["O código expirou — tente de novo"],
@@ -4277,6 +4319,7 @@
       "Você escolheu ~/Desktop. O OpenKnowledge vai indexar tudo o que estiver na sua área de trabalho."
     ],
     "vhAnzJ": ["Ligar a busca semântica?"],
+    "vhGTWU": ["OpenKnowledge executou ", ["tool"]],
     "viwC-K": ["Falha ao remover o projeto."],
     "vj-33a": [
       "Use <0>",
@@ -4466,6 +4509,7 @@
     "yUxR-Q": ["Expandir ", ["keyName"]],
     "yWSvcf": ["Raiz do conteúdo"],
     "yWWThY": ["Referência de recurso"],
+    "yWfjqS": ["OpenKnowledge pesquisou por ", ["query"]],
     "yYR6za": ["Texto exibido"],
     "yZepkk": ["Sincronização com git"],
     "yZmvQ4": ["O servidor deste projeto (v", ["0"], ") é mais novo que este app (v", ["1"], ")."],

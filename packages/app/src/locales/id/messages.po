@@ -161,6 +161,11 @@ msgstr "{0, plural, other {# tautan balik}}"
 msgid "{0, plural, one {# doc} other {# docs}}"
 msgstr "{0, plural, other {# dokumen}}"
 
+#. placeholder {0}: found.length
+#: src/lib/acp/tool-call-display.ts
+msgid "{0, plural, one {# document} other {# documents}}"
+msgstr "{0, plural, other {# dokumen}}"
+
 #. placeholder {0}: audit.result.errorCount
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# error} other {# errors}}"
@@ -2337,6 +2342,10 @@ msgstr "Tutup tab"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "Close terminal"
 msgstr "Tutup terminal"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Close this chat's tab to delete it"
+msgstr "Tutup tab obrolan ini untuk menghapusnya"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8034,9 +8043,61 @@ msgstr "Membuka worktree"
 msgid "Opening..."
 msgstr "Membuka..."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked {subject}"
+msgstr "OpenKnowledge memeriksa {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked for conflicts"
+msgstr "OpenKnowledge memeriksa konflik"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked the project"
+msgstr "OpenKnowledge memeriksa proyek"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link"
+msgstr "OpenKnowledge membuat tautan berbagi"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link for {subject}"
+msgstr "OpenKnowledge membuat tautan berbagi untuk {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted {subject}"
+msgstr "OpenKnowledge menghapus {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted a document"
+msgstr "OpenKnowledge menghapus sebuah dokumen"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited {subject}"
+msgstr "OpenKnowledge menyunting {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited a document"
+msgstr "OpenKnowledge menyunting sebuah dokumen"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported {source}"
+msgstr "OpenKnowledge mengimpor {source}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported a skill"
+msgstr "OpenKnowledge mengimpor sebuah keterampilan"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
 msgstr "OpenKnowledge diinisialisasi di <0>{projectDir}</0> — folder induk dari <1>{pickedRelative}</1>, karena folder itu memuat folder <2>.git</2> (satu .ok/ per repo git). <3>Direktori konten</3> secara bawaan adalah <4>.</4> (seluruh repo); ketik sebuah subfolder untuk mempersempitnya."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed {subject}"
+msgstr "OpenKnowledge memasang {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed a skill"
+msgstr "OpenKnowledge memasang sebuah keterampilan"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "OpenKnowledge integrations checked."
@@ -8050,14 +8111,98 @@ msgstr "OpenKnowledge memakai akun GitHub yang disediakan CLI gh. Tidak ada kred
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge memakai akun GitHub ini."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge listed the installed skills"
+msgstr "OpenKnowledge menampilkan daftar keterampilan yang terpasang"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked at the link graph"
+msgstr "OpenKnowledge melihat grafik tautan"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up links for {subject}"
+msgstr "OpenKnowledge mencari tautan untuk {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up the authoring palette"
+msgstr "OpenKnowledge membuka palet penulisan"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved {subject} to {destination}"
+msgstr "OpenKnowledge memindahkan {subject} ke {destination}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved a document"
+msgstr "OpenKnowledge memindahkan sebuah dokumen"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "OpenKnowledge di GitHub"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge opened the live preview"
+msgstr "OpenKnowledge membuka pratinjau langsung"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "OpenKnowledge quit unexpectedly last time."
 msgstr "OpenKnowledge berhenti tak terduga terakhir kali."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {command}"
+msgstr "OpenKnowledge menjalankan {command}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {tool}"
+msgstr "OpenKnowledge menjalankan {tool}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran a command"
+msgstr "OpenKnowledge menjalankan sebuah perintah"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the edit history"
+msgstr "OpenKnowledge membaca riwayat penyuntingan"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the history of {subject}"
+msgstr "OpenKnowledge membaca riwayat {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the project settings"
+msgstr "OpenKnowledge membaca pengaturan proyek"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the setting {key}"
+msgstr "OpenKnowledge membaca pengaturan {key}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict"
+msgstr "OpenKnowledge menyelesaikan sebuah konflik"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict in {subject}"
+msgstr "OpenKnowledge menyelesaikan konflik di {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version"
+msgstr "OpenKnowledge memulihkan versi sebelumnya"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version of {subject}"
+msgstr "OpenKnowledge memulihkan versi sebelumnya dari {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge saved a checkpoint"
+msgstr "OpenKnowledge menyimpan titik pemeriksaan"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched for {query}"
+msgstr "OpenKnowledge mencari {query}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched the knowledge base"
+msgstr "OpenKnowledge mencari di basis pengetahuan"
 
 #: src/components/handoff/useHandoffDispatch.ts
 msgid "OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."
@@ -8074,6 +8219,14 @@ msgstr "OpenKnowledge akan diinisialisasi di <0>{gitRoot}</0> — folder induk d
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
 msgstr "OpenKnowledge akan membuat commit dan mengirimkannya ke remote Anda secara otomatis. Jika Anda tidak ingin commit otomatis di riwayat git Anda, sebaiknya jangan aktifkan sinkronisasi otomatis."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote a document"
+msgstr "OpenKnowledge menulis sebuah dokumen"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote to {subject}"
+msgstr "OpenKnowledge menulis ke {subject}"
 
 #: src/components/CloneDialog.tsx
 msgid "Opens a folder picker to choose where to clone the repository."

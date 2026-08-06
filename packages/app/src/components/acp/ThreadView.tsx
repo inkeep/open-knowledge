@@ -22,12 +22,21 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CircleCheck,
   Download,
   FileText,
+  FolderInput,
+  Globe,
+  History,
+  Link2,
   ListPlus,
   Loader2,
   MousePointer2,
+  RotateCcw,
   Search,
+  Settings2,
+  Share2,
+  Shuffle,
   Sparkles,
   Square,
   SquarePen,
@@ -108,6 +117,7 @@ import {
   type RenderedToolCall,
   resolvePermissionOutcome,
 } from '@/lib/acp/thread-event-model';
+import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
@@ -137,14 +147,24 @@ const CANCEL_STALL_MS = 10_000;
  */
 const COMPLETION_CHECK_MS = 1_400;
 
-const TOOL_ICONS: Record<string, typeof Wrench> = {
+const TOOL_ICONS: Record<ToolCallGlyph, typeof Wrench> = {
   read: FileText,
   edit: SquarePen,
   delete: Trash2,
+  move: FolderInput,
   search: Search,
   execute: TerminalIcon,
-  fetch: Search,
   think: Sparkles,
+  fetch: Globe,
+  switch_mode: Shuffle,
+  check: CircleCheck,
+  link: Link2,
+  history: History,
+  share: Share2,
+  install: Download,
+  settings: Settings2,
+  restore: RotateCcw,
+  other: Wrench,
 };
 
 function errorText(err: unknown): string {
@@ -1717,7 +1737,8 @@ function ToolCallCard({
     userToggledRef.current = true;
     setOpen((value) => !value);
   };
-  const Icon = TOOL_ICONS[call.toolKind] ?? Wrench;
+  const display = describeToolCall(call);
+  const Icon = TOOL_ICONS[display.glyph];
   const callTerminals = call.terminalIds
     .map((id) => terminals[id])
     .filter((terminal): terminal is RenderedTerminal => terminal !== undefined);
@@ -1732,7 +1753,7 @@ function ToolCallCard({
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="truncate">{call.title}</span>
+      <span className="min-w-0 truncate">{display.text}</span>
       {/* One auto margin, not two: sibling `ml-auto`s split the free space
           between them instead of the first absorbing it, which floated the
           marks apart mid-row. */}

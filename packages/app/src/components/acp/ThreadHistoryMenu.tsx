@@ -13,12 +13,13 @@ import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol
 import { t as tStatic } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import { History, Trash2 } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAgentThreadClient } from '@/lib/acp/thread-client';
+import { cn } from '@/lib/utils';
 
 /**
  * The past-conversations menu: archived threads, latest activity first, each
@@ -28,9 +29,17 @@ import { getAgentThreadClient } from '@/lib/acp/thread-client';
  */
 export function ThreadHistoryMenu({
   archived,
+  openThreadIds,
   onOpenThread,
 }: {
   archived: readonly ThreadInfo[];
+  /**
+   * Threads currently open as a tab. Reopening an archived conversation does
+   * NOT unarchive it, so a row here can be the very transcript on screen —
+   * and deleting one out from under its own view leaves a tab bound to
+   * nothing. Those rows keep their reopen action and lose only delete.
+   */
+  openThreadIds: ReadonlySet<string>;
   onOpenThread: (threadId: string) => void;
 }): ReactNode {
   const { t } = useLingui();
@@ -41,6 +50,9 @@ export function ThreadHistoryMenu({
   // impure Date.now() during render. Relative labels only show while open, so
   // refreshing the reference time on each open is both correct and sufficient.
   const [now, setNow] = useState(0);
+  // Prefix for the per-row hidden reason a disabled delete points at.
+  const reasonId = useId();
+  const openTabReason = t`Close this chat's tab to delete it`;
   return (
     <Popover
       open={open}
@@ -71,38 +83,47 @@ export function ThreadHistoryMenu({
       </Tooltip>
       <PopoverContent align="end" className="w-72 p-1">
         <div className="max-h-80 overflow-y-auto">
-          {archived.map((thread) =>
-            confirmingId === thread.threadId ? (
-              <div
-                key={thread.threadId}
-                className="flex items-center gap-1.5 rounded-md bg-destructive/5 px-2 py-1"
-                data-testid="agent-thread-history-confirm"
-              >
-                <span className="min-w-0 flex-1 truncate text-xs">{t`Delete this chat?`}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => {
-                    client.deleteThread(thread.threadId);
-                    setConfirmingId(null);
-                  }}
-                  data-testid="agent-thread-history-confirm-delete"
+          {archived.map((thread) => {
+            const openAsTab = openThreadIds.has(thread.threadId);
+            // The open-as-tab check re-applies here, not just on the trash
+            // button: a thread can become open while its confirm is showing
+            // (e.g. restored from another window), and the confirm row would
+            // otherwise still offer a live Delete.
+            if (confirmingId === thread.threadId && !openAsTab) {
+              return (
+                <div
+                  key={thread.threadId}
+                  className="flex items-center gap-1.5 rounded-md bg-destructive/5 px-2 py-1"
+                  data-testid="agent-thread-history-confirm"
                 >
-                  {t`Delete`}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setConfirmingId(null)}
-                >
-                  {t`Cancel`}
-                </Button>
-              </div>
-            ) : (
+                  <span className="min-w-0 flex-1 truncate text-xs">{t`Delete this chat?`}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      client.deleteThread(thread.threadId);
+                      setConfirmingId(null);
+                    }}
+                    data-testid="agent-thread-history-confirm-delete"
+                  >
+                    {t`Delete`}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setConfirmingId(null)}
+                  >
+                    {t`Cancel`}
+                  </Button>
+                </div>
+              );
+            }
+            const rowReasonId = `${reasonId}-${thread.threadId}`;
+            return (
               <div key={thread.threadId} className="group flex items-center gap-0.5">
                 <Button
                   type="button"
@@ -126,25 +147,49 @@ export function ThreadHistoryMenu({
                 </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={t`Delete ${thread.title}`}
-                      className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                      onClick={() => setConfirmingId(thread.threadId)}
-                      data-testid={`agent-thread-history-delete-${thread.threadId}`}
-                    >
-                      <Trash2 className="size-3" aria-hidden="true" />
-                    </Button>
+                    {/* The trigger sits on a wrapping span so Radix puts its own
+                        `aria-describedby` there while the button keeps pointing
+                        at the reason below. */}
+                    <span className={cn('inline-flex', openAsTab && 'cursor-not-allowed')}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={t`Delete ${thread.title}`}
+                        // `aria-disabled` rather than `disabled`: a natively
+                        // disabled button leaves the tab order, so a keyboard
+                        // user could never reach the tooltip or this
+                        // description explaining why it won't act.
+                        aria-disabled={openAsTab || undefined}
+                        aria-describedby={openAsTab ? rowReasonId : undefined}
+                        className={cn(
+                          'opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100',
+                          openAsTab
+                            ? 'cursor-not-allowed text-muted-foreground/50'
+                            : 'text-muted-foreground hover:text-destructive',
+                        )}
+                        onClick={() => {
+                          if (openAsTab) return;
+                          setConfirmingId(thread.threadId);
+                        }}
+                        data-testid={`agent-thread-history-delete-${thread.threadId}`}
+                      >
+                        <Trash2 className="size-3" aria-hidden="true" />
+                      </Button>
+                      {openAsTab ? (
+                        <span id={rowReasonId} className="sr-only">
+                          {openTabReason}
+                        </span>
+                      ) : null}
+                    </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" sideOffset={8}>
-                    {t`Delete ${thread.title}`}
+                    {openAsTab ? openTabReason : t`Delete ${thread.title}`}
                   </TooltipContent>
                 </Tooltip>
               </div>
-            ),
-          )}
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>
@@ -154,7 +199,8 @@ export function ThreadHistoryMenu({
 /**
  * The empty-dock chooser: past conversations, latest first, each reopenable in
  * one click — so an empty dock with history is a way back in, not a dead end.
- * The caller renders this only when there is archived history.
+ * The caller renders this only when there is archived history. Reopen is the
+ * only action here, so it needs no open-tab guard.
  */
 export function ArchivedThreadChooser({
   archived,

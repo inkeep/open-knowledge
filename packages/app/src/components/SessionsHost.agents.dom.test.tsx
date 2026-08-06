@@ -366,6 +366,70 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     expect(deleteThread).toHaveBeenCalledWith('arch');
   });
 
+  test('delete is off for an archived conversation that is open as a tab', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    // Viewing an archived conversation does not unarchive it, so it is both
+    // open as a tab and listed in history. Deleting it there would pull the
+    // transcript out from under the tab showing it.
+    const viewed = makeThread({ threadId: 'arch', title: 'Old chat', archived: true });
+    setOpenThreads([makeThread({ threadId: 'live', title: 'Live' }), viewed]);
+    setArchivedThreads([
+      viewed,
+      makeThread({ threadId: 'cold', title: 'Cold chat', archived: true }),
+    ]);
+    await screen.findByRole('tab', { name: /Live/ });
+
+    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
+    const openTabDelete = await screen.findByTestId('agent-thread-history-delete-arch');
+    // Marked disabled to assistive tech, but NOT natively disabled — a native
+    // `disabled` would drop it from the tab order and take the explanation
+    // with it.
+    expect(openTabDelete.getAttribute('aria-disabled')).toBe('true');
+    expect(openTabDelete).toHaveProperty('disabled', false);
+
+    // Reachable by keyboard, which is what makes the description below true.
+    openTabDelete.focus();
+    expect(document.activeElement).toBe(openTabDelete);
+
+    await user.hover(openTabDelete);
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      "Close this chat's tab to delete it",
+    );
+    const describedBy = openTabDelete.getAttribute('aria-describedby');
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy ?? '')?.textContent).toContain(
+      "Close this chat's tab to delete it",
+    );
+
+    // Focusable but inert: the click is swallowed, so no confirm row appears
+    // and nothing is armed for deletion.
+    await user.click(openTabDelete);
+    expect(screen.queryByTestId('agent-thread-history-confirm')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-history-confirm-delete')).toBeNull();
+    expect(deleteThread).not.toHaveBeenCalled();
+
+    // Reopening still works — only delete is withheld.
+    expect(screen.getByTestId('agent-thread-history-open-arch')).toHaveProperty('disabled', false);
+  });
+
+  test('an archived conversation with no open tab is still deletable', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
+    setArchivedThreads([makeThread({ threadId: 'cold', title: 'Cold chat', archived: true })]);
+    await screen.findByRole('tab', { name: /Live/ });
+
+    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
+    const coldDelete = await screen.findByTestId('agent-thread-history-delete-cold');
+    expect(coldDelete.getAttribute('aria-disabled')).toBeNull();
+    expect(coldDelete.getAttribute('aria-describedby')).toBeNull();
+
+    await user.click(coldDelete);
+    await user.click(await screen.findByTestId('agent-thread-history-confirm-delete'));
+    expect(deleteThread).toHaveBeenCalledWith('cold');
+  });
+
   test('an empty dock offers a chooser to reopen a past conversation', async () => {
     const user = userEvent.setup();
     render(<Harness />);

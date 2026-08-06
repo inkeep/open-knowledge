@@ -161,6 +161,11 @@ msgstr "{0, plural, other {# 个反向链接}}"
 msgid "{0, plural, one {# doc} other {# docs}}"
 msgstr "{0, plural, other {# 个文档}}"
 
+#. placeholder {0}: found.length
+#: src/lib/acp/tool-call-display.ts
+msgid "{0, plural, one {# document} other {# documents}}"
+msgstr "{0, plural, other {# 个文档}}"
+
 #. placeholder {0}: audit.result.errorCount
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# error} other {# errors}}"
@@ -2341,6 +2346,10 @@ msgstr "关闭标签页"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "Close terminal"
 msgstr "关闭终端"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Close this chat's tab to delete it"
+msgstr "关闭此对话的标签页后才能删除"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8038,9 +8047,61 @@ msgstr "正在打开 worktree"
 msgid "Opening..."
 msgstr "正在打开…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked {subject}"
+msgstr "OpenKnowledge 检查了 {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked for conflicts"
+msgstr "OpenKnowledge 检查了冲突"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked the project"
+msgstr "OpenKnowledge 检查了项目"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link"
+msgstr "OpenKnowledge 创建了分享链接"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link for {subject}"
+msgstr "OpenKnowledge 为 {subject} 创建了分享链接"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted {subject}"
+msgstr "OpenKnowledge 删除了 {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted a document"
+msgstr "OpenKnowledge 删除了一个文档"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited {subject}"
+msgstr "OpenKnowledge 编辑了 {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited a document"
+msgstr "OpenKnowledge 编辑了一个文档"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported {source}"
+msgstr "OpenKnowledge 导入了 {source}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported a skill"
+msgstr "OpenKnowledge 导入了一个技能"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
 msgstr "OpenKnowledge 会在 <0>{projectDir}</0> 初始化——它是 <1>{pickedRelative}</1> 的上级目录，因为其中包含 <2>.git</2> 文件夹（每个 git 仓库一个 .ok/）。<3>内容目录</3>默认为 <4>.</4>（整个仓库）；输入子文件夹可缩小范围。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed {subject}"
+msgstr "OpenKnowledge 安装了 {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed a skill"
+msgstr "OpenKnowledge 安装了一个技能"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "OpenKnowledge integrations checked."
@@ -8054,14 +8115,98 @@ msgstr "OpenKnowledge 正在使用 gh CLI 提供的 GitHub 账户。没有单独
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge 正在使用这个 GitHub 账户。"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge listed the installed skills"
+msgstr "OpenKnowledge 列出了已安装的技能"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked at the link graph"
+msgstr "OpenKnowledge 查看了链接图谱"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up links for {subject}"
+msgstr "OpenKnowledge 查找了 {subject} 的链接"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up the authoring palette"
+msgstr "OpenKnowledge 查看了创作面板"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved {subject} to {destination}"
+msgstr "OpenKnowledge 将 {subject} 移动到 {destination}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved a document"
+msgstr "OpenKnowledge 移动了一个文档"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "GitHub 上的 OpenKnowledge"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge opened the live preview"
+msgstr "OpenKnowledge 打开了实时预览"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "OpenKnowledge quit unexpectedly last time."
 msgstr "OpenKnowledge 上次意外退出了。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {command}"
+msgstr "OpenKnowledge 运行了 {command}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {tool}"
+msgstr "OpenKnowledge 运行了 {tool}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran a command"
+msgstr "OpenKnowledge 运行了一条命令"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the edit history"
+msgstr "OpenKnowledge 查看了编辑历史"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the history of {subject}"
+msgstr "OpenKnowledge 查看了 {subject} 的历史"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the project settings"
+msgstr "OpenKnowledge 读取了项目设置"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the setting {key}"
+msgstr "OpenKnowledge 读取了设置 {key}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict"
+msgstr "OpenKnowledge 解决了一个冲突"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict in {subject}"
+msgstr "OpenKnowledge 解决了 {subject} 中的冲突"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version"
+msgstr "OpenKnowledge 恢复了较早的版本"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version of {subject}"
+msgstr "OpenKnowledge 恢复了 {subject} 的较早版本"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge saved a checkpoint"
+msgstr "OpenKnowledge 保存了一个检查点"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched for {query}"
+msgstr "OpenKnowledge 搜索了 {query}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched the knowledge base"
+msgstr "OpenKnowledge 搜索了知识库"
 
 #: src/components/handoff/useHandoffDispatch.ts
 msgid "OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."
@@ -8078,6 +8223,14 @@ msgstr "OpenKnowledge 会在 <0>{gitRoot}</0> 初始化——它是你新文件�
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
 msgstr "OpenKnowledge 会自动创建提交并推送到你的远程仓库。如果你不希望 git 历史中出现自动提交，就不应该启用自动同步。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote a document"
+msgstr "OpenKnowledge 写入了一个文档"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote to {subject}"
+msgstr "OpenKnowledge 写入了 {subject}"
 
 #: src/components/CloneDialog.tsx
 msgid "Opens a folder picker to choose where to clone the repository."

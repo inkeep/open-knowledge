@@ -129,6 +129,14 @@ export function formatPresenceLabel(name: string): string {
  * Kept in core so app (TimelinePanel) and server (api-extension +
  * agent-sessions) use the identical mapping — drift between surfaces is
  * how dot-color/badge-color become inconsistent for the same agent.
+ *
+ * ACP registry agent ids resolve through the same table: an in-app agent
+ * thread publishes presence keyed by its registry id, which is a different
+ * namespace from `clientInfo.name` and shares only `cursor` (same brand
+ * either way, so no conflict). Matching an id to its brand is spelled out
+ * per id rather than derived by stripping the `-acp` suffix — that trick
+ * happens to work for `codex-acp` and fails for `claude-acp`, since the
+ * MCP side of the table knows `claude-code` but no bare `claude`.
  */
 const ICON_MAP: Record<string, string> = {
   'claude-code': 'claude',
@@ -144,6 +152,13 @@ const ICON_MAP: Record<string, string> = {
   'codex-mcp-client': 'openai',
   copilot: 'github',
   cline: 'cline',
+  // ACP registry ids. `cursor` is already above. The registry also carries
+  // `gemini`, `opencode`, and `pi-acp`, which have no entry in the icon
+  // palette — they reach the generic mark through the 'bot' fallback, which
+  // is the correct answer until a brand icon exists for them.
+  'claude-acp': 'claude',
+  'codex-acp': 'openai',
+  'github-copilot-cli': 'github',
 };
 
 export function iconFromClientName(name?: string): string {

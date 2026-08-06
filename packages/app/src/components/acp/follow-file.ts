@@ -18,6 +18,7 @@
  *      resolve to null.
  */
 
+import { stringField, unwrapMcpInput } from '@/lib/acp/mcp-input';
 import type { RenderedToolCall } from '@/lib/acp/thread-event-model';
 import type { Workspace } from '@/lib/workspace-paths';
 
@@ -64,11 +65,6 @@ export function docNameFromAbsolutePath(path: string, workspace: Workspace): str
   const match = /\.(md|mdx)$/.exec(relative);
   if (match === null) return null;
   return sanitizeDocName(relative.slice(0, -match[0].length));
-}
-
-function stringField(obj: Record<string, unknown>, key: string): string | null {
-  const value = obj[key];
-  return typeof value === 'string' && value !== '' ? value : null;
 }
 
 /**
@@ -183,34 +179,6 @@ export function pageListFollowOptions(
   if (pageList === null || pageList.loading || pageList.error !== null) return {};
   const pages = pageList.pages;
   return { docExists: (docName: string) => pages.has(docName) };
-}
-
-/**
- * Unwrap an OK MCP call's rawInput into `{ tool, args }`. Codex reports
- * `{ server, tool, arguments }`; other adapters name the tool at `name`, pass
- * `arguments` as a serialized JSON string, or pass the arguments object bare
- * with no tool name at all.
- */
-function unwrapMcpInput(
-  rawInput: unknown,
-): { tool: string | null; args: Record<string, unknown> } | null {
-  if (typeof rawInput !== 'object' || rawInput === null) return null;
-  const input = rawInput as Record<string, unknown>;
-  const tool = stringField(input, 'tool') ?? stringField(input, 'name');
-  let args: Record<string, unknown> = input;
-  if (typeof input.arguments === 'object' && input.arguments !== null) {
-    args = input.arguments as Record<string, unknown>;
-  } else if (typeof input.arguments === 'string') {
-    try {
-      const parsed: unknown = JSON.parse(input.arguments);
-      if (typeof parsed === 'object' && parsed !== null) {
-        args = parsed as Record<string, unknown>;
-      }
-    } catch {
-      // Not JSON — treat the input itself as the args object.
-    }
-  }
-  return { tool, args };
 }
 
 /**

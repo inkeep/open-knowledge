@@ -38,9 +38,10 @@ export function latestAgentWrite(awareness: unknown, now: number): PresenceWrite
     if (!presence) continue;
     for (const entry of Object.values(presence)) {
       if (!entry.currentDoc) continue;
-      // Sentinels ('(connected)', '(agent thread)') keep an idle agent visible
-      // in the presence bar but are NOT docs — following them opens a phantom
-      // tab and, at turn end, drags the editor off the last real page.
+      // Sentinels ('(connected)' from the keepalive bootstrap; '(agent
+      // thread)' now publisher-less but filtered defensively) are NOT docs —
+      // following one opens a phantom tab and drags the editor off the last
+      // real page.
       if (isPresenceSentinelDocName(entry.currentDoc)) continue;
       if (now - entry.ts >= AGENT_PRESENCE_STALE_MS) continue;
       if (latest !== null && entry.ts <= latest.ts) continue;

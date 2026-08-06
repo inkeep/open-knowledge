@@ -111,11 +111,12 @@ export interface AgentPresenceEntry {
 }
 
 /**
- * Placeholder `currentDoc` values the server publishes to keep an agent
- * visible in presence when it is NOT writing a real document:
- * `'(connected)'` from the MCP keepalive bootstrap (agent connected, no
- * write yet) and `'(agent thread)'` from an in-app thread launched without a
- * doc context. They are display sentinels, never navigable paths — see
+ * Placeholder `currentDoc` values that keep an agent visible in presence
+ * when it is NOT writing a real document: `'(connected)'` is still published
+ * by the MCP keepalive bootstrap (agent connected, no write yet).
+ * `'(agent thread)'` no longer has a publisher — in-app thread presence now
+ * fires only on real doc writes — but the sentinel and its filters stay so a
+ * stale or legacy entry can never be treated as a navigable path — see
  * `isPresenceSentinelDocName`.
  */
 export const CONNECTED_SENTINEL_DOC = '(connected)';

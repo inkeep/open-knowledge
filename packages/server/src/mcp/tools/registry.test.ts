@@ -22,7 +22,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OK_GATED_TOOL_NAMES } from '@inkeep/open-knowledge-core';
+import { OK_GATED_TOOL_NAMES, OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { registerAllTools } from './index.ts';
@@ -30,34 +30,8 @@ import type { ServerInstance } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
-const EXPECTED_TOOLS = [
-  // Reads
-  'exec',
-  'search',
-  'history',
-  'links',
-  'skills',
-  'config',
-  'palette',
-  'preview_url',
-  'share_link',
-  'lint',
-  'audit',
-  // Writes — CRUD verbs + version
-  'write',
-  'edit',
-  'delete',
-  'move',
-  // Skill install-projection — the one new verb beyond the CRUD set.
-  'install',
-  // Skill import/acquire (skills marketplace slice 3) — the on-ramp paired with install.
-  'import',
-  'checkpoint',
-  'restore_version',
-  // GitHub-sync conflicts
-  'conflicts',
-  'resolve_conflict',
-] as const;
+/** Canonical in `core` so the display surface and this registry stay in step. */
+const EXPECTED_TOOLS = OPEN_KNOWLEDGE_MCP_TOOLS;
 
 const RETIRED_TOOL_NAMES = [
   // View choreography → client-side derived views (the docked graph panel):

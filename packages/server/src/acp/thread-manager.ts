@@ -43,7 +43,6 @@ import {
 } from '@agentclientprotocol/sdk';
 import {
   AGENT_ICON_COLORS,
-  AGENT_THREAD_SENTINEL_DOC,
   changedBlockRange,
   colorFromSeed,
   type EditorId,
@@ -1332,7 +1331,6 @@ export class AcpThreadManager {
       if (record.closed) return false;
     }
 
-    this.setPresence(record, 'idle');
     this.emitStatus(record, 'ready');
     return true;
   }
@@ -1443,7 +1441,6 @@ export class AcpThreadManager {
         if (configOptions !== undefined && configOptions !== null) {
           t.info.configOptions = configOptions;
         }
-        this.setPresence(t, 'idle');
         this.emitStatus(t, 'ready');
         this.opts.log.info(
           {
@@ -1944,7 +1941,6 @@ export class AcpThreadManager {
     t.cancelRequested = false;
     this.appendEvent(t, { kind: 'turn_started', ts: Date.now() });
     this.emitStatus(t, 'running');
-    this.setPresence(t, 'writing');
 
     const sessionId = t.sessionId;
     t.conn.agent
@@ -1979,7 +1975,6 @@ export class AcpThreadManager {
           }
         }
         this.emitStatus(t, 'ready');
-        this.setPresence(t, 'idle');
       })
       .catch((err) => {
         t.turnActive = false;
@@ -1999,10 +1994,10 @@ export class AcpThreadManager {
           // The user asked for this — an aborted request is a completed
           // cancel, not an agent failure.
           this.emitStatus(t, 'ready');
-          this.setPresence(t, 'idle');
-          // Last, so a prompt this dispatches keeps its own 'writing' presence:
-          // a steer that stall-demoted to the front of the queue is waiting on
-          // this very turn ending, and the rejection path has no other drain.
+          // Last, so the 'running' a dispatched prompt emits lands after this
+          // 'ready' rather than before it: a steer that stall-demoted to the
+          // front of the queue is waiting on this very turn ending, and the
+          // rejection path has no other drain.
           this.drainIfIdle(t);
           return;
         }
@@ -2011,7 +2006,6 @@ export class AcpThreadManager {
           agentMessage: agentErrorMessage(err),
           machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(t)),
         });
-        this.setPresence(t, 'idle');
       });
   }
 
@@ -2541,7 +2535,7 @@ export class AcpThreadManager {
           ...(changedBlocks !== undefined ? { changedBlocks } : {}),
         });
       }, session.origin);
-      this.setPresence(record, 'writing', target.docName);
+      this.setPresence(record, target.docName);
     } else {
       // Non-markdown (and filter-excluded markdown) writes hit the disk
       // directly — but never inside an ignored namespace. `.ok/` and `.git/`
@@ -2750,7 +2744,16 @@ export class AcpThreadManager {
     t.pendingRuntimeConsent.clear();
   }
 
-  private setPresence(t: ThreadRecord, mode: 'idle' | 'writing', currentDoc?: string): void {
+  /**
+   * Publish a presence entry for a doc this thread just wrote through ACP's
+   * native `fs/write_text_file`. That is the ONLY publisher here: an agent
+   * connected over OK's MCP already advertises its own heartbeated presence,
+   * so mirroring the turn lifecycle on top only blipped a second chip in and
+   * out of the bar every prompt. Adapters that write through ACP's fs path
+   * have no MCP entry standing in for those writes, and follow-the-file reads
+   * this one, so it stays.
+   */
+  private setPresence(t: ThreadRecord, currentDoc: string): void {
     const broadcaster = this.opts.agentPresenceBroadcaster;
     if (broadcaster === undefined || broadcaster === null) return;
     try {
@@ -2760,8 +2763,8 @@ export class AcpThreadManager {
         displayName: t.info.agent.name,
         icon,
         color,
-        currentDoc: currentDoc ?? t.docName ?? AGENT_THREAD_SENTINEL_DOC,
-        mode,
+        currentDoc,
+        mode: 'writing',
         ts: Date.now(),
       });
     } catch (err) {

@@ -161,6 +161,11 @@ msgstr "{0, plural, zero {# رابط خلفي} one {رابط خلفي واحد} 
 msgid "{0, plural, one {# doc} other {# docs}}"
 msgstr "{0, plural, zero {# مستند} one {مستند واحد} two {مستندان} few {# مستندات} many {# مستندًا} other {# مستند}}"
 
+#. placeholder {0}: found.length
+#: src/lib/acp/tool-call-display.ts
+msgid "{0, plural, one {# document} other {# documents}}"
+msgstr "{0, plural, zero {# مستند} one {مستند واحد} two {مستندان} few {# مستندات} many {# مستندًا} other {# مستند}}"
+
 #. placeholder {0}: audit.result.errorCount
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# error} other {# errors}}"
@@ -2341,6 +2346,10 @@ msgstr "إغلاق التبويب"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "Close terminal"
 msgstr "إغلاق الطرفية"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Close this chat's tab to delete it"
+msgstr "أغلق علامة تبويب هذه المحادثة لحذفها"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8038,9 +8047,61 @@ msgstr "يجري فتح شجرة العمل"
 msgid "Opening..."
 msgstr "يجري الفتح..."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked {subject}"
+msgstr "تحقق OpenKnowledge من {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked for conflicts"
+msgstr "تحقق OpenKnowledge من التعارضات"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked the project"
+msgstr "تحقق OpenKnowledge من المشروع"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link"
+msgstr "أنشأ OpenKnowledge رابط مشاركة"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link for {subject}"
+msgstr "أنشأ OpenKnowledge رابط مشاركة لـ {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted {subject}"
+msgstr "حذف OpenKnowledge {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted a document"
+msgstr "حذف OpenKnowledge مستندًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited {subject}"
+msgstr "عدّل OpenKnowledge {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited a document"
+msgstr "عدّل OpenKnowledge مستندًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported {source}"
+msgstr "استورد OpenKnowledge {source}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported a skill"
+msgstr "استورد OpenKnowledge مهارة"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
 msgstr "يُهيَّأ OpenKnowledge في <0>{projectDir}</0> — وهو أب <1>{pickedRelative}</1> لأنه يحتوي على مجلد <2>.git</2> (مجلد .ok/ واحد لكل مستودع git). يكون <3>مجلد المحتوى</3> افتراضيًا <4>.</4> (المستودع بأكمله)؛ اكتب مجلدًا فرعيًا لتضييقه."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed {subject}"
+msgstr "ثبّت OpenKnowledge {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed a skill"
+msgstr "ثبّت OpenKnowledge مهارة"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "OpenKnowledge integrations checked."
@@ -8054,14 +8115,98 @@ msgstr "يستخدم OpenKnowledge حساب GitHub الذي توفره واجه�
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "يستخدم OpenKnowledge حساب GitHub هذا."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge listed the installed skills"
+msgstr "عرض OpenKnowledge المهارات المثبّتة"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked at the link graph"
+msgstr "اطّلع OpenKnowledge على رسم الروابط"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up links for {subject}"
+msgstr "بحث OpenKnowledge عن روابط {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up the authoring palette"
+msgstr "اطّلع OpenKnowledge على لوحة التأليف"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved {subject} to {destination}"
+msgstr "نقل OpenKnowledge {subject} إلى {destination}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved a document"
+msgstr "نقل OpenKnowledge مستندًا"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "OpenKnowledge على GitHub"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge opened the live preview"
+msgstr "فتح OpenKnowledge المعاينة المباشرة"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "OpenKnowledge quit unexpectedly last time."
 msgstr "أُغلق OpenKnowledge على نحو غير متوقع في المرة السابقة."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {command}"
+msgstr "شغّل OpenKnowledge {command}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {tool}"
+msgstr "شغّل OpenKnowledge {tool}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran a command"
+msgstr "شغّل OpenKnowledge أمرًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the edit history"
+msgstr "قرأ OpenKnowledge سجل التعديلات"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the history of {subject}"
+msgstr "قرأ OpenKnowledge سجل {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the project settings"
+msgstr "قرأ OpenKnowledge إعدادات المشروع"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the setting {key}"
+msgstr "قرأ OpenKnowledge الإعداد {key}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict"
+msgstr "حلّ OpenKnowledge تعارضًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict in {subject}"
+msgstr "حلّ OpenKnowledge تعارضًا في {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version"
+msgstr "استعاد OpenKnowledge نسخة سابقة"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version of {subject}"
+msgstr "استعاد OpenKnowledge نسخة سابقة من {subject}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge saved a checkpoint"
+msgstr "حفظ OpenKnowledge نقطة تحقق"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched for {query}"
+msgstr "بحث OpenKnowledge عن {query}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched the knowledge base"
+msgstr "بحث OpenKnowledge في قاعدة المعرفة"
 
 #: src/components/handoff/useHandoffDispatch.ts
 msgid "OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."
@@ -8078,6 +8223,14 @@ msgstr "سيُهيَّأ OpenKnowledge في <0>{gitRoot}</0> — وهو أب م�
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
 msgstr "سينشئ OpenKnowledge إيداعات ويدفعها إلى مستودعك البعيد تلقائيًا. إن كنت لا تريد إيداعات تلقائية في سجل git لديك، فلا تفعّل المزامنة التلقائية."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote a document"
+msgstr "كتب OpenKnowledge مستندًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote to {subject}"
+msgstr "كتب OpenKnowledge في {subject}"
 
 #: src/components/CloneDialog.tsx
 msgid "Opens a folder picker to choose where to clone the repository."

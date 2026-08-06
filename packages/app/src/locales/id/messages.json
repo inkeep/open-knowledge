@@ -32,6 +32,7 @@
     "-o5XAG": [
       "Dikirim secara pribadi ke tim OpenKnowledge, beserta catatan Anda dan versi aplikasinya. Tidak pernah dipublikasikan."
     ],
+    "-oHckY": ["OpenKnowledge membaca pengaturan ", ["key"]],
     "-q4abP": [
       "Hasil dibatasi — ruang kerja ini punya lebih banyak berkas daripada yang bisa diindeks pencarian. Berkas yang hilang bisa jadi efek batasan itu, bukan salah ketik."
     ],
@@ -297,6 +298,7 @@
     "4DcimZ": ["Diperbarui ", ["lastSyncedRelative"]],
     "4E9jPa": ["Buat proyek pertama Anda"],
     "4EZrJN": ["Aturan"],
+    "4ErgAf": ["OpenKnowledge memasang sebuah keterampilan"],
     "4GWjF8": ["Tidak bisa menentukan ke mana komentarnya dikirim — semuanya masih menunggu."],
     "4Gz2wC": ["Gagal mengunggah berkas"],
     "4KmEoC": ["Tombol pintas"],
@@ -319,6 +321,7 @@
       "Pilih keterampilan yang akan dipasang. Masing-masing masuk sebagai keterampilan milik Anda yang bisa disunting."
     ],
     "4mLBx9": ["Langganan tidak tersedia saat ini."],
+    "4mp6Tv": ["OpenKnowledge menampilkan daftar keterampilan yang terpasang"],
     "4niEzY": ["Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."],
     "4nj6n8": ["/api/config mengembalikan HTTP ", ["code"]],
     "4pDZ2N": ["\"", ["0"], "\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat"],
@@ -380,6 +383,7 @@
     "5ZbJFS": ["Versi Anda saat ini disimpan lebih dulu, jadi ini bisa dikembalikan."],
     "5_j-DA": ["Matikan Terminal"],
     "5aahsI": ["tidak apa pun (", ["0"], " bukan pola yang valid)"],
+    "5b3WD-": ["OpenKnowledge menyimpan titik pemeriksaan"],
     "5e1Dri": ["Label menu yang dipakai agen untuk memilih templat ini (wajib)."],
     "5gr_ev": [
       "Menjadi isi dokumen ketika seseorang membuat dokumen dari templat ini. Ketik <0>",
@@ -492,6 +496,7 @@
       "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu Berkas. Terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
     ],
     "7PzzBU": ["Pengguna"],
+    "7S7FNA": ["OpenKnowledge memeriksa proyek"],
     "7Y9yTo": [["owner"], "/", ["name"], " dibuat, tetapi push gagal."],
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
@@ -500,6 +505,7 @@
       "Tidak ada agen yang dipilih — keterampilannya tersimpan tetapi tidak dipasang di mana pun."
     ],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
+    "7aNk5D": ["OpenKnowledge menyunting ", ["subject"]],
     "7apDiJ": [
       "Folder bernama <0>",
       ["sanitized"],
@@ -518,6 +524,7 @@
       "."
     ],
     "7cAW1G": ["Tidak ada kunci API yang disetel untuk endpoint ini. Tambahkan satu di atas."],
+    "7czmD1": ["OpenKnowledge membuka palet penulisan"],
     "7d1a0d": ["Publik"],
     "7dZnmw": ["Relevansi"],
     "7hctf2": ["Jelaskan proyek yang ingin Anda buat"],
@@ -591,6 +598,7 @@
     ],
     "8vCZcs": ["Gagal membuka berkas."],
     "8vETh9": ["Tampilkan"],
+    "90-wKT": ["OpenKnowledge membaca riwayat ", ["subject"]],
     "92rbk2": ["Cermin memuat <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Sembunyikan Agen"],
     "96G6Re": ["Folder baru"],
@@ -665,6 +673,7 @@
       "Tidak ada server kolaborasi untuk worktree ini — jalankan <0>ok start</0> di sini, atau buka lagi proyeknya."
     ],
     "AB4qw9": ["Terminal baru"],
+    "ABq-cq": ["OpenKnowledge membuat tautan berbagi"],
     "ACKMCN": ["Gagal memuat pengaturan keterampilan: ", ["0"]],
     "ACjxWW": ["Zoom"],
     "AE7BY3": ["Sesi terminal berakhir."],
@@ -698,6 +707,7 @@
     "AdcGcG": ["Menerapkan perubahan Anda"],
     "AddR83": ["Proyek tidak dapat dibuat. Coba lagi atau pilih lokasi lain."],
     "AeHuzT": ["# Satu pola per baris.\\n# Contoh:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"],
+    "AeLo3p": ["OpenKnowledge menyelesaikan konflik di ", ["subject"]],
     "AeXO77": ["Akun"],
     "AhoGwP": ["Siapkan integrasi OpenKnowledge"],
     "AiNMQ7": [
@@ -765,6 +775,7 @@
     "C0hoX6": ["Selalu disertakan"],
     "C3Zc44": ["Jelajahi keterampilan"],
     "C62P6b": ["Pilihan penyunting"],
+    "C7waqI": [["0", "plural", { "other": ["#", " dokumen"] }]],
     "C9TBvF": ["Tidak Ada Keluar"],
     "CB7c0Z": ["Simpan pesan dalam antrean"],
     "CBT70t": ["Tidak dapat menghapus berkas: ", ["0"]],
@@ -856,10 +867,12 @@
     "DbILZA": [
       "Tidak ada kecocokan. Sebagian berkas dikecualikan dari pencarian (berkas tersembunyi atau yang diabaikan)."
     ],
+    "DcFr-y": ["OpenKnowledge menghapus sebuah dokumen"],
     "DcLaew": ["Tema khusus"],
     "DeDYLr": ["Tautan wiki tidak dikenali"],
     "DgcGrb": [["fileCount", "plural", { "other": ["berkas"] }]],
     "DhLHEb": ["Gagal memuat aktivitas"],
+    "DhT_PK": ["OpenKnowledge mengimpor sebuah keterampilan"],
     "DiFKSL": ["Menghitung berkas markdown"],
     "DiZ3pq": ["Pemilih ikon"],
     "Dnn2XG": ["Otomatis"],
@@ -971,6 +984,7 @@
     ],
     "Ev2r9A": ["Tidak ada hasil"],
     "EvPX7f": ["Membuka pemilih folder untuk memilih tempat mengkloning repositorinya."],
+    "EvXKHE": ["OpenKnowledge mencari di basis pengetahuan"],
     "Evq3lu": ["Mode yatim"],
     "ExPiRQ": ["Pergi ke diagnostik lint CodeMirror berikutnya."],
     "ExUzM4": ["keterampilan \"", ["0"], "\""],
@@ -1002,6 +1016,7 @@
     "FNTx6u": ["Cari \"", ["semanticSubmitQuery"], "\" berdasarkan makna"],
     "FOGD7m": ["Ciptakan sesuatu yang hebat."],
     "FRYB1Q": ["/api/config mengembalikan isi yang salah bentuk"],
+    "FS4Udk": ["OpenKnowledge menjalankan sebuah perintah"],
     "FTBN5g": [
       "Bagaimana temuan validasi muncul di seluruh proyek. Pilihan ini disimpan di config.yml dan dibagikan ke setiap kolaborator lewat git."
     ],
@@ -1034,6 +1049,7 @@
     "FvMSms": [
       "Mengganti nama mengubah berkas di disk dan id yang dipakai agen untuk memilih templat ini."
     ],
+    "Fx9aOF": ["OpenKnowledge menyunting sebuah dokumen"],
     "Fxf4jq": ["Deskripsi (opsional)"],
     "Fy4GgU": [
       "Jelaskan cara kerja basis kode Anda agar rekan tim dan agen AI bisa menemukan arah. Cocok untuk mendokumentasikan arsitektur, bagian-bagian utamanya, dan pertanyaan yang selalu diajukan kontributor baru."
@@ -1086,6 +1102,7 @@
     "G_hVTP": ["Aktifkan Tema"],
     "G_mWXb": ["Saring bahasa"],
     "GamjcN": ["Templat disimpan"],
+    "Gb_h4G": ["OpenKnowledge menghapus ", ["subject"]],
     "GceAYf": [["label"], " dipindahkan ke panel baru di sebelah kanan."],
     "GemPfn": ["Gagal mengurai respons galat tautan keluar (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server tidak bisa membuka dokumen"],
@@ -1289,6 +1306,7 @@
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " berkas"],
     "K8-WWn": ["Berpindah antarsel tabel"],
     "K9J00P": ["Kloning gagal — galat koneksi"],
+    "KDrbNG": ["OpenKnowledge mencari tautan untuk ", ["subject"]],
     "KDuPiY": ["Mengunggah ", ["fileName"]],
     "KDw4GX": ["Coba lagi"],
     "KFd4xz": ["tidak ada"],
@@ -1486,6 +1504,7 @@
       ["conflictHosts"],
       " — di sana kamu sudah punya skill sendiri dengan nama itu. Ganti nama milikmu jika ingin versi dari paket."
     ],
+    "MvWBwz": ["OpenKnowledge menulis ke ", ["subject"]],
     "My0wYT": [
       "Ketika Anda mengarahkan kursor ke tautan eksternal, URL-nya dikirim ke situs tujuan untuk mengambil metadata pratinjau halaman itu — satu permintaan per tautan yang dipratinjau."
     ],
@@ -1758,6 +1777,7 @@
     "RG4XHV": ["Salin prompt ", ["0"]],
     "RGCCrg": ["Salin tautan berbagi"],
     "RGkNeJ": ["Inisialisasi sebuah paket awal"],
+    "RGptDW": ["OpenKnowledge memindahkan sebuah dokumen"],
     "RJ3a8Z": ["Mencari <0>", ["lookingForUrl"], "</0>."],
     "RLNIgv": ["Server mengembalikan respons templat yang tidak lengkap."],
     "RLYckQ": ["Hentikan (Esc)"],
@@ -1862,6 +1882,7 @@
       "Membatalkan atau mengulangi suntingan Anda sendiri, tanpa mengusik suntingan kolaborator dan agen."
     ],
     "TEEPPF": ["Akan menggantikan entri OpenKnowledge yang sudah ada"],
+    "TEJiKw": ["OpenKnowledge memeriksa ", ["subject"]],
     "TJnkyf": ["ok ui merespons tetapi server.lock belum punya port"],
     "TKQ7K-": ["Pasang"],
     "TLIO3j": ["Menyalakan atau mematikan format miring."],
@@ -1923,6 +1944,7 @@
       "."
     ],
     "UJEFJY": ["Tidak dapat menjalankan ", ["0"], ": ", ["1"]],
+    "UL-9ej": ["OpenKnowledge membuka pratinjau langsung"],
     "UL8A9w": ["Tag"],
     "UNwKSz": ["Pembaruan otomatis aktif untuk \"", ["name"], "\""],
     "UPWItY": ["Sebuah folder yang berisi SKILL.md."],
@@ -1969,6 +1991,7 @@
     "UfW9Kr": [
       "Kueri pencarian Anda dan teks lengkap halaman yang cocok dikirim ke penyedia embedding Anda (OpenAI secara bawaan) untuk menghitung embedding."
     ],
+    "Ug2xzC": ["OpenKnowledge membaca riwayat penyuntingan"],
     "Ugvy4O": ["Bentangkan semua grup berkas"],
     "UhpfxY": ["Geser ke kiri"],
     "UkQGhd": ["Sembunyikan penggantian"],
@@ -1985,6 +2008,7 @@
     "Uuj_R4": ["Baru dari templat"],
     "Uw6ERJ": ["Tidak bisa menyalin: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "other": ["#", " mnt lalu"] }]],
+    "V0mbgd": ["Tutup tab obrolan ini untuk menghapusnya"],
     "V2Gmie": [
       "Aturan-aturan ini berasal dari berkas <0>",
       ["configFile"],
@@ -2083,6 +2107,7 @@
     ],
     "Waiy-j": ["Kepribadian, nilai, dan gaya bicara agen."],
     "WamGNs": ["Gagal memuat PDF: ", ["error"]],
+    "WbWtif": ["OpenKnowledge memasang ", ["subject"]],
     "Wboy1j": ["~/.myteam/skills"],
     "WcWS__": ["Unduh berkas"],
     "Wcv-Zi": ["Jadikan basis pengetahuan ini tersedia sebagai Keterampilan Claude."],
@@ -2309,6 +2334,7 @@
     "Zue_jx": ["Token GitHub Anda kehilangan cakupan yang wajib. Coba masuk lagi."],
     "Zul8Ry": ["tidak pernah"],
     "ZvzbDF": ["Tambahkan langsung ke proyek ini."],
+    "ZwpggY": ["OpenKnowledge membaca pengaturan proyek"],
     "_0JUKX": ["Pelaporan bug memerlukan aplikasi desktop OpenKnowledge."],
     "_2cM9E": ["terbaru"],
     "_5qBNl": ["Alat AI & CLI"],
@@ -2349,6 +2375,7 @@
       "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di sumbernya dan salinan ini diperbarui langsung."
     ],
     "_XWY2J": ["Terminal dinonaktifkan"],
+    "_YWqV2": ["OpenKnowledge menyelesaikan sebuah konflik"],
     "_ayOfA": [
       "Basis pengetahuan yang mengikuti Open Knowledge Format dari Google, cara bersama untuk menata apa yang Anda tahu. Pilih ini jika Anda ingin catatan Anda bekerja baik dengan alat lain yang memahami format tersebut."
     ],
@@ -2376,6 +2403,7 @@
       ["folderName"],
       "/ dan semua berkas di dalamnya? Tindakan ini tidak bisa dibatalkan."
     ],
+    "a5gwRt": ["OpenKnowledge menjalankan ", ["command"]],
     "a7P3nH": [
       "Pribadi untuk perangkat ini — disimpan di konfigurasi pengguna Anda, tidak dibagikan."
     ],
@@ -2532,6 +2560,7 @@
     "cVKnqL": ["Komentar yang menunggu dikirim tidak bisa dibaca: ", ["0"]],
     "cZGNlb": ["Tambahkan pola lain"],
     "cZI5AL": ["OK Desktop"],
+    "caiyaU": ["OpenKnowledge memulihkan versi sebelumnya"],
     "caw8gO": [
       [
         "strandedCommitCount",
@@ -2838,6 +2867,7 @@
     "hCOLSd": [
       "Simpan catatan tertulis tentang bagaimana produk Anda dibangun. Rumah untuk mengusulkan ide, mencatat keputusan, menulis spesifikasi, dan merekam apa yang Anda pelajari setelah sesuatu rusak."
     ],
+    "hCattk": ["OpenKnowledge mengimpor ", ["source"]],
     "hDEaQu": ["Hubungkan OpenKnowledge dengan alat lain yang Anda pakai."],
     "hDKtoF": [["diffHrs"], " j lalu"],
     "hDoLrm": ["Hapus ", ["projectName"], " dari proyek terbaru"],
@@ -2850,6 +2880,7 @@
     "hLy8b1": ["Diperbarui ke Versi ", ["version"]],
     "hQXiDc": ["Cari cabang..."],
     "hQjvzi": ["Arsip .zip atau .skill."],
+    "hS0wC4": ["OpenKnowledge memulihkan versi sebelumnya dari ", ["subject"]],
     "hSBIG-": ["Judul, deskripsi, tag — apa saja yang menggambarkan folder ini."],
     "hSySVc": ["Serah terima pemasangan gagal: ", ["msg"]],
     "hVAkI8": ["Jalankan di terminal"],
@@ -2901,6 +2932,7 @@
     "i92eAT": [
       "Kami akan membuat sebuah repositori dan mulai menyinkronkan — tanpa perlu terminal."
     ],
+    "i94lQe": ["OpenKnowledge memeriksa konflik"],
     "i9OyGp": ["Batalkan atau ulangi"],
     "i9TPUi": [
       ["targetNoun"],
@@ -2938,6 +2970,7 @@
     "iYUTsI": ["Sumber ini memuat beberapa keterampilan — pilih satu, lalu Impor."],
     "iZCZmF": [["instanceCount", "plural", { "other": ["#", " instans"] }]],
     "iaPtht": ["salin"],
+    "ibE3-O": ["OpenKnowledge membuat tautan berbagi untuk ", ["subject"]],
     "idD8Ev": ["Tersimpan"],
     "idni-S": ["Nilai untuk ", ["keyName"]],
     "ig5vUe": ["Gagal memuat berkas"],
@@ -3464,6 +3497,7 @@
     "paCw0z": ["semua yang ada di folder ", ["0"], "/ di dalam ", ["1"], "/"],
     "pajIrl": ["Terminal tidak dapat dimatikan: ", ["0"]],
     "pbwTg6": [["seconds"], " dtk lalu"],
+    "pbyEp3": ["OpenKnowledge memindahkan ", ["subject"], " ke ", ["destination"]],
     "pckX1A": [["0", "plural", { "other": ["#", " penggunaan"] }]],
     "pcqlQu": [["0", "plural", { "other": ["Folder"] }]],
     "pfkaJ2": ["YAML atau JSON, dalam salah satu tata letak base16."],
@@ -3701,6 +3735,7 @@
     "tAPZEx": ["Di bawah"],
     "tHKQ6j": ["Mengganti nama"],
     "tKlWWY": ["Emoji"],
+    "tLX6LY": ["OpenKnowledge menulis sebuah dokumen"],
     "tN5WTS": ["Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."],
     "tP5DDk": ["Terapkan tautan"],
     "tUvUfp": ["Pakai folder yang sudah Anda punya."],
@@ -3830,6 +3865,7 @@
       ["0"],
       "). Periksa kunci API dan id modelnya."
     ],
+    "vallqD": ["OpenKnowledge melihat grafik tautan"],
     "vbK_ZG": ["Bilah sisi Berkas"],
     "vbMHjo": ["Ke baris ", ["0"]],
     "ve8vEM": ["Kode kedaluwarsa — silakan coba lagi"],
@@ -3838,6 +3874,7 @@
       "Anda memilih ~/Desktop. OpenKnowledge akan mengindeks semua yang ada di desktop Anda."
     ],
     "vhAnzJ": ["Nyalakan pencarian semantik?"],
+    "vhGTWU": ["OpenKnowledge menjalankan ", ["tool"]],
     "viwC-K": ["Gagal menghapus proyek."],
     "vj-33a": [
       "Gunakan <0>",
@@ -4020,6 +4057,7 @@
     "yUxR-Q": ["Bentangkan ", ["keyName"]],
     "yWSvcf": ["Akar konten"],
     "yWWThY": ["Referensi aset"],
+    "yWfjqS": ["OpenKnowledge mencari ", ["query"]],
     "yYR6za": ["Teks tampilan"],
     "yZepkk": ["Sinkronisasi git"],
     "yZmvQ4": ["Server proyek ini (v", ["0"], ") lebih baru daripada aplikasi ini (v", ["1"], ")."],

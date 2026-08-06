@@ -335,6 +335,8 @@ export {
   MCP_SERVER_NAME,
   OK_DESKTOP_TERMINAL_ENV,
   OK_HOSTED_AGENT_ENV,
+  OPEN_KNOWLEDGE_MCP_TOOLS,
+  type OpenKnowledgeMcpTool,
   READ_DOCUMENT_HISTORY_DEPTH,
   resolveIsHostedAgent,
 } from './constants/mcp.ts';

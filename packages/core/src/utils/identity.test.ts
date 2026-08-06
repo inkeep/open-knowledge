@@ -140,6 +140,20 @@ describe('iconFromClientName', () => {
     expect(iconFromClientName('cursor')).toBe('cursor');
     expect(iconFromClientName('codex-mcp-client')).toBe('openai');
   });
+  test('maps ACP registry agent ids to brand icons', () => {
+    // An in-app agent thread keys presence by registry id, not clientInfo.name.
+    expect(iconFromClientName('claude-acp')).toBe('claude');
+    expect(iconFromClientName('codex-acp')).toBe('openai');
+    expect(iconFromClientName('github-copilot-cli')).toBe('github');
+    expect(iconFromClientName('cursor')).toBe('cursor');
+  });
+  test('registry agents with no brand icon keep the generic mark', () => {
+    // Not an oversight — there is no gemini/opencode/pi entry in the icon
+    // palette, so 'bot' is the honest answer.
+    expect(iconFromClientName('gemini')).toBe('bot');
+    expect(iconFromClientName('opencode')).toBe('bot');
+    expect(iconFromClientName('pi-acp')).toBe('bot');
+  });
   test('maps Claude Cowork local-agent-mode-* to claude', () => {
     expect(iconFromClientName('local-agent-mode-open-knowledge')).toBe('claude');
     expect(iconFromClientName('local-agent-mode-some-other-server')).toBe('claude');

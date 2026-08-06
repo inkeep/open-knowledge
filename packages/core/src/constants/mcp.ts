@@ -21,6 +21,46 @@ export const GREP_MAX_RESULTS = 50;
 export const MCP_SERVER_NAME = 'open-knowledge';
 
 /**
+ * Every tool the OpenKnowledge MCP server registers, and the single source of
+ * truth for that set. The server's registry test asserts the live
+ * registrations match this list exactly, so a tool added there without being
+ * named here fails; the app's tool-call row copy reads the same list, so a
+ * tool named here without display copy fails its own test. Lives in `core`
+ * because it is the one place both sides already depend on.
+ */
+export const OPEN_KNOWLEDGE_MCP_TOOLS = [
+  // Reads
+  'exec',
+  'search',
+  'history',
+  'links',
+  'skills',
+  'config',
+  'palette',
+  'preview_url',
+  'share_link',
+  'lint',
+  'audit',
+  // Writes — CRUD verbs + version
+  'write',
+  'edit',
+  'delete',
+  'move',
+  // Skill install-projection — the one new verb beyond the CRUD set.
+  'install',
+  // Skill import/acquire — the on-ramp paired with install.
+  'import',
+  'checkpoint',
+  'restore_version',
+  // GitHub-sync conflicts
+  'conflicts',
+  'resolve_conflict',
+] as const;
+
+/** One registered OpenKnowledge MCP tool name. */
+export type OpenKnowledgeMcpTool = (typeof OPEN_KNOWLEDGE_MCP_TOOLS)[number];
+
+/**
  * Env marker stamped on every agent OpenKnowledge launches itself — today the
  * in-app agent panel. An `ok mcp` process spawned by such an agent inherits
  * it, which is how `preview_url` distinguishes "this agent is hosted by an

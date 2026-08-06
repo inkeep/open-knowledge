@@ -28,6 +28,7 @@
     "-l6jM7": ["使用 ＋ 按钮开始对话，或从页面启动智能体。"],
     "-lCAuQ": ["正在加载关系图"],
     "-o5XAG": ["会连同你的备注和应用版本一起私下发送给 OpenKnowledge 团队。绝不会公开发布。"],
+    "-oHckY": ["OpenKnowledge 读取了设置 ", ["key"]],
     "-q4abP": [
       "结果已被截断——这个工作区的文件数超出了搜索可索引的上限。找不到某个文件可能是上限造成的，而不是拼写错误。"
     ],
@@ -270,6 +271,7 @@
     "4DcimZ": [["lastSyncedRelative"], "更新"],
     "4E9jPa": ["创建你的第一个项目"],
     "4EZrJN": ["规则"],
+    "4ErgAf": ["OpenKnowledge 安装了一个技能"],
     "4GWjF8": ["无法确定把这些评论发送到哪里——它们仍在等待。"],
     "4Gz2wC": ["上传文件失败"],
     "4KmEoC": ["快捷键"],
@@ -288,6 +290,7 @@
     "4m-xuX": ["自动修复——没有需要修复的内容"],
     "4mDIcg": ["选择要安装的技能。每个都会成为归你所有、可编辑的技能。"],
     "4mLBx9": ["订阅功能暂时不可用。"],
+    "4mp6Tv": ["OpenKnowledge 列出了已安装的技能"],
     "4niEzY": ["沙箱化的 HTML 嵌入——写下 HTML，实时查看渲染效果。"],
     "4nj6n8": ["/api/config 返回了 HTTP ", ["code"]],
     "4pDZ2N": ["已把“", ["0"], "”从其他所有位置移除——它的来源文件夹仍会加载"],
@@ -345,6 +348,7 @@
     "5ZbJFS": ["你当前的版本会先被保存，因此这一步可以撤销。"],
     "5_j-DA": ["强制结束终端"],
     "5aahsI": ["无（", ["0"], " 不是有效的模式）"],
+    "5b3WD-": ["OpenKnowledge 保存了一个检查点"],
     "5e1Dri": ["智能体选择这个模板时看到的菜单标签（必填）。"],
     "5gr_ev": [
       "当有人用这个模板创建文档时，这会成为该文档的内容。输入 <0>",
@@ -447,12 +451,14 @@
       "在你之后从「文件」菜单里添加之前，<0>ok</0> 不会在外部终端中运行。OpenKnowledge 的内置终端和 AI 工具照常可用。"
     ],
     "7PzzBU": ["用户"],
+    "7S7FNA": ["OpenKnowledge 检查了项目"],
     "7Y9yTo": ["已创建 ", ["owner"], "/", ["name"], "，但推送失败。"],
     "7YRrJ9": [
       "在 OpenKnowledge 桌面应用中可用。在终端里可使用<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
     ],
     "7ZkJdV": ["未选择任何智能体——技能已保存，但没有安装到任何地方。"],
     "7_bFEL": ["拖动 ", ["patternText"], " 以重新排序"],
+    "7aNk5D": ["OpenKnowledge 编辑了 ", ["subject"]],
     "7apDiJ": ["名为 <0>", ["sanitized"], "</0> 的文件夹这里已经有文件了。请换一个名字。"],
     "7b3zu8": ["封面焦点位置"],
     "7bIiJ7": [
@@ -467,6 +473,7 @@
       " 级别重新安装它。"
     ],
     "7cAW1G": ["这个端点还没有设置 API 密钥。请在上方添加一个。"],
+    "7czmD1": ["OpenKnowledge 查看了创作面板"],
     "7d1a0d": ["公开"],
     "7dZnmw": ["相关度"],
     "7hctf2": ["描述你想创建的项目"],
@@ -527,6 +534,7 @@
     "8uAWix": ["这个模板位于上级文件夹中——删除它会影响下面所有没有定义自己版本的文件夹。"],
     "8vCZcs": ["打开文件失败。"],
     "8vETh9": ["显示"],
+    "90-wKT": ["OpenKnowledge 查看了 ", ["subject"], " 的历史"],
     "92rbk2": ["镜像正在加载 <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["隐藏「智能体」"],
     "96G6Re": ["新建文件夹"],
@@ -595,6 +603,7 @@
     "A6h5b-": ["已创建文件副本"],
     "AAlr5Y": ["这个 worktree 没有协作服务器——请在这里运行 <0>ok start</0>，或重新打开项目。"],
     "AB4qw9": ["新建终端"],
+    "ABq-cq": ["OpenKnowledge 创建了分享链接"],
     "ACKMCN": ["加载技能设置失败：", ["0"]],
     "ACjxWW": ["缩放"],
     "AE7BY3": ["终端会话已结束。"],
@@ -624,6 +633,7 @@
     "AdcGcG": ["正在应用你的更改"],
     "AddR83": ["无法创建项目。请重试或换一个位置。"],
     "AeHuzT": ["# 每行一个模式。\n# 示例：\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
+    "AeLo3p": ["OpenKnowledge 解决了 ", ["subject"], " 中的冲突"],
     "AeXO77": ["账户"],
     "AhoGwP": ["设置 OpenKnowledge 集成"],
     "AiNMQ7": ["这个项目只存在于这台电脑上。把它连接到 GitHub 即可备份并与他人共享。"],
@@ -685,6 +695,7 @@
     "C0hoX6": ["始终包含"],
     "C3Zc44": ["探索技能"],
     "C62P6b": ["编辑器选区"],
+    "C7waqI": [["0", "plural", { "other": ["#", " 个文档"] }]],
     "C9TBvF": ["无出链"],
     "CB7c0Z": ["保存排队中的消息"],
     "CBT70t": ["无法删除文件：", ["0"]],
@@ -771,10 +782,12 @@
     "D_WKe_": ["在在线状态栏中点击某个智能体的头像即可查看它的会话。"],
     "DbCfXV": ["搜索（", ["searchShortcutLabel"], "）"],
     "DbILZA": ["没有匹配项。部分文件不参与搜索（隐藏或被忽略的文件）。"],
+    "DcFr-y": ["OpenKnowledge 删除了一个文档"],
     "DcLaew": ["自定义主题"],
     "DeDYLr": ["无法识别的维基链接"],
     "DgcGrb": [["fileCount", "plural", { "other": ["文件"] }]],
     "DhLHEb": ["加载动态失败"],
+    "DhT_PK": ["OpenKnowledge 导入了一个技能"],
     "DiFKSL": ["正在统计 markdown 文件"],
     "DiZ3pq": ["图标选择器"],
     "Dnn2XG": ["自动"],
@@ -862,6 +875,7 @@
     "Es3G-g": ["保存在这个项目里（技能文件夹在哪里都行），并通过 git 与协作者共享。"],
     "Ev2r9A": ["没有结果"],
     "EvPX7f": ["打开文件夹选择器，选择把仓库克隆到哪里。"],
+    "EvXKHE": ["OpenKnowledge 搜索了知识库"],
     "Evq3lu": ["孤立页模式"],
     "ExPiRQ": ["跳到 CodeMirror 的下一条检查诊断。"],
     "ExUzM4": ["技能“", ["0"], "”"],
@@ -891,6 +905,7 @@
     "FNTx6u": ["按语义搜索 \"", ["semanticSubmitQuery"], "\""],
     "FOGD7m": ["创造点了不起的东西。"],
     "FRYB1Q": ["/api/config 返回的内容格式不正确"],
+    "FS4Udk": ["OpenKnowledge 运行了一条命令"],
     "FTBN5g": [
       "校验结果在项目中如何呈现。这些选项会写入 config.yml，并通过 git 与所有协作者共享。"
     ],
@@ -915,6 +930,7 @@
     "Fr8JGg": ["zip 文件"],
     "Fsx78O": ["把 <0>ok</0> 命令添加到你的终端"],
     "FvMSms": ["重命名会改变磁盘上的文件，以及智能体选择这个模板时使用的 id。"],
+    "Fx9aOF": ["OpenKnowledge 编辑了一个文档"],
     "Fxf4jq": ["描述（可选）"],
     "Fy4GgU": [
       "讲清楚你的代码库是怎么运作的，让队友和 AI 智能体都能找到方向。适合记录架构、主要组成部分，以及新贡献者总会问到的问题。"
@@ -956,6 +972,7 @@
     "G_hVTP": ["启用主题"],
     "G_mWXb": ["筛选语言"],
     "GamjcN": ["模板已保存"],
+    "Gb_h4G": ["OpenKnowledge 删除了 ", ["subject"]],
     "GceAYf": ["已将 ", ["label"], " 移动到右侧的新窗格。"],
     "GemPfn": ["解析出链的错误响应失败（HTTP ", ["status"], "）"],
     "Gfr4fu": ["服务器无法打开文档"],
@@ -1119,6 +1136,7 @@
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " 个文件"],
     "K8-WWn": ["在表格单元格之间移动"],
     "K9J00P": ["克隆失败——连接出错"],
+    "KDrbNG": ["OpenKnowledge 查找了 ", ["subject"], " 的链接"],
     "KDuPiY": ["正在上传 ", ["fileName"]],
     "KDw4GX": ["重试"],
     "KFd4xz": ["不存在"],
@@ -1286,6 +1304,7 @@
       ["conflictName"],
       "”——你在那里已有同名的自有技能。如需使用入门包中的版本，请重命名你自己的技能。"
     ],
+    "MvWBwz": ["OpenKnowledge 写入了 ", ["subject"]],
     "My0wYT": [
       "把鼠标悬停在外部链接上时，它的 URL 会发送到目标站点以获取页面的预览元数据——每个被预览的链接一次请求。"
     ],
@@ -1529,6 +1548,7 @@
     "RG4XHV": ["复制 ", ["0"], " 提示词"],
     "RGCCrg": ["复制共享链接"],
     "RGkNeJ": ["初始化一个入门包"],
+    "RGptDW": ["OpenKnowledge 移动了一个文档"],
     "RJ3a8Z": ["正在寻找 <0>", ["lookingForUrl"], "</0>。"],
     "RLNIgv": ["服务器返回的模板响应不完整。"],
     "RLYckQ": ["停止（Esc）"],
@@ -1626,6 +1646,7 @@
     "TBfy1C": ["无法启动 Slidev。"],
     "TDeOpa": ["撤销或重做你自己的编辑，协作者和智能体的编辑保持不变。"],
     "TEEPPF": ["将替换已有的 OpenKnowledge 条目"],
+    "TEJiKw": ["OpenKnowledge 检查了 ", ["subject"]],
     "TJnkyf": ["ok ui 有响应，但 server.lock 中还没有端口"],
     "TKQ7K-": ["安装"],
     "TLIO3j": ["切换斜体格式。"],
@@ -1681,6 +1702,7 @@
       " 级别中检测到。"
     ],
     "UJEFJY": ["无法启动 ", ["0"], "：", ["1"]],
+    "UL-9ej": ["OpenKnowledge 打开了实时预览"],
     "UL8A9w": ["标签"],
     "UNwKSz": ["已开启“", ["name"], "”的自动更新"],
     "UPWItY": ["一个包含 SKILL.md 的文件夹。"],
@@ -1722,6 +1744,7 @@
     "UfW9Kr": [
       "你的搜索查询和匹配页面的全文会发送到你的嵌入服务提供方（默认是 OpenAI）来计算嵌入向量。"
     ],
+    "Ug2xzC": ["OpenKnowledge 查看了编辑历史"],
     "Ugvy4O": ["展开所有文件分组"],
     "UhpfxY": ["向左平移"],
     "UkQGhd": ["隐藏替换"],
@@ -1739,6 +1762,7 @@
     "Uuj_R4": ["从模板新建"],
     "Uw6ERJ": ["无法复制：", ["detail"]],
     "UyROxs": [["mins", "plural", { "other": ["#", " 分钟前"] }]],
+    "V0mbgd": ["关闭此对话的标签页后才能删除"],
     "V2Gmie": [
       "这些规则来自你项目的 <0>",
       ["configFile"],
@@ -1821,6 +1845,7 @@
     ],
     "Waiy-j": ["智能体的人设、价值观和语气。"],
     "WamGNs": ["加载 PDF 失败：", ["error"]],
+    "WbWtif": ["OpenKnowledge 安装了 ", ["subject"]],
     "Wboy1j": ["~/.myteam/skills"],
     "WcWS__": ["下载文件"],
     "Wcv-Zi": ["把这个知识库作为 Claude 技能提供出去。"],
@@ -2034,6 +2059,7 @@
     "Zue_jx": ["你的 GitHub 令牌缺少必需的权限范围。请尝试重新登录。"],
     "Zul8Ry": ["从不"],
     "ZvzbDF": ["直接把它添加到这个项目。"],
+    "ZwpggY": ["OpenKnowledge 读取了项目设置"],
     "_0JUKX": ["报告错误需要 OpenKnowledge 桌面应用。"],
     "_2cM9E": ["最近"],
     "_5qBNl": ["AI 工具与 CLI"],
@@ -2073,6 +2099,7 @@
     "_W-elG": ["（内联）"],
     "_WPP7e": ["来自另一个文档的 MirrorSource 块的只读副本。在来源处编辑，这里会实时更新。"],
     "_XWY2J": ["终端已禁用"],
+    "_YWqV2": ["OpenKnowledge 解决了一个冲突"],
     "_ayOfA": [
       "遵循 Google Open Knowledge Format 的知识库，一种整理知识的通用方式。如果你希望自己的笔记能与理解该格式的其他工具良好协作，请选这个。"
     ],
@@ -2096,6 +2123,7 @@
     "a4FRQv": ["要撤销到这次编辑吗？"],
     "a5Gha5": ["本地改动阻止了合并"],
     "a5W0q0": ["确定要删除 ", ["folderName"], "/ 及其中的所有文件吗？此操作无法撤销。"],
+    "a5gwRt": ["OpenKnowledge 运行了 ", ["command"]],
     "a7P3nH": ["仅限这台设备——保存在你的用户配置中，不会共享。"],
     "a9OzSn": ["没有找到与 \"", ["trimmedQuery"], "\" 匹配的页面"],
     "aBgwis": ["范围"],
@@ -2229,6 +2257,7 @@
     "cVKnqL": ["无法读取等待发送的评论：", ["0"]],
     "cZGNlb": ["再添加一个模式"],
     "cZI5AL": ["OK 桌面版"],
+    "caiyaU": ["OpenKnowledge 恢复了较早的版本"],
     "caw8gO": [
       [
         "strandedCommitCount",
@@ -2493,6 +2522,7 @@
     "hCOLSd": [
       "为你的产品是怎么做出来的留下书面记录。一个提出想法、记录决策、撰写规格，以及在出问题后总结经验的地方。"
     ],
+    "hCattk": ["OpenKnowledge 导入了 ", ["source"]],
     "hDEaQu": ["把 OpenKnowledge 与你使用的其他工具连接起来。"],
     "hDKtoF": [["diffHrs"], " 小时前"],
     "hDoLrm": ["把 ", ["projectName"], " 从最近的项目中移除"],
@@ -2505,6 +2535,7 @@
     "hLy8b1": ["已更新到版本 ", ["version"]],
     "hQXiDc": ["搜索分支…"],
     "hQjvzi": ["一个 .zip 或 .skill 压缩包。"],
+    "hS0wC4": ["OpenKnowledge 恢复了 ", ["subject"], " 的较早版本"],
     "hSBIG-": ["标题、描述、标签——任何能描述这个文件夹的信息。"],
     "hSySVc": ["安装交接失败：", ["msg"]],
     "hVAkI8": ["在终端中运行"],
@@ -2546,6 +2577,7 @@
     "i3f2kh": ["没有匹配的命令。"],
     "i6ng22": ["切换到「跟随」"],
     "i92eAT": ["我们会创建一个仓库并开始同步——不需要用终端。"],
+    "i94lQe": ["OpenKnowledge 检查了冲突"],
     "i9OyGp": ["撤销或重做"],
     "i9TPUi": ["这个", ["targetNoun"], "不在 <0>", ["branch"], "</0> 分支上。它可能还没有被推送。"],
     "i9toLO": ["智能体配置文件"],
@@ -2576,6 +2608,7 @@
     "iYUTsI": ["这个来源包含多个技能——请先选择一个，然后导入。"],
     "iZCZmF": [["instanceCount", "plural", { "other": ["#", " 个实例"] }]],
     "iaPtht": ["复制"],
+    "ibE3-O": ["OpenKnowledge 为 ", ["subject"], " 创建了分享链接"],
     "idD8Ev": ["已保存"],
     "idni-S": [["keyName"], " 的值"],
     "ig5vUe": ["加载文件失败"],
@@ -3034,6 +3067,7 @@
     "paCw0z": [["1"], "/ 中各个 ", ["0"], "/ 文件夹下的所有内容"],
     "pajIrl": ["无法关闭终端：", ["0"]],
     "pbwTg6": [["seconds"], " 秒前"],
+    "pbyEp3": ["OpenKnowledge 将 ", ["subject"], " 移动到 ", ["destination"]],
     "pckX1A": [["0", "plural", { "other": ["#", " 次使用"] }]],
     "pcqlQu": [["0", "plural", { "other": ["文件夹"] }]],
     "pfkaJ2": ["YAML 或 JSON，两种 base16 布局都可以。"],
@@ -3254,6 +3288,7 @@
     "tAPZEx": ["下方"],
     "tHKQ6j": ["正在重命名"],
     "tKlWWY": ["表情符号"],
+    "tLX6LY": ["OpenKnowledge 写入了一个文档"],
     "tN5WTS": ["服务提供方拒绝了这个请求。请检查 API 密钥和模型 id。"],
     "tP5DDk": ["应用链接"],
     "tUvUfp": ["使用你已有的文件夹。"],
@@ -3364,12 +3399,14 @@
     "vZVeFG": ["上传失败——请重试"],
     "v_2_3v": ["已删除 ", ["file"]],
     "v_cQn_": ["服务提供方拒绝了这个请求（HTTP ", ["0"], "）。请检查 API 密钥和模型 id。"],
+    "vallqD": ["OpenKnowledge 查看了链接图谱"],
     "vbK_ZG": ["「文件」侧边栏"],
     "vbMHjo": ["跳转到第 ", ["0"], " 行"],
     "ve8vEM": ["验证码已过期——请重试"],
     "vfRlCI": ["无法复制完整路径"],
     "vfWA_g": ["你选择了 ~/Desktop。OpenKnowledge 会索引你桌面上的所有内容。"],
     "vhAnzJ": ["要开启语义搜索吗？"],
+    "vhGTWU": ["OpenKnowledge 运行了 ", ["tool"]],
     "viwC-K": ["移除项目失败。"],
     "vj-33a": ["用 <0>", ["copyShortcut"], "</0> 复制下方的链接，或者在桌面应用中打开 OK。"],
     "vjW-SM": ["保存到你的全局技能文件夹中（例如 <0>~/.agents/skills</0>）。"],
@@ -3517,6 +3554,7 @@
     "yUxR-Q": ["展开 ", ["keyName"]],
     "yWSvcf": ["内容根目录"],
     "yWWThY": ["资源引用"],
+    "yWfjqS": ["OpenKnowledge 搜索了 ", ["query"]],
     "yYR6za": ["显示文本"],
     "yZepkk": ["Git 同步"],
     "yZmvQ4": ["这个项目的服务器（v", ["0"], "）比这个应用（v", ["1"], "）新。"],

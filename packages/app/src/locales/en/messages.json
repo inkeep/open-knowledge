@@ -36,6 +36,7 @@
     "-o5XAG": [
       "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
     ],
+    "-oHckY": ["OpenKnowledge read the setting ", ["key"]],
     "-q4abP": [
       "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
     ],
@@ -304,6 +305,7 @@
     "4DcimZ": ["Updated ", ["lastSyncedRelative"]],
     "4E9jPa": ["Create your first project"],
     "4EZrJN": ["Rules"],
+    "4ErgAf": ["OpenKnowledge installed a skill"],
     "4GWjF8": ["Couldn't work out where to send the comments — they're still waiting."],
     "4Gz2wC": ["Failed to upload file"],
     "4KmEoC": ["Hotkeys"],
@@ -322,6 +324,7 @@
     "4m-xuX": ["Auto-fix — nothing to fix"],
     "4mDIcg": ["Pick the skills to install. Each one lands as an editable skill you own."],
     "4mLBx9": ["Subscriptions aren't available right now."],
+    "4mp6Tv": ["OpenKnowledge listed the installed skills"],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
@@ -379,6 +382,7 @@
     "5ZbJFS": ["Your current version is saved first, so this is reversible."],
     "5_j-DA": ["Kill Terminal"],
     "5aahsI": ["nothing (", ["0"], " is not a valid pattern)"],
+    "5b3WD-": ["OpenKnowledge saved a checkpoint"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
     "5gr_ev": [
       "Becomes the document's content when someone creates a doc from this template. Type <0>",
@@ -496,12 +500,14 @@
       "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
     ],
     "7PzzBU": ["User"],
+    "7S7FNA": ["OpenKnowledge checked the project"],
     "7Y9yTo": ["Created ", ["owner"], "/", ["name"], ", push failed."],
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
     "7ZkJdV": ["No agents selected — the skills are saved but not installed anywhere."],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
+    "7aNk5D": ["OpenKnowledge edited ", ["subject"]],
     "7apDiJ": [
       "A folder named <0>",
       ["sanitized"],
@@ -520,6 +526,7 @@
       " level."
     ],
     "7cAW1G": ["No API key is set for this endpoint. Add one above."],
+    "7czmD1": ["OpenKnowledge looked up the authoring palette"],
     "7d1a0d": ["Public"],
     "7dZnmw": ["Relevance"],
     "7hctf2": ["Describe the project you want to create"],
@@ -597,6 +604,7 @@
     ],
     "8vCZcs": ["Failed to open file."],
     "8vETh9": ["Show"],
+    "90-wKT": ["OpenKnowledge read the history of ", ["subject"]],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Hide Agents"],
     "96G6Re": ["New folder"],
@@ -676,6 +684,7 @@
       "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
     ],
     "AB4qw9": ["New terminal"],
+    "ABq-cq": ["OpenKnowledge created a share link"],
     "ACKMCN": ["Failed to load skill settings: ", ["0"]],
     "ACjxWW": ["Zoom"],
     "AE7BY3": ["The terminal session ended."],
@@ -709,6 +718,7 @@
     "AdcGcG": ["Applying your change"],
     "AddR83": ["Could not create project. Try again or pick a different location."],
     "AeHuzT": ["# One pattern per line.\n# Examples:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
+    "AeLo3p": ["OpenKnowledge resolved a conflict in ", ["subject"]],
     "AeXO77": ["Account"],
     "AhoGwP": ["Set up OpenKnowledge integrations"],
     "AiNMQ7": [
@@ -790,6 +800,7 @@
     "C0hoX6": ["Always included"],
     "C3Zc44": ["Explore skills"],
     "C62P6b": ["Editor selection"],
+    "C7waqI": [["0", "plural", { "one": ["#", " document"], "other": ["#", " documents"] }]],
     "C9TBvF": ["No Outgoing"],
     "CB7c0Z": ["Save queued message"],
     "CBT70t": ["Couldn't delete file: ", ["0"]],
@@ -880,10 +891,12 @@
     "D_WKe_": ["Click an agent's avatar in the presence bar to view their session."],
     "DbCfXV": ["Search (", ["searchShortcutLabel"], ")"],
     "DbILZA": ["No matches. Some files are excluded from search (hidden or ignored files)."],
+    "DcFr-y": ["OpenKnowledge deleted a document"],
     "DcLaew": ["Custom theme"],
     "DeDYLr": ["Unrecognized wiki link"],
     "DgcGrb": [["fileCount", "plural", { "one": ["file"], "other": ["files"] }]],
     "DhLHEb": ["Failed to load activity"],
+    "DhT_PK": ["OpenKnowledge imported a skill"],
     "DiFKSL": ["Counting markdown files"],
     "DiZ3pq": ["Icon picker"],
     "Dnn2XG": ["Automatic"],
@@ -991,6 +1004,7 @@
     ],
     "Ev2r9A": ["No results"],
     "EvPX7f": ["Opens a folder picker to choose where to clone the repository."],
+    "EvXKHE": ["OpenKnowledge searched the knowledge base"],
     "Evq3lu": ["Orphan mode"],
     "ExPiRQ": ["Move to the next CodeMirror lint diagnostic."],
     "ExUzM4": ["skill \"", ["0"], "\""],
@@ -1022,6 +1036,7 @@
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
+    "FS4Udk": ["OpenKnowledge ran a command"],
     "FTBN5g": [
       "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
     ],
@@ -1050,6 +1065,7 @@
     "Fr8JGg": ["Zip file"],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
+    "Fx9aOF": ["OpenKnowledge edited a document"],
     "Fxf4jq": ["Description (optional)"],
     "Fy4GgU": [
       "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
@@ -1102,6 +1118,7 @@
     "G_hVTP": ["Enable Themes"],
     "G_mWXb": ["Filter languages"],
     "GamjcN": ["Template saved"],
+    "Gb_h4G": ["OpenKnowledge deleted ", ["subject"]],
     "GceAYf": ["Moved ", ["label"], " to a new pane on the right."],
     "GemPfn": ["Failed to parse forward-links error response (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server can't open documents"],
@@ -1290,6 +1307,7 @@
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " files"],
     "K8-WWn": ["Move between table cells"],
     "K9J00P": ["Clone failed — connection error"],
+    "KDrbNG": ["OpenKnowledge looked up links for ", ["subject"]],
     "KDuPiY": ["Uploading ", ["fileName"]],
     "KDw4GX": ["Try again"],
     "KFd4xz": ["absent"],
@@ -1492,6 +1510,7 @@
       ["conflictHosts"],
       " — you already have your own skill with that name there. Rename yours if you want the pack's version."
     ],
+    "MvWBwz": ["OpenKnowledge wrote to ", ["subject"]],
     "My0wYT": [
       "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
     ],
@@ -1763,6 +1782,7 @@
     "RG4XHV": ["Copy ", ["0"], " prompt"],
     "RGCCrg": ["Copy share link"],
     "RGkNeJ": ["Initialize a starter pack"],
+    "RGptDW": ["OpenKnowledge moved a document"],
     "RJ3a8Z": ["Looking for <0>", ["lookingForUrl"], "</0>."],
     "RLNIgv": ["Server returned an incomplete templates response."],
     "RLYckQ": ["Stop (Esc)"],
@@ -1872,6 +1892,7 @@
       "Undo or redo your own edits, leaving edits from collaborators and agents in place."
     ],
     "TEEPPF": ["Will replace existing OpenKnowledge entry"],
+    "TEJiKw": ["OpenKnowledge checked ", ["subject"]],
     "TJnkyf": ["ok ui responded but server.lock has no port yet"],
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
@@ -1929,6 +1950,7 @@
       " level."
     ],
     "UJEFJY": ["Couldn't start ", ["0"], ": ", ["1"]],
+    "UL-9ej": ["OpenKnowledge opened the live preview"],
     "UL8A9w": ["Tag"],
     "UNwKSz": ["Auto-update on for \"", ["name"], "\""],
     "UPWItY": ["A folder containing SKILL.md."],
@@ -1978,6 +2000,7 @@
     "UfW9Kr": [
       "Your search queries and the full text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
     ],
+    "Ug2xzC": ["OpenKnowledge read the edit history"],
     "Ugvy4O": ["Expand all file groups"],
     "UhpfxY": ["Pan left"],
     "UkQGhd": ["Hide replace"],
@@ -1995,6 +2018,7 @@
     "Uuj_R4": ["New from template"],
     "Uw6ERJ": ["Couldn't copy: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "one": ["#", " min ago"], "other": ["#", " min ago"] }]],
+    "V0mbgd": ["Close this chat's tab to delete it"],
     "V2Gmie": [
       "These rules come from your project's <0>",
       ["configFile"],
@@ -2079,6 +2103,7 @@
     ],
     "Waiy-j": ["The agent's persona, values, and voice."],
     "WamGNs": ["Failed to load PDF: ", ["error"]],
+    "WbWtif": ["OpenKnowledge installed ", ["subject"]],
     "Wboy1j": ["~/.myteam/skills"],
     "WcWS__": ["Download file"],
     "Wcv-Zi": ["Make this knowledge base available as a Claude Skill."],
@@ -2302,6 +2327,7 @@
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
     "Zul8Ry": ["never"],
     "ZvzbDF": ["Add it directly to this project."],
+    "ZwpggY": ["OpenKnowledge read the project settings"],
     "_0JUKX": ["Bug reporting needs the OpenKnowledge desktop app."],
     "_2cM9E": ["recent"],
     "_5qBNl": ["AI tools & CLI"],
@@ -2343,6 +2369,7 @@
       "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
     ],
     "_XWY2J": ["Terminal disabled"],
+    "_YWqV2": ["OpenKnowledge resolved a conflict"],
     "_ayOfA": [
       "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
     ],
@@ -2370,6 +2397,7 @@
       ["folderName"],
       "/ and all files inside? This action cannot be undone."
     ],
+    "a5gwRt": ["OpenKnowledge ran ", ["command"]],
     "a7P3nH": ["Personal to this device — stored in your user config, not shared."],
     "a9OzSn": ["No pages found for \"", ["trimmedQuery"], "\""],
     "aBgwis": ["Scope"],
@@ -2513,6 +2541,7 @@
     "cVKnqL": ["Couldn't read the comments waiting to send: ", ["0"]],
     "cZGNlb": ["Add another pattern"],
     "cZI5AL": ["OK Desktop"],
+    "caiyaU": ["OpenKnowledge restored an earlier version"],
     "caw8gO": [
       [
         "strandedCommitCount",
@@ -2815,6 +2844,7 @@
     "hCOLSd": [
       "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
     ],
+    "hCattk": ["OpenKnowledge imported ", ["source"]],
     "hDEaQu": ["Connect OpenKnowledge to other tools you use."],
     "hDKtoF": [["diffHrs"], "h ago"],
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
@@ -2827,6 +2857,7 @@
     "hLy8b1": ["Updated to Version ", ["version"]],
     "hQXiDc": ["Search branches..."],
     "hQjvzi": ["A .zip or .skill archive."],
+    "hS0wC4": ["OpenKnowledge restored an earlier version of ", ["subject"]],
     "hSBIG-": ["A title, description, tags — anything that describes this folder."],
     "hSySVc": ["Install handoff failed: ", ["msg"]],
     "hVAkI8": ["Run in terminal"],
@@ -2868,6 +2899,7 @@
     "i3f2kh": ["No matching commands."],
     "i6ng22": ["Switch to Follow"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
+    "i94lQe": ["OpenKnowledge checked for conflicts"],
     "i9OyGp": ["Undo or redo"],
     "i9TPUi": [
       "This ",
@@ -2906,6 +2938,7 @@
       ["instanceCount", "plural", { "one": ["#", " instance"], "other": ["#", " instances"] }]
     ],
     "iaPtht": ["copy"],
+    "ibE3-O": ["OpenKnowledge created a share link for ", ["subject"]],
     "idD8Ev": ["Saved"],
     "idni-S": ["Values for ", ["keyName"]],
     "ig5vUe": ["Failed to load file"],
@@ -3426,6 +3459,7 @@
     "paCw0z": ["everything under ", ["0"], "/ folders inside ", ["1"], "/"],
     "pajIrl": ["Could not turn off the terminal: ", ["0"]],
     "pbwTg6": [["seconds"], "s ago"],
+    "pbyEp3": ["OpenKnowledge moved ", ["subject"], " to ", ["destination"]],
     "pckX1A": [["0", "plural", { "one": ["#", " use"], "other": ["#", " uses"] }]],
     "pcqlQu": [["0", "plural", { "one": ["Folder"], "other": ["Folders"] }]],
     "pfkaJ2": ["YAML or JSON, in either base16 layout."],
@@ -3662,6 +3696,7 @@
     "tAPZEx": ["Below"],
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
+    "tLX6LY": ["OpenKnowledge wrote a document"],
     "tN5WTS": ["The provider rejected the request. Check the API key and the model id."],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
@@ -3800,12 +3835,14 @@
       ["0"],
       "). Check the API key and the model id."
     ],
+    "vallqD": ["OpenKnowledge looked at the link graph"],
     "vbK_ZG": ["Files sidebar"],
     "vbMHjo": ["Go to line ", ["0"]],
     "ve8vEM": ["Code expired — please try again"],
     "vfRlCI": ["Could not copy full path"],
     "vfWA_g": ["You picked ~/Desktop. OpenKnowledge will index everything on your desktop."],
     "vhAnzJ": ["Turn on semantic search?"],
+    "vhGTWU": ["OpenKnowledge ran ", ["tool"]],
     "viwC-K": ["Failed to remove project."],
     "vj-33a": [
       "Use <0>",
@@ -3987,6 +4024,7 @@
     "yUxR-Q": ["Expand ", ["keyName"]],
     "yWSvcf": ["Content root"],
     "yWWThY": ["Asset reference"],
+    "yWfjqS": ["OpenKnowledge searched for ", ["query"]],
     "yYR6za": ["Display text"],
     "yZepkk": ["Git sync"],
     "yZmvQ4": ["This project's server (v", ["0"], ") is newer than this app (v", ["1"], ")."],

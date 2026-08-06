@@ -161,6 +161,11 @@ msgstr "{0, plural, one {# बैकलिंक} other {# बैकलिंक
 msgid "{0, plural, one {# doc} other {# docs}}"
 msgstr "{0, plural, one {# दस्तावेज़} other {# दस्तावेज़}}"
 
+#. placeholder {0}: found.length
+#: src/lib/acp/tool-call-display.ts
+msgid "{0, plural, one {# document} other {# documents}}"
+msgstr "{0, plural, one {# दस्तावेज़} other {# दस्तावेज़}}"
+
 #. placeholder {0}: audit.result.errorCount
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# error} other {# errors}}"
@@ -2337,6 +2342,10 @@ msgstr "टैब बंद करें"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "Close terminal"
 msgstr "टर्मिनल बंद करें"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Close this chat's tab to delete it"
+msgstr "इसे हटाने के लिए इस चैट का टैब बंद करें"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8034,9 +8043,61 @@ msgstr "वर्कट्री खोला जा रहा है"
 msgid "Opening..."
 msgstr "खोला जा रहा है…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked {subject}"
+msgstr "OpenKnowledge ने {subject} की जाँच की"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked for conflicts"
+msgstr "OpenKnowledge ने विरोधों की जाँच की"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge checked the project"
+msgstr "OpenKnowledge ने प्रोजेक्ट की जाँच की"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link"
+msgstr "OpenKnowledge ने साझा लिंक बनाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge created a share link for {subject}"
+msgstr "OpenKnowledge ने {subject} के लिए साझा लिंक बनाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted {subject}"
+msgstr "OpenKnowledge ने {subject} को हटाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge deleted a document"
+msgstr "OpenKnowledge ने एक दस्तावेज़ हटाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited {subject}"
+msgstr "OpenKnowledge ने {subject} को संपादित किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge edited a document"
+msgstr "OpenKnowledge ने एक दस्तावेज़ संपादित किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported {source}"
+msgstr "OpenKnowledge ने {source} आयात किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge imported a skill"
+msgstr "OpenKnowledge ने एक स्किल आयात की"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "OpenKnowledge initializes at <0>{projectDir}</0> — the parent of <1>{pickedRelative}</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
 msgstr "OpenKnowledge <0>{projectDir}</0> पर आरंभ होता है — जो <1>{pickedRelative}</1> का मूल है क्योंकि उसमें एक <2>.git</2> फ़ोल्डर है (हर git रिपॉज़िटरी के लिए एक .ok/)। <3>सामग्री निर्देशिका</3> डिफ़ॉल्ट रूप से <4>.</4> होती है (पूरी रिपॉज़िटरी); इसे सीमित करने के लिए कोई उप-फ़ोल्डर लिखें।"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed {subject}"
+msgstr "OpenKnowledge ने {subject} इंस्टॉल किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge installed a skill"
+msgstr "OpenKnowledge ने एक स्किल इंस्टॉल की"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "OpenKnowledge integrations checked."
@@ -8050,14 +8111,98 @@ msgstr "OpenKnowledge gh CLI द्वारा दिया गया GitHub �
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge यही GitHub खाता उपयोग कर रहा है।"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge listed the installed skills"
+msgstr "OpenKnowledge ने इंस्टॉल की गई स्किल सूचीबद्ध कीं"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked at the link graph"
+msgstr "OpenKnowledge ने लिंक ग्राफ़ देखा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up links for {subject}"
+msgstr "OpenKnowledge ने {subject} के लिंक खोजे"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge looked up the authoring palette"
+msgstr "OpenKnowledge ने लेखन पैलेट देखा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved {subject} to {destination}"
+msgstr "OpenKnowledge ने {subject} को {destination} में ले जाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge moved a document"
+msgstr "OpenKnowledge ने एक दस्तावेज़ ले जाया"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "GitHub पर OpenKnowledge"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge opened the live preview"
+msgstr "OpenKnowledge ने लाइव पूर्वावलोकन खोला"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "OpenKnowledge quit unexpectedly last time."
 msgstr "पिछली बार OpenKnowledge अप्रत्याशित रूप से बंद हो गया था।"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {command}"
+msgstr "OpenKnowledge ने {command} चलाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran {tool}"
+msgstr "OpenKnowledge ने {tool} चलाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge ran a command"
+msgstr "OpenKnowledge ने एक कमांड चलाया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the edit history"
+msgstr "OpenKnowledge ने संपादन इतिहास पढ़ा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the history of {subject}"
+msgstr "OpenKnowledge ने {subject} का इतिहास पढ़ा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the project settings"
+msgstr "OpenKnowledge ने प्रोजेक्ट सेटिंग्स पढ़ीं"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge read the setting {key}"
+msgstr "OpenKnowledge ने सेटिंग {key} पढ़ी"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict"
+msgstr "OpenKnowledge ने एक विरोध हल किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge resolved a conflict in {subject}"
+msgstr "OpenKnowledge ने {subject} में एक विरोध हल किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version"
+msgstr "OpenKnowledge ने पिछला संस्करण पुनर्स्थापित किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge restored an earlier version of {subject}"
+msgstr "OpenKnowledge ने {subject} का पिछला संस्करण पुनर्स्थापित किया"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge saved a checkpoint"
+msgstr "OpenKnowledge ने एक चेकपॉइंट सहेजा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched for {query}"
+msgstr "OpenKnowledge ने {query} खोजा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge searched the knowledge base"
+msgstr "OpenKnowledge ने ज्ञान आधार में खोजा"
 
 #: src/components/handoff/useHandoffDispatch.ts
 msgid "OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."
@@ -8074,6 +8219,14 @@ msgstr "OpenKnowledge <0>{gitRoot}</0> पर आरंभ होगा — ज�
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
 msgstr "OpenKnowledge कमिट बनाकर उन्हें अपने आप आपके रिमोट पर भेज देगा। यदि आप अपने git इतिहास में स्वचालित कमिट नहीं चाहते, तो आपको स्वत: सिंक सक्षम नहीं करना चाहिए।"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote a document"
+msgstr "OpenKnowledge ने एक दस्तावेज़ लिखा"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "OpenKnowledge wrote to {subject}"
+msgstr "OpenKnowledge ने {subject} में लिखा"
 
 #: src/components/CloneDialog.tsx
 msgid "Opens a folder picker to choose where to clone the repository."
