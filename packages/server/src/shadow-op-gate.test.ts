@@ -202,6 +202,64 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
     expect(mutatorRan).toBe(true);
   });
 
+  test('drain resolves immediately when no mutator is in flight', async () => {
+    const gate = new ShadowOpGate();
+    let drained = false;
+    void gate.drain().then(() => {
+      drained = true;
+    });
+    await tick();
+    expect(drained).toBe(true);
+  });
+
+  test('drain waits for the last of several concurrent mutators', async () => {
+    const gate = new ShadowOpGate();
+    const a = deferred();
+    const b = deferred();
+    const pa = gate.withMutator(() => a.promise);
+    const pb = gate.withMutator(() => b.promise);
+    await tick();
+    expect(gate.activeMutators).toBe(2);
+
+    let drained = false;
+    const drain = gate.drain().then(() => {
+      drained = true;
+    });
+
+    a.resolve();
+    await pa;
+    await tick();
+    // One mutator still holds the gate, so the drain must not have fired.
+    expect(drained).toBe(false);
+    expect(gate.activeMutators).toBe(1);
+
+    b.resolve();
+    await pb;
+    await drain;
+    expect(drained).toBe(true);
+    expect(gate.activeMutators).toBe(0);
+  });
+
+  test('drain does not acquire the gate — a later mutator still runs freely', async () => {
+    const gate = new ShadowOpGate();
+    const held = deferred();
+    const first = gate.withMutator(() => held.promise);
+    await tick();
+
+    const drain = gate.drain();
+    held.resolve();
+    await first;
+    await drain;
+
+    // Nothing was acquired, so the gate is plain-idle rather than held.
+    expect(gate.isExclusiveHeld).toBe(false);
+    let ran = false;
+    await gate.withMutator(async () => {
+      ran = true;
+    });
+    expect(ran).toBe(true);
+  });
+
   test('registry: same gitDir shares one gate; release drops it', () => {
     const a = shadowOpGateFor({ gitDir: '/tmp/gate-test-a' });
     const b = shadowOpGateFor({ gitDir: '/tmp/gate-test-a' });

@@ -3011,6 +3011,37 @@ export function createServer(options: ServerOptions): ServerInstance {
           // coordinator was already stopped at the top of shutdown, so no late
           // background gc can run against the repo being torn down here.
           if (shadowRef.current) {
+            // Drain in-flight shadow mutators before touching the repo. The hot
+            // bridge paths schedule checkpoint writes on a microtask and never
+            // await them, so a burst can still be running its git subprocess
+            // chain against the shadow gitDir after every other shutdown phase
+            // has finished. Releasing the repo underneath those writes lets one
+            // re-create the shadow tree after a caller has already started
+            // removing the content directory. The gate wakes its drain waiters
+            // when the last mutator retires, so this awaits the real writer
+            // rather than a fixed delay. Bounded to destroyTimeoutMs so a
+            // wedged git process cannot hang shutdown.
+            let shadowDrainTimeoutId: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                shadowOpGateFor(shadowRef.current).drain(),
+                new Promise<void>((_, reject) => {
+                  shadowDrainTimeoutId = setTimeout(
+                    () => reject(new Error('shadow mutator drain timeout')),
+                    destroyTimeoutMs,
+                  );
+                }),
+              ]);
+            } catch (err) {
+              phaseErrors.push({
+                phase: 'shadow-mutator-drain',
+                error: err instanceof Error ? err.message : String(err),
+              });
+              log.error({ err }, '[server] shutdown phase-5 shadow mutator drain failed');
+            } finally {
+              if (shadowDrainTimeoutId !== undefined) clearTimeout(shadowDrainTimeoutId);
+            }
+
             // Persist current HEAD before releasing shadow lock
             try {
               const projectGit = simpleGit({ baseDir: projectDir, timeout: { block: 5_000 } });

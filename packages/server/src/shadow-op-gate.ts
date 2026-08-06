@@ -121,6 +121,25 @@ export class ShadowOpGate {
       release();
     }
   }
+
+  /**
+   * Resolve once the mutators already in flight have retired.
+   *
+   * Deliberately does NOT acquire the gate. Shutdown needs the writes that are
+   * already running to finish, not exclusivity against a gc leg it has already
+   * stopped; `withExclusive` would over-acquire, and since it releases before
+   * returning it would not close any window this leaves open anyway.
+   *
+   * Unbounded by design — the caller owns the shutdown budget. A caller that
+   * races this against its own timeout may abandon the waiter; it is woken
+   * later against a promise nobody holds, which costs nothing.
+   */
+  async drain(): Promise<void> {
+    if (this.mutatorCount === 0) return;
+    await new Promise<void>((r) => {
+      this.drainWaiters.push(r);
+    });
+  }
 }
 
 const gates = new Map<string, ShadowOpGate>();
