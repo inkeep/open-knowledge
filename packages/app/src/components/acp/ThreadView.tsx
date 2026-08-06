@@ -123,6 +123,9 @@ import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
 import {
+  decideFollowNavigation,
+  type FollowNavState,
+  INITIAL_FOLLOW_NAV_STATE,
   latestFollowTarget,
   loadFollowFilePref,
   pageListFollowOptions,
@@ -192,7 +195,22 @@ function isRetryableFailure(failure: ThreadFailureDetail): boolean {
   return RETRYABLE_FAILURE_REASONS.has(failure.reason);
 }
 
-export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
+export function ThreadView({
+  info,
+  active = true,
+}: {
+  info: ThreadInfo;
+  /**
+   * Whether the user is actively viewing this thread (its tab is selected AND
+   * the sessions dock is on screen). Every open thread's ThreadView stays
+   * mounted at once (the dock force-mounts panels so transcripts survive tab
+   * switches), so without this gate a background thread's agent write would
+   * yank the editor's follow-the-file navigation out from under a user reading
+   * an unrelated page. Only the actively-viewed thread drives follow. Defaults
+   * true so a lone ThreadView (tests, any single-thread host) still follows.
+   */
+  active?: boolean;
+}): ReactNode {
   const { t } = useLingui();
   const state = useAgentThread(info.threadId);
   const client = getAgentThreadClient();
@@ -204,10 +222,12 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   const scrollApiRef = useRef<ReturnType<typeof useMessageScroller> | null>(null);
   // Follow-the-file bookkeeping: `initialSeqRef` marks the event log position
   // at mount so a replayed history (reload, tab switch) never yanks the
-  // editor around — only events that arrive live do. `lastFollowedRef`
-  // dedupes so each target navigates once.
+  // editor around — only events that arrive live do. `followNavRef` carries the
+  // last-followed target + the yield latch across events (see
+  // decideFollowNavigation); it re-arms per turn and on the follow toggle.
   const initialSeqRef = useRef<number | null>(null);
-  const lastFollowedRef = useRef<string | null>(null);
+  const followNavRef = useRef<FollowNavState>(INITIAL_FOLLOW_NAV_STATE);
+  const prevTurnActiveRef = useRef(false);
 
   // A selection send (⌘J) or Problems-panel "Ask AI" that resolved to this agent
   // seeds the composer instead of auto-sending, so the user reviews and extends
@@ -347,28 +367,56 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
     if (!canRetry) setRetryPending(false);
   }, [canRetry]);
 
-  // Follow the agent's file: navigate the editor to the doc the agent is
-  // working on, as it works. Live events only (see initialSeqRef above), and
-  // only while a turn is streaming — an idle thread never steals navigation.
+  // Re-arm follow at the start of each turn: a new turn is the user directing
+  // the agent again, so a yield latched during the previous turn (they read
+  // another page) is cleared and follow tracks the new work afresh.
+  //
+  // Preserve `lastFollowed` — resetting it would lose the same-target dedupe
+  // that keeps a stale `followTarget` (carried across turns via the
+  // accumulated event log) from yanking the user to yesterday's work the
+  // instant they press send. Set `reArmed` so the NEXT fresh target this
+  // turn bypasses the off-track check exactly once — the user's new intent
+  // beats their prior yield.
+  //
+  // Defined before the follow effect so the reset lands before the
+  // same-commit follow.
   useEffect(() => {
-    if (!followFile || followTarget === null) return;
-    if (!turnActive) return;
+    if (turnActive && !prevTurnActiveRef.current) {
+      followNavRef.current = { ...followNavRef.current, yielded: false, reArmed: true };
+    }
+    prevTurnActiveRef.current = turnActive;
+  }, [turnActive]);
+
+  // Follow the agent's file: navigate the editor to the doc the agent is
+  // working on, as it works. Gated four ways: only when following is on, only
+  // while a turn is streaming, only on live events (see initialSeqRef above),
+  // and only for the actively-viewed thread (`active`) — a background thread's
+  // write must never yank a reader off their page. `decideFollowNavigation`
+  // owns the dedupe + yield-to-manual-navigation policy.
+  useEffect(() => {
+    if (!active || !followFile || followTarget === null || !turnActive) return;
     if (initialSeqRef.current === null || lastSeq === null || lastSeq <= initialSeqRef.current) {
       return;
     }
-    if (lastFollowedRef.current === followTarget) return;
-    lastFollowedRef.current = followTarget;
-    if (docNameFromHash(window.location.hash) === followTarget) return;
-    window.location.assign(hashFromDocName(followTarget));
-  }, [followFile, followTarget, turnActive, lastSeq]);
+    const currentDoc = docNameFromHash(window.location.hash);
+    const decision = decideFollowNavigation(followTarget, currentDoc, followNavRef.current);
+    followNavRef.current = decision.state;
+    if (decision.navigateTo !== null) {
+      window.location.assign(hashFromDocName(decision.navigateTo));
+    }
+  }, [active, followFile, followTarget, turnActive, lastSeq]);
 
   const toggleFollow = (): void => {
     const next = !followFile;
     setFollowFile(next);
     saveFollowFilePref(next);
-    // Re-arm on re-enable so the current target is navigated to immediately.
+    // Re-enable = user explicitly wants follow back, no matter where they
+    // are. Full reset (`INITIAL_FOLLOW_NAV_STATE`) is correct here — unlike
+    // the turn-boundary re-arm, we want the current followTarget to
+    // navigate them immediately even if it matches a stale value, because
+    // the toggle-on IS the user's explicit intent to move.
     if (next) {
-      lastFollowedRef.current = null;
+      followNavRef.current = INITIAL_FOLLOW_NAV_STATE;
     }
   };
 

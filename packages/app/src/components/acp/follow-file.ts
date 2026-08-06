@@ -278,6 +278,89 @@ export function followTargetFromToolCall(
 }
 
 /**
+ * Follow-navigation state carried across a single agent turn.
+ *
+ * `lastFollowed` is the doc follow last drove the editor to (null until it has
+ * navigated at all). `yielded` latches once the user steps OFF that track —
+ * navigates the editor to a doc follow did not choose — after which follow
+ * stops driving navigation for the rest of the turn, so reading another page
+ * while an agent works elsewhere is never interrupted.
+ */
+export interface FollowNavState {
+  readonly lastFollowed: string | null;
+  readonly yielded: boolean;
+  /**
+   * A new turn just started; the NEXT off-track navigation is allowed
+   * through so the user's new intent ("send this message, track the
+   * work") beats the previous turn's yield latch. Cleared on the first
+   * real navigate.
+   *
+   * `lastFollowed` is preserved across turns — a stale `followTarget`
+   * left over from the previous turn deduplicates via
+   * `lastFollowed === followTarget` before the reArmed bypass fires. That
+   * dedupe is what keeps the re-arm from yanking the user to yesterday's
+   * work the instant they press send, on no new agent activity.
+   *
+   * Required (rather than optional) so the false vs undefined distinction
+   * disappears — a reader never has to wonder whether an absent field
+   * means "not re-armed" or "we forgot to set it".
+   */
+  readonly reArmed: boolean;
+}
+
+export const INITIAL_FOLLOW_NAV_STATE: FollowNavState = {
+  lastFollowed: null,
+  yielded: false,
+  reArmed: false,
+};
+
+/**
+ * Decide whether follow should drive the editor to `followTarget`, given where
+ * the editor currently is (`currentDoc`, the docName parsed from the location
+ * hash) and the state carried from the previous decision. Pure: returns the
+ * next state plus the docName to navigate to, or null to stay put.
+ *
+ * The yield rule is the fix for follow yanking a reader off their page: once
+ * the user navigates the editor to a doc that is neither where follow last put
+ * them nor where follow wants them next, they have taken manual control, so
+ * follow latches off until it is re-armed (a new turn, or the follow toggle).
+ * The first navigation of a turn (`lastFollowed === null`) is never treated as
+ * off-track — that is follow catching up to the agent, not the user leaving.
+ */
+export function decideFollowNavigation(
+  followTarget: string | null,
+  currentDoc: string | null,
+  state: FollowNavState,
+): { navigateTo: string | null; state: FollowNavState } {
+  if (followTarget === null) return { navigateTo: null, state };
+  // Already followed this exact target — nothing new to do. Preserved before
+  // the yield/off-track check so a stale target left over from the previous
+  // turn (followTarget is derived from the accumulated event log and only
+  // resets on log shrink) doesn't yank the user to yesterday's work the
+  // instant they start a new turn. Leaves `reArmed` intact so a subsequent
+  // FRESH target this turn still gets the bypass.
+  if (state.lastFollowed === followTarget) return { navigateTo: null, state };
+  const offTrack =
+    state.lastFollowed !== null &&
+    currentDoc !== null &&
+    currentDoc !== state.lastFollowed &&
+    currentDoc !== followTarget;
+  // A re-armed turn bypasses off-track for one fresh navigation — the user
+  // just directed the agent with a new prompt, so their prior yield preference
+  // is stale; the new work should follow. `yielded` alone is not enough to
+  // block: the whole point of re-arm is to clear it.
+  if (offTrack && !state.reArmed) {
+    return { navigateTo: null, state: { ...state, yielded: true } };
+  }
+  if (state.yielded && !state.reArmed) return { navigateTo: null, state };
+  const next: FollowNavState = { lastFollowed: followTarget, yielded: false, reArmed: false };
+  // The editor is already on the target (the user opened it, or follow put them
+  // there last tick) — record it so future targets dedupe, but don't re-navigate.
+  if (currentDoc === followTarget) return { navigateTo: null, state: next };
+  return { navigateTo: followTarget, state: next };
+}
+
+/**
  * The latest followable document across a transcript's items (last tool call
  * with a resolvable target wins — that is what the agent touched most
  * recently).

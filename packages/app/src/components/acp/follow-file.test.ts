@@ -2,8 +2,11 @@ import { describe, expect, test } from 'vitest';
 import type { RenderedToolCall } from '@/lib/acp/thread-event-model';
 import type { Workspace } from '@/lib/workspace-paths';
 import {
+  decideFollowNavigation,
   docNameFromAbsolutePath,
+  type FollowNavState,
   followTargetFromToolCall,
+  INITIAL_FOLLOW_NAV_STATE,
   latestFollowTarget,
   pageListFollowOptions,
 } from './follow-file';
@@ -612,5 +615,173 @@ describe('pageListFollowOptions', () => {
     expect(opts.docExists?.('plans/launch')).toBe(true);
     expect(opts.docExists?.('main')).toBe(false);
     expect(opts.docExists?.('')).toBe(false);
+  });
+});
+
+describe('decideFollowNavigation', () => {
+  const initial: FollowNavState = INITIAL_FOLLOW_NAV_STATE;
+
+  test('no target → stay put, state unchanged', () => {
+    expect(decideFollowNavigation(null, 'reading/here', initial)).toEqual({
+      navigateTo: null,
+      state: initial,
+    });
+  });
+
+  test('first follow of a turn navigates and records the target', () => {
+    // Even when the reader is parked on another page: the first navigation of a
+    // turn is follow catching up to the agent (you launched it), not a yank.
+    expect(decideFollowNavigation('serafin', 'shagun-show-and-tell', initial)).toEqual({
+      navigateTo: 'serafin',
+      state: { lastFollowed: 'serafin', yielded: false, reArmed: false },
+    });
+  });
+
+  test('same target again → no re-navigation', () => {
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: false, reArmed: false };
+    expect(decideFollowNavigation('serafin', 'serafin', state)).toEqual({
+      navigateTo: null,
+      state,
+    });
+  });
+
+  test('agent moves to a new file while the reader stayed on track → follows along', () => {
+    // The editor is still where follow last put it (serafin) — the user has not
+    // taken control, so follow tracks the agent to its next file.
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: false, reArmed: false };
+    expect(decideFollowNavigation('orbit/plan', 'serafin', state)).toEqual({
+      navigateTo: 'orbit/plan',
+      state: { lastFollowed: 'orbit/plan', yielded: false, reArmed: false },
+    });
+  });
+
+  test('reader navigated off-track → yields, and stays yielded for later targets', () => {
+    // The reported bug: user reading shagun while the agent moves to serafin.
+    // The editor (shagun) is neither where follow last put them (serafin from an
+    // earlier write) nor the new target — so follow yields instead of yanking.
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: false, reArmed: false };
+    const first = decideFollowNavigation('orbit/plan', 'shagun-show-and-tell', state);
+    expect(first).toEqual({
+      navigateTo: null,
+      state: { lastFollowed: 'serafin', yielded: true, reArmed: false },
+    });
+    // A further agent write does not resume the yank — the latch holds. Full
+    // state assertion pins the invariant that `lastFollowed` stays on the
+    // last real anchor ('serafin') and doesn't drift to the yielded target;
+    // a refactor overwriting it would poison the next off-track comparison.
+    const second = decideFollowNavigation('orbit/deep', 'shagun-show-and-tell', first.state);
+    expect(second).toEqual({
+      navigateTo: null,
+      state: { lastFollowed: 'serafin', yielded: true, reArmed: false },
+    });
+  });
+
+  test('the user navigating to the exact new target is not treated as off-track', () => {
+    // They landed where follow wanted them anyway — record it (no navigation),
+    // and keep following so the next target still tracks.
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: false, reArmed: false };
+    const decision = decideFollowNavigation('orbit/plan', 'orbit/plan', state);
+    expect(decision).toEqual({
+      navigateTo: null,
+      state: { lastFollowed: 'orbit/plan', yielded: false, reArmed: false },
+    });
+    // Not yielded → the agent's next file still follows.
+    expect(decideFollowNavigation('orbit/next', 'orbit/plan', decision.state).navigateTo).toBe(
+      'orbit/next',
+    );
+  });
+
+  test('an unknown current doc (null hash) on first follow still navigates', () => {
+    expect(decideFollowNavigation('serafin', null, initial)).toEqual({
+      navigateTo: 'serafin',
+      state: { lastFollowed: 'serafin', yielded: false, reArmed: false },
+    });
+  });
+
+  test('a null current hash after a prior follow still follows the next target', () => {
+    // Guard the `currentDoc !== null` sub-clause of the off-track predicate:
+    // an unknown hash (fresh mount, race between navigation and effect) must
+    // NOT count as "user is off-track" — treating unknown as missing would
+    // silently latch yielded mid-turn. Pinned so a refactor dropping the
+    // null-guard fires this test.
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: false, reArmed: false };
+    const decision = decideFollowNavigation('orbit/plan', null, state);
+    expect(decision).toEqual({
+      navigateTo: 'orbit/plan',
+      state: { lastFollowed: 'orbit/plan', yielded: false, reArmed: false },
+    });
+  });
+
+  test('a null current hash while yielded stays yielded (unknown hash does not un-latch)', () => {
+    // Companion to the null-hash-fresh-mount case above: when yield is
+    // already latched, an unknown hash must NOT reset it. A refactor that
+    // treated `currentDoc === null` as "safe to follow again" would resume
+    // driving navigation mid-turn even though the user had manually taken
+    // control and their prior yield is still in effect.
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: true, reArmed: false };
+    expect(decideFollowNavigation('orbit/plan', null, state)).toEqual({
+      navigateTo: null,
+      state, // unchanged — yielded stays latched.
+    });
+  });
+
+  test('user opening the agent target while yielded does not clear the yield latch', () => {
+    // The yielded guard runs BEFORE the currentDoc === followTarget branch
+    // — deliberately. A reader who latched a yield earlier this turn and
+    // then happens to open the agent's current file (via the omnibar or a
+    // link) is not signaling "resume follow"; they're still directing
+    // their own navigation. Pinned so a well-meaning reorder that lets
+    // the target-match branch fire first (silently un-latching yield)
+    // fails this test.
+    const state: FollowNavState = { lastFollowed: 'serafin', yielded: true, reArmed: false };
+    expect(decideFollowNavigation('orbit/plan', 'orbit/plan', state)).toEqual({
+      navigateTo: null,
+      state, // yielded stays latched; lastFollowed stays 'serafin'.
+    });
+  });
+
+  test('re-armed state (fresh cold turn) follows a new target from a parked reader', () => {
+    // Cold-start re-arm: no prior lastFollowed. `INITIAL_FOLLOW_NAV_STATE`
+    // carries `reArmed: false`, but still behaves like a re-armed turn
+    // because `lastFollowed === null` short-circuits off-track. Pins the
+    // golden path — launch a fresh agent, editor tracks its first write
+    // even if reader is on some unrelated doc.
+    expect(decideFollowNavigation('orbit/plan', 'shagun-show-and-tell', initial)).toEqual({
+      navigateTo: 'orbit/plan',
+      state: { lastFollowed: 'orbit/plan', yielded: false, reArmed: false },
+    });
+  });
+
+  test('turn boundary re-arm dedupes the stale followTarget (no yank to yesterday`s work)', () => {
+    // The regression pullfrog surfaced: `followTarget` is scanned from the
+    // accumulated event log and doesn't reset between turns, so a new turn
+    // begins with the PREVIOUS turn's last file as `followTarget`. If the
+    // re-arm zeroed `lastFollowed`, off-track would short-circuit false
+    // (lastFollowed=null), the re-armed navigation would fire, and the
+    // editor would yank to the stale target — no new agent work required.
+    // Preserving `lastFollowed` on re-arm makes the stale target dedupe
+    // via the `lastFollowed === followTarget` early return, and `reArmed`
+    // stays intact for the NEXT fresh target this turn.
+    const yielded: FollowNavState = { lastFollowed: 'serafin', yielded: true, reArmed: false };
+    // Turn boundary re-arm: yielded cleared, reArmed set, lastFollowed preserved.
+    const rearmed: FollowNavState = { ...yielded, yielded: false, reArmed: true };
+    const staleTick = decideFollowNavigation('serafin', 'shagun-show-and-tell', rearmed);
+    // Dedupe hit — no navigation to the stale target, state unchanged so
+    // the bypass survives for the next real target.
+    expect(staleTick).toEqual({ navigateTo: null, state: rearmed });
+    // Now the agent actually produces new work; the re-arm bypass fires and
+    // the user's new intent (they pressed send) wins over their prior yield.
+    const fresh = decideFollowNavigation('orbit/plan', 'shagun-show-and-tell', staleTick.state);
+    expect(fresh).toEqual({
+      navigateTo: 'orbit/plan',
+      state: { lastFollowed: 'orbit/plan', yielded: false, reArmed: false },
+    });
+    // reArmed is one-shot: a subsequent off-track target from the same turn
+    // yields, matching the pre-re-arm semantics inside a single turn.
+    const later = decideFollowNavigation('orbit/deep', 'shagun-show-and-tell', fresh.state);
+    expect(later).toEqual({
+      navigateTo: null,
+      state: { lastFollowed: 'orbit/plan', yielded: true, reArmed: false },
+    });
   });
 });

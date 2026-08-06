@@ -1550,6 +1550,15 @@ export function SessionsHost({
                 // transcript only — never while a terminal (or another thread) is
                 // focused, and never when the channel is healthy.
                 showConnectionBanner={threadConnectionDown && session.id === activeSessionId}
+                // Only the actively-viewed thread (selected tab + dock on
+                // screen) drives follow-the-file; a hidden background thread's
+                // agent write must not yank the editor off the user's page.
+                // Gates on `visible`, not `isShowing`, because `isShowing` dips
+                // for a commit whenever the container's callback ref
+                // re-attaches (see the focus-management block below) — using
+                // it here would drop a follow tick for no user-visible
+                // reason. `visible` is the stable "dock is on screen" signal.
+                active={visible && session.id === activeSessionId}
               />
             )}
           </TabsContent>
@@ -1587,10 +1596,13 @@ function ThreadPanel({
   threadId,
   info,
   showConnectionBanner,
+  active,
 }: {
   threadId: string;
   info: ThreadInfo | undefined;
   showConnectionBanner: boolean;
+  /** The user is actively viewing this thread — gates follow-the-file. */
+  active: boolean;
 }) {
   if (info === undefined) return null;
   return (
@@ -1607,7 +1619,7 @@ function ThreadPanel({
           </div>
         }
       >
-        <ThreadView key={threadId} info={info} />
+        <ThreadView key={threadId} info={info} active={active} />
       </Suspense>
     </>
   );
