@@ -1,16 +1,23 @@
 # Locale review and promotion
 
-OpenKnowledge enumerates eleven interface locales and offers three of them in the language
-picker. The other eight have complete catalogs that nobody can select. That gap is deliberate,
-and this file is how a locale crosses it.
+OpenKnowledge enumerates eleven interface locales and offers nine of them in the language
+picker. The two it withholds are withheld for a layout reason, not a translation one. This file
+records which of the nine a reader of the language has actually read, which is a different
+question from which ones are offered, and it is the file to update when that changes.
 
-Completeness is not the bar. Every catalog in `src/locales/` is full, because the agent that
-writes a string writes its ten translations in the same change. What ten of them have not had is
-a reader — someone who reads the language telling us the words are right. Offering a language in
-the picker is standing behind it, and we can only stand behind what someone has read.
+Completeness is not the bar and never was. Every catalog in `src/locales/` is full, because the
+agent that writes a string writes its ten translations in the same change. What most of them
+have not had is a reader — someone who reads the language telling us the words are right.
 
-So: **a locale enters the picker when someone who reads it has reviewed it.** Nothing else
-promotes one. Not 100% coverage, not a green CI run, not another model agreeing with the first.
+**Being unread does not hold a language back from the picker.** It used to, and the effect was
+backwards: the people who could tell us a translation was wrong were the same people who could
+never encounter it, because it was not offered to them. So the nine ship, they ship labelled as
+machine-translated where that is what they are, and corrections come back through
+[the translation page](https://openknowledge.ai/docs/contribute/translations) as ordinary pull
+requests.
+
+What that does not do is let us claim they are reviewed. The table below is the whole of that
+claim, and most rows say `unreviewed` for as long as that is true.
 
 ## The state of each locale
 
@@ -30,29 +37,60 @@ promotes one. Not 100% coverage, not a green CI run, not another model agreeing 
 
 `source` is the catalog whose `msgstr` is the English text itself; there is nothing to review.
 
-`unreviewed` is a complete, machine-checked catalog no native reader has seen. Eight of eleven.
+`unreviewed` is a complete, machine-checked catalog no native reader has seen. Eight of eleven,
+and six of those eight are offered in the picker anyway. That pairing is the honest state of
+this project's interface translations and the reason this file exists.
 
 `reviewed` is the bar this file describes: someone who reads the language read it and said so
 where a stranger can find it. **No locale holds this status yet.** The first one to earn it will
-be the first promotion this process actually produced.
+be the first review this process actually produced.
 
-`vouched` is weaker, and exists so the two locales that shipped in the picker before this process
+`vouched` is weaker, and exists so the two locales that shipped in the picker before this file
 did are recorded truthfully rather than rounded up. Neither has had a native review; each was
 offered for a stated reason that is not one. Recording it this way is not an accusation, it is
 the point of having a record: `zh-Hans` in particular is the locale most likely to have real
 users and the one with no reader, which makes it the obvious first packet to send out.
 
-A **blocker** is a reason the locale cannot be offered even with a clean review. Both current
-blockers are the same one: the chrome still lays out with physical margins and insets rather than
-logical ones, so a right-to-left base direction over it is visibly wrong rather than merely
-unpolished. That is a layout problem no translation fixes, and it is deferred until an
-Arabic- or Urdu-reading user or contributor appears. Their catalogs stay complete and
-freshness-gated in the meantime.
+A **blocker** is a reason the locale cannot be offered however good its catalog is. Both current
+blockers are the same one, and it is about layout rather than words. Their catalogs stay
+complete and freshness-gated in the meantime.
 
-Those two are also the reason the packet is a file rather than an instruction to run the app: a
-contributor who opened OpenKnowledge in Arabic today would be looking at a broken layout, so
-"run it in your language and tell us how it reads" is advice that works for eight locales and
-fails for the two that need it most. A packet works for all ten.
+## The right-to-left blocker, in detail
+
+`ar` and `ur` are complete and correct as text. What is not finished is the chrome around the
+text. Setting `dir="rtl"` does mirror most of it — the shell is flex and grid, which follow the
+writing mode without being asked, and user-authored text isolates via `dir="auto"` so filenames
+and document bodies keep their own direction. What remains, measured against a running app with
+`appearance.language: ar` and `<html dir="rtl">`:
+
+- **Text that stays left-aligned inside a right-to-left pane.** `text-left` sits outside the
+  logical-property lint rule's scope by design, and forty-odd uses survive in the chrome. Six
+  computed to `text-align: left` on the document surface alone — the same six as in English,
+  which is what makes them wrong rather than incidental.
+- **`ml-auto` spacers that push the wrong way.** They mean "shove this to the far end of the
+  row", which under `rtl` becomes the near end. Trailing affordances land beside their labels
+  instead of opposite them.
+- **Arrows, chevrons and disclosure triangles that do not mirror.** They are static icons, so a
+  right-pointing chevron keeps pointing right when forward has become left. The panel-collapse
+  control is the one you see first; there are around 150 directional icon uses in the chrome.
+- **`tracking-*` on section headings.** The most visible defect, and the one least about
+  direction: 0.7px of letter-spacing on `الملفات`, `الخصائص`, `المخطط` and every command-palette
+  group heading pulls Arabic apart at the joins, which for a cursive script is not a spacing
+  change but a rendering fault.
+- **Physical margins and padding landing on the far side.** Small individually, systematic in
+  aggregate.
+- **The Electron menu bar**, built in the main process, with no direction handling at all.
+
+A green `pnpm check` is not evidence against any of this. The logical-property lint rule carries
+a documented pre-rule backlog — a file-level `biome-ignore-all` on the 81 chrome files that
+predate it, covering around 148 utilities — and the shadcn primitives under `components/ui/` are
+exempt from it entirely while holding well over a hundred physical utilities of their own. The
+rule is a ratchet on new code, not a statement about the code already there.
+
+None of that is a reason not to review the words. It is a reason not to offer the language while
+the layout renders them wrongly, and it is why the packet below is a file rather than an
+instruction to run the app: a contributor who opened OpenKnowledge in Arabic today would spend
+the hour on defects that are not theirs.
 
 This table is parsed, not just read: `scripts/generate-locale-review-packet.mjs` refuses to build
 a packet for a locale with no row here, and `scripts/generate-locale-review-packet.test.mjs` pins
@@ -77,9 +115,9 @@ strings first. Asking for 2,900 gets the request declined or skimmed, and a skim
 everything is worth less than a real review of the part that matters. The script's header states
 the rule; so does the packet, so the reviewer knows what they are being handed.
 
-A contributor who *can* run the app should also run it in their language — `OK_LANG=fr ok start`
-activates any enumerated locale, promoted or not. That is a better review than the packet. The
-packet exists so that not being able to do it is not a blocker.
+A contributor who *can* run the app should also run it in their language — the picker offers
+nine of them directly, and `OK_LANG=ar ok start` activates the other two. That is a better
+review than the packet. The packet exists so that not being able to do it is not a blocker.
 
 ### 2. Send it out
 
@@ -99,7 +137,7 @@ the catalog holding two words for one concept, which is worse than either word a
 
 Update this file's table in the same PR: `Status` to `reviewed`, `Basis` to the reviewer's name or
 handle, `Evidence` to something a stranger can follow back — a PR number, an issue link, a thread.
-"An agent reviewed it" is not evidence and does not count; the entire reason this process exists
+"An agent reviewed it" is not evidence and does not count; the entire reason this record exists
 is that a model checking another model's translation tells us nothing new.
 
 A review that comes back with corrections is still a review. What decides the status is that a
@@ -109,33 +147,29 @@ reader of the language read it, not that they had nothing to say.
 `src/locales/` against the index, so an unstaged edit to this file or to `GLOSSARY.md` is
 reported as catalog drift and sends you off to re-run an extractor that will change nothing.
 
-## Promoting a locale
+## Offering a locale
 
-One line, in `packages/core/src/i18n/locales.ts` — adding the tag to the tuple. Promoting `fr`
-would read:
-
-```ts
-export const PICKER_LOCALES = ['en', 'es', 'zh-Hans', 'fr'] as const satisfies readonly SupportedLocale[];
-```
-
-That is the whole change. Everything downstream derives from that tuple:
+One line, in `packages/core/src/i18n/locales.ts` — adding the tag to `PICKER_LOCALES`. Everything
+downstream derives from that tuple:
 
 - The Settings picker renders `PICKER_LOCALES`, so the language appears with no UI edit.
-- `scripts/check-i18n-picker-completeness.mjs` reads the same tuple and starts gating the new
-  locale absolutely — a picker entry backed by a partial catalog fails CI from that commit on.
+- `scripts/check-i18n-picker-completeness.mjs` reads the same tuple and gates the new locale
+  absolutely — a picker entry backed by a partial catalog fails CI from that commit on.
 - `packages/app/tests/meta/supported-locales-sync.test.ts` already pins `SUPPORTED_LOCALES`
   against the Lingui config, so the catalog behind the tuple is guaranteed to exist.
 
-Ship it with the table update in the same PR, so the picker and the record of why it changed
-arrive together.
+The tuple is pinned equal to the enumerated set minus `LAYOUT_DEFERRED_LOCALES`, so in practice
+a locale is offered as soon as it is enumerated and carries no blocker. Holding a new one back
+means recording a blocker for it, in the table and in the tuple, where a reader can see what the
+reason is.
 
-A locale carrying a blocker does not get this change, however clean its review. Record the
-review, leave the blocker, and promote when the blocker lifts — a reviewed Arabic catalog behind
-a layout that renders it wrongly is still not something to offer anyone.
+Recording a review is the separate change described above, and it moves the picker in neither
+direction: an unreviewed locale is already offered, and a review that comes back with
+corrections is a request for edits rather than a removal. A reader telling us the language is
+not usable as it stands is the one answer worth acting on that way, and worth writing down.
 
 ## Adding a locale nobody asked for
 
-Don't. Every enumerated locale costs a translation on every new string, forever, and buys nothing
-until someone reads it. The eight unpromoted catalogs are already more than the review capacity
-this project has; adding a twelfth makes the ratio worse, not better. The signal worth acting on
-is a person who wants the language and will read it.
+Don't. Every enumerated locale costs a translation on every new string, forever. Eleven is
+already more than the review capacity this project has; adding a twelfth makes the ratio worse,
+not better. The signal worth acting on is a person who wants the language and will read it.

@@ -41,33 +41,53 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 /**
  * The locales offered in the Settings language picker.
  *
- * Deliberately narrower than `SUPPORTED_LOCALES`: enumerated and selectable are
- * different states. A locale is enumerated from day one so the resolver, the
- * matcher and the font stack are exercised against the whole set instead of
- * being retrofitted, and it becomes selectable only once someone who reads it
- * has reviewed its catalog. Completeness is not the bar and never was: every
- * catalog here is full, and the ones outside this list are full of prose no
- * native speaker has read yet. Offering one is standing behind it.
+ * Every enumerated locale whose chrome layout is finished, which today is all
+ * of them but the two right-to-left ones.
  *
- * A stored preference naming an enumerated-but-unpromoted locale stays valid
- * and resolves normally — that is what lets a translator run the app in their
- * own language to check their own work.
+ * A complete catalog is what earns a place here. Being unread does not hold a
+ * language back: nobody on this project reads most of these, so waiting for a
+ * native review before offering one means the people who could correct it can
+ * never encounter it in the first place. Shipping it is what puts it in front
+ * of the readers it needs, and corrections come back through the public
+ * translation page rather than through a gate nobody can open.
  *
- * Adding a tag to this tuple is the whole of a promotion; the picker, the
- * completeness gate and the review record all derive from it. What has to
- * happen first, and what gets recorded, is
- * `packages/app/src/locales/REVIEW.md`.
+ * What that does not do is turn machine translation into reviewed translation.
+ * Which languages a reader has actually read stays recorded, honestly and
+ * separately, in `packages/app/src/locales/REVIEW.md`.
+ *
+ * A stored preference naming a locale held out of this tuple still resolves
+ * normally — that is what lets a contributor run the app in the language they
+ * are checking.
  */
-export const PICKER_LOCALES = ['en', 'es', 'zh-Hans'] as const satisfies readonly SupportedLocale[];
+export const PICKER_LOCALES = [
+  'en',
+  'zh-Hans',
+  'zh-Hant',
+  'hi',
+  'es',
+  'fr',
+  'bn',
+  'pt-BR',
+  'id',
+] as const satisfies readonly SupportedLocale[];
 
 /**
  * The locales whose chrome layout is not finished.
  *
- * Both are right-to-left, and the chrome still lays out with physical margin,
- * padding and inset utilities rather than logical ones — so a right-to-left
- * base direction over it is visibly wrong rather than merely unpolished. Their
- * catalogs are complete and stay enumerated; what is unfinished is the layout
- * around the words.
+ * Both are right-to-left. Setting `dir="rtl"` does mirror the bulk of the
+ * chrome — the shell is flex and grid, which follow the writing mode on their
+ * own — so what is left is a set of specific defects rather than a wholesale
+ * retrofit, and `REVIEW.md` carries the measured inventory. They are enough to
+ * be worth holding for: text that reads left-aligned inside a right-to-left
+ * pane, `ml-auto` spacers that push to the near edge instead of the far one,
+ * arrows and disclosure chevrons that keep pointing the way they did, and
+ * `tracking-*` on section headings, which pulls Arabic letters apart at the
+ * joins and is the most visible of the lot.
+ *
+ * A green `pnpm check` is not evidence against this. The logical-property lint
+ * rule carries a documented pre-rule backlog — a file-level `biome-ignore-all`
+ * on the chrome files that predate it — and the shadcn primitives under
+ * `components/ui/` are exempt from it entirely.
  *
  * Reachable by an explicit stored preference and by the `OK_LANG` override, so
  * a contributor can still run the app in the language they are checking. What

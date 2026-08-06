@@ -2,11 +2,12 @@
 /**
  * Build a self-contained review packet for one interface locale.
  *
- * A locale enters the Settings picker when someone who reads it has reviewed
- * it. Nothing here decides that; this produces the artifact the reviewer reads.
- * The output is a single Markdown file with no links into a checkout, so the
- * reviewer needs a text editor and nothing else — no clone, no install, no
- * running app. `packages/app/src/locales/REVIEW.md` is the process around it.
+ * Most of the offered locales are machine-translated and unread. This produces
+ * the artifact that asks someone who reads one to fix that: a single Markdown
+ * file with no links into a checkout, so the reviewer needs a text editor and
+ * nothing else — no clone, no install, no running app.
+ * `packages/app/src/locales/REVIEW.md` is the process around it, and the record
+ * of which languages a reader has actually been through.
  *
  * The packet is a SAMPLE and says so. The catalogs hold ~2,900 messages per
  * locale; nobody reads 2,900 strings as a favour, and a review request that
@@ -353,7 +354,7 @@ function endonym(locale) {
  */
 function stakes({ offered, promotable }) {
   if (offered) {
-    return '- **If you approve:** nothing changes on screen — the language is already offered. What changes is that it is offered because someone read it, rather than because nobody had reason to doubt it. If you do not approve, we take it out of the picker.';
+    return '- **If you approve:** nothing changes on screen — the language is already offered. What changes is that it is offered because someone read it, rather than because nobody had reason to doubt it. Corrections are the expected answer and land as ordinary edits; if you tell us it is not usable as it stands, we take it out of the picker.';
   }
   if (promotable) {
     return '- **If you approve:** the language is added to the in-app language picker and users can select it.';
@@ -577,8 +578,8 @@ function main(argv) {
   if (!locale) {
     console.error('Usage: node scripts/generate-locale-review-packet.mjs <locale> [--out <file>]');
     console.error('');
-    console.error('  Builds the review packet a native speaker reads before a locale can be');
-    console.error(`  offered in the language picker. Process: ${REVIEW_MD}`);
+    console.error('  Builds the packet a native speaker reads to tell us whether a locale');
+    console.error(`  reads correctly. Process: ${REVIEW_MD}`);
     return 1;
   }
 

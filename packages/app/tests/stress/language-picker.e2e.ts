@@ -89,7 +89,11 @@ test.describe('language picker', () => {
     await expect(trigger).toHaveText('System');
   });
 
-  test('offers only the reviewed locales', async ({ page }) => {
+  // The literal list is the point: it is what a user sees, spelled the way they
+  // see it, and it is the one place a promotion has to be stated rather than
+  // derived. Deriving the names from `Intl.DisplayNames` here would only agree
+  // with the component for the same reason, and say nothing.
+  test('offers every locale whose layout is finished, each named in itself', async ({ page }) => {
     // Drive to English first: the sentinel's label is translated, so the exact
     // list below only holds in one locale and this test would otherwise pass or
     // fail on whatever the test before it left stored.
@@ -98,6 +102,19 @@ test.describe('language picker', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'en', { timeout: 10_000 });
 
     await openLanguagePicker(page);
-    await expect(page.getByRole('option')).toHaveText(['System', 'English', 'español', '简体中文']);
+    // `ar` and `ur` are absent: enumerated, complete, and held back until the
+    // chrome lays out right to left.
+    await expect(page.getByRole('option')).toHaveText([
+      'System',
+      'English',
+      '简体中文',
+      '繁體中文',
+      'हिन्दी',
+      'español',
+      'français',
+      'বাংলা',
+      'português (Brasil)',
+      'Indonesia',
+    ]);
   });
 });

@@ -5,6 +5,7 @@ import {
   type ConfigBinding,
   type ConfigPatch,
   ConfigSchema,
+  LAYOUT_DEFERRED_LOCALES,
   PICKER_LOCALES,
 } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -320,25 +321,30 @@ describe('SettingsDialogBody language picker', () => {
     expect(fields.indexOf('appearance.language')).toBe(fields.indexOf('appearance.theme') + 1);
   });
 
-  test('offers the reviewed picker set and none of the enumerated rest', async () => {
+  test('names each language in itself, and offers none that is held back', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderPreferences(binding);
 
     await openLanguagePicker(user);
 
-    expect(screen.getAllByRole('option').map((el) => el.textContent)).toEqual([
-      'System',
-      'English',
-      'español',
-      '简体中文',
-    ]);
-    // Hindi is enumerated in the config schema but has had no native review, so
-    // it must not be reachable from the picker.
-    expect(screen.queryByRole('option', { name: 'हिन्दी' })).toBeNull();
+    // Named in their own language, so someone who cannot read the language on
+    // screen can still find theirs. Membership is the sibling test below; this
+    // one is about what the rows say.
+    const names = screen.getAllByRole('option').map((el) => el.textContent);
+    expect(names[0]).toBe('System');
+    expect(names).toContain('简体中文');
+    expect(names).toContain('português (Brasil)');
+
+    // The two right-to-left locales are enumerated and complete, and must stay
+    // unreachable from here while the chrome's layout for them is unfinished.
+    for (const locale of LAYOUT_DEFERRED_LOCALES) {
+      const endonym = new Intl.DisplayNames([locale], { type: 'language' }).of(locale);
+      expect(screen.queryByRole('option', { name: endonym })).toBeNull();
+    }
   });
 
-  test('derives its locale options from the reviewed set in core', async () => {
+  test('derives its locale options from the offered set in core', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderPreferences(binding);
@@ -381,16 +387,19 @@ describe('SettingsDialogBody language picker', () => {
     });
   });
 
-  test('a hand-set unpromoted locale still shows, without becoming an option', async () => {
+  test('a hand-set withheld locale still shows, without becoming an option', async () => {
     const user = userEvent.setup();
-    const config = ConfigSchema.parse({ appearance: { language: 'hi' } });
+    const config = ConfigSchema.parse({ appearance: { language: 'ar' } });
     const { binding } = makeBinding(config);
     renderPreferences(binding);
 
-    expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('हिन्दी');
+    // The trigger renders its own label rather than mirroring a selected item,
+    // which is what keeps a preference the picker does not list from showing as
+    // an empty control.
+    expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('العربية');
 
     await openLanguagePicker(user);
-    expect(screen.queryByRole('option', { name: 'हिन्दी' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'العربية' })).toBeNull();
   });
 });
 

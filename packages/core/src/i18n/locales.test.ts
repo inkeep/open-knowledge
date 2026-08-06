@@ -37,10 +37,25 @@ describe('SUPPORTED_LOCALES', () => {
 });
 
 describe('PICKER_LOCALES', () => {
-  test('offers only enumerated locales, and not all of them', () => {
+  test('offers only enumerated locales', () => {
     const enumerated = new Set<string>(SUPPORTED_LOCALES);
     expect(PICKER_LOCALES.filter((tag) => !enumerated.has(tag))).toEqual([]);
-    expect(PICKER_LOCALES.length).toBeLessThan(SUPPORTED_LOCALES.length);
+  });
+
+  // The only reason to withhold an enumerated locale is a layout that renders
+  // it wrongly. Not being read is not one — a language nobody can select is a
+  // language nobody can correct.
+  test('withholds exactly the locales whose layout is unfinished', () => {
+    const held = new Set<string>(LAYOUT_DEFERRED_LOCALES);
+    expect(PICKER_LOCALES).toEqual(SUPPORTED_LOCALES.filter((tag) => !held.has(tag)));
+  });
+
+  // Order is what the Settings picker renders, and it reads as a ranking. The
+  // enumerated order is by total speakers, which is a reason; any other order
+  // is an accident of when each locale was promoted.
+  test('keeps the enumerated order', () => {
+    const positions = PICKER_LOCALES.map((tag) => SUPPORTED_LOCALES.indexOf(tag));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 });
 

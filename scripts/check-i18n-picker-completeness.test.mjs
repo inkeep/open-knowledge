@@ -18,8 +18,24 @@ const catalogOf = (entries) => new Map(Object.entries(entries));
 describe('picker enumeration', () => {
   const picker = readPickerLocales(readFileSync(LOCALES_TS, 'utf8'));
 
-  test('reads the reviewed picker set out of core', () => {
-    expect(picker).toEqual(['en', 'es', 'zh-Hans']);
+  // Membership belongs to `packages/core/src/i18n/locales.test.ts`, which pins
+  // it against the enumerated set. Restating it here would only mean two places
+  // to edit for one promotion, and a stale copy that fails on the wrong file.
+  test('reads the offered set out of core rather than restating it', () => {
+    expect(picker.length).toBeGreaterThan(0);
+    expect(picker).toContain('en');
+    expect(picker.filter((tag) => Intl.getCanonicalLocales(tag)[0] !== tag)).toEqual([]);
+  });
+
+  // The tuple is long enough that Biome wraps it one tag per line. A parse that
+  // only handled the single-line spelling would read it as empty and gate
+  // nothing, which is the one failure mode this reader cannot afford.
+  test('reads a tuple spread across lines, which is how core writes it', () => {
+    expect(
+      readPickerLocales(
+        ["export const PICKER_LOCALES = [", "  'en',", "  'zh-Hans',", '] as const;'].join('\n'),
+      ),
+    ).toEqual(['en', 'zh-Hans']);
   });
 
   test('refuses a source it cannot find the tuple in', () => {

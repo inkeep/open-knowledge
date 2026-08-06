@@ -331,7 +331,7 @@ describe('the packet', () => {
     expect(packetFor({ promotable: true })).not.toMatch(/will not appear in the picker yet/);
   });
 
-  // Two of the three offered locales have never been read. A packet that tells
+  // Eight of the nine offered locales have never been read. A packet that tells
   // their reviewer they are deciding whether to ship a language that already
   // shipped reads as a form letter, and gets treated as one.
   test('does not tell a reviewer of an already-offered locale that it is unoffered', () => {
@@ -437,22 +437,27 @@ describe('the tracking table', () => {
     expect(undefined_).toEqual([]);
   });
 
-  // The whole point of the record: nothing is offered on an unstated basis. Two
-  // of the three current entries are `vouched` rather than `reviewed`, which is
-  // the honest reading of how they got there.
-  test('every locale the picker offers has its basis on the record', () => {
-    const unaccounted = PICKER.filter(
-      (locale) => !['source', 'reviewed', 'vouched'].includes(status.get(locale)?.status),
-    );
-    expect(unaccounted).toEqual([]);
-  });
-
-  test('every offered locale but the source states why it is offered', () => {
-    const unexplained = PICKER.filter((locale) => locale !== 'en').filter((locale) => {
-      const evidence = status.get(locale)?.evidence;
-      return !evidence || evidence === '—';
+  // The reversal, stated as an invariant: an unread catalog is still offered,
+  // so the only thing that keeps an enumerated locale out of the picker is a
+  // recorded blocker. Withholding one for any other reason has to show up here
+  // as a failure rather than as a quiet omission from the tuple.
+  test('nothing is withheld from the picker without a recorded blocker', () => {
+    const withheld = SUPPORTED.filter((locale) => !PICKER.includes(locale));
+    const unexplained = withheld.filter((locale) => {
+      const blocker = status.get(locale)?.blocker;
+      return !blocker || blocker === '—';
     });
     expect(unexplained).toEqual([]);
+  });
+
+  // The other half of honesty: being offered claims nothing, but claiming to
+  // have been read claims something a stranger has to be able to check.
+  test('every locale recorded as read says who read it and where to look', () => {
+    const unsubstantiated = [...status.entries()]
+      .filter(([, row]) => ['reviewed', 'vouched'].includes(row.status))
+      .filter(([, row]) => !row.basis || row.basis === '—' || !row.evidence || row.evidence === '—')
+      .map(([locale]) => locale);
+    expect(unsubstantiated).toEqual([]);
   });
 
   // `vouched` records how the v1 picker got its entries. It is not a status to

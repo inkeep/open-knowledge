@@ -14,8 +14,7 @@ each time.
 Eight nouns is deliberately small — under a hundred cells against ~2,800 catalog entries per
 locale. It is the one artifact in this system short enough for a native speaker to review end
 to end, which is what makes it worth more than the same effort spread over the catalogs.
-That review, and what it takes to get a locale into the language picker, is
-[`REVIEW.md`](./REVIEW.md).
+That review, and which locales have actually had one, is [`REVIEW.md`](./REVIEW.md).
 
 ## Never translated
 

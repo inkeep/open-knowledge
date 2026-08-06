@@ -17,11 +17,7 @@
  * hook.
  */
 
-import {
-  LAYOUT_DEFERRED_LOCALES,
-  type LanguagePreference,
-  PICKER_LOCALES,
-} from '@inkeep/open-knowledge-core';
+import { LAYOUT_DEFERRED_LOCALES, type LanguagePreference } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { dynamicActivate } from './activate-locale';
@@ -132,16 +128,6 @@ describe('useApplyConfigLanguage', () => {
     expect(i18n.locale).toBe('fr');
   });
 
-  test('a language nobody has reviewed yet still activates', async () => {
-    // The picker withholds these; a stored value must not, or a translator
-    // cannot run the app in the language they are translating.
-    expect(PICKER_LOCALES).not.toContain('zh-Hant');
-
-    await renderHarness('zh-Hant', true);
-
-    expect(i18n.locale).toBe('zh-Hant');
-  });
-
   test('the bootstrap catalog stands until the user layer has loaded', async () => {
     // An absent preference and an unloaded one look identical on the value
     // alone. Acting on the unloaded one activates the browser's language on
@@ -178,9 +164,10 @@ describe('useApplyConfigLanguage', () => {
   });
 
   test('the browser alone cannot put the chrome in a language it cannot lay out', async () => {
-    // The chrome still uses physical margins and insets, so right-to-left is
-    // visibly wrong. An Arabic browser with nothing stored is a guess, and this
-    // is not a guess worth making on someone's behalf.
+    // Right-to-left mirrors most of the shell but leaves defects the chrome has
+    // not been swept for — `REVIEW.md` carries the inventory. An Arabic browser
+    // with nothing stored is a guess, and this is not a guess worth making on
+    // someone's behalf.
     expect(LAYOUT_DEFERRED_LOCALES).toContain('ar');
     stubBrowserLanguages(['ar-EG', 'fr-CA']);
 

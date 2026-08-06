@@ -5,7 +5,7 @@ Thanks for contributing! Bug reports, feature requests, and pull requests are al
 - **Found a bug or have an idea?** [Open an issue](https://github.com/inkeep/open-knowledge/issues/new/choose).
 - **Question or setup help?** Ask in [Discord](https://discord.gg/VRKk2EaGHN).
 - **Ready to code?** Open a pull request against this repository.
-- **Read a language other than English?** Most of our interface translations are machine-translated and have never been read by a native speaker. Reviewing one is what makes it selectable in the app — see [Translate the interface](https://openknowledge.ai/docs/contribute/translations).
+- **Read a language other than English?** Most of our interface translations are machine-translated and have never been read by a native speaker, and we ship them anyway rather than hide them from the people who could fix them. Correcting one is the most useful thing you can do for it — see [Translate the interface](https://openknowledge.ai/docs/contribute/translations).
 
 ## Development setup
 
