@@ -43,6 +43,7 @@ export {
   type WaitForProviderOptions,
   waitForActiveProviderSynced,
 } from './provider.ts';
+export { escapeRegExp } from './regexp.ts';
 export { matchIsWithinReadableScrollport } from './scrollport.ts';
 export {
   checkCollabSync,
@@ -67,4 +68,9 @@ export {
   waitForSlashMenuOpen,
 } from './slash-menu.ts';
 export { blockMarker, generateTallDoc } from './tall-doc-fixture.ts';
-export { createMp3Buffer, createMp4Buffer, createPngBuffer } from './upload-fixtures.ts';
+export {
+  createMp3Buffer,
+  createMp4Buffer,
+  createPngBuffer,
+  uniqueAssetName,
+} from './upload-fixtures.ts';

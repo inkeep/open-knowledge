@@ -21,12 +21,18 @@
  * Real Chromium, real bytes, real disk verification.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
+import {
+  escapeRegExp,
+  expect,
+  test,
+  uniqueAssetName,
+  waitForActiveProviderSynced as waitForProvider,
+} from './_helpers';
 
 const HELPERS_DIR = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(HELPERS_DIR, '_fixtures');
@@ -106,9 +112,24 @@ async function waitForDiskFile(
 }
 
 test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/005/006/010)', () => {
+  // Per-test token shared by the docName and every asset name this test
+  // uploads. Uploads land in the worker-shared contentDir keyed by filename,
+  // so a hardcoded name is claimable by any sibling spec on the same worker —
+  // whoever loses gets a `-1` collision suffix and fails its exact-path
+  // assertion. The fixture bytes stay unsalted: they are distinct real files
+  // no other spec uploads, and each test asserts the on-disk sha256 against
+  // them. Unsalted bytes are `--repeat-each`-safe too, though not because of
+  // the worker hash: `repeatEachIndex` is a property of the TestCase, not of
+  // worker identity. Each repeat schedules as an independent test instance
+  // and the per-test `runId` below re-salts every filename, so no two repeats
+  // present the same name to same-dir dedup regardless of which worker runs
+  // them.
+  let runId: string;
+
   test.beforeEach(async ({ page, api }) => {
     // Create a fresh doc for each test so uploads co-locate predictably.
-    const docName = `real-${Math.random().toString(36).slice(2, 10)}`;
+    runId = randomUUID().slice(0, 8);
+    const docName = `real-${runId}`;
     await api.createPage(`${docName}.md`);
     await api.replaceDoc(docName, '# Real\n');
     await page.goto(`/#/${docName}`);
@@ -128,15 +149,16 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     expect(pdf.subarray(0, 8).toString('utf8')).toBe('%PDF-1.4');
     const expectedSha = sha256(pdf);
 
-    await dropFileBytesIntoEditor(page, pdf, 'draft.pdf', 'application/pdf');
+    const pdfName = uniqueAssetName('draft.pdf', runId);
+    await dropFileBytesIntoEditor(page, pdf, pdfName, 'application/pdf');
 
     // Y.Text assertion
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toContain('![[draft.pdf]]');
+      .toContain(`![[${pdfName}]]`);
 
     // Disk assertion — file lands co-located beside the doc (same dir as docName.md).
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'draft.pdf');
+    const onDisk = await waitForDiskFile(workerServer.contentDir, pdfName);
     expect(onDisk.length).toBe(pdf.length);
     expect(sha256(onDisk)).toBe(expectedSha);
 
@@ -157,16 +179,17 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
   }) => {
     const mp4 = readFileSync(join(FIXTURES_DIR, 'real-video.mp4'));
     const expectedSha = sha256(mp4);
-    await dropFileBytesIntoEditor(page, mp4, 'test.mp4', 'video/mp4');
+    const mp4Name = uniqueAssetName('test.mp4', runId);
+    await dropFileBytesIntoEditor(page, mp4, mp4Name, 'video/mp4');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(/<video\s+src="\/?test\.mp4"/);
+      .toMatch(new RegExp(`<video\\s+src="/?${escapeRegExp(mp4Name)}"`));
     const text = await getSourceText(page);
     // `controls={true}` matches the descriptor default — emit-time
     // omit-on-default strips the attr; renderer applies the default at
     // load. See `serialize-helpers.ts` reconstructAttrs.
     expect(text).not.toMatch(/controls(=|\s|\/>|>)/);
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'test.mp4');
+    const onDisk = await waitForDiskFile(workerServer.contentDir, mp4Name);
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
@@ -176,13 +199,14 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
   }) => {
     const mp3 = readFileSync(join(FIXTURES_DIR, 'real-sound.mp3'));
     const expectedSha = sha256(mp3);
-    await dropFileBytesIntoEditor(page, mp3, 'test.mp3', 'audio/mpeg');
+    const mp3Name = uniqueAssetName('test.mp3', runId);
+    await dropFileBytesIntoEditor(page, mp3, mp3Name, 'audio/mpeg');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(/<audio\s+src="\/?test\.mp3"/);
+      .toMatch(new RegExp(`<audio\\s+src="/?${escapeRegExp(mp3Name)}"`));
     const text = await getSourceText(page);
     expect(text).not.toMatch(/controls(=|\s|\/>|>)/);
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'test.mp3');
+    const onDisk = await waitForDiskFile(workerServer.contentDir, mp3Name);
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
@@ -192,17 +216,18 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
   }) => {
     const zip = readFileSync(join(FIXTURES_DIR, 'real-archive.zip'));
     const expectedSha = sha256(zip);
-    await dropFileBytesIntoEditor(page, zip, 'archive.zip', 'application/zip');
+    const zipName = uniqueAssetName('archive.zip', runId);
+    await dropFileBytesIntoEditor(page, zip, zipName, 'application/zip');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toContain('archive.zip');
+      .toContain(zipName);
     const text = await getSourceText(page);
     // zip is a FILE_ATTACHMENT_EXTENSIONS member: drops route through
     // pickInsertShape 'jsx-file' -> WikiEmbedFile, whose serialize emits the
     // wiki-embed source bytes so the file persists as a File row, not an
     // opaque markdown link.
-    expect(text).toContain('![[archive.zip]]');
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'archive.zip');
+    expect(text).toContain(`![[${zipName}]]`);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, zipName);
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
@@ -221,7 +246,8 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     expect(svg.toString('utf-8')).toContain('<script>');
     const expectedSha = sha256(svg);
 
-    await dropFileBytesIntoEditor(page, svg, 'xss.svg', 'image/svg+xml');
+    const svgName = uniqueAssetName('xss.svg', runId);
+    await dropFileBytesIntoEditor(page, svg, svgName, 'image/svg+xml');
     // SVG is in IMAGE_EXTENSIONS — drops emit the canonical `<img>` JSX shape.
     // The XSS payload is still the bytes-on-disk
     // concern: render-time XSS protection is unchanged whether the chip
@@ -229,10 +255,10 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     // the browser's <img> element which doesn't execute embedded <script>.
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(/<img\s+src="\/?xss\.svg"/);
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(svgName)}"`));
 
     // Byte-identical on disk (server stores verbatim — it's render-time that protects us).
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'xss.svg');
+    const onDisk = await waitForDiskFile(workerServer.contentDir, svgName);
     expect(sha256(onDisk)).toBe(expectedSha);
 
     // WYSIWYG must NOT inject the SVG bytes as inline DOM. Image.tsx
@@ -264,15 +290,16 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
   }) => {
     const csv = readFileSync(join(FIXTURES_DIR, 'real-data.csv'));
     const expectedSha = sha256(csv);
-    await dropFileBytesIntoEditor(page, csv, 'data.csv', 'text/csv');
+    const csvName = uniqueAssetName('data.csv', runId);
+    await dropFileBytesIntoEditor(page, csv, csvName, 'text/csv');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toContain('data.csv');
+      .toContain(csvName);
     const text = await getSourceText(page);
     // csv is a FILE_ATTACHMENT_EXTENSIONS member, so the drop serializes to the
     // wiki-embed source bytes rather than a fall-through markdown link.
-    expect(text).toContain('![[data.csv]]');
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'data.csv');
+    expect(text).toContain(`![[${csvName}]]`);
+    const onDisk = await waitForDiskFile(workerServer.contentDir, csvName);
     expect(sha256(onDisk)).toBe(expectedSha);
     expect(onDisk.toString('utf-8')).toBe('name,age,city\nAlice,30,NYC\nBob,25,LA\n');
   });
@@ -288,22 +315,23 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     // the scenario was calibrated against that size and it's a
     // realistic large-asset drop.
     const docName = (page as unknown as { __docName: string }).__docName;
+    const binName = uniqueAssetName('big.bin', runId);
     const payloadBytes = 24 * 1024 * 1024;
     const resultJson = await page.evaluate(
-      async ({ docName, size }: { docName: string; size: number }) => {
+      async ({ docName, size, fileName }: { docName: string; size: number; fileName: string }) => {
         const bytes = new Uint8Array(size);
         for (let i = 0; i < size; i++) bytes[i] = (i * 13) & 0xff;
         const blob = new Blob([bytes], { type: 'application/octet-stream' });
         const fd = new FormData();
         fd.append('parentDocName', `${docName}.md`);
-        fd.append('file', blob, 'big.bin');
+        fd.append('file', blob, fileName);
         const t0 = performance.now();
         const res = await fetch('/api/upload', { method: 'POST', body: fd });
         const elapsedMs = performance.now() - t0;
         const body = (await res.json()) as { src?: string; path?: string; deduped?: boolean };
         return { status: res.status, body, elapsedMs, sentBytes: size };
       },
-      { docName, size: payloadBytes },
+      { docName, size: payloadBytes, fileName: binName },
     );
 
     expect(resultJson.status).toBe(200);
@@ -320,7 +348,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     expect(resultJson.elapsedMs).toBeLessThan(10_000);
 
     // Disk bytes are exactly what we sent, end-to-end.
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'big.bin');
+    const onDisk = await waitForDiskFile(workerServer.contentDir, binName);
     expect(onDisk.length).toBe(payloadBytes);
 
     // Log as evidence — include the smoke ceiling
@@ -345,39 +373,44 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     workerServer,
   }) => {
     // Image-extension drops emit `<img>` JSX. Dedup is asserted
-    // against filename collision-suffix shape (no `shot-1.png`), not the
-    // wikiembed text shape.
+    // against the filename collision-suffix shape (no `-1` collision
+    // variant — `collisionName`), not the wikiembed text shape.
     const png = readFileSync(join(FIXTURES_DIR, 'real-shot.png'));
     const expectedSha = sha256(png);
-    await dropFileBytesIntoEditor(page, png, 'shot.png', 'image/png');
+    const pngName = uniqueAssetName('shot.png', runId);
+    // What the server would emit if the second drop failed to dedup and had
+    // to take a collision suffix instead.
+    const collisionName = pngName.replace(/\.png$/, '-1.png');
+    await dropFileBytesIntoEditor(page, png, pngName, 'image/png');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
-      .toMatch(/<img\s+src="\/?shot\.png"/);
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(pngName)}"`));
 
     // Second drop with identical bytes
-    await dropFileBytesIntoEditor(page, png, 'shot.png', 'image/png');
+    await dropFileBytesIntoEditor(page, png, pngName, 'image/png');
 
-    // Two `<img …shot.png…>` tags should appear, BOTH pointing at shot.png
-    // (not shot-1.png).
+    // Two `<img …>` tags should appear, BOTH pointing at `pngName`
+    // (not the `-1` collision variant).
     await expect
       .poll(
         async () => {
           const t = await getSourceText(page);
-          return (t.match(/<img\s+[^>]*src="\/?shot\.png"/g) ?? []).length;
+          return (t.match(new RegExp(`<img\\s+[^>]*src="/?${escapeRegExp(pngName)}"`, 'g')) ?? [])
+            .length;
         },
         { timeout: 10_000 },
       )
       .toBeGreaterThanOrEqual(2);
     const text = await getSourceText(page);
-    expect(text).not.toContain('shot-1.png');
+    expect(text).not.toContain(collisionName);
 
     // Single file on disk, byte-exact.
-    const onDisk = await waitForDiskFile(workerServer.contentDir, 'shot.png');
+    const onDisk = await waitForDiskFile(workerServer.contentDir, pngName);
     expect(sha256(onDisk)).toBe(expectedSha);
 
     // No collision-suffix file.
     await expect(async () => {
-      await waitForDiskFile(workerServer.contentDir, 'shot-1.png', 500);
+      await waitForDiskFile(workerServer.contentDir, collisionName, 500);
     }).rejects.toThrow(/not found/);
   });
 });

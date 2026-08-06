@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import { type ApiHelpers, expect, test, waitForGraphSimulationSettled } from './_helpers';
+import {
+  type ApiHelpers,
+  escapeRegExp,
+  expect,
+  test,
+  waitForGraphSimulationSettled,
+} from './_helpers';
 
 type GraphHarness = {
   clickDoc: (docName: string) => boolean;
@@ -29,10 +35,6 @@ interface GraphFixtures {
   beta: string;
   gamma: string;
   zeta: string;
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -332,7 +334,7 @@ test('fullscreen graph exposes Explore, Orphans, Hubs, and a visible orphan togg
   await expect(orphanPanel.getByRole('button', { name: fixtures.beta })).toBeVisible();
 
   await orphanPanel.getByRole('button', { name: fixtures.gamma }).click();
-  await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.gamma)}$`));
+  await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.gamma)}$`));
 
   const hubsResponse = page.waitForResponse(
     (response) => response.ok() && response.url().includes('/api/hubs?limit=50'),
@@ -343,7 +345,7 @@ test('fullscreen graph exposes Explore, Orphans, Hubs, and a visible orphan togg
   const hubsPanel = page.locator('section').filter({ has: page.getByText('Top linked pages') });
   await expect(hubsPanel.getByRole('button', { name: fixtures.beta })).toBeVisible();
   await hubsPanel.getByRole('button', { name: fixtures.beta }).click();
-  await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.beta)}$`));
+  await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.beta)}$`));
 });
 
 test('fullscreen graph selects a document before explicitly opening it', async ({
@@ -357,7 +359,7 @@ test('fullscreen graph selects a document before explicitly opening it', async (
   await waitForGraphNode(page, fixtures.beta);
 
   expect(await clickGraphDoc(page, fixtures.beta)).toBe(true);
-  await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.alpha)}$`));
+  await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.alpha)}$`));
 
   const selectedDoc = page.getByRole('status', { name: 'Selected graph item' });
   await expect(selectedDoc).toBeVisible();
@@ -368,7 +370,7 @@ test('fullscreen graph selects a document before explicitly opening it', async (
 
   await selectedDoc.getByRole('button', { name: 'Open' }).click();
   await expect(getExpandedGraphIndicator(page)).toHaveCount(0);
-  await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.beta)}#deep-link$`));
+  await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.beta)}#deep-link$`));
 });
 
 test('fullscreen graph selecting the active document shows the already-open state', async ({
@@ -390,7 +392,7 @@ test('fullscreen graph selecting the active document shows the already-open stat
 
   await selectedDoc.getByRole('button', { name: 'Open' }).click();
   await expect(getExpandedGraphIndicator(page)).toHaveCount(0);
-  await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.alpha)}$`));
+  await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.alpha)}$`));
 });
 
 test('fullscreen graph background click clears selection', async ({ page, api, baseURL }) => {
@@ -569,5 +571,5 @@ test('docked graph clicks still navigate immediately with anchor-preserving hash
   await openGraph(page, { docName: fixtures.alpha });
   await waitForGraphNode(page, fixtures.beta);
   expect(await clickGraphDoc(page, fixtures.beta)).toBe(true);
-  await expect(page).toHaveURL(new RegExp(`#/${escapeRegex(fixtures.beta)}#deep-link$`));
+  await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.beta)}#deep-link$`));
 });

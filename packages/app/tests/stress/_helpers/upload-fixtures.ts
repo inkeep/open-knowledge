@@ -14,6 +14,28 @@
  * with a no-op rename. Pass distinct salts when a test needs distinct uploads.
  */
 
+/**
+ * Per-test asset filename for the worker-shared `contentDir`.
+ *
+ * The `workerServer` fixture hands every spec on a worker the same
+ * `contentDir`, and uploads land in it keyed by filename. When a name is
+ * already taken by bytes that don't dedup, the upload takes a `-1`
+ * collision suffix (`linkTempToFinalWithCollisionRetry` in
+ * `server/src/upload-streaming.ts`), so a spec asserting on an exact asset
+ * path has to own a name no sibling spec can claim. Per-test docName
+ * isolation does not cover this — assets are keyed by filename, not by doc.
+ *
+ * Pass the same `runId` used for the test's docName. Pair with a matching
+ * `salt` on the byte fixtures below: a unique name still resolves to a
+ * sibling's file when the bytes are byte-identical and dedup hits.
+ */
+export function uniqueAssetName(filename: string, runId: string): string {
+  const dot = filename.lastIndexOf('.');
+  return dot === -1
+    ? `${filename}-${runId}`
+    : `${filename.slice(0, dot)}-${runId}${filename.slice(dot)}`;
+}
+
 /** Minimal valid PNG (1×1 transparent pixel). `file-type` detects as image/png. */
 export function createPngBuffer(salt?: string): Buffer {
   const base = Buffer.from(

@@ -23,8 +23,10 @@ import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
   createPngBuffer,
+  escapeRegExp,
   expect,
   test,
+  uniqueAssetName,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
 
@@ -83,21 +85,25 @@ async function getSourceText(page: Page): Promise<string> {
 }
 
 const FAKE_PDF_HEADER = '%PDF-1.4\n%fake pdf bytes for e2e test\n';
-// Salt with the file-name so the server's same-dir sha256 dedup
-// (`findDuplicateAsset` in `api-extension.ts`) cannot collapse our drops
-// onto a byte-identical upload from a sister stress file sharing the
-// worker's contentDir (asset-click-dispatch.e2e.ts and drop-pipeline-
-// auto-open.e2e.ts use the same base PNG payload). P3.1's same-bytes-twice
-// dedup assertion still holds because both drops in that test reuse this
-// same constant — intra-file collisions are exactly what dedup is supposed
-// to catch.
-const TINY_PNG = Array.from(createPngBuffer('asset-embed'));
 
 test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () => {
   let docName: string;
+  // Per-test token shared by the docName and every asset this test uploads.
+  let runId: string;
+  let tinyPng: number[];
 
   test.beforeEach(async ({ page, api }) => {
-    docName = `asset-embed-${randomUUID().slice(0, 8)}`;
+    // Uploads land in the worker-shared contentDir keyed by filename, so a
+    // per-test docName is not enough isolation: a name a sibling spec already
+    // stored under different bytes comes back with a `-1` collision suffix,
+    // and bytes a sibling already stored come back under the sibling's name
+    // via same-dir sha256 dedup. Each test therefore mints both a unique
+    // asset name (`uniqueAssetName`) and unique bytes (the `runId` salt).
+    // Within a single test the bytes stay identical, which is what P3.1's
+    // same-bytes-twice dedup assertion exercises.
+    runId = randomUUID().slice(0, 8);
+    docName = `asset-embed-${runId}`;
+    tinyPng = Array.from(createPngBuffer(`asset-embed-${runId}`));
     await api.createPage(`${docName}.md`);
     await api.replaceDoc(docName, '# Test\n');
     await page.goto(`/#/${docName}`);
@@ -107,12 +113,13 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
   });
 
   test('P1.1: drop a PDF → server stores + Y.Text contains ![[draft.pdf]]', async ({ page }) => {
-    const pdfBytes = Array.from(Buffer.from(FAKE_PDF_HEADER, 'utf-8'));
-    await dropFileIntoEditor(page, pdfBytes, 'draft.pdf', 'application/pdf');
+    const pdfName = uniqueAssetName('draft.pdf', runId);
+    const pdfBytes = Array.from(Buffer.from(`${FAKE_PDF_HEADER}%${runId}\n`, 'utf-8'));
+    await dropFileIntoEditor(page, pdfBytes, pdfName, 'application/pdf');
 
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toContain('![[draft.pdf]]');
+      .toContain(`![[${pdfName}]]`);
   });
 
   test('P1.2: drop a CSV (FILE_ATTACHMENT_EXTENSIONS) → emits as ![[data.csv]] wikilink', async ({
@@ -128,12 +135,13 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
     //
     // Truly-opaque extensions (NOT in any extension set, e.g. `.xyz`)
     // still fall through to the plain markdown link emit.
-    const csvBytes = Array.from(Buffer.from('a,b,c\n1,2,3\n', 'utf-8'));
-    await dropFileIntoEditor(page, csvBytes, 'data.csv', 'text/csv');
+    const csvName = uniqueAssetName('data.csv', runId);
+    const csvBytes = Array.from(Buffer.from(`a,b,c\n1,2,3\n${runId},4,5\n`, 'utf-8'));
+    await dropFileIntoEditor(page, csvBytes, csvName, 'text/csv');
 
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toContain('![[data.csv]]');
+      .toContain(`![[${csvName}]]`);
   });
 
   test('P3.1: same PNG dropped twice → second drop dedups, single file on disk', async ({
@@ -142,31 +150,38 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
     // Image-extension drops emit the OK-canonical `<img>` JSX shape —
     // drag/drop/paste land on the same Image.tsx renderer as slash-menu
     // insert + CommonMarkImage compat. On-disk markdown is
-    // `<img src="/shot.png" />` (alt omitted on drop so the chrome-bar
+    // `<img src="/<pngName>" />` (alt omitted on drop so the chrome-bar
     // gear nudge fires); dedup is asserted by the server returning the
-    // same path for both drops (no `shot-1.png` collision-suffix).
-    await dropFileIntoEditor(page, TINY_PNG, 'shot.png', 'image/png');
+    // same path for both drops (no `-1` collision-suffix — `collisionName`).
+    const pngName = uniqueAssetName('shot.png', runId);
+    // What the server would emit if the second drop failed to dedup and had
+    // to take a collision suffix instead.
+    const collisionName = pngName.replace(/\.png$/, '-1.png');
+
+    await dropFileIntoEditor(page, tinyPng, pngName, 'image/png');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toMatch(/<img\s+src="\/?shot\.png"/);
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(pngName)}"`));
 
     // Second drop with identical bytes — server returns deduped:true and
     // the filename in the second emit matches the existing on-disk file.
-    await dropFileIntoEditor(page, TINY_PNG, 'shot.png', 'image/png');
+    await dropFileIntoEditor(page, tinyPng, pngName, 'image/png');
 
-    // Two `<img …shot.png…>` tags appear after both inserts; both reference
+    // Two `<img …>` tags appear after both inserts; both reference
     // the same filename (no collision-suffix). Counts the JSX shape.
     await expect
       .poll(
         async () => {
           const text = await getSourceText(page);
-          return (text.match(/<img\s+[^>]*src="\/?shot\.png"/g) ?? []).length;
+          return (
+            text.match(new RegExp(`<img\\s+[^>]*src="/?${escapeRegExp(pngName)}"`, 'g')) ?? []
+          ).length;
         },
         { timeout: 5_000 },
       )
       .toBeGreaterThanOrEqual(2);
     const text = await getSourceText(page);
-    expect(text).not.toContain('shot-1.png');
+    expect(text).not.toContain(collisionName);
   });
 
   test('P1.1-paste: paste a PNG via ClipboardEvent → Y.Text contains <img src=".../shot.png">', async ({
@@ -179,6 +194,12 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
     // break the dominant screenshot-paste workflow on macOS. The below
     // synthesizes a paste event with a single PNG file, matching what
     // Cmd+V produces when the clipboard contains a pasted image.
+    //
+    // The per-test name + salt matter for what this asserts: with the drop
+    // test's name and bytes, the paste would resolve to that test's existing
+    // file through same-dir dedup and pass without ever exercising a fresh
+    // paste-side store.
+    const pngName = uniqueAssetName('shot.png', runId);
     await page.evaluate(
       ({ bytes, name, type }) => {
         // Use the active editor (`window.__activeEditor.view.dom`) — see
@@ -199,12 +220,12 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
           }),
         );
       },
-      { bytes: TINY_PNG, name: 'shot.png', type: 'image/png' },
+      { bytes: tinyPng, name: pngName, type: 'image/png' },
     );
 
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toMatch(/<img\s+src="\/?shot\.png"/);
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(pngName)}"`));
   });
 
   test('SVG drop emits as <img> JSX (image extension; NFR-3 sniff-fallback path)', async ({
@@ -214,12 +235,13 @@ test.describe('asset-embed — drop UX (SPEC §6 FR-1, FR-1a, FR-2, FR-8)', () =
     // image/svg+xml so the file lands as an image. SVG is in
     // IMAGE_EXTENSIONS so the drop routes through the canonical
     // `<img>` JSX shape.
+    const svgName = uniqueAssetName('diagram.svg', runId);
     const svgBytes = Array.from(
-      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>', 'utf-8'),
+      Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"><rect id="${runId}"/></svg>`, 'utf-8'),
     );
-    await dropFileIntoEditor(page, svgBytes, 'diagram.svg', 'image/svg+xml');
+    await dropFileIntoEditor(page, svgBytes, svgName, 'image/svg+xml');
     await expect
       .poll(async () => await getSourceText(page), { timeout: 5_000 })
-      .toMatch(/<img\s+src="\/?diagram\.svg"/);
+      .toMatch(new RegExp(`<img\\s+src="/?${escapeRegExp(svgName)}"`));
   });
 });

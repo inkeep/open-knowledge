@@ -12,6 +12,7 @@
 
 import type { Locator, Page } from '@playwright/test';
 import { expect } from './fixtures.ts';
+import { escapeRegExp } from './regexp.ts';
 
 /**
  * Sidebar-scoped locator for the file-row button matching `name` exactly.
@@ -20,10 +21,6 @@ import { expect } from './fixtures.ts';
 export function sidebarFileButton(page: Page, name: string): Locator {
   const sidebar = page.locator('[data-slot="sidebar-container"]');
   return sidebar.getByText(name, { exact: true });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function sidebarTreeItem(page: Page, name: string): Locator {

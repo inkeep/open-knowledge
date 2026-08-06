@@ -21,7 +21,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { escapeRegExp, expect, test } from './_helpers';
 
 /** Show All entry cap for this file's dedicated worker server. */
 const SHOW_ALL_CAP = 25;
@@ -29,10 +29,6 @@ const SHOW_ALL_CAP = 25;
 const OVERFLOW_CHILD_COUNT = SHOW_ALL_CAP + 5;
 
 test.use({ workerServerEnv: { OK_SHOWALL_MAX_ENTRIES: String(SHOW_ALL_CAP) } });
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function uniqueStamp(): string {
   return `${Date.now().toString(36)}${Math.floor(Math.random() * 1e8).toString(36)}`;
