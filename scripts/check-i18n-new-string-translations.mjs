@@ -31,6 +31,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gitCleanEnv } from './git-clean-env.mjs';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -222,8 +223,23 @@ export function formatReport({ gaps, missingCatalogs }) {
   return lines.join('\n');
 }
 
+/**
+ * Every spawn here means "the repository holding this script", never whichever
+ * repository the caller belongs to — hence the `cwd` pin to the subtree root.
+ *
+ * `cwd` alone does not say that. Git's hook-exported `GIT_*` variables override
+ * cwd-based discovery outright, and git exports them for pre-push and
+ * pre-commit — the one context this gate exists to run in. With `GIT_DIR`
+ * inherited and `GIT_WORK_TREE` unset, git takes cwd for the top of the work
+ * tree, `--show-prefix` answers the empty string, and the base catalog is read
+ * at `packages/app/...` rather than `public/open-knowledge/packages/app/...`.
+ * Objects resolve in the inherited repository too, so the failure is not
+ * confined to a missing path: pointed somewhere that happens to carry a catalog
+ * at the unprefixed path, this would diff against a foreign baseline and report
+ * a verdict about the wrong tree.
+ */
 function git(args, { cwd = OK_ROOT } = {}) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const result = spawnSync('git', args, { cwd, env: gitCleanEnv(), encoding: 'utf8' });
   return {
     ok: result.status === 0,
     stdout: (result.stdout ?? '').trim(),

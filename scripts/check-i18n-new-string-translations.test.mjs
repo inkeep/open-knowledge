@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -12,6 +13,7 @@ import {
   requiredPluralCategories,
   SOURCE_LOCALE,
 } from './check-i18n-new-string-translations.mjs';
+import { gitCleanEnv } from './git-clean-env.mjs';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LOCALES_TS = join(OK_ROOT, 'packages/core/src/i18n/locales.ts');
@@ -280,5 +282,104 @@ describe('wiring', () => {
   test('the source locale is the one Lingui extracts from', () => {
     const linguiConfig = readFileSync(join(OK_ROOT, 'packages/app/lingui.config.ts'), 'utf8');
     expect(linguiConfig).toContain(`sourceLocale: '${SOURCE_LOCALE}'`);
+  });
+});
+
+/**
+ * Every git spawn in the checker means "the repository containing this script",
+ * never "whatever repository the process that invoked it belongs to". The
+ * checker states that by pinning `cwd` to the subtree root — but `cwd` alone
+ * does not say it. Git's hook-exported `GIT_*` variables override cwd-based
+ * discovery entirely, and git exports them for pre-push and pre-commit, so the
+ * one context this gate exists to run in is the context that silently redirects
+ * it.
+ *
+ * Concretely, with `GIT_DIR` inherited and `GIT_WORK_TREE` unset, git treats cwd
+ * as the top of the work tree. `rev-parse --show-prefix` then answers the empty
+ * string, the base catalog is looked up at `packages/app/...` instead of
+ * `public/open-knowledge/packages/app/...`, and the gate dies on a path that is
+ * sitting right there on disk. The nastier half is that the redirect is not
+ * confined to the prefix: object lookups resolve in the inherited repository
+ * too, so a `GIT_DIR` aimed somewhere that DOES carry a catalog at the
+ * unprefixed path would have the gate diff against a foreign baseline and report
+ * a verdict about the wrong tree.
+ *
+ * Hooks scrubbing `GIT_*` themselves is not the fix — that makes correctness a
+ * property of every caller rather than of the checker, and it is the checker
+ * that knows which repository it means.
+ */
+describe('invocation environment', () => {
+  const SCRIPT = join(OK_ROOT, 'scripts/check-i18n-new-string-translations.mjs');
+
+  /** Absolute script path, so `cwd` genuinely varies instead of resolving the arg. */
+  const runCheck = ({ cwd = OK_ROOT, env = {} } = {}) =>
+    spawnSync(process.execPath, [SCRIPT, '--base', 'HEAD'], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    });
+
+  const gitAt = (args, cwd = OK_ROOT) =>
+    spawnSync('git', args, { cwd, encoding: 'utf8', env: gitCleanEnv() }).stdout.trim();
+
+  test('reads the base catalog when invoked from the repo root, not only from the subtree', () => {
+    // Guards the shape of the fix as much as the bug: deriving the catalog's
+    // location from the CALLER's cwd would pass from the subtree and fail here.
+    // Degenerates to the subtree case in a standalone Open Knowledge clone,
+    // where the subtree root IS the repository root.
+    const result = runCheck({ cwd: gitAt(['rev-parse', '--show-toplevel']) });
+
+    // A spawn that never started reports status null, which `toBe(0)` would miss.
+    expect(result.error).toBeUndefined();
+    expect(result.stdout + result.stderr).toContain('new message(s)');
+    expect(result.status).toBe(0);
+  });
+
+  test('reads its own repository, not one a hook-exported GIT_DIR points at', () => {
+    // A decoy repository makes the redirect visible in every layout: nested or
+    // standalone, an unscrubbed spawn resolves `HEAD` to the decoy's commit and
+    // then cannot find any catalog under it. The `gitCleanEnv()` on the fixture
+    // spawns is load-bearing in its own right — an unscrubbed `git init` under
+    // an inherited GIT_DIR ignores its target argument and re-initialises the
+    // CALLER's worktree admin dir.
+    const scratch = mkdtempSync(join(tmpdir(), 'ok-i18n-decoy-'));
+    try {
+      const decoy = join(scratch, 'decoy');
+      gitAt(['init', '--quiet', decoy]);
+      gitAt(
+        [
+          '-c',
+          'user.email=t@example.com',
+          '-c',
+          'user.name=t',
+          'commit',
+          '--quiet',
+          '--allow-empty',
+          '-m',
+          'decoy',
+        ],
+        decoy,
+      );
+
+      const result = runCheck({ env: { GIT_DIR: join(decoy, '.git') } });
+
+      expect(result.error).toBeUndefined();
+      expect(result.stdout + result.stderr).toContain('new message(s)');
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  test('survives the GIT_DIR a pre-push hook actually exports', () => {
+    // The reported failure, verbatim: git hands a hook the absolute admin dir —
+    // `.git/worktrees/<name>` when the push comes from a linked worktree — and
+    // the checker inherits it. Vacuous in a standalone clone, where the empty
+    // prefix is the correct answer; in a nested checkout it is the whole bug.
+    const result = runCheck({ env: { GIT_DIR: gitAt(['rev-parse', '--absolute-git-dir']) } });
+
+    expect(result.error).toBeUndefined();
+    expect(result.stdout + result.stderr).toContain('new message(s)');
+    expect(result.status).toBe(0);
   });
 });
