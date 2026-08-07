@@ -298,6 +298,17 @@ export interface ServerOptions {
    */
   lockKind?: 'interactive' | 'mcp-spawned';
   /**
+   * Surfaces this process serves, written into the lock's `capabilities`
+   * for discovery — advertisement only, this does not enable or disable
+   * anything. Defaults to `["http", "ws"]` (every `createServer` boot wires
+   * both). Callers whose process ALSO serves the React shell (the Electron
+   * utility's `reactShellDistDir` boot, the Vite dev plugin) add `"ui"` so
+   * `preview_url` can answer "no UI mounted" from server.lock alone. Must
+   * accurately list what this process mounts — see the field's contract in
+   * `process-lock.ts`.
+   */
+  capabilities?: string[];
+  /**
    * Skip the durable state-manifest pre-flight gate
    * (`assertCompatibleStateManifest` from `state-manifest.ts`). Default `false`.
    *
@@ -960,9 +971,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     worktreeRoot: projectDir,
     kind: options.lockKind ?? 'interactive',
     // Every server booted through `createServer` wires Hocuspocus + WS
-    // upgrade in `boot.ts`. The capability flag lets future variants
-    // (e.g. an HTTP-only relay) advertise differently.
-    capabilities: ['http', 'ws'],
+    // upgrade in `boot.ts`; callers that also mount the React shell pass
+    // `capabilities` with `"ui"` appended (accuracy contract in
+    // `process-lock.ts`).
+    capabilities: options.capabilities ?? ['http', 'ws'],
   });
 
   // Durable state-manifest gate. Runs AFTER lock acquisition so two

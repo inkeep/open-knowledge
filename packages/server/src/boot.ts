@@ -718,6 +718,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     authStreamHeartbeatMs: opts.authStreamHeartbeatMs,
     onAgentWrite: opts.onAgentWrite,
     lockKind,
+    // `"ui"` iff THIS process serves the React shell — the accuracy contract
+    // that lets `preview_url` distinguish "no UI mounted" (an API-only
+    // profile) from "UI served by a sibling" (which advertises via ui.lock).
+    capabilities: opts.reactShellDistDir ? ['http', 'ws', 'ui'] : ['http', 'ws'],
     skipStateManifestCheck: opts.skipStateManifestCheck,
     detectGh: opts.detectGh,
     tokenStore: opts.tokenStore,
@@ -1033,12 +1037,15 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const addr = httpServer.address();
   const realPort = typeof addr === 'object' && addr !== null ? addr.port : (opts.port ?? 0);
   boundPort = realPort;
-  updateServerLockPort(lockDir, realPort);
+  // One-URL contract: the advertised origin is the same one `getServerUrl`
+  // hands MCP/ACP consumers — every surface of this listener lives there.
+  const boundBaseUrl = `http://${mcpHost}:${realPort}`;
+  updateServerLockPort(lockDir, realPort, boundBaseUrl);
   if (ownsUiLock) {
     // Flip the sentinel port=0 to the bound port so preview-URL consumers see
     // a reachable URL. Only writes if we still own the lock (paranoia in
     // case an out-of-band release happened between acquire and listen).
-    updateUiLockPort(lockDir, realPort);
+    updateUiLockPort(lockDir, realPort, boundBaseUrl);
   }
 
   // UI-sibling spawn — CLI wrapper injects `spawnUiSiblingFn`; desktop leaves

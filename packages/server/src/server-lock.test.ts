@@ -109,7 +109,7 @@ describe('acquireServerLock', () => {
       if (err instanceof ServerLockCollisionError) {
         expect(err.existing.pid).toBe(livePid);
         expect(err.existing.port).toBe(9000);
-        expect(err.message).toContain('already running on port 9000');
+        expect(err.message).toContain('already running at port 9000');
       }
     }
   });

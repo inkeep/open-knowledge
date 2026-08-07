@@ -39,6 +39,7 @@ export function acquireServerLock(
   lockDir: string,
   init: {
     port: number;
+    url?: string;
     worktreeRoot: string;
     kind?: LockKind;
     parentPid?: number;
@@ -57,8 +58,8 @@ export function acquireServerLock(
   }
 }
 
-export function updateServerLockPort(lockDir: string, port: number): void {
-  updateProcessLockPort({ lockName: 'server', lockDir, port });
+export function updateServerLockPort(lockDir: string, port: number, url?: string): void {
+  updateProcessLockPort({ lockName: 'server', lockDir, port, url });
 }
 
 export function readServerLock(lockDir: string): ServerLockMetadata | null {

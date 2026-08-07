@@ -1840,7 +1840,7 @@ describe('createServer() server-lock integration (V0-1)', () => {
     );
 
     expect(() => createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true })).toThrow(
-      /already running on port 9999/,
+      /already running at port 9999/,
     );
 
     // Restore our own lock so destroy() cleans up

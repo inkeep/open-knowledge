@@ -368,6 +368,7 @@ export { isProcessAlive, isValidLockPid } from './process-alive.ts';
 export {
   acquireProcessLock,
   type LockName,
+  lockBaseUrl,
   lockFilePath,
   ProcessLockCollisionError,
   type ProcessLockHandle,

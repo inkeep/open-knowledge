@@ -32,6 +32,8 @@
  * ever needed again.
  */
 import { resolveLockDir } from '../../config/paths.ts';
+import { lockBaseUrl } from '../../process-lock.ts';
+import { readServerLock } from '../../server-lock.ts';
 import { readUiLock } from '../../ui-lock.ts';
 import type { ConfigOrResolver } from './shared.ts';
 
@@ -209,10 +211,32 @@ export interface UiInfo {
  * emit a `ui` block, so the base does not ride per-response payloads.
  */
 export function resolveUiInfo(ctx: PreviewUrlContext): UiInfo {
+  // Single-listener topology first: a server.lock advertising the `ui`
+  // surface means THIS process serves the React shell at its own origin —
+  // no ui.lock involved. A server.lock without `ui` is not "no UI": in the
+  // sibling topology (`ok start` + `ok ui`) the UI advertises via ui.lock,
+  // so fall through to it. Only when neither lock yields a base is the
+  // answer a definitive "no UI running".
+  try {
+    const serverLock = readServerLock(ctx.lockDir);
+    if (serverLock && serverLock.draining !== true && serverLock.capabilities?.includes('ui')) {
+      const baseUrl = lockBaseUrl(serverLock);
+      if (baseUrl !== null) return { baseUrl };
+    }
+  } catch (err) {
+    process.stderr.write(
+      `[preview-url] readServerLock failed at ${ctx.lockDir} while resolving ui info: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+  }
   try {
     const lock = readUiLock(ctx.lockDir);
-    if (lock && lock.port > 0) {
-      return { baseUrl: `http://localhost:${lock.port}` };
+    // Draining check on THIS branch too, not just server.lock above:
+    // single-listener teardown marks BOTH locks draining on the same
+    // process, so without it the server.lock guard is defeated by falling
+    // through to the same dying process's ui.lock.
+    if (lock && lock.draining !== true) {
+      const baseUrl = lockBaseUrl(lock);
+      if (baseUrl !== null) return { baseUrl };
     }
   } catch (err) {
     process.stderr.write(
@@ -311,26 +335,15 @@ export function resolveSkillPreviewUrl(
 
 /**
  * Shared reachability gate for the route resolvers: returns the route verbatim
- * (no scheme/host/port) when `ui.lock` reports a running UI, else `null`.
+ * (no scheme/host/port) when a running UI is reachable, else `null`.
  *
- * The lock is read only for reachability — server.lock points at collab-only in
- * the post-split lifecycle; ui.lock (CLI `ok ui` + OK Electron) is the universal
- * signal that a navigable React app exists.
+ * Same two-source chain as `resolveUiInfo`: a server.lock advertising the
+ * `ui` surface (single-listener topology), else ui.lock (CLI `ok ui` + OK
+ * Electron sibling topology) — the universal signal that a navigable React
+ * app exists.
  */
 function previewForRoute(hash: string, ctx: PreviewUrlContext): PreviewUrlResult | null {
-  try {
-    const lock = readUiLock(ctx.lockDir);
-    if (lock && lock.port > 0) {
-      return { url: hash, source: 'lock' };
-    }
-  } catch (err) {
-    // Lock file exists but is corrupt or unreadable. No further sources
-    // remain in the chain — surface the error so operators debugging
-    // "why won't the preview URL resolve?" aren't left in the dark.
-    process.stderr.write(
-      `[preview-url] readUiLock failed at ${ctx.lockDir}: ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-  }
-
+  const { baseUrl } = resolveUiInfo(ctx);
+  if (baseUrl !== null) return { url: hash, source: 'lock' };
   return null;
 }

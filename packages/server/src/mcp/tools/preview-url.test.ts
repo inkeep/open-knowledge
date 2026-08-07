@@ -11,8 +11,18 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
-import { acquireUiLock, updateUiLockPort } from '../../ui-lock.ts';
-import { encodeSkillRoute, resolvePreviewUrl, resolveSkillPreviewUrl } from './preview-url.ts';
+import {
+  acquireServerLock,
+  markServerLockDraining,
+  updateServerLockPort,
+} from '../../server-lock.ts';
+import { acquireUiLock, markUiLockDraining, updateUiLockPort } from '../../ui-lock.ts';
+import {
+  encodeSkillRoute,
+  resolvePreviewUrl,
+  resolveSkillPreviewUrl,
+  resolveUiInfo,
+} from './preview-url.ts';
 
 let tmpDir: string;
 let lockDir: string;
@@ -181,5 +191,73 @@ describe('resolvePreviewUrl — round-trip via docNameFromHash', () => {
     const result = resolvePreviewUrl('trail/', { lockDir });
     const hash = result?.url.slice(result.url.indexOf('#'));
     expect(hash).toBe('#/trail/');
+  });
+});
+
+describe('resolveUiInfo — surface-aware source chain', () => {
+  test('prefers a server.lock advertising the ui surface (single-listener topology)', () => {
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: tmpDir,
+      capabilities: ['http', 'ws', 'ui'],
+    });
+    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://127.0.0.1:6060' });
+  });
+
+  test('server.lock without the ui surface falls through to ui.lock (sibling topology)', () => {
+    acquireServerLock(lockDir, { port: 0, worktreeRoot: tmpDir, capabilities: ['http', 'ws'] });
+    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
+    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    updateUiLockPort(lockDir, 5173, 'http://localhost:5173');
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://localhost:5173' });
+  });
+
+  test('pre-url ui.lock falls back to a port-derived localhost origin', () => {
+    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    updateUiLockPort(lockDir, 5173);
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://localhost:5173' });
+  });
+
+  test('no lock at all yields a null base', () => {
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
+  });
+
+  test('a draining holder is never returned from either branch (single-listener teardown)', () => {
+    // Single-listener teardown marks BOTH locks draining on the same
+    // process. The server.lock draining guard must not be defeated by
+    // falling through to that same dying process's ui.lock.
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: tmpDir,
+      capabilities: ['http', 'ws', 'ui'],
+    });
+    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
+    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    updateUiLockPort(lockDir, 6060, 'http://localhost:6060');
+    markServerLockDraining(lockDir);
+    markUiLockDraining(lockDir);
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
+  });
+
+  test('server.lock with ui capability but no dialable origin (pre-bind) falls through to ui.lock', () => {
+    // The window between acquireServerLock and updateServerLockPort: port 0,
+    // no url, but the ui capability already declared. The null-origin case
+    // must fall through to the ui.lock branch, not answer "no UI".
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: tmpDir,
+      capabilities: ['http', 'ws', 'ui'],
+    });
+    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    updateUiLockPort(lockDir, 5173, 'http://localhost:5173');
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://localhost:5173' });
+  });
+
+  test('a draining ui.lock alone is not returned either', () => {
+    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    updateUiLockPort(lockDir, 5173, 'http://localhost:5173');
+    markUiLockDraining(lockDir);
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
   });
 });

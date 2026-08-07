@@ -558,7 +558,10 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
 
   const realPort = boundPort;
   resolvedPort = realPort;
-  updateUiLockPort(lockDir, realPort);
+  // `localhost` (not numeric loopback): the bind loop covers both loopback
+  // families, and this origin is browser-facing — matching what pre-`url`
+  // preview readers derived from `port`.
+  updateUiLockPort(lockDir, realPort, `http://localhost:${realPort}`);
 
   // Schedule the safety-net self-shutdown. The timer is cancelled by
   // `release()` (the canonical "I'm shutting down" signal) so an

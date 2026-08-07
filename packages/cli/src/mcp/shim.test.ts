@@ -155,6 +155,39 @@ describe('MCP stdio shim server resolution', () => {
     expect(url).toBe('http://127.0.0.1:4123/mcp');
   });
 
+  test('live lock with url prefers the advertised origin over the port', async () => {
+    // The origin deliberately differs from the port-derived fallback
+    // (`http://127.0.0.1:4123`) in both host and port, so a silent fall-back
+    // to the port branch fails this assertion.
+    const lockWithUrl: ServerLockMetadata = { ...liveLock, url: 'http://localhost:4999' };
+    const url = await resolveMcpHttpUrl({
+      lockDir,
+      contentDir: tmp,
+      readLock: () => lockWithUrl,
+      isAlive: (pid) => pid === lockWithUrl.pid,
+      spawn: (() => {
+        throw new Error('should not spawn');
+      }) as never,
+    });
+
+    expect(url).toBe('http://localhost:4999/mcp');
+  });
+
+  test('live lock with an unusable url falls back to the port-derived origin', async () => {
+    const lockWithBadUrl: ServerLockMetadata = { ...liveLock, url: 'not a url' };
+    const url = await resolveMcpHttpUrl({
+      lockDir,
+      contentDir: tmp,
+      readLock: () => lockWithBadUrl,
+      isAlive: (pid) => pid === lockWithBadUrl.pid,
+      spawn: (() => {
+        throw new Error('should not spawn');
+      }) as never,
+    });
+
+    expect(url).toBe('http://127.0.0.1:4123/mcp');
+  });
+
   test('missing lock spawns ok start and polls until a live port appears', async () => {
     const calls: Array<{
       cmd: string;
@@ -333,6 +366,20 @@ describe('MCP stdio shim server resolution', () => {
       // IPv4 loopback), not the endpoint arg — must match where `ok start`
       // binds. Only the port-override branch below reuses the endpoint host.
     ).toBe('ws://127.0.0.1:4123');
+
+    expect(
+      resolveMcpKeepaliveWsUrl(
+        {
+          lockDir,
+          contentDir: tmp,
+          readLock: () => ({ ...liveLock, url: 'http://localhost:4999' }),
+          isAlive: () => true,
+        },
+        'http://localhost:4123/mcp',
+      ),
+      // A url-carrying lock wins over the port: the WS endpoint derives from
+      // the advertised origin, not DEFAULT_SERVER_HOST + port.
+    ).toBe('ws://localhost:4999');
 
     expect(
       resolveMcpKeepaliveWsUrl(

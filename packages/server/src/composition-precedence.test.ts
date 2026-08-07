@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { WebSocket } from 'ws';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem } from './composition-rig.test-helper.ts';
+import type { ProcessLockMetadata } from './process-lock.ts';
 
 /**
  * Characterization: cross-surface route precedence, readiness, and shutdown
@@ -97,6 +98,19 @@ describe('route dispatch and precedence — normal mode (no React shell)', () =>
     ws.close();
     await new Promise<void>((resolvePromise) => ws.on('close', () => resolvePromise()));
   });
+
+  test('server.lock advertises the one-URL contract: url present, agreeing with port, no ui surface', () => {
+    const lock = JSON.parse(
+      readFileSync(resolve(normal.lockDir, 'server.lock'), 'utf-8'),
+    ) as Partial<ProcessLockMetadata>;
+    expect(lock.port).toBe(normal.port);
+    expect(typeof lock.url).toBe('string');
+    expect(new URL(lock.url as string).port).toBe(String(normal.port));
+    expect(lock.capabilities).toContain('http');
+    expect(lock.capabilities).toContain('ws');
+    // No React shell in this process — the accuracy contract says no `ui`.
+    expect(lock.capabilities).not.toContain('ui');
+  });
 });
 
 describe('desktop-shape composition (React shell mounted)', () => {
@@ -122,6 +136,15 @@ describe('desktop-shape composition (React shell mounted)', () => {
   afterAll(async () => {
     await desktop?.destroy();
     await rm(desktopTmp, { recursive: true, force: true });
+  });
+
+  test('server.lock advertises the ui surface iff this process mounts the React shell', () => {
+    const lock = JSON.parse(
+      readFileSync(resolve(desktop.lockDir, 'server.lock'), 'utf-8'),
+    ) as Partial<ProcessLockMetadata>;
+    expect(lock.capabilities).toEqual(['http', 'ws', 'ui']);
+    expect(typeof lock.url).toBe('string');
+    expect(new URL(lock.url as string).port).toBe(String(desktop.port));
   });
 
   test('SPA fallback does not shadow /mcp or /api', async () => {

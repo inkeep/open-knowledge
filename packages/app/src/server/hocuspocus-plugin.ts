@@ -193,6 +193,9 @@ export function hocuspocusPlugin(): Plugin {
         // dev server resolves stored embeddings keys (dev/prod parity — without
         // this, semantic search only ever resolves the env key / keyless).
         embeddingsKeyStore: makeLazyEmbeddingsKeyStore(),
+        // Vite serves the React app from the SAME listener this lock
+        // advertises, so the dev process genuinely mounts the UI surface.
+        capabilities: ['http', 'ws', 'ui'],
         ...(isEphemeralTest ? { ephemeral: true, singleDocRelPath: SINGLE_DOC_REL_PATH } : {}),
       });
 
@@ -220,7 +223,7 @@ export function hocuspocusPlugin(): Plugin {
       server.httpServer?.once('listening', () => {
         const addr = server.httpServer?.address();
         if (typeof addr === 'object' && addr !== null) {
-          updateServerLockPort(currentSrv.lockDir, addr.port);
+          updateServerLockPort(currentSrv.lockDir, addr.port, `http://localhost:${addr.port}`);
         }
       });
 

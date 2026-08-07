@@ -246,6 +246,13 @@ export interface ServerLockMetadataLike {
   pid: number;
   hostname: string;
   port: number;
+  /**
+   * One-URL contract origin (see the server package's `process-lock.ts`):
+   * every surface of the holder is reachable at this base. Optional for
+   * legacy-lock tolerance; `lockApiOrigin` below prefers it and falls back
+   * to `port`.
+   */
+  url?: string;
   startedAt: string;
   worktreeRoot: string;
   kind?: 'interactive' | 'mcp-spawned';
@@ -269,6 +276,46 @@ export interface ServerLockMetadataLike {
    * Draining locks are neither attachable nor a spawn-readiness signal.
    */
   draining?: boolean;
+}
+
+/**
+ * Base HTTP origin to dial for a lock holder — prefers the lock's `url`
+ * (validated: http(s) + loopback hostname only, since the string comes off
+ * disk and becomes renderer arguments), falling back to `port` for locks
+ * written by binaries predating the field or whose `url` fails validation.
+ *
+ * Drift warning: mirrors `lockBaseUrl`/`dialableLockOrigin` in the server
+ * package's `process-lock.ts`. This module is deliberately structurally
+ * independent of that package (see `ServerLockMetadataLike`), so TypeScript
+ * cannot catch divergence — parity is pinned by
+ * `tests/main/lock-api-origin-parity.test.ts`. One deliberate difference:
+ * the canonical helper returns `null` when nothing is dialable (`port` 0,
+ * no usable `url`); this one returns `http://localhost:0` — safe because
+ * every caller reaches it with a post-listen lock (`port > 0` guaranteed),
+ * also pinned by the parity test.
+ */
+export function lockApiOrigin(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
+  if (typeof lock.url === 'string' && lock.url.length > 0) {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(lock.url);
+    } catch {
+      parsed = null;
+    }
+    if (parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
+      // WHATWG URL keeps the brackets in `hostname` for IPv6 literals.
+      const host = parsed.hostname;
+      const loopback =
+        host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+      if (loopback) return parsed.origin;
+    }
+  }
+  return `http://localhost:${lock.port}`;
+}
+
+/** `/collab` WebSocket endpoint derived from the same origin as `lockApiOrigin`. */
+export function lockCollabUrl(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
+  return `${lockApiOrigin(lock).replace(/^http/, 'ws')}/collab`;
 }
 
 interface ProjectContext {
@@ -1760,7 +1807,7 @@ export class WindowManager {
       // its `startedAt` (clock-skew term) + `apiOrigin` (server-info fetch).
       this.deps.startup?.markServerLockReady?.({
         startedAt: lock.startedAt,
-        apiOrigin: `http://localhost:${lock.port}`,
+        apiOrigin: lockApiOrigin(lock),
       });
       return this.attachToExistingServer({
         projectPath,
@@ -2212,7 +2259,7 @@ export class WindowManager {
     }
 
     const port = lock.port;
-    const apiOrigin = `http://localhost:${port}`;
+    const apiOrigin = lockApiOrigin(lock);
     this.deps.log?.info(
       {
         event: 'desktop-ephemeral-server-spawned',
@@ -2226,7 +2273,7 @@ export class WindowManager {
 
     const window = this.deps.createWindow({
       additionalArguments: [
-        `--ok-collab-url=ws://localhost:${port}/collab`,
+        `--ok-collab-url=${lockCollabUrl(lock)}`,
         `--ok-api-origin=${apiOrigin}`,
         // The renderer's project label / asset base is the file's real parent.
         `--ok-project-path=${opts.contentDir}`,
@@ -2607,7 +2654,7 @@ export class WindowManager {
   private async probeAttachableLock(lock: ServerLockMetadataLike): Promise<boolean> {
     const probe = this.deps.probeWsUpgrade;
     if (!probe) return true;
-    const url = `ws://localhost:${lock.port}/collab/__attach_probe__`;
+    const url = `${lockCollabUrl(lock)}/__attach_probe__`;
     let upgradeOk = false;
     try {
       upgradeOk = await probe(url, 500);
@@ -2669,7 +2716,7 @@ export class WindowManager {
       freshlyCreated,
     } = args;
     const port = lock.port;
-    const apiOrigin = `http://localhost:${port}`;
+    const apiOrigin = lockApiOrigin(lock);
 
     this.deps.log?.info(
       { projectPath, holderPid: lock.pid, port, startedAt: lock.startedAt },
@@ -2683,7 +2730,7 @@ export class WindowManager {
 
     const window = this.deps.createWindow({
       additionalArguments: [
-        `--ok-collab-url=ws://localhost:${port}/collab`,
+        `--ok-collab-url=${lockCollabUrl(lock)}`,
         `--ok-api-origin=${apiOrigin}`,
         `--ok-project-path=${projectPath}`,
         `--ok-project-name=${projectName}`,

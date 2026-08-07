@@ -25,6 +25,7 @@ import { realpath as fsRealpath } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { isProcessAlive } from './process-alive.ts';
+import { lockBaseUrl } from './process-lock.ts';
 import { discoverLockDirs } from './process-scan.ts';
 import { readUiLock } from './ui-lock.ts';
 
@@ -135,9 +136,16 @@ export function createOffCwdResolverDeps(): OffCwdResolverDeps {
         return null;
       }
       const lock = readUiLock(lockDir);
-      const port = lock?.port ?? 0;
-      const alive = lock != null && port > 0 && isProcessAlive(lock.pid);
-      return { lockDir, contentDir, baseUrl: `http://localhost:${port}`, alive };
+      // Liveness and URL derivation share one source of truth: a candidate
+      // is alive only when it has a non-draining, dialable origin — the same
+      // coupling as the shim's liveBaseUrlFromLock. The draining check
+      // matters because single-listener teardown marks BOTH locks draining
+      // while the pid is still alive.
+      const resolvedBase = lock ? lockBaseUrl(lock) : null;
+      const baseUrl = resolvedBase ?? `http://localhost:${lock?.port ?? 0}`;
+      const alive =
+        lock != null && lock.draining !== true && resolvedBase !== null && isProcessAlive(lock.pid);
+      return { lockDir, contentDir, baseUrl, alive };
     },
   };
 }

@@ -8,6 +8,7 @@ import { getMachineId } from './machine-id';
 import {
   acquireProcessLock,
   type LockName,
+  lockBaseUrl,
   lockFilePath,
   markProcessLockDraining,
   ProcessLockCollisionError,
@@ -179,7 +180,7 @@ describe('acquireProcessLock', () => {
         expect(err.existing.port).toBe(9000);
         expect(err.lockName).toBe(LOCK_NAME);
         expect(err.lockPath).toBe(lockPath);
-        expect(err.message).toContain('already running on port 9000');
+        expect(err.message).toContain('already running at port 9000');
         expect(err.message).toContain(LOCK_NAME);
       }
     }
@@ -320,6 +321,145 @@ describe('acquireProcessLock', () => {
     expect(after.pid).toBe(before.pid);
     expect(after.startedAt).toBe(before.startedAt);
     expect(after.worktreeRoot).toBe(before.worktreeRoot);
+  });
+});
+
+describe('one-URL contract (url field + lockBaseUrl)', () => {
+  test('acquire omits url by default; updatePort(port, url) writes both in agreement', () => {
+    const handle = acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 0, worktreeRoot: '/wt' },
+    });
+    const before: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(before.url).toBeUndefined();
+
+    handle.updatePort(8080, 'http://127.0.0.1:8080');
+    const after: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(after.port).toBe(8080);
+    expect(after.url).toBe('http://127.0.0.1:8080');
+    // port/url agreement: the origin's port is the port field.
+    expect(new URL(after.url as string).port).toBe(String(after.port));
+  });
+
+  test('acquire round-trips an explicit url', () => {
+    acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 4242, url: 'http://127.0.0.1:4242', worktreeRoot: '/wt' },
+    });
+    const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(md.url).toBe('http://127.0.0.1:4242');
+  });
+
+  test('updatePort WITHOUT url drops a previously advertised url (stale-origin guard)', () => {
+    const handle = acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 0, worktreeRoot: '/wt' },
+    });
+    handle.updatePort(8080, 'http://127.0.0.1:8080');
+    handle.updatePort(9090);
+    const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(md.port).toBe(9090);
+    expect(md.url).toBeUndefined();
+  });
+
+  test('readProcessLockDetailed carries url + capabilities through its reconstruction', () => {
+    acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: {
+        port: 4242,
+        url: 'http://127.0.0.1:4242',
+        worktreeRoot: '/wt',
+        capabilities: ['http', 'ws', 'ui'],
+      },
+    });
+    const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
+    expect(result.status).toBe('live');
+    if (result.status !== 'live') return;
+    expect(result.lock.url).toBe('http://127.0.0.1:4242');
+    expect(result.lock.capabilities).toEqual(['http', 'ws', 'ui']);
+  });
+
+  test('lockBaseUrl prefers url over port and strips trailing slashes', () => {
+    expect(lockBaseUrl({ port: 1111, url: 'http://127.0.0.1:2222/' })).toBe(
+      'http://127.0.0.1:2222',
+    );
+  });
+
+  test('lockBaseUrl falls back to port with localhost by default', () => {
+    expect(lockBaseUrl({ port: 3333 })).toBe('http://localhost:3333');
+  });
+
+  test('lockBaseUrl honors fallbackHost for numeric-loopback dialers', () => {
+    expect(lockBaseUrl({ port: 3333 }, { fallbackHost: '127.0.0.1' })).toBe(
+      'http://127.0.0.1:3333',
+    );
+  });
+
+  test('lockBaseUrl returns null when nothing is dialable (port 0, no url)', () => {
+    expect(lockBaseUrl({ port: 0 })).toBeNull();
+  });
+
+  test('lockBaseUrl normalizes wildcard fallback hosts to localhost', () => {
+    expect(lockBaseUrl({ port: 3000 }, { fallbackHost: '0.0.0.0' })).toBe('http://localhost:3000');
+    expect(lockBaseUrl({ port: 3000 }, { fallbackHost: '::' })).toBe('http://localhost:3000');
+  });
+
+  test('lockBaseUrl brackets a bare IPv6 fallback host', () => {
+    expect(lockBaseUrl({ port: 3000 }, { fallbackHost: '::1' })).toBe('http://[::1]:3000');
+  });
+
+  test('lockBaseUrl rejects a corrupt url and falls back to the port', () => {
+    expect(lockBaseUrl({ port: 3000, url: 'not a url' })).toBe('http://localhost:3000');
+  });
+
+  test('lockBaseUrl rejects a non-loopback url and falls back to the port', () => {
+    expect(lockBaseUrl({ port: 3000, url: 'http://evil.example.com:9999' })).toBe(
+      'http://localhost:3000',
+    );
+    expect(lockBaseUrl({ port: 3000, url: 'http://10.0.0.1:9999' })).toBe('http://localhost:3000');
+  });
+
+  test('lockBaseUrl rejects a non-http scheme and falls back to the port', () => {
+    expect(lockBaseUrl({ port: 3000, url: 'ftp://127.0.0.1:9999' })).toBe('http://localhost:3000');
+  });
+
+  test('lockBaseUrl accepts https and IPv6 loopback origins, normalizing stray paths', () => {
+    expect(lockBaseUrl({ port: 3000, url: 'https://127.0.0.1:9999' })).toBe(
+      'https://127.0.0.1:9999',
+    );
+    expect(lockBaseUrl({ port: 3000, url: 'http://[::1]:9999' })).toBe('http://[::1]:9999');
+    expect(lockBaseUrl({ port: 3000, url: 'http://127.0.0.1:9999/some/path' })).toBe(
+      'http://127.0.0.1:9999',
+    );
+  });
+
+  test('lockBaseUrl rejection of a corrupt url beats port 0 (still null)', () => {
+    expect(lockBaseUrl({ port: 0, url: 'not a url' })).toBeNull();
+  });
+
+  test('collision error surfaces the advertised url when the holder has one', () => {
+    const live: ProcessLockMetadata = {
+      pid: aliveForeignPid(),
+      hostname: hostname(),
+      port: 9000,
+      url: 'http://127.0.0.1:9000',
+      startedAt: new Date().toISOString(),
+      worktreeRoot: '/other',
+    };
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(lockPath, JSON.stringify(live), 'utf-8');
+
+    expect(() =>
+      acquireProcessLock({
+        lockName: LOCK_NAME,
+        lockDir,
+        metadata: { port: 3000, worktreeRoot: '/me' },
+      }),
+    ).toThrow(/already running at http:\/\/127\.0\.0\.1:9000/);
   });
 });
 

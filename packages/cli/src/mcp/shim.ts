@@ -35,6 +35,7 @@ import { startKeepalive as defaultStartKeepalive } from '@inkeep/open-knowledge-
 import {
   AutoStartDisabledError,
   isProcessAlive as defaultIsProcessAlive,
+  lockBaseUrl,
   MCP_CONNECTION_ID_HEADER,
   RUNTIME_VERSION,
   readServerLock,
@@ -177,8 +178,12 @@ function mcpUrlForPort(host: string, port: number): string {
   return `http://${formatHost(host)}:${port}/mcp`;
 }
 
-function wsUrlForPort(host: string, port: number): string {
-  return `ws://${formatHost(host)}:${port}`;
+function mcpUrlForBase(baseUrl: string): string {
+  return `${baseUrl}/mcp`;
+}
+
+function wsUrlForBase(baseUrl: string): string {
+  return baseUrl.replace(/^http/, 'ws');
 }
 
 function wsUrlFromMcpEndpoint(endpointUrl: string): string {
@@ -190,16 +195,18 @@ function wsUrlFromMcpEndpoint(endpointUrl: string): string {
   return url.toString().replace(/\/$/, '');
 }
 
-function livePortFromLock(
+function liveBaseUrlFromLock(
   lock: ServerLockMetadata | null,
   isAlive: (pid: number) => boolean,
-): number | undefined {
-  if (!lock || lock.port <= 0) return undefined;
+): string | undefined {
+  if (!lock) return undefined;
   // A draining holder is tearing down: its HTTP surface closes before the
-  // lock disappears, so the advertised port must never be dialed.
+  // lock disappears, so the advertised origin must never be dialed.
   if (lock.draining === true) return undefined;
   if (!isAlive(lock.pid)) return undefined;
-  return lock.port;
+  // Prefer the lock's one-URL origin; the numeric-loopback fallback covers
+  // pre-`url` locks (see `DEFAULT_SERVER_HOST` for why not `localhost`).
+  return lockBaseUrl(lock, { fallbackHost: DEFAULT_SERVER_HOST }) ?? undefined;
 }
 
 function readErrorLogDefault(path: string): string {
@@ -264,8 +271,8 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
   }
 
   const initialLock = readLock();
-  const existingPort = livePortFromLock(initialLock, isAlive);
-  if (existingPort !== undefined) return mcpUrlForPort(DEFAULT_SERVER_HOST, existingPort);
+  const existingBase = liveBaseUrlFromLock(initialLock, isAlive);
+  if (existingBase !== undefined) return mcpUrlForBase(existingBase);
 
   if (opts.envAutoStart === '0') {
     throw new AutoStartDisabledError(
@@ -298,8 +305,8 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
       `[mcp-shim] waited ${Date.now() - drainWaitStartedAt}ms for a draining predecessor server` +
         `${drainTimedOut ? ' (timed out — proceeding anyway)' : ''}`,
     );
-    const portAfterDrain = livePortFromLock(readLock(), isAlive);
-    if (portAfterDrain !== undefined) return mcpUrlForPort(DEFAULT_SERVER_HOST, portAfterDrain);
+    const baseAfterDrain = liveBaseUrlFromLock(readLock(), isAlive);
+    if (baseAfterDrain !== undefined) return mcpUrlForBase(baseAfterDrain);
   }
 
   if (!existsSync(opts.lockDir)) mkdirSync(opts.lockDir, { recursive: true });
@@ -349,8 +356,8 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
       throw new Error(`spawn failed: ${asyncSpawnError}${stderrBlock}`);
     }
     await sleep(pollIntervalMs);
-    const port = livePortFromLock(readLock(), isAlive);
-    if (port !== undefined) return mcpUrlForPort(DEFAULT_SERVER_HOST, port);
+    const base = liveBaseUrlFromLock(readLock(), isAlive);
+    if (base !== undefined) return mcpUrlForBase(base);
   }
 
   if (asyncSpawnError) {
@@ -369,8 +376,8 @@ export function resolveMcpKeepaliveWsUrl(
   if (opts.portOverride !== undefined) return wsUrlFromMcpEndpoint(endpointUrl);
   const readLock = opts.readLock ?? (() => readServerLock(opts.lockDir));
   const isAlive = opts.isAlive ?? defaultIsProcessAlive;
-  const port = livePortFromLock(readLock(), isAlive);
-  if (port !== undefined) return wsUrlForPort(DEFAULT_SERVER_HOST, port);
+  const base = liveBaseUrlFromLock(readLock(), isAlive);
+  if (base !== undefined) return wsUrlForBase(base);
   return undefined;
 }
 

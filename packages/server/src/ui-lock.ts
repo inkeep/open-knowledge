@@ -37,6 +37,7 @@ export function acquireUiLock(
   lockDir: string,
   init: {
     port: number;
+    url?: string;
     worktreeRoot: string;
     kind?: LockKind;
     parentPid?: number;
@@ -54,8 +55,8 @@ export function acquireUiLock(
   }
 }
 
-export function updateUiLockPort(lockDir: string, port: number): void {
-  updateProcessLockPort({ lockName: 'ui', lockDir, port });
+export function updateUiLockPort(lockDir: string, port: number, url?: string): void {
+  updateProcessLockPort({ lockName: 'ui', lockDir, port, url });
 }
 
 export function readUiLock(lockDir: string): UiLockMetadata | null {

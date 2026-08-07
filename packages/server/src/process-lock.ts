@@ -4,7 +4,13 @@
  * Only one OpenKnowledge process with a given `lockName` may own a lockDir
  * at a time. `lockDir` is `<contentDir>/.ok/local` by convention; the
  * lock file sits at `<lockDir>/<lockName>.lock` and contains JSON metadata
- * used for stale detection and port discovery.
+ * used for stale detection and discovery.
+ *
+ * The lock is FIRST a mutex — the double-start guard protecting the
+ * single-writer invariant — and only secondarily a discovery channel. That
+ * is why it is written even in environments where nothing reads it
+ * (containers): discovery fields ride on the mutex, not the reverse.
+ * Acquisition happens before listen; nothing here may weaken that ordering.
  *
  * Used by both `server-lock.ts` (server.lock) and `ui-lock.ts` (ui.lock).
  */
@@ -49,8 +55,26 @@ export interface ProcessLockMetadata {
    * written by binaries that predate `machineId`.
    */
   hostname: string;
-  /** HTTP/WebSocket port. 0 means "starting — port not yet bound". */
+  /**
+   * HTTP/WebSocket port. 0 means "starting — port not yet bound".
+   *
+   * DEPRECATED as a dial target in favor of `url` — kept written through the
+   * ui.lock-retirement compatibility window so binaries predating `url` keep
+   * discovering. New readers go through `lockBaseUrl` (prefer `url`, fall
+   * back to `port`). Retirement rides the `protocolVersion` 1→2 bump at the
+   * ui.lock-removal wave, NOT before.
+   */
   port: number;
+  /**
+   * One-origin contract: the base URL every surface of this process is
+   * reachable at (`/`, `/api`, `/mcp`, `/collab` — whichever of those
+   * `capabilities` advertises). Loopback origin, no trailing slash, e.g.
+   * `http://127.0.0.1:61023`. Written by `updateProcessLockPort` once the
+   * listener binds; absent while `port` is 0 and on locks written by
+   * binaries predating the field. Readers prefer this over `port` via
+   * `lockBaseUrl`.
+   */
+  url?: string;
   startedAt: string;
   worktreeRoot: string;
   /**
@@ -63,8 +87,14 @@ export interface ProcessLockMetadata {
   /**
    * Set when the holder has begun teardown. The holder still OWNS the lock —
    * the file is unlinked only when the process actually exits — but the
-   * advertised port is no longer safe to dial and supervisors should wait
+   * advertised origin is no longer safe to dial and supervisors should wait
    * for pid death rather than lock disappearance. Absent means "serving".
+   *
+   * Deliberate two-signal design, not a wart: the flag stops discovery
+   * dialing immediately, while deferring the unlink to exit keeps
+   * crash-vs-clean-exit distinguishable on disk (crashed holder =
+   * non-draining lock + dead pid; clean teardown = draining lock until
+   * exit). "Fixing" the deferred unlink deletes the crash-detection signal.
    */
   draining?: boolean;
   /**
@@ -81,9 +111,16 @@ export interface ProcessLockMetadata {
    */
   parentPid?: number;
   /**
-   * Protocol/feature surfaces this server exposes. v1: `["http", "ws"]`
-   * for any server booted via `bootServer`. Forward-compat for variants
-   * that lack one or the other.
+   * Protocol/feature surfaces this server exposes. On server.lock, writers
+   * that also emit `url` MUST list mounted surfaces accurately — in
+   * particular `"ui"` is present iff the process itself serves the React
+   * shell, so `preview_url` can distinguish "no UI mounted" from "UI served
+   * elsewhere". Baseline for any `bootServer` boot is `["http", "ws"]`. On
+   * server.locks without `url` (older writers) the array is best-effort
+   * hints only: absence of `"ui"` is indeterminate and readers keep the
+   * ui.lock fallback. On ui.lock the accuracy requirement does not apply —
+   * that file's very existence is the UI signal, no reader consults its
+   * `capabilities`, and the sibling retires with the ui.lock-removal wave.
    */
   capabilities?: string[];
   /**
@@ -106,7 +143,7 @@ export interface ProcessLockMetadata {
 export interface ProcessLockHandle {
   lockPath: string;
   release: () => void;
-  updatePort: (port: number) => void;
+  updatePort: (port: number, url?: string) => void;
 }
 
 export class ProcessLockCollisionError extends Error {
@@ -115,7 +152,7 @@ export class ProcessLockCollisionError extends Error {
   readonly lockName: LockName;
   constructor(existing: ProcessLockMetadata, lockPath: string, lockName: LockName) {
     super(
-      `OpenKnowledge ${lockName} already running on port ${existing.port} ` +
+      `OpenKnowledge ${lockName} already running at ${existing.url ?? `port ${existing.port}`} ` +
         `(pid ${existing.pid}, started ${existing.startedAt}). ` +
         `Stop it first or use a different directory. Lock: ${lockPath}`,
     );
@@ -279,6 +316,10 @@ export function acquireProcessLock(opts: {
   lockDir: string;
   metadata: {
     port: number;
+    /** Base origin per the one-URL contract. Usually set later, alongside the
+     * bound port, via `updateProcessLockPort` — pass here only when the
+     * listener is already bound at acquire time. */
+    url?: string;
     worktreeRoot: string;
     kind?: LockKind;
     parentPid?: number;
@@ -299,6 +340,7 @@ export function acquireProcessLock(opts: {
     pid: process.pid,
     hostname: hostname(),
     port: init.port,
+    ...(init.url !== undefined && { url: init.url }),
     startedAt: new Date().toISOString(),
     worktreeRoot: init.worktreeRoot,
     machineId: getMachineId(),
@@ -383,20 +425,94 @@ function buildHandle(args: {
   return {
     lockPath,
     release: () => releaseProcessLock({ lockName, lockDir }),
-    updatePort: (port) => updateProcessLockPort({ lockName, lockDir, port }),
+    updatePort: (port, url) => updateProcessLockPort({ lockName, lockDir, port, url }),
   };
 }
 
 /**
- * Update only the port field of our own lock. Preserves all other fields.
- * No-op if the lock file is missing, corrupt, or not ours.
+ * Validate a lock's advertised `url` before any dialer sees it. The lock is
+ * plain JSON on disk, and this string flows into `new URL()` dialers (the
+ * MCP shim) and Electron renderer arguments (desktop attach) — so it is
+ * checked, not trusted: only an http(s) origin with a loopback hostname is
+ * accepted; anything corrupt, truncated, off-scheme, or pointing off the
+ * machine is rejected so the caller falls through to the `port` path, which
+ * is exactly what every pre-`url` reader dialed. Every legitimate writer
+ * emits a loopback origin today; a non-loopback bind keeps its v1 port-
+ * fallback behavior until a trusted non-loopback advertisement exists.
+ * Returns the parsed origin (normalizes away trailing slashes or stray
+ * paths), or null on rejection.
+ *
+ * Drift warning: hand-mirrored by `lockApiOrigin` in the desktop's
+ * `window-manager.ts` (that package is deliberately structurally independent
+ * of this one) — keep the two in sync on change; parity is pinned by the
+ * desktop's lock-api-origin-parity test.
+ */
+function dialableLockOrigin(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  // WHATWG URL keeps the brackets in `hostname` for IPv6 literals.
+  const host = parsed.hostname;
+  const loopback =
+    host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  if (!loopback) return null;
+  return parsed.origin;
+}
+
+/**
+ * Reader-side half of the one-URL contract: the base origin to dial for a
+ * lock, preferring a validated `url` and falling back to `port` for locks
+ * written by binaries predating the field (or whose `url` fails the
+ * `dialableLockOrigin` check above). This is THE place the fallback logic
+ * lives — don't re-derive origins from `port` at call sites.
+ *
+ * `fallbackHost` defaults to `localhost` (matches what the pre-`url` readers
+ * dialed); callers that must dial numeric IPv4 loopback (the MCP shim — see
+ * `DEFAULT_SERVER_HOST`'s JSDoc for the Windows ECONNREFUSED trap) pass it
+ * explicitly. Returns `null` when the lock advertises no dialable origin
+ * (`port` 0 and no usable `url`).
+ */
+export function lockBaseUrl(
+  lock: Pick<ProcessLockMetadata, 'port' | 'url'>,
+  opts?: { fallbackHost?: string },
+): string | null {
+  if (typeof lock.url === 'string' && lock.url.length > 0) {
+    const origin = dialableLockOrigin(lock.url);
+    if (origin !== null) return origin;
+  }
+  if (lock.port > 0) {
+    const host = opts?.fallbackHost ?? 'localhost';
+    const formatted =
+      host === '0.0.0.0' || host === '::'
+        ? 'localhost'
+        : host.includes(':') && !host.startsWith('[')
+          ? `[${host}]`
+          : host;
+    return `http://${formatted}:${lock.port}`;
+  }
+  return null;
+}
+
+/**
+ * Update the port (and, per the one-URL contract, the `url`) of our own
+ * lock. Preserves all other fields. No-op if the lock file is missing,
+ * corrupt, or not ours.
+ *
+ * When `url` is omitted, any previously written `url` is DROPPED, not kept:
+ * a port change invalidates the advertised origin, and a stale `url` would
+ * send prefer-`url` readers to a dead port while `port` says otherwise.
  */
 export function updateProcessLockPort(opts: {
   lockName: LockName;
   lockDir: string;
   port: number;
+  url?: string;
 }): void {
-  const { lockName, lockDir, port } = opts;
+  const { lockName, lockDir, port, url } = opts;
   const logPrefix = `[${lockName}-lock]`;
   const lockPath = lockFilePath(lockDir, lockName);
 
@@ -436,6 +552,11 @@ export function updateProcessLockPort(opts: {
   if (!isSameMachine(existing)) return;
 
   existing.port = port;
+  if (url !== undefined) {
+    existing.url = url;
+  } else {
+    delete existing.url;
+  }
   try {
     // `mode: 0o600` — owner-only readable. Matches `acquireProcessLock`'s
     // atomic-create mode so port updates don't drop back to default (0644).
@@ -619,10 +740,15 @@ export function readProcessLockDetailed(opts: {
     pid: r.pid,
     hostname: r.hostname,
     port: r.port,
+    url: typeof r.url === 'string' ? r.url : undefined,
     startedAt: r.startedAt,
     worktreeRoot: r.worktreeRoot,
     machineId: typeof r.machineId === 'string' ? r.machineId : undefined,
     draining: r.draining === true ? true : undefined,
+    capabilities:
+      Array.isArray(r.capabilities) && r.capabilities.every((c) => typeof c === 'string')
+        ? r.capabilities
+        : undefined,
     protocolVersion: typeof r.protocolVersion === 'number' ? r.protocolVersion : undefined,
     runtimeVersion: typeof r.runtimeVersion === 'string' ? r.runtimeVersion : undefined,
   };
