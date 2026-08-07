@@ -445,6 +445,11 @@ nsis:
   # Windows (no Windows release channel exists yet to regress), and the
   # installer grows ~37% (deflate vs solid LZMA; 169 MB → 232 MB arm64).
   useZip: true
+  # KEEP IN LOCK-STEP with build/installer.nsh customInstall: because
+  # differential packaging is off, the installer's self-copy to
+  # $LOCALAPPDATA\<updaterCacheDirName>\installer.exe (the differential-update
+  # seed) is inert and installer.nsh deletes it. Re-enabling
+  # differentialPackage requires removing that Delete in the same change.
   differentialPackage: false
   # Separate per-arch installers (the default single universal installer
   # would double the download for every user). Version-less artifact names

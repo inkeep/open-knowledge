@@ -15,6 +15,8 @@
  *   - Periodic check singleton via injectable clock
  *   - Relaunch-now IPC calls quitAndInstall
  *   - Dev-mode guard skips first-launch check but keeps handlers wired
+ *   - Staged-cache reclaim fires only with no install commitment armed
+ *   - Linux manual-install fallback (no-auth preflight, 126 vs 127 routing)
  */
 
 import { EventEmitter } from 'node:events';
@@ -92,6 +94,12 @@ function makeFakeIpc(): FakeIpc {
   return {
     handlers,
     handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void {
+      // Mirror Electron's real ipcMain semantics — a double registration
+      // throws. Silent overwrite would let a re-registration bug pass the
+      // whole suite and crash only in production.
+      if (handlers.has(channel)) {
+        throw new Error(`Attempted to register a second handler for '${channel}'`);
+      }
       handlers.set(channel, listener);
     },
     removeHandler(channel: string): void {
@@ -216,6 +224,20 @@ function makeRig(
      */
     showCheckNowResult?: Parameters<typeof startAutoUpdater>[0]['showCheckNowResult'];
     /**
+     * Staged-cache reclaim hook — production wires
+     * `reclaimPendingUpdateCache` in packaged builds. Tests pass a spy to
+     * pin the boot-reconciliation gating (never while an install commitment
+     * is armed).
+     */
+    reclaimStagedUpdateCache?: Parameters<typeof startAutoUpdater>[0]['reclaimStagedUpdateCache'];
+    /**
+     * Linux manual-install fallback surface — production wires the
+     * pkexec-preflight + Copy-command dialog. Tests pass spies to pin the
+     * trigger conditions (no graphical auth / infrastructure-classified
+     * install failure) and the preserved staged state.
+     */
+    linuxInstallSupport?: Parameters<typeof startAutoUpdater>[0]['linuxInstallSupport'];
+    /**
      * RNG for the periodic-check jitter. Defaults to `() => 0` so the
      * scheduled delay is exactly `UPDATE_CHECK_INTERVAL_MS` in tests that
      * don't care about jitter; pass a custom stub to exercise the jitter
@@ -239,6 +261,8 @@ function makeRig(
     extraWindowCount = 0,
     prepareForRelaunch,
     showCheckNowResult,
+    reclaimStagedUpdateCache,
+    linuxInstallSupport,
     random = () => 0,
     ...stateOverrides
   } = overrides ?? {};
@@ -287,6 +311,8 @@ function makeRig(
     proxyFeed,
     prepareForRelaunch,
     showCheckNowResult,
+    reclaimStagedUpdateCache,
+    linuxInstallSupport,
     clock: rig.clock,
     now: () => rig.now,
     random,
@@ -1323,6 +1349,9 @@ describe('boot-time failed-install detection', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.24.0',
       versionPendingInstall: '0.24.0',
+      // Seeded so the clearing assertion below has teeth — a branch that
+      // stops nulling it would leave a stale path for the Linux fallback.
+      stagedInstallerPath: '/tmp/staged-cross-channel.deb',
       appVersion: '0.23.0-beta.1',
     });
     expect(rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
@@ -1330,6 +1359,7 @@ describe('boot-time failed-install detection', () => {
     // The stale cross-channel pending marker is dropped too — no phantom
     // "ready to install" banner survives on the beta build.
     expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.stagedInstallerPath).toBeNull();
     expect(rig.dispatches).toContain('attempted-install-cross-channel' as DispatchKind);
     expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
     expect(rig.dispatches).not.toContain('attempted-install-reconciled' as DispatchKind);
@@ -1367,6 +1397,8 @@ describe('boot-time failed-install detection', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.17.0-beta.1',
       versionPendingInstall: '0.17.0-beta.1',
+      // Seeded so the clearing assertion below has teeth.
+      stagedInstallerPath: '/tmp/staged-giveup.deb',
       appVersion: '0.16.0-beta.1',
       attemptedInstallSurfacedCount: INSTALL_FAILURE_MAX_SURFACES,
     });
@@ -1375,6 +1407,7 @@ describe('boot-time failed-install detection', () => {
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
     // No phantom "ready to install" banner left behind after giving up.
     expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.stagedInstallerPath).toBeNull();
     expect(rig.dispatches).toContain('install-failed-giveup' as DispatchKind);
     expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
   });
@@ -3250,5 +3283,343 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     expect((errorCall?.[1] as { err?: Error })?.err?.message).toContain(
       'electron-updater did not expose',
     );
+  });
+});
+
+// ————————————————————————————————————————————————————————
+// Staged-cache reclaim gating (boot reconciliation)
+// ————————————————————————————————————————————————————————
+
+describe('staged-cache reclaim — fires only once every install commitment is settled', () => {
+  test('clean boot (nothing pending, nothing attempted) invokes the reclaim hook once', () => {
+    const reclaim = vi.fn(() => Promise.resolve());
+    const { rig } = makeRig({ reclaimStagedUpdateCache: reclaim });
+    expect(reclaim).toHaveBeenCalledTimes(1);
+    expect(rig.dispatches.filter((d) => d === 'staged-cache-reclaimed')).toHaveLength(1);
+  });
+
+  test('boot after a committed install reclaims once reconciliation clears both gates', () => {
+    // Running 0.3.2 with versionPendingInstall + attemptedInstall still
+    // recording 0.3.2 — the install-on-quit success shape. Reconciliation
+    // clears both, then (and only then) the reclaim may fire.
+    const reclaim = vi.fn(() => Promise.resolve());
+    const { rig } = makeRig({
+      appVersion: '0.3.2',
+      versionPendingInstall: '0.3.2',
+      attemptedInstall: '0.3.2',
+      reclaimStagedUpdateCache: reclaim,
+    });
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.attemptedInstall).toBeNull();
+    expect(reclaim).toHaveBeenCalledTimes(1);
+  });
+
+  test('a still-staged update (versionPendingInstall armed) blocks the reclaim', () => {
+    // The Linux download-then-quit shape: the staged installer is the very
+    // file "Relaunch now" / the manual-install command will consume.
+    const reclaim = vi.fn(() => Promise.resolve());
+    const { rig } = makeRig({
+      versionPendingInstall: '0.9.9',
+      reclaimStagedUpdateCache: reclaim,
+    });
+    expect(rig.state.versionPendingInstall).toBe('0.9.9');
+    expect(reclaim).not.toHaveBeenCalled();
+    expect(rig.dispatches).not.toContain('staged-cache-reclaimed' as DispatchKind);
+  });
+
+  test('a failed install being surfaced (attemptedInstall armed) blocks the reclaim', () => {
+    // Boot detects the silent install failure, re-arms the banner for Retry —
+    // the staged installer must stay for that Retry to have anything to run.
+    const reclaim = vi.fn(() => Promise.resolve());
+    const { rig } = makeRig({
+      attemptedInstall: '0.9.9',
+      reclaimStagedUpdateCache: reclaim,
+    });
+    expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
+    expect(reclaim).not.toHaveBeenCalled();
+  });
+
+  test('the giveup boot clears both gates but still skips the reclaim', () => {
+    const reclaim = vi.fn(() => Promise.resolve());
+    const { rig } = makeRig({
+      attemptedInstall: '0.9.9',
+      attemptedInstallSurfacedCount: INSTALL_FAILURE_MAX_SURFACES,
+      reclaimStagedUpdateCache: reclaim,
+    });
+    expect(rig.dispatches).toContain('install-failed-giveup' as DispatchKind);
+    expect(rig.state.attemptedInstall).toBeNull();
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(reclaim).not.toHaveBeenCalled();
+  });
+
+  test('a rejecting reclaim hook is logged, never thrown', async () => {
+    const reclaim = vi.fn(() => Promise.reject(new Error('EACCES')));
+    const { rig } = makeRig({ reclaimStagedUpdateCache: reclaim });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      rig.logger.warn.mock.calls.some((c) => c[0] === 'staged-update cache reclaim failed'),
+    ).toBe(true);
+  });
+
+  test('no hook wired (dev build) → no dispatch, no throw', () => {
+    const { rig } = makeRig();
+    expect(rig.dispatches).not.toContain('staged-cache-reclaimed' as DispatchKind);
+  });
+
+  test('the launch check waits for the reclaim to settle (no rm/download interleave)', async () => {
+    let resolveReclaim: (() => void) | undefined;
+    const reclaim = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveReclaim = resolve;
+        }),
+    );
+    const { rig } = makeRig({ reclaimStagedUpdateCache: reclaim });
+    expect(reclaim).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(rig.updater.checkForUpdates).not.toHaveBeenCalled();
+    resolveReclaim?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ————————————————————————————————————————————————————————
+// Linux manual-install fallback triggers
+// ————————————————————————————————————————————————————————
+
+describe('linux manual-install fallback', () => {
+  const STAGED_DEB = '/home/u/.cache/ok-updater/pending/ok_0.3.2_arm64.deb';
+
+  function makeLinuxRig(opts: {
+    hasGraphicalAuth: boolean;
+    downloadedFile?: string | undefined;
+    extraWindowCount?: number;
+    /**
+     * When false, no `update-downloaded` event fires — the boot-with-staged
+     * shape where the fallback must run entirely off the PERSISTED path.
+     * Combine with `stateStagedInstallerPath`.
+     */
+    emitDownloadEvent?: boolean;
+    stateStagedInstallerPath?: string;
+    stagedInstallerExists?: (path: string) => boolean;
+  }) {
+    const fallback = vi.fn(() => Promise.resolve());
+    const hasAuth = vi.fn(() => opts.hasGraphicalAuth);
+    const made = makeRig({
+      platform: 'linux',
+      versionPendingInstall: '0.3.2',
+      ...(opts.stateStagedInstallerPath !== undefined
+        ? { stagedInstallerPath: opts.stateStagedInstallerPath }
+        : {}),
+      extraWindowCount: opts.extraWindowCount ?? 0,
+      linuxInstallSupport: {
+        hasGraphicalAuth: hasAuth,
+        showManualInstallFallback: fallback,
+        ...(opts.stagedInstallerExists
+          ? { stagedInstallerExists: opts.stagedInstallerExists }
+          : {}),
+      },
+    });
+    // Stage the installer path the way production learns it — from the
+    // update-downloaded payload. The seeded versionPendingInstall makes this
+    // a dedupe re-fire; the staged path must be captured regardless.
+    if (opts.emitDownloadEvent !== false) {
+      made.rig.updater.emit('update-downloaded', {
+        version: '0.3.2',
+        downloadedFile: opts.downloadedFile ?? STAGED_DEB,
+      });
+    }
+    return { ...made, fallback, hasAuth };
+  }
+
+  test('no graphical auth → fallback dialog instead of quitAndInstall, staged state preserved', async () => {
+    const { rig, fallback } = makeLinuxRig({ hasGraphicalAuth: false, extraWindowCount: 1 });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+    // The staged update survives: the gate stays armed for the next boot /
+    // a later retry, exactly what "premature relaunch" relies on.
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    // The early return fires BEFORE the install-commitment persist — no
+    // attempt ever ran, so the next boot must not see a spurious
+    // "install failed" record.
+    expect(rig.state.attemptedInstall).toBeNull();
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledWith({
+      version: '0.3.2',
+      installerPath: STAGED_DEB,
+      packageKind: 'deb',
+      command: `sudo apt install -- '${STAGED_DEB}'`,
+    });
+    expect(rig.dispatches).toContain('linux-manual-fallback-no-auth' as DispatchKind);
+    expect(rig.dispatches).not.toContain('relaunch-now' as DispatchKind);
+    // Every window's banner is restored (the clicked one swapped locally);
+    // no relaunching broadcast ever goes out.
+    for (const win of rig.windows) {
+      expect(win.filter((c) => c.channel === 'ok:update:downloaded').length).toBeGreaterThan(0);
+      expect(win.filter((c) => c.channel === 'ok:update:relaunching')).toHaveLength(0);
+    }
+  });
+
+  test('graphical auth present → normal quitAndInstall path, no fallback', async () => {
+    const { rig, fallback, hasAuth } = makeLinuxRig({ hasGraphicalAuth: true });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(hasAuth).toHaveBeenCalled();
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  test('unrecognized staged format (AppImage) falls through to quitAndInstall even without auth', async () => {
+    const { rig, fallback } = makeLinuxRig({
+      hasGraphicalAuth: false,
+      downloadedFile: '/x/OpenKnowledge.AppImage',
+    });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  test('user cancellation (pkexec 126) → recovery with friendly message, NO fallback dialog', async () => {
+    const { rig, fallback } = makeLinuxRig({ hasGraphicalAuth: true, extraWindowCount: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.updater.emit('error', new Error('Command pkexec exited with code 126'));
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    for (const win of rig.windows) {
+      const failed = win.filter((c) => c.channel === 'ok:update:relaunch-failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toEqual({
+        version: '0.3.2',
+        message: 'authorization was cancelled',
+      });
+    }
+    expect(fallback).not.toHaveBeenCalled();
+    expect(rig.dispatches).not.toContain('linux-manual-fallback-after-error' as DispatchKind);
+  });
+
+  test('retry after cancellation: the re-armed gate accepts a second relaunch-now', async () => {
+    const { rig } = makeLinuxRig({ hasGraphicalAuth: true });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.updater.emit('error', new Error('Command pkexec exited with code 126'));
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(2);
+  });
+
+  test('infrastructure failure (pkexec 127) → recovery AND the fallback dialog', async () => {
+    const { rig, fallback } = makeLinuxRig({ hasGraphicalAuth: true, extraWindowCount: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.updater.emit('error', new Error('Command pkexec exited with code 127'));
+    // failRelaunch recovery landed first: gate restored, windows re-armed.
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    for (const win of rig.windows) {
+      const failed = win.filter((c) => c.channel === 'ok:update:relaunch-failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toEqual({
+        version: '0.3.2',
+        message: 'Command pkexec exited with code 127',
+      });
+    }
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledWith({
+      version: '0.3.2',
+      installerPath: STAGED_DEB,
+      packageKind: 'deb',
+      command: `sudo apt install -- '${STAGED_DEB}'`,
+    });
+    expect(rig.dispatches).toContain('linux-manual-fallback-after-error' as DispatchKind);
+  });
+
+  test('sudo-without-tty failure (no graphical wrapper found mid-install) also offers the fallback', async () => {
+    const { rig, fallback } = makeLinuxRig({ hasGraphicalAuth: true });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.updater.emit('error', new Error('Command sudo exited with code 1'));
+    expect(fallback).toHaveBeenCalledTimes(1);
+  });
+
+  test('rpm staged file produces the dnf command', async () => {
+    const { rig, fallback } = makeLinuxRig({
+      hasGraphicalAuth: false,
+      downloadedFile: '/home/u/.cache/ok-updater/pending/ok-0.3.2.x86_64.rpm',
+    });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(fallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        packageKind: 'rpm',
+        command: "sudo dnf install '/home/u/.cache/ok-updater/pending/ok-0.3.2.x86_64.rpm'",
+      }),
+    );
+  });
+
+  test('boot with a staged update: the PERSISTED path powers the fallback before any updater event', async () => {
+    // The standard Linux flow — download, quit, boot, click Relaunch. The
+    // banner (restored from versionPendingInstall) is clickable long before
+    // the launch check re-validates the ~250 MB cache and re-emits
+    // update-downloaded, so the fallback must work from state alone.
+    const { rig, fallback } = makeLinuxRig({
+      hasGraphicalAuth: false,
+      emitDownloadEvent: false,
+      stateStagedInstallerPath: STAGED_DEB,
+    });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+    expect(fallback).toHaveBeenCalledWith({
+      version: '0.3.2',
+      installerPath: STAGED_DEB,
+      packageKind: 'deb',
+      command: `sudo apt install -- '${STAGED_DEB}'`,
+    });
+  });
+
+  test('a persisted path whose file is gone falls through to quitAndInstall', async () => {
+    const { rig, fallback } = makeLinuxRig({
+      hasGraphicalAuth: false,
+      emitDownloadEvent: false,
+      stateStagedInstallerPath: STAGED_DEB,
+      stagedInstallerExists: () => false,
+    });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  test('update-downloaded persists the staged installer path alongside the banner gate', () => {
+    const { rig } = makeRig({ platform: 'linux' });
+    rig.updater.emit('update-downloaded', { version: '0.9.9', downloadedFile: STAGED_DEB });
+    expect(rig.state.versionPendingInstall).toBe('0.9.9');
+    expect(rig.state.stagedInstallerPath).toBe(STAGED_DEB);
+  });
+
+  test('stale-pending reconciliation clears the persisted staged path with the gate', () => {
+    const { rig } = makeRig({
+      appVersion: '0.3.2',
+      versionPendingInstall: '0.3.2',
+      stagedInstallerPath: STAGED_DEB,
+    });
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.stagedInstallerPath).toBeNull();
+  });
+
+  test('non-linux platforms never trigger the fallback even when wired', async () => {
+    const fallback = vi.fn(() => Promise.resolve());
+    const { rig } = makeRig({
+      platform: 'darwin',
+      versionPendingInstall: '0.3.2',
+      linuxInstallSupport: {
+        hasGraphicalAuth: () => false,
+        showManualInstallFallback: fallback,
+      },
+    });
+    rig.updater.emit('update-downloaded', { version: '0.3.2', downloadedFile: STAGED_DEB });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    rig.updater.emit('error', new Error('Command pkexec exited with code 127'));
+    expect(fallback).not.toHaveBeenCalled();
   });
 });

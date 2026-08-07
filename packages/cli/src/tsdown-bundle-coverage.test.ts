@@ -29,8 +29,11 @@ const declaredDeps = Object.keys(cliPkg.dependencies ?? {}).sort();
 
 const configSource = readFileSync(tsdownConfigPath, 'utf8');
 
-function extractBlock(name: 'alwaysBundle' | 'neverBundle'): string {
-  const match = configSource.match(new RegExp(`${name}:\\s*\\[([\\s\\S]*?)\\]`));
+// The config declares its bundling policy as two named shared consts (the
+// standalone and library builds compose them), so the coverage anchors are
+// the const declarations rather than per-build `alwaysBundle:` literals.
+function extractBlock(name: 'alwaysBundlePureJsDeps' | 'nativeAddonNeverBundle'): string {
+  const match = configSource.match(new RegExp(`const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\n\\];`));
   return match?.[1] ?? '';
 }
 
@@ -44,8 +47,8 @@ function stripLineComments(block: string): string {
     .join('\n');
 }
 
-const alwaysBundleBlock = stripLineComments(extractBlock('alwaysBundle'));
-const neverBundleBlock = stripLineComments(extractBlock('neverBundle'));
+const alwaysBundleBlock = stripLineComments(extractBlock('alwaysBundlePureJsDeps'));
+const neverBundleBlock = stripLineComments(extractBlock('nativeAddonNeverBundle'));
 const neverBundleNames = [...neverBundleBlock.matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
 
 describe('tsdown alwaysBundle covers every cli runtime dep', () => {
@@ -72,6 +75,35 @@ describe('tsdown alwaysBundle covers every cli runtime dep', () => {
       ).toBe(true);
     });
   }
+});
+
+/**
+ * yjs is the one dep whose bundling deliberately DIFFERS between the two
+ * builds: inlined in the standalone bin (no node_modules beside dist/cli.mjs),
+ * external in the library entry (so the desktop's main/utility processes share
+ * one yjs module record with `@inkeep/open-knowledge-server` — yjs keeps a
+ * module-level singleton and duplicate copies break `instanceof` across them,
+ * yjs/yjs#438, surfacing as "Yjs was already imported" at packaged startup).
+ */
+describe('yjs split-bundling policy', () => {
+  test('yjs is a declared runtime dependency (library consumers resolve the external import)', () => {
+    expect(declaredDeps).toContain('yjs');
+  });
+
+  test('standalone build inlines yjs (alwaysBundle covers it)', () => {
+    expect(/\^yjs\\?\(/.test(alwaysBundleBlock)).toBe(true);
+  });
+
+  test('library build externalizes yjs (its neverBundle lists it)', () => {
+    // The library config spreads the shared native-addon list and appends
+    // 'yjs' — anchor on that exact composition so a refactor that silently
+    // drops the externalization fails here.
+    expect(configSource).toMatch(/neverBundle:\s*\[\.\.\.nativeAddonNeverBundle,\s*'yjs'\]/);
+  });
+
+  test('library build does not force-inline yjs (alwaysBundle filtered)', () => {
+    expect(configSource).toMatch(/alwaysBundlePureJsDeps\.filter\(\(re\) => !re\.test\('yjs'\)\)/);
+  });
 });
 
 /**

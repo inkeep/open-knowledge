@@ -31,7 +31,7 @@ const tsdownConfig = resolve(desktopRoot, '..', 'cli', 'tsdown.config.ts');
 const okRoot = resolve(desktopRoot, '..', '..');
 
 /**
- * Natives intentionally NOT shipped into cli/node_modules, each with its
+ * Externals intentionally NOT shipped into cli/node_modules, each with its
  * reason. Every entry asserts "we considered this and decided the bundled-CLI
  * path doesn't need it." Keep this set as small as possible — empty is ideal.
  *
@@ -40,7 +40,17 @@ const okRoot = resolve(desktopRoot, '..', '..');
  * cli/node_modules` rule (see `stage-parcel-watcher.mjs`), so it is covered
  * below through `shippedViaParcelStaging`, not allowlisted.
  */
-const KNOWN_UNCOVERED: Record<string, string> = {};
+const KNOWN_UNCOVERED: Record<string, string> = {
+  // External ONLY in the CLI package's library build (dist/index.mjs), which
+  // nothing under resources/cli ever executes — the wrapper bins and every
+  // desktop spawn run dist/cli.mjs (+ parse-worker.mjs), whose build keeps
+  // yjs inlined precisely because resources/cli has no node_modules. The
+  // library entry's consumer is the desktop main/utility import of
+  // '@inkeep/open-knowledge' from app.asar, where yjs ships as a regular
+  // collected dependency (the same mechanism -server's external yjs already
+  // relies on).
+  yjs: 'library-entry-only external; cli.mjs inlines yjs and is the only entry resources/cli runs',
+};
 
 /**
  * @parcel/watcher ships as a whole staged tree copied to `cli/node_modules`
@@ -91,19 +101,30 @@ function readNeverBundle(): string[] {
     );
   }
   const src = readFileSync(tsdownConfig, 'utf8');
-  const m = /neverBundle:\s*\[([^\]]*)\]/.exec(src);
-  if (!m) {
+  // The config declares the native-addon externals once as a shared
+  // `nativeAddonNeverBundle` const and composes each build's `neverBundle`
+  // from it (bare reference for the standalone build, spread + extras for the
+  // library build). Parse the const literal, then union in any extra quoted
+  // entries from the per-build `neverBundle:` lists so a build-specific
+  // external (e.g. the library entry's 'yjs') still surfaces here.
+  const constMatch = /const nativeAddonNeverBundle\s*=\s*\[([^\]]*)\]/.exec(src);
+  if (!constMatch) {
     throw new Error(
-      `could not locate a \`neverBundle: [...]\` array literal in ${tsdownConfig}. If the ` +
-        `option is now computed rather than written inline, this guard needs a real parser — ` +
+      `could not locate the \`nativeAddonNeverBundle = [...]\` array literal in ${tsdownConfig}. ` +
+        `If the externals list moved or is now computed, this guard needs a real parser — ` +
         `it must not silently fall back to an empty list.`,
     );
   }
-  const entries = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1] as string);
-  if (entries.length === 0) {
+  const quoted = (block: string): string[] =>
+    [...block.matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1] as string);
+  const entries = new Set(quoted(constMatch[1] as string));
+  for (const m of src.matchAll(/neverBundle:\s*\[([^\]]*)\]/g)) {
+    for (const name of quoted(m[1] as string)) entries.add(name);
+  }
+  if (entries.size === 0) {
     throw new Error(`matched \`neverBundle\` in ${tsdownConfig} but extracted no package names.`);
   }
-  return entries;
+  return [...entries];
 }
 
 function readExtraResourceTargets(platform?: 'mac' | 'win' | 'linux'): string[] {

@@ -31,7 +31,7 @@
     "access": "public"
   },
   "scripts": {
-    "build:cli": "tsdown",
+    "build:cli": "rm -rf dist && tsdown",
     "build:app": "cp -r ../app/dist dist/public",
     "build:skill-asset": "tsx ../server/scripts/build-skill-bundles.ts && mkdir -p dist/assets/skills && cp -R ../server/dist/assets/skills/. dist/assets/skills/",
     "build:notices": "mkdir -p dist && cp ../../THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md",
@@ -64,6 +64,7 @@
     "smol-toml": "^1.6.1",
     "yaml": "^2.7.1",
     "yazl": "^3.3.1",
+    "yjs": "^13.6.30",
     "zod": "^4.3.6"
   },
   "optionalDependencies": {

@@ -292,6 +292,10 @@ import {
 } from './ipc-handlers.ts';
 import { logIpcError } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
+import {
+  detectGraphicalAuthCommand,
+  runManualInstallFallbackDialog,
+} from './linux-install-fallback.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
@@ -337,6 +341,7 @@ import {
 } from './reduced-transparency-handler.ts';
 import { removeGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
+import { createRendererReadySink, type RendererReadySink } from './renderer-ready-sink.ts';
 import { createRendererRecovery, type RendererRecovery } from './renderer-recovery.ts';
 import { resolveDetachedSpawnArgs } from './resolve-detached-spawn-args.ts';
 import { resolveShareTarget as resolveShareTargetMain } from './resolve-share-target.ts';
@@ -420,6 +425,7 @@ import {
   applyStateQuery,
   type UpdateStateHandlerDeps,
 } from './update-state-handlers.ts';
+import { reclaimPendingUpdateCache } from './updater-cache.ts';
 import {
   registerProtocolHandler,
   type ScreenTarget,
@@ -1174,6 +1180,19 @@ let debugIpc: DebugIpcHandle | null = null;
  * when the wiring no-ops (marker present, dev mode, non-macOS, etc.).
  */
 let mcpWiringHandle: RunMcpWiringHandle | null = null;
+/**
+ * Permanent sink for the preload's fire-and-forget `*:renderer-ready`
+ * mount-ack invokes. Every renderer fires them at module init, but the
+ * consent flows that consume them are armed only transiently — without a
+ * standing handler, every other packaged boot logs Electron's
+ * "No handler registered for 'ok:…:renderer-ready'" error to stderr. Created
+ * at the top of `bootPrimaryInstance` (before any window can mount a
+ * renderer); the consent flows receive its facade instead of the raw
+ * `ipcMain` so their one-shot register/removeHandler lifecycles arm and
+ * disarm inside the sink. Null only in the duplicate-instance and
+ * driver-smoke boot paths, where the flows never arm.
+ */
+let rendererReadySink: RendererReadySink | null = null;
 /**
  * First-party crash detection (local-only crash reporter, process-gone
  * listeners, boot-time dirty-shutdown/minidump scan). Created at the top of
@@ -2087,7 +2106,9 @@ async function openProject(
     };
     const decision = await requestUserConsent(
       {
-        ipcMain,
+        // Sink facade, not the raw ipcMain: the flow's one-shot renderer-ready
+        // handler arms inside the sink so unarmed acks stay absorbed.
+        ipcMain: rendererReadySink?.ipcMain ?? ipcMain,
         navigator: (navigator as unknown as { webContents: Electron.WebContents }).webContents,
         previewContent,
       },
@@ -3879,7 +3900,9 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
     executablePath: app.getPath('exe'),
     home: osHomedir(),
     platform: process.platform,
-    ipcMain,
+    // Sink facade, not the raw ipcMain: the flow's one-shot renderer-ready
+    // handler arms inside the sink so unarmed acks stay absorbed.
+    ipcMain: rendererReadySink?.ipcMain ?? ipcMain,
     cli: createMcpWiringCliSurface(),
     // PATH leg of the first-launch consent dialog: descriptor for the show
     // payload + the confirm-path finalizer. `applyConsent` reuses the exact
@@ -6494,6 +6517,20 @@ function bootPrimaryInstance(): void {
     'desktop main process starting',
   );
 
+  // Stand up the renderer-ready mount-ack sink before anything can open a
+  // window: the preload invokes `ok:mcp-wiring:renderer-ready` /
+  // `ok:onboarding:renderer-ready` on every renderer mount, and the sink's
+  // permanent handlers are what keep an unarmed boot from logging Electron's
+  // "No handler registered" error for each ack.
+  rendererReadySink = createRendererReadySink(
+    ipcMain,
+    ['ok:mcp-wiring:renderer-ready', 'ok:onboarding:renderer-ready'],
+    {
+      debug: (msg, ctx) => getLogger('renderer-ready-sink').debug(ctx ?? {}, msg),
+      warn: (msg, ctx) => getLogger('renderer-ready-sink').warn(ctx ?? {}, msg),
+    },
+  );
+
   // Crash handling is strictly local: Crashpad writes minidumps under
   // `app.getPath('crashDumps')` and uploads nothing. Started before any
   // window so every child process inherits coverage, then the boot-time scan
@@ -7488,6 +7525,72 @@ function bootPrimaryInstance(): void {
             tryFire(createdWin as BrowserWindow);
           });
         },
+        // Linux manual-install fallback: when no graphical auth wrapper
+        // exists (or the automatic install fails for an infrastructure
+        // reason), the updater offers a dismissible dialog with a copyable
+        // shell-safe package-manager command instead of a doomed
+        // terminal-sudo attempt. The dialog re-shows after "Copy Command" so
+        // Relaunch / Not now stay reachable; Relaunch is unconditional.
+        ...(process.platform === 'linux'
+          ? {
+              linuxInstallSupport: {
+                hasGraphicalAuth: () => detectGraphicalAuthCommand() !== null,
+                stagedInstallerExists: (p) => {
+                  try {
+                    return existsSync(p);
+                  } catch {
+                    return false;
+                  }
+                },
+                showManualInstallFallback: async (ctx) => {
+                  await runManualInstallFallbackDialog(
+                    {
+                      showDialog: async (request) => {
+                        const target =
+                          BrowserWindow.getFocusedWindow() ??
+                          BrowserWindow.getAllWindows()[0] ??
+                          null;
+                        const options = { type: 'info' as const, ...request };
+                        // Unlike the check-now dialogs, show even with no
+                        // window — this is the only surface telling the user
+                        // why their update cannot install.
+                        return target
+                          ? dialog.showMessageBox(target, options)
+                          : dialog.showMessageBox(options);
+                      },
+                      copyCommandToClipboard: (command) => clipboard.writeText(command),
+                      relaunchApp: () => {
+                        app.relaunch();
+                        app.quit();
+                      },
+                    },
+                    ctx,
+                  );
+                },
+              },
+            }
+          : {}),
+        // Reclaim electron-updater's staged-installer cache once the boot
+        // reconciliation proves no install commitment remains armed (the
+        // timing contract lives on the `reclaimStagedUpdateCache` opt).
+        // Packaged builds only: dev builds ship no app-update.yml, and a
+        // guessed path is nothing to aim a recursive delete at.
+        ...(app.isPackaged
+          ? {
+              reclaimStagedUpdateCache: () =>
+                reclaimPendingUpdateCache({
+                  appUpdateConfigPath: join(process.resourcesPath, 'app-update.yml'),
+                  platform: process.platform,
+                  env: process.env,
+                  homeDir: osHomedir(),
+                  logger: {
+                    info: (msg, ctx) => getLogger('updater-cache').info(ctx ?? {}, msg),
+                    warn: (msg, ctx) => getLogger('updater-cache').warn(ctx ?? {}, msg),
+                    debug: (msg, ctx) => getLogger('updater-cache').debug(ctx ?? {}, msg),
+                  },
+                }),
+            }
+          : {}),
         // Pre-relaunch teardown — synchronously hard-kill every project-window
         // utility (Hocuspocus host) right before
         // `autoUpdater.quitAndInstall()` so Squirrel.Mac's `pgrep` against
@@ -7704,6 +7807,10 @@ function bootPrimaryInstance(): void {
     bundleReplaceWatcherHandle = null;
     mcpWiringHandle?.destroy();
     mcpWiringHandle = null;
+    // After the flows (which disarm through its facade), drop the sink's
+    // permanent renderer-ready handlers.
+    rendererReadySink?.destroy();
+    rendererReadySink = null;
     // Final drain so the lifecycle + teardown lines reach disk before exit
     // (the destination is `sync: false`).
     flushDesktopLogger();

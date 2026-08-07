@@ -150,6 +150,20 @@ export interface AppState {
    */
   versionPendingInstall: string | null;
   /**
+   * Absolute path of the staged installer electron-updater downloaded
+   * (`update-downloaded`'s `downloadedFile`). Persisted so the Linux
+   * manual-install fallback can build its copyable command on the standard
+   * Linux flow — download, quit, boot, click Relaunch — where the banner
+   * (restored from `versionPendingInstall`) becomes clickable long before
+   * the updater's launch check re-validates its cache and re-emits the
+   * path. Arms alongside `versionPendingInstall` at download time; cleared
+   * wherever the staged update stops being live (running version caught up,
+   * cross-channel residue, failure-budget giveup). Deliberately NOT cleared
+   * by "Relaunch now": a failed install still needs it. May point at a
+   * since-deleted file — consumers existence-check before use.
+   */
+  stagedInstallerPath: string | null;
+  /**
    * Version the app committed to install and is expected to be running after
    * the next boot. Set when an update finishes downloading (the install is
    * then committed to run on the next quit, via either "Relaunch now" or
@@ -302,6 +316,7 @@ export function emptyState(): AppState {
     recentFiles: [],
     lastOpenedProject: null,
     versionPendingInstall: null,
+    stagedInstallerPath: null,
     attemptedInstall: null,
     attemptedInstallSurfacedCount: 0,
     lastSeenVersion: null,
@@ -810,6 +825,12 @@ export function parseAppState(raw: unknown): AppState | null {
   // fields match emptyState() defaults (no quarantine, no data loss).
   const versionPendingInstall =
     typeof obj.versionPendingInstall === 'string' ? obj.versionPendingInstall : null;
+  // Additive field: a state.json lacking it coerces to null (no staged
+  // installer known), matching emptyState(); no quarantine.
+  const stagedInstallerPath =
+    typeof obj.stagedInstallerPath === 'string' && obj.stagedInstallerPath.length > 0
+      ? obj.stagedInstallerPath
+      : null;
   const attemptedInstall = typeof obj.attemptedInstall === 'string' ? obj.attemptedInstall : null;
   // Additive field: a missing or invalid value coerces to 0 (a fresh failure
   // budget), matching emptyState(); guards against negatives and non-integers
@@ -859,6 +880,7 @@ export function parseAppState(raw: unknown): AppState | null {
     recentFiles,
     lastOpenedProject,
     versionPendingInstall,
+    stagedInstallerPath,
     attemptedInstall,
     attemptedInstallSurfacedCount,
     lastSeenVersion,

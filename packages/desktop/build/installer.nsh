@@ -38,6 +38,17 @@
 !define OK_CLI_BIN_SUFFIX "resources\cli\bin"
 
 !macro customInstall
+  ; ---- drop the differential-update seed copy (~250 MB, inert) ----
+  ; app-builder-lib's installer template copies this installer to
+  ; $LOCALAPPDATA\<updaterCacheDirName>\installer.exe on every install
+  ; (templates/nsis/include/installer.nsh, inside installApplicationFiles,
+  ; which runs BEFORE customInstall) solely as the base a *differential*
+  ; update would patch against. This build ships differentialPackage: false
+  ; (mandatory for useZip — see electron-builder.yml), so the copy can never
+  ; be consumed; delete it right after it lands. KEEP IN LOCK-STEP: if
+  ; differentialPackage is ever re-enabled, this Delete must go.
+  Delete "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+
   ; ---- user PATH append (idempotent) ----
   ReadRegStr $0 HKCU "Environment" "Path"
   ; Normalize a pre-existing trailing ";" so the append below never writes

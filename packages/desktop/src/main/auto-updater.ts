@@ -31,6 +31,11 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts';
+import {
+  classifyInstallFailure,
+  type LinuxManualInstallContext,
+  manualInstallPlanFor,
+} from './linux-install-fallback.ts';
 import type { AppState, UpdateChannel } from './state-store.ts';
 
 /** GitHub provider coordinates — must match `electron-builder.yml` `publish:`. */
@@ -89,7 +94,10 @@ export interface UpdaterLike {
     event: 'download-progress',
     listener: (info: { percent?: number; bytesPerSecond?: number }) => void,
   ): this;
-  on(event: 'update-downloaded', listener: (info: { version?: string }) => void): this;
+  on(
+    event: 'update-downloaded',
+    listener: (info: { version?: string; downloadedFile?: string }) => void,
+  ): this;
   on(event: 'error', listener: (err: Error & { code?: string }) => void): this;
   off(event: string, listener: (...args: unknown[]) => void): this;
   checkForUpdates(): Promise<unknown>;
@@ -139,7 +147,10 @@ export type DispatchKind =
   | 'install-failed-on-boot'
   | 'install-failed-giveup'
   | 'attempted-install-cross-channel'
-  | 'cross-channel-blocked';
+  | 'cross-channel-blocked'
+  | 'staged-cache-reclaimed'
+  | 'linux-manual-fallback-no-auth'
+  | 'linux-manual-fallback-after-error';
 
 interface StartAutoUpdaterOpts {
   updater: UpdaterLike;
@@ -233,6 +244,55 @@ interface StartAutoUpdaterOpts {
    * shutdown (SIGTERM → poll → SIGKILL) can complete cleanly.
    */
   prepareForRelaunch?: () => void | Promise<void>;
+  /**
+   * Reclaim electron-updater's staged-installer cache (`pending/` under the
+   * updater cache dir). Invoked once per boot, from the reconciliation
+   * section, ONLY when no install commitment remains armed — i.e.
+   * `versionPendingInstall` and `attemptedInstall` are both null after
+   * reconciliation and the boot did not just give up on a failing install.
+   * That timing is load-bearing: a staged-but-uncommitted update (the Linux
+   * download-then-quit shape) and a failed or dismissed install must keep
+   * their installer on disk — the Linux manual-install fallback hands the
+   * user a command that points into that cache. electron-updater itself only
+   * empties `pending/` when a DIFFERENT version is later downloaded, so
+   * without this hook the installer for the version already running sits
+   * there (~250 MB) until the next release. Production passes
+   * `reclaimPendingUpdateCache` (packaged builds only); errors are logged
+   * and swallowed — reclaim must never break boot.
+   */
+  reclaimStagedUpdateCache?: () => undefined | Promise<unknown>;
+  /**
+   * Linux-only manual-install fallback surface. The Linux installers run a
+   * BLOCKING privileged package install inside `quitAndInstall()` behind a
+   * graphical auth wrapper (pkexec + a PolicyKit agent, gksudo, …); on
+   * minimal desktops with no such wrapper, electron-updater falls back to
+   * terminal `sudo`, which cannot prompt in a GUI launch. When provided:
+   *
+   *   - `hasGraphicalAuth` preflights the "Relaunch now" click. If it
+   *     reports false (and the staged installer is a recognized package),
+   *     `quitAndInstall()` is skipped entirely and
+   *     `showManualInstallFallback` fires instead, with the staged state
+   *     left armed so the update survives dismissal and relaunch.
+   *   - An install that DID run but failed with anything other than an
+   *     explicit user cancellation (pkexec exit 126) also triggers the
+   *     fallback, after the normal `failRelaunch` window recovery.
+   *
+   * Production wires `showManualInstallFallback` to the dismissible
+   * Copy-command / Relaunch / Not-now dialog in
+   * `linux-install-fallback.ts`. Never set on other platforms.
+   */
+  linuxInstallSupport?: {
+    hasGraphicalAuth: () => boolean;
+    showManualInstallFallback: (ctx: LinuxManualInstallContext) => undefined | Promise<unknown>;
+    /**
+     * Existence check for the persisted staged-installer path — state can
+     * outlive the file (a hand-cleared cache). Production passes an
+     * `existsSync` wrapper; optional so unit fixtures keep the pre-check
+     * behavior. A missing file falls through to the default
+     * electron-updater path instead of offering a command that would fail.
+     */
+    stagedInstallerExists?: (path: string) => boolean;
+  };
   /**
    * Surface the result of a menu-driven `Check for Updates…` click. The
    * periodic hourly check stays silent on a no-change outcome so users
@@ -596,6 +656,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     feedUrl,
     proxyFeed,
     whenRendererReady,
+    reclaimStagedUpdateCache,
+    linuxInstallSupport,
     showCheckNowResult,
     clock = DEFAULT_CLOCK,
     now = () => new Date(),
@@ -871,6 +933,59 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     watchdog: ReturnType<typeof setTimeout>;
   } | null = null;
 
+  // Absolute path of the staged installer. Captured in-session from
+  // electron-updater's `update-downloaded` payload (`downloadedFile`) and
+  // persisted alongside `versionPendingInstall`, then re-seeded from state at
+  // boot (after the reconciliation below) — the standard Linux flow is
+  // download, quit, boot, click Relaunch, and the banner becomes clickable
+  // long before the launch check re-validates the ~250 MB cache (full sha512)
+  // and re-emits the path. Feeds the Linux manual-install fallback command.
+  let stagedInstallerPath: string | null = null;
+
+  /**
+   * The staged installer path, filtered through the injected existence check
+   * (persisted state can outlive the file — e.g. a cache cleared by hand).
+   * Null when unknown or missing on disk; callers then fall through to the
+   * default electron-updater path.
+   */
+  const usableStagedInstallerPath = (): string | null => {
+    if (stagedInstallerPath === null) return null;
+    const exists = linuxInstallSupport?.stagedInstallerExists;
+    if (exists && !exists(stagedInstallerPath)) return null;
+    return stagedInstallerPath;
+  };
+
+  /**
+   * Offer the Linux manual-install fallback for `version` if the platform,
+   * wiring, and staged-installer shape allow it. Returns true when the
+   * dialog was dispatched (fire-and-forget — the dialog runs for as long as
+   * the user keeps it open). Shared by the two triggers: the no-auth
+   * preflight in `relaunch-now` and the infrastructure-classified install
+   * failure in `onError`.
+   */
+  const offerManualInstallFallback = (version: string, kind: DispatchKind): boolean => {
+    if (platform !== 'linux' || !linuxInstallSupport) return false;
+    const installerPath = usableStagedInstallerPath();
+    const plan = manualInstallPlanFor(installerPath);
+    if (!plan || installerPath === null) return false;
+    logger.warn('offering manual-install fallback', {
+      version,
+      packageKind: plan.packageKind,
+      trigger: kind,
+    });
+    onDispatch?.(kind);
+    void Promise.resolve(
+      linuxInstallSupport.showManualInstallFallback({
+        version,
+        installerPath,
+        ...plan,
+      }),
+    ).catch((err: unknown) => {
+      logger.error('manual-install fallback dialog failed', { err });
+    });
+    return true;
+  };
+
   /**
    * Single failure routine for all three relaunch-failure triggers — the
    * synchronous `quitAndInstall()` throw, the in-flight updater `error`
@@ -1079,8 +1194,13 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     });
   };
 
-  const onUpdateDownloaded = (info: { version?: string }): void => {
+  const onUpdateDownloaded = (info: { version?: string; downloadedFile?: string }): void => {
     logger.info('update-downloaded', { version: info.version });
+    // Track the staged file even when the dispatch below dedupes or skips —
+    // the file exists on disk regardless, and the Linux fallback needs it.
+    if (typeof info.downloadedFile === 'string' && info.downloadedFile !== '') {
+      stagedInstallerPath = info.downloadedFile;
+    }
     const version = typeof info.version === 'string' ? info.version : '';
     if (!version) {
       logger.warn('update-downloaded with empty version — skipping dispatch');
@@ -1119,6 +1239,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         {
           ...state,
           versionPendingInstall: version,
+          // Persist the staged path with the banner gate so the Linux
+          // fallback can build its command on the next boot, before the
+          // launch check re-validates the cache (see the AppState field doc).
+          stagedInstallerPath,
           ...(installCommittedAtDownload
             ? {
                 attemptedInstall: version,
@@ -1195,12 +1319,25 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // independently an updater error in the operator log);
     // 'relaunch-error-event' reports the recovery, not a replacement.
     if (relaunchInFlight) {
+      const failedVersion = relaunchInFlight.version;
+      // On Linux, tell an explicit user cancellation of the auth prompt
+      // (pkexec exit 126) apart from authorization infrastructure that
+      // cannot work (no agent, sudo-without-tty, …). Cancellation keeps the
+      // existing recovery only — the user knows what they clicked; the
+      // banner re-arms for another try. Infrastructure failures additionally
+      // offer the manual-install fallback after the recovery lands.
+      const failureClass = platform === 'linux' ? classifyInstallFailure(err.message) : null;
       failRelaunch(
-        relaunchInFlight.version,
-        err.message || 'update error during relaunch',
+        failedVersion,
+        failureClass === 'cancelled'
+          ? 'authorization was cancelled'
+          : err.message || 'update error during relaunch',
         'relaunch-error-event',
         { code: err.code, stack: err.stack },
       );
+      if (failureClass === 'infrastructure') {
+        offerManualInstallFallback(failedVersion, 'linux-manual-fallback-after-error');
+      }
     }
     if (menuCheckPending) {
       menuCheckPending = false;
@@ -1262,6 +1399,26 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       return undefined;
     }
     const pending = snapshot.versionPendingInstall;
+    // Linux preflight: with no graphical auth wrapper on PATH,
+    // `quitAndInstall()` would route through terminal `sudo` — no usable
+    // prompt in a GUI session, guaranteed failure. Skip the attempt
+    // entirely: leave `versionPendingInstall` armed (the staged update must
+    // survive dismissal, a premature relaunch, and the next boot), restore
+    // the clicked window's banner (it swapped to "Relaunching…" locally on
+    // click; the re-broadcast is a same-id in-place replace), and hand the
+    // user the manual-install dialog instead. Only when the staged installer
+    // is a recognized package — otherwise fall through and let
+    // electron-updater report whatever it can.
+    if (
+      platform === 'linux' &&
+      linuxInstallSupport &&
+      manualInstallPlanFor(usableStagedInstallerPath()) !== null &&
+      !linuxInstallSupport.hasGraphicalAuth()
+    ) {
+      broadcastToAllWindows('ok:update:downloaded', { version: pending });
+      offerManualInstallFallback(pending, 'linux-manual-fallback-no-auth');
+      return undefined;
+    }
     // Double-invoke guard: clear the state gate
     // BEFORE calling `quitAndInstall()` so a second IPC fire (rapid
     // double-click on Toast A's "Relaunch now" — sonner doesn't debounce
@@ -1411,7 +1568,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // a genuinely-pending update armed rather than dropping it on garbage.
   if (state.versionPendingInstall && versionAtLeast(currentVersion, state.versionPendingInstall)) {
     const cleared = state.versionPendingInstall;
-    const next = { ...state, versionPendingInstall: null };
+    const next = { ...state, versionPendingInstall: null, stagedInstallerPath: null };
     if (persistSafely(next, 'stale-pending-cleared')) {
       state = next;
       logger.info('cleared stale versionPendingInstall — running has caught up', {
@@ -1432,6 +1589,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // never fire, leaving the next boot as the only detection point. Uses the
   // prerelease-aware `installReached` (not the MMP-only `versionAtLeast`) so a
   // same-major.minor.patch beta bump is not misread as "caught up".
+  // True when THIS boot exhausted the failed-install surfacing budget and
+  // dropped the record. Blocks the staged-cache reclaim below for one boot:
+  // the giveup clears both state gates, but the user may still be acting on
+  // the failure notice (e.g. running the Linux manual-install command against
+  // the staged installer).
+  let installGaveUpThisBoot = false;
   if (state.attemptedInstall) {
     const attempted = state.attemptedInstall;
     if (installReached(currentVersion, attempted)) {
@@ -1474,6 +1637,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         attemptedInstall: null,
         attemptedInstallSurfacedCount: 0,
         versionPendingInstall: null,
+        stagedInstallerPath: null,
       };
       if (persistSafely(next, 'attempted-install-cross-channel')) {
         state = next;
@@ -1503,9 +1667,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           attemptedInstall: null,
           attemptedInstallSurfacedCount: 0,
           versionPendingInstall: null,
+          stagedInstallerPath: null,
         };
         if (persistSafely(next, 'install-failed-giveup')) {
           state = next;
+          installGaveUpThisBoot = true;
           logger.warn('attempted install exhausted its retry budget — clearing record', {
             attempted,
             running: currentVersion,
@@ -1613,6 +1779,51 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   }
 
   // ————————————————————————————————————————————————————————
+  // Staged-cache reclaim — strictly after the reconciliation above
+  // ————————————————————————————————————————————————————————
+
+  // Seed the in-memory staged-installer path from the reconciled state: the
+  // reconciliation above already nulled it wherever the staged update
+  // stopped being live, so what survives here is a genuinely-pending
+  // installer the Linux fallback may need before the launch check re-emits
+  // update-downloaded from cache.
+  stagedInstallerPath = state.stagedInstallerPath;
+
+  // With every install commitment settled (no pending banner to restore, no
+  // failed install being surfaced or retried), the staged installer in
+  // electron-updater's `pending/` cache has no remaining job: either it
+  // installed (this boot runs it) or nothing was ever staged. Any armed gate
+  // means the file may still be needed — the Linux "Relaunch" path, the
+  // manual-install fallback command, and the boot failure notice's Retry all
+  // consume it — so reclaim is skipped and re-evaluated next boot.
+  //
+  // When a reclaim dispatched, the launch check below chains off this
+  // promise so the recursive delete of `pending/` can never race a fresh
+  // download re-creating the directory. Null when no reclaim ran — the
+  // launch check then fires with its usual immediate timing. Never rejects.
+  let reclaimSettled: Promise<void> | null = null;
+  if (
+    reclaimStagedUpdateCache &&
+    state.versionPendingInstall === null &&
+    state.attemptedInstall === null &&
+    !installGaveUpThisBoot
+  ) {
+    try {
+      reclaimSettled = Promise.resolve(reclaimStagedUpdateCache()).then(
+        () => undefined,
+        (err: unknown) => {
+          logger.warn('staged-update cache reclaim failed', { err });
+        },
+      );
+      // Dispatch records "reclaim branch taken", not "rm settled" — matching
+      // the module-wide onDispatch convention; the failure path only logs.
+      onDispatch?.('staged-cache-reclaimed');
+    } catch (err) {
+      logger.warn('staged-update cache reclaim threw synchronously', { err });
+    }
+  }
+
+  // ————————————————————————————————————————————————————————
   // Launch check + periodic timer (hourly + jitter)
   // ————————————————————————————————————————————————————————
 
@@ -1653,7 +1864,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     scheduleNextCheck();
   };
 
-  if (updatesEnabled) {
+  const runLaunchCheck = (): void => {
     void updater
       .checkForUpdates()
       .then(() => {
@@ -1668,6 +1879,16 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         // Still start the timer — the next fire may succeed.
         startPeriodicChecks();
       });
+  };
+
+  if (updatesEnabled) {
+    if (reclaimSettled) {
+      // Sequenced after the reclaim so the boot-time delete of `pending/`
+      // cannot interleave with a fresh download re-creating it.
+      void reclaimSettled.then(runLaunchCheck);
+    } else {
+      runLaunchCheck();
+    }
   } else {
     logger.info(
       'skipping checkForUpdates — app.isPackaged=false and OK_UPDATER_FORCE_DEV unset (handlers remain wired for tests + IPC)',
