@@ -1,24 +1,65 @@
-import { BASE16_SLOT_ROLES, BASE16_SLOTS, parseBase16Scheme } from '@inkeep/open-knowledge-core';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { BASE16_SLOT_ROLES, parseBase16Scheme } from '@inkeep/open-knowledge-core';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { DEFAULT_CUSTOM_SCHEME } from '@/lib/color-themes';
+import { COLOR_THEMES, type ColorTheme, DEFAULT_CUSTOM_SCHEME } from '@/lib/color-themes';
+import type { UpdateSavedThemeResult } from '@/lib/saved-themes-client';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-let mergedConfig: { appearance?: { colorTheme?: string; customTheme?: Record<string, string> } } =
-  {};
+let mergedConfig: {
+  appearance?: {
+    theme?: 'system' | 'light' | 'dark';
+    colorTheme?: string;
+    colorThemeLight?: string;
+    colorThemeDark?: string;
+    customTheme?: Record<string, string>;
+  };
+} = {};
 const patchCalls: unknown[] = [];
+let savedThemes: ColorTheme[] = [];
+let editingThemeId = 'custom';
+let themeIncarnations: Record<string, number> = {};
+const applyColorThemeToDom = vi.fn();
+const refreshSavedThemes = vi.fn(async () => {});
+const selectThemeToEdit = vi.fn();
+const updateTheme = vi.fn(
+  async (): Promise<UpdateSavedThemeResult> => ({
+    ok: true,
+    id: 'saved-theme',
+    filename: 'theme.yaml',
+  }),
+);
+
+function translateLingui(
+  message: TemplateStringsArray | string | { message?: string },
+  ...values: unknown[]
+): string {
+  if (typeof message === 'object' && 'message' in message) return message.message ?? '';
+  return renderLinguiTemplate(message, ...values);
+}
 
 vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
-  useLingui: () => ({ t: renderLinguiTemplate }),
+  msg: renderLinguiTemplate,
+  useLingui: () => ({ t: translateLingui }),
 }));
 vi.doMock('next-themes', () => ({ useTheme: () => ({ setTheme: () => {} }) }));
 vi.doMock('@/lib/config-context', () => ({
   useConfigContextOptional: () => ({ merged: mergedConfig }),
 }));
 vi.doMock('@/lib/use-apply-config-color-theme', () => ({
-  applyColorThemeToDom: () => {},
+  applyColorThemeToDom,
+}));
+vi.doMock('@/lib/saved-themes-client', () => ({
+  useSavedThemes: () => ({
+    themes: savedThemes,
+    refresh: refreshSavedThemes,
+    updateTheme,
+    editingThemeId,
+    themeIncarnations,
+    selectThemeToEdit,
+  }),
 }));
 
 const userBinding = { patch: (p: unknown) => patchCalls.push(p) } as never;
@@ -68,13 +109,23 @@ palette:
   base0F: "#e6b673"
 `;
 
+function pasteTheme(target: HTMLElement, value: string) {
+  fireEvent.paste(target, {
+    clipboardData: { getData: (type: string) => (type === 'text/plain' ? value : '') },
+  });
+}
+
 async function renderEditor() {
   const { CustomThemeEditor } = await import('./CustomThemeEditor');
-  return render(<CustomThemeEditor userBinding={userBinding} />);
+  const view = render(<CustomThemeEditor userBinding={userBinding} />);
+  return {
+    ...view,
+    rerenderEditor: () => view.rerender(<CustomThemeEditor userBinding={userBinding} />),
+  };
 }
 
 function hexInputs(container: HTMLElement): HTMLInputElement[] {
-  return [...container.querySelectorAll<HTMLInputElement>('input:not([type="color"])')];
+  return [...container.querySelectorAll<HTMLInputElement>('input[aria-label$="hex value"]')];
 }
 
 describe('CustomThemeEditor', () => {
@@ -82,13 +133,25 @@ describe('CustomThemeEditor', () => {
     cleanup();
     patchCalls.length = 0;
     mergedConfig = {};
+    savedThemes = [];
+    editingThemeId = 'custom';
+    themeIncarnations = {};
+    applyColorThemeToDom.mockClear();
+    refreshSavedThemes.mockClear();
+    selectThemeToEdit.mockClear();
+    updateTheme.mockReset();
+    updateTheme.mockResolvedValue({
+      ok: true,
+      id: 'saved-theme',
+      filename: 'theme.yaml',
+    });
   });
 
-  test('renders a color + hex input for each of the sixteen base16 slots', async () => {
+  test('renders sixteen selectable swatches with one focused color editor', async () => {
     const { container } = await renderEditor();
-    expect(container.querySelectorAll('input[type="color"]').length).toBe(16);
-    // 16 color + 16 hex text inputs.
-    expect(hexInputs(container).length).toBe(16);
+    expect(container.querySelectorAll('button[aria-label^="Select base"]').length).toBe(16);
+    expect(container.querySelectorAll('input[type="color"]').length).toBe(1);
+    expect(hexInputs(container).length).toBe(1);
   });
 
   test('the section is a landmark labelled by its heading, like sibling subsections', async () => {
@@ -106,6 +169,84 @@ describe('CustomThemeEditor', () => {
     fireEvent.change(hex, { target: { value: '#123456' } });
     fireEvent.blur(hex, { target: { value: '#123456' } });
     expect(patchCalls).toContainEqual({ appearance: { customTheme: { base00: '#123456' } } });
+  });
+
+  test('previews edits immediately when the saved theme is assigned to the active slot', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      ...COLOR_THEMES,
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'saved-active',
+        colorThemeDark: 'default',
+      },
+    };
+    const { container } = await renderEditor();
+    const hex = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(hex, { target: { value: '#224466' } });
+
+    expect(applyColorThemeToDom).toHaveBeenCalledTimes(1);
+    expect(applyColorThemeToDom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: { light: 'saved-active', dark: 'default' },
+        slotMode: 'light',
+      }),
+    );
+  });
+
+  test('keeps the committed custom slot cache while previewing a saved theme', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      ...COLOR_THEMES,
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    const customSeed = {
+      name: 'Legacy custom',
+      variant: 'light',
+      ...DEFAULT_CUSTOM_SCHEME.palette,
+      base00: '#abcdef',
+    };
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'saved-active',
+        colorThemeDark: 'custom',
+        customTheme: customSeed,
+      },
+    };
+    const { container } = await renderEditor();
+    const hex = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(hex, { target: { value: '#224466' } });
+
+    expect(applyColorThemeToDom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customSeed,
+        selection: { light: 'saved-active', dark: 'custom' },
+        themes: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'saved-active',
+            scheme: expect.objectContaining({
+              palette: expect.objectContaining({ base00: '#224466' }),
+            }),
+          }),
+        ]),
+      }),
+    );
   });
 
   test('an invalid hex does not patch', async () => {
@@ -159,9 +300,9 @@ describe('CustomThemeEditor', () => {
     // `author` included: a scheme's credit line has to survive the write, or it
     // is gone by the next reload and "Copy as YAML" hands back an uncredited
     // copy of someone else's scheme.
-    const { getByTestId, getByText } = await renderEditor();
-    fireEvent.change(getByTestId('custom-theme-import'), { target: { value: PASTED_SCHEME } });
-    fireEvent.click(getByText('Import scheme'));
+    const { getByTestId, queryByRole } = await renderEditor();
+    pasteTheme(getByTestId('custom-theme-import'), PASTED_SCHEME);
+    expect(queryByRole('button', { name: 'Import theme' })).toBeNull();
     expect(patchCalls).toContainEqual({
       appearance: {
         customTheme: {
@@ -191,18 +332,40 @@ describe('CustomThemeEditor', () => {
   });
 
   test('an imported scheme repopulates the slot inputs', async () => {
-    const { container, getByTestId, getByText } = await renderEditor();
-    fireEvent.change(getByTestId('custom-theme-import'), { target: { value: PASTED_SCHEME } });
-    fireEvent.click(getByText('Import scheme'));
-    const values = hexInputs(container).map((input) => input.value);
-    expect(values[0]).toBe('#0f1419');
-    expect(values[BASE16_SLOTS.indexOf('base0D')]).toBe('#59c2ff');
+    const { container, getByTestId } = await renderEditor();
+    pasteTheme(getByTestId('custom-theme-import'), PASTED_SCHEME);
+    expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#0f1419');
+    const base0D = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select base0D "]',
+    );
+    expect(base0D).not.toBeNull();
+    fireEvent.click(base0D as HTMLButtonElement);
+    expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#59c2ff');
+  });
+
+  test('copies the selected swatch value', async () => {
+    const written: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          written.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+    const { container, getByRole } = await renderEditor();
+    const base0D = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select base0D "]',
+    );
+    fireEvent.click(base0D as HTMLButtonElement);
+    fireEvent.click(getByRole('button', { name: 'Copy' }));
+    await waitFor(() => expect(written).toEqual([DEFAULT_CUSTOM_SCHEME.palette.base0D]));
   });
 
   test('an unparseable paste surfaces an inline error and writes nothing', async () => {
-    const { getByTestId, getByText, queryByTestId } = await renderEditor();
-    fireEvent.change(getByTestId('custom-theme-import'), { target: { value: 'not a scheme' } });
-    fireEvent.click(getByText('Import scheme'));
+    const { getByTestId, queryByTestId } = await renderEditor();
+    pasteTheme(getByTestId('custom-theme-import'), 'not a scheme');
     expect(queryByTestId('custom-theme-import-error')).not.toBeNull();
     expect(patchCalls.length).toBe(0);
   });
@@ -256,14 +419,14 @@ describe('CustomThemeEditor', () => {
     expect(patchCalls).toContainEqual({ appearance: { customTheme: { base00: '#123456' } } });
   });
 
-  test('every slot shows its role, not just the opaque slot id', async () => {
-    // `base09` teaches nothing on its own; the role is what makes the control
-    // legible without cross-referencing the spec.
+  test('every swatch exposes its role, not just the opaque slot id', async () => {
     const { container } = await renderEditor();
-    const text = container.textContent ?? '';
-    expect(text).toContain('base09');
-    expect(text).toContain(BASE16_SLOT_ROLES.base09);
-    expect(text).toContain(BASE16_SLOT_ROLES.base0D);
+    const orange = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select base09 "]',
+    );
+    const blue = container.querySelector<HTMLButtonElement>('button[aria-label^="Select base0D "]');
+    expect(orange?.getAttribute('aria-label')).toContain(BASE16_SLOT_ROLES.base09);
+    expect(blue?.getAttribute('aria-label')).toContain(BASE16_SLOT_ROLES.base0D);
   });
 
   test('the preview renders and marks the surfaces a hovered slot drives', async () => {
@@ -273,28 +436,32 @@ describe('CustomThemeEditor', () => {
     // Nothing is lit until a slot is pointed at.
     expect(container.querySelectorAll('[data-lit="true"]').length).toBe(0);
 
-    const stringSwatch = container.querySelector<HTMLInputElement>('input[aria-label^="base0B "]');
+    const stringSwatch = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select base0B "]',
+    );
     expect(stringSwatch).not.toBeNull();
-    fireEvent.mouseEnter(stringSwatch as HTMLInputElement);
+    fireEvent.mouseEnter(stringSwatch as HTMLButtonElement);
     // base0B is the strings slot — the code sample's string literal lights up.
     expect(
       container.querySelectorAll('[data-lit="true"][data-slot="base0B"]').length,
     ).toBeGreaterThan(0);
 
-    fireEvent.mouseLeave(stringSwatch as HTMLInputElement);
+    fireEvent.mouseLeave(stringSwatch as HTMLButtonElement);
     expect(container.querySelectorAll('[data-lit="true"]').length).toBe(0);
   });
 
   test('keyboard focus lights the same surfaces as hover', async () => {
     // The spotlight must not be pointer-only — the slot list is a tab sequence.
     const { container } = await renderEditor();
-    const hex = container.querySelector<HTMLInputElement>('input[aria-label="base0E hex value"]');
-    expect(hex).not.toBeNull();
-    fireEvent.focus(hex as HTMLInputElement);
+    const swatch = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select base0E "]',
+    );
+    expect(swatch).not.toBeNull();
+    fireEvent.focus(swatch as HTMLButtonElement);
     expect(
       container.querySelectorAll('[data-lit="true"][data-slot="base0E"]').length,
     ).toBeGreaterThan(0);
-    fireEvent.blur(hex as HTMLInputElement);
+    fireEvent.blur(swatch as HTMLButtonElement);
     expect(container.querySelectorAll('[data-lit="true"]').length).toBe(0);
   });
 
@@ -329,12 +496,427 @@ describe('CustomThemeEditor', () => {
   });
 
   test('the import error clears once the user edits the paste again', async () => {
-    const { getByTestId, getByText, queryByTestId } = await renderEditor();
+    const { getByTestId, queryByTestId } = await renderEditor();
     const textarea = getByTestId('custom-theme-import');
-    fireEvent.change(textarea, { target: { value: 'not a scheme' } });
-    fireEvent.click(getByText('Import scheme'));
+    pasteTheme(textarea, 'not a scheme');
     expect(queryByTestId('custom-theme-import-error')).not.toBeNull();
     fireEvent.change(textarea, { target: { value: 'base00: "#111111"' } });
     expect(queryByTestId('custom-theme-import-error')).toBeNull();
+  });
+
+  test('does not refresh or announce saved until the newest autosave revision settles', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    const resolvers: Array<(result: UpdateSavedThemeResult) => void> = [];
+    updateTheme.mockImplementation(
+      async () =>
+        new Promise<UpdateSavedThemeResult>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const { container, getByText, queryByText } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    const base01 = container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select base01 "]',
+    );
+    fireEvent.click(base01 as HTMLButtonElement);
+    const second = hexInputs(container)[0] as HTMLInputElement;
+    fireEvent.change(second, { target: { value: '#223344' } });
+    fireEvent.blur(second, { target: { value: '#223344' } });
+
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(2));
+    expect(getByText('Saving changes…')).toBeDefined();
+
+    await act(async () => {
+      resolvers[0]?.({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    });
+    expect(refreshSavedThemes).not.toHaveBeenCalled();
+    expect(queryByText('Changes saved automatically.')).toBeNull();
+    expect(getByText('Saving changes…')).toBeDefined();
+
+    await act(async () => {
+      resolvers[1]?.({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    });
+    await waitFor(() => expect(refreshSavedThemes).toHaveBeenCalledTimes(1));
+    expect(getByText('Changes saved automatically.')).toBeDefined();
+  });
+
+  test('shows a problem status when autosaving a saved theme fails', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    updateTheme.mockResolvedValueOnce({ ok: false, reason: 'unexpected' });
+    const { container, getByText } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+
+    await waitFor(() =>
+      expect(getByText('Couldn’t save changes. Try editing a color again.')).toBeDefined(),
+    );
+    expect(refreshSavedThemes).not.toHaveBeenCalled();
+  });
+
+  test('does not roll back a newer palette selection when an older autosave fails', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      ...COLOR_THEMES,
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'saved-active',
+        colorThemeDark: 'default',
+      },
+    };
+    let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
+    updateTheme.mockImplementation(
+      async () =>
+        new Promise<UpdateSavedThemeResult>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const { container, rerenderEditor, getByText } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(1));
+    applyColorThemeToDom.mockClear();
+
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'default',
+        colorThemeDark: 'default',
+      },
+    };
+    rerenderEditor();
+    await act(async () => {
+      resolveUpdate?.({ ok: false, reason: 'unexpected' });
+    });
+
+    expect(getByText('Couldn’t save changes. Try editing a color again.')).toBeDefined();
+    expect(applyColorThemeToDom).not.toHaveBeenCalled();
+  });
+
+  test('rolls a failed preview back to the latest committed registry state', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      ...COLOR_THEMES,
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'saved-active',
+        colorThemeDark: 'custom',
+      },
+    };
+    let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
+    updateTheme.mockImplementation(
+      async () =>
+        new Promise<UpdateSavedThemeResult>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const { container, rerenderEditor } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(1));
+    applyColorThemeToDom.mockClear();
+
+    const latestCommitted = {
+      ...DEFAULT_CUSTOM_SCHEME,
+      palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#abcdef' },
+    };
+    savedThemes = [
+      ...COLOR_THEMES,
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: latestCommitted,
+      },
+    ];
+    rerenderEditor();
+    await act(async () => {
+      resolveUpdate?.({ ok: false, reason: 'unexpected' });
+    });
+
+    expect(applyColorThemeToDom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        themes: expect.arrayContaining([
+          expect.objectContaining({ id: 'saved-active', scheme: latestCommitted }),
+        ]),
+      }),
+    );
+  });
+
+  test('retries after an autosave problem and reports the later save', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    updateTheme
+      .mockResolvedValueOnce({ ok: false, reason: 'unexpected' })
+      .mockResolvedValueOnce({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    const { container, getByText, queryByText } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() =>
+      expect(getByText('Couldn’t save changes. Try editing a color again.')).toBeDefined(),
+    );
+
+    fireEvent.change(first, { target: { value: '#445566' } });
+    fireEvent.blur(first, { target: { value: '#445566' } });
+
+    await waitFor(() => expect(getByText('Changes saved automatically.')).toBeDefined());
+    expect(queryByText('Couldn’t save changes. Try editing a color again.')).toBeNull();
+    expect(refreshSavedThemes).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps a newer local draft when an intermediate registry refresh arrives', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
+    updateTheme.mockImplementation(
+      async () =>
+        new Promise<UpdateSavedThemeResult>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const { container, rerenderEditor } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(1));
+
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: {
+          ...DEFAULT_CUSTOM_SCHEME,
+          palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#abcdef' },
+        },
+      },
+    ];
+    rerenderEditor();
+
+    expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#112233');
+
+    await act(async () => {
+      resolveUpdate?.({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    });
+  });
+
+  test('keeps a newer uncommitted draft when an older autosave finishes', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
+    updateTheme
+      .mockImplementationOnce(
+        async () =>
+          new Promise<UpdateSavedThemeResult>((resolve) => {
+            resolveUpdate = resolve;
+          }),
+      )
+      .mockResolvedValue({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    const { container } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(first, { target: { value: '#445566' } });
+
+    await act(async () => {
+      resolveUpdate?.({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    });
+    expect(first.value).toBe('#445566');
+
+    fireEvent.blur(first, { target: { value: '#445566' } });
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(2));
+    expect(updateTheme).toHaveBeenLastCalledWith({
+      id: 'saved-active',
+      scheme: {
+        ...DEFAULT_CUSTOM_SCHEME,
+        palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#445566' },
+      },
+    });
+  });
+
+  test('keeps pending drafts isolated when switching between saved themes', async () => {
+    const themeA = {
+      ...DEFAULT_CUSTOM_SCHEME,
+      name: 'Theme A',
+      palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#aaaaaa' },
+    };
+    const themeB = {
+      ...DEFAULT_CUSTOM_SCHEME,
+      name: 'Theme B',
+      palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#bbbbbb' },
+    };
+    editingThemeId = 'saved-a';
+    savedThemes = [
+      { id: 'saved-a', label: 'Theme A', kind: 'dark', scheme: themeA },
+      { id: 'saved-b', label: 'Theme B', kind: 'dark', scheme: themeB },
+    ];
+    let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
+    updateTheme.mockImplementation(
+      async () =>
+        new Promise<UpdateSavedThemeResult>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const { container, rerenderEditor } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() => expect(updateTheme).toHaveBeenCalledTimes(1));
+
+    editingThemeId = 'saved-b';
+    rerenderEditor();
+    await waitFor(() =>
+      expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#bbbbbb'),
+    );
+
+    editingThemeId = 'saved-a';
+    rerenderEditor();
+    await waitFor(() =>
+      expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#112233'),
+    );
+
+    await act(async () => {
+      resolveUpdate?.({ ok: true, id: 'saved-a', filename: 'a.yaml' });
+    });
+  });
+
+  test('drops draft and autosave state when a deleted id is recreated', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Old',
+        kind: 'dark',
+        scheme: DEFAULT_CUSTOM_SCHEME,
+      },
+    ];
+    let resolveUpdate: ((result: UpdateSavedThemeResult) => void) | undefined;
+    updateTheme.mockImplementation(
+      async () =>
+        new Promise<UpdateSavedThemeResult>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    const { container, rerenderEditor, getByText, queryByText } = await renderEditor();
+    const first = hexInputs(container)[0] as HTMLInputElement;
+
+    fireEvent.change(first, { target: { value: '#112233' } });
+    fireEvent.blur(first, { target: { value: '#112233' } });
+    await waitFor(() => expect(getByText('Saving changes…')).toBeDefined());
+
+    themeIncarnations = { 'saved-active': 1 };
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Recreated',
+        kind: 'light',
+        scheme: {
+          ...DEFAULT_CUSTOM_SCHEME,
+          name: 'Recreated',
+          variant: 'light',
+          palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#abcdef' },
+        },
+      },
+    ];
+    rerenderEditor();
+
+    await waitFor(() =>
+      expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#abcdef'),
+    );
+    expect(queryByText('Saving changes…')).toBeNull();
+
+    await act(async () => {
+      resolveUpdate?.({ ok: true, id: 'saved-active', filename: 'active.yaml' });
+    });
+
+    expect(refreshSavedThemes).not.toHaveBeenCalled();
+    expect((hexInputs(container)[0] as HTMLInputElement).value).toBe('#abcdef');
+    expect(queryByText('Changes saved automatically.')).toBeNull();
+  });
+
+  test('Done closes a saved theme editor', async () => {
+    editingThemeId = 'saved-active';
+    savedThemes = [
+      {
+        id: 'saved-active',
+        label: 'Active',
+        kind: 'dark',
+        scheme: { ...DEFAULT_CUSTOM_SCHEME, name: 'Active' },
+      },
+    ];
+    const user = userEvent.setup();
+    const { getByRole } = await renderEditor();
+
+    await user.click(getByRole('button', { name: 'Done' }));
+
+    expect(selectThemeToEdit).toHaveBeenCalledWith(null);
   });
 });

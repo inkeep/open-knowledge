@@ -173,6 +173,12 @@ const EXEMPT_HANDLERS = new Set([
   // definitions), not agent-authored document content — same rationale as
   // seed/sync/local-op handlers. No agent identity needed.
   'handleFolderConfig',
+  // `/api/saved-themes` (list) + `/api/saved-theme` (save/delete) — user-global
+  // theme-store operations. They write scheme files under `<home>/.ok/themes`,
+  // not agent-authored CRDT document content, so there is no authorship to
+  // attribute — same rationale as `handleFolderConfig` / the local-op handlers.
+  'handleSavedThemesList',
+  'handleSavedTheme',
   'handleTemplate',
   // `/api/lint/config` (GET) + `/api/lint/markdownlint-config` (POST) — the markdown
   // linter's effective-config read and the native `.markdownlint.*` rule write.

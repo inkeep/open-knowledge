@@ -4,9 +4,24 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { COLOR_THEMES, type ColorThemeSelection, defaultThemeTokens } from '@/lib/color-themes';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
+let activeLocale = 'en';
+
+function translateLingui(message: TemplateStringsArray | string, ...values: unknown[]): string {
+  const rendered = renderLinguiTemplate(message, ...values);
+  if (activeLocale !== 'fr' || !Array.isArray(message)) return rendered;
+  const messageShape = [...message].join('{}');
+  if (messageShape === 'Use {} for the active dark mode') {
+    return `Utiliser ${String(values[0])} pour le mode sombre actif`;
+  }
+  if (messageShape === 'Use {} for the active light mode') {
+    return `Utiliser ${String(values[0])} pour le mode clair actif`;
+  }
+  return rendered;
+}
+
 vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
-  useLingui: () => ({ t: renderLinguiTemplate }),
+  useLingui: () => ({ t: translateLingui }),
 }));
 
 type Assignment = [slot: 'light' | 'dark', id: string];
@@ -40,7 +55,10 @@ function swatchStyles(themeLabel: RegExp): string {
 }
 
 describe('ColorThemePicker', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    activeLocale = 'en';
+    cleanup();
+  });
 
   test('renders one tile per registered theme, each with a sun and a moon', async () => {
     await renderPicker(DEFAULTS);
@@ -49,6 +67,35 @@ describe('ColorThemePicker', () => {
       expect(screen.getByLabelText(`Use ${theme.label} as the light theme`)).toBeDefined();
       expect(screen.getByLabelText(`Use ${theme.label} as the dark theme`)).toBeDefined();
     }
+  });
+
+  test('exposes editing only for declared saved palettes', async () => {
+    const selected: Array<string | null> = [];
+    const { ColorThemePicker } = await import('./ColorThemePicker');
+    const savedTheme = {
+      ...(COLOR_THEMES[1] as (typeof COLOR_THEMES)[number]),
+      id: 'saved-personal',
+      label: 'Personal',
+    };
+    render(
+      <ColorThemePicker
+        selection={DEFAULTS}
+        themes={[...COLOR_THEMES, savedTheme]}
+        onAssign={() => {}}
+        editControl={{
+          themeIds: ['saved-personal'],
+          selectedId: 'saved-personal',
+          onSelect: (id) => selected.push(id),
+        }}
+        aria-label="Color theme"
+      />,
+    );
+
+    const editPersonal = screen.getByRole('button', { name: 'Hide Personal editor' });
+    expect(editPersonal.getAttribute('data-state')).toBe('on');
+    expect(screen.queryByRole('button', { name: 'Edit Dracula' })).toBeNull();
+    fireEvent.click(editPersonal);
+    expect(selected).toEqual([null]);
   });
 
   test('presses the sun on the light palette and the moon on the dark one', async () => {
@@ -110,6 +157,27 @@ describe('ColorThemePicker', () => {
     expect(swatch).not.toBeNull();
     fireEvent.click(swatch as Element);
     expect(calls).toEqual([['dark', 'dracula']]);
+  });
+
+  test('exposes the clickable swatch as a named keyboard control', async () => {
+    await renderPicker(DEFAULTS, () => {}, 'dark');
+
+    const swatchButton = screen.getByRole('button', {
+      name: 'Use Dracula for the active dark mode',
+    });
+    expect(swatchButton.tabIndex).toBe(0);
+    expect(swatchButton.getAttribute('aria-hidden')).toBeNull();
+    expect(swatchButton.querySelector('[data-theme-swatch]')).not.toBeNull();
+  });
+
+  test('localizes the active mode inside the swatch accessible name', async () => {
+    activeLocale = 'fr';
+    await renderPicker(DEFAULTS, () => {}, 'dark');
+
+    expect(
+      screen.getByRole('button', { name: 'Utiliser Dracula pour le mode sombre actif' }),
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: /active dark mode/ })).toBeNull();
   });
 
   test('fires onAssign with the slot the pressed icon owns', async () => {

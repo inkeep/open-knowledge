@@ -352,7 +352,7 @@ export {
   NATIVE_MENU_LABELS,
   type NativeMenuLabelKey,
 } from './constants/native-menu-labels.ts';
-export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER } from './constants/ok-dir.ts';
+export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER, SAVED_THEMES_DIRNAME } from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,
   type PreviewEmbedStarter,
@@ -1034,6 +1034,22 @@ export {
   RollbackRequestSchema,
   type RollbackSuccess,
   RollbackSuccessSchema,
+  type SavedThemeDeleteSuccess,
+  SavedThemeDeleteSuccessSchema,
+  type SavedThemeListEntry,
+  SavedThemeListEntrySchema,
+  type SavedThemeSaveRequest,
+  SavedThemeSaveRequestSchema,
+  type SavedThemeSaveSuccess,
+  SavedThemeSaveSuccessSchema,
+  type SavedThemeScheme,
+  SavedThemeSchemeSchema,
+  type SavedThemesListSuccess,
+  SavedThemesListSuccessSchema,
+  type SavedThemeUpdateRequest,
+  SavedThemeUpdateRequestSchema,
+  type SavedThemeUpdateSuccess,
+  SavedThemeUpdateSuccessSchema,
   type SaveVersionRequest,
   SaveVersionRequestSchema,
   type SaveVersionSuccess,
@@ -1341,17 +1357,25 @@ export {
 export type {
   ColorThemeSelection,
   ColorThemeSelectionInput,
+  SavedThemeIdError,
+  SavedThemeIdResult,
+  SavedThemeNameResult,
   ThemePlugin,
   ThemePluginId,
 } from './theme/theme-plugins.ts';
 export {
   colorThemeMode,
+  deriveSavedThemeId,
+  deriveSavedThemeName,
   generateColorThemesCss,
   isDarkTheme,
+  parseSavedThemeId,
   renderThemeBlock,
   resolveColorThemeSelection,
   resolveModePreference,
   resolveThemePlugin,
+  SAVED_THEME_ID_PREFIX,
+  THEME_ID_PATTERN,
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,
 } from './theme/theme-plugins.ts';

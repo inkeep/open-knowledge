@@ -332,6 +332,11 @@ msgstr "{0} total"
 msgid "{0} version {1}"
 msgstr "{0} versi {1}"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "{0} was already deleted."
+msgstr "{0} sudah dihapus."
+
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
 msgid "{0} was not moved."
@@ -777,6 +782,11 @@ msgstr "{sizeText} · rahasia disunting · crash dump tidak disunting"
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {keterampilan}}"
 
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{slot} color — {0}"
+msgstr "Warna {slot} — {0}"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} hex value"
 msgstr "Nilai heksa {slot}"
@@ -1040,6 +1050,10 @@ msgstr "sebuah alat git yang diperlukan"
 msgid "A reusable starting point for new documents in this folder."
 msgstr "Titik awal yang bisa dipakai ulang untuk dokumen baru di folder ini."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "A saved theme already uses this name."
+msgstr "Tema tersimpan lain sudah menggunakan nama ini."
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "Satu baris singkat yang ditampilkan di bawah judul pada daftar templat."
@@ -1095,10 +1109,6 @@ msgstr "Di atas"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "absent"
 msgstr "tidak ada"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Accents"
-msgstr "Aksen"
 
 #: src/components/DiffView.tsx
 msgid "Accept"
@@ -1779,10 +1789,6 @@ msgstr "Kembali"
 msgid "Back to document view"
 msgstr "Kembali ke tampilan dokumen"
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Background to foreground"
-msgstr "Latar ke depan"
-
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
 msgstr "Tautan balik"
@@ -1927,8 +1933,8 @@ msgid "Browse folder"
 msgstr "Pilih folder"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Browse hundreds of schemes"
-msgstr "Jelajahi ratusan skema"
+msgid "Browse hundreds of themes"
+msgstr "Jelajahi ratusan tema"
 
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
@@ -2047,6 +2053,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -2101,6 +2108,18 @@ msgstr "diubah di luar"
 #: src/components/SkillInstallMenu.tsx
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "Diubah di luar OK sejak terakhir kali OK menulis di sini — keadaan yang ditampilkan adalah apa yang ada di disk sekarang"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically to this theme."
+msgstr "Perubahan disimpan otomatis ke tema ini."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically."
+msgstr "Perubahan disimpan otomatis."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes saved automatically."
+msgstr "Perubahan disimpan otomatis."
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -2699,6 +2718,11 @@ msgstr "Konflik"
 msgid "Conflicted files"
 msgstr "Berkas yang berkonflik"
 
+#. placeholder {0}: warning.conflictingFilenames.join(', ')
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Conflicting files: {0}."
+msgstr "Berkas yang berkonflik: {0}."
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "Konflik"
@@ -2891,6 +2915,10 @@ msgstr "Mengubah..."
 msgid "Copied"
 msgstr "Disalin"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Copied {selectedSlot}"
+msgstr "{selectedSlot} disalin"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -2928,6 +2956,7 @@ msgstr "salin"
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Copy"
 msgstr "Salin"
@@ -3212,6 +3241,15 @@ msgstr "Laporannya tidak bisa dibuat"
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "Worktree-nya tidak bisa dibuat. Coba nama lain."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t create this theme. Try again."
+msgstr "Tema ini tidak dapat dibuat. Coba lagi."
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete {0}. Try again."
+msgstr "{0} tidak dapat dihapus. Coba lagi."
+
 #. placeholder {0}: result.error
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Couldn't delete file: {0}"
@@ -3228,6 +3266,10 @@ msgstr "Templat tidak bisa dihapus: {error}"
 #: src/comments/store.ts
 msgid "Couldn't delete that comment."
 msgstr "Komentar itu tidak bisa dihapus."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete this theme. Refresh and try again."
+msgstr "Tema ini tidak dapat dihapus. Muat ulang lalu coba lagi."
 
 #: src/components/settings/AccountSection.tsx
 msgid "Couldn't disconnect — please try again."
@@ -3392,8 +3434,12 @@ msgid "Couldn't reach the agent registry."
 msgstr "Registri agen tidak bisa dihubungi."
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Couldn’t reach the clipboard — the scheme is in the box below."
-msgstr "Papan klip tidak bisa dijangkau — skemanya ada di kotak di bawah."
+msgid "Couldn’t reach the clipboard — the theme is in the box below."
+msgstr "Papan klip tidak dapat diakses — tema ada di kotak di bawah."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t reach the clipboard."
+msgstr "Papan klip tidak dapat diakses."
 
 #: src/components/CommandPalette.tsx
 msgid "Couldn't reach the embeddings provider — retry"
@@ -3419,6 +3465,11 @@ msgstr "Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang diki
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "Komentar yang menunggu dikirim tidak bisa dibaca: {0}"
+
+#. placeholder {0}: warning.code
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t read this theme ({0})"
+msgstr "Tema ini tidak dapat dibaca ({0})"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -3468,6 +3519,16 @@ msgstr "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `ok stop 
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. That name is already in use."
+msgstr "{0} tidak dapat dipulihkan. Nama itu sudah digunakan."
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. Try again."
+msgstr "{0} tidak dapat dipulihkan. Coba lagi."
+
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't resume this chat: {0}"
@@ -3476,6 +3537,10 @@ msgstr "Tidak dapat melanjutkan obrolan ini: {0}"
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
 msgstr "Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjalan."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t save changes. Try editing a color again."
+msgstr "Perubahan tidak dapat disimpan. Coba sunting warna lagi."
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -3595,6 +3660,10 @@ msgstr "Crash dump"
 msgid "Create"
 msgstr "Buat"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Create & edit"
+msgstr "Buat dan sunting"
+
 #: src/components/TemplateRow.tsx
 msgid "Create a document from {label}"
 msgstr "Buat dokumen dari {label}"
@@ -3665,6 +3734,10 @@ msgstr "Buat proyek baru"
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "Create new tag #{tagValue}"
 msgstr "Buat tag baru #{tagValue}"
+
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Create new theme"
+msgstr "Buat tema baru"
 
 #: src/components/GraphPanel.tsx
 #: src/components/ProblemsPanel.tsx
@@ -3764,6 +3837,10 @@ msgstr "Membuat halaman: {linkTitle}."
 msgid "Creating..."
 msgstr "Membuat..."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Creating…"
+msgstr "Membuat…"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "Current"
 msgstr "Saat ini"
@@ -3836,8 +3913,10 @@ msgstr "Bawaan: <0>{0}</0>"
 msgid "Delete"
 msgstr "Hapus"
 
+#. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "Hapus {0}"
 
@@ -3916,6 +3995,11 @@ msgstr "Hapus obrolan ini?"
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
 msgstr "Hapus komentar ini"
+
+#. placeholder {0}: deletedTheme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Deleted {0}."
+msgstr "{0} dihapus."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -4235,6 +4319,7 @@ msgstr "selesai"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
 #: src/editor/extensions/MathInlineView.tsx
@@ -4369,6 +4454,11 @@ msgstr "Setiap alat yang dipilih mendapat entri MCP OpenKnowledge."
 msgid "Edit"
 msgstr "Sunting"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Edit {0}"
+msgstr "Sunting {0}"
+
 #. placeholder {0}: descriptor.displayName ?? descriptor.name
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Edit {0} source"
@@ -4442,6 +4532,11 @@ msgstr "templat disunting"
 msgid "editing [[{realCurrentDoc}]]"
 msgstr "menyunting [[{realCurrentDoc}]]"
 
+#. placeholder {0}: scheme.name
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Editing {0}"
+msgstr "Menyunting {0}"
+
 #: src/components/SkillEditBanner.tsx
 msgid "Editing {boldName} in place. Changes save straight to your editor's copy."
 msgstr "Menyunting {boldName} di tempatnya. Perubahan langsung tersimpan ke salinan penyunting Anda."
@@ -4471,8 +4566,12 @@ msgid "Editor status bar"
 msgstr "Bilah status penyunting"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Edits apply live. Light or dark comes from the scheme."
-msgstr "Suntingan berlaku langsung. Terang atau gelap ditentukan skemanya."
+msgid "Edits apply live and save automatically to this theme."
+msgstr "Suntingan langsung diterapkan dan disimpan otomatis ke tema ini."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Edits apply live. Light or dark comes from the theme."
+msgstr "Suntingan langsung diterapkan. Tema menentukan mode terang atau gelap."
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Edits at the source land here — no copy-paste drift."
@@ -4643,6 +4742,10 @@ msgstr "Masukkan nilai heksa 6 digit seperti #1A2B3C"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "Masukkan nama folder (mis. otak)."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a name for this theme."
+msgstr "Masukkan nama untuk tema ini."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "Masukkan nama proyek"
@@ -4658,6 +4761,10 @@ msgstr "Masukkan judul untuk templat ini."
 #: src/components/NewWorktreeDialog.tsx
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "Masukkan nama cabang yang valid (tanpa spasi, tanpa titik di awal, tanpa \"..\")."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a valid theme name."
+msgstr "Masukkan nama tema yang valid."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
@@ -5551,6 +5658,10 @@ msgstr "Status masuk GitHub tidak ada atau kedaluwarsa. Sambungkan ulang untuk m
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, sebuah URL git, atau jalur lokal."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Give it a name before editing its colors."
+msgstr "Beri nama sebelum menyunting warnanya."
+
 #: src/components/settings/AiToolsSection.tsx
 msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
 msgstr "Beri alat AI yang Anda pakai akses untuk membaca dan memperbarui proyek Anda. Mencentang kotak langsung menyiapkannya; melepas centang menghapusnya."
@@ -5729,6 +5840,11 @@ msgstr "Folder “{basename}” disembunyikan"
 #: src/components/TimelinePanel.tsx
 msgid "Hide"
 msgstr "Sembunyikan"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Hide {0} editor"
+msgstr "Sembunyikan penyunting {0}"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide {appName}"
@@ -5935,6 +6051,11 @@ msgstr "Saya beralih ke alat lain"
 msgid "Icon picker"
 msgstr "Pemilih ikon"
 
+#. placeholder {0}: createIdentity.stem
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "ID: {0}"
+msgstr "ID: {0}"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "Jika sebuah pembaruan datang untuk hal yang sedang Anda sunting, Anda memilih versi mana yang disimpan, seperti konflik penggabungan."
@@ -5969,10 +6090,6 @@ msgstr "Impor sebagai templat"
 #: src/components/ImportSkillForm.tsx
 msgid "Import failed: {0}"
 msgstr "Impor gagal: {0}"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Import scheme"
-msgstr "Impor skema"
 
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
@@ -6315,6 +6432,10 @@ msgstr "Instruksi untuk AI"
 msgid "Integrations"
 msgstr "Integrasi"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid color value"
+msgstr "Nilai warna tidak valid"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Invalid input — pick a different folder."
 msgstr "Masukan tidak valid — pilih folder lain."
@@ -6334,6 +6455,10 @@ msgstr "Bentuk respons server tidak valid"
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
 msgstr "URL berbagi tidak valid."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid YAML"
+msgstr "YAML tidak valid"
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -6567,6 +6692,10 @@ msgstr "URL tautan"
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
 msgstr "Respons graf tautan tidak sesuai bentuk yang diharapkan."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Linked theme files aren’t supported"
+msgstr "Berkas tema tertaut tidak didukung"
 
 #: src/components/DocPanel.tsx
 msgid "Links"
@@ -6943,6 +7072,14 @@ msgstr "Halaman belum ada — klik untuk membuat"
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "Halaman belum ada: {linkTitle}. Klik untuk membuat."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing palette colors"
+msgstr "Warna palet tidak lengkap"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing theme name"
+msgstr "Nama tema tidak ada"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Mode"
 msgstr "Mode"
@@ -7140,6 +7277,10 @@ msgstr "Mempertimbangkan…"
 msgid "Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."
 msgstr "Penampil PDF multi-halaman dengan kendali bilah alat (gambar mini, navigasi halaman, zoom)."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Multiple files use this theme name"
+msgstr "Beberapa berkas menggunakan nama tema ini"
+
 #: src/components/acp/working-status.ts
 msgid "Musing…"
 msgstr "Melamun…"
@@ -7181,6 +7322,10 @@ msgstr "Nama tidak boleh kosong"
 #: src/components/PropertyPanel.tsx
 msgid "Name is required"
 msgstr "Nama wajib diisi"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Name your theme"
+msgstr "Beri nama tema Anda"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Navigate CodeMirror source search results or dismiss the search panel."
@@ -7737,6 +7882,10 @@ msgstr "Tidak satu pun masalah ini punya perbaikan otomatis."
 #: src/components/ProblemsPanel.tsx
 msgid "None of these problems have an automatic fix. Try Fix all with AI."
 msgstr "Tidak satu pun masalah ini punya perbaikan otomatis. Coba Perbaiki semua dengan AI."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Not a base16 theme"
+msgstr "Bukan tema base16"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
@@ -8638,8 +8787,8 @@ msgid "Paste"
 msgstr "Tempel"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Paste a base16 scheme"
-msgstr "Tempelkan sebuah skema base16"
+msgid "Paste a base16 theme"
+msgstr "Tempel tema base16"
 
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
@@ -8762,10 +8911,6 @@ msgstr "Pribadi untuk perangkat ini — disimpan di konfigurasi pengguna Anda, t
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr "Pilih <0>openknowledge.skill</0> dari folder <1>Downloads</1> Anda. Ia aktif otomatis."
 
-#: src/components/settings/ThemePluginSection.tsx
-msgid "Pick a built-in IDE color palette, or define your own."
-msgstr "Pilih palet warna IDE bawaan, atau tentukan sendiri."
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Pick a folder to merge INTO {display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
 msgstr "Pilih sebuah folder untuk digabungkan KE DALAM {display}. Folder itu menjadi symlink ke folder ini, jadi agennya membaca semua yang ditaruh di sini. Folder ini tetap nyata. Keterampilan yang berkonflik membatalkan penggabungan."
@@ -8777,6 +8922,10 @@ msgstr "Pilih sebuah nama"
 #: src/components/settings/settings-fields.ts
 msgid "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
 msgstr "Pilih satu palet untuk mode terang dan satu untuk mode gelap. Pengaturan tema di Preferensi memilih di antara keduanya — pada “Sistem”, sistem operasi Anda yang memilih."
+
+#: src/components/settings/ThemePluginSection.tsx
+msgid "Pick a theme or create your own."
+msgstr "Pilih tema atau buat tema Anda sendiri."
 
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
@@ -8884,8 +9033,8 @@ msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab 
 msgstr "Tekan Spasi untuk mengambil tab. Gunakan tombol panah untuk memindahkannya di dalam bilah tab, lalu tekan Spasi atau Enter untuk melepaskannya. Tekan Shift+F10 atau tombol Menu untuk membuka menu konteks tab, yang berisi tindakan pisah, tutup, sematkan, dan lainnya."
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Press the sun or moon on “Custom” above to use this scheme."
-msgstr "Tekan matahari atau bulan pada “Khusus” di atas untuk memakai skema ini."
+msgid "Press the sun or moon on “Custom” above to use this theme."
+msgstr "Tekan ikon matahari atau bulan pada “Custom” di atas untuk memakai tema ini."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
@@ -9785,6 +9934,11 @@ msgstr "Pulihkan hingga versi ini?"
 msgid "Restore with remote changes"
 msgstr "Pulihkan dengan perubahan remote"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Restored {0}."
+msgstr "{0} dipulihkan."
+
 #. placeholder {0}: descriptor.targetSha7
 #: src/components/TimelinePanel.tsx
 msgid "Restored an earlier version ({0})"
@@ -9990,6 +10144,10 @@ msgstr "Disimpan ke folder keterampilan proyek ini (mis. <0>.agents/skills</0>),
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Disimpan ke folder keterampilan global Anda (mis. <0>~/.agents/skills</0>)."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Saved themes couldn’t load. The last available theme list is still shown."
+msgstr "Tema tersimpan tidak dapat dimuat. Daftar tema terakhir yang tersedia tetap ditampilkan."
+
 #: src/components/SkillProperties.tsx
 msgid "Saved to"
 msgstr "Disimpan ke"
@@ -10007,6 +10165,10 @@ msgstr "Menyimpan berkasnya ke <0>~/Downloads/openknowledge.skill</0> dan membuk
 msgid "Saving"
 msgstr "Menyimpan"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Saving changes…"
+msgstr "Menyimpan perubahan…"
+
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
 msgstr "skema {deleteTarget}"
@@ -10014,10 +10176,6 @@ msgstr "skema {deleteTarget}"
 #: src/components/AddPropertyNameField.tsx
 msgid "Schema fields"
 msgstr "Bidang skema"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Scheme copied as base16 YAML"
-msgstr "Skema disalin sebagai YAML base16"
 
 #: src/components/ImportSkillForm.tsx
 #: src/components/PanelScopeHeader.tsx
@@ -10207,6 +10365,11 @@ msgstr "Lihat semua {0} paket awal"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "Lihat panduan pemasangan lengkap"
+
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Select {slot} — {0}"
+msgstr "Pilih {slot} — {0}"
 
 #: src/components/FrontmatterRow.tsx
 msgid "Select a value"
@@ -10918,6 +11081,10 @@ msgstr "Slidev terlalu lama saat memulai. Coba lagi."
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "Judul bagian kecil."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
+msgstr "Beberapa tema tersimpan tidak ditampilkan karena folder tema melewati batas pemindaian."
 
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
@@ -11839,6 +12006,30 @@ msgstr "Token itu memerlukan cakupan repo dan read:user."
 msgid "Theme"
 msgstr "Tema"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme colors"
+msgstr "Warna tema"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme copied as base16 YAML"
+msgstr "Tema disalin sebagai YAML base16"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme imported."
+msgstr "Tema diimpor."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name"
+msgstr "Nama tema"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name has unsupported characters"
+msgstr "Nama tema berisi karakter yang tidak didukung"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name is too long"
+msgstr "Nama tema terlalu panjang"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Theme preview"
 msgstr "Pratinjau tema"
@@ -12033,6 +12224,10 @@ msgstr "Ini pratinjau {boldName}, terdeteksi di {boldHarness} pada tingkat {bold
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "Ini pratinjau {boldName}. Pasang ke agen Anda."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This isn’t a regular theme file"
+msgstr "Ini bukan berkas tema biasa"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "This isn't a supported version of Slidev."
 msgstr "Ini bukan versi Slidev yang didukung."
@@ -12193,6 +12388,18 @@ msgstr "Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "Templat ini berada di folder induk — menghapusnya memengaruhi setiap folder di bawahnya yang tidak menentukan versinya sendiri."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme can’t be used until the file is fixed."
+msgstr "Tema ini tidak dapat digunakan sampai berkasnya diperbaiki."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file couldn’t be read"
+msgstr "Berkas tema ini tidak dapat dibaca"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file is too large"
+msgstr "Berkas tema ini terlalu besar"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This usually means one of:"
@@ -12367,6 +12574,7 @@ msgstr "Coba sebuah prompt"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "Try again"
 msgstr "Coba lagi"
@@ -12474,6 +12682,7 @@ msgstr "Suntingan terakhir pada {docName} dibatalkan"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -12741,6 +12950,16 @@ msgstr "Pakai {0} sebagai tema gelap"
 msgid "Use {0} as the light theme"
 msgstr "Pakai {0} sebagai tema terang"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active dark mode"
+msgstr "Pakai {0} untuk mode gelap yang aktif"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active light mode"
+msgstr "Pakai {0} untuk mode terang yang aktif"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Use {editor} version"
 msgstr "Pakai versi {editor}"
@@ -12752,6 +12971,10 @@ msgstr "Gunakan <0>{copyShortcut}</0> untuk menyalin tautan di bawah, atau buka 
 #: src/components/NavigatorApp.tsx
 msgid "Use a folder you already have."
 msgstr "Pakai folder yang sudah Anda punya."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Use a lowercase .yaml or .yml extension"
+msgstr "Pakai ekstensi .yaml atau .yml dalam huruf kecil"
 
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
@@ -12936,6 +13159,10 @@ msgstr "Kami akan membangun <0>openknowledge.skill</0>, menyimpannya di <1>~/Dow
 #: src/components/settings/SyncSection.tsx
 msgid "We'll create a repository and start syncing — no terminal needed."
 msgstr "Kami akan membuat sebuah repositori dan mulai menyinkronkan — tanpa perlu terminal."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "We’ll create a safe theme ID from this name."
+msgstr "Kami akan membuat ID tema yang aman dari nama ini."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "We've filed it with the team and attached your logs."

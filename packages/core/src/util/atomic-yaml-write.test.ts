@@ -175,4 +175,16 @@ describe('atomicWriteFile (async) — crash-orphan sweep', () => {
     await atomicWriteFile(target, 'new');
     expect(existsSync(unrelatedTmp)).toBe(true);
   });
+
+  test('can skip the directory sweep while a finite-staleness lock is held', async () => {
+    const ancientTmp = join(testDir, 'state.yml.tmp.ancient-uuid');
+    writeFileSync(ancientTmp, 'crashed mid-write');
+    const ancient = new Date('2000-01-01T00:00:00Z');
+    utimesSync(ancientTmp, ancient, ancient);
+
+    await atomicWriteFile(target, 'new', { sweepStaleTmps: false });
+
+    expect(existsSync(ancientTmp)).toBe(true);
+    expect(readFileSync(target, 'utf-8')).toBe('new');
+  });
 });

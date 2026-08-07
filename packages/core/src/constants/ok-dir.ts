@@ -26,3 +26,14 @@ export const OK_PROJECT_MARKER = '.ok/config.yml';
  * from `./ok-paths.ts` for the resolved absolute path on Node.
  */
 export const LOCAL_DIR = 'local';
+
+/**
+ * User-global folder that holds saved color-theme scheme files, one file per
+ * theme, under `<homedir>/.ok/`. Sibling to the user-global `global.yml`, not a
+ * project sidecar — themes are device-personal, so the store is invisible to the
+ * content index and to git sharing by construction.
+ *
+ * A supported on-disk interface: the filename stem is the theme's identity, so
+ * this name is user-visible and changing it is a breaking move.
+ */
+export const SAVED_THEMES_DIRNAME = 'themes';

@@ -332,6 +332,11 @@ msgstr "共 {0} 个"
 msgid "{0} version {1}"
 msgstr "{0} 版本 {1}"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "{0} was already deleted."
+msgstr "{0} 已经被删除了。"
+
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
 msgid "{0} was not moved."
@@ -777,6 +782,11 @@ msgstr "{sizeText} · 已隐去机密信息 · 崩溃转储未隐去"
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {技能}}"
 
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{slot} color — {0}"
+msgstr "{slot} 颜色 — {0}"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} hex value"
 msgstr "{slot} 十六进制值"
@@ -1044,6 +1054,10 @@ msgstr "一个必需的 git 工具"
 msgid "A reusable starting point for new documents in this folder."
 msgstr "这个文件夹中新文档可复用的起点。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "A saved theme already uses this name."
+msgstr "已有一个已保存的主题使用此名称。"
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "在模板列表中显示在标题下方的一行简介。"
@@ -1099,10 +1113,6 @@ msgstr "上方"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "absent"
 msgstr "不存在"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Accents"
-msgstr "重音符号"
 
 #: src/components/DiffView.tsx
 msgid "Accept"
@@ -1783,10 +1793,6 @@ msgstr "返回"
 msgid "Back to document view"
 msgstr "返回文档视图"
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Background to foreground"
-msgstr "背景色到前景色"
-
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
 msgstr "反向链接"
@@ -1931,8 +1937,8 @@ msgid "Browse folder"
 msgstr "浏览文件夹"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Browse hundreds of schemes"
-msgstr "浏览数百种配色方案"
+msgid "Browse hundreds of themes"
+msgstr "浏览数百个主题"
 
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
@@ -2051,6 +2057,7 @@ msgstr "无法共享此路径。"
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -2105,6 +2112,18 @@ msgstr "在外部被修改"
 #: src/components/SkillInstallMenu.tsx
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "自上次在这里写入后，它在 OK 之外被改动过——显示的是磁盘上现在的状态"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically to this theme."
+msgstr "更改会自动保存到此主题。"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically."
+msgstr "更改会自动保存。"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes saved automatically."
+msgstr "更改已自动保存。"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -2703,6 +2722,11 @@ msgstr "冲突"
 msgid "Conflicted files"
 msgstr "冲突文件"
 
+#. placeholder {0}: warning.conflictingFilenames.join(', ')
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Conflicting files: {0}."
+msgstr "冲突文件：{0}。"
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "冲突"
@@ -2895,6 +2919,10 @@ msgstr "正在转换…"
 msgid "Copied"
 msgstr "已复制"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Copied {selectedSlot}"
+msgstr "已复制 {selectedSlot}"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -2932,6 +2960,7 @@ msgstr "复制"
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Copy"
 msgstr "复制"
@@ -3216,6 +3245,15 @@ msgstr "无法生成报告"
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "无法创建 worktree。请换一个名字。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t create this theme. Try again."
+msgstr "无法创建此主题。请重试。"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete {0}. Try again."
+msgstr "无法删除 {0}。请重试。"
+
 #. placeholder {0}: result.error
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Couldn't delete file: {0}"
@@ -3232,6 +3270,10 @@ msgstr "无法删除模板：{error}"
 #: src/comments/store.ts
 msgid "Couldn't delete that comment."
 msgstr "无法删除那条评论。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete this theme. Refresh and try again."
+msgstr "无法删除此主题。请刷新后重试。"
 
 #: src/components/settings/AccountSection.tsx
 msgid "Couldn't disconnect — please try again."
@@ -3396,8 +3438,12 @@ msgid "Couldn't reach the agent registry."
 msgstr "无法连接到智能体注册表。"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Couldn’t reach the clipboard — the scheme is in the box below."
-msgstr "无法访问剪贴板——配色方案在下方的输入框中。"
+msgid "Couldn’t reach the clipboard — the theme is in the box below."
+msgstr "无法访问剪贴板 — 主题内容已显示在下方框中。"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t reach the clipboard."
+msgstr "无法访问剪贴板。"
 
 #: src/components/CommandPalette.tsx
 msgid "Couldn't reach the embeddings provider — retry"
@@ -3423,6 +3469,11 @@ msgstr "无法读取等待发送的评论——什么都没有发送。"
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "无法读取等待发送的评论：{0}"
+
+#. placeholder {0}: warning.code
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t read this theme ({0})"
+msgstr "无法读取此主题（{0}）"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -3472,6 +3523,16 @@ msgstr "无法自动重启服务器。请在终端中运行 `ok stop all`，然�
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "无法重启服务器。请在这个文件夹中尝试 `ok start`。"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. That name is already in use."
+msgstr "无法恢复 {0}。该名称已被使用。"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. Try again."
+msgstr "无法恢复 {0}。请重试。"
+
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't resume this chat: {0}"
@@ -3480,6 +3541,10 @@ msgstr "无法恢复此对话：{0}"
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
 msgstr "无法运行测试。请确认 OpenKnowledge 仍在运行。"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t save changes. Try editing a color again."
+msgstr "无法保存更改。请再次编辑颜色。"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -3599,6 +3664,10 @@ msgstr "崩溃转储"
 msgid "Create"
 msgstr "创建"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Create & edit"
+msgstr "创建并编辑"
+
 #: src/components/TemplateRow.tsx
 msgid "Create a document from {label}"
 msgstr "用 {label} 创建文档"
@@ -3669,6 +3738,10 @@ msgstr "新建项目"
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "Create new tag #{tagValue}"
 msgstr "新建标签 #{tagValue}"
+
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Create new theme"
+msgstr "创建新主题"
 
 #: src/components/GraphPanel.tsx
 #: src/components/ProblemsPanel.tsx
@@ -3768,6 +3841,10 @@ msgstr "正在创建页面：{linkTitle}。"
 msgid "Creating..."
 msgstr "正在创建…"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Creating…"
+msgstr "正在创建…"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "Current"
 msgstr "当前"
@@ -3840,8 +3917,10 @@ msgstr "默认：<0>{0}</0>"
 msgid "Delete"
 msgstr "删除"
 
+#. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "删除 {0}"
 
@@ -3920,6 +3999,11 @@ msgstr "删除此对话？"
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
 msgstr "删除这条评论"
+
+#. placeholder {0}: deletedTheme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Deleted {0}."
+msgstr "已删除 {0}。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -4239,6 +4323,7 @@ msgstr "完成"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
 #: src/editor/extensions/MathInlineView.tsx
@@ -4373,6 +4458,11 @@ msgstr "每个选中的工具都会获得一条 OpenKnowledge MCP 条目。"
 msgid "Edit"
 msgstr "编辑"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Edit {0}"
+msgstr "编辑 {0}"
+
 #. placeholder {0}: descriptor.displayName ?? descriptor.name
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Edit {0} source"
@@ -4446,6 +4536,11 @@ msgstr "已编辑模板"
 msgid "editing [[{realCurrentDoc}]]"
 msgstr "正在编辑 [[{realCurrentDoc}]]"
 
+#. placeholder {0}: scheme.name
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Editing {0}"
+msgstr "正在编辑 {0}"
+
 #: src/components/SkillEditBanner.tsx
 msgid "Editing {boldName} in place. Changes save straight to your editor's copy."
 msgstr "正在就地编辑 {boldName}。更改会直接保存到你编辑器中的那份副本。"
@@ -4475,8 +4570,12 @@ msgid "Editor status bar"
 msgstr "编辑器状态栏"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Edits apply live. Light or dark comes from the scheme."
-msgstr "更改实时生效。明暗模式来自配色方案。"
+msgid "Edits apply live and save automatically to this theme."
+msgstr "编辑会实时生效，并自动保存到此主题。"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Edits apply live. Light or dark comes from the theme."
+msgstr "编辑会实时生效。浅色或深色由主题决定。"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Edits at the source land here — no copy-paste drift."
@@ -4647,6 +4746,10 @@ msgstr "请输入 6 位十六进制值，例如 #1A2B3C"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "请输入文件夹名（例如 brain）。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a name for this theme."
+msgstr "输入此主题的名称。"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "请输入项目名"
@@ -4662,6 +4765,10 @@ msgstr "请为这个模板输入标题。"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "请输入有效的分支名（不能有空格、不能以点开头、不能包含 \"..\"）。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a valid theme name."
+msgstr "输入有效的主题名称。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
@@ -5555,6 +5662,10 @@ msgstr "GitHub 登录缺失或已过期。请重新连接以继续同步。"
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub、一个 git URL，或一个本地路径。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Give it a name before editing its colors."
+msgstr "请先命名主题，再编辑颜色。"
+
 #: src/components/settings/AiToolsSection.tsx
 msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
 msgstr "让你使用的 AI 工具能够读取和更新你的项目。勾选即刻生效；取消勾选则移除。"
@@ -5733,6 +5844,11 @@ msgstr "已隐藏文件夹“{basename}”"
 #: src/components/TimelinePanel.tsx
 msgid "Hide"
 msgstr "隐藏"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Hide {0} editor"
+msgstr "隐藏 {0} 编辑器"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide {appName}"
@@ -5939,6 +6055,11 @@ msgstr "我要换用另一个工具"
 msgid "Icon picker"
 msgstr "图标选择器"
 
+#. placeholder {0}: createIdentity.stem
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "ID: {0}"
+msgstr "ID：{0}"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "如果你正在编辑的内容收到更新，你可以像处理合并冲突那样选择保留哪个版本。"
@@ -5973,10 +6094,6 @@ msgstr "作为模板导入"
 #: src/components/ImportSkillForm.tsx
 msgid "Import failed: {0}"
 msgstr "导入失败：{0}"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Import scheme"
-msgstr "导入配色方案"
 
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
@@ -6319,6 +6436,10 @@ msgstr "给 AI 的指令"
 msgid "Integrations"
 msgstr "集成"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid color value"
+msgstr "无效的颜色值"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Invalid input — pick a different folder."
 msgstr "输入无效——请换一个文件夹。"
@@ -6338,6 +6459,10 @@ msgstr "服务器响应结构无效"
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
 msgstr "共享链接无效。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid YAML"
+msgstr "无效的 YAML"
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -6571,6 +6696,10 @@ msgstr "链接 URL"
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
 msgstr "链接关系图响应的结构与预期不符。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Linked theme files aren’t supported"
+msgstr "不支持链接的主题文件"
 
 #: src/components/DocPanel.tsx
 msgid "Links"
@@ -6947,6 +7076,14 @@ msgstr "页面不存在——点击可创建"
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "页面不存在：{linkTitle}。点击可创建。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing palette colors"
+msgstr "缺少调色板颜色"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing theme name"
+msgstr "缺少主题名称"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Mode"
 msgstr "模式"
@@ -7144,6 +7281,10 @@ msgstr "正在琢磨…"
 msgid "Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."
 msgstr "多页 PDF 查看器，带工具栏控件（缩略图、翻页、缩放）。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Multiple files use this theme name"
+msgstr "多个文件使用了此主题名称"
+
 #: src/components/acp/working-status.ts
 msgid "Musing…"
 msgstr "正在沉思…"
@@ -7185,6 +7326,10 @@ msgstr "名称不能为空"
 #: src/components/PropertyPanel.tsx
 msgid "Name is required"
 msgstr "名称为必填项"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Name your theme"
+msgstr "为主题命名"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Navigate CodeMirror source search results or dismiss the search panel."
@@ -7741,6 +7886,10 @@ msgstr "这些问题都没有自动修复方案。"
 #: src/components/ProblemsPanel.tsx
 msgid "None of these problems have an automatic fix. Try Fix all with AI."
 msgstr "这些问题都没有自动修复方案。可以试试「用 AI 全部修复」。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Not a base16 theme"
+msgstr "不是 base16 主题"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
@@ -8642,8 +8791,8 @@ msgid "Paste"
 msgstr "粘贴"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Paste a base16 scheme"
-msgstr "粘贴一个 base16 配色方案"
+msgid "Paste a base16 theme"
+msgstr "粘贴 base16 主题"
 
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
@@ -8766,10 +8915,6 @@ msgstr "仅限这台设备——保存在你的用户配置中，不会共享。
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr "从你的<1>下载</1>文件夹中选择 <0>openknowledge.skill</0>。它会自动启用。"
 
-#: src/components/settings/ThemePluginSection.tsx
-msgid "Pick a built-in IDE color palette, or define your own."
-msgstr "选择一个内置的 IDE 配色方案，或者自己定义一个。"
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Pick a folder to merge INTO {display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
 msgstr "选择一个文件夹，把它合并进 {display}。那个文件夹会变成指向这个文件夹的符号链接，因此它的智能体会读取放在这里的一切。这个文件夹仍然是真实文件夹。如果技能冲突，合并会中止。"
@@ -8781,6 +8926,10 @@ msgstr "取个名字"
 #: src/components/settings/settings-fields.ts
 msgid "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
 msgstr "为浅色模式和深色模式各选一个配色方案。「偏好设置」中的主题设置决定用哪一个；选择「系统」时，则由你的操作系统决定。"
+
+#: src/components/settings/ThemePluginSection.tsx
+msgid "Pick a theme or create your own."
+msgstr "选择一个主题或创建自己的主题。"
 
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
@@ -8888,8 +9037,8 @@ msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab 
 msgstr "按空格键拾取标签页。使用方向键在标签栏内移动，然后按空格键或回车键放下。按 Shift+F10 或菜单键打开标签页的右键菜单，其中包含拆分、关闭、固定等操作。"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Press the sun or moon on “Custom” above to use this scheme."
-msgstr "点击上方「自定义」处的太阳或月亮图标即可使用这个配色方案。"
+msgid "Press the sun or moon on “Custom” above to use this theme."
+msgstr "按上方“自定义”中的太阳或月亮图标以使用此主题。"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
@@ -9789,6 +9938,11 @@ msgstr "要恢复到这个版本吗？"
 msgid "Restore with remote changes"
 msgstr "带上远程改动一起恢复"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Restored {0}."
+msgstr "已恢复 {0}。"
+
 #. placeholder {0}: descriptor.targetSha7
 #: src/components/TimelinePanel.tsx
 msgid "Restored an earlier version ({0})"
@@ -9994,6 +10148,10 @@ msgstr "保存到这个项目的技能文件夹中（例如 <0>.agents/skills</0
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "保存到你的全局技能文件夹中（例如 <0>~/.agents/skills</0>）。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Saved themes couldn’t load. The last available theme list is still shown."
+msgstr "无法加载已保存的主题。仍显示上次可用的主题列表。"
+
 #: src/components/SkillProperties.tsx
 msgid "Saved to"
 msgstr "保存到"
@@ -10011,6 +10169,10 @@ msgstr "把文件保存到 <0>~/Downloads/openknowledge.skill</0> 并打开 Clau
 msgid "Saving"
 msgstr "正在保存"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Saving changes…"
+msgstr "正在保存更改…"
+
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
 msgstr "架构 {deleteTarget}"
@@ -10018,10 +10180,6 @@ msgstr "架构 {deleteTarget}"
 #: src/components/AddPropertyNameField.tsx
 msgid "Schema fields"
 msgstr "架构字段"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Scheme copied as base16 YAML"
-msgstr "已把配色方案复制为 base16 YAML"
 
 #: src/components/ImportSkillForm.tsx
 #: src/components/PanelScopeHeader.tsx
@@ -10211,6 +10369,11 @@ msgstr "查看全部 {0} 个入门包"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "查看完整的安装指南"
+
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Select {slot} — {0}"
+msgstr "选择 {slot} — {0}"
 
 #: src/components/FrontmatterRow.tsx
 msgid "Select a value"
@@ -10922,6 +11085,10 @@ msgstr "Slidev 启动超时。请重试。"
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "小号章节标题。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
+msgstr "因为主题文件夹超出扫描限制，部分已保存的主题未显示。"
 
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
@@ -11843,6 +12010,30 @@ msgstr "这个令牌需要 repo 和 read:user 权限范围。"
 msgid "Theme"
 msgstr "主题"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme colors"
+msgstr "主题颜色"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme copied as base16 YAML"
+msgstr "主题已复制为 base16 YAML"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme imported."
+msgstr "主题已导入。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name"
+msgstr "主题名称"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name has unsupported characters"
+msgstr "主题名称包含不支持的字符"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name is too long"
+msgstr "主题名称过长"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Theme preview"
 msgstr "主题预览"
@@ -12037,6 +12228,10 @@ msgstr "这是 {boldName} 的预览，在 {boldHarness} 的 {boldLevel} 级别�
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "这是 {boldName} 的预览。把它安装到你的智能体中。"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This isn’t a regular theme file"
+msgstr "这不是常规主题文件"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "This isn't a supported version of Slidev."
 msgstr "这不是受支持的 Slidev 版本。"
@@ -12197,6 +12392,18 @@ msgstr "这个来源包含多个技能——请选择要导入的那一个。"
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "这个模板位于上级文件夹中——删除它会影响下面所有没有定义自己版本的文件夹。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme can’t be used until the file is fixed."
+msgstr "修复文件后才能使用此主题。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file couldn’t be read"
+msgstr "无法读取此主题文件"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file is too large"
+msgstr "此主题文件过大"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This usually means one of:"
@@ -12371,6 +12578,7 @@ msgstr "试试一段提示词"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "Try again"
 msgstr "重试"
@@ -12478,6 +12686,7 @@ msgstr "已撤销 {docName} 上的最后一次编辑"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -12745,6 +12954,16 @@ msgstr "把 {0} 用作深色主题"
 msgid "Use {0} as the light theme"
 msgstr "把 {0} 用作浅色主题"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active dark mode"
+msgstr "将 {0} 用于当前的深色模式"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active light mode"
+msgstr "将 {0} 用于当前的浅色模式"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Use {editor} version"
 msgstr "使用 {editor} 的版本"
@@ -12756,6 +12975,10 @@ msgstr "用 <0>{copyShortcut}</0> 复制下方的链接，或者在桌面应用�
 #: src/components/NavigatorApp.tsx
 msgid "Use a folder you already have."
 msgstr "使用你已有的文件夹。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Use a lowercase .yaml or .yml extension"
+msgstr "使用小写的 .yaml 或 .yml 扩展名"
 
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
@@ -12940,6 +13163,10 @@ msgstr "我们会构建 <0>openknowledge.skill</0>，保存到 <1>~/Downloads</1
 #: src/components/settings/SyncSection.tsx
 msgid "We'll create a repository and start syncing — no terminal needed."
 msgstr "我们会创建一个仓库并开始同步——不需要用终端。"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "We’ll create a safe theme ID from this name."
+msgstr "我们将根据此名称创建安全的主题 ID。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "We've filed it with the team and attached your logs."

@@ -45,7 +45,7 @@
 
     The IDE color palette comes from `ok-color-theme-pair-v1`, which holds one
     palette per mode plus the mode preference that chooses between them:
-    `{ pref, light: { id, dark }, dark: { id, dark } }`. The script resolves
+    `{ pref, light: { id, dark, css? }, dark: { id, dark, css? } }`. The script resolves
     `pref` (asking the OS for `system`), reads that slot, applies its `id` as
     the `data-color-theme` attribute consumed by `color-themes.generated.css`,
     and takes the `dark` class straight from the slot's own flag — a palette
@@ -58,17 +58,20 @@
     that key as soon as it writes the pair, so this branch runs at most once
     per install.
 
-    The `custom` palette is replayed from `ok-custom-theme-v1`
-    (`{ css, dark }`): its prebuilt stylesheet is injected as a `<style>` and
-    its `dark` flag drives the class. Paired consumer:
+    Runtime palettes (`custom` and `saved-*`) carry their prebuilt stylesheet
+    on each pair-cache slot as `css`. The active slot's stylesheet is injected
+    before paint; a missing stylesheet drops that runtime palette instead of
+    borrowing the other slot's CSS. For one upgrade, a `custom` slot written by
+    the preceding cache format may recover its stylesheet and mode from
+    `ok-custom-theme-v1`; the current writer deletes that legacy key. Paired consumer:
     `src/lib/use-apply-config-color-theme.ts` — it writes the
-    `ok-color-theme-pair-v1` and `ok-custom-theme-v1` caches and clears the legacy
-    `ok-color-theme-v1`; `ok-theme-v1` is next-themes' (see above).
+    `ok-color-theme-pair-v1` cache and clears the legacy `ok-color-theme-v1` and
+    `ok-custom-theme-v1` caches; `ok-theme-v1` is next-themes' (see above).
 
     Single-line script body — same biome HTML-formatter constraint as
     the editor-mode FOUC above.
   -->
-  <script>(() => { const isMode = (v) => v === 'light' || v === 'dark' || v === 'system'; const isThemeId = (v) => typeof v === 'string' && /^[a-z0-9-]{1,32}$/.test(v); let pref = 'system'; try { const r = localStorage.getItem('ok-theme-v1'); if (isMode(r)) pref = r; } catch {} let slots = null; try { const raw = localStorage.getItem('ok-color-theme-pair-v1'); if (raw) { const o = JSON.parse(raw); if (o?.light && o?.dark) { slots = o; if (isMode(o.pref)) pref = o.pref; } } } catch {} let dark = pref === 'dark'; if (pref === 'system') { try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch {} } let ct = null; if (slots) { const slot = dark ? slots.dark : slots.light; if (isThemeId(slot?.id)) { dark = !!slot.dark; if (slot.id !== 'default') ct = slot.id; } } else { try { const c = localStorage.getItem('ok-color-theme-v1'); if (isThemeId(c) && c !== 'default') ct = c; } catch {} } let customCss = null; if (ct === 'custom') { try { const raw = localStorage.getItem('ok-custom-theme-v1'); if (raw) { const o = JSON.parse(raw); if (o?.css) { customCss = o.css; dark = !!o.dark; } } } catch {} if (!customCss) ct = null; } if (dark) document.documentElement.classList.add('dark'); if (ct) document.documentElement.setAttribute('data-color-theme', ct); if (customCss) { const s = document.createElement('style'); s.id = 'ok-custom-theme'; s.textContent = customCss; document.head.appendChild(s); } if (window.okDesktop) { document.documentElement.classList.add('electron-mode'); document.documentElement.classList.add(`electron-platform-${window.okDesktop.platform}`); } })();</script>
+  <script>(() => { const isMode = (v) => v === 'light' || v === 'dark' || v === 'system'; const isThemeId = (v) => typeof v === 'string' && /^[a-z0-9-]{1,32}$/.test(v); let pref = 'system'; try { const r = localStorage.getItem('ok-theme-v1'); if (isMode(r)) pref = r; } catch {} let slots = null; try { const raw = localStorage.getItem('ok-color-theme-pair-v1'); if (raw) { const o = JSON.parse(raw); if (o?.light && o?.dark) { slots = o; if (isMode(o.pref)) pref = o.pref; } } } catch {} let dark = pref === 'dark'; if (pref === 'system') { try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch {} } let ct = null; let slot = null; if (slots) { slot = dark ? slots.dark : slots.light; if (isThemeId(slot?.id)) { dark = !!slot.dark; if (slot.id !== 'default') ct = slot.id; } } else { try { const c = localStorage.getItem('ok-color-theme-v1'); if (isThemeId(c) && c !== 'default') ct = c; } catch {} } let runtimeCss = null; if (ct === 'custom' || ct?.startsWith('saved-')) { if (typeof slot?.css === 'string' && slot.css) runtimeCss = slot.css; if (!runtimeCss && slots && ct === 'custom') { try { const raw = localStorage.getItem('ok-custom-theme-v1'); if (raw) { const o = JSON.parse(raw); if (typeof o?.css === 'string' && o.css) { runtimeCss = o.css; dark = !!o.dark; } } } catch {} } if (!runtimeCss) ct = null; } if (dark) document.documentElement.classList.add('dark'); if (ct) document.documentElement.setAttribute('data-color-theme', ct); if (runtimeCss) { const s = document.createElement('style'); s.id = ct === 'custom' ? 'ok-custom-theme' : 'ok-saved-theme'; s.textContent = runtimeCss; document.head.appendChild(s); } if (window.okDesktop) { document.documentElement.classList.add('electron-mode'); document.documentElement.classList.add(`electron-platform-${window.okDesktop.platform}`); } })();</script>
   <!--
     Language FOUC prevention. Reads the persisted interface language
     synchronously before React mounts so the first painted frame carries the

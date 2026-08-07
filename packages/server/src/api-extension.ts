@@ -155,6 +155,12 @@ import {
   RollbackRequestSchema,
   RollbackSuccessSchema,
   readFmMap,
+  SavedThemeDeleteSuccessSchema,
+  SavedThemeSaveRequestSchema,
+  SavedThemeSaveSuccessSchema,
+  SavedThemesListSuccessSchema,
+  SavedThemeUpdateRequestSchema,
+  SavedThemeUpdateSuccessSchema,
   SaveVersionRequestSchema,
   SaveVersionSuccessSchema,
   SearchRequestSchema,
@@ -425,6 +431,8 @@ import {
   parseFrontmatterMetadata,
 } from './page-identity.ts';
 import type { RecentlyRemovedDocs } from './recently-removed-docs.ts';
+import { scanSavedThemes } from './saved-themes-store.ts';
+import { deleteSavedTheme, saveSavedTheme, updateSavedTheme } from './saved-themes-write.ts';
 import { readServerLock } from './server-lock.ts';
 import {
   buildGitHubBlobUrl,
@@ -2543,6 +2551,8 @@ export interface ApiExtensionOptions {
    * so global-scope writes don't touch the real user home.
    */
   homeDirOverride?: string;
+  /** Saved-theme store lock acquisition budget. Defaults to the core helper's 5s. */
+  savedThemeLockTimeoutMs?: number;
   /**
    * ACP agent catalog (registry-driven). When present, `GET /api/acp/catalog`
    * serves the featured + full agent lists the thread-launch UI renders.
@@ -2779,6 +2789,7 @@ export function createApiExtension(
     getBridgeLossReporter,
     getPrincipal,
     homeDirOverride,
+    savedThemeLockTimeoutMs,
     acpRegistry,
     loadAcpCustomAgents,
     acpHarnessAvailability = createAcpHarnessAvailabilityProbe(),
@@ -12506,6 +12517,246 @@ export function createApiExtension(
     { handler: 'folder-config' },
   );
 
+  // ── Saved themes (`/api/saved-themes` list, `/api/saved-theme` mutations) ──
+  // The store is a user-global folder of scheme files the renderer can't reach;
+  // save/delete/list run here. Discovery is by scan (no live watcher in v1), and
+  // the home is the same `homeDirOverride` seam the skills store uses so tests
+  // isolate against a tempdir without touching `os.homedir()`.
+
+  const handleSavedThemesList = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      try {
+        const { entries, truncated } = scanSavedThemes({ homedirOverride: homeDirOverride });
+        // Entries carry their own `ok` discriminator: usable themes ship their
+        // palette for the picker preview; unusable ones ship a warning `code` so
+        // a file the user placed is listed, never silently missing.
+        successResponse(
+          res,
+          200,
+          SavedThemesListSuccessSchema,
+          { themes: entries, truncated },
+          { handler: 'saved-themes-list' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to list saved themes.',
+          {
+            handler: 'saved-themes-list',
+            cause: e,
+          },
+        );
+      }
+    },
+    { handler: 'saved-themes-list', method: 'GET', skipBodyParse: true },
+  );
+
+  const handleSavedThemeSave = withValidation(
+    SavedThemeSaveRequestSchema,
+    async (_req, res, body) => {
+      try {
+        const result = await saveSavedTheme({
+          name: body.name,
+          stem: body.stem,
+          scheme: body.scheme,
+          extension: body.extension,
+          homedirOverride: homeDirOverride,
+          lockTimeoutMs: savedThemeLockTimeoutMs,
+        });
+        if (!result.ok) {
+          if (result.code === 'lock-timeout') {
+            errorResponse(
+              res,
+              503,
+              'urn:ok:error:concurrent-operation',
+              'Saved themes are temporarily busy.',
+              {
+                handler: 'saved-theme-save',
+                detail: result.code,
+                extraHeaders: { 'Retry-After': '5' },
+              },
+            );
+            return;
+          }
+          if (result.code === 'name-taken') {
+            // Refuse-and-prompt: a collision never overwrites prior work.
+            errorResponse(
+              res,
+              409,
+              'urn:ok:error:theme-name-taken',
+              'A saved theme with that name already exists.',
+              { handler: 'saved-theme-save', detail: body.name },
+            );
+            return;
+          }
+          // Restore stems remain strict; a new human-facing name only fails when
+          // it is empty. The specific cause rides `detail` so the save form can
+          // localize the reason.
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:theme-name-invalid',
+            'That name cannot be used as a theme id.',
+            { handler: 'saved-theme-save', detail: result.code },
+          );
+          return;
+        }
+        successResponse(
+          res,
+          201,
+          SavedThemeSaveSuccessSchema,
+          { id: result.id, filename: result.filename },
+          { handler: 'saved-theme-save' },
+        );
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to save theme.', {
+          handler: 'saved-theme-save',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'saved-theme-save', method: 'POST' },
+  );
+
+  const handleSavedThemeDelete = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        const id = parseQuery(req).get('id') ?? '';
+        if (id === '') {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing theme id.', {
+            handler: 'saved-theme-delete',
+          });
+          return;
+        }
+        const result = await deleteSavedTheme({
+          id,
+          homedirOverride: homeDirOverride,
+          lockTimeoutMs: savedThemeLockTimeoutMs,
+        });
+        if (!result.ok) {
+          if (result.code === 'lock-timeout') {
+            errorResponse(
+              res,
+              503,
+              'urn:ok:error:concurrent-operation',
+              'Saved themes are temporarily busy.',
+              {
+                handler: 'saved-theme-delete',
+                detail: result.code,
+                extraHeaders: { 'Retry-After': '5' },
+              },
+            );
+            return;
+          }
+          const conflict = result.code !== 'invalid-id';
+          errorResponse(
+            res,
+            conflict ? 409 : 400,
+            'urn:ok:error:invalid-request',
+            'Cannot delete saved theme.',
+            {
+              handler: 'saved-theme-delete',
+              detail: result.code,
+            },
+          );
+          return;
+        }
+        // Deleting an id that names no file is a benign no-op (`existed: false`),
+        // and deleting one currently assigned to a mode slot is allowed — the
+        // config's read-time fallback makes the dangling reference harmless.
+        successResponse(
+          res,
+          200,
+          SavedThemeDeleteSuccessSchema,
+          result.existed
+            ? { existed: true, filename: result.filename, scheme: result.scheme }
+            : { existed: false },
+          { handler: 'saved-theme-delete' },
+        );
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to delete theme.', {
+          handler: 'saved-theme-delete',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'saved-theme-delete', method: 'DELETE', skipBodyParse: true },
+  );
+
+  const handleSavedThemeUpdate = withValidation(
+    SavedThemeUpdateRequestSchema,
+    async (_req, res, body) => {
+      try {
+        const result = await updateSavedTheme({
+          id: body.id,
+          scheme: body.scheme,
+          homedirOverride: homeDirOverride,
+          lockTimeoutMs: savedThemeLockTimeoutMs,
+        });
+        if (!result.ok) {
+          if (result.code === 'lock-timeout') {
+            errorResponse(
+              res,
+              503,
+              'urn:ok:error:concurrent-operation',
+              'Saved themes are temporarily busy.',
+              {
+                handler: 'saved-theme-update',
+                detail: result.code,
+                extraHeaders: { 'Retry-After': '5' },
+              },
+            );
+            return;
+          }
+          if (result.code === 'not-found') {
+            errorResponse(res, 404, 'urn:ok:error:not-found', 'Saved theme not found.', {
+              handler: 'saved-theme-update',
+            });
+            return;
+          }
+          if (result.code === 'ambiguous-id' || result.code === 'unsafe-target') {
+            const message =
+              result.code === 'ambiguous-id'
+                ? 'Multiple saved theme files claim that id.'
+                : 'The saved theme id conflicts with a file that cannot be safely updated.';
+            errorResponse(res, 409, 'urn:ok:error:invalid-request', message, {
+              handler: 'saved-theme-update',
+              detail: result.code,
+            });
+            return;
+          }
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Not a saved theme id.', {
+            handler: 'saved-theme-update',
+            detail: result.code,
+          });
+          return;
+        }
+        successResponse(
+          res,
+          200,
+          SavedThemeUpdateSuccessSchema,
+          { id: result.id, filename: result.filename },
+          { handler: 'saved-theme-update' },
+        );
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to update theme.', {
+          handler: 'saved-theme-update',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'saved-theme-update', method: 'PUT' },
+  );
+
+  const handleSavedTheme = methodRouter(
+    { POST: handleSavedThemeSave, PUT: handleSavedThemeUpdate, DELETE: handleSavedThemeDelete },
+    { handler: 'saved-theme' },
+  );
+
   /**
    * Conflict-aware refusal helper for the template handlers. A template is a
    * content doc now (`<folder>/.ok/templates/<name>`), so its live Y.Doc carries
@@ -21268,6 +21519,8 @@ export function createApiExtension(
     '/api/comment-counts': handleCommentCounts,
     '/api/link-preview': handleLinkPreview,
     '/api/folder-config': handleFolderConfig,
+    '/api/saved-themes': handleSavedThemesList,
+    '/api/saved-theme': handleSavedTheme,
     '/api/template': handleTemplate,
     '/api/template/import': handleTemplateImport,
     '/api/templates': handleTemplatesList,
@@ -21408,6 +21661,9 @@ export function createApiExtension(
     '/api/test-rescan-files',
     '/api/install-skill',
     '/api/folder-config',
+    // `/api/saved-theme` (POST save / PUT update / DELETE) mutates the user-global theme
+    // store; `/api/saved-themes` (GET list) is read-only and stays out.
+    '/api/saved-theme',
     '/api/template',
     '/api/template/import',
     '/api/skill',

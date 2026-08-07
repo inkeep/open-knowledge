@@ -38,11 +38,13 @@
       "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
     ],
     "-oHckY": ["OpenKnowledge read the setting ", ["key"]],
+    "-othoN": ["This theme file is too large"],
     "-q4abP": [
       "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
     ],
     "-slrNR": ["Toggle a task list."],
     "-uaQnI": ["No matching worktrees or branches."],
+    "-yOx8u": ["Saving changes…"],
     "-yPBXI": ["Choose file"],
     "-ySLQJ": ["Git & PRs"],
     "-zA2E7": ["Couldn't create the worktree. Try a different name."],
@@ -104,6 +106,7 @@
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
     "0pZmTP": ["Can't share this path."],
     "0qyKG6": ["Synced from disk"],
+    "0r6d6v": ["Changes saved automatically."],
     "0rwwOn": ["By tag"],
     "0s8-e8": [
       "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
@@ -114,6 +117,7 @@
     "0xnQ_X": ["Updates flow in"],
     "0xnmlQ": ["Repository name"],
     "0yL--g": ["Review conflicts"],
+    "0ySP5u": ["Changes save automatically to this theme."],
     "0zAhu6": ["every doc"],
     "10g8I_": ["Turn off Only markdown files"],
     "11ukmX": ["Rename failed: ", ["0"]],
@@ -123,6 +127,7 @@
     "161NCV": ["Stopping"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
     "16eIWu": ["Force stop"],
+    "16tSS_": ["Paste a base16 theme"],
     "170Js2": ["Hide panel"],
     "1AumWo": ["Push failed — check the server logs for details."],
     "1CalO6": ["Style"],
@@ -155,6 +160,7 @@
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
+    "1qpGKz": ["Couldn’t save changes. Try editing a color again."],
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
@@ -274,7 +280,6 @@
     "3kYcuM": ["Are you sure you want to delete the selected items?"],
     "3l32hp": ["Part of the ", ["plugin"], " plugin"],
     "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
-    "3l_knd": ["Press the sun or moon on “Custom” above to use this scheme."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
     "3nnyi_": [["0", "plural", { "one": ["Delete"], "other": ["Delete ", "#", " items"] }]],
@@ -318,6 +323,7 @@
     "4TzU0n": ["Initialize"],
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
+    "4d0VYJ": ["We’ll create a safe theme ID from this name."],
     "4eO-iB": ["Discard this comment"],
     "4g19V6": ["Failed to update property"],
     "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
@@ -449,6 +455,7 @@
       "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
     ],
     "6MnZEC": ["Terminal failed to load"],
+    "6Nea1q": ["Use ", ["0"], " for the active dark mode"],
     "6O626z": ["No headings match \"", ["trimmedAnchorQuery"], "\""],
     "6Pxqwv": [
       "No project templates yet. Create one to make it available everywhere in this project. Folder-scoped templates live on each folder's overview page."
@@ -458,6 +465,7 @@
     "6VqW-1": ["Remove ", ["keyName"]],
     "6WdDG7": ["Page"],
     "6YBJ3m": ["Ask AI about selection"],
+    "6YE0P6": ["Editing ", ["0"]],
     "6YtxFj": ["Name"],
     "6ZhdPI": ["What the agent may read, write, and surface."],
     "6_ZOw4": ["Copied full path"],
@@ -487,6 +495,7 @@
     "6s7LXO": ["Heads up"],
     "6u9LvN": [["days", "plural", { "one": ["#", " day ago"], "other": ["#", " days ago"] }]],
     "6vEr3W": ["Link target"],
+    "6xeZX9": ["Edits apply live. Light or dark comes from the theme."],
     "6zzhQL": ["Send your report by email"],
     "72xhRD": ["Diagram view mode"],
     "74-bX-": ["A pull quote stands out from the surrounding text."],
@@ -498,13 +507,13 @@
       "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
     ],
     "7Bj3x9": ["Failed"],
-    "7EmDc7": ["Import scheme"],
     "7FA2iI": ["Couldn't read the comments waiting to send — nothing was sent."],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
     "7IsvrP": ["Checking for updates"],
     "7JtSLi": ["Failed to delete path"],
+    "7O7REc": ["Couldn’t restore ", ["0"], ". Try again."],
     "7OhaRy": ["Source search"],
     "7Ongq0": ["Condense my AGENTS.md file to less than 40k characters"],
     "7OwvEL": ["Show HTML preview"],
@@ -619,6 +628,8 @@
     "8uGMP8": ["Hidden content goes here."],
     "8vCZcs": ["Failed to open file."],
     "8vETh9": ["Show"],
+    "8x6zk9": ["Hide ", ["0"], " editor"],
+    "9-lMCF": [["slot"], " color — ", ["0"]],
     "90-wKT": ["OpenKnowledge read the history of ", ["subject"]],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Hide Agents"],
@@ -675,7 +686,6 @@
     "9fvog2": ["Preview unavailable: ", ["errorDetail"]],
     "9i21pa": ["Commits happen automatically"],
     "9ieZhu": ["Installed at ", ["path"], " — click to remove"],
-    "9j1tqo": ["Couldn’t reach the clipboard — the scheme is in the box below."],
     "9jnjV0": ["Embed an audio file with native player controls."],
     "9lso1Y": ["Creates the <0>", ["folderPart"], "/</0> folder"],
     "9m4D_h": ["GitHub, a git URL, or a local path."],
@@ -712,8 +722,10 @@
     ],
     "AIn2Yv": [["displayName"], " CLI, ", ["hint"]],
     "AItsE5": ["Open it there"],
+    "AJ7_B2": ["Create new theme"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
     "ALhMYW": ["Terminal"],
+    "ANFxWn": ["Couldn’t delete this theme. Refresh and try again."],
     "APNlbk": ["exit ", ["0"]],
     "AQ-Lfg": ["Couldn't load templates"],
     "AQGtjK": [
@@ -852,9 +864,11 @@
       "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
     ],
     "C_cPoW": ["Your GitHub session expired — sign in again to verify push access."],
+    "CcaU4i": ["Edits apply live and save automatically to this theme."],
     "ChAtFg": ["You don't have permission to push to this repo"],
     "ChMshD": ["Quit ", ["appName"]],
     "Ck9XRt": ["Couldn't save the key — please try again."],
+    "ClII5l": ["Press the sun or moon on “Custom” above to use this theme."],
     "ClTEde": ["Stage the selected passage in the agents panel, ready to extend and send."],
     "CmeH9S": ["Add property to ", ["keyName"]],
     "CnOGgs": ["Sync mode"],
@@ -896,6 +910,7 @@
     "DKYW1G": [
       "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
     ],
+    "DLIljL": ["Some saved themes aren’t shown because the theme folder exceeds the scan limit."],
     "DMLE5q": ["MCP auto-repair failed"],
     "DMeaxi": ["Downloading ", ["0"], " ", ["1"], "…"],
     "DNkveC": ["Column options"],
@@ -908,6 +923,7 @@
       "</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
     ],
     "DUWgfT": ["Re-authenticate with GitHub Enterprise Server"],
+    "DUb7Ax": ["Multiple files use this theme name"],
     "DVh_Tb": ["Failed to clean up after trash"],
     "DWJtEo": ["What happens next"],
     "DXd9LM": ["New worktree"],
@@ -922,6 +938,7 @@
     "DhT_PK": ["OpenKnowledge imported a skill"],
     "DiFKSL": ["Counting markdown files"],
     "DiZ3pq": ["Icon picker"],
+    "DmkTrb": ["Couldn’t create this theme. Try again."],
     "Dnn2XG": ["Automatic"],
     "DpjYd6": ["Jump to the anchored text"],
     "DrYM2Z": ["Sync disabled"],
@@ -1095,6 +1112,7 @@
       "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
     ],
     "FyW0WO": ["Authorize in browser"],
+    "FyyIjH": ["Theme name is too long"],
     "G-JBA1": [
       "Source mode requires a live connection — your edits are saved and will appear when you reconnect."
     ],
@@ -1134,6 +1152,7 @@
     "GQDSBN": ["Layout options"],
     "GSYWCm": ["Hide document panel"],
     "GUYwCr": ["Dismiss notice"],
+    "GUZHkL": ["Missing palette colors"],
     "GUqTzn": ["Competitor research"],
     "GXf9hG": ["Cloning ", ["repoName"], "..."],
     "GZzDqc": [
@@ -1203,6 +1222,7 @@
     "HSI88F": ["Delete table"],
     "HSh8u_": ["Folders"],
     "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
+    "HZ7fEu": ["Theme name"],
     "HbcQYf": [
       "Replace the symlink at ",
       ["display"],
@@ -1251,6 +1271,7 @@
     "IFezUv": ["The audit could not be completed. Try again."],
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
+    "IMLUBh": ["Invalid color value"],
     "INp_z6": ["Comment or ask AI about this ", ["0"]],
     "IO8REi": ["Couldn't open \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Missing page — click to create"],
@@ -1262,7 +1283,6 @@
     "IX_uXB": ["my-feature"],
     "IYciRC": ["Thanks for the report!"],
     "IajAbS": ["Add a starter pack"],
-    "IbTC7z": ["Paste a base16 scheme"],
     "If0crP": ["Open with AI ", ["targetDisplayName"], ", ", ["hint"]],
     "IgN3LY": ["On selected text in <0>", ["address"], "</0>"],
     "IgTwLt": ["Open this document in the editor and collapse the graph."],
@@ -1280,6 +1300,7 @@
     "Ix0K8o": ["Hide external URL nodes"],
     "IxHMdF": ["Couldn't delete that comment."],
     "IxyZXD": ["Screenshot"],
+    "J1XRO3": ["Theme colors"],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2_JuX": ["nothing (", ["0"], " cannot match a doc)"],
     "J2eKUI": ["File"],
@@ -1305,7 +1326,7 @@
     "JOcPqH": ["Bring a remote repository onto this machine."],
     "JWsZlx": ["Open a project to edit."],
     "JZ8cO6": ["Light, dark, or follow the OS."],
-    "J_bJiH": ["Pick a built-in IDE color palette, or define your own."],
+    "JaU1ld": ["Theme name has unsupported characters"],
     "JddocZ": ["Toggle header column"],
     "Jejur6": ["Couldn't load document"],
     "JfPuv7": [["shareBranch"], " isn't a valid branch name."],
@@ -1384,6 +1405,7 @@
     "KsAPaB": ["This branch is checked out in:"],
     "KtACeE": ["Default: <0>", ["0"], "</0>"],
     "KujtjC": ["Find"],
+    "Kx881F": ["Restored ", ["0"], "."],
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
@@ -1567,6 +1589,7 @@
     "N55YNr": [
       "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
     ],
+    "N6j2JH": ["Edit ", ["0"]],
     "NBdIgR": ["Comment"],
     "NCmYhK": [
       "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
@@ -1768,6 +1791,7 @@
       "</0> already has a worktree — it'll open in its own window."
     ],
     "QB-moX": ["Install it to your other editors (Claude Code, Cursor, Codex) to share it."],
+    "QDErHs": ["Select ", ["slot"], " — ", ["0"]],
     "QDZbvN": [["diffDays"], "d ago"],
     "QGWzup": ["Loading OpenKnowledge skills"],
     "QHCx0c": ["Bug report history"],
@@ -1797,11 +1821,11 @@
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
     "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
-    "Quz_Qu": ["Edits apply live. Light or dark comes from the scheme."],
     "Qvls7J": ["Eng specs"],
     "Qw-7Ie": [
       "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
     ],
+    "QwG_zJ": ["Conflicting files: ", ["0"], "."],
     "QySH4I": ["Detected OpenKnowledge projects"],
     "QyioBP": ["Move up"],
     "QzofTX": ["No comments in this project yet. Comment on a passage to start one."],
@@ -1816,6 +1840,7 @@
       ]
     ],
     "R0jJzV": ["Paste URL, owner/repo, or search your repos"],
+    "R30SFt": ["Use a lowercase .yaml or .yml extension"],
     "R3y75Z": ["Edit source"],
     "R4OWFD": ["Sections"],
     "R65q-K": [
@@ -1826,6 +1851,7 @@
     "R9dK63": ["Sample image"],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
+    "RG3yW6": ["Enter a name for this theme."],
     "RG4XHV": ["Copy ", ["0"], " prompt"],
     "RGCCrg": ["Copy share link"],
     "RGkNeJ": ["Initialize a starter pack"],
@@ -1989,6 +2015,7 @@
     "UEdTEN": ["Orphaned"],
     "UGeJuP": ["Allowed values (empty = any)"],
     "UGtPix": ["GitHub connection expired. Connect again to continue."],
+    "UH0Zqw": ["This isn’t a regular theme file"],
     "UHwc0P": [
       "This is a preview of ",
       ["boldName"],
@@ -2045,7 +2072,6 @@
       ["src"],
       "</1> is no longer available."
     ],
-    "UeQEbk": ["Browse hundreds of schemes"],
     "UfW9Kr": [
       "Your search queries and the full text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
     ],
@@ -2131,6 +2157,7 @@
     ],
     "W8vpBM": ["starter pack"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
+    "WBNpt9": ["Couldn’t read this theme (", ["0"], ")"],
     "WFEbV1": ["Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."],
     "WGMoTY": ["Bugs, crashes, or it felt unreliable"],
     "WHPvOb": ["All files are hidden by view filters."],
@@ -2259,6 +2286,7 @@
     "Y9c_nf": ["0/0"],
     "YBt9YP": ["Beta"],
     "YC6_wP": ["Edit ", ["keyName"]],
+    "YCmS3k": ["Deleted ", ["0"], "."],
     "YDL7N6": [
       "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
     ],
@@ -2284,6 +2312,7 @@
     "Y_kL7X": ["Customize how the editor looks and behaves."],
     "Ya3PlJ": ["Permission required"],
     "YaeyFh": ["Pulls may overwrite uncommitted edits in your local files."],
+    "Yb82LN": ["ID: ", ["0"]],
     "Yea-K5": ["Restore to this point"],
     "Yi0VMG": ["Upload ", ["keyName"]],
     "YjMLg2": ["Off — external links show only their URL. No requests leave this computer."],
@@ -2358,6 +2387,7 @@
     "ZYtq3m": [
       "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
     ],
+    "Z_nNa2": ["Name your theme"],
     "ZatAO_": ["Failed to enable link previews — ", ["detail"]],
     "Zf0w-R": [
       "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
@@ -2393,11 +2423,13 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_DwR-n": ["Creating…"],
     "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
     "_GRWOJ": ["Change the embeddings provider?"],
     "_HgF9q": ["Sort by"],
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
     "_IX_7x": ["Other"],
+    "_IfSZn": ["A saved theme already uses this name."],
     "_JOGC0": ["Send feedback…"],
     "_LczaQ": ["Denied — ", ["optionName"]],
     "_NWEid": ["Search schema files by path"],
@@ -2513,7 +2545,6 @@
     "b6Fgpe": ["Each pack scaffolds your project with ready-made folders and templates."],
     "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
-    "bD2SLZ": ["Scheme copied as base16 YAML"],
     "bD8I7O": ["Complete"],
     "bEp7UY": ["Not attached to desktop bridge"],
     "bF22t6": ["Remove field ", ["field"]],
@@ -2573,6 +2604,7 @@
     "cIptmH": ["In the Claude Desktop App"],
     "cKjLuT": ["(project + user)"],
     "cLP0Lf": ["Remote skill source"],
+    "cLn264": ["This theme file couldn’t be read"],
     "cMMb6H": ["Installed ", ["imported"], ", but ", ["failed"], " failed: ", ["failedNames"]],
     "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],
     "cOJyVj": ["Disable Themes"],
@@ -2590,6 +2622,7 @@
       ["conflictCount", "plural", { "one": ["#", " conflict"], "other": ["#", " conflicts"] }]
     ],
     "cUk6TF": ["Sync failed — check the server logs for details."],
+    "cUt8yN": ["Changes save automatically."],
     "cV7LOw": ["Team Wiki"],
     "cVKnqL": ["Couldn't read the comments waiting to send: ", ["0"]],
     "cZGNlb": ["Add another pattern"],
@@ -2628,6 +2661,7 @@
     "cstC0z": ["Pattern (regex)"],
     "ct2kv5": ["No headings in ", ["pageTarget"]],
     "cuA8QW": ["Organize specs"],
+    "cuHhjo": ["Create & edit"],
     "d-GtJt": ["View in Source Markdown"],
     "d1JjXo": [
       "Your local copy of branch <0>",
@@ -2738,6 +2772,7 @@
       "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
     ],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
+    "ekSPiP": [["0"], " was already deleted."],
     "el2KyL": ["Slidev found in this project. Decks will use the project's version."],
     "emMrXQ": ["Server returned a malformed duplicate response."],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
@@ -2806,6 +2841,7 @@
     "fwrPh4": ["Please enter a valid email."],
     "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
     "fxbCNQ": ["Synced. The link is up to date."],
+    "g12y1g": ["Invalid YAML"],
     "g1ZTh_": [
       [
         "count",
@@ -2902,7 +2938,6 @@
     "gwEcOD": ["Your local copy is behind."],
     "gwykHF": ["This doc hasn't synced to GitHub yet. The link will work after the next sync."],
     "gyHDWC": ["Fix all with AI (", ["count"], ")"],
-    "gyWc8_": ["Accents"],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
@@ -2924,6 +2959,7 @@
     "hDEaQu": ["Connect OpenKnowledge to other tools you use."],
     "hDKtoF": [["diffHrs"], "h ago"],
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
+    "hFmYGU": ["Linked theme files aren’t supported"],
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
     "hHR0tt": ["New chat with ", ["0"]],
@@ -2937,6 +2973,7 @@
     "hSBIG-": ["A title, description, tags — anything that describes this folder."],
     "hSySVc": ["Install handoff failed: ", ["msg"]],
     "hVAkI8": ["Run in terminal"],
+    "hVzt9x": ["Saved themes couldn’t load. The last available theme list is still shown."],
     "hXUWyd": ["Value is required"],
     "hXbSxc": ["Asset: ", ["title"]],
     "hY8pka": ["Select next occurrence"],
@@ -2946,6 +2983,7 @@
     "haHgQj": ["Copied relative path"],
     "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
     "he3ygx": ["Copy"],
+    "hgF0al": ["Use ", ["0"], " for the active light mode"],
     "hgtsat": ["Failed to delete ", ["file"]],
     "hh4mVC": ["Ask AI to fix ", ["flatId"]],
     "hhI__i": ["Are you sure you want to delete {name} and its contents?"],
@@ -3179,6 +3217,7 @@
       ]
     ],
     "k_pade": ["Config sharing is now shared. Commit the OK files to share with your team."],
+    "k_tFzX": ["Missing theme name"],
     "k_yIIc": ["Will be created at: <0>", ["targetPreview"], "</0>"],
     "ka6Eke": ["Open file on disk"],
     "kdzzOK": ["Off — search ranks by keyword only. No content leaves this computer."],
@@ -3190,6 +3229,7 @@
     "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],
     "kj9pAE": ["Creating page"],
     "kknhfj": ["No changes"],
+    "kkux8f": ["Couldn’t delete ", ["0"], ". Try again."],
     "klPS-L": ["Original file — before this agent's edits."],
     "kmKqZg": ["Clusters"],
     "knjOzA": ["Tag value"],
@@ -3203,6 +3243,7 @@
     "kwLcuN": [
       "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
     ],
+    "kwNS82": ["This theme can’t be used until the file is fixed."],
     "ky9Tuc": ["Edit ", ["0"], " source"],
     "kzpkcn": ["Couldn't save that edit."],
     "l-4nnw": ["Search rules"],
@@ -3248,6 +3289,7 @@
       "A path inside the skill — any folder works (e.g. references/notes.md). Folders in the path are created for you."
     ],
     "lPzyrU": ["All hunks resolved"],
+    "lS83Sg": ["Couldn’t reach the clipboard."],
     "lScd1O": ["Slidev decks open in the OpenKnowledge desktop app only."],
     "lUtr1r": [["0"], " of ", ["1"], " selected"],
     "lVWEIL": ["Indexed ", ["embedded"], " of ", ["total"], " pages."],
@@ -3395,6 +3437,7 @@
     "nNYV3Y": ["and ", ["remaining"], " more"],
     "nOEDQs": ["Failed to update sync mode — ", ["detail"]],
     "nP-KFo": ["New ", ["0"], " chat"],
+    "nTM8ab": ["Give it a name before editing its colors."],
     "nTwL53": ["Open a doc to share its URL."],
     "nUNZL4": ["Ask ", ["0"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
@@ -3439,6 +3482,7 @@
       "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
     ],
     "nrXDdR": ["Field name"],
+    "nsM-_m": ["Browse hundreds of themes"],
     "nsUDL8": [["0"], " of ", ["1"], " projects selected"],
     "nskygk": ["Choose agent"],
     "nwtY4N": ["Something went wrong"],
@@ -3479,6 +3523,7 @@
     "oYepHb": [
       "The terminal is turned off for this project. Turn it back on to run commands here."
     ],
+    "oZUYMv": ["Couldn’t restore ", ["0"], ". That name is already in use."],
     "of3tF-": [
       "You picked ~/Documents. OpenKnowledge will index every markdown file under it. If you only want to manage a sub-folder, choose a smaller scope."
     ],
@@ -3509,6 +3554,7 @@
       ["0"],
       " — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
     ],
+    "p7Utw8": ["Not a base16 theme"],
     "p98xmP": ["Applies to"],
     "p9sdCy": ["New ignore pattern"],
     "pA16WG": ["This project has no GitHub remote."],
@@ -3592,6 +3638,7 @@
     "qIJIrD": ["Testing"],
     "qJSo0_": ["What is the difference between copies and symlinks?"],
     "qNOgUu": ["Edits at the source land here — no copy-paste drift."],
+    "qQi_um": ["Theme imported."],
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
@@ -3637,6 +3684,7 @@
     "qo4zCg": ["Path cannot contain backslashes"],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
     "qribBG": ["schema ", ["deleteTarget"]],
+    "qtnmEX": ["Enter a valid theme name."],
     "qvWGzP": ["Collapse all"],
     "qyLmWw": ["Source editor search panel"],
     "r-OJYm": ["Enter a valid branch name (no spaces, no leading dot, no \"..\")."],
@@ -3662,6 +3710,7 @@
     "rFmBG3": ["Color theme"],
     "rFw02Q": ["Uploading ", ["keyName"]],
     "rJVoVX": ["Source find results"],
+    "rJm8-2": ["Couldn’t reach the clipboard — the theme is in the box below."],
     "rNifQd": ["Remove property"],
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
@@ -3732,7 +3781,6 @@
     "sJK6pq": ["Permission denied"],
     "sJWhgo": ["Unknown component: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Send to chat"],
-    "sKMhJz": ["Background to foreground"],
     "sLcbHt": [
       "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
     ],
@@ -3908,6 +3956,7 @@
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
     "uyJsf6": ["About"],
+    "uyOQ4e": ["Theme copied as base16 YAML"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "other": ["tokens"] }]],
     "v-h2hx": ["Delete ", ["targetGitPath"]],
     "v2ZW0K": ["Enable terminal"],
@@ -4020,6 +4069,7 @@
     ],
     "wZPUJx": ["\"", ["0"], "\""],
     "w_Sphq": ["Attachments"],
+    "wbMbiY": ["Copied ", ["selectedSlot"]],
     "wbpoGe": ["Couldn't install OpenKnowledge skill — ", ["message"]],
     "wbv9xO": ["Create new project"],
     "wc54KE": ["Trying it out…"],
@@ -4207,6 +4257,7 @@
     "zL0LPh": ["Global outside text fields"],
     "zLGXna": ["No starter packs available."],
     "zLak8b": ["Activate new tab"],
+    "zMmwh4": ["Pick a theme or create your own."],
     "zQBg2C": ["Move the current block up or down one position."],
     "zXj1rA": ["Search by meaning"],
     "zYp8Sr": [

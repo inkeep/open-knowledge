@@ -13,7 +13,7 @@ import {
 import { useLingui } from '@lingui/react/macro';
 import { ArrowUpRight } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { type ClipboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field';
@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  base16ToTokens,
   customThemeKind,
   customThemeWritePatch,
   DEFAULT_CUSTOM_SCHEME,
@@ -32,71 +33,205 @@ import {
 } from '@/lib/color-themes';
 import { useConfigContextOptional } from '@/lib/config-context';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { useSavedThemes } from '@/lib/saved-themes-client';
 import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
+import { cn } from '@/lib/utils';
 import { ThemePreviewCanvas } from './ThemePreviewCanvas';
-
-/** The tonal ramp and the accents are edited as separate groups — they're read differently. */
-const RAMP_SLOTS = BASE16_SLOTS.slice(0, 8) as readonly Base16Slot[];
-const ACCENT_SLOTS = BASE16_SLOTS.slice(8) as readonly Base16Slot[];
 
 const SCHEMES_URL = 'https://github.com/tinted-theming/schemes';
 
 /**
- * Editor for the `custom` color theme's base16 scheme.
+ * Editor for one user-owned saved theme's base16 scheme.
  *
  * Two ways in: paste a scheme from the base16 ecosystem (the fast path — any of
  * the several hundred published schemes works unmodified), or adjust the
- * sixteen slots by hand. Reads the live scheme from merged config, writes
- * through the user `ConfigBinding`, and — when `custom` is the active theme —
- * applies edits to the DOM optimistically so the whole app previews as you
- * type. Light/dark mode comes from the scheme's own variant.
+ * sixteen slots by hand. Saved-theme edits replace that theme's file in place. When
+ * the edited palette is active, edits apply to the DOM optimistically so the
+ * whole app previews as you type. Light/dark mode comes from the scheme's own
+ * variant.
  *
  * Slot names are opaque on their own, so every slot carries its role in the
  * label and lights up the surfaces it drives in the preview on hover/focus.
  */
 export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding }) {
   const { t } = useLingui();
+  const {
+    themes,
+    refresh: refreshSavedThemes,
+    updateTheme,
+    editingThemeId,
+    themeIncarnations,
+    selectThemeToEdit,
+  } = useSavedThemes();
   const { setTheme, systemTheme } = useTheme();
   const merged = useConfigContextOptional()?.merged ?? null;
-  const committed = resolveCustomScheme(merged?.appearance?.customTheme);
+  const savedTheme =
+    editingThemeId === 'custom' ? undefined : themes.find((theme) => theme.id === editingThemeId);
+  const isEditingSavedTheme = savedTheme?.scheme !== undefined;
+  const workbenchScheme = resolveCustomScheme(merged?.appearance?.customTheme);
+  const committed = savedTheme?.scheme ?? workbenchScheme;
+  const themeIncarnation = themeIncarnations[editingThemeId] ?? 0;
+  const editorStateKey = `${editingThemeId}:${themeIncarnation}`;
   const modePreference = merged?.appearance?.theme;
-  const selection = resolveColorThemeSelection(merged?.appearance);
+  const selection = resolveColorThemeSelection(merged?.appearance, themes);
   const slotMode = resolveModePreference(modePreference, systemTheme === 'dark');
-  // Live preview only when the custom scheme is the palette actually on screen —
-  // it may be assigned to the other mode's slot, where an edit shouldn't repaint.
-  const isActive = selection[slotMode] === 'custom';
+  // Live preview only when the edited scheme is the palette actually on screen.
+  // It may be assigned to the other mode's slot, where an edit shouldn't repaint.
+  const isActive = selection[slotMode] === editingThemeId;
+  const applicationStateRef = useRef({
+    editorStateKey,
+    selection,
+    modePreference,
+    slotMode,
+    customSeed: merged?.appearance?.customTheme,
+    themes,
+    committed,
+  });
+  useLayoutEffect(() => {
+    applicationStateRef.current = {
+      editorStateKey,
+      selection,
+      modePreference,
+      slotMode,
+      customSeed: merged?.appearance?.customTheme,
+      themes,
+      committed,
+    };
+  });
 
   // Local working copy for smooth live editing; re-sync when committed config
   // changes underneath us (another window, a reset, a hand-edit).
   const [scheme, setScheme] = useState<Base16Scheme>(committed);
-  const committedKey = JSON.stringify(committed);
+  const draftsRef = useRef<Record<string, Base16Scheme>>({});
+  const themeIncarnationsRef = useRef(themeIncarnations);
+  useLayoutEffect(() => {
+    themeIncarnationsRef.current = themeIncarnations;
+  }, [themeIncarnations]);
+  const editorStateKeyRef = useRef(editorStateKey);
+  useLayoutEffect(() => {
+    editorStateKeyRef.current = editorStateKey;
+  }, [editorStateKey]);
+  const pendingCountsRef = useRef<Record<string, number>>({});
+  const revisionsRef = useRef<Record<string, number>>({});
+  const latestOutcomesRef = useRef<Record<string, boolean>>({});
+  const committedKey = `${editorStateKey}:${JSON.stringify(committed)}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: committedKey is the value-stable proxy for `committed`.
   useEffect(() => {
-    setScheme(committed);
+    setScheme(draftsRef.current[editorStateKey] ?? committed);
   }, [committedKey]);
 
   const [paste, setPaste] = useState('');
   const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteAnnouncement, setPasteAnnouncement] = useState('');
+  const [autoSaveStatuses, setAutoSaveStatuses] = useState<
+    Record<string, 'saving' | 'saved' | 'problem'>
+  >({});
+  const autoSaveStatus = autoSaveStatuses[editorStateKey] ?? 'idle';
   // Which slot the pointer/keyboard is on, so the preview can ring its surfaces.
   const [hoveredSlot, setHoveredSlot] = useState<Base16Slot | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<Base16Slot>('base00');
   // A config written before base16 still carries the six seed colors. It reads
   // correctly (they upgrade into slots), but the next write should normalize it.
   const needsLegacyMigration = hasLegacyCustomSeed(merged?.appearance?.customTheme);
 
+  function setWorkingScheme(next: Base16Scheme) {
+    if (isEditingSavedTheme) draftsRef.current[editorStateKey] = next;
+    setScheme(next);
+  }
+
   function preview(next: Base16Scheme) {
     if (!isActive) return;
+    const previewThemes = isEditingSavedTheme
+      ? themes.map((theme) =>
+          theme.id === editingThemeId
+            ? {
+                ...theme,
+                kind: next.variant,
+                scheme: next,
+                toTokens: () => base16ToTokens(next),
+              }
+            : theme,
+        )
+      : themes;
     applyColorThemeToDom({
       selection,
       modePreference,
       slotMode,
-      customSeed: customThemeWritePatch(next),
+      customSeed: isEditingSavedTheme
+        ? merged?.appearance?.customTheme
+        : customThemeWritePatch(next),
+      themes: previewThemes,
     });
     setTheme(customThemeKind(next) === 'dark' ? 'dark' : 'light');
   }
 
+  function persistSavedTheme(next: Base16Scheme) {
+    if (!isEditingSavedTheme) return;
+    const id = editingThemeId;
+    const incarnation = themeIncarnation;
+    const lifecycleKey = editorStateKey;
+    draftsRef.current[lifecycleKey] = next;
+    const revision = (revisionsRef.current[lifecycleKey] ?? 0) + 1;
+    revisionsRef.current[lifecycleKey] = revision;
+    pendingCountsRef.current[lifecycleKey] = (pendingCountsRef.current[lifecycleKey] ?? 0) + 1;
+    setAutoSaveStatuses((current) => ({ ...current, [lifecycleKey]: 'saving' }));
+    void updateTheme({ id, scheme: next }).then((result) => {
+      const discardDeletedLifecycle = () => {
+        delete draftsRef.current[lifecycleKey];
+        delete pendingCountsRef.current[lifecycleKey];
+        delete revisionsRef.current[lifecycleKey];
+        delete latestOutcomesRef.current[lifecycleKey];
+        setAutoSaveStatuses((current) => {
+          const nextStatuses = { ...current };
+          delete nextStatuses[lifecycleKey];
+          return nextStatuses;
+        });
+      };
+      if ((themeIncarnationsRef.current[id] ?? 0) !== incarnation) {
+        discardDeletedLifecycle();
+        return;
+      }
+      if (revision === revisionsRef.current[lifecycleKey]) {
+        latestOutcomesRef.current[lifecycleKey] = result.ok;
+        if (result.ok) void refreshSavedThemes();
+      }
+      const remaining = Math.max(0, (pendingCountsRef.current[lifecycleKey] ?? 1) - 1);
+      pendingCountsRef.current[lifecycleKey] = remaining;
+      if (remaining === 0) {
+        const saved = latestOutcomesRef.current[lifecycleKey] === true;
+        const savedCurrentDraft = saved && draftsRef.current[lifecycleKey] === next;
+        if (savedCurrentDraft) {
+          delete draftsRef.current[lifecycleKey];
+          if (editorStateKeyRef.current === lifecycleKey) setScheme(next);
+        } else if (!saved) {
+          const current = applicationStateRef.current;
+          if (
+            current.editorStateKey === lifecycleKey &&
+            current.selection[current.slotMode] === id
+          ) {
+            applyColorThemeToDom({
+              selection: current.selection,
+              modePreference: current.modePreference,
+              slotMode: current.slotMode,
+              customSeed: current.customSeed,
+              themes: current.themes,
+            });
+            setTheme(customThemeKind(current.committed) === 'dark' ? 'dark' : 'light');
+          }
+        }
+        setAutoSaveStatuses((current) => {
+          const nextStatuses = { ...current };
+          if (saved && !savedCurrentDraft) delete nextStatuses[lifecycleKey];
+          else nextStatuses[lifecycleKey] = savedCurrentDraft ? 'saved' : 'problem';
+          return nextStatuses;
+        });
+      }
+    });
+  }
+
   function onPick(slot: Base16Slot, value: string) {
     const next = { ...scheme, palette: { ...scheme.palette, [slot]: value } };
-    setScheme(next);
+    setWorkingScheme(next);
     // Only push valid hex to the live DOM preview — an invalid partial the user
     // is mid-typing shouldn't repaint the app with a broken color.
     if (isHexColor(value)) preview(next);
@@ -107,6 +242,10 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     // correct it — no silent revert, and nothing is written to config until the
     // value is a valid 6-digit hex.
     if (!isHexColor(value)) return;
+    if (isEditingSavedTheme) {
+      persistSavedTheme({ ...scheme, palette: { ...scheme.palette, [slot]: value } });
+      return;
+    }
     if (needsLegacyMigration) {
       // First edit against a pre-base16 config: write the resolved scheme in
       // full and retire the old keys, rather than leaving a half-format behind.
@@ -117,17 +256,37 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     userBinding.patch({ appearance: { customTheme: { [slot]: value } } });
   }
 
-  function importPasted() {
-    const result = parseBase16Scheme(paste);
+  function importThemeText(value: string) {
+    const result = parseBase16Scheme(value);
     if (!result.ok) {
       setPasteError(describeParseError(result.error, t));
-      return;
+      setPasteAnnouncement('');
+      return false;
     }
     setPasteError(null);
     setPaste('');
-    setScheme(result.scheme);
+    setPasteAnnouncement(t`Theme imported.`);
+    setWorkingScheme(result.scheme);
     preview(result.scheme);
+    if (isEditingSavedTheme) {
+      persistSavedTheme(result.scheme);
+      return true;
+    }
     userBinding.patch({ appearance: { customTheme: customThemeWritePatch(result.scheme) } });
+    return true;
+  }
+
+  function pasteTheme(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const pastedText = event.clipboardData.getData('text/plain');
+    if (!pastedText) return;
+    event.preventDefault();
+    const target = event.currentTarget;
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    const nextValue = `${target.value.slice(0, start)}${pastedText}${target.value.slice(end)}`;
+    setPaste(nextValue);
+    setPasteAnnouncement('');
+    importThemeText(nextValue);
   }
 
   async function exportYaml() {
@@ -136,7 +295,7 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     if (write) {
       try {
         await write(yaml);
-        toast.success(t`Scheme copied as base16 YAML`);
+        toast.success(t`Theme copied as base16 YAML`);
         return;
       } catch {
         // Denied or unavailable — fall through to the in-page path below.
@@ -147,13 +306,39 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     // copyable by hand, and re-importing it is a no-op.
     setPaste(yaml);
     setPasteError(null);
-    toast.error(t`Couldn’t reach the clipboard — the scheme is in the box below.`);
+    toast.error(t`Couldn’t reach the clipboard — the theme is in the box below.`);
+  }
+
+  async function copySelectedColor() {
+    const value = scheme.palette[selectedSlot];
+    const write = navigator.clipboard?.writeText?.bind(navigator.clipboard);
+    if (!write) {
+      toast.error(t`Couldn’t reach the clipboard.`);
+      return;
+    }
+    try {
+      await write(value);
+      toast.success(t`Copied ${selectedSlot}`);
+    } catch {
+      toast.error(t`Couldn’t reach the clipboard.`);
+    }
   }
 
   function reset() {
-    setScheme(DEFAULT_CUSTOM_SCHEME);
+    const next = isEditingSavedTheme
+      ? {
+          ...DEFAULT_CUSTOM_SCHEME,
+          name: scheme.name,
+          ...(scheme.author ? { author: scheme.author } : {}),
+        }
+      : DEFAULT_CUSTOM_SCHEME;
+    setWorkingScheme(next);
     setPasteError(null);
-    preview(DEFAULT_CUSTOM_SCHEME);
+    preview(next);
+    if (isEditingSavedTheme) {
+      persistSavedTheme(next);
+      return;
+    }
     userBinding.patch({
       appearance: { customTheme: customThemeWritePatch(DEFAULT_CUSTOM_SCHEME) },
     });
@@ -168,13 +353,35 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 id="settings-custom-theme-title" className="font-medium text-sm">
-            {t`Custom theme`}
+            {isEditingSavedTheme ? t`Editing ${scheme.name}` : t`Custom theme`}
           </h3>
           <p className="text-1sm text-muted-foreground">
-            {isActive
-              ? t`Edits apply live. Light or dark comes from the scheme.`
-              : t`Press the sun or moon on “Custom” above to use this scheme.`}
+            {isEditingSavedTheme
+              ? isActive
+                ? t`Edits apply live and save automatically to this theme.`
+                : t`Changes save automatically to this theme.`
+              : isActive
+                ? t`Edits apply live. Light or dark comes from the theme.`
+                : t`Press the sun or moon on “Custom” above to use this theme.`}
           </p>
+          {isEditingSavedTheme ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'text-xs text-muted-foreground',
+                autoSaveStatus === 'problem' && 'text-destructive',
+              )}
+            >
+              {autoSaveStatus === 'saving'
+                ? t`Saving changes…`
+                : autoSaveStatus === 'saved'
+                  ? t`Changes saved automatically.`
+                  : autoSaveStatus === 'problem'
+                    ? t`Couldn’t save changes. Try editing a color again.`
+                    : t`Changes save automatically.`}
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button variant="outline" size="sm" onClick={exportYaml}>
@@ -183,38 +390,36 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
           <Button variant="ghost" size="sm" onClick={reset} className="text-muted-foreground">
             {t`Reset`}
           </Button>
+          {isEditingSavedTheme ? (
+            <Button size="sm" onClick={() => selectThemeToEdit(null)}>
+              {t`Done`}
+            </Button>
+          ) : null}
         </div>
       </div>
 
       {/* Preview first: it is the thing that makes the slots below legible. */}
       <ThemePreviewCanvas scheme={scheme} highlightSlot={hoveredSlot} className="w-full" />
 
-      <div className="space-y-3">
-        <SlotGroup
-          label={t`Background to foreground`}
-          slots={RAMP_SLOTS}
-          scheme={scheme}
-          onPick={onPick}
-          commit={commit}
-          onSlotFocus={setHoveredSlot}
-          hexLabel={(slot) => t`${slot} hex value`}
-          invalidHint={t`Enter a 6-digit hex like #1A2B3C`}
-        />
-        <SlotGroup
-          label={t`Accents`}
-          slots={ACCENT_SLOTS}
-          scheme={scheme}
-          onPick={onPick}
-          commit={commit}
-          onSlotFocus={setHoveredSlot}
-          hexLabel={(slot) => t`${slot} hex value`}
-          invalidHint={t`Enter a 6-digit hex like #1A2B3C`}
-        />
-      </div>
+      <ColorWorkbench
+        scheme={scheme}
+        selectedSlot={selectedSlot}
+        onSelectSlot={setSelectedSlot}
+        onPick={onPick}
+        commit={commit}
+        onSlotFocus={setHoveredSlot}
+        onCopy={copySelectedColor}
+        colorsLabel={t`Theme colors`}
+        selectLabel={(slot) => t`Select ${slot} — ${BASE16_SLOT_ROLES[slot]}`}
+        colorLabel={(slot) => t`${slot} color — ${BASE16_SLOT_ROLES[slot]}`}
+        hexLabel={(slot) => t`${slot} hex value`}
+        copyLabel={t`Copy`}
+        invalidHint={t`Enter a 6-digit hex like #1A2B3C`}
+      />
 
       <div className="space-y-1.5 border-t pt-3">
         <Label htmlFor="custom-theme-import" className="text-1sm text-muted-foreground">
-          {t`Paste a base16 scheme`}
+          {t`Paste a base16 theme`}
         </Label>
         <Textarea
           id="custom-theme-import"
@@ -225,9 +430,18 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
             'system: "base16"\nname: "Ayu Dark"\nvariant: "dark"\npalette:\n  base00: "#0f1419"\n  base01: "#131721"'
           }
           aria-invalid={pasteError !== null}
-          aria-describedby={pasteError ? 'custom-theme-import-error' : undefined}
+          aria-describedby={
+            pasteError
+              ? 'custom-theme-import-help custom-theme-import-error'
+              : 'custom-theme-import-help'
+          }
+          onPaste={pasteTheme}
+          onBlur={() => {
+            if (paste.trim()) importThemeText(paste);
+          }}
           onChange={(e) => {
             setPaste(e.target.value);
+            setPasteAnnouncement('');
             if (pasteError) setPasteError(null);
           }}
           className="font-mono text-1sm"
@@ -239,10 +453,7 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
           </FieldError>
         ) : null}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Button variant="outline" size="sm" disabled={!paste.trim()} onClick={importPasted}>
-            {t`Import scheme`}
-          </Button>
-          <span className="text-xs text-muted-foreground">
+          <span id="custom-theme-import-help" className="text-xs text-muted-foreground">
             {t`YAML or JSON, in either base16 layout.`}{' '}
             <a
               href={SCHEMES_URL}
@@ -252,105 +463,154 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
               onAuxClick={(e) => dispatchExternalLinkClick(e, SCHEMES_URL)}
               className="inline-flex items-center gap-0.5 underline-offset-2 hover:text-foreground hover:underline"
             >
-              {t`Browse hundreds of schemes`}
+              {t`Browse hundreds of themes`}
               <ArrowUpRight aria-hidden className="size-3" />
             </a>
           </span>
         </div>
+        <span role="status" aria-live="polite" className="sr-only">
+          {pasteAnnouncement}
+        </span>
       </div>
     </section>
   );
 }
 
-function SlotGroup({
-  label,
-  slots,
+function ColorWorkbench({
   scheme,
+  selectedSlot,
+  onSelectSlot,
   onPick,
   commit,
+  colorsLabel,
+  selectLabel,
+  colorLabel,
   hexLabel,
+  copyLabel,
   invalidHint,
   onSlotFocus,
+  onCopy,
 }: {
-  label: string;
-  slots: readonly Base16Slot[];
   scheme: Base16Scheme;
+  selectedSlot: Base16Slot;
+  onSelectSlot: (slot: Base16Slot) => void;
   onPick: (slot: Base16Slot, value: string) => void;
   commit: (slot: Base16Slot, value: string) => void;
+  colorsLabel: string;
+  selectLabel: (slot: Base16Slot) => string;
+  colorLabel: (slot: Base16Slot) => string;
   hexLabel: (slot: Base16Slot) => string;
+  copyLabel: string;
   invalidHint: string;
   onSlotFocus: (slot: Base16Slot | null) => void;
+  onCopy: () => void;
 }) {
+  const value = scheme.palette[selectedSlot];
+  const valid = isHexColor(value);
+  const spotlight = {
+    onMouseEnter: () => onSlotFocus(selectedSlot),
+    onMouseLeave: () => onSlotFocus(null),
+    onFocus: () => onSlotFocus(selectedSlot),
+  };
+
   return (
-    <div className="space-y-1.5">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
-        {slots.map((slot) => {
-          const value = scheme.palette[slot];
-          const valid = isHexColor(value);
-          // Hover and focus both drive the preview highlight: pointer users
-          // sweep the list, keyboard users tab through it. The handlers live on
-          // the inputs rather than the row wrapper — a static container with
-          // pointer handlers is unreachable by keyboard and fails a11y lint.
-          const spotlight = {
-            onMouseEnter: () => onSlotFocus(slot),
-            onMouseLeave: () => onSlotFocus(null),
-            onFocus: () => onSlotFocus(slot),
-          };
+    <div className="space-y-3">
+      <fieldset
+        aria-label={colorsLabel}
+        className="grid min-w-0 grid-cols-4 gap-2 border-0 p-0 md:grid-cols-8"
+      >
+        {BASE16_SLOTS.map((slot) => {
+          const slotValue = scheme.palette[slot];
+          const slotValid = isHexColor(slotValue);
+          const selected = slot === selectedSlot;
           return (
-            <div key={slot} className="flex items-center gap-1.5 rounded px-1 py-0.5">
-              <Input
-                type="color"
-                aria-label={`${slot} — ${BASE16_SLOT_ROLES[slot]}`}
-                value={valid ? value : '#000000'}
-                onChange={(e) => onPick(slot, e.target.value)}
-                onBlur={(e) => {
-                  onSlotFocus(null);
-                  commit(slot, e.target.value);
-                }}
-                {...spotlight}
-                className="h-7 w-8 shrink-0 cursor-pointer rounded-md p-1"
+            <Button
+              key={slot}
+              type="button"
+              variant="ghost"
+              aria-label={selectLabel(slot)}
+              aria-pressed={selected}
+              onClick={() => onSelectSlot(slot)}
+              onMouseEnter={() => onSlotFocus(slot)}
+              onMouseLeave={() => onSlotFocus(null)}
+              onFocus={() => onSlotFocus(slot)}
+              onBlur={() => onSlotFocus(null)}
+              className="h-auto min-w-0 flex-col gap-1.5 rounded-md p-1 text-muted-foreground hover:bg-transparent hover:text-foreground"
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  'aspect-[4/3] w-full rounded-lg border border-border/70 shadow-sm transition-[box-shadow,border-color,transform]',
+                  selected &&
+                    'border-foreground ring-2 ring-foreground ring-offset-2 ring-offset-background',
+                  !slotValid && 'border-destructive bg-destructive/10',
+                )}
+                style={{ backgroundColor: slotValid ? slotValue : undefined }}
               />
-              <div className="relative min-w-0 flex-1">
-                {/* The role, not just the slot id — "base09" alone teaches nothing. */}
-                <Label className="block truncate text-[10px] leading-tight text-muted-foreground">
-                  <span className="font-mono">{slot}</span>{' '}
-                  <span className="opacity-80">{BASE16_SLOT_ROLES[slot]}</span>
-                </Label>
-                <Input
-                  value={value}
-                  spellCheck={false}
-                  aria-label={hexLabel(slot)}
-                  aria-invalid={!valid}
-                  aria-describedby={!valid ? `custom-theme-hex-error-${slot}` : undefined}
-                  onChange={(e) => onPick(slot, e.target.value)}
-                  onBlur={(e) => {
-                    onSlotFocus(null);
-                    commit(slot, e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commit(slot, (e.target as HTMLInputElement).value);
-                  }}
-                  {...spotlight}
-                  className="h-6 font-mono text-[11px] uppercase"
-                />
-                {!valid ? (
-                  // Absolutely positioned so an invalid value doesn't reflow the
-                  // other swatches in the grid — every tile stays put.
-                  <FieldError
-                    id={`custom-theme-hex-error-${slot}`}
-                    className="absolute top-full left-0 mt-0.5 text-xs leading-tight"
-                    data-testid={`custom-theme-hex-error-${slot}`}
-                  >
-                    {invalidHint}
-                  </FieldError>
-                ) : null}
-              </div>
-            </div>
+              <span aria-hidden className="font-mono text-xs uppercase">
+                {slot.slice(4)}
+              </span>
+              <span className="sr-only">{BASE16_SLOT_ROLES[slot]}</span>
+            </Button>
           );
         })}
+      </fieldset>
+
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center">
+        <Input
+          type="color"
+          aria-label={colorLabel(selectedSlot)}
+          value={valid ? value : '#000000'}
+          onChange={(event) => onPick(selectedSlot, event.target.value)}
+          onBlur={(event) => {
+            onSlotFocus(null);
+            commit(selectedSlot, event.target.value);
+          }}
+          {...spotlight}
+          className="h-16 w-24 shrink-0 cursor-pointer rounded-lg p-1"
+        />
+        <div className="min-w-0 flex-1">
+          <Label htmlFor={`custom-theme-hex-${selectedSlot}`} className="block">
+            <span className="font-mono text-base">{selectedSlot}</span>
+            <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+              {BASE16_SLOT_ROLES[selectedSlot]}
+            </span>
+          </Label>
+        </div>
+        <div className="relative flex shrink-0 items-center gap-2">
+          <Input
+            id={`custom-theme-hex-${selectedSlot}`}
+            value={value}
+            spellCheck={false}
+            aria-label={hexLabel(selectedSlot)}
+            aria-invalid={!valid}
+            aria-describedby={!valid ? `custom-theme-hex-error-${selectedSlot}` : undefined}
+            onChange={(event) => onPick(selectedSlot, event.target.value)}
+            onBlur={(event) => {
+              onSlotFocus(null);
+              commit(selectedSlot, event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commit(selectedSlot, (event.target as HTMLInputElement).value);
+              }
+            }}
+            {...spotlight}
+            className="w-28 font-mono uppercase"
+          />
+          <Button type="button" variant="outline" onClick={onCopy} disabled={!valid}>
+            {copyLabel}
+          </Button>
+          {!valid ? (
+            <FieldError
+              id={`custom-theme-hex-error-${selectedSlot}`}
+              className="absolute top-full right-0 mt-1 whitespace-nowrap text-xs leading-tight"
+              data-testid={`custom-theme-hex-error-${selectedSlot}`}
+            >
+              {invalidHint}
+            </FieldError>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -365,7 +625,7 @@ function describeParseError(error: Base16ParseError, t: Translate): string {
         ? t`That doesn’t parse as YAML or JSON.`
         : t`That doesn’t parse as YAML or JSON — check line ${error.line}.`;
     case 'not-a-scheme':
-      return t`That parsed, but it isn’t a base16 scheme.`;
+      return t`That parsed, but it isn’t a base16 theme.`;
     case 'missing-slots':
       return t`Missing ${error.slots.length} slot(s): ${error.slots.join(', ')}`;
     case 'bad-hex':

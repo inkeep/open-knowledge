@@ -64,6 +64,12 @@ export interface AtomicWriteOptions {
   /** Posix file mode for the final file. Defaults to 0o644 (config is not secret). */
   mode?: number;
   /**
+   * Sweep stale sibling temp files before writing. Defaults to true. Callers
+   * holding a finite-staleness cross-process lock may disable the unbounded
+   * directory sweep so the lock cannot be mistaken for stale mid-operation.
+   */
+  sweepStaleTmps?: boolean;
+  /**
    * Inject traced fs primitives. Server-side callers pass `{writeFile: tracedWriteFile, rename: tracedRename}`
    * from `packages/server/src/fs-traced.ts` so disk writes appear as `fs.*` spans.
    */
@@ -136,7 +142,7 @@ export async function atomicWriteFile(
   content: string,
   opts: AtomicWriteOptions = {},
 ): Promise<void> {
-  await sweepStaleTmps(absPath);
+  if (opts.sweepStaleTmps !== false) await sweepStaleTmps(absPath);
   const fs = opts.fs ?? DEFAULT_FS;
   const tmpPath = `${absPath}.tmp.${crypto.randomUUID()}`;
   try {

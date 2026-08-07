@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { stringify } from 'yaml';
+import { resolveThemePlugin } from '../theme/theme-plugins.ts';
 import { isKnownConfigError } from './errors.ts';
 import { readConfigSafely } from './read-config-safely.ts';
 import { REMOVED_KEYS } from './removed-keys.ts';
@@ -125,6 +126,59 @@ describe('readConfigSafely', () => {
       expect(removed).toHaveLength(2);
     }
     // File left in place — a removed key is not a reason to sideline.
+    expect(existsSync(path)).toBe(true);
+    const siblings = readdirSync(testDir).filter((f) => f.includes('.invalid-'));
+    expect(siblings).toEqual([]);
+  });
+
+  test('an unrecognized theme id degrades that slot only; siblings survive; file not sidelined', () => {
+    // The discriminating test for opening the palette fields from a closed enum
+    // to a shape-constrained string. A saved-theme id is by construction absent
+    // from the built-in registry; under the old closed enum it failed
+    // whole-document validation, which this reader handled as corruption —
+    // replacing EVERY user preference with defaults and sidelining the file.
+    // The fields now accept the id shape, so the reader keeps every sibling and
+    // the unknown id degrades to the default palette only at resolve time.
+    //
+    // This FAILS on an unmodified checkout: `colorThemeLight: saved-*` trips
+    // SCHEMA_INVALID, `value` becomes defaults (wordWrap true, theme unset), and
+    // the file is renamed aside — so the sibling-survival assertions below all
+    // fail. Asserting only "the config still parses" would NOT discriminate: the
+    // old behavior also yields a parseable config, by discarding the user's.
+    const path = resolve(testDir, 'global.yml');
+    writeFileSync(
+      path,
+      [
+        'editor:',
+        '  wordWrap: false',
+        'appearance:',
+        '  theme: dark',
+        '  colorThemeLight: saved-my-personal',
+        '  colorThemeDark: dracula',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    const result = readConfigSafely({ absPath: path, warn: () => {} });
+
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      // An unrelated sibling (a different section) keeps its authored value.
+      expect(result.value.editor.wordWrap).toBe(false);
+      // A sibling WITHIN appearance survives too.
+      expect(result.value.appearance.theme).toBe('dark');
+      // The dangling id is preserved verbatim, not stripped or rewritten.
+      expect(result.value.appearance.colorThemeLight).toBe('saved-my-personal');
+      // The known slot is untouched.
+      expect(result.value.appearance.colorThemeDark).toBe('dracula');
+    }
+    // Resolve-time degradation: the unknown id falls back to `default`; the
+    // known one still resolves to itself — the other slot is unaffected.
+    expect(resolveThemePlugin('saved-my-personal').id).toBe('default');
+    expect(resolveThemePlugin('dracula').id).toBe('dracula');
+    // The file is intact — a dangling reference is never a reason to sideline.
+    // This is the command-line read path, the only one that produces a
+    // `.invalid-*` file, so asserting its absence is meaningful here.
     expect(existsSync(path)).toBe(true);
     const siblings = readdirSync(testDir).filter((f) => f.includes('.invalid-'));
     expect(siblings).toEqual([]);

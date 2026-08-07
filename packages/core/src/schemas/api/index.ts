@@ -31,6 +31,7 @@ export * from './links-orphans.ts';
 export * from './local-op.ts';
 export * from './metrics.ts';
 export * from './pages.ts';
+export * from './saved-themes.ts';
 export * from './share.ts';
 export * from './sync-seed.ts';
 export * from './tags-search.ts';

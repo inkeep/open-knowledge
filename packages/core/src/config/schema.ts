@@ -3,7 +3,7 @@ import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
 import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
 import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
 import { BASE16_SLOT_ROLES, BASE16_SLOTS } from '../theme/base16.ts';
-import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
+import { THEME_ID_PATTERN, THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
 import { STORED_SYNC_ACTIVE_MODES, STORED_SYNC_MODES } from './auto-sync-mode.ts';
 import { fieldRegistry } from './field-registry.ts';
 
@@ -272,42 +272,62 @@ export const ConfigSchema = z.looseObject({
       // the resolved mode is light, `colorThemeDark` while it is dark, so the
       // palette follows the OS as `theme: 'system'` flips. `default` carries no
       // palette (the base stylesheet shows through); `custom` applies the user's
-      // own `appearance.customTheme` scheme below. Any palette may sit in either
-      // slot — a dark scheme chosen as the light-mode palette still forces its
-      // own variant, so the app renders it dark. Personal preferences (user
-      // scope). The id list is DERIVED from the `THEME_PLUGINS` registry
-      // (`packages/core/src/theme/theme-plugins.ts`) via `THEME_PLUGIN_IDS` — add
-      // a theme there and these enums follow, with no edit here.
+      // own `appearance.customTheme` scheme below; a built-in name selects a
+      // bundled palette; any other id names a saved theme resolved at read time.
+      // Any palette may sit in either slot — a dark scheme chosen as the
+      // light-mode palette still forces its own variant, so the app renders it
+      // dark. Personal preferences (user scope).
+      //
+      // These are shape-constrained strings (THEME_ID_PATTERN), NOT a closed
+      // enum: an id the built-in registry doesn't know resolves to `default` for
+      // that one slot rather than failing whole-config validation and discarding
+      // every other user preference. The grammar is shared verbatim with the
+      // FOUC pre-paint validator in `packages/app/index.html`, so config and
+      // pre-paint can never disagree on what a valid id is.
       colorThemeLight: z
-        .enum(THEME_PLUGIN_IDS)
+        .string()
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
           defaultScope: 'user',
-          description: `IDE color palette applied in light mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), or one of ${namedThemeIds()}. A personal preference (user scope) — not shared with the project.`,
+          description: `IDE color palette applied in light mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), one of ${namedThemeIds()}, or the id of a saved theme. A short id of lowercase letters, digits, and hyphens (max 32 characters); an id no palette matches falls back to 'default' for this mode only, leaving the rest of your config untouched. A personal preference (user scope) — not shared with the project.`,
+        })
+        .regex(THEME_ID_PATTERN, {
+          message:
+            "Theme id must be lowercase letters, digits, and hyphens, 1–32 characters (e.g. 'dracula', 'custom', or a saved theme id).",
         })
         .optional(),
       colorThemeDark: z
-        .enum(THEME_PLUGIN_IDS)
+        .string()
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
           defaultScope: 'user',
-          description: `IDE color palette applied in dark mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), or one of ${namedThemeIds()}. A personal preference (user scope) — not shared with the project.`,
+          description: `IDE color palette applied in dark mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), one of ${namedThemeIds()}, or the id of a saved theme. A short id of lowercase letters, digits, and hyphens (max 32 characters); an id no palette matches falls back to 'default' for this mode only, leaving the rest of your config untouched. A personal preference (user scope) — not shared with the project.`,
+        })
+        .regex(THEME_ID_PATTERN, {
+          message:
+            "Theme id must be lowercase letters, digits, and hyphens, 1–32 characters (e.g. 'dracula', 'custom', or a saved theme id).",
         })
         .optional(),
       // The single palette written before the light/dark pair existed. Read only
       // as the seed for BOTH slots when neither is set, so an older config keeps
       // rendering what it always did; the first pick in the Themes pane writes
-      // the pair and retires this key.
+      // the pair and retires this key. Opened to the same string shape as the
+      // pair above: it too must tolerate a saved-theme id without invalidating
+      // the whole config.
       colorTheme: z
-        .enum(THEME_PLUGIN_IDS)
+        .string()
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
           defaultScope: 'user',
           description:
-            'Superseded by appearance.colorThemeLight / appearance.colorThemeDark. Read as the palette for both modes while neither of those is set. A personal preference (user scope) — not shared with the project.',
+            "Superseded by appearance.colorThemeLight / appearance.colorThemeDark. Read as the palette for both modes while neither of those is set. A short theme id (lowercase letters, digits, and hyphens; max 32 characters); an id no palette matches falls back to 'default'. A personal preference (user scope) — not shared with the project.",
+        })
+        .regex(THEME_ID_PATTERN, {
+          message:
+            "Theme id must be lowercase letters, digits, and hyphens, 1–32 characters (e.g. 'dracula', 'custom', or a saved theme id).",
         })
         .optional(),
       // Whether the Themes plugin appears under Settings → Plugins. The theme is

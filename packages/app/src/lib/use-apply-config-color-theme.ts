@@ -1,6 +1,10 @@
+import { renderThemeBlock } from '@inkeep/open-knowledge-core';
 import { useEffect } from 'react';
 import {
+  base16ToTokens,
   buildCustomThemeCss,
+  COLOR_THEMES,
+  type ColorTheme,
   type ColorThemeSelection,
   colorThemeMode,
   customThemeKind,
@@ -29,7 +33,7 @@ export const COLOR_THEME_PAIR_STORAGE_KEY = 'ok-color-theme-pair-v1';
 /** The single-palette FOUC cache written before the light/dark pair existed. */
 export const COLOR_THEME_STORAGE_KEY = 'ok-color-theme-v1';
 
-/** localStorage key holding the active custom theme's prebuilt CSS + kind, for flash-free reload. */
+/** Shared single-palette CSS cache written by older builds. Removed after the pair cache is written. */
 export const CUSTOM_THEME_STORAGE_KEY = 'ok-custom-theme-v1';
 
 /** The `<html>` attribute the generated `color-themes.generated.css` rules key off. */
@@ -38,12 +42,16 @@ export const COLOR_THEME_ATTRIBUTE = 'data-color-theme';
 /** id of the runtime `<style>` element holding the active custom palette. */
 export const CUSTOM_THEME_STYLE_ID = 'ok-custom-theme';
 
+/** id of the runtime `<style>` element holding the active saved palette. */
+export const SAVED_THEME_STYLE_ID = 'ok-saved-theme';
+
 type SeedInput = Record<string, unknown> | undefined;
 
-/** One slot of the FOUC cache: which palette, and whether it paints dark. */
+/** One slot of the FOUC cache, including prebuilt CSS when the palette is runtime-authored. */
 interface CachedSlot {
   id: string;
   dark: boolean;
+  css?: string;
 }
 
 export interface ApplyColorThemeInput {
@@ -55,8 +63,17 @@ export interface ApplyColorThemeInput {
   slotMode: 'light' | 'dark';
   /** The user's custom-theme scheme (partial); only consulted for the `custom` palette. */
   customSeed?: SeedInput;
+  /** Built-in and saved palettes available to resolve the selected ids. */
+  themes?: readonly ColorTheme[];
   /** The Themes plugin toggle. Off applies exactly like `default`. */
   enabled?: boolean;
+  /**
+   * Whether startup config and any selected saved-theme registry entries are
+   * authoritative. While false, the hook leaves the prepaint DOM untouched so
+   * hydration cannot flash the default palette between cache replay and sync.
+   * Direct imperative calls are ready by definition.
+   */
+  ready?: boolean;
 }
 
 function upsertCustomStyle(css: string): void {
@@ -73,29 +90,79 @@ function removeCustomStyle(): void {
   document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
 }
 
+function savedThemeCss(theme: ColorTheme): string | undefined {
+  if (!theme.scheme) return undefined;
+  return renderThemeBlock(
+    `html[${COLOR_THEME_ATTRIBUTE}]`,
+    theme.scheme.variant,
+    base16ToTokens(theme.scheme),
+  );
+}
+
+function upsertSavedThemeStyle(css: string): void {
+  let style = document.getElementById(SAVED_THEME_STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = SAVED_THEME_STYLE_ID;
+    document.head.appendChild(style);
+  }
+  if (style.textContent !== css) style.textContent = css;
+}
+
+function removeSavedThemeStyle(): void {
+  document.getElementById(SAVED_THEME_STYLE_ID)?.remove();
+}
+
 /**
  * The `dark`-class state a palette produces in a given slot. A palette carries
  * its own variant and keeps forcing it — a dark scheme picked as the light-mode
  * palette still paints dark, so Tailwind `dark:` variants resolve against the
  * tokens actually on screen. Only a palette-less `default` defers to the slot.
  */
-function slotIsDark(id: string, slot: 'light' | 'dark', customSeed: SeedInput): boolean {
+function slotIsDark(
+  id: string,
+  slot: 'light' | 'dark',
+  customSeed: SeedInput,
+  themes: readonly ColorTheme[],
+): boolean {
   if (id === 'custom') return customThemeKind(resolveCustomScheme(customSeed)) === 'dark';
-  return (colorThemeMode(id) ?? slot) === 'dark';
+  return (colorThemeMode(id, themes) ?? slot) === 'dark';
+}
+
+function slotCss(
+  id: string,
+  customSeed: SeedInput,
+  themes: readonly ColorTheme[],
+): string | undefined {
+  if (id === 'custom') return buildCustomThemeCss(resolveCustomScheme(customSeed));
+  if (COLOR_THEMES.some((theme) => theme.id === id)) return undefined;
+  const theme = themes.find((candidate) => candidate.id === id);
+  return theme ? savedThemeCss(theme) : undefined;
+}
+
+function cachedSlot(
+  id: string,
+  slot: 'light' | 'dark',
+  customSeed: SeedInput,
+  themes: readonly ColorTheme[],
+): CachedSlot {
+  const dark = slotIsDark(id, slot, customSeed, themes);
+  const css = slotCss(id, customSeed, themes);
+  return css ? { id, dark, css } : { id, dark };
 }
 
 /** Which palette applies right now, and whether it paints dark. */
 function activeColorTheme(input: ApplyColorThemeInput): CachedSlot {
-  const { selection, slotMode, customSeed, enabled = true } = input;
-  const id = resolveColorTheme(enabled ? selection[slotMode] : 'default').id;
-  return { id, dark: slotIsDark(id, slotMode, customSeed) };
+  const { selection, slotMode, customSeed, themes = COLOR_THEMES, enabled = true } = input;
+  const id = resolveColorTheme(enabled ? selection[slotMode] : 'default', themes).id;
+  return { id, dark: slotIsDark(id, slotMode, customSeed, themes) };
 }
 
 /**
  * Apply the mode-selected color theme to the DOM now: set (or clear, for
  * `default`) the `data-color-theme` attribute on `<html>`, inject/remove the
- * runtime custom palette `<style>`, and mirror the whole pair into the
- * localStorage caches the pre-paint FOUC script reads on the next reload.
+ * runtime palette `<style>`, and mirror the whole pair into the localStorage
+ * cache the pre-paint FOUC script reads on the next reload.
  * Idempotent. Shared by the config effect below and the Settings picker's
  * optimistic on-click apply so both paths stay byte-identical.
  *
@@ -110,8 +177,9 @@ function activeColorTheme(input: ApplyColorThemeInput): CachedSlot {
  */
 export function applyColorThemeToDom(input: ApplyColorThemeInput): void {
   if (typeof document === 'undefined') return;
-  const { selection, modePreference, customSeed, enabled = true } = input;
+  const { selection, modePreference, customSeed, themes = COLOR_THEMES, enabled = true } = input;
   const active = activeColorTheme(input);
+  const activeTheme = resolveColorTheme(active.id, themes);
   const root = document.documentElement;
 
   if (active.id === 'default') {
@@ -120,21 +188,16 @@ export function applyColorThemeToDom(input: ApplyColorThemeInput): void {
     root.setAttribute(COLOR_THEME_ATTRIBUTE, active.id);
   }
 
-  // The custom scheme's stylesheet is cached whenever `custom` sits in EITHER
-  // slot, so a reload that lands in the other mode can still replay it; the
-  // <style> itself is only injected while `custom` is the palette on screen.
-  const customInSelection =
-    enabled && (selection.light === 'custom' || selection.dark === 'custom');
-  let customCacheEntry: string | null = null;
-  if (customInSelection) {
-    const scheme = resolveCustomScheme(customSeed);
-    const css = buildCustomThemeCss(scheme);
-    customCacheEntry = JSON.stringify({ css, dark: customThemeKind(scheme) === 'dark' });
-    if (active.id === 'custom') upsertCustomStyle(css);
-    else removeCustomStyle();
-  } else {
-    removeCustomStyle();
-  }
+  const activeSavedCss =
+    !COLOR_THEMES.some((theme) => theme.id === active.id) && activeTheme.id === active.id
+      ? savedThemeCss(activeTheme)
+      : undefined;
+  if (activeSavedCss) upsertSavedThemeStyle(activeSavedCss);
+  else removeSavedThemeStyle();
+
+  if (active.id === 'custom') {
+    upsertCustomStyle(buildCustomThemeCss(resolveCustomScheme(customSeed)));
+  } else removeCustomStyle();
 
   const bothDefault = selection.light === 'default' && selection.dark === 'default';
   try {
@@ -145,8 +208,8 @@ export function applyColorThemeToDom(input: ApplyColorThemeInput): void {
         COLOR_THEME_PAIR_STORAGE_KEY,
         JSON.stringify({
           pref: modePreference === 'light' || modePreference === 'dark' ? modePreference : 'system',
-          light: { id: selection.light, dark: slotIsDark(selection.light, 'light', customSeed) },
-          dark: { id: selection.dark, dark: slotIsDark(selection.dark, 'dark', customSeed) },
+          light: cachedSlot(selection.light, 'light', customSeed, themes),
+          dark: cachedSlot(selection.dark, 'dark', customSeed, themes),
         }),
       );
     }
@@ -154,11 +217,7 @@ export function applyColorThemeToDom(input: ApplyColorThemeInput): void {
     // pair is absent, so a stale one left by an older build would shadow a
     // deliberate reset back to `default`.
     localStorage.removeItem(COLOR_THEME_STORAGE_KEY);
-    if (customCacheEntry) {
-      localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, customCacheEntry);
-    } else {
-      localStorage.removeItem(CUSTOM_THEME_STORAGE_KEY);
-    }
+    localStorage.removeItem(CUSTOM_THEME_STORAGE_KEY);
   } catch {
     // Private-mode / storage-disabled: the attribute + style are still applied
     // for this session; only the next-reload FOUC pre-paint is forgone.
@@ -181,7 +240,15 @@ export function applyColorThemeToDom(input: ApplyColorThemeInput): void {
  * this effect in other windows.
  */
 export function useApplyConfigColorTheme(input: ApplyColorThemeInput): void {
-  const { selection, modePreference, slotMode, customSeed, enabled = true } = input;
+  const {
+    selection,
+    modePreference,
+    slotMode,
+    customSeed,
+    themes,
+    enabled = true,
+    ready = true,
+  } = input;
   // Serialize the scheme so the effect re-runs on a live color edit while the
   // custom theme is in play, without depending on object identity. `seedKey` is
   // the value-stable proxy for `customSeed`; depending on the object directly
@@ -192,6 +259,7 @@ export function useApplyConfigColorTheme(input: ApplyColorThemeInput): void {
       : '';
   // biome-ignore lint/correctness/useExhaustiveDependencies: seedKey is the value-stable proxy for customSeed (see above).
   useEffect(() => {
-    applyColorThemeToDom({ selection, modePreference, slotMode, customSeed, enabled });
-  }, [selection.light, selection.dark, modePreference, slotMode, seedKey, enabled]);
+    if (!ready) return;
+    applyColorThemeToDom({ selection, modePreference, slotMode, customSeed, themes, enabled });
+  }, [selection.light, selection.dark, modePreference, slotMode, seedKey, themes, enabled, ready]);
 }

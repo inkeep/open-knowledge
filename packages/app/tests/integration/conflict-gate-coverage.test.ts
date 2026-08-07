@@ -137,6 +137,12 @@ const EXEMPT_HANDLERS = new Set([
   'handleTagsForName',
   'handlePages',
   'handleFolderConfig',
+  // `/api/saved-themes` (list) + `/api/saved-theme` (save/delete) — user-global
+  // theme-store operations. They target scheme files under `<home>/.ok/themes`,
+  // not a Y.Doc, so the per-doc conflict-refusal gate does not apply — same
+  // posture as `handleFolderConfig`.
+  'handleSavedThemesList',
+  'handleSavedTheme',
   // `/api/lint/config` (GET) + `/api/lint/markdownlint-config` (POST) — read the
   // effective lint config / write the native `.markdownlint.*` rules. No Y.Doc
   // target (config files, not documents), so the per-doc conflict gate does not

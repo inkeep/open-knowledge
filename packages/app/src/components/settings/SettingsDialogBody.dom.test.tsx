@@ -1,4 +1,5 @@
 import {
+  BASE16_SLOTS,
   CONFIG_DOC_NAME_PROJECT,
   CONFIG_DOC_NAME_USER,
   type Config,
@@ -7,8 +8,9 @@ import {
   ConfigSchema,
   LAYOUT_DEFERRED_LOCALES,
   PICKER_LOCALES,
+  SavedThemesListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from 'next-themes';
 import type { ReactNode } from 'react';
@@ -16,8 +18,11 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
+import { SavedThemesProvider } from '@/lib/saved-themes-client';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import { SettingsDialogBody } from './SettingsDialogBody';
+
+const originalFetch = globalThis.fetch;
 
 /** Drop every `null` leaf — the patch spelling for "delete this key". */
 function stripNulls(value: unknown): unknown {
@@ -544,23 +549,28 @@ function renderThemePluginWithTheme(binding: ConfigBinding) {
       enableSystem
       storageKey={`ok-theme-v1-test-${themeStorageKeySeq}`}
     >
-      <SettingsContextProvider userBinding={binding}>
-        <TooltipProvider>
-          <SettingsDialogBody
-            activeId="plugin:theme"
-            userBinding={binding}
-            okignoreBinding={null}
-            okignoreSynced={false}
-          />
-          <ThemeProbe />
-        </TooltipProvider>
-      </SettingsContextProvider>
+      <SavedThemesProvider>
+        <SettingsContextProvider userBinding={binding}>
+          <TooltipProvider>
+            <SettingsDialogBody
+              activeId="plugin:theme"
+              userBinding={binding}
+              okignoreBinding={null}
+              okignoreSynced={false}
+            />
+            <ThemeProbe />
+          </TooltipProvider>
+        </SettingsContextProvider>
+      </SavedThemesProvider>
     </ThemeProvider>,
   );
 }
 
 describe('SettingsDialogBody color-palette picker — optimistic mode flip', () => {
   afterEach(() => {
+    globalThis.fetch = originalFetch;
+    document.documentElement.removeAttribute('data-color-theme');
+    document.getElementById('ok-saved-theme')?.remove();
     cleanup();
   });
 
@@ -585,6 +595,223 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('light');
     });
+  });
+
+  test('assigning a saved palette paints its scheme and persists the selected pair', async () => {
+    const palette = Object.fromEntries(
+      BASE16_SLOTS.map((slot, index) => {
+        const byte = (index * 16).toString(16).padStart(2, '0');
+        return [slot, `#${byte}${byte}${byte}`];
+      }),
+    );
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify(
+          SavedThemesListSuccessSchema.parse({
+            themes: [
+              {
+                ok: true,
+                id: 'saved-ocean',
+                filename: 'ocean.yaml',
+                scheme: { name: 'Ocean', variant: 'light', palette },
+              },
+            ],
+            truncated: false,
+          }),
+        ),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    await user.click(await screen.findByLabelText('Use Ocean as the light theme'));
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-color-theme')).toBe('saved-ocean');
+    });
+    expect(document.getElementById('ok-saved-theme')?.textContent).toContain(
+      '--background: #000000;',
+    );
+    expect(patches).toEqual([
+      {
+        appearance: {
+          colorThemeLight: 'saved-ocean',
+          colorThemeDark: 'default',
+          colorTheme: null,
+        },
+      },
+    ]);
+  });
+
+  test('creates multiple saved themes without reloading settings', async () => {
+    const savedRequests: Array<{
+      name: string;
+      scheme: { name: string; variant: 'dark' | 'light'; palette: Record<string, string> };
+    }> = [];
+    globalThis.fetch = async (input, init) => {
+      const path = String(input);
+      if (path === '/api/saved-theme' && init?.method === 'POST') {
+        const savedRequest = JSON.parse(String(init.body)) as (typeof savedRequests)[number];
+        savedRequests.push(savedRequest);
+        return new Response(
+          JSON.stringify({
+            id: `saved-${savedRequest.name}`,
+            filename: `${savedRequest.name}.yaml`,
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      if (path === '/api/saved-themes') {
+        return new Response(
+          JSON.stringify(
+            SavedThemesListSuccessSchema.parse({
+              themes: savedRequests.map((savedRequest) => ({
+                ok: true,
+                id: `saved-${savedRequest.name}`,
+                filename: `${savedRequest.name}.yaml`,
+                scheme: savedRequest.scheme,
+              })),
+              truncated: false,
+            }),
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    };
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    expect(screen.queryByRole('heading', { name: /Editing/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Create new theme' }));
+    await user.type(screen.getByLabelText('Theme name'), 'midnight');
+    await user.click(screen.getByRole('button', { name: 'Create & edit' }));
+
+    expect(await screen.findByLabelText('Use midnight as the dark theme')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Create new theme' }));
+    await user.type(screen.getByLabelText('Theme name'), 'dawn');
+    await user.click(screen.getByRole('button', { name: 'Create & edit' }));
+
+    expect(await screen.findByLabelText('Use dawn as the dark theme')).toBeTruthy();
+    expect(savedRequests.map((request) => request.name)).toEqual(['midnight', 'dawn']);
+    expect(Object.keys(savedRequests[0]?.scheme ?? {}).sort()).toEqual([
+      'name',
+      'palette',
+      'variant',
+    ]);
+    expect(Object.keys(savedRequests[0]?.scheme.palette ?? {})).toHaveLength(16);
+  });
+
+  test('editing saved palettes updates each file in place while the workbench remains unchanged', async () => {
+    const records = new Map(
+      ['ocean', 'forest'].map((stem, themeIndex) => {
+        const palette = Object.fromEntries(
+          BASE16_SLOTS.map((slot, slotIndex) => {
+            const byte = (themeIndex * 32 + slotIndex).toString(16).padStart(2, '0');
+            return [slot, `#${byte}${byte}${byte}`];
+          }),
+        );
+        return [
+          `saved-${stem}`,
+          {
+            ok: true as const,
+            id: `saved-${stem}`,
+            filename: `${stem}.yaml`,
+            scheme: {
+              name: stem === 'ocean' ? 'Ocean' : 'Forest',
+              variant: 'dark' as const,
+              palette,
+            },
+          },
+        ];
+      }),
+    );
+    const updates: Array<{ id: string; scheme: { palette: Record<string, string> } }> = [];
+    let creates = 0;
+    globalThis.fetch = async (input, init) => {
+      const path = String(input);
+      if (path === '/api/saved-theme' && init?.method === 'PUT') {
+        const request = JSON.parse(String(init.body)) as {
+          id: string;
+          scheme: { name: string; variant: 'dark' | 'light'; palette: Record<string, string> };
+        };
+        updates.push(request);
+        const current = records.get(request.id);
+        if (!current) return new Response('{}', { status: 404 });
+        records.set(request.id, { ...current, scheme: request.scheme });
+        return new Response(JSON.stringify({ id: request.id, filename: current.filename }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (path === '/api/saved-theme' && init?.method === 'POST') {
+        creates += 1;
+        return new Response('{}', { status: 500 });
+      }
+      if (path === '/api/saved-themes') {
+        return new Response(
+          JSON.stringify(
+            SavedThemesListSuccessSchema.parse({
+              themes: [...records.values()],
+              truncated: false,
+            }),
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    };
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Ocean' }));
+    expect(screen.getByRole('heading', { name: 'Editing Ocean' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Save theme' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Hide Ocean editor' }));
+    expect(screen.queryByRole('heading', { name: 'Editing Ocean' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Edit Ocean' }));
+    const oceanEditor = screen.getByRole('heading', { name: 'Editing Ocean' }).closest('section');
+    if (!oceanEditor) throw new Error('Saved-theme editor section was not rendered.');
+    const oceanBase00 = within(oceanEditor).getByLabelText('base00 hex value');
+    await user.click(oceanBase00);
+    fireEvent.change(oceanBase00, {
+      target: { value: '#123456' },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Edit Forest' }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toMatchObject({
+      id: 'saved-ocean',
+      scheme: { palette: { base00: '#123456' } },
+    });
+
+    const forestEditor = screen.getByRole('heading', { name: 'Editing Forest' }).closest('section');
+    if (!forestEditor) throw new Error('Second saved-theme editor section was not rendered.');
+    await user.click(within(forestEditor).getByRole('button', { name: /^Select base01 / }));
+    const forestBase01 = within(forestEditor).getByLabelText('base01 hex value');
+    await user.click(forestBase01);
+    fireEvent.change(forestBase01, {
+      target: { value: '#654321' },
+    });
+    await user.click(screen.getByRole('button', { name: 'Edit Ocean' }));
+
+    await waitFor(() => expect(updates).toHaveLength(2));
+    expect(updates[1]).toMatchObject({
+      id: 'saved-forest',
+      scheme: { palette: { base01: '#654321' } },
+    });
+    expect(patches).toEqual([]);
+    expect(creates).toBe(0);
+
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('heading', { name: 'Editing Ocean' })).toBeNull();
   });
 
   test('a cross-variant palette in the on-screen slot forces its own mode', async () => {

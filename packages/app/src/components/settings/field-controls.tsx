@@ -45,15 +45,15 @@ import {
   colorThemeResetPatch,
   colorThemeWritePatch,
   customThemeKind,
-  resolveColorThemeSelection,
   resolveCustomScheme,
   resolveModePreference,
 } from '@/lib/color-themes';
 import { useConfigContextOptional } from '@/lib/config-context';
+import { recordSavedThemeAssignment } from '@/lib/saved-themes-telemetry';
 import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
 import { cn } from '@/lib/utils';
-import { ColorThemePicker } from './ColorThemePicker';
 import { LanguageSelect } from './LanguageSelect';
+import { SavedThemesTiles } from './SavedThemesTiles';
 import {
   getEnumOptions,
   getFieldDefault,
@@ -374,16 +374,15 @@ function FieldControlBody({
     // whatever the applied palette forced.
     const modePreference = merged?.appearance?.theme;
     const slotMode = resolveModePreference(modePreference, systemTheme === 'dark');
-    const selection = resolveColorThemeSelection(merged?.appearance);
     return (
-      <ColorThemePicker
+      <SavedThemesTiles
         {...wrapperSlotProps}
         firstItemId={forwardedId}
-        selection={selection}
+        appearance={merged?.appearance}
         customSeed={customSeed}
         slotMode={slotMode}
         aria-label={t(field.label)}
-        onAssign={(slot, id) => {
+        onAssign={(slot, id, selection, themes) => {
           // Paint first, persist second — but only when there is somewhere to
           // persist to. Without the binding the optimistic apply would leave
           // the screen showing a palette no config carries, which the next
@@ -402,9 +401,15 @@ function FieldControlBody({
             const palette = candidate[slotMode];
             return palette === 'custom'
               ? customThemeKind(resolveCustomScheme(customSeed))
-              : colorThemeMode(palette);
+              : colorThemeMode(palette, themes);
           };
-          applyColorThemeToDom({ selection: next, modePreference, slotMode, customSeed });
+          applyColorThemeToDom({
+            selection: next,
+            modePreference,
+            slotMode,
+            customSeed,
+            themes,
+          });
           const nextMode = forcedMode(next);
           if (nextMode) setTheme(nextMode);
           // Both slots are written in ONE patch (and the pre-pair `colorTheme`
@@ -413,6 +418,7 @@ function FieldControlBody({
           // neither field is dirty here, so nothing of the user's is stomped.
           const result = binding.patch({ appearance: colorThemeWritePatch(next) });
           if (result.ok) {
+            recordSavedThemeAssignment(next);
             onSavedOutsideForm();
             return;
           }
@@ -422,7 +428,7 @@ function FieldControlBody({
           // no longer parses, say) left the palette painted with nothing
           // persisted and nothing said. Repaint the committed selection and
           // surface the error on this row.
-          applyColorThemeToDom({ selection, modePreference, slotMode, customSeed });
+          applyColorThemeToDom({ selection, modePreference, slotMode, customSeed, themes });
           // The optimistic apply flipped two things, so the revert has to undo
           // both. Restoring only the palette attribute leaves a cross-variant
           // pick's forced `.dark` class on the previous palette.
@@ -688,7 +694,7 @@ export function SavedIndicator({
   // theme tiles repaint the whole app) and whose full-width layout the
   // appearing icon would momentarily compress.
   return (
-    <span role="status" aria-live="polite" className="text-emerald-600">
+    <span role="status" aria-live="polite" className={cn('text-emerald-600', srOnly && 'sr-only')}>
       {visible ? (
         <>
           {srOnly ? null : <Check aria-hidden="true" className="size-3.5" />}

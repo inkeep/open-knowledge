@@ -305,6 +305,12 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   // `GET /api/lint/audit` → 409). HTTP-only — the audit surface is REST, with
   // no IPC counterpart.
   'urn:ok:error:audit-superseded',
+  // Saved-theme store save refusals (`POST /api/saved-theme`). HTTP-only — the
+  // renderer's picker/editor hit the embedded server's HTTP endpoint directly in
+  // both web and Electron modes, with no IPC counterpart (same posture as
+  // `/api/handoff` and the folder-config / template writes).
+  'urn:ok:error:theme-name-taken',
+  'urn:ok:error:theme-name-invalid',
 ]);
 
 /**

@@ -1,7 +1,9 @@
 /**
- * Integration tests for `GET /api/config/diagnostics` — the read-only surface
- * that reports active config diagnostics across the user, committed-project,
- * and project-local layers.
+ * Integration tests for active config reads against a booted server. Most
+ * cover `GET /api/config/diagnostics`, the read-only surface that reports
+ * diagnostics across the user, committed-project, and project-local layers.
+ * The saved-theme deletion case composes the same user-home seam with the real
+ * theme route and config reader so dangling references cannot erase siblings.
  *
  * Drives the real endpoint against a booted server: the three config files are
  * written on disk, the handler reads them fresh per request, and the response
@@ -10,10 +12,15 @@
  * `packages/core/src/config/collect-config-diagnostics.test.ts`.
  */
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { REMOVED_KEYS, type WriteScope } from '@inkeep/open-knowledge-core';
-import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import {
+  BASE16_SLOTS,
+  REMOVED_KEYS,
+  resolveThemePlugin,
+  type WriteScope,
+} from '@inkeep/open-knowledge-core';
+import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { stringify } from 'yaml';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -156,6 +163,61 @@ describe('GET /api/config/diagnostics', () => {
 
     const second = (await (await fetch(url())).json()) as { diagnostics: DiagnosticItem[] };
     expect(second.diagnostics.map((d) => d.path?.join('.'))).toEqual(['mcp.autoStart']);
+  });
+
+  test('deleting an assigned saved theme preserves unrelated user preferences', async () => {
+    const themeName = 'assigned-personal';
+    const themeId = `saved-${themeName}`;
+    const palette = Object.fromEntries(
+      BASE16_SLOTS.map((slot, index) => {
+        const byte = (index * 16).toString(16).padStart(2, '0');
+        return [slot, `#${byte}${byte}${byte}`];
+      }),
+    );
+    const created = await fetch(`http://127.0.0.1:${server.port}/api/saved-theme`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: themeName,
+        scheme: { name: 'Assigned personal', variant: 'dark', palette },
+      }),
+    });
+    expect(created.status).toBe(201);
+
+    writeScope('user', {
+      editor: { wordWrap: false },
+      appearance: {
+        theme: 'dark',
+        colorThemeLight: themeId,
+        colorThemeDark: 'dracula',
+      },
+    });
+
+    const deleted = await fetch(`http://127.0.0.1:${server.port}/api/saved-theme?id=${themeId}`, {
+      method: 'DELETE',
+    });
+    expect(deleted.status).toBe(200);
+    expect((await deleted.json()) as unknown).toMatchObject({
+      existed: true,
+      filename: `${themeName}.yaml`,
+    });
+
+    const configFile = scopeFile('user');
+    const readBack = readConfigSafely({ absPath: configFile, warn: () => {} });
+    expect(readBack.valid).toBe(true);
+    expect(readBack).not.toHaveProperty('sidelinedTo');
+    expect(readBack.value).toMatchObject({
+      editor: { wordWrap: false },
+      appearance: {
+        theme: 'dark',
+        colorThemeLight: themeId,
+        colorThemeDark: 'dracula',
+      },
+    });
+    expect(resolveThemePlugin(themeId).id).toBe('default');
+    expect(readdirSync(dirname(configFile)).filter((file) => file.includes('.invalid-'))).toEqual(
+      [],
+    );
   });
 
   test('no config files present → 200 with an empty diagnostics list', async () => {

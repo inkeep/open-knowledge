@@ -332,6 +332,11 @@ msgstr "{0} au total"
 msgid "{0} version {1}"
 msgstr "{0} version {1}"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "{0} was already deleted."
+msgstr "{0} a déjà été supprimé."
+
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
 msgid "{0} was not moved."
@@ -777,6 +782,11 @@ msgstr "{sizeText} · secrets masqués · vidage de plantage non masqué"
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {compétence} many {compétences} other {compétences}}"
 
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{slot} color — {0}"
+msgstr "Couleur {slot} — {0}"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} hex value"
 msgstr "Valeur hexadécimale de {slot}"
@@ -1044,6 +1054,10 @@ msgstr "un outil git requis"
 msgid "A reusable starting point for new documents in this folder."
 msgstr "Un point de départ réutilisable pour les nouveaux documents de ce dossier."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "A saved theme already uses this name."
+msgstr "Un thème enregistré utilise déjà ce nom."
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "Une courte ligne affichée sous le titre dans la liste des modèles."
@@ -1099,10 +1113,6 @@ msgstr "Au-dessus"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "absent"
 msgstr "absent"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Accents"
-msgstr "Accents"
 
 #: src/components/DiffView.tsx
 msgid "Accept"
@@ -1783,10 +1793,6 @@ msgstr "Retour"
 msgid "Back to document view"
 msgstr "Retour à la vue document"
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Background to foreground"
-msgstr "De l'arrière-plan vers le premier plan"
-
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
 msgstr "Rétroliens"
@@ -1931,8 +1937,8 @@ msgid "Browse folder"
 msgstr "Parcourir le dossier"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Browse hundreds of schemes"
-msgstr "Parcourir des centaines de palettes"
+msgid "Browse hundreds of themes"
+msgstr "Parcourir des centaines de thèmes"
 
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
@@ -2051,6 +2057,7 @@ msgstr "Impossible de partager ce chemin."
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -2105,6 +2112,18 @@ msgstr "modifié à l'extérieur"
 #: src/components/SkillInstallMenu.tsx
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "Modifié en dehors d'OK depuis sa dernière écriture ici — l'état affiché est celui qui se trouve sur le disque maintenant"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically to this theme."
+msgstr "Les modifications sont automatiquement enregistrées dans ce thème."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically."
+msgstr "Les modifications sont enregistrées automatiquement."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes saved automatically."
+msgstr "Modifications enregistrées automatiquement."
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -2703,6 +2722,11 @@ msgstr "Conflit"
 msgid "Conflicted files"
 msgstr "Fichiers en conflit"
 
+#. placeholder {0}: warning.conflictingFilenames.join(', ')
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Conflicting files: {0}."
+msgstr "Fichiers en conflit : {0}."
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "Conflits"
@@ -2895,6 +2919,10 @@ msgstr "Conversion…"
 msgid "Copied"
 msgstr "Copié"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Copied {selectedSlot}"
+msgstr "Copie de {selectedSlot} effectuée"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -2932,6 +2960,7 @@ msgstr "copie"
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Copy"
 msgstr "Copier"
@@ -3216,6 +3245,15 @@ msgstr "Impossible de créer le rapport"
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "Impossible de créer le worktree. Essayez un autre nom."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t create this theme. Try again."
+msgstr "Impossible de créer ce thème. Réessayez."
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete {0}. Try again."
+msgstr "Impossible de supprimer {0}. Réessayez."
+
 #. placeholder {0}: result.error
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Couldn't delete file: {0}"
@@ -3232,6 +3270,10 @@ msgstr "Impossible de supprimer le modèle : {error}"
 #: src/comments/store.ts
 msgid "Couldn't delete that comment."
 msgstr "Impossible de supprimer ce commentaire."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete this theme. Refresh and try again."
+msgstr "Impossible de supprimer ce thème. Actualisez la page et réessayez."
 
 #: src/components/settings/AccountSection.tsx
 msgid "Couldn't disconnect — please try again."
@@ -3396,8 +3438,12 @@ msgid "Couldn't reach the agent registry."
 msgstr "Impossible de joindre le registre des agents."
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Couldn’t reach the clipboard — the scheme is in the box below."
-msgstr "Impossible d'accéder au presse-papiers — la palette se trouve dans le champ ci-dessous."
+msgid "Couldn’t reach the clipboard — the theme is in the box below."
+msgstr "Impossible d’accéder au presse-papiers — le thème se trouve dans la zone ci-dessous."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t reach the clipboard."
+msgstr "Impossible d’accéder au presse-papiers."
 
 #: src/components/CommandPalette.tsx
 msgid "Couldn't reach the embeddings provider — retry"
@@ -3423,6 +3469,11 @@ msgstr "Impossible de lire les commentaires en attente d'envoi — rien n'a ét�
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "Impossible de lire les commentaires en attente d'envoi : {0}"
+
+#. placeholder {0}: warning.code
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t read this theme ({0})"
+msgstr "Impossible de lire ce thème ({0})"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -3472,6 +3523,16 @@ msgstr "Impossible de redémarrer automatiquement le serveur. Essayez d'exécute
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "Impossible de redémarrer le serveur. Essayez `ok start` dans ce dossier."
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. That name is already in use."
+msgstr "Impossible de restaurer {0}. Ce nom est déjà utilisé."
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. Try again."
+msgstr "Impossible de restaurer {0}. Réessayez."
+
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't resume this chat: {0}"
@@ -3480,6 +3541,10 @@ msgstr "Impossible de reprendre ce chat : {0}"
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
 msgstr "Impossible d'exécuter le test. Vérifiez qu'OpenKnowledge fonctionne toujours."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t save changes. Try editing a color again."
+msgstr "Impossible d’enregistrer les modifications. Essayez à nouveau de modifier une couleur."
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -3599,6 +3664,10 @@ msgstr "Vidage de plantage"
 msgid "Create"
 msgstr "Créer"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Create & edit"
+msgstr "Créer et modifier"
+
 #: src/components/TemplateRow.tsx
 msgid "Create a document from {label}"
 msgstr "Créer un document à partir de {label}"
@@ -3669,6 +3738,10 @@ msgstr "Créer un projet"
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "Create new tag #{tagValue}"
 msgstr "Créer l'étiquette #{tagValue}"
+
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Create new theme"
+msgstr "Créer un thème"
 
 #: src/components/GraphPanel.tsx
 #: src/components/ProblemsPanel.tsx
@@ -3768,6 +3841,10 @@ msgstr "Création de la page : {linkTitle}."
 msgid "Creating..."
 msgstr "Création…"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Creating…"
+msgstr "Création…"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "Current"
 msgstr "Actuel"
@@ -3840,8 +3917,10 @@ msgstr "Par défaut : <0>{0}</0>"
 msgid "Delete"
 msgstr "Supprimer"
 
+#. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "Supprimer {0}"
 
@@ -3920,6 +3999,11 @@ msgstr "Supprimer ce chat ?"
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
 msgstr "Supprimer ce commentaire"
+
+#. placeholder {0}: deletedTheme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Deleted {0}."
+msgstr "{0} a été supprimé."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -4239,6 +4323,7 @@ msgstr "terminé"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
 #: src/editor/extensions/MathInlineView.tsx
@@ -4373,6 +4458,11 @@ msgstr "Chaque outil sélectionné reçoit une entrée MCP OpenKnowledge."
 msgid "Edit"
 msgstr "Modifier"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Edit {0}"
+msgstr "Modifier {0}"
+
 #. placeholder {0}: descriptor.displayName ?? descriptor.name
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Edit {0} source"
@@ -4446,6 +4536,11 @@ msgstr "modèle modifié"
 msgid "editing [[{realCurrentDoc}]]"
 msgstr "modifie [[{realCurrentDoc}]]"
 
+#. placeholder {0}: scheme.name
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Editing {0}"
+msgstr "Modification de {0}"
+
 #: src/components/SkillEditBanner.tsx
 msgid "Editing {boldName} in place. Changes save straight to your editor's copy."
 msgstr "Modification de {boldName} sur place. Les changements sont enregistrés directement dans la copie de votre éditeur."
@@ -4475,8 +4570,12 @@ msgid "Editor status bar"
 msgstr "Barre d'état de l'éditeur"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Edits apply live. Light or dark comes from the scheme."
-msgstr "Les modifications s'appliquent en direct. Le mode clair ou sombre vient de la palette."
+msgid "Edits apply live and save automatically to this theme."
+msgstr "Les modifications s’appliquent immédiatement et sont automatiquement enregistrées dans ce thème."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Edits apply live. Light or dark comes from the theme."
+msgstr "Les modifications s’appliquent immédiatement. Le thème détermine le mode clair ou sombre."
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Edits at the source land here — no copy-paste drift."
@@ -4647,6 +4746,10 @@ msgstr "Saisissez une valeur hexadécimale à 6 chiffres, par ex. #1A2B3C"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "Saisissez un nom de dossier (par ex. brain)."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a name for this theme."
+msgstr "Saisissez un nom pour ce thème."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "Saisissez un nom de projet"
@@ -4662,6 +4765,10 @@ msgstr "Saisissez un titre pour ce modèle."
 #: src/components/NewWorktreeDialog.tsx
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "Saisissez un nom de branche valide (pas d'espaces, pas de point initial, pas de « .. »)."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a valid theme name."
+msgstr "Saisissez un nom de thème valide."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
@@ -5555,6 +5662,10 @@ msgstr "La connexion GitHub est absente ou expirée. Reconnectez-vous pour repre
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, une URL git, ou un chemin local."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Give it a name before editing its colors."
+msgstr "Donnez-lui un nom avant de modifier ses couleurs."
+
 #: src/components/settings/AiToolsSection.tsx
 msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
 msgstr "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Cocher une case configure l'outil immédiatement ; décocher le retire."
@@ -5733,6 +5844,11 @@ msgstr "Dossier « {basename} » masqué"
 #: src/components/TimelinePanel.tsx
 msgid "Hide"
 msgstr "Masquer"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Hide {0} editor"
+msgstr "Masquer l’éditeur de {0}"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide {appName}"
@@ -5939,6 +6055,11 @@ msgstr "Je passe à un autre outil"
 msgid "Icon picker"
 msgstr "Sélecteur d'icônes"
 
+#. placeholder {0}: createIdentity.stem
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "ID: {0}"
+msgstr "ID : {0}"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "Si une mise à jour arrive pour ce que vous êtes en train de modifier, vous choisissez quelle version conserver, comme pour un conflit de fusion."
@@ -5973,10 +6094,6 @@ msgstr "Importer comme modèle"
 #: src/components/ImportSkillForm.tsx
 msgid "Import failed: {0}"
 msgstr "Échec de l'importation : {0}"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Import scheme"
-msgstr "Importer une palette"
 
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
@@ -6319,6 +6436,10 @@ msgstr "Instruction pour l'IA"
 msgid "Integrations"
 msgstr "Intégrations"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid color value"
+msgstr "Valeur de couleur non valide"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Invalid input — pick a different folder."
 msgstr "Saisie invalide — choisissez un autre dossier."
@@ -6338,6 +6459,10 @@ msgstr "Structure de réponse du serveur invalide"
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
 msgstr "URL de partage non valide."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid YAML"
+msgstr "YAML non valide"
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -6571,6 +6696,10 @@ msgstr "URL du lien"
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
 msgstr "La réponse du graphe de liens ne correspond pas à la forme attendue."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Linked theme files aren’t supported"
+msgstr "Les fichiers de thème liés ne sont pas pris en charge"
 
 #: src/components/DocPanel.tsx
 msgid "Links"
@@ -6947,6 +7076,14 @@ msgstr "Page manquante — cliquez pour la créer"
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "Page manquante : {linkTitle}. Cliquez pour la créer."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing palette colors"
+msgstr "Des couleurs de la palette sont manquantes"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing theme name"
+msgstr "Le nom du thème est manquant"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Mode"
 msgstr "Mode"
@@ -7144,6 +7281,10 @@ msgstr "Cogitation…"
 msgid "Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."
 msgstr "Visionneuse PDF multipage avec barre d'outils (miniatures, navigation, zoom)."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Multiple files use this theme name"
+msgstr "Plusieurs fichiers utilisent ce nom de thème"
+
 #: src/components/acp/working-status.ts
 msgid "Musing…"
 msgstr "Songerie…"
@@ -7185,6 +7326,10 @@ msgstr "Le nom ne peut pas être vide"
 #: src/components/PropertyPanel.tsx
 msgid "Name is required"
 msgstr "Le nom est obligatoire"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Name your theme"
+msgstr "Nommez votre thème"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Navigate CodeMirror source search results or dismiss the search panel."
@@ -7741,6 +7886,10 @@ msgstr "Aucun de ces problèmes n'a de correction automatique."
 #: src/components/ProblemsPanel.tsx
 msgid "None of these problems have an automatic fix. Try Fix all with AI."
 msgstr "Aucun de ces problèmes n'a de correction automatique. Essayez Tout corriger avec l'IA."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Not a base16 theme"
+msgstr "Ce n’est pas un thème base16"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
@@ -8642,8 +8791,8 @@ msgid "Paste"
 msgstr "Coller"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Paste a base16 scheme"
-msgstr "Collez une palette base16"
+msgid "Paste a base16 theme"
+msgstr "Collez un thème base16"
 
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
@@ -8766,10 +8915,6 @@ msgstr "Propre à cet appareil — stocké dans votre configuration utilisateur,
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr "Choisissez <0>openknowledge.skill</0> dans votre dossier <1>Téléchargements</1>. Elle s'active automatiquement."
 
-#: src/components/settings/ThemePluginSection.tsx
-msgid "Pick a built-in IDE color palette, or define your own."
-msgstr "Choisissez une palette de couleurs d'IDE intégrée, ou définissez la vôtre."
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Pick a folder to merge INTO {display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
 msgstr "Choisissez un dossier à fusionner DANS {display}. Ce dossier devient un lien symbolique vers celui-ci, donc son agent lit tout ce qui est placé ici. Ce dossier reste réel. Des compétences en conflit annulent la fusion."
@@ -8781,6 +8926,10 @@ msgstr "Choisissez un nom"
 #: src/components/settings/settings-fields.ts
 msgid "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
 msgstr "Choisissez une palette pour le mode clair et une pour le mode sombre. Le réglage de thème dans les Préférences choisit entre les deux — sur « Système », c'est votre système d'exploitation qui décide."
+
+#: src/components/settings/ThemePluginSection.tsx
+msgid "Pick a theme or create your own."
+msgstr "Choisissez un thème ou créez le vôtre."
 
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
@@ -8888,8 +9037,8 @@ msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab 
 msgstr "Appuyez sur Espace pour saisir un onglet. Utilisez les touches fléchées pour le déplacer dans la barre d’onglets, puis appuyez sur Espace ou Entrée pour le déposer. Appuyez sur Maj+F10 ou sur la touche Menu pour ouvrir le menu contextuel de l’onglet (fractionner, fermer, épingler et autres actions)."
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Press the sun or moon on “Custom” above to use this scheme."
-msgstr "Appuyez sur le soleil ou la lune de « Personnalisé » ci-dessus pour utiliser cette palette."
+msgid "Press the sun or moon on “Custom” above to use this theme."
+msgstr "Appuyez sur le soleil ou la lune de « Custom » ci-dessus pour utiliser ce thème."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
@@ -9789,6 +9938,11 @@ msgstr "Restaurer cette version ?"
 msgid "Restore with remote changes"
 msgstr "Restaurer avec les modifications distantes"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Restored {0}."
+msgstr "{0} a été restauré."
+
 #. placeholder {0}: descriptor.targetSha7
 #: src/components/TimelinePanel.tsx
 msgid "Restored an earlier version ({0})"
@@ -9994,6 +10148,10 @@ msgstr "Enregistré dans le dossier de compétences de ce projet (par ex. <0>.ag
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "Enregistré dans votre dossier de compétences global (par ex. <0>~/.agents/skills</0>)."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Saved themes couldn’t load. The last available theme list is still shown."
+msgstr "Impossible de charger les thèmes enregistrés. La dernière liste de thèmes disponible reste affichée."
+
 #: src/components/SkillProperties.tsx
 msgid "Saved to"
 msgstr "Enregistré dans"
@@ -10011,6 +10169,10 @@ msgstr "Enregistre le fichier dans <0>~/Downloads/openknowledge.skill</0> et ouv
 msgid "Saving"
 msgstr "Enregistrement"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Saving changes…"
+msgstr "Enregistrement des modifications…"
+
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
 msgstr "schéma {deleteTarget}"
@@ -10018,10 +10180,6 @@ msgstr "schéma {deleteTarget}"
 #: src/components/AddPropertyNameField.tsx
 msgid "Schema fields"
 msgstr "Champs du schéma"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Scheme copied as base16 YAML"
-msgstr "Palette copiée au format YAML base16"
 
 #: src/components/ImportSkillForm.tsx
 #: src/components/PanelScopeHeader.tsx
@@ -10211,6 +10369,11 @@ msgstr "Voir les {0} packs de démarrage"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "Voir le guide d'installation complet"
+
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Select {slot} — {0}"
+msgstr "Sélectionner {slot} — {0}"
 
 #: src/components/FrontmatterRow.tsx
 msgid "Select a value"
@@ -10922,6 +11085,10 @@ msgstr "Slidev a mis trop de temps à démarrer. Réessayez."
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "Petit titre de section."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
+msgstr "Certains thèmes enregistrés ne sont pas affichés car le dossier des thèmes dépasse la limite d’analyse."
 
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
@@ -11843,6 +12010,30 @@ msgstr "Le jeton doit avoir les portées repo et read:user."
 msgid "Theme"
 msgstr "Thème"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme colors"
+msgstr "Couleurs du thème"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme copied as base16 YAML"
+msgstr "Thème copié au format YAML base16"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme imported."
+msgstr "Thème importé."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name"
+msgstr "Nom du thème"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name has unsupported characters"
+msgstr "Le nom du thème contient des caractères non pris en charge"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name is too long"
+msgstr "Le nom du thème est trop long"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Theme preview"
 msgstr "Aperçu du thème"
@@ -12037,6 +12228,10 @@ msgstr "Ceci est un aperçu de {boldName}, détectée dans {boldHarness} au nive
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "Ceci est un aperçu de {boldName}. Installez-la dans vos agents."
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This isn’t a regular theme file"
+msgstr "Ce fichier n’est pas un fichier de thème standard"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "This isn't a supported version of Slidev."
 msgstr "Cette version de Slidev n'est pas prise en charge."
@@ -12197,6 +12392,18 @@ msgstr "Cette source regroupe plusieurs compétences — choisissez celle à imp
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "Ce modèle réside dans un dossier parent — le supprimer affecte tous les dossiers situés en dessous qui ne définissent pas leur propre version."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme can’t be used until the file is fixed."
+msgstr "Ce thème ne peut pas être utilisé tant que le fichier n’est pas corrigé."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file couldn’t be read"
+msgstr "Impossible de lire ce fichier de thème"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file is too large"
+msgstr "Ce fichier de thème est trop volumineux"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This usually means one of:"
@@ -12371,6 +12578,7 @@ msgstr "Essayer une invite"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "Try again"
 msgstr "Réessayer"
@@ -12478,6 +12686,7 @@ msgstr "Dernière modification annulée sur {docName}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -12745,6 +12954,16 @@ msgstr "Utiliser {0} comme thème sombre"
 msgid "Use {0} as the light theme"
 msgstr "Utiliser {0} comme thème clair"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active dark mode"
+msgstr "Utiliser {0} pour le mode sombre actif"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active light mode"
+msgstr "Utiliser {0} pour le mode clair actif"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Use {editor} version"
 msgstr "Utiliser la version {editor}"
@@ -12756,6 +12975,10 @@ msgstr "Utilisez <0>{copyShortcut}</0> pour copier le lien ci-dessous, ou ouvrez
 #: src/components/NavigatorApp.tsx
 msgid "Use a folder you already have."
 msgstr "Utilisez un dossier que vous avez déjà."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Use a lowercase .yaml or .yml extension"
+msgstr "Utilisez une extension .yaml ou .yml en minuscules"
 
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
@@ -12940,6 +13163,10 @@ msgstr "Nous allons construire <0>openknowledge.skill</0>, l'enregistrer dans <1
 #: src/components/settings/SyncSection.tsx
 msgid "We'll create a repository and start syncing — no terminal needed."
 msgstr "Nous allons créer un dépôt et démarrer la synchronisation — aucun terminal nécessaire."
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "We’ll create a safe theme ID from this name."
+msgstr "Nous créerons un ID de thème sûr à partir de ce nom."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "We've filed it with the team and attached your logs."

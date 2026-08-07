@@ -57,6 +57,7 @@ import {
   resolveModePreference,
 } from './color-themes';
 import { ConfigContext, type ConfigContextValue } from './config-context';
+import { SavedThemesProvider, useSavedThemes } from './saved-themes-client';
 import { useServerInstanceId } from './server-instance-store';
 import { useApplyConfigColorTheme } from './use-apply-config-color-theme';
 import { useApplyConfigLanguage } from './use-apply-config-language';
@@ -154,13 +155,14 @@ function makeOkignoreBinding(collabUrl: string, serverInstanceId: string | null)
   return { binding, provider, cleanup };
 }
 
-export function ConfigProvider({
+function ConfigProviderBody({
   collabUrl,
   children,
 }: {
   collabUrl: string | null;
   children: ReactNode;
 }) {
+  const { themes, loaded: savedThemesLoaded, loadError: savedThemesLoadError } = useSavedThemes();
   // Re-keying the provider effect on the server epoch is the config-doc recovery
   // from a server respawn: an epoch change disposes + recreates the bindings
   // (fresh Y.Doc) so they re-sync clean instead of union-merging the retained
@@ -236,7 +238,9 @@ export function ConfigProvider({
     });
     const unsubUserSynced = userScoped.binding.subscribeSynced(() => {
       setUserState((prev) =>
-        prev?.binding === userScoped.binding ? { ...prev, synced: true } : prev,
+        prev?.binding === userScoped.binding
+          ? { ...prev, config: userScoped.binding.current(), synced: true }
+          : prev,
       );
     });
     const unsubProject = projectScoped.binding.subscribe((next) => {
@@ -246,7 +250,9 @@ export function ConfigProvider({
     });
     const unsubProjectSynced = projectScoped.binding.subscribeSynced(() => {
       setProjectState((prev) =>
-        prev?.binding === projectScoped.binding ? { ...prev, synced: true } : prev,
+        prev?.binding === projectScoped.binding
+          ? { ...prev, config: projectScoped.binding.current(), synced: true }
+          : prev,
       );
     });
     const unsubProjectLocal = projectLocalScoped.binding.subscribe((next) => {
@@ -256,7 +262,9 @@ export function ConfigProvider({
     });
     const unsubProjectLocalSynced = projectLocalScoped.binding.subscribeSynced(() => {
       setProjectLocalState((prev) =>
-        prev?.binding === projectLocalScoped.binding ? { ...prev, synced: true } : prev,
+        prev?.binding === projectLocalScoped.binding
+          ? { ...prev, config: projectLocalScoped.binding.current(), synced: true }
+          : prev,
       );
     });
     const handleOkignoreSynced = () => {
@@ -304,13 +312,36 @@ export function ConfigProvider({
   // palette applies and the saved pair is ignored (not cleared — it comes back
   // when the plugin is re-enabled). Default on (absent → enabled).
   const colorThemeEnabled = merged?.appearance?.colorThemeEnabled !== false;
+  const configLayersReady =
+    collabUrl === null ||
+    (userState?.synced === true &&
+      projectState?.synced === true &&
+      projectLocalState?.synced === true);
+  const authoredThemeIds = [
+    merged?.appearance?.colorThemeLight,
+    merged?.appearance?.colorThemeDark,
+    merged?.appearance?.colorTheme,
+  ];
+  const needsSavedThemeRegistry =
+    colorThemeEnabled &&
+    authoredThemeIds.some((id) => typeof id === 'string' && id.startsWith('saved-'));
+  // The prepaint script has already replayed the last complete pair. Do not let
+  // initial empty CRDT bindings or the built-ins-only registry clear it while
+  // the authoritative config/list requests are still converging.
+  const colorThemeReady = configLayersReady && (!needsSavedThemeRegistry || savedThemesLoaded);
+  // A failed saved-theme list must keep the prepaint palette untouched, but it
+  // must not strand Electron's show gate until its five-second safety timeout.
+  // Once the request has settled, the bridge can sample the still-live prepaint
+  // cascade and release the window without asking the DOM reconciler to clear it.
+  const colorThemeBridgeReady =
+    configLayersReady && (!needsSavedThemeRegistry || savedThemesLoaded || savedThemesLoadError);
   // One palette per mode. `slotMode` picks between them and is derived from the
   // user's OWN preference — `appearance.theme`, with the OS deciding for
   // 'system' — never from next-themes' resolved value. That distinction is
   // load-bearing: a palette still forces its own variant below, so feeding the
   // resolved value back in would let a cross-variant pick (a dark scheme chosen
   // as the light palette) flip the app into the other slot, then back.
-  const selection = resolveColorThemeSelection(merged?.appearance);
+  const selection = resolveColorThemeSelection(merged?.appearance, themes);
   const slotMode = resolveModePreference(themeValue, systemPrefersDark);
   const activePalette = colorThemeEnabled ? selection[slotMode] : 'default';
   // The applied palette takes over the appearance: it forces next-themes into
@@ -322,12 +353,12 @@ export function ConfigProvider({
   const effectiveMode =
     activePalette === 'custom'
       ? customThemeKind(resolveCustomScheme(customSeed))
-      : (colorThemeMode(activePalette) ?? themeValue);
+      : (colorThemeMode(activePalette, themes) ?? themeValue);
   // Bridge the effective mode from the merged config into next-themes app-wide.
   // The hook owns the dependency discipline that prevents a cross-window
   // light/dark flicker storm across open project windows — see
   // `useApplyConfigTheme`.
-  useApplyConfigTheme(effectiveMode);
+  useApplyConfigTheme(colorThemeReady ? effectiveMode : undefined);
   // Apply the palette overlay (`data-color-theme` attribute + FOUC caches; for
   // `custom`, the runtime `<style>` built from the scheme). Honors the plugin
   // toggle: disabled clears the overlay and its FOUC caches.
@@ -336,7 +367,9 @@ export function ConfigProvider({
     modePreference: themeValue,
     slotMode,
     customSeed,
+    themes,
     enabled: colorThemeEnabled,
+    ready: colorThemeReady,
   });
   // Bridge the interface language into the Lingui singleton. `'system'` and an
   // absent value are resolved against the browser inside the hook, at
@@ -379,12 +412,28 @@ export function ConfigProvider({
   //
   // The third argument re-fires the signal on a palette switch (not just a
   // light/dark flip) so the OS-drawn chrome tracks the active color theme. It
-  // serializes the custom seed too — editing a custom scheme's `--sidebar`
-  // should repaint the titlebar live.
+  // serializes runtime-authored schemes too — editing a custom or saved
+  // scheme's `--sidebar` should repaint the titlebar live even when its id and
+  // light/dark variant stay unchanged.
+  const activeRuntimeScheme = activePalette.startsWith('saved-')
+    ? themes.find((theme) => theme.id === activePalette)?.scheme
+    : undefined;
+  const runtimeSchemeKey =
+    activePalette === 'custom'
+      ? JSON.stringify(customSeed ?? null)
+      : activeRuntimeScheme
+        ? JSON.stringify(activeRuntimeScheme)
+        : '';
+  const themeBridgeMode =
+    colorThemeBridgeReady && !colorThemeReady && typeof document !== 'undefined'
+      ? document.documentElement.classList.contains('dark')
+        ? 'dark'
+        : 'light'
+      : (effectiveMode ?? 'system');
   useThemeBridge(
-    typeof window !== 'undefined' ? window.okDesktop : undefined,
-    effectiveMode ?? 'system',
-    `${activePalette}:${activePalette === 'custom' ? JSON.stringify(customSeed ?? null) : ''}`,
+    colorThemeBridgeReady && typeof window !== 'undefined' ? window.okDesktop : undefined,
+    colorThemeBridgeReady ? themeBridgeMode : undefined,
+    `${activePalette}:${runtimeSchemeKey}`,
   );
 
   const value: ConfigContextValue = {
@@ -403,4 +452,12 @@ export function ConfigProvider({
   };
 
   return <ConfigContext value={value}>{children}</ConfigContext>;
+}
+
+export function ConfigProvider(props: { collabUrl: string | null; children: ReactNode }) {
+  return (
+    <SavedThemesProvider>
+      <ConfigProviderBody {...props} />
+    </SavedThemesProvider>
+  );
 }

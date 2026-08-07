@@ -55,6 +55,19 @@ const FIXTURES: Fixture[] = [
     shouldAccept: false,
   },
   {
+    // The palette fields are open, shape-constrained strings (not a closed
+    // enum), so a saved-theme id the built-in registry never heard of validates
+    // — and the published IDE schema must agree with runtime on that shape.
+    name: 'appearance.colorThemeLight accepts a saved-theme id (open string)',
+    input: { appearance: { colorThemeLight: 'saved-my-theme' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'appearance.colorThemeLight rejects an id outside the grammar',
+    input: { appearance: { colorThemeLight: 'Not A Theme' } },
+    shouldAccept: false,
+  },
+  {
     name: 'editor.wordWrap=false accepted',
     input: { editor: { wordWrap: false } },
     shouldAccept: true,

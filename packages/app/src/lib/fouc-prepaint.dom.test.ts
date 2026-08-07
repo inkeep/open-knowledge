@@ -16,13 +16,19 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import type { ColorThemeSelection } from './color-themes';
+import {
+  COLOR_THEMES,
+  type ColorTheme,
+  type ColorThemeSelection,
+  DEFAULT_CUSTOM_SCHEME,
+} from './color-themes';
 import {
   applyColorThemeToDom,
   COLOR_THEME_PAIR_STORAGE_KEY,
   COLOR_THEME_STORAGE_KEY,
   CUSTOM_THEME_STORAGE_KEY,
   CUSTOM_THEME_STYLE_ID,
+  SAVED_THEME_STYLE_ID,
 } from './use-apply-config-color-theme';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +76,7 @@ function reset(): void {
   document.documentElement.className = '';
   document.documentElement.removeAttribute('data-color-theme');
   document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
+  document.getElementById(SAVED_THEME_STYLE_ID)?.remove();
   localStorage.clear();
 }
 
@@ -79,18 +86,45 @@ function seed(
   modePreference: 'light' | 'dark' | 'system',
   slotMode: 'light' | 'dark',
   customSeed?: Record<string, unknown>,
+  themes?: readonly ColorTheme[],
 ): void {
-  applyColorThemeToDom({ selection, modePreference, slotMode, customSeed });
+  applyColorThemeToDom({ selection, modePreference, slotMode, customSeed, themes });
   // Only the caches survive a reload; the live DOM does not.
   document.documentElement.className = '';
   document.documentElement.removeAttribute('data-color-theme');
   document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
+  document.getElementById(SAVED_THEME_STYLE_ID)?.remove();
 }
 
 const state = () => ({
   attr: document.documentElement.getAttribute('data-color-theme'),
   dark: document.documentElement.classList.contains('dark'),
 });
+
+const SAVED_THEMES: readonly ColorTheme[] = [
+  ...COLOR_THEMES,
+  {
+    id: 'saved-day',
+    label: 'Day',
+    kind: 'light',
+    scheme: {
+      ...DEFAULT_CUSTOM_SCHEME,
+      name: 'Day',
+      variant: 'light',
+      palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#fafafa' },
+    },
+  },
+  {
+    id: 'saved-night',
+    label: 'Night',
+    kind: 'dark',
+    scheme: {
+      ...DEFAULT_CUSTOM_SCHEME,
+      name: 'Night',
+      palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#08090a' },
+    },
+  },
+];
 
 describe('pre-paint FOUC script', () => {
   beforeEach(reset);
@@ -141,6 +175,47 @@ describe('pre-paint FOUC script', () => {
     );
   });
 
+  test('replays the previous release custom cache while upgrading its pair shape', () => {
+    localStorage.setItem(
+      COLOR_THEME_PAIR_STORAGE_KEY,
+      JSON.stringify({
+        pref: 'dark',
+        light: { id: 'default', dark: false },
+        dark: { id: 'custom', dark: true },
+      }),
+    );
+    localStorage.setItem(
+      CUSTOM_THEME_STORAGE_KEY,
+      JSON.stringify({ css: 'html[data-color-theme] { --background: #123456; }', dark: true }),
+    );
+
+    runPrePaint(false);
+
+    expect(state()).toEqual({ attr: 'custom', dark: true });
+    expect(document.getElementById(CUSTOM_THEME_STYLE_ID)?.textContent).toContain(
+      '--background: #123456;',
+    );
+  });
+
+  test('replays the saved stylesheet belonging to either active mode slot', () => {
+    seed({ light: 'saved-day', dark: 'saved-night' }, 'system', 'dark', undefined, SAVED_THEMES);
+
+    runPrePaint(false);
+    expect(state()).toEqual({ attr: 'saved-day', dark: false });
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)?.textContent).toContain(
+      '--background: #fafafa;',
+    );
+
+    document.documentElement.className = '';
+    document.documentElement.removeAttribute('data-color-theme');
+    document.getElementById(SAVED_THEME_STYLE_ID)?.remove();
+    runPrePaint(true);
+    expect(state()).toEqual({ attr: 'saved-night', dark: true });
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)?.textContent).toContain(
+      '--background: #08090a;',
+    );
+  });
+
   test('falls back to the pre-pair single-palette cache exactly once', () => {
     // Written by a build that predates the pair; `ok-theme-v1` already carried
     // the mode that palette forced.
@@ -167,10 +242,23 @@ describe('pre-paint FOUC script', () => {
     // Setting `data-color-theme="custom"` with no matching rule would paint an
     // unstyled frame, so the script drops the palette instead.
     seed({ light: 'default', dark: 'custom' }, 'dark', 'dark', { base00: '#0a0a0a' });
-    localStorage.removeItem(CUSTOM_THEME_STORAGE_KEY);
+    const cache = JSON.parse(localStorage.getItem(COLOR_THEME_PAIR_STORAGE_KEY) ?? '{}');
+    delete cache.dark.css;
+    localStorage.setItem(COLOR_THEME_PAIR_STORAGE_KEY, JSON.stringify(cache));
     runPrePaint(true);
     expect(state()).toEqual({ attr: null, dark: true });
     expect(document.getElementById(CUSTOM_THEME_STYLE_ID)).toBeNull();
+  });
+
+  test('a saved slot with no CSS entry does not borrow the other slot stylesheet', () => {
+    seed({ light: 'saved-day', dark: 'saved-night' }, 'system', 'dark', undefined, SAVED_THEMES);
+    const cache = JSON.parse(localStorage.getItem(COLOR_THEME_PAIR_STORAGE_KEY) ?? '{}');
+    delete cache.dark.css;
+    localStorage.setItem(COLOR_THEME_PAIR_STORAGE_KEY, JSON.stringify(cache));
+
+    runPrePaint(true);
+    expect(state()).toEqual({ attr: null, dark: true });
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)).toBeNull();
   });
 
   test('the pair wins over a stale pre-pair key', () => {
@@ -187,7 +275,6 @@ describe('pre-paint FOUC script', () => {
 
   test('survives corrupt cache JSON without throwing or painting a palette', () => {
     localStorage.setItem(COLOR_THEME_PAIR_STORAGE_KEY, '{not json');
-    localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, '{also not json');
     expect(() => runPrePaint(false)).not.toThrow();
     expect(state()).toEqual({ attr: null, dark: false });
   });

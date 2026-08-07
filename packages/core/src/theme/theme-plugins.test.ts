@@ -2,12 +2,17 @@ import { describe, expect, test } from 'vitest';
 import { BASE16_SLOTS, base16ToTokens } from './base16.ts';
 import {
   colorThemeMode,
+  deriveSavedThemeId,
+  deriveSavedThemeName,
   generateColorThemesCss,
   isDarkTheme,
+  parseSavedThemeId,
   renderThemeBlock,
   resolveColorThemeSelection,
   resolveModePreference,
   resolveThemePlugin,
+  SAVED_THEME_ID_PREFIX,
+  THEME_ID_PATTERN,
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,
 } from './theme-plugins.ts';
@@ -45,14 +50,118 @@ describe('THEME_PLUGINS registry', () => {
     const ids = THEME_PLUGINS.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  test('no built-in id begins with the reserved saved-theme prefix', () => {
+    // Guards the shadowing contract: built-ins are an authored set and a
+    // collision here would silently let a saved theme redefine a built-in name.
+    for (const theme of THEME_PLUGINS) {
+      expect(theme.id.startsWith(SAVED_THEME_ID_PREFIX), theme.id).toBe(false);
+    }
+  });
 });
 
-describe('config enum derives from the registry', () => {
-  // The headline of the plugin refactor: the `appearance.colorTheme` enum is
-  // built from THEME_PLUGIN_IDS, which is built from the registry. Adding a
-  // ThemePlugin grows the enum with no schema edit — the coupling the old
-  // hand-listed enum carried is gone. (The schema-level cross-check that the
-  // ConfigSchema enum equals these ids lives in the app's color-themes.test.ts.)
+describe('deriveSavedThemeName', () => {
+  test('keeps the display name and derives a natural id from punctuation and spaces', () => {
+    expect(deriveSavedThemeName("  John's theme  ")).toEqual({
+      ok: true,
+      name: "John's theme",
+      stem: 'johns-theme',
+      id: 'saved-johns-theme',
+    });
+    expect(deriveSavedThemeName('John’s theme')).toMatchObject({
+      ok: true,
+      stem: 'johns-theme',
+      id: 'saved-johns-theme',
+    });
+  });
+
+  test('folds Latin diacritics into an ASCII filename id', () => {
+    expect(deriveSavedThemeName('Café Noir')).toEqual({
+      ok: true,
+      name: 'Café Noir',
+      stem: 'cafe-noir',
+      id: 'saved-cafe-noir',
+    });
+  });
+
+  test('gives non-ASCII and overlong names stable ids within the grammar', () => {
+    const nonAscii = deriveSavedThemeName('夜空 🌙');
+    const overlong = deriveSavedThemeName('This is a particularly long custom theme name');
+    expect(nonAscii).toMatchObject({ ok: true, name: '夜空 🌙' });
+    expect(overlong).toMatchObject({
+      ok: true,
+      name: 'This is a particularly long custom theme name',
+    });
+    if (nonAscii.ok) expect(THEME_ID_PATTERN.test(nonAscii.id)).toBe(true);
+    if (overlong.ok) expect(THEME_ID_PATTERN.test(overlong.id)).toBe(true);
+    expect(deriveSavedThemeName('夜空 🌙')).toEqual(nonAscii);
+    expect(deriveSavedThemeName('This is a particularly long custom theme name')).toEqual(overlong);
+  });
+
+  test('refuses only an empty display name', () => {
+    expect(deriveSavedThemeName('   ')).toEqual({ ok: false, code: 'empty' });
+  });
+});
+
+describe('deriveSavedThemeId', () => {
+  test('prefixes the stem and stays inside the theme-id grammar', () => {
+    const result = deriveSavedThemeId('midnight');
+    expect(result).toEqual({ ok: true, id: 'saved-midnight' });
+    // The derived id must be admissible to the same grammar the config fields
+    // and the pre-paint script validate against — no separate namespace form.
+    if (result.ok) expect(THEME_ID_PATTERN.test(result.id)).toBe(true);
+  });
+
+  test('refuses an over-length stem with a distinct code rather than truncating', () => {
+    // `saved-` (6) leaves 26 for the stem; 27 overflows the 32-char id budget.
+    const stem = 'a'.repeat(27);
+    expect(deriveSavedThemeId(stem)).toEqual({ ok: false, code: 'too-long' });
+    // The 26-char boundary is the last accepted length.
+    expect(deriveSavedThemeId('a'.repeat(26))).toEqual({ ok: true, id: `saved-${'a'.repeat(26)}` });
+  });
+
+  test('refuses characters outside the grammar rather than rewriting them', () => {
+    for (const stem of ['My Theme', 'café', 'sub/dir', 'UPPER']) {
+      expect(deriveSavedThemeId(stem)).toEqual({ ok: false, code: 'invalid-chars' });
+    }
+  });
+
+  test('refuses an empty stem', () => {
+    expect(deriveSavedThemeId('')).toEqual({ ok: false, code: 'empty' });
+  });
+
+  test('a stem that already carries the prefix doubles it, unambiguously', () => {
+    expect(deriveSavedThemeId('saved-theme')).toEqual({ ok: true, id: 'saved-saved-theme' });
+  });
+});
+
+describe('parseSavedThemeId', () => {
+  test('recovers the stem from a well-formed saved-theme id (round-trips deriveSavedThemeId)', () => {
+    for (const stem of ['midnight', 'a', 'my-theme', 'saved-theme', 'a'.repeat(26)]) {
+      const derived = deriveSavedThemeId(stem);
+      expect(derived.ok).toBe(true);
+      if (derived.ok) expect(parseSavedThemeId(derived.id)).toEqual({ ok: true, stem });
+    }
+  });
+
+  test('refuses a built-in id (no reserved prefix)', () => {
+    for (const id of ['dracula', 'default', 'custom', 'catppuccin-latte']) {
+      expect(parseSavedThemeId(id)).toEqual({ ok: false });
+    }
+  });
+
+  test('refuses a bare prefix with an empty stem', () => {
+    expect(parseSavedThemeId('saved-')).toEqual({ ok: false });
+  });
+
+  test('refuses an id outside the grammar', () => {
+    for (const id of ['saved-My Theme', 'saved-sub/dir', '', `saved-${'a'.repeat(27)}`]) {
+      expect(parseSavedThemeId(id)).toEqual({ ok: false });
+    }
+  });
+});
+
+describe('built-in id list derives from the registry', () => {
   test('THEME_PLUGIN_IDS is exactly the registry ids, in order', () => {
     expect([...THEME_PLUGIN_IDS]).toEqual(THEME_PLUGINS.map((t) => t.id));
   });
@@ -122,6 +231,21 @@ describe('resolveColorThemeSelection', () => {
     ).toEqual({ light: 'catppuccin-latte', dark: 'dracula' });
   });
 
+  test('reads saved ids when the caller supplies the live palette registry', () => {
+    const themes = [
+      ...THEME_PLUGINS,
+      { id: 'saved-day', label: 'Day', kind: 'light' as const },
+      { id: 'saved-night', label: 'Night', kind: 'dark' as const },
+    ];
+
+    expect(
+      resolveColorThemeSelection(
+        { colorThemeLight: 'saved-day', colorThemeDark: 'saved-night' },
+        themes,
+      ),
+    ).toEqual({ light: 'saved-day', dark: 'saved-night' });
+  });
+
   test('a legacy single palette seeds both slots, so the pre-pair config renders unchanged', () => {
     expect(resolveColorThemeSelection({ colorTheme: 'dracula' })).toEqual({
       light: 'dracula',
@@ -133,6 +257,15 @@ describe('resolveColorThemeSelection', () => {
     expect(
       resolveColorThemeSelection({ colorTheme: 'monokai', colorThemeDark: 'gruvbox' }),
     ).toEqual({ light: 'monokai', dark: 'gruvbox' });
+  });
+
+  test('an explicit unknown slot falls back to default without reviving the legacy palette', () => {
+    expect(
+      resolveColorThemeSelection({
+        colorTheme: 'monokai',
+        colorThemeLight: 'missing-theme',
+      }),
+    ).toEqual({ light: 'default', dark: 'monokai' });
   });
 
   test('an empty or unknown selection resolves to default in both slots', () => {

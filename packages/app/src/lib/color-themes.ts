@@ -18,7 +18,7 @@ import {
   CHROME_BG_DARK,
   CHROME_BG_LIGHT,
   type ColorThemeSelection,
-  colorThemeMode,
+  type ColorThemeSelectionInput,
   generateColorThemesCss,
   isBase16Hex,
   isDarkTheme,
@@ -31,23 +31,37 @@ import {
   resolveThemePlugin,
   THEME_PLUGINS,
   type ThemePlugin,
-  type ThemePluginId,
 } from '@inkeep/open-knowledge-core';
 
-export type { Base16Scheme, ColorThemeSelection, ThemePluginId };
+export type { Base16Scheme, ColorThemeSelection, ColorThemeSelectionInput };
 // Re-export the core registry + pure token logic under the app's existing names.
 export {
   base16ToTokens,
-  colorThemeMode,
   generateColorThemesCss,
   isDarkTheme as isDarkColorTheme,
   relativeLuminance,
   resolveColorThemeSelection,
   resolveModePreference,
-  resolveThemePlugin as resolveColorTheme,
   THEME_PLUGINS as COLOR_THEMES,
 };
 export type ColorTheme = ThemePlugin;
+
+/** Resolve an id against the palettes currently available to the app. */
+export function resolveColorTheme(
+  id: string | undefined,
+  themes: readonly ColorTheme[] = THEME_PLUGINS,
+): ColorTheme {
+  return themes.find((theme) => theme.id === id) ?? resolveThemePlugin(id);
+}
+
+/** The light/dark mode a currently available palette forces. */
+export function colorThemeMode(
+  id: string | undefined,
+  themes: readonly ColorTheme[] = THEME_PLUGINS,
+): 'light' | 'dark' | undefined {
+  const kind = resolveColorTheme(id, themes).kind;
+  return kind === 'system' ? undefined : kind;
+}
 
 /**
  * The `appearance` patch that writes the light/dark palette pair.
@@ -58,8 +72,8 @@ export type ColorTheme = ThemePlugin;
  * half-format behind that later reads as a seed for whichever slot is missing.
  */
 export function colorThemeWritePatch(next: ColorThemeSelection): {
-  colorThemeLight: ThemePluginId;
-  colorThemeDark: ThemePluginId;
+  colorThemeLight: string;
+  colorThemeDark: string;
   colorTheme: null;
 } {
   return { colorThemeLight: next.light, colorThemeDark: next.dark, colorTheme: null };

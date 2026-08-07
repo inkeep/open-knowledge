@@ -332,6 +332,11 @@ msgstr "कुल {0}"
 msgid "{0} version {1}"
 msgstr "{0} संस्करण {1}"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "{0} was already deleted."
+msgstr "{0} पहले ही हटा दिया गया था।"
+
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx
 msgid "{0} was not moved."
@@ -777,6 +782,11 @@ msgstr "{sizeText} · गोपनीय जानकारी हटाई ग�
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {स्किल} other {स्किल}}"
 
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{slot} color — {0}"
+msgstr "{slot} रंग — {0}"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} hex value"
 msgstr "{slot} हेक्स मान"
@@ -1040,6 +1050,10 @@ msgstr "एक आवश्यक git टूल"
 msgid "A reusable starting point for new documents in this folder."
 msgstr "इस फ़ोल्डर में नए दस्तावेज़ों के लिए एक पुन: उपयोग योग्य शुरुआती बिंदु।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "A saved theme already uses this name."
+msgstr "एक सहेजी गई थीम पहले से इस नाम का उपयोग कर रही है।"
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "टेम्पलेट सूची में शीर्षक के नीचे दिखाई जाने वाली एक छोटी पंक्ति।"
@@ -1095,10 +1109,6 @@ msgstr "ऊपर"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "absent"
 msgstr "अनुपस्थित"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Accents"
-msgstr "उच्चारण चिह्न"
 
 #: src/components/DiffView.tsx
 msgid "Accept"
@@ -1779,10 +1789,6 @@ msgstr "वापस"
 msgid "Back to document view"
 msgstr "दस्तावेज़ दृश्य पर वापस"
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Background to foreground"
-msgstr "पृष्ठभूमि से अग्रभूमि"
-
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
 msgstr "बैकलिंक"
@@ -1927,8 +1933,8 @@ msgid "Browse folder"
 msgstr "फ़ोल्डर ब्राउज़ करें"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Browse hundreds of schemes"
-msgstr "सैकड़ों स्कीम ब्राउज़ करें"
+msgid "Browse hundreds of themes"
+msgstr "सैकड़ों थीम ब्राउज़ करें"
 
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
@@ -2047,6 +2053,7 @@ msgstr "यह पथ साझा नहीं किया जा सकता
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -2101,6 +2108,18 @@ msgstr "बाहर बदला गया"
 #: src/components/SkillInstallMenu.tsx
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "OK के पिछली बार यहाँ लिखने के बाद से बाहर बदला गया — दिखाई गई स्थिति वही है जो अभी डिस्क पर है"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically to this theme."
+msgstr "बदलाव इस थीम में अपने आप सहेजे जाते हैं।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes save automatically."
+msgstr "बदलाव अपने आप सहेजे जाते हैं।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Changes saved automatically."
+msgstr "बदलाव अपने आप सहेज दिए गए।"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -2699,6 +2718,11 @@ msgstr "टकराव"
 msgid "Conflicted files"
 msgstr "विरोध वाली फ़ाइलें"
 
+#. placeholder {0}: warning.conflictingFilenames.join(', ')
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Conflicting files: {0}."
+msgstr "विरोधी फ़ाइलें: {0}।"
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "विरोध"
@@ -2891,6 +2915,10 @@ msgstr "बदला जा रहा है…"
 msgid "Copied"
 msgstr "कॉपी किया गया"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Copied {selectedSlot}"
+msgstr "{selectedSlot} कॉपी किया गया"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -2928,6 +2956,7 @@ msgstr "प्रति"
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Copy"
 msgstr "कॉपी करें"
@@ -3212,6 +3241,15 @@ msgstr "रिपोर्ट नहीं बनाई जा सकी"
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "वर्कट्री नहीं बनाया जा सका। कोई दूसरा नाम आज़माएँ।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t create this theme. Try again."
+msgstr "यह थीम नहीं बनाई जा सकी। फिर से कोशिश करें।"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete {0}. Try again."
+msgstr "{0} नहीं हटाया जा सका। फिर से कोशिश करें।"
+
 #. placeholder {0}: result.error
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Couldn't delete file: {0}"
@@ -3228,6 +3266,10 @@ msgstr "टेम्पलेट नहीं हटाया जा सका: 
 #: src/comments/store.ts
 msgid "Couldn't delete that comment."
 msgstr "वह टिप्पणी नहीं हटाई जा सकी।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t delete this theme. Refresh and try again."
+msgstr "यह थीम नहीं हटाई जा सकी। रीफ़्रेश करके फिर से कोशिश करें।"
 
 #: src/components/settings/AccountSection.tsx
 msgid "Couldn't disconnect — please try again."
@@ -3392,8 +3434,12 @@ msgid "Couldn't reach the agent registry."
 msgstr "एजेंट रजिस्ट्री तक नहीं पहुँचा जा सका।"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Couldn’t reach the clipboard — the scheme is in the box below."
-msgstr "क्लिपबोर्ड तक नहीं पहुँचा जा सका — स्कीम नीचे बॉक्स में है।"
+msgid "Couldn’t reach the clipboard — the theme is in the box below."
+msgstr "क्लिपबोर्ड तक नहीं पहुँचा जा सका — थीम नीचे दिए गए बॉक्स में है।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t reach the clipboard."
+msgstr "क्लिपबोर्ड तक नहीं पहुँचा जा सका।"
 
 #: src/components/CommandPalette.tsx
 msgid "Couldn't reach the embeddings provider — retry"
@@ -3419,6 +3465,11 @@ msgstr "भेजे जाने की प्रतीक्षा में �
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "भेजे जाने की प्रतीक्षा में मौजूद टिप्पणियाँ नहीं पढ़ी जा सकीं: {0}"
+
+#. placeholder {0}: warning.code
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t read this theme ({0})"
+msgstr "यह थीम पढ़ी नहीं जा सकी ({0})"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -3468,6 +3519,16 @@ msgstr "सर्वर अपने आप पुनः आरंभ नही�
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "सर्वर पुनः आरंभ नहीं किया जा सका। इस फ़ोल्डर में `ok start` आज़माएँ।"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. That name is already in use."
+msgstr "{0} बहाल नहीं किया जा सका। वह नाम पहले से उपयोग में है।"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Couldn’t restore {0}. Try again."
+msgstr "{0} बहाल नहीं किया जा सका। फिर से कोशिश करें।"
+
 #. placeholder {0}: resumeError.message
 #: src/components/acp/ThreadView.tsx
 msgid "Couldn't resume this chat: {0}"
@@ -3476,6 +3537,10 @@ msgstr "यह चैट फिर से शुरू नहीं हो स�
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't run the test. Check that OpenKnowledge is still running."
 msgstr "परीक्षण नहीं चलाया जा सका। जाँचें कि OpenKnowledge अब भी चल रहा है।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t save changes. Try editing a color again."
+msgstr "बदलाव सहेजे नहीं जा सके। किसी रंग को फिर से संपादित करें।"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -3595,6 +3660,10 @@ msgstr "क्रैश डंप"
 msgid "Create"
 msgstr "बनाएँ"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Create & edit"
+msgstr "बनाएँ और संपादित करें"
+
 #: src/components/TemplateRow.tsx
 msgid "Create a document from {label}"
 msgstr "{label} से एक दस्तावेज़ बनाएँ"
@@ -3665,6 +3734,10 @@ msgstr "नया प्रोजेक्ट बनाएँ"
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "Create new tag #{tagValue}"
 msgstr "नया टैग #{tagValue} बनाएँ"
+
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Create new theme"
+msgstr "नई थीम बनाएँ"
 
 #: src/components/GraphPanel.tsx
 #: src/components/ProblemsPanel.tsx
@@ -3764,6 +3837,10 @@ msgstr "पेज बनाया जा रहा है: {linkTitle}."
 msgid "Creating..."
 msgstr "बनाया जा रहा है…"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Creating…"
+msgstr "बनाया जा रहा है…"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "Current"
 msgstr "मौजूदा"
@@ -3836,8 +3913,10 @@ msgstr "डिफ़ॉल्ट: <0>{0}</0>"
 msgid "Delete"
 msgstr "हटाएँ"
 
+#. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "{0} हटाएँ"
 
@@ -3916,6 +3995,11 @@ msgstr "यह चैट हटाएं?"
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
 msgstr "यह टिप्पणी हटाएँ"
+
+#. placeholder {0}: deletedTheme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Deleted {0}."
+msgstr "{0} हटा दिया गया।"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
@@ -4235,6 +4319,7 @@ msgstr "पूर्ण"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
 #: src/editor/extensions/MathInlineView.tsx
@@ -4369,6 +4454,11 @@ msgstr "हर चयनित टूल को एक OpenKnowledge MCP प्�
 msgid "Edit"
 msgstr "संपादित करें"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Edit {0}"
+msgstr "{0} संपादित करें"
+
 #. placeholder {0}: descriptor.displayName ?? descriptor.name
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Edit {0} source"
@@ -4442,6 +4532,11 @@ msgstr "टेम्पलेट संपादित किया गया"
 msgid "editing [[{realCurrentDoc}]]"
 msgstr "[[{realCurrentDoc}]] संपादित किया जा रहा है"
 
+#. placeholder {0}: scheme.name
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Editing {0}"
+msgstr "{0} संपादित किया जा रहा है"
+
 #: src/components/SkillEditBanner.tsx
 msgid "Editing {boldName} in place. Changes save straight to your editor's copy."
 msgstr "{boldName} को उसी जगह संपादित किया जा रहा है। बदलाव सीधे आपके संपादक की प्रति में सहेजे जाते हैं।"
@@ -4471,8 +4566,12 @@ msgid "Editor status bar"
 msgstr "संपादक स्थिति पट्टी"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Edits apply live. Light or dark comes from the scheme."
-msgstr "संपादन तुरंत लागू होते हैं। हल्का या गहरा रंग स्कीम से आता है।"
+msgid "Edits apply live and save automatically to this theme."
+msgstr "संपादन तुरंत लागू होते हैं और इस थीम में अपने आप सहेजे जाते हैं।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Edits apply live. Light or dark comes from the theme."
+msgstr "संपादन तुरंत लागू होते हैं। हल्का या गहरा थीम से तय होता है।"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Edits at the source land here — no copy-paste drift."
@@ -4643,6 +4742,10 @@ msgstr "#1A2B3C जैसा 6-अंकों का हेक्स मान 
 msgid "Enter a folder name (e.g. brain)."
 msgstr "एक फ़ोल्डर नाम डालें (जैसे brain)।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a name for this theme."
+msgstr "इस थीम का नाम दर्ज करें।"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "एक प्रोजेक्ट नाम डालें"
@@ -4658,6 +4761,10 @@ msgstr "इस टेम्पलेट के लिए एक शीर्ष�
 #: src/components/NewWorktreeDialog.tsx
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "एक मान्य ब्रांच नाम डालें (कोई रिक्त स्थान नहीं, शुरू में बिंदु नहीं, \"..\" नहीं)।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Enter a valid theme name."
+msgstr "थीम का मान्य नाम दर्ज करें।"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
@@ -5551,6 +5658,10 @@ msgstr "GitHub साइन-इन अनुपस्थित है या उ
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, एक git URL, या एक स्थानीय पथ।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Give it a name before editing its colors."
+msgstr "इसके रंग संपादित करने से पहले इसे नाम दें।"
+
 #: src/components/settings/AiToolsSection.tsx
 msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
 msgstr "आप जिन AI टूल का उपयोग करते हैं उन्हें अपने प्रोजेक्ट पढ़ने और अपडेट करने की पहुँच दें। बॉक्स चुनते ही यह तुरंत सेट हो जाता है; हटाने पर हट जाता है।"
@@ -5729,6 +5840,11 @@ msgstr "छिपा हुआ फ़ोल्डर “{basename}”"
 #: src/components/TimelinePanel.tsx
 msgid "Hide"
 msgstr "छिपाएँ"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Hide {0} editor"
+msgstr "{0} संपादक छिपाएँ"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide {appName}"
@@ -5935,6 +6051,11 @@ msgstr "मैं किसी दूसरे टूल पर जा रहा
 msgid "Icon picker"
 msgstr "आइकन चयनकर्ता"
 
+#. placeholder {0}: createIdentity.stem
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "ID: {0}"
+msgstr "ID: {0}"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "यदि आपके संपादित किए जा रहे किसी हिस्से के लिए कोई अपडेट आता है, तो आप चुनते हैं कि कौन सा संस्करण रखना है, ठीक मर्ज टकराव की तरह।"
@@ -5969,10 +6090,6 @@ msgstr "टेम्पलेट के रूप में आयात कर�
 #: src/components/ImportSkillForm.tsx
 msgid "Import failed: {0}"
 msgstr "आयात विफल: {0}"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Import scheme"
-msgstr "स्कीम आयात करें"
 
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
@@ -6315,6 +6432,10 @@ msgstr "AI के लिए निर्देश"
 msgid "Integrations"
 msgstr "एकीकरण"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid color value"
+msgstr "अमान्य रंग मान"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Invalid input — pick a different folder."
 msgstr "अमान्य इनपुट — कोई दूसरा फ़ोल्डर चुनें।"
@@ -6334,6 +6455,10 @@ msgstr "सर्वर प्रतिक्रिया की संरचन
 #: src/lib/share/receive-flow.ts
 msgid "Invalid share URL."
 msgstr "साझा करने का URL अमान्य है।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Invalid YAML"
+msgstr "अमान्य YAML"
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -6567,6 +6692,10 @@ msgstr "लिंक URL"
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
 msgstr "लिंक-ग्राफ़ की प्रतिक्रिया अपेक्षित आकार से मेल नहीं खाई।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Linked theme files aren’t supported"
+msgstr "लिंक की गई थीम फ़ाइलें समर्थित नहीं हैं"
 
 #: src/components/DocPanel.tsx
 msgid "Links"
@@ -6943,6 +7072,14 @@ msgstr "अनुपस्थित पेज — बनाने के लि�
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "अनुपस्थित पेज: {linkTitle}. बनाने के लिए क्लिक करें।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing palette colors"
+msgstr "पैलेट के रंग मौजूद नहीं हैं"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Missing theme name"
+msgstr "थीम का नाम मौजूद नहीं है"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Mode"
 msgstr "मोड"
@@ -7140,6 +7277,10 @@ msgstr "सोचा जा रहा है…"
 msgid "Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."
 msgstr "टूलबार नियंत्रणों वाला बहु-पृष्ठ PDF दर्शक (थंबनेल, पेज नेविगेशन, ज़ूम)।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Multiple files use this theme name"
+msgstr "कई फ़ाइलें इस थीम नाम का उपयोग करती हैं"
+
 #: src/components/acp/working-status.ts
 msgid "Musing…"
 msgstr "मनन किया जा रहा है…"
@@ -7181,6 +7322,10 @@ msgstr "नाम खाली नहीं हो सकता"
 #: src/components/PropertyPanel.tsx
 msgid "Name is required"
 msgstr "नाम आवश्यक है"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Name your theme"
+msgstr "अपनी थीम को नाम दें"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Navigate CodeMirror source search results or dismiss the search panel."
@@ -7737,6 +7882,10 @@ msgstr "इनमें से किसी भी समस्या का क
 #: src/components/ProblemsPanel.tsx
 msgid "None of these problems have an automatic fix. Try Fix all with AI."
 msgstr "इनमें से किसी भी समस्या का कोई स्वचालित समाधान नहीं है। AI से सब ठीक करें आज़माएँ।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Not a base16 theme"
+msgstr "यह base16 थीम नहीं है"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"
@@ -8638,8 +8787,8 @@ msgid "Paste"
 msgstr "चिपकाएँ"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Paste a base16 scheme"
-msgstr "कोई base16 स्कीम चिपकाएँ"
+msgid "Paste a base16 theme"
+msgstr "base16 थीम पेस्ट करें"
 
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
@@ -8762,10 +8911,6 @@ msgstr "इस डिवाइस तक सीमित — आपके उप
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr "अपने <1>Downloads</1> फ़ोल्डर से <0>openknowledge.skill</0> चुनें। यह अपने आप सक्षम हो जाती है।"
 
-#: src/components/settings/ThemePluginSection.tsx
-msgid "Pick a built-in IDE color palette, or define your own."
-msgstr "कोई अंतर्निहित IDE रंग पट्टिका चुनें, या अपनी ख़ुद की तय करें।"
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Pick a folder to merge INTO {display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
 msgstr "वह फ़ोल्डर चुनें जिसे {display} में मिलाना है। वह फ़ोल्डर इसका सिमलिंक बन जाता है, इसलिए उसका एजेंट यहाँ रखी हर चीज़ पढ़ता है। यह फ़ोल्डर असली बना रहता है। टकराने वाली स्किल मर्ज रोक देती हैं।"
@@ -8777,6 +8922,10 @@ msgstr "कोई नाम चुनें"
 #: src/components/settings/settings-fields.ts
 msgid "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
 msgstr "हल्के मोड के लिए एक पट्टिका चुनें और गहरे मोड के लिए एक। Preferences की थीम सेटिंग इनमें से चुनती है — “System” पर आपका OS भी।"
+
+#: src/components/settings/ThemePluginSection.tsx
+msgid "Pick a theme or create your own."
+msgstr "कोई थीम चुनें या अपनी थीम बनाएँ।"
 
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
@@ -8884,8 +9033,8 @@ msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab 
 msgstr "टैब उठाने के लिए Space दबाएँ। इसे टैब पट्टी में ले जाने के लिए तीर कुंजियों का उपयोग करें, फिर छोड़ने के लिए Space या Enter दबाएँ। विभाजित करने, बंद करने, पिन करने और अन्य टैब क्रियाओं वाला संदर्भ मेनू खोलने के लिए Shift+F10 या Menu कुंजी दबाएँ।"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Press the sun or moon on “Custom” above to use this scheme."
-msgstr "इस स्कीम का उपयोग करने के लिए ऊपर “Custom” पर सूरज या चाँद दबाएँ।"
+msgid "Press the sun or moon on “Custom” above to use this theme."
+msgstr "इस थीम का उपयोग करने के लिए ऊपर “कस्टम” पर सूरज या चाँद दबाएँ।"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
@@ -9785,6 +9934,11 @@ msgstr "इस संस्करण पर बहाल करें?"
 msgid "Restore with remote changes"
 msgstr "रिमोट बदलावों के साथ बहाल करें"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Restored {0}."
+msgstr "{0} बहाल कर दिया गया।"
+
 #. placeholder {0}: descriptor.targetSha7
 #: src/components/TimelinePanel.tsx
 msgid "Restored an earlier version ({0})"
@@ -9990,6 +10144,10 @@ msgstr "इस प्रोजेक्ट के स्किल फ़ोल�
 msgid "Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."
 msgstr "आपके वैश्विक स्किल फ़ोल्डर में सहेजा गया (जैसे <0>~/.agents/skills</0>)।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Saved themes couldn’t load. The last available theme list is still shown."
+msgstr "सहेजी गई थीम लोड नहीं हो सकीं। पिछली उपलब्ध थीम सूची अब भी दिखाई जा रही है।"
+
 #: src/components/SkillProperties.tsx
 msgid "Saved to"
 msgstr "यहाँ सहेजा गया"
@@ -10007,6 +10165,10 @@ msgstr "फ़ाइल को <0>~/Downloads/openknowledge.skill</0> में 
 msgid "Saving"
 msgstr "सहेजा जा रहा है"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Saving changes…"
+msgstr "बदलाव सहेजे जा रहे हैं…"
+
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
 msgstr "स्कीमा {deleteTarget}"
@@ -10014,10 +10176,6 @@ msgstr "स्कीमा {deleteTarget}"
 #: src/components/AddPropertyNameField.tsx
 msgid "Schema fields"
 msgstr "स्कीमा फ़ील्ड"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Scheme copied as base16 YAML"
-msgstr "स्कीम base16 YAML के रूप में कॉपी की गई"
 
 #: src/components/ImportSkillForm.tsx
 #: src/components/PanelScopeHeader.tsx
@@ -10207,6 +10365,11 @@ msgstr "सभी {0} स्टार्टर पैक देखें"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "पूरी इंस्टॉल मार्गदर्शिका देखें"
+
+#. placeholder {0}: BASE16_SLOT_ROLES[slot]
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Select {slot} — {0}"
+msgstr "{slot} चुनें — {0}"
 
 #: src/components/FrontmatterRow.tsx
 msgid "Select a value"
@@ -10918,6 +11081,10 @@ msgstr "Slidev शुरू होने में बहुत समय लग
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "छोटा अनुभाग शीर्षक।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
+msgstr "कुछ सहेजी गई थीम नहीं दिखाई जा रही हैं क्योंकि थीम फ़ोल्डर स्कैन सीमा से बड़ा है।"
 
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
@@ -11839,6 +12006,30 @@ msgstr "टोकन को repo और read:user स्कोप चाहि�
 msgid "Theme"
 msgstr "थीम"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme colors"
+msgstr "थीम के रंग"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme copied as base16 YAML"
+msgstr "थीम को base16 YAML के रूप में कॉपी किया गया"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Theme imported."
+msgstr "थीम आयात की गई।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name"
+msgstr "थीम का नाम"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name has unsupported characters"
+msgstr "थीम नाम में असमर्थित वर्ण हैं"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Theme name is too long"
+msgstr "थीम नाम बहुत लंबा है"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Theme preview"
 msgstr "थीम पूर्वावलोकन"
@@ -12033,6 +12224,10 @@ msgstr "यह {boldName} का पूर्वावलोकन है, ज�
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "यह {boldName} का पूर्वावलोकन है। इसे अपने एजेंट में इंस्टॉल करें।"
 
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This isn’t a regular theme file"
+msgstr "यह सामान्य थीम फ़ाइल नहीं है"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "This isn't a supported version of Slidev."
 msgstr "यह Slidev का समर्थित संस्करण नहीं है।"
@@ -12193,6 +12388,18 @@ msgstr "इस स्रोत में कई स्किल हैं — �
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "यह टेम्पलेट किसी मूल फ़ोल्डर में रहता है — इसे हटाने पर उसके नीचे का हर वह फ़ोल्डर प्रभावित होता है जो अपना संस्करण तय नहीं करता।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme can’t be used until the file is fixed."
+msgstr "फ़ाइल ठीक होने तक इस थीम का उपयोग नहीं किया जा सकता।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file couldn’t be read"
+msgstr "यह थीम फ़ाइल पढ़ी नहीं जा सकी"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "This theme file is too large"
+msgstr "यह थीम फ़ाइल बहुत बड़ी है"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This usually means one of:"
@@ -12367,6 +12574,7 @@ msgstr "कोई प्रॉम्प्ट आज़माएँ"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "Try again"
 msgstr "फिर कोशिश करें"
@@ -12474,6 +12682,7 @@ msgstr "{docName} पर आख़िरी संपादन पूर्व�
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -12741,6 +12950,16 @@ msgstr "{0} को गहरी थीम के रूप में उपय�
 msgid "Use {0} as the light theme"
 msgstr "{0} को हल्की थीम के रूप में उपयोग करें"
 
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active dark mode"
+msgstr "सक्रिय गहरे मोड के लिए {0} का उपयोग करें"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} for the active light mode"
+msgstr "सक्रिय हल्के मोड के लिए {0} का उपयोग करें"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Use {editor} version"
 msgstr "{editor} संस्करण उपयोग करें"
@@ -12752,6 +12971,10 @@ msgstr "नीचे दिया लिंक कॉपी करने के 
 #: src/components/NavigatorApp.tsx
 msgid "Use a folder you already have."
 msgstr "कोई ऐसा फ़ोल्डर उपयोग करें जो आपके पास पहले से है।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "Use a lowercase .yaml or .yml extension"
+msgstr "छोटे अक्षरों वाला .yaml या .yml एक्सटेंशन इस्तेमाल करें"
 
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
@@ -12936,6 +13159,10 @@ msgstr "हम <0>openknowledge.skill</0> बनाएँगे, उसे <1>~/
 #: src/components/settings/SyncSection.tsx
 msgid "We'll create a repository and start syncing — no terminal needed."
 msgstr "हम एक रिपॉज़िटरी बनाकर सिंक शुरू कर देंगे — किसी टर्मिनल की ज़रूरत नहीं।"
+
+#: src/components/settings/SavedThemesTiles.tsx
+msgid "We’ll create a safe theme ID from this name."
+msgstr "हम इस नाम से एक सुरक्षित थीम ID बनाएँगे।"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "We've filed it with the team and attached your logs."

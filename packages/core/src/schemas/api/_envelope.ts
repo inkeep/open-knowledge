@@ -399,6 +399,15 @@ export const ProblemTypeSchema = z.enum([
   // Retryable and self-correcting: the same mutation broadcasts `lint-config`,
   // so the caller is already scheduling the walk that supersedes this one.
   'urn:ok:error:audit-superseded',
+  // Saved-theme store (`POST /api/saved-theme`). `theme-name-taken` (409) — the
+  // save name already names a scheme file in the store; refused before any
+  // write so a name collision never overwrites prior work. `theme-name-invalid`
+  // (400) — the name can't become a palette id (empty / too long / characters
+  // outside the grammar); the specific cause rides `detail`. Distinct URNs so
+  // the save form branches "pick a different name" vs "fix the name" without
+  // parsing a string.
+  'urn:ok:error:theme-name-taken',
+  'urn:ok:error:theme-name-invalid',
 ]) satisfies StandardSchemaV1;
 export type ProblemType = z.infer<typeof ProblemTypeSchema>;
 

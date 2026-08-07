@@ -59,10 +59,11 @@ let okignoreDisposed = false;
 let providerRecords: ProviderRecord[] = [];
 let mergeLayeredCalls: Array<[unknown, unknown, unknown]> = [];
 let mergedConfig: unknown = {};
-let useThemeBridgeCalls: Array<[unknown, string]> = [];
+let useThemeBridgeCalls: Array<[unknown, string | undefined, string | undefined]> = [];
 let useLanguageBridgeCalls: Array<[unknown, unknown, boolean]> = [];
 let setThemeCalls: string[] = [];
 const buildAuthTokenCalls: Array<readonly unknown[]> = [];
+const originalFetch = globalThis.fetch;
 
 function resetCaptures() {
   captures.clear();
@@ -87,7 +88,7 @@ function makeFakeConfigBinding(scope: ScopeKey, hasSyncedSeed: boolean): ConfigB
     syncedUnsubscribed: false,
   });
   return {
-    current: () => config as never,
+    current: () => captures.get(scope)?.config as never,
     patch: () => ({ ok: true, value: { applied: [], effective: {} } }) as never,
     subscribe: () => () => {},
     hasSynced: () => captures.get(scope)?.hasSyncedSeed ?? false,
@@ -119,8 +120,8 @@ function makeFakeOkignoreBinding(): OkignoreBinding {
 }
 
 vi.doMock('@/hooks/use-theme-bridge', () => ({
-  useThemeBridge: (bridge: unknown, theme: string) => {
-    useThemeBridgeCalls.push([bridge, theme]);
+  useThemeBridge: (bridge: unknown, theme: string | undefined, colorThemeKey?: string) => {
+    useThemeBridgeCalls.push([bridge, theme, colorThemeKey]);
   },
 }));
 
@@ -183,22 +184,78 @@ vi.doMock('@/lib/auth-token', () => ({
 // calls to produce the binding objects it then subscribes to. The fakes
 // return ConfigBindings whose `subscribeSynced` listener is captured per
 // scope so the test can trigger the false→true transition by hand.
-//
-// Spreading the real module first keeps this to the three seams the test
-// actually drives. A wholesale factory had to re-declare every core symbol
-// anything in ConfigProvider's transitive graph imports — the theme registry
-// that `@/lib/color-themes` re-exports, then the locale set and resolver the
-// language bridge reaches for — and each one it had not anticipated failed as a
-// hard named-import error somewhere unrelated to what was being tested.
-vi.doMock('@inkeep/open-knowledge-core', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@inkeep/open-knowledge-core')>()),
+vi.doMock('@inkeep/open-knowledge-core', () => ({
   bindConfigDoc: (_provider: unknown, scope: WriteScope) =>
     makeFakeConfigBinding(scope, scope === 'user' ? userHasSyncedSeed : false),
   bindOkignoreDoc: () => makeFakeOkignoreBinding(),
+  CONFIG_DOC_NAME_USER: '__user__/config.yml',
+  CONFIG_DOC_NAME_PROJECT: '__config__/project',
+  CONFIG_DOC_NAME_PROJECT_LOCAL: '__local__/project',
+  CONFIG_DOC_NAME_OKIGNORE: '__config__/okignore',
   mergeLayered: (user: unknown, project: unknown, projectLocal: unknown) => {
     mergeLayeredCalls.push([user, project, projectLocal]);
     return mergedConfig;
   },
+  resolveLocale: ({ storedPreference }: { storedPreference?: string }) => ({
+    locale: storedPreference && storedPreference !== 'system' ? storedPreference : 'en',
+    source: storedPreference && storedPreference !== 'system' ? 'explicit' : 'fallback',
+  }),
+  readBrowserLanguages: () => [],
+  localeDirection: (locale: string) => (locale === 'ar' || locale === 'ur' ? 'rtl' : 'ltr'),
+  SUPPORTED_LOCALES: ['en', 'es'],
+  AUTO_DETECTABLE_LOCALES: ['en', 'es'],
+  // `@/lib/color-themes` (pulled in transitively via config-provider and
+  // SettingsDialogBody) now re-exports the theme registry from core, so the
+  // wholesale core mock must stub every re-exported symbol or color-themes'
+  // re-exports fail to resolve (a hard named-import error for `colorThemeMode`,
+  // which SettingsDialogBody imports statically).
+  colorThemeMode: (
+    id?: string,
+    themes?: readonly { id: string; kind: 'light' | 'dark' | 'system' }[],
+  ) => {
+    const kind = themes?.find((theme) => theme.id === id)?.kind;
+    if (kind) return kind === 'system' ? undefined : kind;
+    return id && id !== 'default' && id !== 'custom' ? 'dark' : undefined;
+  },
+  resolveColorThemeSelection: (
+    appearance?: { colorTheme?: string; colorThemeLight?: string; colorThemeDark?: string },
+    themes: readonly { id: string }[] = [],
+  ) => {
+    const ids = new Set(themes.map((theme) => theme.id));
+    const legacy = appearance?.colorTheme;
+    const fallback = legacy && ids.has(legacy) ? legacy : 'default';
+    const pick = (value: string | undefined) =>
+      value === undefined ? fallback : ids.has(value) ? value : 'default';
+    return {
+      light: pick(appearance?.colorThemeLight),
+      dark: pick(appearance?.colorThemeDark),
+    };
+  },
+  SavedThemesListSuccessSchema: {
+    safeParse: (value: unknown) => ({ success: true, data: value }),
+  },
+  base16ToTokens: () => ({}),
+  renderThemeBlock: () => '',
+  resolveModePreference: (preference?: string, prefersDark?: boolean) =>
+    preference === 'light' || preference === 'dark' ? preference : prefersDark ? 'dark' : 'light',
+  expandPalette: () => ({}),
+  generateColorThemesCss: () => '',
+  isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
+  resolveThemePlugin: (id?: string) => ({ id: id ?? 'default', label: 'Default', kind: 'system' }),
+  THEME_PLUGINS: [],
+  // The base-theme tokens `defaultThemeTokens` composes for the Default tile's
+  // preview. Values are placeholders — no assertion here reads them; they only
+  // need to cover the token names the preview looks up.
+  CHROME_BG_LIGHT: '#fafafa',
+  CHROME_BG_DARK: '#171717',
+  PREVIEW_THEME_TOKENS: [
+    { name: '--background', light: '#ffffff', dark: '#0a0a0a' },
+    { name: '--primary', light: '#2563eb', dark: '#69a3ff' },
+    { name: '--border', light: '#e5e5e5', dark: '#2a2a2a' },
+    { name: '--chart-2', light: '#16a34a', dark: '#4ade80' },
+    { name: '--chart-3', light: '#ca8a04', dark: '#facc15' },
+    { name: '--chart-4', light: '#7c3aed', dark: '#a78bfa' },
+  ],
 }));
 
 // Module-level toggle for the second case (mount-time pre-synced seed).
@@ -208,6 +265,10 @@ vi.doMock('@inkeep/open-knowledge-core', async (importOriginal) => ({
 let userHasSyncedSeed = false;
 
 const { ConfigProvider, useConfigContext } = await import('./config-provider');
+const { useSavedThemes } = await import('./saved-themes-client');
+const { COLOR_THEME_PAIR_STORAGE_KEY, SAVED_THEME_STYLE_ID } = await import(
+  './use-apply-config-color-theme'
+);
 
 let lastContext: ReturnType<typeof useConfigContext> | null = null;
 
@@ -232,11 +293,24 @@ function ConfigContextProbe() {
   );
 }
 
+let refreshSavedThemes: (() => Promise<void>) | null = null;
+
+function SavedThemesRefreshProbe() {
+  refreshSavedThemes = useSavedThemes().refresh;
+  return null;
+}
+
+function syncAllConfigBindings(): void {
+  act(() => {
+    captures.get('user')?.syncedListener?.();
+    captures.get('project')?.syncedListener?.();
+    captures.get('project-local')?.syncedListener?.();
+  });
+}
+
 describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
-  // Loading the Spanish catalog up front makes activation synchronous, so the
-  // language assertion below reads a committed state rather than racing a fetch.
   beforeAll(async () => {
     await dynamicActivate('es');
     await dynamicActivate('en');
@@ -245,7 +319,12 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   beforeEach(() => {
     resetCaptures();
     lastContext = null;
+    refreshSavedThemes = null;
     userHasSyncedSeed = false;
+    localStorage.clear();
+    document.documentElement.className = '';
+    document.documentElement.removeAttribute('data-color-theme');
+    document.getElementById(SAVED_THEME_STYLE_ID)?.remove();
     __resetServerInstanceStoreForTests();
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -253,6 +332,7 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   afterEach(async () => {
     cleanup();
     consoleErrorSpy.mockRestore();
+    globalThis.fetch = originalFetch;
     Reflect.deleteProperty(window, 'okDesktop');
     await dynamicActivate('en');
   });
@@ -281,6 +361,25 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     });
 
     expect(screen.getByTestId('user-synced').textContent).toBe('true');
+  });
+
+  test('the synced transition publishes the binding’s authoritative config atomically', () => {
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    const userEntry = captures.get('user');
+    if (!userEntry) throw new Error('user binding capture missing');
+    userEntry.config = { scope: 'user', appearance: { theme: 'dark' } };
+
+    act(() => {
+      userEntry.syncedListener?.();
+    });
+
+    expect(lastContext?.userSynced).toBe(true);
+    expect(lastContext?.userConfig).toBe(userEntry.config);
   });
 
   test('userSynced reads true on first render when the binding has already synced at mount time', () => {
@@ -363,7 +462,7 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     );
   });
 
-  test('passes the Electron theme bridge a system fallback when merged config has no theme', async () => {
+  test('withholds the Electron show-gate signal until config is authoritative', async () => {
     const bridge = { nativeTheme: {} };
     Object.defineProperty(window, 'okDesktop', {
       configurable: true,
@@ -382,7 +481,14 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
       expect(mergeLayeredCalls.length).toBeGreaterThan(0);
     });
 
-    expect(useThemeBridgeCalls.at(-1)).toEqual([bridge, 'system']);
+    expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([undefined, undefined]);
+
+    syncAllConfigBindings();
+
+    await waitFor(() => {
+      expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'system']);
+    });
+
     expect(setThemeCalls).toEqual([]);
   });
 
@@ -398,9 +504,6 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     await waitFor(() => {
       expect(mergeLayeredCalls.length).toBeGreaterThan(0);
     });
-    // The value is already merged and readable here; withholding it until the
-    // user layer syncs is what keeps a boot from activating the browser's
-    // language and then correcting itself.
     expect(i18n.locale).toBe('en');
 
     act(() => {
@@ -411,10 +514,6 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   });
 
   test('the same unresolved preference is handed to the native-menu bridge', async () => {
-    // The renderer activates a catalog; main re-resolves and rebuilds its own
-    // menu. Both read the one merged value, and what crosses to main must be
-    // the user's INTENT — a resolved tag looks identical on the wire and
-    // silently stops following the OS.
     const bridge = { nativeTheme: {} };
     Object.defineProperty(window, 'okDesktop', { configurable: true, value: bridge });
     mergedConfig = { appearance: { language: 'system' } };
@@ -436,6 +535,116 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     await waitFor(() => {
       expect(useLanguageBridgeCalls.at(-1)).toEqual([bridge, 'system', true]);
     });
+  });
+
+  test('releases the Electron show gate with the preserved cross-variant prepaint mode after a saved-theme list failure', async () => {
+    const bridge = { nativeTheme: {} };
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: bridge,
+    });
+    localStorage.setItem(
+      COLOR_THEME_PAIR_STORAGE_KEY,
+      JSON.stringify({
+        pref: 'dark',
+        light: { id: 'default', dark: false },
+        dark: { id: 'saved-offline', dark: false, css: ':root { --background: #fafafa; }' },
+      }),
+    );
+    document.documentElement.classList.remove('dark');
+    document.documentElement.setAttribute('data-color-theme', 'saved-offline');
+    const prepaintStyle = document.createElement('style');
+    prepaintStyle.id = SAVED_THEME_STYLE_ID;
+    prepaintStyle.textContent = ':root { --background: #fafafa; }';
+    document.head.appendChild(prepaintStyle);
+    globalThis.fetch = vi.fn(async () => Response.json({ error: 'offline' }, { status: 503 }));
+    mergedConfig = {
+      appearance: {
+        theme: 'dark',
+        colorThemeLight: 'saved-offline',
+        colorThemeDark: 'saved-offline',
+      },
+    };
+
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    syncAllConfigBindings();
+
+    await waitFor(() => {
+      expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'light']);
+    });
+    // The DOM gate remains closed, preserving the prepaint cache after the list
+    // failure; only the native show gate is released.
+    expect(setThemeCalls).toEqual([]);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.getAttribute('data-color-theme')).toBe('saved-offline');
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)?.textContent).toContain('#fafafa');
+  });
+
+  test('a live same-id saved-theme edit invalidates the native chrome bridge', async () => {
+    const bridge = { nativeTheme: {} };
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: bridge,
+    });
+    const palette = Object.fromEntries(
+      Array.from({ length: 16 }, (_, index) => {
+        const slot = `base${index.toString(16).toUpperCase().padStart(2, '0')}`;
+        return [slot, '#111111'];
+      }),
+    );
+    let schemeName = 'Before';
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            themes: [
+              {
+                ok: true,
+                id: 'saved-active',
+                filename: 'active.yaml',
+                scheme: { name: schemeName, variant: 'light', palette },
+              },
+            ],
+            truncated: false,
+          }),
+        ),
+    );
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'saved-active',
+        colorThemeDark: 'default',
+      },
+    };
+
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+        <SavedThemesRefreshProbe />
+      </ConfigProvider>,
+    );
+    syncAllConfigBindings();
+
+    await waitFor(() => {
+      expect(useThemeBridgeCalls.at(-1)?.[2]).toContain('Before');
+    });
+    const beforeKey = useThemeBridgeCalls.at(-1)?.[2];
+
+    schemeName = 'After';
+    await act(async () => {
+      await refreshSavedThemes?.();
+    });
+
+    await waitFor(() => {
+      expect(useThemeBridgeCalls.at(-1)?.[2]).toContain('After');
+    });
+    expect(useThemeBridgeCalls.at(-1)?.[2]).not.toBe(beforeKey);
   });
 
   test('threads the server epoch from the store into every provider auth-token claim', async () => {

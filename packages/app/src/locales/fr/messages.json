@@ -50,11 +50,13 @@
       "Envoyé en privé à l'équipe OpenKnowledge, avec votre note et la version de l'application. Jamais publié publiquement."
     ],
     "-oHckY": ["OpenKnowledge a lu le paramètre ", ["key"]],
+    "-othoN": ["Ce fichier de thème est trop volumineux"],
     "-q4abP": [
       "Résultats plafonnés — cet espace de travail contient plus de fichiers que la recherche ne peut en indexer. Un fichier absent peut venir de ce plafond, pas d'une faute de frappe."
     ],
     "-slrNR": ["Bascule une liste de tâches."],
     "-uaQnI": ["Aucun worktree ni branche correspondant."],
+    "-yOx8u": ["Enregistrement des modifications…"],
     "-yPBXI": ["Choisir un fichier"],
     "-ySLQJ": ["Git et PR"],
     "-zA2E7": ["Impossible de créer le worktree. Essayez un autre nom."],
@@ -122,6 +124,7 @@
     "0kTAXe": ["Source : ", ["mirrorSrc"]],
     "0pZmTP": ["Impossible de partager ce chemin."],
     "0qyKG6": ["Synchronisé depuis le disque"],
+    "0r6d6v": ["Modifications enregistrées automatiquement."],
     "0rwwOn": ["Par étiquette"],
     "0s8-e8": [
       "Sélectionnez, entrez dans ou quittez les composants de bloc et les blocs source de repli depuis les limites clavier."
@@ -132,6 +135,7 @@
     "0xnQ_X": ["Les mises à jour arrivent"],
     "0xnmlQ": ["Nom du dépôt"],
     "0yL--g": ["Examiner les conflits"],
+    "0ySP5u": ["Les modifications sont automatiquement enregistrées dans ce thème."],
     "0zAhu6": ["tous les documents"],
     "10g8I_": ["Désactiver Fichiers markdown uniquement"],
     "11ukmX": ["Échec du renommage : ", ["0"]],
@@ -145,6 +149,7 @@
       " ? Cette action est irréversible."
     ],
     "16eIWu": ["Forcer l'arrêt"],
+    "16tSS_": ["Collez un thème base16"],
     "170Js2": ["Masquer le panneau"],
     "1AumWo": ["Échec du push — consultez les journaux du serveur pour les détails."],
     "1CalO6": ["Style"],
@@ -183,6 +188,9 @@
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
     "1oSHI0": ["Impossible d'installer ", ["skillName"], " : ", ["0"]],
+    "1qpGKz": [
+      "Impossible d’enregistrer les modifications. Essayez à nouveau de modifier une couleur."
+    ],
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Rejeter"],
     "1u-mAI": [
@@ -323,9 +331,6 @@
     "3l_cXP": [
       "Jetez-y un œil si vous le souhaitez. C'est exactement ce fichier que nous recevons."
     ],
-    "3l_knd": [
-      "Appuyez sur le soleil ou la lune de « Personnalisé » ci-dessus pour utiliser cette palette."
-    ],
     "3m2GBo": ["Recherche dans les documents"],
     "3mFsc3": ["Restaurer avec les modifications distantes"],
     "3nnyi_": [
@@ -385,6 +390,7 @@
     "4TzU0n": ["Initialiser"],
     "4buZWd": ["Hérité de ", ["path"]],
     "4c_a6S": ["Rien de défini pour l'instant."],
+    "4d0VYJ": ["Nous créerons un ID de thème sûr à partir de ce nom."],
     "4eO-iB": ["Abandonner ce commentaire"],
     "4g19V6": ["Échec de la mise à jour de la propriété"],
     "4h3e0H": ["Impossible de mettre à jour le partage des compétences — ", ["detail"], "."],
@@ -544,6 +550,7 @@
       "Décrivez ce qu'elle doit faire, ou ajoutez-en une vous-même. OpenKnowledge regroupe vos compétences au même endroit, les versionne, et les installe dans des agents comme Claude, Codex et Cursor."
     ],
     "6MnZEC": ["Échec du chargement du terminal"],
+    "6Nea1q": ["Utiliser ", ["0"], " pour le mode sombre actif"],
     "6O626z": ["Aucun titre ne correspond à « ", ["trimmedAnchorQuery"], " »"],
     "6Pxqwv": [
       "Pas encore de modèles de projet. Créez-en un pour le rendre disponible partout dans ce projet. Les modèles propres à un dossier se trouvent sur la page de synthèse de chaque dossier."
@@ -553,6 +560,7 @@
     "6VqW-1": ["Retirer ", ["keyName"]],
     "6WdDG7": ["Page"],
     "6YBJ3m": ["Demander à l'IA à propos de la sélection"],
+    "6YE0P6": ["Modification de ", ["0"]],
     "6YtxFj": ["Nom"],
     "6ZhdPI": ["Ce que l'agent peut lire, écrire et faire remonter."],
     "6_ZOw4": ["Chemin complet copié"],
@@ -598,6 +606,9 @@
       ]
     ],
     "6vEr3W": ["Cible du lien"],
+    "6xeZX9": [
+      "Les modifications s’appliquent immédiatement. Le thème détermine le mode clair ou sombre."
+    ],
     "6zzhQL": ["Envoyez votre rapport par e-mail"],
     "72xhRD": ["Mode d'affichage du diagramme"],
     "74-bX-": ["Une citation mise en exergue se détache du texte qui l'entoure."],
@@ -611,13 +622,13 @@
       "Valide le frontmatter des documents à l'aide de fichiers JSON Schema, appliqués à des ensembles de documents par glob."
     ],
     "7Bj3x9": ["Échec"],
-    "7EmDc7": ["Importer une palette"],
     "7FA2iI": ["Impossible de lire les commentaires en attente d'envoi — rien n'a été envoyé."],
     "7FamGZ": ["Aller à la ligne"],
     "7Fkcej": ["+ Ajouter ", ["addChildName"]],
     "7H4UHD": ["Documents étiquetés <0>#", ["tagName"], "</0>"],
     "7IsvrP": ["Recherche de mises à jour"],
     "7JtSLi": ["Échec de la suppression du chemin"],
+    "7O7REc": ["Impossible de restaurer ", ["0"], ". Réessayez."],
     "7OhaRy": ["Recherche dans la source"],
     "7Ongq0": ["Condense mon fichier AGENTS.md à moins de 40 000 caractères"],
     "7OwvEL": ["Afficher l'aperçu HTML"],
@@ -744,6 +755,8 @@
     "8uGMP8": ["Le contenu masqué se place ici."],
     "8vCZcs": ["Échec de l'ouverture du fichier."],
     "8vETh9": ["Afficher"],
+    "8x6zk9": ["Masquer l’éditeur de ", ["0"]],
+    "9-lMCF": ["Couleur ", ["slot"], " — ", ["0"]],
     "90-wKT": ["OpenKnowledge a lu l'historique de ", ["subject"]],
     "92rbk2": ["Chargement du miroir <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Masquer les agents"],
@@ -805,9 +818,6 @@
     "9fvog2": ["Aperçu indisponible : ", ["errorDetail"]],
     "9i21pa": ["Les commits se font automatiquement"],
     "9ieZhu": ["Installé dans ", ["path"], " — cliquez pour retirer"],
-    "9j1tqo": [
-      "Impossible d'accéder au presse-papiers — la palette se trouve dans le champ ci-dessous."
-    ],
     "9jnjV0": ["Intègre un fichier audio avec les contrôles natifs du lecteur."],
     "9lso1Y": ["Crée le dossier <0>", ["folderPart"], "/</0>"],
     "9m4D_h": ["GitHub, une URL git, ou un chemin local."],
@@ -850,6 +860,7 @@
     ],
     "AIn2Yv": ["CLI ", ["displayName"], ", ", ["hint"]],
     "AItsE5": ["L'ouvrir là-bas"],
+    "AJ7_B2": ["Créer un thème"],
     "AKxFtn": [
       [
         "openedWorktreeCount",
@@ -858,6 +869,7 @@
       ]
     ],
     "ALhMYW": ["Terminal"],
+    "ANFxWn": ["Impossible de supprimer ce thème. Actualisez la page et réessayez."],
     "APNlbk": ["quitter ", ["0"]],
     "AQ-Lfg": ["Impossible de charger les modèles"],
     "AQGtjK": [
@@ -1016,9 +1028,13 @@
     "C_cPoW": [
       "Votre session GitHub a expiré — reconnectez-vous pour vérifier l'accès en écriture."
     ],
+    "CcaU4i": [
+      "Les modifications s’appliquent immédiatement et sont automatiquement enregistrées dans ce thème."
+    ],
     "ChAtFg": ["Vous n'avez pas la permission de pousser vers ce dépôt"],
     "ChMshD": ["Quitter ", ["appName"]],
     "Ck9XRt": ["Impossible d'enregistrer la clé — veuillez réessayer."],
+    "ClII5l": ["Appuyez sur le soleil ou la lune de « Custom » ci-dessus pour utiliser ce thème."],
     "ClTEde": [
       "Prépare le passage sélectionné dans le panneau des agents, prêt à être complété et envoyé."
     ],
@@ -1070,6 +1086,9 @@
     "DKYW1G": [
       "Ce réglage est propre à chaque machine et n'est pas partagé avec les collaborateurs. Il nécessite une clé API (définie ci-dessous), sauf si votre point de terminaison est un serveur local qui n'en demande pas."
     ],
+    "DLIljL": [
+      "Certains thèmes enregistrés ne sont pas affichés car le dossier des thèmes dépasse la limite d’analyse."
+    ],
     "DMLE5q": ["La réparation automatique de MCP a échoué"],
     "DMeaxi": ["Téléchargement de ", ["0"], " ", ["1"], "…"],
     "DNkveC": ["Options de colonne"],
@@ -1082,6 +1101,7 @@
       "</0>. Vous avez des modifications non validées qui empêchent de changer de branche ici — ouvrez-le dans un worktree pour laisser vos modifications intactes."
     ],
     "DUWgfT": ["Se réauthentifier auprès de GitHub Enterprise Server"],
+    "DUb7Ax": ["Plusieurs fichiers utilisent ce nom de thème"],
     "DVh_Tb": ["Échec du nettoyage après la mise à la corbeille"],
     "DWJtEo": ["Ce qui se passe ensuite"],
     "DXd9LM": ["Nouveau worktree"],
@@ -1100,6 +1120,7 @@
     "DhT_PK": ["OpenKnowledge a importé une compétence"],
     "DiFKSL": ["Comptage des fichiers markdown"],
     "DiZ3pq": ["Sélecteur d'icônes"],
+    "DmkTrb": ["Impossible de créer ce thème. Réessayez."],
     "Dnn2XG": ["Automatique"],
     "DpjYd6": ["Aller au texte ancré"],
     "DrYM2Z": ["Synchronisation désactivée"],
@@ -1286,6 +1307,7 @@
       "Explique le fonctionnement de ton code pour que tes coéquipiers et les agents IA s'y retrouvent. Utile pour documenter l'architecture, les grandes parties, et les questions que posent toujours les nouveaux contributeurs."
     ],
     "FyW0WO": ["Autoriser dans le navigateur"],
+    "FyyIjH": ["Le nom du thème est trop long"],
     "G-JBA1": [
       "Le mode source nécessite une connexion active — vos modifications sont enregistrées et apparaîtront à la reconnexion."
     ],
@@ -1337,6 +1359,7 @@
     "GQDSBN": ["Options de mise en page"],
     "GSYWCm": ["Masquer le panneau du document"],
     "GUYwCr": ["Ignorer cet avis"],
+    "GUZHkL": ["Des couleurs de la palette sont manquantes"],
     "GUqTzn": ["Étude concurrentielle"],
     "GXf9hG": ["Clonage de ", ["repoName"], "…"],
     "GZzDqc": [
@@ -1424,6 +1447,7 @@
     "HTW0Zw": [
       "Encore une étape : exécutez <0>claude</0> dans ce projet et approuvez OpenKnowledge une fois."
     ],
+    "HZ7fEu": ["Nom du thème"],
     "HbcQYf": [
       "Remplacer le lien symbolique situé dans ",
       ["display"],
@@ -1484,6 +1508,7 @@
     "IFezUv": ["L'audit n'a pas pu être terminé. Réessayez."],
     "IInnZo": ["Conflit"],
     "IKoTAC": ["Laisser désactivé"],
+    "IMLUBh": ["Valeur de couleur non valide"],
     "INp_z6": ["Commenter ce ", ["0"], " ou interroger l’IA à son sujet"],
     "IO8REi": ["Impossible d'ouvrir « ", ["name"], " » : ", ["0"]],
     "IQPyrD": ["Page manquante — cliquez pour la créer"],
@@ -1495,7 +1520,6 @@
     "IX_uXB": ["my-feature"],
     "IYciRC": ["Merci pour ce rapport !"],
     "IajAbS": ["Ajouter un pack de démarrage"],
-    "IbTC7z": ["Collez une palette base16"],
     "If0crP": ["Ouvrir avec l'IA ", ["targetDisplayName"], ", ", ["hint"]],
     "IgN3LY": ["Sur le texte sélectionné dans <0>", ["address"], "</0>"],
     "IgTwLt": ["Ouvre ce document dans l'éditeur et réduit le graphe."],
@@ -1517,6 +1541,7 @@
     "Ix0K8o": ["Masquer les nœuds d'URL externes"],
     "IxHMdF": ["Impossible de supprimer ce commentaire."],
     "IxyZXD": ["Capture d'écran"],
+    "J1XRO3": ["Couleurs du thème"],
     "J2Mv98": ["Nom (par ex. ", ["login"], ")"],
     "J2_JuX": ["rien (", ["0"], " ne peut correspondre à aucun document)"],
     "J2eKUI": ["Fichier"],
@@ -1546,7 +1571,7 @@
     "JOcPqH": ["Récupérer un dépôt distant sur cette machine."],
     "JWsZlx": ["Ouvrez un projet pour le modifier."],
     "JZ8cO6": ["Clair, sombre, ou suivre le système."],
-    "J_bJiH": ["Choisissez une palette de couleurs d'IDE intégrée, ou définissez la vôtre."],
+    "JaU1ld": ["Le nom du thème contient des caractères non pris en charge"],
     "JddocZ": ["Activer/désactiver la colonne d'en-tête"],
     "Jejur6": ["Impossible de charger le document"],
     "JfPuv7": [["shareBranch"], " n'est pas un nom de branche valide."],
@@ -1635,6 +1660,7 @@
     "KsAPaB": ["Cette branche est extraite dans :"],
     "KtACeE": ["Par défaut : <0>", ["0"], "</0>"],
     "KujtjC": ["Rechercher"],
+    "Kx881F": [["0"], " a été restauré."],
     "L-rMC9": ["Réinitialiser à la valeur par défaut"],
     "L1BQTH": [["0"], " n'est pas encore installé — ouverture de sa page de téléchargement."],
     "L1ZE3M": ["Statistiques du document"],
@@ -1841,6 +1867,7 @@
     "N55YNr": [
       "Choisissez si la configuration OpenKnowledge de ce projet, y compris ses connexions aux outils IA, est enregistrée avec le projet pour que vos coéquipiers l'obtiennent aussi, ou conservée uniquement sur votre ordinateur."
     ],
+    "N6j2JH": ["Modifier ", ["0"]],
     "NBdIgR": ["Commenter"],
     "NCmYhK": [
       "Les compétences apprennent aux agents des tâches répétables. Rédigez-les et gérez-les depuis la section Compétences de l'éditeur ; le menu d'installation de chaque compétence détermine où elle réside. Voici les dossiers de compétences de ce projet."
@@ -2056,6 +2083,7 @@
     "QB-moX": [
       "Installez-la dans vos autres éditeurs (Claude Code, Cursor, Codex) pour la partager."
     ],
+    "QDErHs": ["Sélectionner ", ["slot"], " — ", ["0"]],
     "QDZbvN": ["il y a ", ["diffDays"], " j"],
     "QGWzup": ["Chargement des compétences OpenKnowledge"],
     "QHCx0c": ["Historique des rapports de bug"],
@@ -2089,13 +2117,11 @@
     "QlxHAH": ["Résultats pour « ", ["semanticResultsLabel"], " »"],
     "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Libellé <0>(texte visible du lien)</0>"],
-    "Quz_Qu": [
-      "Les modifications s'appliquent en direct. Le mode clair ou sombre vient de la palette."
-    ],
     "Qvls7J": ["Spécifications techniques"],
     "Qw-7Ie": [
       "Un espace d'écriture simple, avec un fichier par sujet et un journal quotidien. Choisissez ceci si vous voulez juste commencer à écrire et laisser les liens entre les notes se construire au fil du temps."
     ],
+    "QwG_zJ": ["Fichiers en conflit : ", ["0"], "."],
     "QySH4I": ["Projets OpenKnowledge détectés"],
     "QyioBP": ["Monter"],
     "QzofTX": [
@@ -2113,6 +2139,7 @@
       ]
     ],
     "R0jJzV": ["Collez une URL, owner/repo, ou cherchez dans vos dépôts"],
+    "R30SFt": ["Utilisez une extension .yaml ou .yml en minuscules"],
     "R3y75Z": ["Modifier la source"],
     "R4OWFD": ["Sections"],
     "R65q-K": [
@@ -2125,6 +2152,7 @@
     "R9dK63": ["Image d'exemple"],
     "RDjuBN": ["Configuration"],
     "RDrXh4": ["Configurez les paramètres utilisateur, projet et intégrations."],
+    "RG3yW6": ["Saisissez un nom pour ce thème."],
     "RG4XHV": ["Copier l'invite ", ["0"]],
     "RGCCrg": ["Copier le lien de partage"],
     "RGkNeJ": ["Initialiser un pack de démarrage"],
@@ -2309,6 +2337,7 @@
     "UEdTEN": ["Orpheline"],
     "UGeJuP": ["Valeurs autorisées (vide = toutes)"],
     "UGtPix": ["La connexion à GitHub a expiré. Reconnectez-vous pour continuer."],
+    "UH0Zqw": ["Ce fichier n’est pas un fichier de thème standard"],
     "UHwc0P": [
       "Ceci est un aperçu de ",
       ["boldName"],
@@ -2367,7 +2396,6 @@
       ["src"],
       "</1> n'est plus disponible."
     ],
-    "UeQEbk": ["Parcourir des centaines de palettes"],
     "UfW9Kr": [
       "Vos requêtes de recherche et le texte intégral des pages correspondantes sont envoyés à votre fournisseur d'embeddings (OpenAI par défaut) pour calculer les embeddings."
     ],
@@ -2489,6 +2517,7 @@
     ],
     "W8vpBM": ["pack de démarrage"],
     "W9_Bub": ["Les modifications locales chevauchent la synchronisation entrante"],
+    "WBNpt9": ["Impossible de lire ce thème (", ["0"], ")"],
     "WFEbV1": [
       "Signale les problèmes markdown courants dans l'éditeur. Propulsé par <0>markdownlint<1/></0>."
     ],
@@ -2625,6 +2654,7 @@
     "Y9c_nf": ["0/0"],
     "YBt9YP": ["Bêta"],
     "YC6_wP": ["Modifier ", ["keyName"]],
+    "YCmS3k": [["0"], " a été supprimé."],
     "YDL7N6": [
       "Les plugins de vérification — quelles familles de règles s'exécutent et leurs réglages par règle — se configurent dans leur propre onglet sous Ce projet → Plugins."
     ],
@@ -2663,6 +2693,7 @@
     "YaeyFh": [
       "Les tirages peuvent écraser des modifications non validées dans vos fichiers locaux."
     ],
+    "Yb82LN": ["ID : ", ["0"]],
     "Yea-K5": ["Restaurer à ce point"],
     "Yi0VMG": ["Envoyer ", ["keyName"]],
     "YjMLg2": [
@@ -2747,6 +2778,7 @@
     "ZYtq3m": [
       "Connectez les outils IA que vous utilisez à ce projet précis. Ces fichiers résident dans le dossier du projet, donc toute personne qui l'ouvre obtient la même configuration."
     ],
+    "Z_nNa2": ["Nommez votre thème"],
     "ZatAO_": ["Échec de l'activation des aperçus de liens — ", ["detail"]],
     "Zf0w-R": [
       "Faites passer un texte de l'idée brute au brouillon achevé, puis à quelque chose que vous êtes prêt à partager. Utile pour les articles de blog, les essais, ou tout ce que vous voulez faire avancer par étapes claires."
@@ -2786,11 +2818,13 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_DwR-n": ["Création…"],
     "_FLBbi": [["sizeText"], " · secrets masqués · vidage de plantage non masqué"],
     "_GRWOJ": ["Changer de fournisseur d'embeddings ?"],
     "_HgF9q": ["Trier par"],
     "_IGfXZ": ["OpenKnowledge s'est arrêté de façon inattendue la dernière fois."],
     "_IX_7x": ["Autre"],
+    "_IfSZn": ["Un thème enregistré utilise déjà ce nom."],
     "_JOGC0": ["Envoyer un retour…"],
     "_LczaQ": ["Refusé — ", ["optionName"]],
     "_NWEid": ["Rechercher des fichiers de schéma par chemin"],
@@ -2927,7 +2961,6 @@
     "b6Fgpe": ["Chaque pack équipe votre projet de dossiers et de modèles prêts à l'emploi."],
     "bBE5tC": ["Détecté sur cette machine"],
     "bBcFK_": ["Ouvrir le sélecteur d'émojis de ", ["keyName"]],
-    "bD2SLZ": ["Palette copiée au format YAML base16"],
     "bD8I7O": ["Terminé"],
     "bEp7UY": ["Non connecté au pont de bureau"],
     "bF22t6": ["Retirer le champ ", ["field"]],
@@ -3003,6 +3036,7 @@
     "cIptmH": ["Dans l'application Claude Desktop"],
     "cKjLuT": ["(projet + utilisateur)"],
     "cLP0Lf": ["Source de compétence distante"],
+    "cLn264": ["Impossible de lire ce fichier de thème"],
     "cMMb6H": [["imported"], " installées, mais ", ["failed"], " ont échoué : ", ["failedNames"]],
     "cN1Gcp": ["Un dossier de worktree pour ", ["shareBranch"], " existe déjà."],
     "cOJyVj": ["Désactiver les thèmes"],
@@ -3024,6 +3058,7 @@
       ]
     ],
     "cUk6TF": ["Échec de la synchronisation — consultez les journaux du serveur pour les détails."],
+    "cUt8yN": ["Les modifications sont enregistrées automatiquement."],
     "cV7LOw": ["Wiki d'équipe"],
     "cVKnqL": ["Impossible de lire les commentaires en attente d'envoi : ", ["0"]],
     "cZGNlb": ["Ajouter un autre motif"],
@@ -3071,6 +3106,7 @@
     "cstC0z": ["Motif (expression régulière)"],
     "ct2kv5": ["Aucun titre dans ", ["pageTarget"]],
     "cuA8QW": ["Organiser les spécifications"],
+    "cuHhjo": ["Créer et modifier"],
     "d-GtJt": ["Afficher dans la source Markdown"],
     "d1JjXo": [
       "Votre copie locale de la branche <0>",
@@ -3206,6 +3242,7 @@
         }
       ]
     ],
+    "ekSPiP": [["0"], " a déjà été supprimé."],
     "el2KyL": ["Slidev trouvé dans ce projet. Les diaporamas utiliseront la version du projet."],
     "emMrXQ": ["Le serveur a renvoyé une réponse de duplication mal formée."],
     "emgiet": ["Contenu faisant autorité ; reproduit tel quel partout où il est référencé."],
@@ -3290,6 +3327,7 @@
       "<0>Vous avez autre chose à ajouter ?</0> Écrivez à <1/> en mentionnant votre référence."
     ],
     "fxbCNQ": ["Synchronisé. Le lien est à jour."],
+    "g12y1g": ["YAML non valide"],
     "g1ZTh_": [
       [
         "count",
@@ -3395,7 +3433,6 @@
       "Ce document n'est pas encore synchronisé avec GitHub. Le lien fonctionnera après la prochaine synchronisation."
     ],
     "gyHDWC": ["Tout corriger avec l'IA (", ["count"], ")"],
-    "gyWc8_": ["Accents"],
     "h-AdvS": ["Les dossiers et les modèles sont déjà là, il n'y a donc rien à ajouter."],
     "h06R3C": ["Aucune page ne manque de liens sortants dans le graphe."],
     "h16FyT": ["Listes"],
@@ -3417,6 +3454,7 @@
     "hDEaQu": ["Connectez OpenKnowledge aux autres outils que vous utilisez."],
     "hDKtoF": ["il y a ", ["diffHrs"], " h"],
     "hDoLrm": ["Retirer ", ["projectName"], " des projets récents"],
+    "hFmYGU": ["Les fichiers de thème liés ne sont pas pris en charge"],
     "hGmuTc": ["Documents étiquetés #", ["tagDocsName"]],
     "hHMv6l": ["Supprimer le bloc"],
     "hHR0tt": ["Nouveau chat avec ", ["0"]],
@@ -3430,6 +3468,9 @@
     "hSBIG-": ["Un titre, une description, des étiquettes — tout ce qui décrit ce dossier."],
     "hSySVc": ["Échec du transfert d'installation : ", ["msg"]],
     "hVAkI8": ["Exécuter dans le terminal"],
+    "hVzt9x": [
+      "Impossible de charger les thèmes enregistrés. La dernière liste de thèmes disponible reste affichée."
+    ],
     "hXUWyd": ["Une valeur est obligatoire"],
     "hXbSxc": ["Ressource : ", ["title"]],
     "hY8pka": ["Sélectionner l'occurrence suivante"],
@@ -3439,6 +3480,7 @@
     "haHgQj": ["Chemin relatif copié"],
     "habOU_": ["Échec de la mise à jour du réglage d'approbation automatique — ", ["detail"]],
     "he3ygx": ["Copier"],
+    "hgF0al": ["Utiliser ", ["0"], " pour le mode clair actif"],
     "hgtsat": ["Échec de la suppression de ", ["file"]],
     "hh4mVC": ["Demander à l'IA de corriger ", ["flatId"]],
     "hhI__i": ["Voulez-vous vraiment supprimer « ", ["name"], " » et son contenu ?"],
@@ -3699,6 +3741,7 @@
     "k_pade": [
       "La configuration est maintenant partagée. Validez les fichiers OK pour les partager avec votre équipe."
     ],
+    "k_tFzX": ["Le nom du thème est manquant"],
     "k_yIIc": ["Sera créé dans : <0>", ["targetPreview"], "</0>"],
     "ka6Eke": ["Ouvrir le fichier sur le disque"],
     "kdzzOK": [
@@ -3712,6 +3755,7 @@
     "khCa4M": ["Apprend aux agents de code de ce projet à lire et écrire via OpenKnowledge."],
     "kj9pAE": ["Création de la page"],
     "kknhfj": ["Aucune modification"],
+    "kkux8f": ["Impossible de supprimer ", ["0"], ". Réessayez."],
     "klPS-L": ["Fichier d'origine — avant les modifications de cet agent."],
     "kmKqZg": ["Groupes"],
     "knjOzA": ["Valeur de l'étiquette"],
@@ -3727,6 +3771,7 @@
     "kwLcuN": [
       "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Choisissez ci-dessous ce qu'il faut configurer, et modifiez-le à tout moment dans Paramètres > Outils IA et CLI."
     ],
+    "kwNS82": ["Ce thème ne peut pas être utilisé tant que le fichier n’est pas corrigé."],
     "ky9Tuc": ["Modifier la source de ", ["0"]],
     "kzpkcn": ["Impossible d'enregistrer cette modification."],
     "l-4nnw": ["Rechercher des règles"],
@@ -3774,6 +3819,7 @@
       "Un chemin à l'intérieur de la compétence — n'importe quel dossier convient (par ex. references/notes.md). Les dossiers du chemin sont créés pour vous."
     ],
     "lPzyrU": ["Tous les blocs sont résolus"],
+    "lS83Sg": ["Impossible d’accéder au presse-papiers."],
     "lScd1O": [
       "Les diaporamas Slidev s'ouvrent uniquement dans l'application de bureau OpenKnowledge."
     ],
@@ -3944,6 +3990,7 @@
     "nNYV3Y": ["et ", ["remaining"], " de plus"],
     "nOEDQs": ["Échec de la mise à jour du mode de synchronisation — ", ["detail"]],
     "nP-KFo": ["Nouvelle discussion ", ["0"]],
+    "nTM8ab": ["Donnez-lui un nom avant de modifier ses couleurs."],
     "nTwL53": ["Ouvrez un document pour partager son URL."],
     "nUNZL4": ["Demander à ", ["0"]],
     "nWv1ja": ["Gérez les fichiers masqués dans Paramètres → Motifs d'exclusion."],
@@ -3991,6 +4038,7 @@
       "L'identité git n'est pas définie — les commits utilisent un auteur par défaut. Définissez la vôtre pour que vos coéquipiers voient votre nom."
     ],
     "nrXDdR": ["Nom du champ"],
+    "nsM-_m": ["Parcourir des centaines de thèmes"],
     "nsUDL8": [["0"], " projet(s) sélectionné(s) sur ", ["1"]],
     "nskygk": ["Choisir un agent"],
     "nwtY4N": ["Une erreur s'est produite"],
@@ -4031,6 +4079,7 @@
     "oYepHb": [
       "Le terminal est désactivé pour ce projet. Réactivez-le pour exécuter des commandes ici."
     ],
+    "oZUYMv": ["Impossible de restaurer ", ["0"], ". Ce nom est déjà utilisé."],
     "of3tF-": [
       "Vous avez choisi ~/Documents. OpenKnowledge indexera chaque fichier markdown qui s'y trouve. Si vous ne voulez gérer qu'un sous-dossier, choisissez une portée plus restreinte."
     ],
@@ -4063,6 +4112,7 @@
       ["0"],
       " — quelque chose en dehors d'OK l'a modifié depuis. L'état affiché est celui du disque maintenant ; votre prochain Lien symbolique/Dissocier l'emportera."
     ],
+    "p7Utw8": ["Ce n’est pas un thème base16"],
     "p98xmP": ["S'applique à"],
     "p9sdCy": ["Nouveau motif d'exclusion"],
     "pA16WG": ["Ce projet n'a aucun dépôt distant GitHub."],
@@ -4176,6 +4226,7 @@
     "qNOgUu": [
       "Les modifications faites à la source arrivent ici — aucune dérive due au copier-coller."
     ],
+    "qQi_um": ["Thème importé."],
     "qRZh7J": ["Laisser la touche Tab quitter l'éditeur de source au lieu d'ajouter un retrait."],
     "qSKu2v": ["Navigation et sélection dans la source"],
     "qSxaOz": ["Accepter leur suppression"],
@@ -4232,6 +4283,7 @@
     "qo4zCg": ["Le chemin ne peut pas contenir d'antislash"],
     "qpQwGC": ["Décrivez ce sur quoi vous travaillez et l'agent le met en place pour vous."],
     "qribBG": ["schéma ", ["deleteTarget"]],
+    "qtnmEX": ["Saisissez un nom de thème valide."],
     "qvWGzP": ["Tout réduire"],
     "qyLmWw": ["Panneau de recherche de l'éditeur de source"],
     "r-OJYm": [
@@ -4259,6 +4311,9 @@
     "rFmBG3": ["Thème de couleurs"],
     "rFw02Q": ["Envoi de ", ["keyName"]],
     "rJVoVX": ["Résultats de recherche dans la source"],
+    "rJm8-2": [
+      "Impossible d’accéder au presse-papiers — le thème se trouve dans la zone ci-dessous."
+    ],
     "rNifQd": ["Retirer la propriété"],
     "rQAQus": ["Impossible d'enregistrer le modèle : ", ["error"]],
     "rQRrkB": ["hier"],
@@ -4333,7 +4388,6 @@
     "sJK6pq": ["Permission refusée"],
     "sJWhgo": ["Composant inconnu : ", ["unregisteredComponentName"]],
     "sKEgGd": ["Envoyer dans la discussion"],
-    "sKMhJz": ["De l'arrière-plan vers le premier plan"],
     "sLcbHt": [
       "Liez un autre dossier à l'un de ceux-ci pour que les deux agents lisent les mêmes compétences ; dissociez pour gérer à nouveau les compétences d'un dossier une par une."
     ],
@@ -4529,6 +4583,7 @@
     "ur2XSb": ["Éditeur visuel"],
     "uuoHOU": ["La commande a échoué."],
     "uyJsf6": ["À propos"],
+    "uyOQ4e": ["Thème copié au format YAML base16"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "many": ["tokens"], "other": ["tokens"] }]],
     "v-h2hx": ["Supprimer ", ["targetGitPath"]],
     "v2ZW0K": ["Activer le terminal"],
@@ -4666,6 +4721,7 @@
     "wXw19Y": ["« ", ["projectName"], " » retiré des projets récents. Son dossier n'existe plus."],
     "wZPUJx": ["« ", ["0"], " »"],
     "w_Sphq": ["Pièces jointes"],
+    "wbMbiY": ["Copie de ", ["selectedSlot"], " effectuée"],
     "wbpoGe": ["Impossible d'installer la compétence OpenKnowledge : ", ["message"]],
     "wbv9xO": ["Créer un projet"],
     "wc54KE": ["Essai en cours…"],
@@ -4888,6 +4944,7 @@
     "zL0LPh": ["Global, hors champs de texte"],
     "zLGXna": ["Aucun pack de démarrage disponible."],
     "zLak8b": ["Activer le nouvel onglet"],
+    "zMmwh4": ["Choisissez un thème ou créez le vôtre."],
     "zQBg2C": ["Déplace le bloc courant d'une position vers le haut ou vers le bas."],
     "zXj1rA": ["Rechercher par le sens"],
     "zYp8Sr": [

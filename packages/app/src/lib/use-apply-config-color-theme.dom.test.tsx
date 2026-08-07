@@ -1,6 +1,11 @@
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, test } from 'vitest';
-import type { ColorThemeSelection } from './color-themes';
+import {
+  COLOR_THEMES,
+  type ColorTheme,
+  type ColorThemeSelection,
+  DEFAULT_CUSTOM_SCHEME,
+} from './color-themes';
 import {
   type ApplyColorThemeInput,
   applyColorThemeToDom,
@@ -9,6 +14,7 @@ import {
   COLOR_THEME_STORAGE_KEY,
   CUSTOM_THEME_STORAGE_KEY,
   CUSTOM_THEME_STYLE_ID,
+  SAVED_THEME_STYLE_ID,
   useApplyConfigColorTheme,
 } from './use-apply-config-color-theme';
 
@@ -32,8 +38,8 @@ function apply(input: Partial<ApplyColorThemeInput> & { selection: ColorThemeSel
 
 function readSelectionCache(): {
   pref?: string;
-  light?: { id: string; dark: boolean };
-  dark?: { id: string; dark: boolean };
+  light?: { id: string; dark: boolean; css?: string };
+  dark?: { id: string; dark: boolean; css?: string };
 } {
   return JSON.parse(localStorage.getItem(COLOR_THEME_PAIR_STORAGE_KEY) ?? '{}');
 }
@@ -42,16 +48,22 @@ function Harness({
   selection,
   slotMode = 'dark',
   enabled,
+  themes,
+  ready,
 }: {
   selection: ColorThemeSelection;
   slotMode?: 'light' | 'dark';
   enabled?: boolean;
+  themes?: readonly ColorTheme[];
+  ready?: boolean;
 }) {
   useApplyConfigColorTheme({
     selection,
     modePreference: slotMode,
     slotMode,
     enabled: enabled ?? true,
+    themes,
+    ready,
   });
   return null;
 }
@@ -70,6 +82,7 @@ function CustomHarness({ enabled }: { enabled: boolean }) {
 function resetDom(): void {
   document.documentElement.removeAttribute(COLOR_THEME_ATTRIBUTE);
   document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
+  document.getElementById(SAVED_THEME_STYLE_ID)?.remove();
   try {
     localStorage.removeItem(COLOR_THEME_PAIR_STORAGE_KEY);
     localStorage.removeItem(COLOR_THEME_STORAGE_KEY);
@@ -94,6 +107,45 @@ describe('useApplyConfigColorTheme', () => {
     expect(document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE)).toBe('dracula');
     rerender(<Harness selection={selection} slotMode="light" />);
     expect(document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE)).toBe('catppuccin-latte');
+  });
+
+  test('an OS-driven mode flip applies each saved palette assigned to its slot', () => {
+    const themes: readonly ColorTheme[] = [
+      ...COLOR_THEMES,
+      {
+        id: 'saved-day',
+        label: 'Day',
+        kind: 'light',
+        scheme: {
+          ...DEFAULT_CUSTOM_SCHEME,
+          name: 'Day',
+          variant: 'light',
+          palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#fafafa' },
+        },
+      },
+      {
+        id: 'saved-night',
+        label: 'Night',
+        kind: 'dark',
+        scheme: {
+          ...DEFAULT_CUSTOM_SCHEME,
+          name: 'Night',
+          palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#08090a' },
+        },
+      },
+    ];
+    const selection: ColorThemeSelection = { light: 'saved-day', dark: 'saved-night' };
+
+    const { rerender } = render(<Harness selection={selection} slotMode="light" themes={themes} />);
+    expect(document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE)).toBe('saved-day');
+    expect(document.head.textContent).toContain('--background: #fafafa;');
+    expect(readSelectionCache().light?.css).toContain('--background: #fafafa;');
+    expect(readSelectionCache().dark?.css).toContain('--background: #08090a;');
+
+    rerender(<Harness selection={selection} slotMode="dark" themes={themes} />);
+    expect(document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE)).toBe('saved-night');
+    expect(document.head.textContent).toContain('--background: #08090a;');
+    expect(document.head.textContent).not.toContain('--background: #fafafa;');
   });
 
   test('caches BOTH slots, so a reload landing in the other mode still pre-paints', () => {
@@ -142,6 +194,27 @@ describe('useApplyConfigColorTheme', () => {
     render(<Harness selection={both('not-a-real-theme' as ColorThemeSelection['light'])} />);
     expect(document.documentElement.hasAttribute(COLOR_THEME_ATTRIBUTE)).toBe(false);
   });
+
+  test('preserves the prepaint palette until startup config and saved themes are ready', () => {
+    document.documentElement.setAttribute(COLOR_THEME_ATTRIBUTE, 'saved-prepaint');
+    const style = document.createElement('style');
+    style.id = SAVED_THEME_STYLE_ID;
+    style.textContent = 'html[data-color-theme="saved-prepaint"] { --background: #123456; }';
+    document.head.appendChild(style);
+
+    render(
+      <Harness
+        selection={both('saved-prepaint' as ColorThemeSelection['light'])}
+        themes={COLOR_THEMES}
+        ready={false}
+      />,
+    );
+
+    expect(document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE)).toBe('saved-prepaint');
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)?.textContent).toContain(
+      '--background: #123456;',
+    );
+  });
 });
 
 describe('useApplyConfigColorTheme — Themes plugin disabled', () => {
@@ -170,7 +243,8 @@ describe('useApplyConfigColorTheme — Themes plugin disabled', () => {
   test('disabling removes the custom <style> and both FOUC mirror entries', () => {
     const { rerender } = render(<CustomHarness enabled />);
     expect(document.getElementById(CUSTOM_THEME_STYLE_ID)).not.toBeNull();
-    expect(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY)).not.toBeNull();
+    expect(readSelectionCache().dark?.css).toContain('--background: #101014;');
+    expect(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY)).toBeNull();
 
     rerender(<CustomHarness enabled={false} />);
     expect(document.documentElement.hasAttribute(COLOR_THEME_ATTRIBUTE)).toBe(false);
@@ -207,6 +281,21 @@ describe('applyColorThemeToDom', () => {
     expect(localStorage.getItem(COLOR_THEME_STORAGE_KEY)).toBeNull();
   });
 
+  test('retires the previous custom stylesheet cache after writing the self-contained pair', () => {
+    localStorage.setItem(
+      CUSTOM_THEME_STORAGE_KEY,
+      JSON.stringify({ css: 'legacy custom css', dark: true }),
+    );
+
+    apply({
+      selection: both('custom'),
+      customSeed: { background: '#0a0a0a' },
+    });
+
+    expect(readSelectionCache().dark?.css).toContain('--background: #0a0a0a;');
+    expect(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY)).toBeNull();
+  });
+
   test('a default slot caches the mode it resolves to, so pre-paint needs no palette table', () => {
     // `default` carries no palette, so its cached flag is just the slot's own
     // mode — which is what lets the pre-paint script set the `dark` class
@@ -234,9 +323,10 @@ describe('applyColorThemeToDom — custom palette', () => {
     expect(style?.textContent).toContain('--background: #0a0a0a;');
     expect(style?.textContent).toContain('--primary: #abcdef;');
 
-    const cached = JSON.parse(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY) ?? '{}');
-    expect(cached.css).toContain('--background: #0a0a0a;');
-    expect(cached.dark).toBe(true);
+    const cached = readSelectionCache();
+    expect(cached.light?.css).toContain('--background: #0a0a0a;');
+    expect(cached.dark?.css).toContain('--background: #0a0a0a;');
+    expect(cached.dark?.dark).toBe(true);
   });
 
   test('caches the custom CSS while custom sits in the OTHER slot, without injecting it', () => {
@@ -249,7 +339,7 @@ describe('applyColorThemeToDom — custom palette', () => {
     });
     expect(document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE)).toBe('dracula');
     expect(document.getElementById(CUSTOM_THEME_STYLE_ID)).toBeNull();
-    expect(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY)).not.toBeNull();
+    expect(readSelectionCache().light?.css).toContain('--background: #0a0a0a;');
   });
 
   test('dropping custom from both slots removes the <style> and the cache', () => {
@@ -268,7 +358,6 @@ describe('applyColorThemeToDom — custom palette', () => {
     });
     const style = document.getElementById(CUSTOM_THEME_STYLE_ID);
     expect(style?.textContent).toContain('color-scheme: light;');
-    const cached = JSON.parse(localStorage.getItem(CUSTOM_THEME_STORAGE_KEY) ?? '{}');
-    expect(cached.dark).toBe(false);
+    expect(readSelectionCache().dark?.dark).toBe(false);
   });
 });

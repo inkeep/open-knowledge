@@ -1,10 +1,9 @@
 /**
  * IDE color-theme plugin registry — the single source of truth for the built-in
- * palettes the Settings → Preferences picker offers, and the source the
- * `appearance.colorThemeLight` / `colorThemeDark` config enums (and the retired
- * single `colorTheme`) are DERIVED from (`THEME_PLUGIN_IDS`, see
- * `config/schema.ts`). Lives in `core` (not `app`) precisely so the config
- * schema can derive its enum from the registry — `core` can't import `app`.
+ * palettes the Settings → Preferences picker offers. Config accepts the open,
+ * shape-constrained id grammar declared below so user-owned saved themes can
+ * participate without extending this registry. This lives in `core` (not
+ * `app`) so config validation and app resolution share the same contracts.
  *
  * This mirrors the content-rules `LintPlugin<Id, Slice>` registry: each entry is
  * a self-describing descriptor (`ThemePlugin`) the host iterates, and a plugin's
@@ -33,7 +32,7 @@ import { type Base16Scheme, base16ToTokens } from './base16.ts';
  * descriptor rather than branching per-theme.
  */
 export interface ThemePlugin<Id extends string = string> {
-  /** Config value under `appearance.colorTheme`, and the picker tile key. */
+  /** Palette id used by appearance config and picker tiles. */
   id: Id;
   /** Display name. A brand proper-noun (Dracula, Nord, …) — intentionally not translated. */
   label: string;
@@ -234,16 +233,132 @@ export const THEME_PLUGINS = [
 export type ThemePluginId = (typeof THEME_PLUGINS)[number]['id'];
 
 /**
- * The theme ids as a non-empty tuple, DERIVED from the registry, for `z.enum` in
- * `config/schema.ts`. This is what makes `appearance.colorTheme` follow the
- * registry: add a `ThemePlugin` and the config enum grows with no schema edit
- * (the coupling the old hand-listed enum carried). The cast supplies the tuple
- * shape `z.enum` needs; the literal members come from the registry.
+ * The built-in theme ids as a non-empty tuple derived from the registry.
+ * Config metadata uses this list for built-in suggestions while validation
+ * remains open to any id admitted by `THEME_ID_PATTERN`.
  */
 export const THEME_PLUGIN_IDS = THEME_PLUGINS.map((t) => t.id) as [
   ThemePluginId,
   ...ThemePluginId[],
 ];
+
+/**
+ * The grammar every theme id must satisfy: lowercase letters, digits, and
+ * hyphens, 1–32 characters. The config fields that name a palette
+ * (`appearance.colorThemeLight` / `colorThemeDark` / the retired `colorTheme`)
+ * are shape-constrained to this rather than to a closed set of built-in ids, so
+ * a palette the built-in registry has never heard of — a user's saved theme —
+ * validates and resolves to `default` at read time instead of failing
+ * whole-config validation and discarding every other user preference.
+ *
+ * The FOUC pre-paint script inlined in `packages/app/index.html` validates ids
+ * against this exact shape but can't import it (it runs before any bundle
+ * loads), so it hardcodes the pattern. The two MUST stay identical — a palette
+ * config accepts but pre-paint rejects would flash unstyled on reload — and a
+ * drift test in the app pins the inline copy to this source.
+ */
+export const THEME_ID_PATTERN = /^[a-z0-9-]{1,32}$/;
+
+/**
+ * Reserved prefix that namespaces a saved theme's palette id. A built-in id must
+ * never begin with it (a registry-invariant test enforces this), so a saved
+ * theme can never shadow a built-in and resolution order never has to arbitrate
+ * between the two.
+ *
+ * The prefix is itself `[a-z0-9-]`, so `saved-<stem>` stays admissible to
+ * `THEME_ID_PATTERN` — the config fields and the FOUC pre-paint script keep
+ * validating against the one grammar with no namespace separator to learn.
+ */
+export const SAVED_THEME_ID_PREFIX = 'saved-';
+
+/** Why a filename stem (or a proposed save name) could not become a saved-theme id. */
+export type SavedThemeIdError = 'empty' | 'too-long' | 'invalid-chars';
+
+export type SavedThemeIdResult = { ok: true; id: string } | { ok: false; code: SavedThemeIdError };
+
+export type SavedThemeNameResult =
+  | { ok: true; name: string; stem: string; id: string }
+  | { ok: false; code: 'empty' };
+
+const SAVED_THEME_STEM_MAX_LENGTH = 32 - SAVED_THEME_ID_PREFIX.length;
+const COMBINING_MARK_RE = /\p{M}+/gu;
+const APOSTROPHE_RE = /['\u2019\u02bc]+/gu;
+const NON_ASCII_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+
+function savedThemeNameHash(name: string): string {
+  let hash = 0x811c9dc5;
+  for (const character of name) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * Turn a human-facing theme name into its safe filename identity while keeping
+ * the display name intact. Common punctuation becomes word boundaries, while
+ * apostrophes disappear so "John's theme" maps naturally to `johns-theme`.
+ * Names that cannot fit the storage grammar receive a stable hash suffix rather
+ * than being refused or silently colliding through plain truncation.
+ */
+export function deriveSavedThemeName(name: string): SavedThemeNameResult {
+  const displayName = name.trim();
+  if (displayName.length === 0) return { ok: false, code: 'empty' };
+
+  const slug = displayName
+    .normalize('NFKD')
+    .replace(COMBINING_MARK_RE, '')
+    .toLowerCase()
+    .replace(APOSTROPHE_RE, '')
+    .replace(NON_ASCII_ALPHANUMERIC_RE, '-')
+    .replace(/^-+|-+$/g, '');
+  const hash = savedThemeNameHash(displayName);
+  const stem =
+    slug.length === 0
+      ? `theme-${hash}`
+      : slug.length <= SAVED_THEME_STEM_MAX_LENGTH
+        ? slug
+        : `${slug.slice(0, SAVED_THEME_STEM_MAX_LENGTH - hash.length - 1).replace(/-+$/g, '')}-${hash}`;
+  const derived = deriveSavedThemeId(stem);
+  if (!derived.ok) throw new Error('Saved theme name derivation produced an invalid id');
+  return { ok: true, name: displayName, stem, id: derived.id };
+}
+
+/**
+ * Derive a saved theme's palette id from a filename stem:
+ * `SAVED_THEME_ID_PREFIX` + stem, admitted only if the whole id satisfies
+ * `THEME_ID_PATTERN`. A stem that overflows the id's length budget, or carries
+ * characters outside the grammar, is REFUSED with a distinguishing code — never
+ * truncated or rewritten to fit. The caller lists such a file in an error state
+ * when scanning a hand-dropped file. User-facing names route through
+ * `deriveSavedThemeName` instead.
+ */
+export function deriveSavedThemeId(stem: string): SavedThemeIdResult {
+  if (stem.length === 0) return { ok: false, code: 'empty' };
+  const id = SAVED_THEME_ID_PREFIX + stem;
+  if (THEME_ID_PATTERN.test(id)) return { ok: true, id };
+  // The grammar rejected it; name the fixable cause. A well-formed-but-overlong
+  // id passes the character class and fails only the length bound, so a clean
+  // charset match localizes the fault to length; anything else is stray characters.
+  return { ok: false, code: /^[a-z0-9-]+$/.test(id) ? 'too-long' : 'invalid-chars' };
+}
+
+/**
+ * Recover a saved theme's filename stem from its palette id — the inverse of
+ * `deriveSavedThemeId`. Succeeds only for a well-formed saved-theme id: it must
+ * satisfy `THEME_ID_PATTERN`, carry the `SAVED_THEME_ID_PREFIX`, and leave a
+ * non-empty stem after the prefix. A built-in id (no prefix) or a bare `saved-`
+ * (empty stem) yields `{ ok: false }`. Because the stem is `[a-z0-9-]+` by
+ * construction, callers may use it as a filename segment without further
+ * path-safety escaping.
+ */
+export function parseSavedThemeId(id: string): { ok: true; stem: string } | { ok: false } {
+  if (!THEME_ID_PATTERN.test(id)) return { ok: false };
+  if (!id.startsWith(SAVED_THEME_ID_PREFIX)) return { ok: false };
+  const stem = id.slice(SAVED_THEME_ID_PREFIX.length);
+  if (stem.length === 0) return { ok: false };
+  return { ok: true, stem };
+}
 
 const THEME_PLUGIN_BY_ID = new Map<string, ThemePlugin>(THEME_PLUGINS.map((t) => [t.id, t]));
 
@@ -267,15 +382,14 @@ export function colorThemeMode(id: string | undefined): 'light' | 'dark' | undef
   return kind === 'system' ? undefined : kind;
 }
 
-/** The palette to apply in each light/dark mode — one theme id per mode. */
+/**
+ * The palette to apply in each light/dark mode — one theme id per mode. The id
+ * is a shape-constrained string, not the closed built-in set: the config fields
+ * it is read from accept a user's saved-theme id too.
+ */
 export interface ColorThemeSelection {
-  light: ThemePluginId;
-  dark: ThemePluginId;
-}
-
-/** Narrow an arbitrary config value to a known theme id. */
-function isThemePluginId(value: unknown): value is ThemePluginId {
-  return typeof value === 'string' && THEME_PLUGIN_BY_ID.has(value);
+  light: string;
+  dark: string;
 }
 
 /** The `appearance` fields the selection is resolved from. */
@@ -294,14 +408,21 @@ export interface ColorThemeSelectionInput {
  * and — because a palette still forces its own variant — the app renders exactly
  * what it rendered before the pair existed. A half-written pair (one slot only)
  * falls back per-slot rather than discarding the other.
+ *
+ * Callers resolving saved-theme ids must pass the complete merged registry;
+ * the default registry contains built-in themes only.
  */
 export function resolveColorThemeSelection(
   appearance: ColorThemeSelectionInput | undefined,
+  themes: readonly ThemePlugin[] = THEME_PLUGINS,
 ): ColorThemeSelection {
+  const availableIds = new Set(themes.map((theme) => theme.id));
   const legacy = appearance?.colorTheme;
-  const fallback: ThemePluginId = isThemePluginId(legacy) ? legacy : THEME_PLUGINS[0].id;
-  const pick = (value: string | undefined): ThemePluginId =>
-    isThemePluginId(value) ? value : fallback;
+  const fallback = legacy && availableIds.has(legacy) ? legacy : THEME_PLUGINS[0].id;
+  const pick = (value: string | undefined): string => {
+    if (value === undefined) return fallback;
+    return availableIds.has(value) ? value : THEME_PLUGINS[0].id;
+  };
   return {
     light: pick(appearance?.colorThemeLight),
     dark: pick(appearance?.colorThemeDark),

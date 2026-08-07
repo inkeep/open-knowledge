@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BASE16_SLOTS, ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
+import {
+  BASE16_SLOTS,
+  ConfigSchema,
+  resolveLeafSchema,
+  THEME_ID_PATTERN,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { getEnumOptions } from '../components/settings/schema-walker';
 import {
   base16ToTokens,
   buildCustomThemeCss,
@@ -25,8 +29,8 @@ import {
 import {
   COLOR_THEME_PAIR_STORAGE_KEY,
   COLOR_THEME_STORAGE_KEY,
-  CUSTOM_THEME_STORAGE_KEY,
   CUSTOM_THEME_STYLE_ID,
+  SAVED_THEME_STYLE_ID,
 } from './use-apply-config-color-theme';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -73,6 +77,11 @@ describe('color-themes registry', () => {
     expect(resolveColorTheme(undefined).id).toBe('default');
     expect(resolveColorTheme('not-a-theme').id).toBe('default');
     expect(resolveColorTheme('dracula').id).toBe('dracula');
+  });
+
+  test('resolveColorTheme remains safe when a caller supplies a partial live registry', () => {
+    expect(resolveColorTheme('dracula', [])).toMatchObject({ id: 'dracula', kind: 'dark' });
+    expect(resolveColorTheme('not-a-theme', [])).toMatchObject({ id: 'default', kind: 'system' });
   });
 
   test('isDarkColorTheme is true for dark IDE themes, false for default and light themes', () => {
@@ -184,11 +193,30 @@ describe('generated stylesheet', () => {
 });
 
 describe('registry stays in sync with its consumers', () => {
-  test('ids match every appearance palette enum in ConfigSchema', () => {
+  test('every appearance palette field admits any grammar-valid id, not a closed set', () => {
+    // These fields are shape-constrained strings, not closed enums — that is
+    // what lets a saved theme (an id the built-in registry has never heard of)
+    // be assigned without failing whole-config validation. The invariant this
+    // guards: every built-in id still validates, an id inside the grammar but
+    // outside the registry validates, and a string outside the grammar is
+    // refused so config and the pre-paint validator stay aligned.
     for (const field of ['colorTheme', 'colorThemeLight', 'colorThemeDark']) {
-      const leaf = resolveLeafSchema(ConfigSchema, ['appearance', field]);
-      const enumOptions = leaf ? getEnumOptions(leaf) : undefined;
-      expect([...(enumOptions ?? [])].sort(), field).toEqual(COLOR_THEMES.map((t) => t.id).sort());
+      for (const id of COLOR_THEMES.map((t) => t.id)) {
+        expect(
+          ConfigSchema.safeParse({ appearance: { [field]: id } }).success,
+          `${field}=${id}`,
+        ).toBe(true);
+      }
+      expect(
+        ConfigSchema.safeParse({ appearance: { [field]: 'saved-my-personal-theme' } }).success,
+        `${field}=saved id`,
+      ).toBe(true);
+      for (const bad of ['Not A Theme', 'UPPER', 'has_underscore', 'a'.repeat(33)]) {
+        expect(
+          ConfigSchema.safeParse({ appearance: { [field]: bad } }).success,
+          `${field}=${bad}`,
+        ).toBe(false);
+      }
     }
   });
 
@@ -199,8 +227,8 @@ describe('registry stays in sync with its consumers', () => {
     for (const key of [
       COLOR_THEME_PAIR_STORAGE_KEY,
       COLOR_THEME_STORAGE_KEY,
-      CUSTOM_THEME_STORAGE_KEY,
       CUSTOM_THEME_STYLE_ID,
+      SAVED_THEME_STYLE_ID,
     ]) {
       expect(html, key).toContain(`'${key}'`);
     }
@@ -218,10 +246,18 @@ describe('registry stays in sync with its consumers', () => {
     }
   });
 
-  test('custom is registered as a tile and accepted by the schema enum', () => {
+  test('custom is registered as a tile and accepted by the palette fields', () => {
     expect(COLOR_THEMES.some((t) => t.id === 'custom')).toBe(true);
-    const leaf = resolveLeafSchema(ConfigSchema, ['appearance', 'colorTheme']);
-    expect([...(leaf ? (getEnumOptions(leaf) ?? []) : [])]).toContain('custom');
+    expect(ConfigSchema.safeParse({ appearance: { colorTheme: 'custom' } }).success).toBe(true);
+  });
+
+  test('the pre-paint FOUC script validates ids with the config fields grammar', () => {
+    // index.html can't import a module, so its inline id check hardcodes the
+    // grammar. If the two drift, a palette config accepts could fail to
+    // pre-paint (flash of unstyled content) — so the inline source must carry
+    // THEME_ID_PATTERN verbatim.
+    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
+    expect(html).toContain(THEME_ID_PATTERN.source);
   });
 
   test('every base16 slot is settable under appearance.customTheme', () => {

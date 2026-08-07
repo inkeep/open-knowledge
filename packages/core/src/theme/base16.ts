@@ -108,6 +108,12 @@ export interface Base16Scheme {
 }
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const HAS_NON_WHITESPACE_RE = /\P{White_Space}/u;
+
+/** True when a metadata scalar is not solely Unicode White_Space characters. */
+export function containsNonWhitespace(value: string): boolean {
+  return HAS_NON_WHITESPACE_RE.test(value);
+}
 
 export function isBase16Hex(value: unknown): value is string {
   return typeof value === 'string' && HEX_RE.test(value);
@@ -260,7 +266,12 @@ function kebab(name: string): string {
 
 /** Double-quoted YAML scalar — the one form that needs no context to be safe. */
 function yamlString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  // JSON handles C0 controls, quotes, backslashes, and lone surrogates. Escape
+  // the remaining YAML line/control characters that JSON may emit literally.
+  return JSON.stringify(value).replace(
+    /[\u007f-\u009f\u2028\u2029\ufffe\uffff]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
 }
 
 /**
@@ -351,12 +362,18 @@ export function parseBase16Scheme(text: string): Base16ParseResult {
   }
   if (missing.length) return { ok: false, error: { kind: 'missing-slots', slots: missing } };
   if (badHex.length) return { ok: false, error: { kind: 'bad-hex', slots: badHex } };
+  if (
+    (typeof doc.name === 'string' && !containsNonWhitespace(doc.name)) ||
+    (typeof doc.author === 'string' && !containsNonWhitespace(doc.author))
+  ) {
+    return { ok: false, error: { kind: 'not-a-scheme' } };
+  }
 
   return {
     ok: true,
     scheme: {
-      name: typeof doc.name === 'string' && doc.name.trim() ? doc.name.trim() : 'Imported',
-      author: typeof doc.author === 'string' && doc.author.trim() ? doc.author.trim() : undefined,
+      name: typeof doc.name === 'string' ? doc.name : 'Imported',
+      author: typeof doc.author === 'string' ? doc.author : undefined,
       variant:
         doc.variant === 'light' || doc.variant === 'dark' ? doc.variant : inferVariant(palette),
       palette,

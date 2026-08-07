@@ -173,6 +173,15 @@ describe('parseBase16Scheme', () => {
     expect(parseBase16Scheme('')).toMatchObject({ error: { kind: 'not-a-scheme' } });
   });
 
+  test.each([
+    ['name', { name: '\u0085', author: 'Ada' }],
+    ['author', { name: 'Valid', author: '\u0085' }],
+  ])('rejects U+0085 NEXT LINE-only %s metadata', (_field, metadata) => {
+    expect(
+      parseBase16Scheme(JSON.stringify({ ...metadata, variant: 'dark', palette: paletteOf() })),
+    ).toMatchObject({ error: { kind: 'not-a-scheme' } });
+  });
+
   test('rejects unparseable input and names the offending line', () => {
     const result = parseBase16Scheme('{[unclosed');
     expect(result).toMatchObject({ error: { kind: 'unparseable' } });
@@ -327,6 +336,40 @@ describe('base16ToYaml', () => {
     expect(reparsed.ok).toBe(true);
     if (!reparsed.ok) return;
     expect(reparsed.scheme.name).toBe('He said "hi" \\ bye');
+  });
+
+  test('round-trips line breaks, tabs, and control characters in metadata', () => {
+    const name = 'Line one\nLine two\twith controls \u0001 and \u007f';
+    const author = 'Ada\r\nLovelace\twith controls \u0085 and \u009f plus \u2028 a line separator';
+    const yaml = base16ToYaml({
+      name,
+      author,
+      variant: 'dark',
+      palette: paletteOf(),
+    });
+
+    expect(yaml).toContain('name: "Line one\\nLine two\\twith controls \\u0001 and \\u007f"');
+    expect(yaml).toContain(
+      'author: "Ada\\r\\nLovelace\\twith controls \\u0085 and \\u009f plus \\u2028',
+    );
+    const reparsed = parseBase16Scheme(yaml);
+    expect(reparsed.ok).toBe(true);
+    if (!reparsed.ok) return;
+    expect(reparsed.scheme.name).toBe(name);
+    expect(reparsed.scheme.author).toBe(author);
+  });
+
+  test('preserves intentional leading and trailing whitespace in nonblank metadata', () => {
+    const name = '  Padded theme\t';
+    const author = '\t Ada Lovelace \n';
+    const reparsed = parseBase16Scheme(
+      base16ToYaml({ name, author, variant: 'light', palette: paletteOf() }),
+    );
+
+    expect(reparsed.ok).toBe(true);
+    if (!reparsed.ok) return;
+    expect(reparsed.scheme.name).toBe(name);
+    expect(reparsed.scheme.author).toBe(author);
   });
 });
 
