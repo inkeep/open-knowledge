@@ -17,6 +17,7 @@
  */
 
 import type { IncomingMessage } from 'node:http';
+import { DEFAULT_REMOTE_PORT } from '@inkeep/open-knowledge-core';
 import type { Config } from './config/schema.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 
@@ -25,7 +26,7 @@ export interface ResolvedRemoteAccess {
   url: string;
   /** `host[:port]` of `url` with any default-port suffix stripped — Host-header comparand. */
   publicHost: string;
-  /** Fixed listen port from config (schema default 24550). */
+  /** Fixed listen port from config (`remote.port`, falling back to 24550). */
   port: number;
 }
 
@@ -54,7 +55,7 @@ export function resolveRemoteAccess(config: Config | undefined): ResolvedRemoteA
   return {
     url: remote.url.replace(/\/+$/, ''),
     publicHost: normalizeHostHeader(parsed.host),
-    port: remote.port,
+    port: remote.port ?? DEFAULT_REMOTE_PORT,
   };
 }
 

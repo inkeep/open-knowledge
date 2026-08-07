@@ -34,6 +34,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'project',
       agentSettable: false,
+      reload: 'boot',
       defaultScope: 'project',
       description: expect.any(String),
     });
@@ -44,6 +45,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'user',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'user',
       description: expect.any(String),
     });
@@ -54,6 +56,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'user',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'user',
       description: expect.any(String),
     });
@@ -64,6 +67,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'user',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'user',
       description: expect.any(String),
     });
@@ -74,6 +78,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'project-local',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'project-local',
       description: expect.any(String),
     });
@@ -84,6 +89,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'project-local',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'project-local',
       description: expect.any(String),
     });
@@ -94,6 +100,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'project-local',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'project-local',
       description: expect.any(String),
     });
@@ -104,6 +111,7 @@ describe('getLeafFieldMeta', () => {
     expect(meta).toEqual({
       scope: 'project',
       agentSettable: false,
+      reload: 'live',
       defaultScope: 'project',
       description: expect.any(String),
     });

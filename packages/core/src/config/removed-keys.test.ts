@@ -76,6 +76,23 @@ describe('detectRemovedKeys', () => {
     expect(paths).toContain('appearance.editorModeDefault');
   });
 
+  test('server.host redirect names the server.bind file key, not just the flag/env escape hatches', () => {
+    // The tombstone predates server.bind; while no file key existed the
+    // redirect pointed at --host / HOST. Now that server.bind is a live leaf,
+    // the redirect must lead with it — pointing users away from the file at
+    // the exact moment a file key exists would be actively misleading.
+    const errors = detectRemovedKeys({ value: { server: { host: '0.0.0.0' } } });
+    const entry = errors.find(
+      (e) =>
+        isKnownConfigError(e) && e.code === 'REMOVED_KEY' && e.path.join('.') === 'server.host',
+    );
+    expect(entry).toBeDefined();
+    if (entry !== undefined && isKnownConfigError(entry) && entry.code === 'REMOVED_KEY') {
+      expect(entry.redirect).toContain('server.bind');
+      expect(entry.redirect).toContain('server.allowExternal');
+    }
+  });
+
   test('clean config yields no errors', () => {
     expect(detectRemovedKeys({ value: { content: { dir: 'docs' } } })).toEqual([]);
   });

@@ -8,10 +8,9 @@
  *     source-located errors on failure. Success message goes to stderr (stdout
  *     is reserved for structured CI output, of which we emit none).
  *   - `migrate` — codemod removing deprecated fields (`sync.*`,
- *     `persistence.{debounceMs,maxDebounceMs}`, `server.port`, plus every
- *     entry in the shared removed-key registry) idempotently. Funnels through
- *     `writeConfigPatch` so atomic-write + Zod safeParse invariants apply
- *     automatically.
+ *     `persistence.{debounceMs,maxDebounceMs}`, plus every entry in the shared
+ *     removed-key registry) idempotently. Funnels through `writeConfigPatch`
+ *     so atomic-write + Zod safeParse invariants apply automatically.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -37,19 +36,25 @@ import { loadConfig } from '../config/loader.ts';
  *
  * 1. Silently-dropped sections that never carried a user contract — `sync`
  *    collapses to a single key delete (all 7 subfields with it);
- *    `persistence.{debounceMs, maxDebounceMs}` and `server.port` are
- *    field-level deletes leaving their parent sections intact. These produce
- *    no `REMOVED_KEY` error; the codemod only tidies them away.
+ *    `persistence.{debounceMs, maxDebounceMs}` are field-level deletes leaving
+ *    their parent sections intact. These produce no `REMOVED_KEY` error; the
+ *    codemod only tidies them away.
  * 2. Every entry in the shared removed-key registry — these DO hard-error on
  *    load, so sourcing them here keeps the "run `ok config migrate`" hint in
  *    each redirect truthful. `content.{include, exclude}` patterns must be
  *    recreated in `.okignore` manually; the codemod only removes the keys.
+ *
+ * `server.port` is deliberately NOT here: it was a silently-dropped field
+ * until it returned as a live `ConfigSchema` leaf (project scope, boot
+ * reload). Listing it would make `ok config migrate` delete a key the engine
+ * now reads — data loss on the exact command every removed-key redirect tells
+ * users to run. The disjointness of this list and the live schema is pinned by
+ * a guard test.
  */
 export const DROPPED_FIELD_PATHS: ReadonlyArray<readonly string[]> = [
   ['sync'],
   ['persistence', 'debounceMs'],
   ['persistence', 'maxDebounceMs'],
-  ['server', 'port'],
   ...REMOVED_KEYS.map((k) => k.path),
 ];
 
@@ -396,7 +401,7 @@ export function configCommand(): Command {
   cmd
     .command('migrate')
     .description(
-      'Remove deprecated config fields from config.yml idempotently (every removed key in the registry — content.*, folders, appearance.editorModeDefault, server.host, etc. — plus the silently-dropped sync.*, persistence.*, server.port)',
+      'Remove deprecated config fields from config.yml idempotently (every removed key in the registry — content.*, folders, appearance.editorModeDefault, server.host, etc. — plus the silently-dropped sync.*, persistence.*)',
     )
     // Defaults to `all` so the bare `ok config migrate` that every removed-key
     // redirect tells the user to run actually reaches the layer their dead key

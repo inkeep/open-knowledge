@@ -21,6 +21,7 @@ function base16SlotFields() {
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description: `Custom theme: base16 ${slot} — ${BASE16_SLOT_ROLES[slot]}, as a #rrggbb hex string.`,
         })
@@ -71,6 +72,43 @@ const DEFAULT_LOSS_CAPTURE_MAX_BYTES = 12_582_912;
 // key is NEVER a config value — it lives only in `~/.ok/secrets.yml` (0600).
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
+
+/**
+ * Loopback-only default bind: nothing off this machine can connect until
+ * `server.bind` says otherwise (and `server.allowExternal` consents to it).
+ */
+export const DEFAULT_SERVER_BIND: readonly string[] = Object.freeze(['127.0.0.1']);
+
+/**
+ * Accepted `server.idleShutdown` duration strings: a positive integer with an
+ * `s` / `m` / `h` unit (e.g. `90s`, `30m`, `2h`). `'off'` is the union's other
+ * arm, not part of this pattern. Kept alongside the schema so the published
+ * JSON schema's `pattern` and the runtime validator cannot drift.
+ */
+export const IDLE_SHUTDOWN_DURATION_RE = /^[1-9]\d*(s|m|h)$/;
+
+/**
+ * `server.publicUrl` scheme guard, paired with the runtime `z.url({ protocol })`
+ * check. Zod's URL `protocol` option validates at runtime but does NOT
+ * serialize through `z.toJSONSchema` (which emits only `format: "uri"`, a
+ * scheme it would accept `ftp:`/`javascript:` under). Attaching this as a
+ * `.regex()` makes the constraint round-trip as a JSON Schema `pattern`, so a
+ * `$schema`-aware editor rejects a non-http(s) origin instead of green-lighting
+ * one that fails at boot. Same round-trip technique as the idle-shutdown grammar.
+ *
+ * Module-local (not exported): unlike `IDLE_SHUTDOWN_DURATION_RE`, the resolver
+ * has no need for it — the scheme constraint lives entirely in the schema leaf.
+ */
+const HTTP_URL_SCHEME_RE = /^https?:\/\//;
+
+/**
+ * Fallback listen port when remote access is enabled but `remote.port` is
+ * unset. Lives in the READERS (`resolveRemoteAccess`, the CLI port
+ * resolution), not as a zod `.default()` — the successor `server.port` is
+ * alias-read from `remote.port` only when unset, and a schema-baked default
+ * would make "unset" undetectable in a parsed config.
+ */
+export const DEFAULT_REMOTE_PORT = 24550;
 
 /** Why an embeddings base URL is rejected: unparseable, or a plaintext scheme. */
 export type EmbeddingsBaseUrlProblem = 'invalid-url' | 'insecure-scheme';
@@ -155,9 +193,12 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          // Boot-only: re-rooting the content dir live would re-root the whole
+          // index (watcher, Y.Doc registry, link graph) under a running server.
+          reload: 'boot',
           defaultScope: 'project',
           description:
-            'Folder OpenKnowledge reads and writes documents under, relative to the project root (the folder that contains .ok/). Defaults to the project root. Exclude paths with .okignore.',
+            'Folder OpenKnowledge reads and writes documents under, relative to the project root (the folder that contains .ok/). Defaults to the project root. Exclude paths with .okignore. Read at server start; changing it requires a restart.',
         })
         .default('.'),
       attachmentFolderPath: z
@@ -165,6 +206,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project',
           description:
             "Where pasted and dropped assets are stored, relative to the content root. './' colocates beside the current document (default); '/' targets the content root; './subdir' targets a subfolder under the current document folder; 'folder' targets a fixed folder under the content root. Whitespace-only values are treated as './'.",
@@ -243,6 +285,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             "Editor color theme: 'light', 'dark', or 'system' (follow the OS). A personal preference (user scope) — not shared with the project.",
@@ -262,6 +305,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             "Interface language. 'system' follows the operating system. A personal preference (user scope) — not shared with the project, and never applied to document content.",
@@ -289,6 +333,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description: `IDE color palette applied in light mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), one of ${namedThemeIds()}, or the id of a saved theme. A short id of lowercase letters, digits, and hyphens (max 32 characters); an id no palette matches falls back to 'default' for this mode only, leaving the rest of your config untouched. A personal preference (user scope) — not shared with the project.`,
         })
@@ -302,6 +347,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description: `IDE color palette applied in dark mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), one of ${namedThemeIds()}, or the id of a saved theme. A short id of lowercase letters, digits, and hyphens (max 32 characters); an id no palette matches falls back to 'default' for this mode only, leaving the rest of your config untouched. A personal preference (user scope) — not shared with the project.`,
         })
@@ -321,6 +367,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             "Superseded by appearance.colorThemeLight / appearance.colorThemeDark. Read as the palette for both modes while neither of those is set. A short theme id (lowercase letters, digits, and hyphens; max 32 characters); an id no palette matches falls back to 'default'. A personal preference (user scope) — not shared with the project.",
@@ -338,6 +385,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             'Whether the Themes plugin appears in Settings → Plugins. A personal preference (user scope). Default on.',
@@ -358,6 +406,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'user',
               description: "Custom theme: the scheme's display name.",
             })
@@ -367,6 +416,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'user',
               description:
                 "Custom theme: the scheme's author credit, carried through from an imported base16 scheme.",
@@ -377,6 +427,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'user',
               description:
                 "Custom theme: whether the scheme is 'dark' or 'light'. Auto-detected from the palette when omitted.",
@@ -392,6 +443,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'user',
               description:
                 'When on, the agent opens or refreshes the live preview after each edit. Turn off if you manage your own preview window. A personal preference (user scope).',
@@ -406,6 +458,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Show dot-prefixed entries (e.g. .ok/, .okignore) in the file tree. Per-machine (project-local) — not shared with collaborators.',
@@ -416,6 +469,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Show only markdown documents (.md/.mdx) and folders in the file tree, hiding other file types from view. View-only: hidden files stay on disk and remain reachable via links and search. Per-machine (project-local) — not shared with collaborators.',
@@ -426,6 +480,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Show the Skills section in the sidebar. Skill documents remain reachable via links and search while the section is hidden. Per-machine (project-local) — not shared with collaborators.',
@@ -436,6 +491,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Show .ok folders (skills, templates, and other OpenKnowledge-managed state) in the file tree as read-only entries. .ok/worktrees and .ok/local never appear. Per-machine (project-local) — not shared with collaborators.',
@@ -458,6 +514,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             'Soft-wrap long lines in the source (CodeMirror) editor. A personal preference (user scope).',
@@ -468,6 +525,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             'Reuse one tab when clicking through the Files and Skills sidebars, the way an editor preview tab works. Turn off to open every click in its own tab. Pinned tabs keep their own tab either way. A personal preference (user scope).',
@@ -494,6 +552,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             "Auto-approve OpenKnowledge's own tools (and `ok open` on Claude) for agents launched from the built-in terminal. Destructive tools (delete/move/share/install) still prompt. Per-machine personal preference (user scope).",
@@ -528,6 +587,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project-local',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project-local',
           description:
             "How this machine syncs this project with its git remote: 'off' (no sync), 'follow' (one-directional — pull remote changes, never push your own; 'pull' is accepted as a legacy alias), or 'full' (bidirectional pull and push). null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared. Supersedes the legacy autoSync.enabled boolean.",
@@ -541,6 +601,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project-local',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project-local',
           description:
             'Legacy per-machine sync toggle, superseded by autoSync.mode. Read only when mode is absent (true = full, false = off). null = not chosen yet. Per-machine (project-local) — not shared.',
@@ -559,6 +620,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project-local',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project-local',
           description:
             "When sync is paused (autoSync.mode 'off') after having been enabled, the active mode to resume into ('follow' | 'full'). Per-machine UI memory; ignored while a mode is active. Not shared.",
@@ -577,6 +639,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project',
           description:
             "Committed project default for a machine's sync mode on first open: 'off' | 'follow' | 'full', or the legacy boolean (true = full, false = off). null = ask (show the onboarding prompt). Shared via git. A per-machine autoSync.mode choice overrides it.",
@@ -609,6 +672,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project-local',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project-local',
           description:
             'Opt-out for the in-app terminal (a real OS shell at full user privilege). The terminal is on by default; set false to disable it for this project on this machine. Per-machine (project-local) — never shared via git, clone, or sync.',
@@ -631,6 +695,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'user',
           description:
             'Whether the Slides plugin appears in Settings → Plugins. When on, a document whose frontmatter has `slides: true` offers an action that opens the deck in a dedicated window (desktop only, requires a resolvable slidev). A personal preference (user scope). Default off.',
@@ -660,6 +725,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Write local diagnostic spans + logs under .ok/local/ for `ok diagnose bundle`. Local-only — never leaves the machine until you run bundle. Set false for sensitive workspaces. Shared across collaborators.',
@@ -672,6 +738,7 @@ export const ConfigSchema = z.looseObject({
                 .register(fieldRegistry, {
                   scope: 'project',
                   agentSettable: false,
+                  reload: 'live',
                   defaultScope: 'project',
                   description:
                     'Maximum size, in bytes, of the local diagnostic spans file before it rotates (default ~50 MB).',
@@ -686,6 +753,7 @@ export const ConfigSchema = z.looseObject({
                 .register(fieldRegistry, {
                   scope: 'project',
                   agentSettable: false,
+                  reload: 'live',
                   defaultScope: 'project',
                   description:
                     'Maximum size, in bytes, of the local diagnostic logs file before it rotates (default ~25 MB).',
@@ -698,6 +766,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Telemetry attribute keys whose values are redacted before any local span/log is written (credential / secret guard). Extends the built-in denylist.',
@@ -722,6 +791,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'user',
               description:
                 'Report skill installs to skills.sh so a published skill shows an accurate install count. Sends the skill name, its source repo, and which agent tools it was installed for — never file contents, and never for a private or local source. One report per skill per machine. Default on; the DO_NOT_TRACK and DISABLE_TELEMETRY environment variables also turn it off.',
@@ -755,6 +825,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project',
           description:
             'Record bridge loss-class events (content-free) under .ok/local/loss-capture/ for `ok diagnose bundle`. Local-only — never leaves the machine until you run bundle. Set false for sensitive workspaces. Shared across collaborators.',
@@ -765,6 +836,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project',
           description:
             'Maximum size, in bytes, of the local loss-capture file before it rotates (default ~12 MB).',
@@ -793,6 +865,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 "Keep the desktop window's timers running at full rate while it holds unsynced work, so backgrounding the app never starves sync or recovery; when the window is idle the OS-default background throttling is restored (battery). Honored by the desktop app. Default ON — disable only to isolate a suspected regression.",
@@ -807,6 +880,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Defer a drain-shaped Observer B re-derive when the WYSIWYG fragment holds an un-propagated keystroke Y.Text lacks, so the keystroke survives instead of being stomped. Default ON — disable only to isolate a suspected regression.',
@@ -821,6 +895,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Detect content the bridge silently dropped at its reconciliation boundary (an Observer-A apply arm or a paired agent-undo derive) and write a recovery checkpoint plus a content-free loss event. Detection only — never blocks a write. Default ON — disable only to isolate a suspected regression.',
@@ -835,6 +910,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Bound the Y.Text→WYSIWYG re-derive loop with a drain-count backstop: a run of re-derive drains that never reaches a raw-byte fixed point freezes the re-derive loop and writes a recovery checkpoint plus a content-free loss event, instead of churning unbounded. Default ON — disable only to isolate a suspected regression.',
@@ -849,6 +925,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Before an agent write or undo rebuilds the WYSIWYG fragment, flush an un-propagated keystroke that provably does not overlap the operation into Y.Text so the keystroke survives instead of needing recovery; overlapping or unmodellable cases fall back to the checkpoint floor. Scope: appending writes and single-frame undos — a write that replaces the whole body (replace / edit) overwrites the keystroke either way, so those always take the checkpoint floor. Default ON — disable only to isolate a suspected regression.',
@@ -863,6 +940,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 "On tab hide/unload, force-send each doc's unsynced work to the server and commit its local cache, and re-sync on return to foreground, so a backgrounded tab never strands edits that IndexedDB alone would lose on recycle. Honored client-side. Default ON — disable only to isolate a suspected regression.",
@@ -899,6 +977,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Add semantic (embeddings) ranking to the MCP search tool, fused with the lexical engine so conceptually-related pages surface even with no shared keywords. When ON and an API key is set (`ok embeddings set-key`), the search query and matching document content are sent to the configured embeddings provider — content egress. Default OFF. Per-machine (project-local) — not shared with collaborators.',
@@ -909,6 +988,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (`~/.ok/secrets.yml`); it is sent to whichever endpoint this names.',
@@ -919,6 +999,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Embeddings model id (default text-embedding-3-small). Must be served by the provider at baseUrl. Changing it re-embeds the corpus (the cache is keyed by provider + model + dimensions).',
@@ -931,6 +1012,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 "Optional output vector dimensions. Omit (recommended) to detect the model's native size from its first response — that is what lets a non-OpenAI model work without knowing its size up front. Set a smaller value (text-embedding-3 supports e.g. 512 / 1024) to shrink the on-disk cache, trading a little retrieval quality; a server that ignores the request param then fails loudly instead of silently. Changing it re-embeds the corpus.",
@@ -943,6 +1025,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project-local',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project-local',
               description:
                 'Optional hard cutoff: drop any "by meaning" match whose cosine similarity is below this value. Off by default (0) because retrieval is rank-based (the closest pages are returned regardless of absolute score) and the right cutoff is model-specific. Set it only to suppress weak matches for a specific provider/model whose cosine scale you know. Most setups should leave it unset and rely on the result-count cap.',
@@ -990,6 +1073,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description: 'Whether the markdownlint plugin (body rules) contributes diagnostics.',
             })
@@ -1008,6 +1092,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Whether the frontmatter plugin (JSON-Schema validation of document frontmatter) contributes diagnostics.',
@@ -1032,6 +1117,7 @@ export const ConfigSchema = z.looseObject({
             .register(fieldRegistry, {
               scope: 'project',
               agentSettable: false,
+              reload: 'live',
               defaultScope: 'project',
               description:
                 'Frontmatter schema mappings: which docs (appliesTo globs) validate against which JSON Schema file (project-root-relative path).',
@@ -1061,6 +1147,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project',
           description:
             "How broken internal links are reported on the validation plane: 'off' hides them, 'warning' (default) or 'error' sets their severity.",
@@ -1071,6 +1158,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project',
           description:
             'Whether the file tree tints and badges files that have validation problems.',
@@ -1097,6 +1185,7 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project-local',
           agentSettable: false,
+          reload: 'live',
           defaultScope: 'project-local',
           description:
             "Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. When ON, hovering an external link sends that link's URL to the destination site to fetch its preview metadata — outbound egress, one request per previewed link. Default ON; set to false to turn external previews off. Per-machine (project-local) — not shared with collaborators. Previews of links to other documents in this project are read from the local index with no network request and are always on.",
@@ -1108,6 +1197,19 @@ export const ConfigSchema = z.looseObject({
   // the `ok start --remote` flag does. Trust-the-tunnel: no server-side auth
   // and no access-level knob; restricting reach is the tunnel's job.
   // `agentSettable: false` everywhere so an agent can't self-expose the box.
+  //
+  // SUPERSEDED by the `server.*` section below: `remote.url` by
+  // `server.publicUrl`, `remote.port` by `server.port`. Each is alias-read
+  // only while its successor is absent (`resolveServerRuntimeConfig` — the
+  // same shape as the `autoSync.enabled` → `autoSync.mode` alias). The keys
+  // stay readable so existing configs keep working; removal (REMOVED_KEYS +
+  // `ok config migrate`) comes only after the successors have shipped and
+  // soaked. `remote.port` deliberately has no zod `.default()` — see
+  // `DEFAULT_REMOTE_PORT`.
+  //
+  // Reload class `'boot'`, matching their `server.*` successors: both are
+  // listener/exposure config consumed at server start (via the alias-read in
+  // `resolveServerRuntimeConfig`), so a change takes effect only on restart.
   remote: z
     .looseObject({
       url: z
@@ -1115,9 +1217,10 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'boot',
           defaultScope: 'project',
           description:
-            'Public URL your tunnel gives you, e.g. https://myproject.ngrok.app. Used only with `ok start --remote` (config alone never enables remote access); its host is admitted through the Host-header allowlist. There is no server-side auth, so restrict access at the tunnel (ngrok OAuth, Cloudflare Access, Tailscale ACLs).',
+            'Superseded by server.publicUrl — read only while server.publicUrl is absent. Public URL your tunnel gives you, e.g. https://myproject.ngrok.app. Used only with `ok start --remote` (config alone never enables remote access); its host is admitted through the Host-header allowlist. There is no server-side auth, so restrict access at the tunnel (ngrok OAuth, Cloudflare Access, Tailscale ACLs).',
         })
         .optional(),
       port: z
@@ -1128,14 +1231,117 @@ export const ConfigSchema = z.looseObject({
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
+          reload: 'boot',
           defaultScope: 'project',
           description:
-            "TCP port the server binds when remote access is enabled (default 24550). Fixed so the tunnel's port mapping survives restarts. Set it only on a conflict. An explicit --port still wins; the PORT env var is ignored in remote mode.",
+            "Superseded by server.port — read only while server.port is absent. TCP port the server binds when remote access is enabled (default 24550). Fixed so the tunnel's port mapping survives restarts. Set it only on a conflict. An explicit --port still wins; the PORT env var is ignored in remote mode.",
         })
-        .default(24550),
+        .optional(),
+    })
+    .default({}),
+  // The canonical server surface: one listener whose local vs hosted posture
+  // is EMERGENT from the values set here — there is deliberately no
+  // `server.mode` / profile discriminator key. A mode key becomes a branch
+  // target that drifts from the values that actually matter; "hosted" is
+  // just what a non-loopback bind, a public URL, and consent look like.
+  //
+  // Scopes: `port` / `bind` / `publicUrl` are PROJECT — the committed,
+  // reviewed shape of this knowledge base's server. `openBrowser` /
+  // `idleShutdown` are PROJECT-LOCAL — personal workflow, like the sidebar
+  // toggles. `allowExternal` is PROJECT-LOCAL consent, the same posture as
+  // `terminal.enabled`: consent never travels via git, clone, or share, so a
+  // committed `allowExternal: true` can never expose a future cloner's
+  // machine (containers consent via environment instead).
+  //
+  // `agentSettable: false` on every leaf, same reasoning as `remote.*`: an
+  // agent must never widen its own network exposure.
+  //
+  // `openBrowser` and `idleShutdown` have DERIVED defaults (they depend on
+  // whether the resolved `bind` is loopback-only), so those leaves stay
+  // optional here — a schema-time `.default()` cannot see `bind`. The
+  // derivation lives in `resolveServerRuntimeConfig`
+  // (`resolve-server-config.ts`), which is also the single alias-read point
+  // for the superseded `remote.*` keys.
+  server: z
+    .looseObject({
+      port: z
+        .number()
+        .int()
+        .min(1)
+        .max(65535)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'project',
+          description:
+            'TCP port the server listens on. Unset by default: a local start picks a free port dynamically, and deployment platforms inject the PORT environment variable instead. Supersedes remote.port (still read while this key is absent). Read at server start; changing it requires a restart.',
+        })
+        .optional(),
+      bind: z
+        .array(z.string().min(1))
+        .min(1)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'project',
+          description:
+            'Addresses the server binds, e.g. [127.0.0.1] or [0.0.0.0]. Default loopback-only ([127.0.0.1]): nothing off this machine can connect. A non-loopback bind additionally requires the server.allowExternal consent interlock. Lists replace, never merge. Read at server start; changing it requires a restart.',
+        })
+        .default([...DEFAULT_SERVER_BIND]),
+      publicUrl: z
+        .url({ protocol: /^https?$/ })
+        // Runtime protocol check + the JSON-schema-serializable pattern (see
+        // HTTP_URL_SCHEME_RE) — together they keep the published schema and the
+        // runtime parser in agreement on the scheme.
+        .regex(HTTP_URL_SCHEME_RE)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'project',
+          description:
+            'Canonical external origin the server is reached at, e.g. https://kb.example.com — drives issued URLs and CORS. Unset by default: a loopback server derives http://localhost:<port>. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Supersedes remote.url (still read while this key is absent). Read at server start; changing it requires a restart.',
+        })
+        .optional(),
+      allowExternal: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'project-local',
+          description:
+            'Exposure consent interlock. Once the unified server boot lands, a non-loopback server.bind or a server.publicUrl without allowExternal: true will be refused at boot with a one-line fix. Default off. Per-machine (project-local) — consent never travels via git, clone, or share; containers consent via the environment instead.',
+        })
+        .default(false),
+      openBrowser: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'project-local',
+          description:
+            'Open the UI in a browser when the server starts. Default derived: true when every bind address is loopback (a laptop start pops the UI), false otherwise (a container or exposed bind is headless and must never try). Acts once at start. Per-machine (project-local) — not shared.',
+        })
+        .optional(),
+      idleShutdown: z
+        .union([z.literal('off'), z.string().regex(IDLE_SHUTDOWN_DURATION_RE)])
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'project-local',
+          description:
+            "Shut the server down after this long with no activity: a duration like '30m' (positive integer with unit s, m, or h), or 'off'. Default derived: '30m' when every bind address is loopback, 'off' otherwise (an exposed or containerized server stays up). Reloadable — a valid change applies without a restart. Per-machine (project-local) — not shared.",
+        })
+        .optional(),
     })
     .default({
-      port: 24550,
+      bind: [...DEFAULT_SERVER_BIND],
+      allowExternal: false,
     }),
 });
 

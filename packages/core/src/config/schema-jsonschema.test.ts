@@ -155,14 +155,81 @@ const FIXTURES: Fixture[] = [
     shouldAccept: true,
   },
   {
+    // `server.host` is a removed key (REMOVED_KEYS), not a schema leaf — it
+    // rides through the loose `server` section, which now also carries live
+    // leaves (`server.port` etc. below).
     name: 'stale dropped fields pass via loose-mode',
     input: {
       sync: { pushIntervalSeconds: 30 },
       persistence: { debounceMs: 2000 },
-      server: { port: 3000, host: 'localhost' },
+      server: { host: 'localhost' },
       mcp: { autoStart: false },
     },
     shouldAccept: true,
+  },
+  {
+    name: 'server.port in range accepted',
+    input: { server: { port: 8080 } },
+    shouldAccept: true,
+  },
+  {
+    name: 'server.port out of range rejected',
+    input: { server: { port: 0 } },
+    shouldAccept: false,
+  },
+  {
+    name: 'server.bind list accepted',
+    input: { server: { bind: ['127.0.0.1', '::1'] } },
+    shouldAccept: true,
+  },
+  {
+    name: 'server.bind empty list rejected',
+    input: { server: { bind: [] } },
+    shouldAccept: false,
+  },
+  {
+    name: 'server.publicUrl https URL accepted',
+    input: { server: { publicUrl: 'https://kb.example.com' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'server.publicUrl non-URL rejected',
+    input: { server: { publicUrl: 'not a url' } },
+    shouldAccept: false,
+  },
+  {
+    // The protocol restriction must appear in the published JSON schema, not
+    // just at runtime — otherwise a $schema-aware editor green-lights a scheme
+    // (ftp:, javascript:) that ConfigSchema rejects at boot. publicUrl drives
+    // CORS + URL issuance, so the divergence is security-relevant.
+    name: 'server.publicUrl ftp:// rejected in both validators (protocol pattern serializes)',
+    input: { server: { publicUrl: 'ftp://kb.example.com' } },
+    shouldAccept: false,
+  },
+  {
+    name: 'server.allowExternal boolean accepted',
+    input: { server: { allowExternal: true } },
+    shouldAccept: true,
+  },
+  {
+    name: 'server.allowExternal string rejected',
+    input: { server: { allowExternal: 'yes' } },
+    shouldAccept: false,
+  },
+  {
+    name: "server.idleShutdown 'off' accepted",
+    input: { server: { idleShutdown: 'off' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'server.idleShutdown duration accepted',
+    input: { server: { idleShutdown: '30m' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'server.idleShutdown unknown unit rejected',
+    input: { server: { idleShutdown: '1d' } },
+    shouldAccept: false,
   },
 ];
 
@@ -197,7 +264,7 @@ describe('loose-mode forgiveness', () => {
     const result = ConfigSchema.safeParse({
       sync: { pushIntervalSeconds: 30, autoCommit: true },
       persistence: { debounceMs: 2000 },
-      server: { port: 3000, host: 'example.dev' },
+      server: { host: 'example.dev' },
       mcp: { autoStart: false },
       content: { dir: 'docs' },
     });

@@ -193,6 +193,7 @@ export {
   type FieldMeta,
   fieldRegistry,
   getFieldMeta,
+  type ReloadClass,
 } from './config/field-registry.ts';
 export { mergeLayered } from './config/merge-layered.ts';
 export {
@@ -202,6 +203,15 @@ export {
   type RemovedKey,
   stripRemovedKeys,
 } from './config/removed-keys.ts';
+export {
+  DEFAULT_LOOPBACK_IDLE_SHUTDOWN,
+  idleShutdownToMs,
+  isLoopbackBindAddress,
+  isLoopbackOnlyBind,
+  requiresExternalConsent,
+  resolveServerRuntimeConfig,
+  type ServerRuntimeConfig,
+} from './config/resolve-server-config.ts';
 export type { Err, Ok, Result } from './config/result.ts';
 // Config schema, error envelope, and Result helper. Browser+node compatible.
 export {
@@ -212,8 +222,11 @@ export {
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LOGS_MAX_BYTES,
+  DEFAULT_REMOTE_PORT,
+  DEFAULT_SERVER_BIND,
   DEFAULT_SPANS_MAX_BYTES,
   DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST,
+  IDLE_SHUTDOWN_DURATION_RE,
   isLoopbackEmbeddingsUrl,
   isValidAttachmentFolderPath,
   normalizeAttachmentFolderPath,

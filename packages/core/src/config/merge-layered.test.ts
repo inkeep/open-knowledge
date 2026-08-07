@@ -224,6 +224,30 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     const merged = mergeLayered(user, project);
     expect(merged.terminal?.enabled).toBeNull();
   });
+
+  test("scope: 'project' (server.bind) returns project, ignoring a project-local override attempt", () => {
+    const user = makeConfig({});
+    const project = makeConfig({ server: { bind: ['127.0.0.1'] } });
+    const projectLocal = makeConfig({ server: { bind: ['0.0.0.0'] } });
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.server?.bind).toEqual(['127.0.0.1']);
+  });
+
+  test("scope: 'project-local' (server.allowExternal) ignores a committed project value", () => {
+    // Exposure consent has the terminal.enabled posture: a committed
+    // `allowExternal: true` must never grant consent on a cloner's machine —
+    // only this machine's gitignored project-local layer can. A fresh clone's
+    // project-local layer parses to schema defaults, so `allowExternal` is a
+    // DEFINED false there and the project-local short-circuit never falls
+    // through to the committed value.
+    const user = makeConfig({});
+    const project = makeConfig({ server: { allowExternal: true } });
+    const projectLocal = makeConfig({});
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.server?.allowExternal).toBe(false);
+  });
 });
 
 describe('mergeLayered — backward compat for two-layer call sites', () => {
@@ -253,6 +277,24 @@ describe('mergeLayered — backward compat for two-layer call sites', () => {
 
     const merged = mergeLayered(user, project);
     expect(merged.autoSync?.enabled).toBe(true);
+  });
+
+  test('two-layer merge passes a committed allowExternal:true through — Wave 4 enforcement MUST use the three-layer merge', () => {
+    // Tripwire, not endorsement. With no project-local layer, layers[2] is
+    // undefined, so the project-local short-circuit falls through to the
+    // committed project value — the UNSAFE result for exposure consent (a
+    // committed `true` would arm a cloner's machine). The three-layer path is
+    // safe because a parsed project-local layer supplies a DEFINED `false`
+    // default that wins (see the project-local scope test above). The Wave 4
+    // boot interlock must therefore resolve `allowExternal` over all three
+    // layers, per the requiresExternalConsent doc comment — this test exists so
+    // that requirement surfaces mechanically if someone reaches for the
+    // two-layer path.
+    const user = makeConfig({});
+    const project = makeConfig({ server: { allowExternal: true } });
+
+    const merged = mergeLayered(user, project);
+    expect(merged.server?.allowExternal).toBe(true);
   });
 });
 

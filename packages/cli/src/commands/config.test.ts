@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { REMOVED_KEYS } from '@inkeep/open-knowledge-core';
+import { ConfigSchema, getLeafFieldMeta, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import {
@@ -338,11 +338,13 @@ describe('runMigrate', () => {
     expect(stdout.some((m) => m.includes('removed') && m.includes('sync'))).toBe(true);
   });
 
-  test('removes server.port and persistence.* leaf fields (project)', async () => {
+  test('removes persistence.* leaf fields while preserving the live server.port key (project)', async () => {
     const wsPath = projectConfigPath(project.cwd);
-    // `content.dir` is the surviving unrelated field; server.port +
-    // persistence.* are silent-drop leaves. (server.host / openOnAgentEdit are
-    // now removed keys themselves, so they can't serve as preserved siblings.)
+    // `content.dir` is the surviving unrelated field; persistence.* are the
+    // silent-drop leaves. `server.port` is present precisely to prove migrate
+    // does NOT touch it — it returned as a live schema key, so a codemod that
+    // stripped it would destroy config on the exact command every removed-key
+    // redirect tells the user to run.
     const original = `content:\n  dir: docs\nserver:\n  port: 3000\npersistence:\n  debounceMs: 5000\n  maxDebounceMs: 10000\n`;
     writeConfigYaml(wsPath, original);
     const outcome = await runMigrate({
@@ -353,14 +355,15 @@ describe('runMigrate', () => {
     });
     expect(outcome.ok).toBe(true);
     const migrated = readFileSync(wsPath, 'utf-8');
-    expect(migrated).not.toContain('port:');
     expect(migrated).not.toContain('debounceMs');
     expect(migrated).not.toContain('maxDebounceMs');
+    // The live server.port key survives untouched.
+    expect(migrated).toContain('port: 3000');
     // Unrelated field preserved.
     expect(migrated).toContain('dir: docs');
     const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
     expect(wsOutcome?.removed.sort()).toEqual(
-      ['persistence.debounceMs', 'persistence.maxDebounceMs', 'server.port'].sort(),
+      ['persistence.debounceMs', 'persistence.maxDebounceMs'].sort(),
     );
   });
 
@@ -740,21 +743,34 @@ describe('configCommand migrate --scope', () => {
 
 describe('DROPPED_FIELD_PATHS', () => {
   test('is the silent-drop set followed by every removed-key registry path', () => {
-    // Silently-dropped sections (no removed-key error) come first.
-    expect(DROPPED_FIELD_PATHS.slice(0, 4)).toEqual([
+    // Silently-dropped sections (no removed-key error) come first. `server.port`
+    // was here until it returned as a live schema key (see the disjointness
+    // guard below).
+    expect(DROPPED_FIELD_PATHS.slice(0, 3)).toEqual([
       ['sync'],
       ['persistence', 'debounceMs'],
       ['persistence', 'maxDebounceMs'],
-      ['server', 'port'],
     ]);
     // ...then the shared registry, so the "run `ok config migrate`" hint in
     // every removed-key redirect is truthful.
-    expect(DROPPED_FIELD_PATHS.slice(4)).toEqual(REMOVED_KEYS.map((k) => k.path));
+    expect(DROPPED_FIELD_PATHS.slice(3)).toEqual(REMOVED_KEYS.map((k) => k.path));
     // Headline keys that used to be silent are now strippable.
     const dotted = DROPPED_FIELD_PATHS.map((p) => p.join('.'));
     expect(dotted).toContain('folders');
     expect(dotted).toContain('appearance.editorModeDefault');
     expect(dotted).toContain('content.include');
+  });
+
+  test('no dropped path is a live ConfigSchema leaf (codemod never deletes a key the engine reads)', () => {
+    // The failure this guards against: a key resurrected into ConfigSchema
+    // while still listed here, so `ok config migrate` silently deletes live
+    // user config. `server.port` was exactly that. A dropped path must resolve
+    // to NO field metadata — it is either a whole removed section or a leaf the
+    // schema no longer declares.
+    const live = DROPPED_FIELD_PATHS.filter(
+      (path) => getLeafFieldMeta(ConfigSchema, path) !== undefined,
+    ).map((path) => path.join('.'));
+    expect(live).toEqual([]);
   });
 });
 

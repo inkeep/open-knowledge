@@ -102,8 +102,12 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
   },
   {
     path: ['server', 'host'],
+    // Rewritten when `server.bind` returned as a live config key — the old
+    // "use --host / HOST" text pointed away from the file at the exact moment
+    // a file key existed again.
     redirect: [
-      'Use the --host CLI flag or the HOST environment variable instead.',
+      'Use server.bind in .ok/config.yml instead — a list of bind addresses, e.g. [127.0.0.1]; a non-loopback bind additionally requires server.allowExternal.',
+      'The --host CLI flag and HOST environment variable also remain available.',
       MIGRATE_HINT,
     ].join(' '),
   },

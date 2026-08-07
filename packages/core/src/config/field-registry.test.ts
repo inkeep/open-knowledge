@@ -29,32 +29,46 @@ describe('getFieldMeta walker (descends innerType)', () => {
 
   test('descends through .default()', () => {
     const inner = z.string();
-    fieldRegistry.add(inner, { scope: 'user', agentSettable: false });
+    fieldRegistry.add(inner, { scope: 'user', agentSettable: false, reload: 'live' });
     const wrapped = inner.default('localhost');
-    expect(getFieldMeta(wrapped)).toEqual({ scope: 'user', agentSettable: false });
+    expect(getFieldMeta(wrapped)).toEqual({ scope: 'user', agentSettable: false, reload: 'live' });
   });
 
   test('descends through .refine()', () => {
     const inner = z.string();
-    fieldRegistry.add(inner, { scope: 'project', agentSettable: false });
+    fieldRegistry.add(inner, { scope: 'project', agentSettable: false, reload: 'live' });
     const wrapped = inner.refine(() => true).default('x');
-    expect(getFieldMeta(wrapped)).toEqual({ scope: 'project', agentSettable: false });
+    expect(getFieldMeta(wrapped)).toEqual({
+      scope: 'project',
+      agentSettable: false,
+      reload: 'live',
+    });
   });
 
   test('descends through chained .optional().nullable().default()', () => {
     const inner = z.number();
-    fieldRegistry.add(inner, { scope: 'project', agentSettable: true });
+    fieldRegistry.add(inner, { scope: 'project', agentSettable: true, reload: 'live' });
     const wrapped = inner.optional().nullable().default(42);
-    expect(getFieldMeta(wrapped)).toEqual({ scope: 'project', agentSettable: true });
+    expect(getFieldMeta(wrapped)).toEqual({
+      scope: 'project',
+      agentSettable: true,
+      reload: 'live',
+    });
   });
 
   test('descends through z.array(...).min(...).default(...)', () => {
     const arr = z.array(z.string()).min(1);
-    fieldRegistry.add(arr, { scope: 'either', agentSettable: true, defaultScope: 'project' });
+    fieldRegistry.add(arr, {
+      scope: 'either',
+      agentSettable: true,
+      reload: 'live',
+      defaultScope: 'project',
+    });
     const wrapped = arr.default(['a']);
     expect(getFieldMeta(wrapped)).toEqual({
       scope: 'either',
       agentSettable: true,
+      reload: 'live',
       defaultScope: 'project',
     });
   });
@@ -253,6 +267,13 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'lossCapture.maxBytes',
       'remote.port',
       'remote.url',
+      // `server.{port,bind,publicUrl}` are the committed, reviewed shape of
+      // this knowledge base's server — project scope, like the `remote.*`
+      // keys they supersede. Their consent/workflow siblings are
+      // project-local (below).
+      'server.bind',
+      'server.port',
+      'server.publicUrl',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',
@@ -300,6 +321,14 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'search.semantic.enabled',
       'search.semantic.model',
       'search.semantic.similarityFloor',
+      // `server.allowExternal` is exposure CONSENT — the `terminal.enabled`
+      // posture: never inherited via clone, sync, or share, so a committed
+      // `allowExternal: true` can never expose a future cloner's machine.
+      // `server.{openBrowser,idleShutdown}` are personal workflow, like the
+      // sidebar toggles.
+      'server.allowExternal',
+      'server.idleShutdown',
+      'server.openBrowser',
       'terminal.enabled',
     ]);
   });
@@ -317,5 +346,43 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     const description = getFieldMeta(leaf?.schema)?.description ?? '';
     expect(description).toContain('.md');
     expect(description).toContain('.mdx');
+  });
+
+  test('every leaf declares a reload class', () => {
+    const leaves: { path: string[]; schema: unknown }[] = [];
+    walkLeaves(ConfigSchema, [], leaves);
+    const missing = leaves
+      .filter((l) => {
+        const reload = getFieldMeta(l.schema)?.reload;
+        return reload !== 'boot' && reload !== 'live';
+      })
+      .map((l) => l.path.join('.'));
+    expect(missing).toEqual([]);
+  });
+
+  test("boot-only leaves are exactly content.dir + the listener/exposure keys — everything else is 'live'", () => {
+    // `content.dir` re-roots the whole index (watcher, Y.Doc registry, link
+    // graph); the `server.*` keys and the superseded `remote.*` aliases shape
+    // the listener and its exposure — none can change under a running server.
+    // `remote.*` are consumed at start via the alias-read in
+    // `resolveServerRuntimeConfig`, so they carry the same 'boot' class as the
+    // `server.*` successors they map onto. `server.idleShutdown` is the one
+    // listener leaf that CAN re-arm live.
+    const leaves: { path: string[]; schema: unknown }[] = [];
+    walkLeaves(ConfigSchema, [], leaves);
+    const bootOnly = leaves
+      .filter((l) => getFieldMeta(l.schema)?.reload === 'boot')
+      .map((l) => l.path.join('.'))
+      .sort();
+    expect(bootOnly).toEqual([
+      'content.dir',
+      'remote.port',
+      'remote.url',
+      'server.allowExternal',
+      'server.bind',
+      'server.openBrowser',
+      'server.port',
+      'server.publicUrl',
+    ]);
   });
 });

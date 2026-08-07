@@ -26,6 +26,7 @@ import type { Server as HttpServer } from 'node:http';
 import { basename, join, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
+  DEFAULT_REMOTE_PORT,
   DEFAULT_SERVER_HOST,
   DEFAULT_SIGTERM_GRACE_MS as SHARED_DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS as SHARED_DEFAULT_SIGTERM_POLL_MS,
@@ -658,10 +659,12 @@ interface BootStartServerOptions {
    */
   host: string;
   /**
-   * Server bind port. `server.port` is not a schema field — source ordering
-   * at the call site is `--port` flag → `PORT` env → `0` (kernel-allocated).
-   * `0` or `undefined` triggers kernel allocation; `bootServer` writes the
-   * resolved port into `server.lock` for MCP clients to discover.
+   * Server bind port. `server.port` is a schema key but this boot path does
+   * NOT read it yet — that wiring lands with the unified server boot. Source
+   * ordering at the call site is `--port` flag → `PORT` env → `0`
+   * (kernel-allocated). `0` or `undefined` triggers kernel allocation;
+   * `bootServer` writes the resolved port into `server.lock` for MCP clients
+   * to discover.
    */
   port?: number;
   /**
@@ -1391,12 +1394,12 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // break the tunnel on every restart.
   if (remoteEnabled && portFromCli === undefined && portFromEnv !== undefined) {
     console.warn(
-      `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${activeConfig.remote?.port}). Pass --port to override deliberately.`,
+      `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${activeConfig.remote?.port ?? DEFAULT_REMOTE_PORT}). Pass --port to override deliberately.`,
     );
   }
   const port =
     resolveCollabPort(portFromCli, portFromEnv, requestedUiPort, remoteEnabled) ??
-    (remoteEnabled ? activeConfig.remote?.port : undefined);
+    (remoteEnabled ? (activeConfig.remote?.port ?? DEFAULT_REMOTE_PORT) : undefined);
 
   // Fast path: when `--ui-port` is set (the worktree-preview recipe), a
   // live collab server already in this folder means we must NOT boot a second

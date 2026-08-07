@@ -1,9 +1,21 @@
 import { z } from 'zod';
 import type { FieldScope, WriteScope } from './errors.ts';
 
+/**
+ * When a change to the field takes effect on a running server:
+ *   - `'boot'` — read once at process start; changing it requires a restart.
+ *     Reload attempts must not re-read it (a half-applied bind or content root
+ *     is worse than a stale one).
+ *   - `'live'` — read through the live layered config; a valid on-disk change
+ *     applies without a restart.
+ */
+export type ReloadClass = 'boot' | 'live';
+
 export interface FieldMeta {
   scope: FieldScope;
   agentSettable: boolean;
+  /** Reload class — see {@link ReloadClass}. Every leaf declares one. */
+  reload: ReloadClass;
   defaultScope?: WriteScope;
   /**
    * Human-readable, English description of the field. Single source of field

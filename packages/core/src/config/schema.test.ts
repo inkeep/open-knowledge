@@ -387,3 +387,63 @@ describe('autoSync forward/backward compatibility (looseObject round-trip)', () 
     expect(legacyDefaults.autoSync.default).toBeNull();
   });
 });
+
+describe('server.* (canonical listener/exposure surface)', () => {
+  test('defaults: loopback-only bind, consent off, everything else unset', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.server.bind).toEqual(['127.0.0.1']);
+    expect(config.server.allowExternal).toBe(false);
+    // No schema default: unset means dynamic locally / platform PORT env in
+    // images, and keeps the remote.port alias-read detectable.
+    expect(config.server.port).toBeUndefined();
+    expect(config.server.publicUrl).toBeUndefined();
+    // Derived defaults resolve in resolveServerRuntimeConfig, not here.
+    expect(config.server.openBrowser).toBeUndefined();
+    expect(config.server.idleShutdown).toBeUndefined();
+  });
+
+  test('port accepts the valid range and rejects out-of-range or fractional values', () => {
+    expect(ConfigSchema.parse({ server: { port: 8080 } }).server.port).toBe(8080);
+    expect(ConfigSchema.safeParse({ server: { port: 0 } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ server: { port: 65536 } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ server: { port: 80.5 } }).success).toBe(false);
+  });
+
+  test('bind is a non-empty list of non-empty addresses', () => {
+    expect(ConfigSchema.parse({ server: { bind: ['0.0.0.0'] } }).server.bind).toEqual(['0.0.0.0']);
+    expect(ConfigSchema.parse({ server: { bind: ['127.0.0.1', '::1'] } }).server.bind).toEqual([
+      '127.0.0.1',
+      '::1',
+    ]);
+    expect(ConfigSchema.safeParse({ server: { bind: [] } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ server: { bind: [''] } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ server: { bind: '127.0.0.1' } }).success).toBe(false);
+  });
+
+  test('publicUrl accepts http(s) URLs and rejects other schemes or non-URLs', () => {
+    expect(
+      ConfigSchema.parse({ server: { publicUrl: 'https://kb.example.com' } }).server.publicUrl,
+    ).toBe('https://kb.example.com');
+    expect(
+      ConfigSchema.parse({ server: { publicUrl: 'http://localhost:8080' } }).server.publicUrl,
+    ).toBe('http://localhost:8080');
+    expect(ConfigSchema.safeParse({ server: { publicUrl: 'not a url' } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ server: { publicUrl: 'ftp://kb.example.com' } }).success).toBe(
+      false,
+    );
+  });
+
+  test("idleShutdown accepts 'off' and s/m/h durations, rejects bare numbers and other units", () => {
+    for (const good of ['off', '90s', '30m', '2h']) {
+      expect(ConfigSchema.parse({ server: { idleShutdown: good } }).server.idleShutdown).toBe(good);
+    }
+    for (const bad of ['30', '0m', '1d', 'never', '']) {
+      expect(ConfigSchema.safeParse({ server: { idleShutdown: bad } }).success).toBe(false);
+    }
+  });
+
+  test('remote.port no longer bakes a schema default (alias-read needs absence to be detectable)', () => {
+    expect(ConfigSchema.parse({}).remote.port).toBeUndefined();
+    expect(ConfigSchema.parse({ remote: { port: 24550 } }).remote.port).toBe(24550);
+  });
+});
