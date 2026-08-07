@@ -3289,6 +3289,10 @@ msgstr ""
 msgid "Couldn't load templates"
 msgstr ""
 
+#: src/components/ExploreSkills.tsx
+msgid "Couldn't load the OpenKnowledge skills. Try again."
+msgstr ""
+
 #: src/components/SkillForkDialog.tsx
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr ""
@@ -5198,6 +5202,10 @@ msgstr ""
 msgid "Filter languages"
 msgstr ""
 
+#: src/components/ExploreSkills.tsx
+msgid "Filter skills"
+msgstr ""
+
 #: src/components/ProseFindBar.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6651,6 +6659,10 @@ msgstr ""
 msgid "Loading image"
 msgstr ""
 
+#: src/components/ExploreSkills.tsx
+msgid "Loading OpenKnowledge skills"
+msgstr ""
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Loading pages"
 msgstr ""
@@ -6663,6 +6675,7 @@ msgstr ""
 msgid "Loading PDF"
 msgstr ""
 
+#: src/components/ExploreSkills.tsx
 #: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr ""
@@ -8211,6 +8224,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
+msgstr ""
+
+#: src/components/ExploreSkills.tsx
+msgid "OpenKnowledge"
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts

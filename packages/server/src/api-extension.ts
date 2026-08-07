@@ -21267,6 +21267,7 @@ export function createApiExtension(
   const {
     handleSkillsSearch,
     handleSkillsPopular,
+    handleSkillsPublisher,
     handleSkillsDetail,
     handleSkillsPreview,
     handleSkillsDiscover,
@@ -21293,6 +21294,7 @@ export function createApiExtension(
     '/api/skills/installed': handleSkillsInstalled,
     '/api/skills/search': handleSkillsSearch,
     '/api/skills/popular': handleSkillsPopular,
+    '/api/skills/publisher': handleSkillsPublisher,
     '/api/skills/detail': handleSkillsDetail,
     '/api/skills/preview': handleSkillsPreview,
     '/api/skills/discover': handleSkillsDiscover,

@@ -2,8 +2,8 @@ import type { SkillScope, SkillSearchResult } from '@inkeep/open-knowledge-core'
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { SkillDirectoryResult } from '@/components/SkillDirectoryResult';
+import { type ComponentProps, useEffect, useState } from 'react';
+import { SkillDirectoryGrid } from '@/components/SkillDirectoryGrid';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import {
@@ -15,15 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useOpenKnowledgeSkills } from '@/hooks/use-openknowledge-skills';
 import { usePopularSkills } from '@/hooks/use-popular-skills';
-import { useSkillDirectory } from '@/hooks/use-skill-directory';
 import { searchSkills } from '@/lib/skills-api';
-
-// Stable keys for the fixed skeleton set (avoids array-index keys). Sized to
-// roughly fill the visible grid so the searching state holds the dialog's height
-// instead of collapsing from the taller popular/results grids.
-const SKELETON_KEYS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
 
 // Suggested topics for the default (pre-search) state. skills.sh has no
 // trending endpoint and rejects empty queries, so instead of a blank screen we
@@ -58,19 +52,28 @@ export function ExploreSkills({
   onNavigate?: () => void;
 }) {
   const { t } = useLingui();
-  // Already-imported detection + the click destination, shared with the Skills
-  // home's popular grid so a card behaves identically on both surfaces.
-  const { importedEntry, openResult } = useSkillDirectory({ scope, onNavigate });
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SkillSearchResult[]>([]);
   const [degraded, setDegraded] = useState(false);
   const [state, setState] = useState<'idle' | 'searching' | 'error'>('idle');
-  const [sortBy, setSortBy] = useState<'relevance' | 'installs'>('relevance');
+  // Installs first: skills.sh relevance order interleaves near-dead listings with
+  // widely-used ones on the same fuzzy match, so the install count is the more
+  // useful default signal. Relevance stays one click away.
+  const [sortBy, setSortBy] = useState<'relevance' | 'installs'>('installs');
+  // Exclusive with searching, not a topic chip that stacks into the query: this
+  // list comes from a different upstream (our repo, not the directory search),
+  // so any search input takes the grid back to results.
+  const [showOurs, setShowOurs] = useState(false);
   // Popular skills for the blank state, so Discover isn't an empty box before you
   // type. Shared cache with the Skills home's shelf, so opening this modal from
   // that page does not refetch. Best-effort — an empty result (fetch/parse
   // failure) just falls back to the topic chips.
   const { skills: popular } = usePopularSkills();
+  const {
+    skills: ours,
+    isPending: oursPending,
+    failed: oursFailed,
+  } = useOpenKnowledgeSkills(showOurs);
 
   useEffect(() => {
     const q = query.trim();
@@ -113,14 +116,10 @@ export function ExploreSkills({
       ? [...results].sort((a, b) => (b.installs ?? -1) - (a.installs ?? -1))
       : results;
 
-  // One card renderer shared by the search grid and the blank-state popular grid.
-  const renderResult = (r: SkillSearchResult) => (
-    <SkillDirectoryResult
-      key={r.id}
-      result={r}
-      imported={importedEntry(r)}
-      onOpen={() => openResult(r)}
-    />
+  // Every grid below is the same component with a different list; only the label
+  // and the loading announcement change.
+  const grid = (props: Omit<ComponentProps<typeof SkillDirectoryGrid>, 'scope' | 'onNavigate'>) => (
+    <SkillDirectoryGrid scope={scope} onNavigate={onNavigate} {...props} />
   );
 
   return (
@@ -132,7 +131,10 @@ export function ExploreSkills({
           </InputGroupAddon>
           <InputGroupInput
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setShowOurs(false);
+            }}
             placeholder={t`Search skills`}
             aria-label={t`Search skills`}
           />
@@ -158,7 +160,27 @@ export function ExploreSkills({
           query (`design git test`). The box stays the single source of truth,
           so typing and chips compose. Active = the word is a token in the box.
           Single line: overflow horizontally with the fade-mask, scrollbar hidden. */}
-      <div className="flex shrink-0 gap-2 overflow-x-auto scroll-fade-mask-x [scrollbar-width:none]">
+      {/* biome-ignore lint/a11y/useSemanticElements: a filter-chip row is a
+          button cluster, not a form-control set; <fieldset>/<legend> would impose
+          form chrome. role="group" on a div is the shape the rest of the app uses. */}
+      <div
+        role="group"
+        aria-label={t`Filter skills`}
+        className="flex shrink-0 gap-2 overflow-x-auto scroll-fade-mask-x [scrollbar-width:none]"
+      >
+        <Button
+          variant={showOurs ? 'secondary' : 'outline'}
+          size="sm"
+          aria-pressed={showOurs}
+          className="h-6 shrink-0 rounded-full data-[active=true]:border-foreground/30"
+          data-active={showOurs}
+          onClick={() => {
+            setShowOurs((on) => !on);
+            setQuery('');
+          }}
+        >
+          <Trans>OpenKnowledge</Trans>
+        </Button>
         {TOPICS.map((topic) => {
           const tokens = query.trim().split(/\s+/).filter(Boolean);
           const active = tokens.includes(topic.query);
@@ -170,14 +192,15 @@ export function ExploreSkills({
               aria-pressed={active}
               className="h-6 shrink-0 rounded-full data-[active=true]:border-foreground/30"
               data-active={active}
-              onClick={() =>
+              onClick={() => {
+                setShowOurs(false);
                 setQuery(
                   (active
                     ? tokens.filter((x) => x !== topic.query)
                     : [...tokens, topic.query]
                   ).join(' '),
-                )
-              }
+                );
+              }}
             >
               {t(topic.label)}
             </Button>
@@ -190,42 +213,44 @@ export function ExploreSkills({
         </p>
       ) : null}
       <div className="min-h-0 flex-1 overflow-auto subtle-scrollbar scroll-fade-mask">
-        {q.length < 2 ? (
+        {showOurs ? (
+          oursFailed ? (
+            <p className="text-sm text-muted-foreground">
+              <Trans>Couldn't load the OpenKnowledge skills. Try again.</Trans>
+            </p>
+          ) : (
+            grid({
+              results: ours,
+              pending: oursPending,
+              label: <Trans>OpenKnowledge</Trans>,
+              loadingLabel: t`Loading OpenKnowledge skills`,
+              testId: 'skills-openknowledge',
+            })
+          )
+        ) : q.length < 2 ? (
           // Popular skills populate the blank state (best-effort; empty on a scrape
           // failure, in which case the persistent topic chips above are the fallback).
           popular.length > 0 ? (
-            <div className="space-y-2">
-              {/* Same element + classes as the Skills home's shelf label, which
-                  sits above the same card grid — a user sees both in one session. */}
-              <h3 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-                <Trans>Popular</Trans>
-              </h3>
-              <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {popular.map(renderResult)}
-              </ul>
-            </div>
+            grid({
+              results: popular,
+              label: <Trans>Popular</Trans>,
+              loadingLabel: t`Loading popular skills`,
+            })
           ) : null
-        ) : state === 'searching' ? (
-          <div aria-busy="true">
-            <span className="sr-only">
-              <Trans>Searching</Trans>
-            </span>
-            <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" aria-hidden>
-              {SKELETON_KEYS.map((k) => (
-                <Skeleton key={k} className="h-[72px] rounded-xl" />
-              ))}
-            </ul>
-          </div>
         ) : state === 'error' ? (
           <p className="text-sm text-destructive">
             <Trans>Search failed. Try again.</Trans>
           </p>
-        ) : results.length === 0 ? (
+        ) : state === 'idle' && results.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             <Trans>No skills found.</Trans>
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{shown.map(renderResult)}</ul>
+          grid({
+            results: shown,
+            pending: state === 'searching',
+            loadingLabel: t`Searching`,
+          })
         )}
       </div>
       {/* Credit the discovery API — results (and install counts) come from skills.sh.

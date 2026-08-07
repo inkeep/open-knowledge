@@ -3289,6 +3289,10 @@ msgstr "স্টার্টার প্যাক লোড করা যা�
 msgid "Couldn't load templates"
 msgstr "টেমপ্লেট লোড করা যায়নি"
 
+#: src/components/ExploreSkills.tsx
+msgid "Couldn't load the OpenKnowledge skills. Try again."
+msgstr "OpenKnowledge স্কিল লোড করা যায়নি। আবার চেষ্টা করুন।"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "সংস্করণের প্রাকদর্শন লোড করা যায়নি। আপনি তবুও নিচে বেছে নিতে পারেন কীভাবে এটি মীমাংসা করবেন।"
@@ -5198,6 +5202,10 @@ msgstr "Files টুলবার"
 msgid "Filter languages"
 msgstr "ভাষা ছাঁকুন"
 
+#: src/components/ExploreSkills.tsx
+msgid "Filter skills"
+msgstr "স্কিল ছাঁকুন"
+
 #: src/components/ProseFindBar.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6651,6 +6659,10 @@ msgstr "{pageTarget}-এর শিরোনাম লোড হচ্ছে"
 msgid "Loading image"
 msgstr "ছবি লোড হচ্ছে"
 
+#: src/components/ExploreSkills.tsx
+msgid "Loading OpenKnowledge skills"
+msgstr "OpenKnowledge স্কিল লোড হচ্ছে"
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Loading pages"
 msgstr "পাতা লোড হচ্ছে"
@@ -6663,6 +6675,7 @@ msgstr "পথ লোড হচ্ছে…"
 msgid "Loading PDF"
 msgstr "PDF লোড হচ্ছে"
 
+#: src/components/ExploreSkills.tsx
 #: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "জনপ্রিয় স্কিল লোড হচ্ছে"
@@ -8212,6 +8225,10 @@ msgstr "ওয়ার্কট্রি খোলা হচ্ছে"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
 msgstr "খোলা হচ্ছে…"
+
+#: src/components/ExploreSkills.tsx
+msgid "OpenKnowledge"
+msgstr "OpenKnowledge"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"

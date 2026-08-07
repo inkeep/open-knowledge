@@ -182,6 +182,7 @@
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
     "1oSHI0": ["Impossible d'installer ", ["skillName"], " : ", ["0"]],
+    "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Rejeter"],
     "1u-mAI": [
       "Impossible de démarrer la synchronisation. Vérifiez votre connexion, puis réessayez."
@@ -1733,6 +1734,7 @@
     ],
     "LvdLef": ["Merci pour votre retour !"],
     "LwMxXg": ["Échec de l'ouverture du worktree."],
+    "LzM_ga": ["Filtrer les compétences"],
     "M-IF14": ["Référence du rapport"],
     "M0jOcG": ["Voir dans la source markdown"],
     "M1OfV9": ["Diagnostic de source suivant"],
@@ -2050,6 +2052,7 @@
       "Installez-la dans vos autres éditeurs (Claude Code, Cursor, Codex) pour la partager."
     ],
     "QDZbvN": ["il y a ", ["diffDays"], " j"],
+    "QGWzup": ["Chargement des compétences OpenKnowledge"],
     "QHCx0c": ["Historique des rapports de bug"],
     "QIrBIx": ["Développer tous les fichiers"],
     "QKgePK": [["editor"], " aligné sur la source (ses octets sont sauvegardés)"],
@@ -2180,6 +2183,7 @@
     "SCoBBH": ["Suggestions d'étiquettes"],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SF9qpO": ["Partagez votre e-mail pour le suivi"],
+    "SFEWV6": ["Impossible de charger les compétences OpenKnowledge. Réessayez."],
     "SFN6dN": ["Titre 3"],
     "SInSnF": ["Référence <0>", ["0"], "</0>"],
     "SItQRc": ["Que pensez-vous d'OpenKnowledge ?"],

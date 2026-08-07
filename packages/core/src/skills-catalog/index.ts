@@ -91,6 +91,7 @@ export type {
   PluginProviderId,
   PluginSourceInspection,
 } from './plugin-providers/types.ts';
+export { parseSkillsShPublisherPage } from './publisher.ts';
 export { parseGitHubRepoSearch, parseOpenGraph, parseSkillsShSearch } from './search.ts';
 export {
   buildSkillRegistry,

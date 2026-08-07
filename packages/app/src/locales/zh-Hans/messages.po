@@ -3293,6 +3293,10 @@ msgstr "无法加载入门包：{error}"
 msgid "Couldn't load templates"
 msgstr "无法加载模板"
 
+#: src/components/ExploreSkills.tsx
+msgid "Couldn't load the OpenKnowledge skills. Try again."
+msgstr "无法加载 OpenKnowledge 技能。请重试。"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "无法加载该版本的预览。你仍然可以在下方选择如何解决。"
@@ -5202,6 +5206,10 @@ msgstr "「文件」工具栏"
 msgid "Filter languages"
 msgstr "筛选语言"
 
+#: src/components/ExploreSkills.tsx
+msgid "Filter skills"
+msgstr "筛选技能"
+
 #: src/components/ProseFindBar.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6655,6 +6663,10 @@ msgstr "正在加载 {pageTarget} 的标题"
 msgid "Loading image"
 msgstr "正在加载图片"
 
+#: src/components/ExploreSkills.tsx
+msgid "Loading OpenKnowledge skills"
+msgstr "正在加载 OpenKnowledge 技能"
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Loading pages"
 msgstr "正在加载页面"
@@ -6667,6 +6679,7 @@ msgstr "正在加载路径…"
 msgid "Loading PDF"
 msgstr "正在加载 PDF"
 
+#: src/components/ExploreSkills.tsx
 #: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "正在加载热门技能"
@@ -8216,6 +8229,10 @@ msgstr "正在打开 worktree"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
 msgstr "正在打开…"
+
+#: src/components/ExploreSkills.tsx
+msgid "OpenKnowledge"
+msgstr "OpenKnowledge"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"

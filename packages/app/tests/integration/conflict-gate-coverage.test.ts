@@ -269,6 +269,7 @@ const EXEMPT_HANDLERS = new Set([
   'handleSkillsPreview',
   'handleSkillsResolveRef',
   'handleSkillsPopular',
+  'handleSkillsPublisher',
   'handleSkillImport',
   'handleSkillsImportBulk',
   // `/api/skill/edit-external` — arms the external-skill registry only; authors

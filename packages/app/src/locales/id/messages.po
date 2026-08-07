@@ -3289,6 +3289,10 @@ msgstr "Paket awal tidak bisa dimuat: {error}"
 msgid "Couldn't load templates"
 msgstr "Templat tidak bisa dimuat"
 
+#: src/components/ExploreSkills.tsx
+msgid "Couldn't load the OpenKnowledge skills. Try again."
+msgstr "Keterampilan OpenKnowledge tidak dapat dimuat. Coba lagi."
+
 #: src/components/SkillForkDialog.tsx
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "Pratinjau versinya tidak bisa dimuat. Anda tetap bisa memilih cara menyelesaikannya di bawah."
@@ -5198,6 +5202,10 @@ msgstr "Bilah alat Berkas"
 msgid "Filter languages"
 msgstr "Saring bahasa"
 
+#: src/components/ExploreSkills.tsx
+msgid "Filter skills"
+msgstr "Saring keterampilan"
+
 #: src/components/ProseFindBar.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6651,6 +6659,10 @@ msgstr "Memuat judul untuk {pageTarget}"
 msgid "Loading image"
 msgstr "Memuat gambar"
 
+#: src/components/ExploreSkills.tsx
+msgid "Loading OpenKnowledge skills"
+msgstr "Memuat keterampilan OpenKnowledge"
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Loading pages"
 msgstr "Memuat halaman"
@@ -6663,6 +6675,7 @@ msgstr "Memuat jalur…"
 msgid "Loading PDF"
 msgstr "Memuat PDF"
 
+#: src/components/ExploreSkills.tsx
 #: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "Memuat keterampilan populer"
@@ -8212,6 +8225,10 @@ msgstr "Membuka worktree"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
 msgstr "Membuka..."
+
+#: src/components/ExploreSkills.tsx
+msgid "OpenKnowledge"
+msgstr "OpenKnowledge"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"

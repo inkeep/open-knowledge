@@ -179,6 +179,18 @@ export async function resolveSkillRef(
 }
 
 /**
+ * GET `/api/skills/publisher?source=` — one publisher's skills.sh listing,
+ * most-installed first. The ranking source for a list assembled elsewhere: a
+ * non-`ok` or empty result means the caller shows its list unranked rather than
+ * showing nothing.
+ */
+export async function fetchPublisherSkills(
+  source: string,
+): Promise<WriteResult<SkillsSearchSuccess>> {
+  return getJson<SkillsSearchSuccess>(`/api/skills/publisher?source=${encodeURIComponent(source)}`);
+}
+
+/**
  * GET `/api/skills/discover?source=` — enumerate every skill in a remote/local
  * import source so the Import modal can offer a picker of what to ingest instead
  * of a blind free-text "which skill" box. Same shallow-clone machinery as

@@ -4,14 +4,12 @@ import { lazy, Suspense, useState } from 'react';
 import { CreatePromptComposer } from '@/components/empty-state/CreatePromptComposer';
 import { EmptyStateHeader } from '@/components/empty-state/EmptyStateHeader';
 import type { AddSkillTab } from '@/components/ImportSkillDialog';
-import { SkillDirectoryResult } from '@/components/SkillDirectoryResult';
+import { SkillDirectoryGrid } from '@/components/SkillDirectoryGrid';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { usePopularSkills } from '@/hooks/use-popular-skills';
-import { useSkillDirectory } from '@/hooks/use-skill-directory';
 
 // Lazy so the add-skill modal (skills.sh search, upload, and the new-skill form
 // + their skills-api) stays out of the base-page bundle — it loads on first open.
@@ -22,8 +20,6 @@ const ImportSkillDialog = lazy(() =>
 /** How many popular skills the home shows before "Browse all" takes over. Three
  *  rows of two at full width; `/api/skills/popular` returns more than this. */
 const POPULAR_LIMIT = 6;
-
-const POPULAR_SKELETON_KEYS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
 
 interface SkillsBasePageProps {
   /** Whether the sessions dock (in-app agent thread, agent CLI, or bare shell) is
@@ -69,7 +65,6 @@ export function SkillsBasePage({ sessionsDockOpen = false }: SkillsBasePageProps
 
   const openSkill = useOpenSkill();
   const { createBlank } = useCreateBlankSkill();
-  const { importedEntry, openResult } = useSkillDirectory({ scope: 'project' });
 
   // Shared with the Explore modal's blank state, so opening the modal over this
   // page reuses the cached list instead of refetching.
@@ -145,19 +140,20 @@ export function SkillsBasePage({ sessionsDockOpen = false }: SkillsBasePageProps
         </div>
 
         {showPopular ? (
-          <section className="flex flex-col gap-3" data-testid="skills-popular">
-            {/* Section label matching the empty-state's starter-pack / template
-                headers (mono, uppercase, muted), with Browse all trailing it on
-                the same rule. Browse all renders only once the cards do: it is
-                the one focusable control inside a section that disappears on a
-                failed fetch, and a keyboard user sitting on it while that landed
-                would have focus dropped to the body. The label holds the row's
-                height either way, so nothing shifts when it arrives. */}
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-                <Trans>Popular on skills.sh</Trans>
-              </h3>
-              {popularPending ? null : (
+          <SkillDirectoryGrid
+            scope="project"
+            results={popular}
+            pending={popularPending}
+            skeletonCount={POPULAR_LIMIT}
+            testId="skills-popular"
+            loadingLabel={t`Loading popular skills`}
+            label={<Trans>Popular on skills.sh</Trans>}
+            // Browse all renders only once the cards do: it is the one focusable
+            // control inside a section that disappears on a failed fetch, and a
+            // keyboard user sitting on it while that landed would have focus
+            // dropped to the body. The label holds the row's height either way.
+            action={
+              popularPending ? null : (
                 <Button
                   type="button"
                   variant="ghost"
@@ -169,34 +165,9 @@ export function SkillsBasePage({ sessionsDockOpen = false }: SkillsBasePageProps
                   <Trans>Browse all</Trans>
                   <ArrowRight aria-hidden="true" className="size-3" />
                 </Button>
-              )}
-            </div>
-            {popularPending ? (
-              <div aria-busy="true">
-                <span className="sr-only">
-                  <Trans>Loading popular skills</Trans>
-                </span>
-                {/* `h-18` matches a real row's resting height (avatar + name +
-                    meta), so the grid doesn't jump when results land. */}
-                <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" aria-hidden>
-                  {POPULAR_SKELETON_KEYS.map((k) => (
-                    <Skeleton key={k} className="h-18 rounded-xl" />
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {popular.map((r) => (
-                  <SkillDirectoryResult
-                    key={r.id}
-                    result={r}
-                    imported={importedEntry(r)}
-                    onOpen={() => openResult(r)}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
+              )
+            }
+          />
         ) : null}
       </div>
 

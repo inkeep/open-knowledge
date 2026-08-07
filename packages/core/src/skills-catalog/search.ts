@@ -7,6 +7,7 @@
  * makes the normalization unit-testable without a network round-trip.
  */
 
+import { isRetiredPackListing } from '../constants/skills.ts';
 import type { SkillSearchResult } from './schema.ts';
 import { ownerOf, slug } from './source-fields.ts';
 
@@ -22,9 +23,11 @@ export function parseSkillsShSearch(json: unknown): SkillSearchResult[] {
     const id = typeof r.id === 'string' && r.id ? r.id : source;
     // A row without both a usable id and source cannot be represented in the catalog.
     if (!id || !source) continue;
+    const name = typeof r.name === 'string' && r.name ? r.name : slug(id);
+    if (isRetiredPackListing(name, source)) continue;
     out.push({
       id,
-      name: typeof r.name === 'string' && r.name ? r.name : slug(id),
+      name,
       source,
       description: typeof r.description === 'string' ? r.description : '',
       installs:

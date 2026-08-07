@@ -36,6 +36,32 @@ describe('parseSkillsShSearch', () => {
     ).toBeNull();
   });
 
+  test('drops our retired pack-prefixed listings, keeps a third party’s', () => {
+    const r = parseSkillsShSearch({
+      skills: [
+        {
+          id: 'inkeep/open-knowledge-skills/open-knowledge-pack-knowledge-base',
+          name: 'open-knowledge-pack-knowledge-base',
+          source: 'inkeep/open-knowledge-skills',
+          installs: 18,
+        },
+        {
+          id: 'inkeep/open-knowledge-skills/knowledge-base',
+          name: 'knowledge-base',
+          source: 'inkeep/open-knowledge-skills',
+          installs: 21,
+        },
+        {
+          id: 'acme/repo/open-knowledge-pack-theirs',
+          name: 'open-knowledge-pack-theirs',
+          source: 'acme/repo',
+          installs: 3,
+        },
+      ],
+    });
+    expect(r.map((x) => x.name)).toEqual(['knowledge-base', 'open-knowledge-pack-theirs']);
+  });
+
   test('defaults installs to null and derives name from the id when absent', () => {
     const r = parseSkillsShSearch({ skills: [{ source: 'a/b' }] });
     expect(r[0].installs).toBeNull();

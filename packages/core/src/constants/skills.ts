@@ -125,6 +125,19 @@ export const RENAMED_PACK_SKILLS: Readonly<Record<string, string>> = {
 export const OPENKNOWLEDGE_SKILLS_REPO = 'inkeep/open-knowledge-skills';
 
 /**
+ * Is this discovery row one of OUR listings under the retired pack-skill names?
+ * The 2026-07 rename left the old `open-knowledge-pack-*` listings live on
+ * skills.sh beside their renamed twins, so an unfiltered directory shows both
+ * and the stale one installs a bundle we no longer publish. Discovery hides
+ * them; {@link RENAMED_PACK_SKILLS} still resolves them for anyone who already
+ * installed one. Scoped to our own repo — a third party's `open-knowledge-pack-`
+ * skill is theirs to list.
+ */
+export function isRetiredPackListing(name: string, source: string): boolean {
+  return name.startsWith(PACK_SKILL_PREFIX) && isOpenKnowledgeSkillsSource(source);
+}
+
+/**
  * Standalone `/skill-name` reference token in skill-doc prose — the cross-agent
  * invocation convention ("Load /structured-thinking"). Requires a word boundary
  * before and no path continuation after (a second `/` means it's a filesystem

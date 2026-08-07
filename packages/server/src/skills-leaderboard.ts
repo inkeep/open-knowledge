@@ -15,7 +15,10 @@
  */
 
 import type { SkillSearchResult } from '@inkeep/open-knowledge-core';
-import { parseSkillsShLeaderboard } from '@inkeep/open-knowledge-core/skills-catalog';
+import {
+  parseSkillsShLeaderboard,
+  parseSkillsShPublisherPage,
+} from '@inkeep/open-knowledge-core/skills-catalog';
 import { getLogger } from './logger.ts';
 
 const log = getLogger('skills-leaderboard');
@@ -47,6 +50,11 @@ export async function getPopularSkills(
     const res = await doFetch(FRONT_PAGE, {
       headers: { 'user-agent': 'open-knowledge (+skills discovery)', RSC: '1' },
       signal: AbortSignal.timeout(8000),
+      // Don't follow redirects: the host was decided here, and following would
+      // let the response come from somewhere this code never vetted. A 3xx is
+      // not `ok`, so it degrades like any other bad response. Same posture as
+      // `fetchWithinOrigin` in the website-skill fetcher.
+      redirect: 'manual',
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     const data = parseSkillsShLeaderboard(await res.text());
@@ -64,4 +72,50 @@ export async function getPopularSkills(
 /** Test seam: reset the module cache between cases. */
 export function __resetPopularSkillsCache(): void {
   cache = null;
+}
+
+/**
+ * Every skill one publisher lists on skills.sh, most-installed first.
+ *
+ * Same posture as {@link getPopularSkills} — one warm fetch per publisher shared
+ * across clients, short TTL, and a failure returns the last good list (else
+ * `[]`) rather than throwing, because a caller that can't rank still has a list
+ * to show from its other source.
+ *
+ * Keyed per source: the map is bounded by the handful of publishers a build
+ * actually asks for (today, ours), not by user input.
+ */
+const publisherCache = new Map<string, { at: number; data: SkillSearchResult[] }>();
+
+export async function getPublisherSkills(
+  source: string,
+  opts: { now?: number; fetchImpl?: typeof fetch } = {},
+): Promise<SkillSearchResult[]> {
+  const now = opts.now ?? Date.now();
+  const doFetch = opts.fetchImpl ?? fetch;
+  const hit = publisherCache.get(source);
+  if (hit && now - hit.at < TTL_MS) return hit.data;
+  try {
+    // No RSC header here: the publisher page keeps its install counts in
+    // rendered markup, so the Flight stream the front page is read through
+    // would come back without the numbers this exists to get.
+    const res = await doFetch(`https://www.skills.sh/${source}`, {
+      headers: { 'user-agent': 'open-knowledge (+skills discovery)' },
+      signal: AbortSignal.timeout(8000),
+      redirect: 'manual',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const data = parseSkillsShPublisherPage(await res.text(), source);
+    if (data.length === 0) throw new Error('parsed 0 skills (page format may have changed)');
+    publisherCache.set(source, { at: now, data });
+    return data;
+  } catch (err) {
+    log.warn({ err, source }, 'skills.sh publisher page fetch failed — install counts unavailable');
+    return hit?.data ?? [];
+  }
+}
+
+/** Test seam: reset the per-publisher cache between cases. */
+export function __resetPublisherSkillsCache(): void {
+  publisherCache.clear();
 }

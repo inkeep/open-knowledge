@@ -3293,6 +3293,10 @@ msgstr "ابتدائی پیکس لوڈ نہیں ہو سکے: {error}"
 msgid "Couldn't load templates"
 msgstr "ٹیمپلیٹس لوڈ نہیں ہو سکے"
 
+#: src/components/ExploreSkills.tsx
+msgid "Couldn't load the OpenKnowledge skills. Try again."
+msgstr "OpenKnowledge مہارتیں لوڈ نہیں ہو سکیں۔ دوبارہ کوشش کریں۔"
+
 #: src/components/SkillForkDialog.tsx
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "ورژن کا پیش منظر لوڈ نہیں ہو سکا۔ آپ اب بھی نیچے سے حل کا طریقہ منتخب کر سکتے ہیں۔"
@@ -5202,6 +5206,10 @@ msgstr "فائلوں کا ٹول بار"
 msgid "Filter languages"
 msgstr "زبانیں چھانیں"
 
+#: src/components/ExploreSkills.tsx
+msgid "Filter skills"
+msgstr "مہارتیں چھانیں"
+
 #: src/components/ProseFindBar.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6655,6 +6663,10 @@ msgstr "{pageTarget} کے عنوانات لوڈ ہو رہے ہیں"
 msgid "Loading image"
 msgstr "تصویر لوڈ ہو رہی ہے"
 
+#: src/components/ExploreSkills.tsx
+msgid "Loading OpenKnowledge skills"
+msgstr "OpenKnowledge مہارتیں لوڈ ہو رہی ہیں"
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Loading pages"
 msgstr "صفحات لوڈ ہو رہے ہیں"
@@ -6667,6 +6679,7 @@ msgstr "راستے لوڈ ہو رہے ہیں…"
 msgid "Loading PDF"
 msgstr "PDF لوڈ ہو رہی ہے"
 
+#: src/components/ExploreSkills.tsx
 #: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "مقبول مہارتیں لوڈ ہو رہی ہیں"
@@ -8216,6 +8229,10 @@ msgstr "ورک ٹری کھولا جا رہا ہے"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
 msgstr "کھولا جا رہا ہے..."
+
+#: src/components/ExploreSkills.tsx
+msgid "OpenKnowledge"
+msgstr "OpenKnowledge"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"

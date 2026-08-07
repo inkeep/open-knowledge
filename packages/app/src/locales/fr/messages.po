@@ -3293,6 +3293,10 @@ msgstr "Impossible de charger les packs de démarrage : {error}"
 msgid "Couldn't load templates"
 msgstr "Impossible de charger les modèles"
 
+#: src/components/ExploreSkills.tsx
+msgid "Couldn't load the OpenKnowledge skills. Try again."
+msgstr "Impossible de charger les compétences OpenKnowledge. Réessayez."
+
 #: src/components/SkillForkDialog.tsx
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "Impossible de charger l'aperçu de la version. Vous pouvez tout de même choisir ci-dessous comment résoudre le conflit."
@@ -5202,6 +5206,10 @@ msgstr "Barre d'outils Fichiers"
 msgid "Filter languages"
 msgstr "Filtrer les langages"
 
+#: src/components/ExploreSkills.tsx
+msgid "Filter skills"
+msgstr "Filtrer les compétences"
+
 #: src/components/ProseFindBar.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6655,6 +6663,10 @@ msgstr "Chargement des titres de {pageTarget}"
 msgid "Loading image"
 msgstr "Chargement de l'image"
 
+#: src/components/ExploreSkills.tsx
+msgid "Loading OpenKnowledge skills"
+msgstr "Chargement des compétences OpenKnowledge"
+
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Loading pages"
 msgstr "Chargement des pages"
@@ -6667,6 +6679,7 @@ msgstr "Chargement des chemins…"
 msgid "Loading PDF"
 msgstr "Chargement du PDF"
 
+#: src/components/ExploreSkills.tsx
 #: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "Chargement des compétences populaires"
@@ -8216,6 +8229,10 @@ msgstr "Ouverture du worktree"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Opening..."
 msgstr "Ouverture…"
+
+#: src/components/ExploreSkills.tsx
+msgid "OpenKnowledge"
+msgstr "OpenKnowledge"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"

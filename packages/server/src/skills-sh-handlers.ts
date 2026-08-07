@@ -48,7 +48,7 @@ import { successResponse } from './http/success-response.ts';
 import { isAllowedGitUrl } from './local-op-security.ts';
 import type { PinoLogger } from './logger.ts';
 import { rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
-import { getPopularSkills } from './skills-leaderboard.ts';
+import { getPopularSkills, getPublisherSkills } from './skills-leaderboard.ts';
 import { readSkillsLockFile } from './skills-lock-store.ts';
 
 export interface SkillsShHandlerDeps {
@@ -66,6 +66,7 @@ export interface SkillsShHandlerDeps {
 export type SkillsShHandlers = Record<
   | 'handleSkillsSearch'
   | 'handleSkillsPopular'
+  | 'handleSkillsPublisher'
   | 'handleSkillsDetail'
   | 'handleSkillsPreview'
   | 'handleSkillsDiscover'
@@ -196,6 +197,54 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
       }
     },
     { handler: 'skills-popular', method: 'GET', skipBodyParse: true },
+  );
+
+  // `GET /api/skills/publisher?source=<owner/repo>` — every skill one publisher
+  // lists, most-installed first. The only complete + ranked view of a single
+  // publisher: `/api/skills/search` is fuzzy (interleaves other publishers and
+  // misses some of the named one's skills) and `/api/skills/discover` reads the
+  // repository, which knows nothing about installs. Scraped + cached like the
+  // leaderboard, and best-effort for the same reason — a caller merges these
+  // counts into a list it already has, so an empty result costs ranking, not
+  // the list.
+  const handleSkillsPublisher = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const source = url.searchParams.get('source')?.trim() ?? '';
+      // `owner/repo` only. The value lands in a skills.sh URL path, so anything
+      // else — a git URL, a local path, a traversal — is refused rather than
+      // fetched, the same shape gate the install reporter applies.
+      if (!/^[\w.-]+\/[\w.-]+$/.test(source) || source.includes('..')) {
+        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'source must be owner/repo.', {
+          handler: 'skills-publisher',
+        });
+        return;
+      }
+      // `getPublisherSkills` is best-effort (swallows fetch/parse failures and
+      // returns []), so this catch is defensive rather than live — same as the
+      // sibling `handleSkillsPopular`. It keeps the handler correct if the
+      // helper's contract ever changes to throw.
+      try {
+        const results = await getPublisherSkills(source);
+        successResponse(
+          res,
+          200,
+          SkillsSearchSuccessSchema,
+          { results, backend: 'skills.sh', degraded: results.length === 0 },
+          { handler: 'skills-publisher' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          502,
+          'urn:ok:error:internal-server-error',
+          'Publisher skills are temporarily unavailable.',
+          { handler: 'skills-publisher', cause: e },
+        );
+      }
+    },
+    { handler: 'skills-publisher', method: 'GET', skipBodyParse: true },
   );
 
   // `GET /api/skills/detail?source=&name=` — enrich one discovery result for the
@@ -601,6 +650,7 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
   return {
     handleSkillsSearch,
     handleSkillsPopular,
+    handleSkillsPublisher,
     handleSkillsDetail,
     handleSkillsPreview,
     handleSkillsDiscover,

@@ -36,6 +36,13 @@ describe('parseSkillsShLeaderboard', () => {
     }
   });
 
+  test('drops our retired pack-prefixed listings', () => {
+    const flight =
+      '{"skillId":"open-knowledge-pack-knowledge-base","source":"inkeep/open-knowledge-skills","installs":900}' +
+      '{"skillId":"knowledge-base","source":"inkeep/open-knowledge-skills","installs":21}';
+    expect(parseSkillsShLeaderboard(flight).map((r) => r.name)).toEqual(['knowledge-base']);
+  });
+
   test('parses the HTML-wrapped form (self.__next_f.push chunks)', () => {
     const inner = '{"skillId":"a","source":"o/r","installs":9}';
     const html = `<script>self.__next_f.push([1,${JSON.stringify(inner)}])</script>`;

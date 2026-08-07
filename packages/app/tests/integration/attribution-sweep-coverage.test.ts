@@ -245,6 +245,10 @@ const EXEMPT_HANDLERS = new Set([
   // `/api/skills/popular` — read-only Discover blank-state list, scraped from the
   // skills.sh front page + cached. Writes nothing to attribute.
   'handleSkillsPopular',
+  // `/api/skills/publisher` — read-only per-publisher listing, scraped from that
+  // publisher's skills.sh page + cached, so a caller can rank a list it already
+  // has by install count. Writes nothing to attribute.
+  'handleSkillsPublisher',
   // `/api/skills/preview` — fetches an un-imported skill's SKILL.md text (via a
   // throwaway shallow clone) so the Explore modal can render it before import.
   // Read-only; writes nothing to attribute.

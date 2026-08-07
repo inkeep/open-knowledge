@@ -14,6 +14,7 @@
  * contract, and imposing the sort makes a reorder a non-event instead of a break.
  */
 
+import { isRetiredPackListing } from '../constants/skills.ts';
 import type { SkillSearchResult } from './schema.ts';
 import { ownerOf } from './source-fields.ts';
 
@@ -177,7 +178,7 @@ export function parseSkillsShLeaderboard(body: string): SkillSearchResult[] {
   const byId = new Map<string, SkillSearchResult>();
   for (const c of parseSkillsShLeaderboardCards(body)) {
     const id = `${c.source}/${c.skillId}`;
-    if (byId.has(id)) continue;
+    if (byId.has(id) || isRetiredPackListing(c.skillId, c.source)) continue;
     byId.set(id, {
       id,
       name: c.skillId,
