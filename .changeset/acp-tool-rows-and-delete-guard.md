@@ -1,9 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-In-app agent (ACP) threads: three improvements.
-
-- **Tool-call rows say what the agent did, not which tool it called.** A row used to show the adapter's raw tool identifier, so an OpenKnowledge write read as `mcp__open-knowledge__write` and never named the document. OpenKnowledge's own tools now read as plain sentences — "OpenKnowledge wrote to meetings/standup", "OpenKnowledge searched for bordeaux blend", "OpenKnowledge edited articles/malbec" — recognized across the different names each harness puts on the wire (Claude, Codex, and Pi each spell the same tool differently; Cursor sends no tool name at all, so those rows are unchanged). Every other tool keeps the title its agent wrote and now gets an icon matched to what it does: moving, switching mode, and fetching each had a wrong or missing glyph before.
-- **Deleting a conversation that is open in a tab is blocked.** Reopening an archived conversation from the history menu doesn't unarchive it, so the same conversation could be listed in history and displayed in a tab at once — and deleting it there pulled the transcript out from under the view showing it. Delete is now disabled on those rows, with a tooltip saying to close the tab first. Reopening still works, and conversations with no open tab delete as before.
-- **The presence bar no longer blinks on every agent turn.** An in-app thread published a presence entry when it became ready, when a turn started, and again when it ended; each expires after five seconds, so a chip flickered in and out around every prompt. Agents connected over OpenKnowledge's tools already publish continuous presence, so those entries were redundant. Presence for a thread now appears only when the agent actually writes a document through the thread, and that entry finally carries the agent's own brand icon instead of a generic one.
