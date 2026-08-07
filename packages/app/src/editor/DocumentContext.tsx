@@ -1611,7 +1611,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   function activateOrOpenSurfaceNewTab(paneId: EditorPaneId, skills: boolean) {
     const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
     if (!pane) return;
-    const existingTabId = pane.newTabIds.find((tabId) => isSkillsNewTabId(tabId) === skills);
+    // A pane can hold several new tabs per surface, and a surface hub route
+    // (`#/__skills__`) addresses the surface, not one tab - so re-resolving it
+    // has to keep whichever tab is already active instead of snapping back to
+    // the first. Without this the nav effect, which re-fires on the unchanged
+    // hub hash, steals activation from every other new tab on that surface.
+    const activeOnSurface =
+      pane.activeNewTabId !== null && isSkillsNewTabId(pane.activeNewTabId) === skills
+        ? pane.activeNewTabId
+        : null;
+    const existingTabId =
+      activeOnSurface ?? pane.newTabIds.find((tabId) => isSkillsNewTabId(tabId) === skills);
     setSkillsSidebarState(null);
     if (existingTabId) {
       updatePaneState(

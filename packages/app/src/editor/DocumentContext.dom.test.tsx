@@ -383,6 +383,18 @@ function CloseActiveHarness() {
       <button type="button" onClick={() => ctx.reopenClosedTab()}>
         Reopen closed
       </button>
+      <button type="button" onClick={() => ctx.openTarget({ kind: 'skills', target: 'skills' })}>
+        Resolve skills hub
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const first = ctx.newTabIds[0];
+          if (first) ctx.activateNewTabInPane(ctx.focusedPaneId, first);
+        }}
+      >
+        Activate first new tab
+      </button>
     </>
   );
 }
@@ -1660,5 +1672,39 @@ describe('DocumentContext local rename reconciliation — preserves tab position
     await waitFor(() => {
       expect(window.location.hash).toBe('#/to.md');
     });
+  });
+});
+
+describe('DocumentContext skills-surface new tabs', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    cleanup();
+  });
+
+  test('re-resolving the skills hub keeps the active new tab', async () => {
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+    const user = userEvent.setup();
+    const newTabIds = () => (screen.getByTestId('new-tabs').textContent ?? '').split('|');
+    const activeNewTabId = () => screen.getByTestId('active-new-tab').textContent;
+
+    await user.click(screen.getByRole('button', { name: 'Show skills' }));
+    await user.click(screen.getByRole('button', { name: 'Open new' }));
+
+    const [first, second] = newTabIds();
+    expect(first).toMatch(/^new-tab:skills:\d+$/);
+    expect(second).toMatch(/^new-tab:skills:\d+$/);
+    expect(activeNewTabId()).toBe(second);
+
+    // The skills hub hash is the same for every skills new tab, so the nav
+    // effect re-resolves it on unrelated re-renders. That must not move the
+    // user off the tab they are on.
+    await user.click(screen.getByRole('button', { name: 'Resolve skills hub' }));
+    expect(activeNewTabId()).toBe(second);
+
+    await user.click(screen.getByRole('button', { name: 'Activate first new tab' }));
+    expect(activeNewTabId()).toBe(first);
+
+    await user.click(screen.getByRole('button', { name: 'Resolve skills hub' }));
+    expect(activeNewTabId()).toBe(first);
   });
 });
