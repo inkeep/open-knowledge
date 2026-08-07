@@ -17,6 +17,7 @@ import {
   hashFromSkillFile,
   hashFromSkillPreview,
   hashFromSkills,
+  isSameHash,
   skillFileFromHash,
   skillPreviewFromHash,
 } from '@/lib/doc-hash';
@@ -551,7 +552,7 @@ function hashFromTabId(tabId: string): string {
 }
 
 function navigateToHash(nextHash: string): void {
-  if (typeof window !== 'undefined' && window.location.hash !== nextHash) {
+  if (typeof window !== 'undefined' && !isSameHash(window.location.hash, nextHash)) {
     window.location.hash = nextHash;
   }
 }
@@ -656,7 +657,7 @@ function isBareHashForExtensionQualifiedActiveDoc(
   activeDocName: string | null,
 ): boolean {
   if (!hashDocName || !activeDocName) return false;
-  if (hash !== hashFromDocName(hashDocName)) return false;
+  if (!isSameHash(hash, hashFromDocName(hashDocName))) return false;
   if (MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN.test(hashDocName)) return false;
   if (!MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN.test(activeDocName)) return false;
   return activeDocName.replace(MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN, '') === hashDocName;
@@ -1064,7 +1065,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         const restoredActiveDocName = restoredActive ? docNameForTabId(restoredActive) : null;
         const shouldRestoreActive =
           (currentHashDoc === null && window.location.hash.length === 0) ||
-          (restoredActiveHash !== null && restoredActiveHash === window.location.hash) ||
+          (restoredActiveHash !== null && isSameHash(restoredActiveHash, window.location.hash)) ||
           isBareHashForExtensionQualifiedActiveDoc(
             currentHashDoc,
             window.location.hash,

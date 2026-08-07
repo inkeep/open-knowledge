@@ -195,6 +195,7 @@ import {
   hashFromAssetPath,
   hashFromDocName,
   hashFromFolderPath,
+  isSameHash,
   pushHashWithoutNavigation,
 } from '@/lib/doc-hash';
 import { emitDocumentsChanged } from '@/lib/documents-events';
@@ -3370,7 +3371,11 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         return;
       }
       if (model.getSelectedPaths().length !== 1) return;
-      if (window.location.hash === hashFromFolderPath(folderPath)) return;
+      // Already on this folder's page: fall through so Pierre's own handler
+      // gets the click and toggles the row. Swallowing it here instead is what
+      // makes a folder unable to collapse — the only other way to reach the
+      // expanded state is a re-navigation this branch has nothing left to do.
+      if (isSameHash(window.location.hash, hashFromFolderPath(folderPath))) return;
       event.preventDefault();
       event.stopPropagation();
       if (folderItem && !folderItem.isExpanded()) folderItem.expand();
@@ -3396,7 +3401,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     }
     const docName = treeFilePathToDocumentDocName(path, documentsRef.current);
     if (model.getSelectedPaths().length !== 1) return;
-    if (window.location.hash === hashFromDocName(docName)) return;
+    if (isSameHash(window.location.hash, hashFromDocName(docName))) return;
     queueMicrotask(() => activateTreePath(path));
   }
 

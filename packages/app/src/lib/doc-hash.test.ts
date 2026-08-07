@@ -12,6 +12,7 @@ import {
   hashFromSkillPreview,
   isContentRootHash,
   isManagedHashHistoryState,
+  isSameHash,
   markCurrentHashHistoryEntry,
   pushHashWithoutNavigation,
   replaceHashWithoutNavigation,
@@ -147,6 +148,39 @@ describe('hashFromFolderPath', () => {
 
   test('encodes anchor with special characters', () => {
     expect(hashFromFolderPath('docs/guide', 'hello world')).toBe('#/docs/guide/#hello%20world');
+  });
+});
+
+describe('isSameHash', () => {
+  test('matches a browser-encoded hash against a builder hash for a name with a space', () => {
+    // `window.location.hash` for a folder named `consolidated ux`, versus what
+    // `hashFromFolderPath` emits. A raw `===` here is what left such a folder
+    // permanently expanded in the sidebar: the file tree read "not the current
+    // page", swallowed the click, and never let the tree toggle the row.
+    expect(isSameHash('#/consolidated%20ux/', hashFromFolderPath('consolidated ux'))).toBe(true);
+    expect(isSameHash('#/My%20Notes/Ideas', hashFromDocName('My Notes/Ideas'))).toBe(true);
+  });
+
+  test('matches non-ASCII names the browser also percent-encodes', () => {
+    expect(isSameHash('#/notes/caf%C3%A9', hashFromDocName('notes/café'))).toBe(true);
+  });
+
+  test('matches identical hashes needing no decode', () => {
+    expect(isSameHash('#/docs/guide/', hashFromFolderPath('docs/guide'))).toBe(true);
+  });
+
+  test('still separates genuinely different targets', () => {
+    expect(isSameHash('#/consolidated%20ux/', hashFromFolderPath('consolidated ui'))).toBe(false);
+    expect(isSameHash('#/alpha/', hashFromFolderPath('beta'))).toBe(false);
+  });
+
+  test('commutes — either side may be the browser-encoded one', () => {
+    expect(isSameHash(hashFromFolderPath('consolidated ux'), '#/consolidated%20ux/')).toBe(true);
+  });
+
+  test('falls back to raw comparison on malformed escapes', () => {
+    expect(isSameHash('#/100%zz', '#/100%zz')).toBe(true);
+    expect(isSameHash('#/100%zz', '#/200%zz')).toBe(false);
   });
 });
 

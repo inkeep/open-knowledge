@@ -1,4 +1,9 @@
-import { hashFromDocName, hashFromSkillPreview, type SkillPreviewHashTarget } from '@/lib/doc-hash';
+import {
+  hashFromDocName,
+  hashFromSkillPreview,
+  isSameHash,
+  type SkillPreviewHashTarget,
+} from '@/lib/doc-hash';
 
 /**
  * Open a managed-artifact doc (skill/template) as the ACTIVE editor tab.
@@ -15,7 +20,7 @@ import { hashFromDocName, hashFromSkillPreview, type SkillPreviewHashTarget } fr
 export function openManagedArtifactTab(docName: string): void {
   if (typeof window === 'undefined') return;
   const hash = hashFromDocName(docName);
-  if (window.location.hash !== hash) window.location.hash = hash;
+  if (!isSameHash(window.location.hash, hash)) window.location.hash = hash;
 }
 
 /**
@@ -27,5 +32,9 @@ export function openManagedArtifactTab(docName: string): void {
 export function openSkillPreviewTab(target: SkillPreviewHashTarget): void {
   if (typeof window === 'undefined') return;
   const hash = hashFromSkillPreview(target);
+  // `===` rather than the sibling's `isSameHash`: `hashFromSkillPreview` already
+  // percent-encodes every segment, so both sides are encoded and there is no
+  // asymmetry to tolerate. Decoding first would instead conflate a segment
+  // holding an escaped `%2F` with a real separator.
   if (window.location.hash !== hash) window.location.hash = hash;
 }

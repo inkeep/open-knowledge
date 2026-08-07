@@ -62,7 +62,7 @@ import {
   writeAgentsPanelWidth,
 } from '@/lib/agents-panel-width-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
-import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
+import { docNameFromHash, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
@@ -403,7 +403,7 @@ function EditorAreaInner({
     agentDiffNavTargetRef.current = agentDiffDoc;
     if (agentDiffDoc !== activeDocName) {
       const nextHash = hashFromDocName(agentDiffDoc);
-      if (window.location.hash === nextHash) openDocumentTransition(agentDiffDoc);
+      if (isSameHash(window.location.hash, nextHash)) openDocumentTransition(agentDiffDoc);
       else window.location.hash = nextHash;
     }
   }, [agentDiffDoc]);
@@ -1001,7 +1001,7 @@ function EditorAreaInner({
     // If the hash is already at prev (rare — happens when back-nav is used after
     // agent nav without URL update), fall back to direct transition.
     const nextHash = hashFromDocName(prev);
-    if (window.location.hash === nextHash) {
+    if (isSameHash(window.location.hash, nextHash)) {
       openDocumentTransition(prev);
     } else {
       window.location.hash = nextHash;

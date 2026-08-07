@@ -34,7 +34,7 @@ import { useBadgeSyncControls } from '@/hooks/use-enable-sync-with-confirm';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
-import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
+import { filePathToDocName, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { triggerSync } from '@/lib/trigger-sync';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
 import { Button } from './ui/button';
@@ -758,7 +758,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
                 onClick={() => {
                   if (typeof window === 'undefined') return;
                   const nextHash = hashFromDocName(filePathToDocName(firstConflict.file));
-                  if (window.location.hash !== nextHash) {
+                  if (!isSameHash(window.location.hash, nextHash)) {
                     window.location.hash = nextHash;
                   }
                 }}

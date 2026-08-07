@@ -27,13 +27,13 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConflicts } from '@/hooks/use-conflicts';
-import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
+import { filePathToDocName, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 
 function navigateToConflictedDoc(filePath: string) {
   const docName = filePathToDocName(filePath);
   const nextHash = hashFromDocName(docName);
   if (typeof window === 'undefined') return;
-  if (window.location.hash !== nextHash) {
+  if (!isSameHash(window.location.hash, nextHash)) {
     window.location.hash = nextHash;
   }
 }

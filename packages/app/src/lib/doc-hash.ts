@@ -62,6 +62,37 @@ export function hashFromDocName(docName: string, anchor?: string | null): string
   return anchor ? `${base}#${encodeURIComponent(anchor)}` : base;
 }
 
+/**
+ * `true` when two hashes address the same target, tolerating the
+ * percent-encoding difference between the two ways a hash reaches us.
+ *
+ * `window.location.hash` comes back percent-encoded (`#/My%20Notes/`) because
+ * the browser encodes spaces and non-ASCII characters in the URL, while the
+ * `hashFrom*` builders emit the raw path (`#/My Notes/`). A `===` between the
+ * two is therefore false for every name carrying a space or non-ASCII
+ * character, which silently inverts any "are we already here?" guard for
+ * exactly those documents and folders.
+ *
+ * Both sides are decoded rather than just the location side, so the arguments
+ * commute — callers pass location first or second depending on the call site.
+ *
+ * Inherited limitation: because the builders emit the path raw, a name that
+ * itself contains a percent escape (`100%20`) already shares a hash with its
+ * decoded form (`100 `). That ambiguity is in the hash format, not here.
+ */
+export function isSameHash(a: string, b: string): boolean {
+  return a === b || decodeHashForComparison(a) === decodeHashForComparison(b);
+}
+
+function decodeHashForComparison(hash: string): string {
+  try {
+    return decodeURIComponent(hash);
+  } catch {
+    // Malformed escape — the raw string is still a usable comparison key.
+    return hash;
+  }
+}
+
 const MANAGED_HASH_HISTORY_STATE_KEY = '__okHashHistoryEntry';
 
 function managedHashHistoryState(state: unknown): Record<string, unknown> {
@@ -92,7 +123,7 @@ export function replaceHashWithoutNavigation(hash: string): void {
 }
 
 export function pushHashWithoutNavigation(hash: string): void {
-  if (window.location.hash === hash) return;
+  if (isSameHash(window.location.hash, hash)) return;
   const { pathname, search } = window.location;
   window.history.pushState(
     managedHashHistoryState(window.history.state),
