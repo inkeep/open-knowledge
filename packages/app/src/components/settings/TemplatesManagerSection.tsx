@@ -1,3 +1,4 @@
+import { templateContentDocName } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -8,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { type TemplateMenuEntry, useFolderConfig } from '@/hooks/use-folder-config';
-import { templateDocName } from '@/lib/managed-artifact-doc-name';
 import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 
@@ -50,7 +50,7 @@ export function TemplatesManagerSection({ config }: { config: TemplatesManagerCo
 
   // Open the template as the active editor tab and close Settings so it's visible.
   function openTemplateTab(folder: string, name: string) {
-    openManagedArtifactTab(templateDocName(folder, name));
+    openManagedArtifactTab(templateContentDocName(folder, name));
     settingsRoute.close();
   }
 

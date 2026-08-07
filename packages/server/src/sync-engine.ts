@@ -21,6 +21,7 @@ import { join, relative, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import {
+  OK_DIR,
   type PullOutcome,
   type SyncMode,
   type SyncModeChangeSource,
@@ -2429,16 +2430,11 @@ export class SyncEngine {
         const headContentSet = await this.listHeadContentPaths(handle, headSha);
 
         // ── 4. Stage working-tree content files into isolated index ────────────
-        if (contentFiles.length > 0) {
-          const BATCH = 100; // avoid ARG_MAX
-          for (let i = 0; i < contentFiles.length; i += BATCH) {
-            const batch = contentFiles.slice(i, i + BATCH).map((f) => f.projectRelPath);
-            await handle.git.raw(['add', '--', ...batch]);
-          }
-        }
+        // After the read-tree seed above, so trackedness reflects HEAD.
+        const staged = await this.stageContentFiles(handle, contentFiles);
 
         // ── 5. Remove deleted content files from isolated index ────────────────
-        const onDiskSet = new Set(contentFiles.map((f) => f.projectRelPath));
+        const onDiskSet = new Set(staged.map((f) => f.projectRelPath));
         const deleted = [...headContentSet].filter((f) => !onDiskSet.has(f));
         await this.removePathsFromIndex(handle, deleted);
 
@@ -2721,12 +2717,9 @@ export class SyncEngine {
     const isoHandle = this.gitHandle(tmpIndex);
     try {
       await isoHandle.git.raw(['read-tree', headSha]);
-      const BATCH = 100;
-      for (let i = 0; i < contentFiles.length; i += BATCH) {
-        const batch = contentFiles.slice(i, i + BATCH).map((f) => f.projectRelPath);
-        await isoHandle.git.raw(['add', '--', ...batch]);
-      }
-      const onDiskSet = new Set(contentFiles.map((f) => f.projectRelPath));
+      // After the read-tree seed, so trackedness reflects HEAD.
+      const staged = await this.stageContentFiles(isoHandle, contentFiles);
+      const onDiskSet = new Set(staged.map((f) => f.projectRelPath));
       const deleted = [...headContentSet].filter((f) => !onDiskSet.has(f));
       await this.removePathsFromIndex(isoHandle, deleted);
       const newTreeSha = (await isoHandle.git.raw(['write-tree'])).trim();
@@ -2892,6 +2885,76 @@ export class SyncEngine {
     } catch (err) {
       log.warn({ err }, '[sync] stash pop failed — stash remains on stack');
     }
+  }
+
+  /**
+   * Stage content files into the handle's index, dropping ignored-AND-untracked
+   * paths first. Content scope is broader than git scope: the content filter
+   * admits `<folder>/.ok/templates/*.md` regardless of ignore state so templates
+   * stay visible in the editor, but a local-only-sharing project excludes `.ok/`
+   * in `.git/info/exclude`, and naming such a path in `git add` fatals with
+   * `addIgnoredFile`, wedging every push cycle. Precedent #55 (walker and
+   * `git add` agree on scope) is enforced here rather than in content admission.
+   *
+   * Tracked files are exempt from ignore rules and must keep syncing, but
+   * `git add` (Apple git 2.39.5) still refuses a named path under an ignored
+   * directory even when tracked — so paths carrying a `.ok/` segment (the only
+   * carve-out shape content admission holds above git scope) are added with
+   * `-f`. Everything else keeps the plain fail-loud `add`: if the probe and the
+   * add ever disagree (a future git version, a `.gitattributes` edge), an
+   * unexpected refusable path surfaces as an error instead of being silently
+   * force-added. On probe failure, stage unfiltered WITHOUT `-f` and let the
+   * old error surface.
+   *
+   * Call only after the caller's `read-tree` seed: against an empty index a
+   * tracked-but-ignored file reads as refusable and its HEAD entry would be
+   * committed as a deletion. Returns the staged files for deletion-set pairing.
+   */
+  private async stageContentFiles(
+    handle: GitHandle,
+    files: ContentFileEntry[],
+  ): Promise<ContentFileEntry[]> {
+    if (files.length === 0) return files;
+    const BATCH = 100; // avoid ARG_MAX
+    const refused = new Set<string>();
+    let probeOk = true;
+    for (let i = 0; i < files.length; i += BATCH) {
+      const batch = files.slice(i, i + BATCH).map((f) => f.projectRelPath);
+      try {
+        const ignored = await listNames(handle.git, [
+          'ls-files',
+          '--others',
+          '--ignored',
+          '--exclude-standard',
+          '--',
+          ...batch,
+        ]);
+        for (const p of ignored) refused.add(p);
+      } catch (err) {
+        probeOk = false;
+        log.warn({ err }, '[sync] ignored-path probe failed — staging unfiltered without -f');
+      }
+    }
+    if (refused.size > 0) {
+      log.info(
+        { count: refused.size, sample: [...refused].slice(0, 5) },
+        '[sync] skipping gitignored untracked path(s) — in content scope but excluded from git',
+      );
+    }
+    const stageable = probeOk ? files.filter((f) => !refused.has(f.projectRelPath)) : files;
+    const hasOkSegment = (p: string) => p.startsWith(`${OK_DIR}/`) || p.includes(`/${OK_DIR}/`);
+    const forced = probeOk ? stageable.filter((f) => hasOkSegment(f.projectRelPath)) : [];
+    const plain = probeOk ? stageable.filter((f) => !hasOkSegment(f.projectRelPath)) : stageable;
+    for (const [addArgs, group] of [
+      [['add', '--'], plain],
+      [['add', '-f', '--'], forced],
+    ] as const) {
+      for (let i = 0; i < group.length; i += BATCH) {
+        const batch = group.slice(i, i + BATCH).map((f) => f.projectRelPath);
+        await handle.git.raw([...addArgs, ...batch]);
+      }
+    }
+    return stageable;
   }
 
   /**

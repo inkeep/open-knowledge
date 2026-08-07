@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createTestClient, createTestServer, type TestServer } from './test-harness.ts';
 
 /**
- * End-to-end proof through the real server. Project skills are real content
- * docs (`.ok/skills/<name>/SKILL`): admitted by the content index, the observer
- * bridge runs, and edits persist verbatim to `.ok/skills/<name>/SKILL.md` via
- * the content pipeline. Templates remain managed-artifact (`__template__/...`)
- * docs. Global skills keep the dedicated managed-artifact route (not exercised
- * here — they live at `<home>/.ok/skills`, outside the test contentDir).
+ * End-to-end proof through the real server. Project skills and templates are
+ * real content docs (`.ok/skills/<name>/SKILL`, `<folder>/.ok/templates/<name>`):
+ * admitted by the content index, the observer bridge runs, and edits persist
+ * verbatim to disk via the content pipeline. Global skills keep the dedicated
+ * managed-artifact route (not exercised here — they live at `<home>/.ok/skills`,
+ * outside the test contentDir).
  */
 describe('skill + template CRDT docs — end to end', () => {
   let server: TestServer;
@@ -153,9 +153,9 @@ describe('skill + template CRDT docs — end to end', () => {
     await client.cleanup();
   });
 
-  test('a __template__ doc persists folder-addressed to <folder>/.ok/templates/<name>.md', async () => {
-    // Folder-addressed: __template__/<folderRel>/<name>, root folder here.
-    const docName = '__template__/daily-note';
+  test('a template content doc persists to <folder>/.ok/templates/<name>.md', async () => {
+    // Content-addressed: <folderRel>/.ok/templates/<name>, root folder here.
+    const docName = '.ok/templates/daily-note';
     const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
 
     const src = '---\ntitle: Daily Note\ndescription: a daily note\n---\n\n# {{date}}\n\nNotes.\n';
@@ -169,7 +169,7 @@ describe('skill + template CRDT docs — end to end', () => {
   });
 
   test('PUT /api/template routes the body through the open CRDT doc (Slice E)', async () => {
-    const docName = '__template__/notes/meeting';
+    const docName = 'notes/.ok/templates/meeting';
     const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
 
     const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
@@ -203,28 +203,44 @@ describe('skill + template CRDT docs — end to end', () => {
     await client.cleanup();
   });
 
-  test('an external template .md disk edit reconciles into the open doc (root folder)', async () => {
-    // The project root `.ok/templates` is always watched (folder-nested dirs are
-    // enumerated at boot).
-    const docName = '__template__/daily';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
-
+  test('an external template .md disk edit reconciles into the open doc', async () => {
+    // Templates are content docs now, so the ordinary content watcher delivers
+    // external edits to `.ok/templates/*` — no dedicated watcher. Seed the file
+    // BEFORE booting so it is present in the watcher's initial recursive scan:
+    // creating the nested `.ok/templates/` subdir AFTER the watcher starts races
+    // the OS backend's new-subdir registration (@parcel/watcher drops the
+    // subsequent edit), so with the file watched from boot the modify event is
+    // delivered deterministically. (The brand-new-folder mid-session case is the
+    // watcher-capability suite's job.)
+    await server.cleanup();
+    const seedDir = mkdtempSync(join(tmpdir(), 'ok-template-reconcile-'));
+    mkdirSync(resolve(seedDir, '.ok'), { recursive: true });
+    writeFileSync(resolve(seedDir, '.ok', 'config.yml'), '', 'utf-8');
+    const tplFile = resolve(seedDir, '.ok', 'templates', 'daily.md');
     const src = '---\ntitle: Daily\ndescription: initial\n---\n\n# {{date}}\n';
-    client.doc.transact(() => client.ytext.insert(0, src));
-    const tplFile = resolve(server.contentDir, '.ok', 'templates', 'daily.md');
-    expect(await pollFor(tplFile)).toBe(true);
+    mkdirSync(resolve(tplFile, '..'), { recursive: true });
+    writeFileSync(tplFile, src, 'utf-8');
+    server = await createTestServer({ contentDir: seedDir });
 
+    const docName = '.ok/templates/daily';
+    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const loadStart = Date.now();
+    while (Date.now() - loadStart < 5000 && client.ytext.toString() !== src) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(client.ytext.toString()).toBe(src);
+
+    // A hand/CLI edit straight to the now-watched template file. The content
+    // file-watcher reconciles it into the open content doc.
     const edited =
       '---\ntitle: Daily\ndescription: edited externally\n---\n\n# {{date}}\n\nMore.\n';
-    mkdirSync(resolve(server.contentDir, '.ok', 'templates'), { recursive: true });
-    writeFileSync(tplFile, edited, 'utf-8');
-
     const start = Date.now();
-    while (Date.now() - start < 5000 && client.ytext.toString() !== edited) {
-      await new Promise((r) => setTimeout(r, 100));
+    while (Date.now() - start < 15000 && client.ytext.toString() !== edited) {
+      writeFileSync(tplFile, edited, 'utf-8');
+      await new Promise((r) => setTimeout(r, 200));
     }
     expect(client.ytext.toString()).toBe(edited);
 
     await client.cleanup();
-  });
+  }, 30_000);
 });

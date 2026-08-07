@@ -4,6 +4,7 @@ import {
   parseExternalSkillDocName,
   parseManagedArtifactName,
   parseProjectSkillBundleDoc,
+  parseTemplateContentDocName,
   type RenamedAssetMapping,
   type SkillScope,
 } from '@inkeep/open-knowledge-core';
@@ -240,6 +241,13 @@ export function tabParts(
       ? (extSkill.rel.split('/').pop() ?? extSkill.rel)
       : skillDisplayName(extSkill.name);
     return { baseName: display, extension: '', label: display, prefix: '' };
+  }
+  // A template is a content doc at `<folder>/.ok/templates/<name>`; the tab reads
+  // as the bare template NAME (like skills), not the literal `.ok/templates/`
+  // path prefix. The owning folder surfaces in the breadcrumb instead.
+  const template = parseTemplateContentDocName(docName);
+  if (template) {
+    return { baseName: template.name, extension: '', label: template.name, prefix: '' };
   }
   const slash = docName.lastIndexOf('/');
   const baseName = slash < 0 ? docName : docName.slice(slash + 1);
@@ -563,11 +571,13 @@ export function filterOpenTabsForKnownTargets(
     return (
       pages.has(tab.docName) ||
       (markdownStem !== null && pages.has(markdownStem)) ||
-      // Managed-artifact docs (skills/templates) are tree-excluded by design, so
-      // they never appear in `pages` — keep their tabs regardless, otherwise the
-      // page-list sync would prune the active skill/template tab the moment a
-      // page-list update fires (e.g. right after opening it).
+      // Managed-artifact docs (global skills) are tree-excluded by design and
+      // never appear in `pages` — keep their tabs regardless. A template content
+      // doc DOES land in `pages`, but only after the async `files` refetch: keep
+      // it by content shape too, so a page-list sync in the index-lag window
+      // can't prune a template tab the way the managed disjunct used to prevent.
       isManagedArtifactDocName(tab.docName) ||
+      parseTemplateContentDocName(tab.docName) !== null ||
       tab.docName === keepMissingDocName ||
       tab.docName === keepHashDocName
     );

@@ -1,4 +1,4 @@
-import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
+import { parseManagedArtifactName, parseTemplateContentDocName } from '@inkeep/open-knowledge-core';
 import { MoreHorizontalIcon } from 'lucide-react';
 import { Fragment } from 'react';
 import { UserText } from '@/components/UserText';
@@ -64,16 +64,18 @@ type BreadcrumbNode =
  */
 export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) {
   if (!docName) return null;
-  // Managed-artifact tabs derive their breadcrumb from the parsed artifact, not
-  // the raw `__skill__`/`__template__` doc-name prefix: a template shows its
-  // owning folder path; a skill has no folder hierarchy (its identity lives in
-  // the property panel + tab badge), so it renders no breadcrumb.
-  const managed = parseManagedArtifactName(docName);
-  const segments = managed
-    ? managed.kind === 'template'
-      ? managed.folder.split('/').filter(Boolean)
-      : []
-    : tabParts(docName, '').prefix.replace(/\/$/, '').split('/').filter(Boolean);
+  // A template shows its owning folder path, derived from the content shape and
+  // hiding the `.ok/templates/` segment (matching the name-only tab label); a
+  // skill has no folder hierarchy (its identity lives in the property panel + tab
+  // badge), so it renders no breadcrumb. Everything else derives from `tabParts`
+  // so the breadcrumb and tab label split the path through one primitive.
+  const template = parseTemplateContentDocName(docName);
+  const managed = template ? null : parseManagedArtifactName(docName);
+  const segments = template
+    ? template.folder.split('/').filter(Boolean)
+    : managed
+      ? []
+      : tabParts(docName, '').prefix.replace(/\/$/, '').split('/').filter(Boolean);
   if (segments.length === 0) return null;
 
   // Stable per-segment key: full prefix slice up to that segment.

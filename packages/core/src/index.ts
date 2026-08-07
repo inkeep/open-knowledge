@@ -262,14 +262,16 @@ export {
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   MANAGED_ARTIFACT_SCOPES,
   type ManagedArtifactScope,
-  managedArtifactDocNameFromContentTarget,
   type ParsedGlobalSkillBundleDoc,
   type ParsedManagedArtifactName,
   type ParsedProjectSkillBundleDoc,
+  type ParsedTemplateName,
   parseExternalSkillDocName,
   parseGlobalSkillBundleDoc,
+  parseLegacyTemplateDocName,
   parseManagedArtifactName,
   parseProjectSkillBundleDoc,
+  parseTemplateContentDocName,
   projectSkillContentDocName,
   resolveSkillBundleWikiTarget,
   resolveSkillSlashTarget,
@@ -277,6 +279,7 @@ export {
   skillFileLiveDocName,
   skillLiveDocName,
   stripMdExt,
+  templateContentDocName,
 } from './constants/cc1.ts';
 export { CHROME_BG_DARK, CHROME_BG_LIGHT } from './constants/chrome.ts';
 export {

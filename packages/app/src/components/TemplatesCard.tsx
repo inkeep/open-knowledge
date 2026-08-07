@@ -1,3 +1,4 @@
+import { templateContentDocName } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
@@ -15,7 +16,6 @@ import type {
   FolderConfigSnapshot,
   TemplateMenuEntry,
 } from '@/hooks/use-folder-config';
-import { templateDocName } from '@/lib/managed-artifact-doc-name';
 import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 
 interface Props {
@@ -109,7 +109,7 @@ export function TemplatesCard({ folderPath, state, onChange, folderConfigHandle 
                   template={tpl}
                   onCreate={() => setCreateFromTemplate(tpl.name)}
                   onEdit={() =>
-                    openManagedArtifactTab(templateDocName(tpl.source_folder, tpl.name))
+                    openManagedArtifactTab(templateContentDocName(tpl.source_folder, tpl.name))
                   }
                   onDelete={() => setDeleteTarget(tpl)}
                   badge={
@@ -140,7 +140,7 @@ export function TemplatesCard({ folderPath, state, onChange, folderConfigHandle 
         onOpenChange={setNewOpen}
         onCreated={(createdName) => {
           onChange();
-          openManagedArtifactTab(templateDocName(folderPath, createdName));
+          openManagedArtifactTab(templateContentDocName(folderPath, createdName));
         }}
       />
       <NewItemDialog

@@ -10,6 +10,8 @@ import {
   filterOpenTabsForKnownTargets,
   findLocalSkillPreviewTabId,
   folderTabId,
+  isSkillBundleShapedPath,
+  isSkillDocName,
   isSkillTabId,
   localTabSessionStorageKey,
   nextActiveTabAfterClose,
@@ -240,20 +242,30 @@ describe('editor tab state', () => {
     ).toEqual(['event_watcher']);
   });
 
-  test('filterOpenTabsForKnownTargets keeps managed-artifact tabs (tree-excluded by design)', () => {
-    // Skills/templates are real editor tabs but never appear in `pages` (they're
-    // excluded from the document tree). The filter must keep them regardless, or
-    // the page-list sync would prune the active skill/template tab — and unlike
-    // `keepHashDocName`, the protection holds even when the hash points elsewhere
-    // (so a skill tab survives opening a regular doc).
+  test('filterOpenTabsForKnownTargets keeps a managed skill tab and a template content tab', () => {
+    // A global skill never appears in `pages` (managed); a template content doc
+    // lands in `pages` only after the async `files` refetch. The filter must keep
+    // both regardless — and unlike `keepHashDocName`, the protection holds even
+    // when the hash points elsewhere, so the tab survives opening a regular doc
+    // during the index-lag window.
     expect(
-      filterOpenTabsForKnownTargets(['__skill__/project/foo', '__template__/notes/daily', 'gone'], {
+      filterOpenTabsForKnownTargets(['__skill__/global/foo', 'notes/.ok/templates/daily', 'gone'], {
         pages: new Set(),
         folderPaths: new Set(),
         assetPaths: new Set(),
         keepHashDocName: 'some-other-doc',
       }),
-    ).toEqual(['__skill__/project/foo', '__template__/notes/daily']);
+    ).toEqual(['__skill__/global/foo', 'notes/.ok/templates/daily']);
+  });
+
+  test('filterOpenTabsForKnownTargets keeps a template content tab once it lands in pages', () => {
+    expect(
+      filterOpenTabsForKnownTargets(['docs/.ok/templates/spec'], {
+        pages: new Set(['docs/.ok/templates/spec']),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+      }),
+    ).toEqual(['docs/.ok/templates/spec']);
   });
 
   test('filterOpenTabsForKnownTargets drops stale asset tabs', () => {
@@ -792,5 +804,44 @@ describe('tabParts — non-`.md` call-site shapes (folder + asset)', () => {
       label: 'drafts/',
       prefix: '',
     });
+  });
+
+  test('template content doc labels name-only, hiding the `.ok/templates/` prefix', () => {
+    // Without a template branch the tab would read `docs/.ok/templates/note`;
+    // it should read just the template name, like the skill branches.
+    expect(tabParts('docs/.ok/templates/note', '.md')).toEqual({
+      baseName: 'note',
+      extension: '',
+      label: 'note',
+      prefix: '',
+    });
+    // Project-root template (no owning folder).
+    expect(tabParts('.ok/templates/daily', '.md')).toEqual({
+      baseName: 'daily',
+      extension: '',
+      label: 'daily',
+      prefix: '',
+    });
+  });
+});
+
+describe('skill discriminators reject template content shapes', () => {
+  // Templates are content docs sharing the `.ok/**` neighbourhood with skills;
+  // the skill-only discriminators must not misclassify them, or a template tab
+  // would inherit skill chrome / sidebar focus.
+  const templateDocs = ['.ok/templates/daily', 'docs/.ok/templates/note', 'a/b/.ok/templates/x'];
+
+  test('isSkillDocName is false for every template content doc', () => {
+    for (const doc of templateDocs) expect(isSkillDocName(doc)).toBe(false);
+  });
+
+  test('isSkillBundleShapedPath is false for template content docs', () => {
+    // The bundle-shaped regex is loose (no `^\.` anchor) but still requires a
+    // `skills/<x>/…` segment, which a template path never has.
+    for (const doc of templateDocs) expect(isSkillBundleShapedPath(doc)).toBe(false);
+  });
+
+  test('isSkillTabId is false for a template content doc tab', () => {
+    expect(isSkillTabId(docTabId('docs/.ok/templates/note'))).toBe(false);
   });
 });

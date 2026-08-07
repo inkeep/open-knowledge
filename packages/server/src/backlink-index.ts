@@ -9,7 +9,6 @@ import {
   getWikiLinkText,
   isOrphanMode,
   MANAGED_ARTIFACT_PREFIX_SKILL,
-  managedArtifactDocNameFromContentTarget,
   ORPHAN_MODES,
   type OrphanMode,
   parseGlobalSkillBundleDoc,
@@ -144,7 +143,19 @@ interface BranchGraphState {
   skillRefs: Map<string, Set<string>>;
 }
 
+/**
+ * On-disk cache format version. A mismatch (including the versionless caches
+ * written before the field existed) rejects the load, and the caller falls
+ * back to a full cold rebuild. Bump when the meaning of a persisted key
+ * changes — e.g. v1 retired the `__template__/…` link-target namespace, and a
+ * pre-v1 cache carrying an edge under that key would otherwise surface a false
+ * dead link (`getDeadLinks`) and a false orphan (`getOrphans`) until the
+ * source doc happened to be re-parsed.
+ */
+const SNAPSHOT_VERSION = 1;
+
 interface SerializedBranchGraphState {
+  version?: number;
   backward: Record<string, Array<BacklinkEntry>>;
   forward: Record<string, string[]>;
   externalForward: Record<
@@ -1299,15 +1310,11 @@ export class BacklinkIndex {
 
     for (const link of links) {
       if (!link.target) continue;
-      // Normalize a link to a skill/template FILE path to the artifact's
-      // identity so the edge connects to the skill/template entity (backlinks)
-      // rather than a (missing) raw `.ok/...` file path.
-      const target = managedArtifactDocNameFromContentTarget(link.target) ?? link.target;
-      nextTargets.add(target);
-      let sources = state.backward.get(target);
+      nextTargets.add(link.target);
+      let sources = state.backward.get(link.target);
       if (!sources) {
         sources = new Map();
-        state.backward.set(target, sources);
+        state.backward.set(link.target, sources);
       }
       sources.set(
         docName,
@@ -1769,18 +1776,24 @@ export class BacklinkIndex {
     const state = this.getState(branch);
     const mtimes = this.mtimesByBranch.get(branch);
     const data: SerializedBranchGraphState = {
+      version: SNAPSHOT_VERSION,
       ...serializeState(state),
       ...(mtimes ? { mtimes: Object.fromEntries(mtimes) } : {}),
     };
     await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
   }
 
+  // A version mismatch (or a versionless pre-SNAPSHOT_VERSION cache) rejects
+  // the load so the caller cold-rebuilds. The mtime reconcile that follows a
+  // successful load re-parses only CHANGED docs, so it cannot heal a stale key
+  // written under a retired link-target format — see SNAPSHOT_VERSION.
   async loadFromDisk(branch = this.activeBranch): Promise<boolean> {
     const filePath = this.cachePath(branch);
     if (!existsSync(filePath)) return false;
     try {
       const raw = await readFile(filePath, 'utf-8');
       const parsed = JSON.parse(raw) as SerializedBranchGraphState;
+      if (parsed.version !== SNAPSHOT_VERSION) return false;
       this.states.set(branch, deserializeState(parsed));
       if (parsed.mtimes) {
         this.mtimesByBranch.set(branch, new Map(Object.entries(parsed.mtimes)));
@@ -1868,14 +1881,11 @@ export class BacklinkIndex {
         state.externalForward.set(docName, externalTargets);
         for (const link of links) {
           if (!link.target) continue;
-          // Normalize skill/template file-path targets to artifact identity (see
-          // updateDocument) so doc→skill/template edges resolve to the entity.
-          const target = managedArtifactDocNameFromContentTarget(link.target) ?? link.target;
-          targets.add(target);
-          let sources = state.backward.get(target);
+          targets.add(link.target);
+          let sources = state.backward.get(link.target);
           if (!sources) {
             sources = new Map();
-            state.backward.set(target, sources);
+            state.backward.set(link.target, sources);
           }
           sources.set(
             docName,

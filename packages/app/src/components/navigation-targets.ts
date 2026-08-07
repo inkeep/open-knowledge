@@ -5,11 +5,13 @@ import {
   isEditableTextDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
-  managedArtifactDocNameFromContentTarget,
   mediaKindForSidebarAssetExtension,
+  parseLegacyTemplateDocName,
   parseManagedArtifactName,
+  parseTemplateContentDocName,
   projectSkillContentDocName,
   type SkillScope,
+  templateContentDocName,
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
 import { isSkillBundleShapedPath, isSkillDocName } from '@/editor/editor-tabs';
@@ -217,12 +219,14 @@ function okReadOnlyAssetPath(docName: string, docExt?: string): string {
  * construction (persistence has no content-filter gate), so every doc-shaped
  * resolution of a `.ok` target must land on a sanctioned surface:
  *
- * - Template FILE paths (`[<folder>/].ok/templates/<name>`, single-segment
- *   leaf) rewrite to their managed-artifact doc — the validating template
- *   editor. Same rule the wiki-link resolver already applies.
- * - Page-list members (the `.ok/skills/**` carve-out) return null: they are
- *   sanctioned content docs and keep the normal doc flow (the skill editor
- *   chrome keys off the docName).
+ * - Template leaves (`[<folder>/].ok/templates/<name>`) return null by SHAPE:
+ *   they are sanctioned content docs. Templates DO ship in `/api/pages`, but a
+ *   freshly-created one lags the page index, and during that window a membership
+ *   test would misroute the revealed row to the read-only viewer. Matching by
+ *   shape routes it right regardless of index lag; returning null keeps the
+ *   normal doc flow (the template editor chrome keys off the docName).
+ * - Page-list members (the `.ok/skills/**` carve-out) return null: skills also
+ *   ship in the page list, and membership is a fine signal for them.
  * - Everything else resolves to the read-only text viewer on the file's
  *   on-disk path; for a nonexistent file the viewer's error pane is the
  *   non-create "missing" surface.
@@ -236,10 +240,13 @@ export function okContentNavigationTarget(
   options: { pages: ReadonlySet<string>; docExt?: string },
 ): ResolvedContentTarget | null {
   if (!hasOkPathSegment(docName)) return null;
-  const artifactDocName = managedArtifactDocNameFromContentTarget(docName);
-  if (artifactDocName) {
-    return { kind: 'doc', target: artifactDocName, docName: artifactDocName };
-  }
+  // Templates ARE content docs in `/api/pages`, but a freshly-created template
+  // lags the page index, so a membership test (as the skills carve-out below
+  // does) would misroute the revealed row to the read-only viewer during that
+  // index-lag window. Match by shape instead: the file tree's direct caller
+  // opens the editable doc when this returns null, so the row lands in the
+  // template editor.
+  if (parseTemplateContentDocName(docName)) return null;
   if (options.pages.has(docName)) return null;
   const assetPath = okReadOnlyAssetPath(docName, options.docExt);
   // Serve asymmetry behind this target: text-shaped `.ok` files render fully
@@ -265,11 +272,12 @@ export function resolveNavigationTarget(
     pagesByBasename?: ReadonlyMap<string, string>;
   },
 ): ResolvedContentTarget {
-  // Managed-artifact docs (skills/templates) are real docs addressed by their
-  // exact synthetic name, but they live OUTSIDE the page list — so the
-  // membership checks below would mark them 'missing'. Resolve them directly as
-  // a doc target so every consumer (hash nav, graph, links) treats them as real
-  // instead of broken/uncreated.
+  // Managed-artifact docs (skills) are real docs addressed by their exact
+  // synthetic name, but they live OUTSIDE the page list — so the membership
+  // checks below would mark them 'missing'. Resolve them directly as a doc
+  // target so every consumer (hash nav, graph, links) treats them as real
+  // instead of broken/uncreated. A stale `__template__/…` name also enters here
+  // (still classified managed for the tombstone) and redirects to its content doc.
   if (isManagedArtifactDocName(target)) {
     // A GLOBAL skill bundle `.md` REFERENCE (`__skill__/global/<name>/
     // references/<rel>`) is an EDITABLE managed-artifact live doc (the per-file
@@ -280,12 +288,19 @@ export function resolveNavigationTarget(
     // (they open through the skill-file viewer directly), so only editable `.md`
     // references reach here.
     // A project skill is a CONTENT doc (`.ok/skills/<name>/SKILL`), never the
-    // synthetic `__skill__/project/<name>`. A stale deep-link / bookmark in that
-    // dead form must redirect to the live content doc rather than open a phantom
-    // empty tab. (Global skills + templates keep their synthetic name.)
+    // synthetic `__skill__/project/<name>`; a template is a content doc at
+    // `<folder>/.ok/templates/<name>`, never `__template__/…`. A stale deep-link /
+    // bookmark in either dead synthetic form redirects to the live content doc
+    // rather than opening a phantom empty tab. (Global + external skills keep
+    // their synthetic name and fall through to the `{kind: 'doc'}` return.)
     const parsed = parseManagedArtifactName(target);
     if (parsed?.kind === 'skill' && parsed.scope === 'project') {
       const docName = projectSkillContentDocName(parsed.name);
+      return { kind: 'doc', target: docName, docName };
+    }
+    const legacyTemplate = parseLegacyTemplateDocName(target);
+    if (legacyTemplate) {
+      const docName = templateContentDocName(legacyTemplate.folder, legacyTemplate.name);
       return { kind: 'doc', target: docName, docName };
     }
     return { kind: 'doc', target, docName: target };
@@ -303,13 +318,16 @@ export function resolveNavigationTarget(
   if (parseProjectSkillContentDocName(target)) {
     return { kind: 'doc', target, docName: target };
   }
-  // A doc that links to a skill/template by its on-disk file path
-  // (`.ok/skills/<name>/SKILL`, `<folder>/.ok/templates/<name>`) resolves to the
-  // managed-artifact doc, so clicking the link opens the artifact editor instead
-  // of offering to "create" a missing page.
-  const artifactDocName = managedArtifactDocNameFromContentTarget(target);
-  if (artifactDocName) {
-    return { kind: 'doc', target: artifactDocName, docName: artifactDocName };
+  // A template content doc (`<folder>/.ok/templates/<name>`) resolves directly,
+  // like a project skill: it lives OUTSIDE the page index until the async `files`
+  // refetch lands, so falling through to the pages-dependent resolution would
+  // (transiently) route a freshly-created template to the read-only asset viewer.
+  // A doc-body link whose target carries `.md` normalizes to the same ext-less
+  // content name here, so a link and a tree-open agree on one key.
+  const templateContent = parseTemplateContentDocName(target);
+  if (templateContent) {
+    const docName = templateContentDocName(templateContent.folder, templateContent.name);
+    return { kind: 'doc', target: docName, docName };
   }
   const { normalizedTarget, expectsFolder } = normalizeTargetPath(target);
   if (!normalizedTarget) {

@@ -1,3 +1,4 @@
+import { templateContentDocName } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
 import {
   anchorFromHash,
@@ -22,7 +23,7 @@ import {
   skillFileFromHash,
   skillPreviewFromHash,
 } from './doc-hash';
-import { skillLiveDocName, templateDocName } from './managed-artifact-doc-name';
+import { skillLiveDocName } from './managed-artifact-doc-name';
 
 describe('docNameFromHash', () => {
   test('returns null for empty hash', () => {
@@ -375,11 +376,11 @@ describe('asset hash helpers', () => {
   });
 });
 
-// Managed-artifact docs (skills/templates) open as ordinary editor tabs, so
-// their `#/…` hashes resolve to their synthetic doc name like any document —
-// `skillDocName`/`templateDocName` build the raw key, `hashFromDocName` builds
-// the hash, and `docNameFromHash` decodes it back to the same key.
-describe('managed-artifact doc names round-trip as documents', () => {
+// A global skill's synthetic doc name and a template's content-relative doc name
+// both open as ordinary editor tabs, so their `#/…` hashes round-trip like any
+// document: the builder makes the raw key, `hashFromDocName` builds the hash, and
+// `docNameFromHash` decodes it back to the same key.
+describe('skill and template doc names round-trip as documents', () => {
   test('skill doc name round-trips through the hash', () => {
     // A GLOBAL skill is the synthetic-doc form (`__skill__/global/<name>`);
     // a project skill is a content doc, never `__skill__/project/<name>`, so the
@@ -390,21 +391,33 @@ describe('managed-artifact doc names round-trip as documents', () => {
     expect(docNameFromHash(hashFromDocName(docName))).toBe(docName);
   });
 
-  test('template doc name (nested folder) round-trips through the hash', () => {
-    const docName = templateDocName('a/b/c', 'deep');
-    expect(docName).toBe('__template__/a/b/c/deep');
-    expect(hashFromDocName(docName)).toBe('#/__template__/a/b/c/deep');
+  test('template CONTENT doc name (nested folder) round-trips through the hash', () => {
+    // Templates are content docs now; the doc name is the content-relative path.
+    const docName = templateContentDocName('a/b/c', 'deep');
+    expect(docName).toBe('a/b/c/.ok/templates/deep');
+    expect(hashFromDocName(docName)).toBe('#/a/b/c/.ok/templates/deep');
     expect(docNameFromHash(hashFromDocName(docName))).toBe(docName);
   });
 
-  test('template at the project root', () => {
-    expect(templateDocName('', 'daily')).toBe('__template__/daily');
-    expect(docNameFromHash('#/__template__/daily')).toBe('__template__/daily');
+  test('template CONTENT doc at the project root round-trips', () => {
+    const docName = templateContentDocName('', 'daily');
+    expect(docName).toBe('.ok/templates/daily');
+    expect(docNameFromHash(hashFromDocName(docName))).toBe(docName);
   });
 
-  test('a percent-encoded URL hash decodes back to the raw doc name', () => {
-    // The browser percent-encodes the URL hash; docNameFromHash decodes per
-    // segment so the key matches the raw doc name the tab/provider uses.
+  test('a spaced-folder template content name rides the generic hash round-trip', () => {
+    // The synthetic namespace percent-encoded segments; the content name is RAW
+    // and round-trips the hash like any other spaced doc name (the browser encodes
+    // the space, docNameFromHash decodes it per segment).
+    const docName = templateContentDocName('My Notes', 'plan');
+    expect(docName).toBe('My Notes/.ok/templates/plan');
+    expect(docNameFromHash('#/My%20Notes/.ok/templates/plan')).toBe(docName);
+    expect(docNameFromHash(hashFromDocName(docName))).toBe(docName);
+  });
+
+  test('a legacy `__template__/…` hash still decodes (input to the navigation redirect)', () => {
+    // docNameFromHash decodes the stale synthetic name so resolveNavigationTarget
+    // can redirect it to the content doc; new templates never use this form.
     expect(docNameFromHash('#/__template__/My%20Notes/plan')).toBe('__template__/My Notes/plan');
   });
 });

@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import {
-  managedArtifactDocNameFromContentTarget,
+  isManagedArtifactDocName,
   parseGlobalSkillBundleDoc,
+  parseLegacyTemplateDocName,
   parseManagedArtifactName,
   parseProjectSkillBundleDoc,
+  parseTemplateContentDocName,
   resolveSkillBundleWikiTarget,
   skillFileLiveDocName,
   skillLiveDocName,
+  templateContentDocName,
 } from './cc1.ts';
 
 describe('parseManagedArtifactName — skill name/rel split (per-file editability)', () => {
@@ -67,37 +70,27 @@ describe('parseManagedArtifactName — skill name/rel split (per-file editabilit
 // (click-through + backlinks). Project skills are NOT mapped here — they are
 // real content docs (`.ok/skills/<name>/SKILL`) and resolve through the normal
 // page index. These cases pin that contract.
-describe('managedArtifactDocNameFromContentTarget', () => {
-  test('does NOT rewrite project skill file paths — they are content docs', () => {
-    // Project skills are indexed content now, not synthetic `__skill__/project`
-    // docs, so a skill-file target falls through to normal page resolution.
-    expect(managedArtifactDocNameFromContentTarget('.ok/skills/my-skill/SKILL.md')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('.ok/skills/my-skill/SKILL')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('.ok/skills/my-skill/SKILL.mdx')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('some/dir/.ok/skills/deep/SKILL.md')).toBeNull();
+describe('parseManagedArtifactName — __template__ tombstone', () => {
+  test('returns null for a synthetic template name (no live artifact resolves)', () => {
+    // The template parse arm is gone: a stale `__template__/…` name must NOT
+    // resolve to an artifact, so it can never reach the content branch and mint
+    // a literal `__template__/…` file. Templates are content docs.
+    expect(parseManagedArtifactName('__template__/note')).toBeNull();
+    expect(parseManagedArtifactName('__template__/docs/note')).toBeNull();
+    expect(parseManagedArtifactName('__template__/docs/guides/note')).toBeNull();
   });
 
-  test('maps a root-level template to a folderless template doc name', () => {
-    expect(managedArtifactDocNameFromContentTarget('.ok/templates/note.md')).toBe(
-      '__template__/note',
-    );
+  test('but the prefix still classifies as a managed-artifact name (tombstone)', () => {
+    // The reserved-name gates (tree exclusion, create-page refusal, persistence
+    // quarantine, the navigation redirect) all key off this classifier, so the
+    // prefix survives even though the parser refuses it.
+    expect(isManagedArtifactDocName('__template__/note')).toBe(true);
+    expect(isManagedArtifactDocName('__template__/docs/note')).toBe(true);
   });
 
-  test('maps a template under a folder, preserving the folder segment', () => {
-    expect(managedArtifactDocNameFromContentTarget('docs/.ok/templates/note.md')).toBe(
-      '__template__/docs/note',
-    );
-    expect(managedArtifactDocNameFromContentTarget('docs/guides/.ok/templates/note')).toBe(
-      '__template__/docs/guides/note',
-    );
-  });
-
-  test('returns null for paths that are not skill/template files', () => {
-    expect(managedArtifactDocNameFromContentTarget('docs/getting-started.md')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('.ok/skills/my-skill/NOTES.md')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('.ok/config.yml')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('readme')).toBeNull();
-    expect(managedArtifactDocNameFromContentTarget('')).toBeNull();
+  test('a template content name is NOT a managed-artifact name', () => {
+    expect(parseManagedArtifactName('docs/.ok/templates/note')).toBeNull();
+    expect(isManagedArtifactDocName('docs/.ok/templates/note')).toBe(false);
   });
 });
 
@@ -279,5 +272,141 @@ describe('parseGlobalSkillBundleDoc', () => {
     // Templates + ordinary docs never parse as a global skill bundle doc.
     expect(parseGlobalSkillBundleDoc('__template__/notes/daily')).toBeNull();
     expect(parseGlobalSkillBundleDoc('notes/index')).toBeNull();
+  });
+});
+
+// A template's live doc name is its content-relative path. This builder + shape
+// parser + legacy parser are the single identity every surface shares; these
+// cases pin the raw (unencoded) content shape, the single-leaf-only rule, and
+// the percent-decoding the legacy synthetic-name reader must preserve.
+describe('templateContentDocName', () => {
+  test('builds a root template content doc name (ext-less, raw)', () => {
+    expect(templateContentDocName('', 'daily')).toBe('.ok/templates/daily');
+  });
+
+  test('builds a single-level folder template content doc name', () => {
+    expect(templateContentDocName('docs', 'daily')).toBe('docs/.ok/templates/daily');
+  });
+
+  test('builds a nested-folder template content doc name', () => {
+    expect(templateContentDocName('a/b', 'daily')).toBe('a/b/.ok/templates/daily');
+  });
+
+  test('normalizes leading/trailing slashes on the folder', () => {
+    expect(templateContentDocName('/docs/', 'daily')).toBe('docs/.ok/templates/daily');
+  });
+
+  test('keeps a spaced folder RAW — no percent-encoding', () => {
+    expect(templateContentDocName('My Notes', 'daily')).toBe('My Notes/.ok/templates/daily');
+  });
+});
+
+describe('parseTemplateContentDocName', () => {
+  test('parses a root template leaf', () => {
+    expect(parseTemplateContentDocName('.ok/templates/daily')).toEqual({
+      folder: '',
+      name: 'daily',
+    });
+  });
+
+  test('parses a template leaf under a folder, preserving the folder segment', () => {
+    expect(parseTemplateContentDocName('docs/.ok/templates/daily')).toEqual({
+      folder: 'docs',
+      name: 'daily',
+    });
+    expect(parseTemplateContentDocName('a/b/.ok/templates/daily')).toEqual({
+      folder: 'a/b',
+      name: 'daily',
+    });
+  });
+
+  test('returns null for a subdirectory under .ok/templates — templates are single leaves', () => {
+    expect(parseTemplateContentDocName('.ok/templates/sub/daily')).toBeNull();
+    expect(parseTemplateContentDocName('docs/.ok/templates/sub/daily')).toBeNull();
+  });
+
+  test('returns null for a non-template .ok path', () => {
+    expect(parseTemplateContentDocName('.ok/skills/demo/SKILL')).toBeNull();
+    expect(parseTemplateContentDocName('.ok/config.yml')).toBeNull();
+  });
+
+  test('returns null for an ordinary content doc name', () => {
+    expect(parseTemplateContentDocName('docs/getting-started')).toBeNull();
+    expect(parseTemplateContentDocName('readme')).toBeNull();
+    expect(parseTemplateContentDocName('')).toBeNull();
+  });
+
+  test('strips a `.md` suffix but no other extension — a template IS a `.md` leaf', () => {
+    // Mirrors `isTemplateContentFile`, which admits only `.md` under
+    // `.ok/templates/`: the two halves of the grammar must agree about what a
+    // template is. A `.mdx` (or any other) suffix is not the template file
+    // extension, so it stays part of the leaf like any odd character would.
+    expect(parseTemplateContentDocName('.ok/templates/daily.md')).toEqual({
+      folder: '',
+      name: 'daily',
+    });
+    expect(parseTemplateContentDocName('docs/.ok/templates/daily.mdx')).toEqual({
+      folder: 'docs',
+      name: 'daily.mdx',
+    });
+  });
+
+  test('parses by SHAPE only — a name that would fail the template-name grammar still parses', () => {
+    // Name validation lives at the HTTP write layer, not in the doc-name grammar,
+    // so the shape parser must not reject on the leaf's characters.
+    expect(parseTemplateContentDocName('.ok/templates/Has Spaces')).toEqual({
+      folder: '',
+      name: 'Has Spaces',
+    });
+    expect(parseTemplateContentDocName('docs/.ok/templates/UPPER_case!')).toEqual({
+      folder: 'docs',
+      name: 'UPPER_case!',
+    });
+  });
+});
+
+describe('parseLegacyTemplateDocName', () => {
+  test('parses a stale synthetic root template name', () => {
+    expect(parseLegacyTemplateDocName('__template__/daily')).toEqual({ folder: '', name: 'daily' });
+  });
+
+  test('parses a stale synthetic name under a folder (flat and nested)', () => {
+    expect(parseLegacyTemplateDocName('__template__/docs/daily')).toEqual({
+      folder: 'docs',
+      name: 'daily',
+    });
+    expect(parseLegacyTemplateDocName('__template__/a/b/daily')).toEqual({
+      folder: 'a/b',
+      name: 'daily',
+    });
+  });
+
+  test('percent-DECODES each segment so an encoded stale name maps to the raw folder/name', () => {
+    expect(parseLegacyTemplateDocName('__template__/My%20Notes/daily')).toEqual({
+      folder: 'My Notes',
+      name: 'daily',
+    });
+  });
+
+  test('returns null for a content-shaped name and other non-synthetic names', () => {
+    expect(parseLegacyTemplateDocName('docs/.ok/templates/daily')).toBeNull();
+    expect(parseLegacyTemplateDocName('docs/getting-started')).toBeNull();
+    expect(parseLegacyTemplateDocName('__skill__/global/demo')).toBeNull();
+    expect(parseLegacyTemplateDocName('__template__/')).toBeNull();
+    expect(parseLegacyTemplateDocName('')).toBeNull();
+  });
+});
+
+describe('template content name round-trips (build → parse)', () => {
+  test.each([
+    { label: 'root', folder: '', name: 'daily' },
+    { label: 'single-level folder', folder: 'docs', name: 'daily' },
+    { label: 'nested folder', folder: 'a/b', name: 'daily' },
+    { label: 'spaced folder', folder: 'My Notes', name: 'daily' },
+  ])('round-trips a $label', ({ folder, name }) => {
+    expect(parseTemplateContentDocName(templateContentDocName(folder, name))).toEqual({
+      folder,
+      name,
+    });
   });
 });

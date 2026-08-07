@@ -142,28 +142,20 @@ describe('managedArtifactAbsPath', () => {
     );
   });
 
-  test('templates resolve folder-addressed under <folder>/.ok/templates/<name>.md', () => {
+  test('rejects every __template__ name — templates never resolve through the managed disk path', () => {
+    // Templates are content docs now; a `__template__/…` name is a tombstone
+    // that must never resolve to a disk path. The load/store guards short-circuit
+    // before this resolver, so a throw here is defense-in-depth — a well-formed
+    // template name is rejected exactly like a malformed one.
     const ctx = makeCtx();
-    // Root template (empty folder).
-    expect(managedArtifactAbsPath('__template__/daily-note', ctx)).toBe(
-      resolve(projectDir, '.ok', 'templates', 'daily-note.md'),
-    );
-    // Nested-folder template.
-    expect(managedArtifactAbsPath('__template__/notes/sub/meeting', ctx)).toBe(
-      resolve(projectDir, 'notes', 'sub', '.ok', 'templates', 'meeting.md'),
-    );
-  });
-
-  test('rejects template path-escape + malformed names (security)', () => {
-    const ctx = makeCtx();
-    for (const bad of [
+    for (const name of [
+      '__template__/daily-note', // well-formed — still rejected
+      '__template__/notes/sub/meeting',
       '__template__/', // empty
       '__template__/../evil', // folder escape
-      '__template__/notes/../../etc/passwd',
-      '__template__/notes/bad.name', // dot in name
       '__template__/notes/bad name', // space in name
     ]) {
-      expect(() => managedArtifactAbsPath(bad, ctx)).toThrow();
+      expect(() => managedArtifactAbsPath(name, ctx)).toThrow();
     }
   });
 });
@@ -237,6 +229,40 @@ describe('store/load round-trip', () => {
     loadManagedArtifactDoc(fresh, projectDocName, ctx);
     expect(fresh.getText('source').toString()).toBe('');
     expect(fresh.getXmlFragment('default').length).toBe(0);
+  });
+
+  test('__template__ synthetic doc is INERT in load + store (tombstone, never creates a file)', async () => {
+    // Templates are content docs now (`<folder>/.ok/templates/<name>`). A stale
+    // `__template__/…` name from an old client or bookmark is a tombstone: the
+    // load guard seeds nothing and the store guard no-ops, so the synthetic name
+    // can never become a SECOND CRDT doc for the same file (double-doc
+    // corruption) nor write a literal `__template__/…` file. `managedArtifactAbsPath`
+    // throws for every `__template__` name (its template arm was deleted), so the
+    // tombstone disk paths are hardcoded here — and a MISSING load guard would
+    // surface as that throw, which is exactly what `not.toThrow()` pins.
+    const ctx = makeCtx();
+    const templateDocName = '__template__/notes/daily';
+
+    // store: a populated doc must NOT persist under the synthetic template name.
+    const doc = new Y.Doc();
+    doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
+    expect(await storeManagedArtifactDoc(doc, templateDocName, 'agent', ctx)).toBe('no-op');
+
+    // load: the guard returns BEFORE `managedArtifactAbsPath` (which throws for a
+    // `__template__` name), so a well-formed synthetic name seeds an EMPTY doc
+    // without throwing and mints no lineage epoch — the observable proof the
+    // tombstone guard fires ahead of the resolver.
+    const fresh = new Y.Doc();
+    expect(() => loadManagedArtifactDoc(fresh, templateDocName, ctx)).not.toThrow();
+    expect(fresh.getText('source').toString()).toBe('');
+    expect(fresh.getXmlFragment('default').length).toBe(0);
+    expect(fresh.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBeUndefined();
+
+    // Never-creates-file: neither a literal `__template__/…` path nor the
+    // content-relative path the name would map to exists on disk after both
+    // guards short-circuit.
+    expect(existsSync(join(projectDir, '__template__', 'notes', 'daily.md'))).toBe(false);
+    expect(existsSync(join(projectDir, 'notes', '.ok', 'templates', 'daily.md'))).toBe(false);
   });
 
   test('store is a no-op when content equals LKG', async () => {
@@ -351,13 +377,16 @@ describe('concurrent-writer reconcile', () => {
   });
 
   /**
-   * Global skills are the reconcile arm's primary reachable case — project
-   * skills return 'no-op' before it, so the reachable set is global skills plus
-   * templates. They also live outside any project shadow repo, which makes them
-   * the unanchorable half of the site: the hook still has to run so the counter
-   * and the ring breadcrumb fire, even though there is nowhere to file an
-   * anchor. The booted template test pins the anchored half; this pins the hand-
-   * off, which is what tells the anchored half it will ever be reached.
+   * Global skills (this test's subject) reach the reconcile arm; project skills
+   * and templates both return 'no-op' before it, since both persist through the
+   * content path now. Global skills live outside any project shadow repo, which
+   * makes them the unanchorable half of the site: the hook still has to run so
+   * the counter and the ring breadcrumb fire, even though there is nowhere to
+   * file an anchor. The anchored half — a versioned managed artifact that writes
+   * an actual checkpoint — is currently UNREACHABLE: templates were the last
+   * versioned artifact that reached this arm, and they are content docs now, so
+   * no production path writes the `managed-artifact-reconcile` checkpoint. This
+   * test pins the reachable, unanchored path only.
    */
   test('reconcile invokes beforeReconcileDivergence with the live and disk content', async () => {
     const calls: Array<{ docName: string; live: string; disk: string }> = [];
@@ -481,40 +510,29 @@ describe('managedArtifactDocNameForPath (reverse resolver)', () => {
     ).toBeNull();
   });
 
-  test('maps a template .md leaf back to its folder-addressed doc name', () => {
+  test('round-trips with managedArtifactAbsPath (global skills)', () => {
     const ctx = makeCtx();
-    // Root template.
-    expect(managedArtifactDocNameForPath(resolve(projectDir, '.ok/templates/daily.md'), ctx)).toBe(
-      '__template__/daily',
-    );
-    // Nested-folder template.
-    expect(
-      managedArtifactDocNameForPath(resolve(projectDir, 'notes/sub/.ok/templates/meeting.md'), ctx),
-    ).toBe('__template__/notes/sub/meeting');
-  });
-
-  test('round-trips with managedArtifactAbsPath (skills + templates)', () => {
-    const ctx = makeCtx();
-    // Project skills omitted — they are content docs, so their disk path does
-    // not round-trip through the managed-artifact reverse resolver anymore.
+    // Project skills + templates omitted — they are content docs, so their disk
+    // path does not round-trip through the managed-artifact reverse resolver.
     for (const name of [
       '__skill__/global/beta-2',
       '__skill__/global/beta-2/references/patterns', // per-file bundle doc
-      '__template__/daily',
-      '__template__/notes/sub/meeting',
     ]) {
       expect(managedArtifactDocNameForPath(managedArtifactAbsPath(name, ctx), ctx)).toBe(name);
     }
   });
 
-  test('rejects malformed / false-match template paths', () => {
+  test('template disk paths never reverse-map to a managed doc name (content docs now)', () => {
+    // A `<folder>/.ok/templates/<name>.md` leaf is an ordinary content doc, so
+    // the managed-artifact reverse resolver returns null for it — even a
+    // well-formed leaf — leaving the disk→doc mapping to the content pipeline.
     const ctx = makeCtx();
-    for (const bad of [
+    for (const path of [
+      resolve(projectDir, '.ok/templates/daily.md'), // well-formed root leaf
+      resolve(projectDir, 'notes/sub/.ok/templates/meeting.md'), // nested leaf
       resolve(projectDir, '.ok/templates/a/b.md'), // nested below templates dir
-      resolve(projectDir, '.ok/templates/Bad Name.md'), // space in name
-      resolve(projectDir, 'x.ok/templates/t.md'), // `.ok/templates` not a clean boundary
     ]) {
-      expect(managedArtifactDocNameForPath(bad, ctx)).toBeNull();
+      expect(managedArtifactDocNameForPath(path, ctx)).toBeNull();
     }
   });
 
@@ -546,15 +564,11 @@ describe('managedArtifactContributorAttribution (editor-edit versioning)', () =>
     expect(managedArtifactContributorAttribution('__skill__/global/notes')).toBeNull();
   });
 
-  test('templates → folder-addressed .ok/templates key + template- subject', () => {
-    expect(managedArtifactContributorAttribution('__template__/daily')).toEqual({
-      docKey: '.ok/templates/daily',
-      subject: 'template-edit: .ok/templates/daily.md',
-    });
-    expect(managedArtifactContributorAttribution('__template__/notes/sub/meeting')).toEqual({
-      docKey: 'notes/sub/.ok/templates/meeting',
-      subject: 'template-edit: notes/sub/.ok/templates/meeting.md',
-    });
+  test('template name → null (content doc — attributed on its own path by the content store)', () => {
+    // A `__template__/…` name resolves to no managed docKey: templates are
+    // content docs, versioned on their real path by the content store, not here.
+    expect(managedArtifactContributorAttribution('__template__/daily')).toBeNull();
+    expect(managedArtifactContributorAttribution('__template__/notes/sub/meeting')).toBeNull();
   });
 
   test('non-managed-artifact name → null', () => {
@@ -586,21 +600,6 @@ describe('managedArtifactTimelinePaths', () => {
       versioned: true,
       docKey: '.ok/skills/my-skill',
       filePath: '.ok/skills/my-skill/SKILL.md',
-    });
-  });
-
-  test('template → versioned, folder-addressed key + <name>.md leaf', () => {
-    expect(managedArtifactTimelinePaths('__template__/docs/guides/note')).toEqual({
-      managed: true,
-      versioned: true,
-      docKey: 'docs/guides/.ok/templates/note',
-      filePath: 'docs/guides/.ok/templates/note.md',
-    });
-    expect(managedArtifactTimelinePaths('__template__/note')).toEqual({
-      managed: true,
-      versioned: true,
-      docKey: '.ok/templates/note',
-      filePath: '.ok/templates/note.md',
     });
   });
 
@@ -775,7 +774,7 @@ describe('a skill doc never RESURRECTS a bundle that is gone', () => {
   });
 });
 
-describe('the liveness rule covers external skills too, but never templates', () => {
+describe('the liveness rule covers external skills too', () => {
   // The container is lost through a different door per skill class, but the
   // failure is identical: a stale autosave rebuilds it around a single file.
   function editLive(doc: Y.Doc, text: string): void {
@@ -785,21 +784,6 @@ describe('the liveness rule covers external skills too, but never templates', ()
       src.insert(0, text);
     }, 'agent');
   }
-
-  test('a template still CREATES `.ok/templates`, because that is how templates are written', async () => {
-    // Deliberately not bounded: `PUT /api/template` routes the composed bytes
-    // through the template's CRDT doc and leaves the file write to persistence,
-    // so requiring the dir up front would break every template create.
-    const ctx = makeCtx();
-    const docName = '__template__//weekly-note';
-    const filePath = managedArtifactAbsPath(docName, ctx);
-    const doc = new Y.Doc();
-    loadManagedArtifactDoc(doc, docName, ctx);
-
-    editLive(doc, '# Weekly note\n');
-    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('persisted');
-    expect(readFileSync(filePath, 'utf-8')).toBe('# Weekly note\n');
-  });
 
   test('an external skill deleted by its harness is not rebuilt under the harness root', async () => {
     // Registration is in-memory and `unregisterExternalSkill` never runs outside

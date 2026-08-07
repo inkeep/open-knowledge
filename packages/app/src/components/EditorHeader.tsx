@@ -51,11 +51,12 @@ export function EditorHeader({
 }: EditorHeaderProps) {
   const { t } = useLingui();
   const { activeDocName, activeTarget } = useDocumentContext();
-  // Managed-artifact tabs (skills/templates) are ordinary docs but carry their
-  // own header treatment: neither skills nor templates are shareable (the
-  // synthetic doc name isn't a real on-disk path to share), so the ShareButton
-  // trigger gates on this. The agent-handoff for a skill lives in the Skills
-  // sidebar (SkillsSidebarSection / skill-actions), not the header.
+  // A GLOBAL skill (or an external skill) is a managed-artifact tab whose
+  // synthetic doc name has no real on-disk path to share, so the ShareButton
+  // trigger gates on this. Templates and project skills are content docs with
+  // real paths and share like any doc (`parseManagedArtifactName` returns null
+  // for them). The agent-handoff for a skill lives in the Skills sidebar
+  // (SkillsSidebarSection / skill-actions), not the header.
   const managedArtifact = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const { state: sidebarState } = useSidebar();
   // No-project single-file session (`ok <file>`): drop the project chrome
@@ -80,8 +81,8 @@ export function EditorHeader({
     if (activeTarget?.kind === 'folder') {
       return buildFolderShareInput(activeTarget.folderPath);
     }
-    // Managed-artifact tabs aren't shareable — their synthetic doc name has no
-    // shareable on-disk path.
+    // A managed-artifact tab (global/external skill) has no shareable on-disk
+    // path; a content doc (ordinary doc, template, or project skill) does.
     if (activeDocName && !managedArtifact) {
       return buildDocShareInput(activeDocName);
     }

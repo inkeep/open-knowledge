@@ -251,7 +251,7 @@ describe('BacklinkIndex', () => {
     }
   });
 
-  test('normalizes skill file links to the content doc and template links to the artifact', () => {
+  test('skill and template file links resolve to their content docs, not synthetic names', () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-artifact-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -262,17 +262,17 @@ describe('BacklinkIndex', () => {
         'work-log',
         'Touched [the skill](.ok/skills/my-skill/SKILL.md) and [the tpl](notes/.ok/templates/daily.md).\n',
       );
-      // Project skills are content docs: a link to `.ok/skills/<name>/SKILL.md`
-      // resolves to the content doc, NOT the dead `__skill__/project/<name>`.
-      // Templates are still managed artifacts.
+      // Both are content docs now: a link resolves to the content doc name, NOT a
+      // dead `__skill__/project/<name>` or `__template__/<folder>/<name>`.
       expect(index.getBacklinks('.ok/skills/my-skill/SKILL')).toEqual([
         expect.objectContaining({ source: 'work-log' }),
       ]);
-      expect(index.getBacklinks('__template__/notes/daily')).toEqual([
+      expect(index.getBacklinks('notes/.ok/templates/daily')).toEqual([
         expect.objectContaining({ source: 'work-log' }),
       ]);
-      // The phantom managed-artifact path is NOT a target for a project skill.
+      // The phantom synthetic paths are NOT targets.
       expect(index.getBacklinks('__skill__/project/my-skill')).toEqual([]);
+      expect(index.getBacklinks('__template__/notes/daily')).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -589,18 +589,19 @@ describe('BacklinkIndex', () => {
     }
   });
 
-  test('a pre-position backlinks cache loads and serves entries without positions', async () => {
+  test('a current-version cache with corrupt positions degrades them to "position unknown"', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-link-legacy-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     try {
-      // The exact on-disk shape older servers wrote: backward entries carry only
-      // {source, anchor, snippet}.
+      // A hand-edited or corrupt cache at the CURRENT version: backward entries
+      // may omit positions or carry garbage ones.
       const cacheDir = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main');
       mkdirSync(cacheDir, { recursive: true });
       writeFileSync(
         join(cacheDir, 'backlinks.json'),
         JSON.stringify({
+          version: 1,
           backward: {
             ghost: [{ source: 'alpha', anchor: null, snippet: 'See ghost.' }],
             // Invalid positions (hand-edited or corrupt cache) must degrade to
@@ -642,6 +643,58 @@ describe('BacklinkIndex', () => {
       expect(index.getDeadLinks(['alpha'])[0]?.sources[0]).toEqual(
         expect.objectContaining({ source: 'alpha', line: 0 }),
       );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a versionless pre-upgrade cache is rejected so boot cold-rebuilds instead of serving stale keys', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-version-guard-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      // The exact hazard SNAPSHOT_VERSION exists for: a cache written before
+      // the version field existed, keying a doc→template edge under the
+      // retired `__template__/…` namespace. Served as-is, that key satisfies
+      // neither the admitted set nor `state.forward`, so it would surface as a
+      // false dead link while the real template doc reads as a false orphan —
+      // and the mtime reconcile never heals it while the source is untouched.
+      const templateDoc = 'notes/.ok/templates/daily';
+      mkdirSync(join(contentDir, 'notes', '.ok', 'templates'), { recursive: true });
+      writeFileSync(
+        join(contentDir, 'alpha.md'),
+        '# Alpha\n\nSee [[notes/.ok/templates/daily]].\n',
+      );
+      writeFileSync(join(contentDir, 'notes', '.ok', 'templates', 'daily.md'), '# Daily\n');
+
+      const cacheDir = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main');
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        join(cacheDir, 'backlinks.json'),
+        JSON.stringify({
+          backward: {
+            '__template__/notes/daily': [{ source: 'alpha', anchor: null, snippet: 'See daily.' }],
+          },
+          forward: { alpha: ['__template__/notes/daily'] },
+          externalForward: {},
+          // An mtime snapshot matching disk would make the reconcile a no-op —
+          // the exact condition under which the stale key would persist.
+          mtimes: {},
+        }),
+        'utf-8',
+      );
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      expect(await index.loadFromDisk()).toBe(false);
+
+      // The caller's fallback on a rejected load: a clean cold rebuild keys the
+      // edge under the live content name, with no residue of the retired one.
+      await index.rebuildFromDisk();
+      expect(index.getBacklinks(templateDoc)).toEqual([
+        expect.objectContaining({ source: 'alpha' }),
+      ]);
+      expect(index.getDeadLinks(['alpha', templateDoc])).toEqual([]);
+      expect(index.getOrphans(['alpha', templateDoc])).not.toContain(templateDoc);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

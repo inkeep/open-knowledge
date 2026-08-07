@@ -593,11 +593,17 @@ describe('isLinkIndexExcludedDoc', () => {
     }
   });
 
-  test('admits managed-artifact docs — they participate in the link index', () => {
-    // The two-axis split: isReservedForUserTree keeps skills/templates out of
-    // the document TREE, but the link index admits them so their outgoing
-    // links, backlinks, and tags resolve like documents.
+  test('admits managed-artifact skills and template content docs as link-index sources', () => {
+    // Skills and folder-local templates both participate in the link graph:
+    // their outgoing links, backlinks, and authored tags index like ordinary
+    // documents. Only system + config docs are excluded here — the tree axis
+    // (which hides skills and `.ok` paths) is deliberately separate.
     expect(isLinkIndexExcludedDoc('__skill__/project/my-skill')).toBe(false);
+    expect(isLinkIndexExcludedDoc('.ok/templates/daily')).toBe(false);
+    expect(isLinkIndexExcludedDoc('docs/.ok/templates/meeting')).toBe(false);
+    expect(isLinkIndexExcludedDoc('a/b/c/.ok/templates/note')).toBe(false);
+    // The stale synthetic tombstone never reaches the file index, so it is never
+    // a link-index source; it is kept out of the TREE by isReservedForUserTree.
     expect(isLinkIndexExcludedDoc('__template__/docs/my-template')).toBe(false);
   });
 

@@ -898,6 +898,26 @@ describe('okReservedPathRedirect', () => {
     expect(okReservedPathRedirect('.ok/templates/note')).toContain('`template` target');
   });
 
+  test('a raw document write into .ok/templates is refused, not admitted as a content doc (D7)', () => {
+    // Templates became ordinary content docs (the content filter admits
+    // `.ok/templates` for reading and watching), but the raw-write refusal is a
+    // separate chokepoint that must stay closed: the `template` verb is the only
+    // authoring route. `normalizeDocName` must still reject the dot-segment path
+    // so `write` / `edit` surface the teaching redirect in place of the generic
+    // error — the read carve-out must not leak into the write path.
+    const path = '.ok/templates/standup';
+    expect(normalizeDocName(path).ok).toBe(false);
+    expect(okReservedPathRedirect(path)).toContain('`template` target');
+
+    // The carve-out is segment-shaped — templates live at arbitrary depth — so
+    // the refusal must hold for a nested folder's templates dir too, not just
+    // the project-root form. (The teaching redirect stays root-anchored; the
+    // nested form surfaces the generic dot-segment error instead.)
+    const nested = 'notes/.ok/templates/standup';
+    expect(normalizeDocName(nested).ok).toBe(false);
+    expect(okReservedPathRedirect(nested)).toBeNull();
+  });
+
   test('other .ok/ path → generic .ok redirect', () => {
     expect(okReservedPathRedirect('.ok/config/whatever')).toContain('not addressable as documents');
   });

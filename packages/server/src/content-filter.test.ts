@@ -572,16 +572,17 @@ describe('ContentFilter', () => {
     });
 
     test('excludes BUILTIN_SKIP_DIRS at any path depth, not just top segment (FR-CF1)', () => {
-      // nested `.ok/`
-      // directories carry per-folder metadata + templates. Without this fix, a
-      // path like `meetings/.ok/templates/foo.md` slipped past `isDirExcluded`
-      // (topSegment was `meetings`, not in BUILTIN_SKIP_DIRS) and got indexed as
-      // ordinary content. Collateral fix for nested node_modules/, dist/, etc.
+      // A skip-dir segment at ANY depth prunes the path (the top segment can be
+      // an ordinary folder). Nested `node_modules/`, `dist/`, etc. all prune.
+      // The `.ok` case is nuanced: `<folder>/.ok` and `<folder>/.ok/templates`
+      // stay descendable via the templates-as-content carve-out, but every other
+      // `.ok` child (`.ok/local`, config, an unrecognized `.ok/<x>`) still prunes.
       const filter = createContentFilter({ projectDir, contentDir: projectDir });
 
-      // Nested .ok/
-      expect(filter.isDirExcluded('meetings/.ok')).toBe(true);
-      expect(filter.isDirExcluded('meetings/.ok/templates')).toBe(true);
+      // Nested .ok/ — descendable only down the templates carve-out.
+      expect(filter.isDirExcluded('meetings/.ok')).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/templates')).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/local')).toBe(true);
       expect(filter.isDirExcluded('a/b/c/.ok/d')).toBe(true);
 
       // Nested node_modules/ — latent bug fixed as collateral
@@ -634,21 +635,19 @@ describe('ContentFilter', () => {
       expect(filter.isExcluded('.ok/AGENTS.md')).toBe(true);
     });
 
-    test('isExcluded rejects supported docs born inside BUILTIN_SKIP_DIRS', () => {
-      // Watcher events fire for files created inside `.ok/` after boot
-      // (e.g. MCP `write_template` writing `<folder>/.ok/templates/foo.md`).
-      // classifyEvents only consults `isExcluded` per-event — without the
-      // BUILTIN_SKIP_DIRS gate here the file slipped past the supported-
-      // extension fast-path and landed in the file index, surfacing the
-      // template `.md` and its parent `.ok/templates/` folder in the file
-      // tree. Mirrors `isDirExcluded`'s segment-wise check.
+    test('isExcluded rejects supported docs born inside BUILTIN_SKIP_DIRS except the templates carve-out', () => {
+      // Watcher events fire for files created inside `.ok/` after boot.
+      // classifyEvents consults `isExcluded` per-event. Non-carve-out `.ok`
+      // children (folder-defaults, config) and other BUILTIN_SKIP_DIRS
+      // (node_modules, build output) stay rejected so they never leak into the
+      // file index. The one exception is a `.md` template leaf under
+      // `.ok/templates/`, which the carve-out admits as a content doc.
       const filter = createContentFilter({ projectDir, contentDir: projectDir });
 
-      // Top-level `.ok/templates/<name>.md` (project-root scope template).
-      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(true);
-      // Nested folder-scope template.
-      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(true);
-      // Folder-defaults file in the same hidden dir.
+      // Template leaves ARE admitted — root scope and nested folder scope.
+      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(false);
+      // A non-template file in the same hidden dir stays excluded.
       expect(filter.isExcluded('meetings/.ok/frontmatter.yml.md')).toBe(true);
       // Other BUILTIN_SKIP_DIRS at any depth — collateral coverage.
       expect(filter.isExcluded('node_modules/some-pkg/README.md')).toBe(true);
@@ -657,6 +656,272 @@ describe('ContentFilter', () => {
       // Sanity: ordinary docs are still admitted.
       expect(filter.isExcluded('meetings/prep-notes.md')).toBe(false);
       expect(filter.isExcluded('docs/intro.md')).toBe(false);
+    });
+  });
+
+  describe('templates-as-content admission', () => {
+    // Tracer for the segment-shaped carve-out: a `.md` template leaf under any
+    // `<folder>/.ok/templates/` is admitted as a content doc, at the root and at
+    // any nesting depth, in BOTH filter factories. The exhaustive matrix
+    // (secret-floor precedence, single-file scope, boot-index walk) lives with
+    // the dedicated carve-out suite.
+    function assertTemplateAdmission(filter: ContentFilter) {
+      // File admission: root + nested `.md` leaves.
+      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(false);
+      expect(filter.isExcluded('a/b/.ok/templates/note.md')).toBe(false);
+      // Dir descendability so the normal walk reaches those leaves.
+      expect(filter.isDirExcluded('meetings/.ok')).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/templates')).toBe(false);
+      // `.md` ONLY — a `.mdx` (or other ext) under `.ok/templates` is not a
+      // template and stays excluded.
+      expect(filter.isExcluded('.ok/templates/daily.mdx')).toBe(true);
+      // A subdirectory under `.ok/templates` is not descendable, and a leaf
+      // inside it is not admitted — templates are flat.
+      expect(filter.isDirExcluded('.ok/templates/sub')).toBe(true);
+      expect(filter.isExcluded('.ok/templates/sub/x.md')).toBe(true);
+      // Servable content via the ungated `isPathIgnored` carve-out.
+      expect(filter.isPathIgnored('.ok/templates/daily.md')).toBe(false);
+    }
+
+    test('sync factory (createContentFilter)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertTemplateAdmission(filter);
+    });
+
+    test('async factory (createContentFilterAsync) mirrors admission', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertTemplateAdmission(filter);
+    });
+  });
+
+  describe('templates-as-content carve-out matrix (FR1)', () => {
+    // The systematic sync+async twin matrix the admission tracer defers to.
+    // Every case runs against BOTH factories: createContentFilterAsync is a full
+    // structural copy of createContentFilter, not a wrapper, so a predicate
+    // edited in one factory but not the other is the named dual-factory risk —
+    // an async twin is the only thing that catches a half-edit. (The bypass /
+    // Show All Files posture is pinned by the always-skip floor + showOk
+    // describes above and is not re-asserted here.)
+
+    // Secret-bearing floor wins over the carve-out. A credential adopted into a
+    // `.ok/templates/` dir is never indexed (isExcluded) nor served
+    // (isPathIgnored), even though `.md` leaves in the same dir are content.
+    // `.key` is both a secret suffix and an Apple-Keynote extension, so the
+    // ordering is load-bearing: the floor must run before the carve-out at every
+    // consultation site.
+    function assertSecretFloorWins(filter: ContentFilter) {
+      for (const secret of [
+        '.ok/templates/server.key',
+        '.ok/templates/server.pem',
+        'meetings/.ok/templates/id_rsa',
+      ]) {
+        expect(filter.isExcluded(secret), secret).toBe(true);
+        expect(filter.isPathIgnored(secret), secret).toBe(true);
+      }
+      // A secret directory adopted under templates is pruned at the dir boundary:
+      // the secret-dir floor precedes the template ancestor carve-out.
+      expect(filter.isDirExcluded('.ok/templates/.ssh')).toBe(true);
+      // Control: the sibling `.md` leaf IS admitted, proving the rejection is the
+      // secret floor rather than a blanket `.ok/templates` exclusion.
+      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(false);
+    }
+
+    test('secret floor wins over the carve-out (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSecretFloorWins(filter);
+    });
+    test('secret floor wins over the carve-out (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSecretFloorWins(filter);
+    });
+
+    // The carve-out is narrow: admitting template `.md` leaves must NOT re-admit
+    // the rest of `.ok/`. Non-template `.ok` children (config, folder-defaults,
+    // and the repo-scale `.ok/local` / `.ok/worktrees` dirs) stay excluded at the
+    // same depths a template is admitted, at root and nested.
+    function assertCarveOutIsNarrow(filter: ContentFilter) {
+      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(false);
+      // Excluded siblings under the same `.ok`.
+      expect(filter.isExcluded('.ok/config.yml')).toBe(true);
+      expect(filter.isExcluded('.ok/AGENTS.md')).toBe(true);
+      expect(filter.isExcluded('meetings/.ok/frontmatter.yml.md')).toBe(true);
+      expect(filter.isExcluded('.ok/local/cache/notes.md')).toBe(true);
+      // Repo-scale `.ok` children stay pruned as directories so the walk stays
+      // bounded even though `.ok` itself is descendable.
+      expect(filter.isDirExcluded('.ok/local')).toBe(true);
+      expect(filter.isDirExcluded('.ok/worktrees')).toBe(true);
+      expect(filter.isDirExcluded('meetings/.ok/local')).toBe(true);
+    }
+
+    test('carve-out does not over-admit other .ok children (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertCarveOutIsNarrow(filter);
+    });
+    test('carve-out does not over-admit other .ok children (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertCarveOutIsNarrow(filter);
+    });
+
+    // Folder-index descendability: `<folder>/.ok` and `<folder>/.ok/templates`
+    // stay descendable at any depth so the normal walk reaches the leaves,
+    // matching the root `.ok` skills precedent. A subdirectory under
+    // `.ok/templates` is NOT an ancestor (templates are flat), so the walk stops
+    // there and the descent stays bounded.
+    function assertFolderIndexDescendable(filter: ContentFilter) {
+      // Root `.ok` precedent + its template child.
+      expect(filter.isDirExcluded('.ok')).toBe(false);
+      expect(filter.isDirExcluded('.ok/templates')).toBe(false);
+      // Nested one and two levels deep.
+      expect(filter.isDirExcluded('meetings/.ok')).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/templates')).toBe(false);
+      expect(filter.isDirExcluded('a/b/.ok')).toBe(false);
+      expect(filter.isDirExcluded('a/b/.ok/templates')).toBe(false);
+      // Bounded: no descent past the flat template dir.
+      expect(filter.isDirExcluded('.ok/templates/sub')).toBe(true);
+      expect(filter.isDirExcluded('meetings/.ok/templates/sub')).toBe(true);
+    }
+
+    test('folder-index keeps nested .ok/templates descendable (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertFolderIndexDescendable(filter);
+    });
+    test('folder-index keeps nested .ok/templates descendable (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertFolderIndexDescendable(filter);
+    });
+
+    // Boot-index-walk admission (no-server seeding): a template written to disk
+    // before any server runs — via `ok seed` or desktop create-new-project —
+    // pre-exists the next boot. The boot index walk consults exactly these
+    // predicates (ancestors descendable + leaf included), so a real pre-existing
+    // file is reached and admitted. The end-to-end indexes-and-appears proof is
+    // the integration tier's; this pins the filter contract that walk stands on,
+    // against a real file rather than a synthetic path string.
+    async function assertBootWalkAdmits(makeFilter: () => ContentFilter | Promise<ContentFilter>) {
+      mkdirSync(join(projectDir, 'meetings', '.ok', 'templates'), { recursive: true });
+      writeFileSync(join(projectDir, 'meetings', '.ok', 'templates', 'standup.md'), '# Standup\n');
+      const filter = await makeFilter();
+      expect(filter.isDirExcluded('meetings')).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok')).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/templates')).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(false);
+    }
+
+    test('pre-existing template on disk is admitted by the walk (sync)', async () => {
+      await assertBootWalkAdmits(() => createContentFilter({ projectDir, contentDir: projectDir }));
+    });
+    test('pre-existing template on disk is admitted by the walk (async)', async () => {
+      await assertBootWalkAdmits(() =>
+        createContentFilterAsync({ projectDir, contentDir: projectDir }),
+      );
+    });
+
+    // Single-file mode (`?docPath=`) serves ONLY the target doc. The template
+    // file predicate re-asserts that scope: without the re-assertion the
+    // carve-out's unconditional admit would leak every template into single-file
+    // mode. `isPathIgnored` is deliberately unaffected — the asset-serve path is
+    // never single-file-scoped (referenced siblings still resolve), matching the
+    // skills and sibling-asset posture.
+    function assertSingleFileScope(filter: ContentFilter) {
+      expect(filter.isExcluded('notes.md')).toBe(false); // the one target doc
+      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(true);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(true);
+      // Serve path stays open for the leaf, like skills / sibling assets.
+      expect(filter.isPathIgnored('.ok/templates/daily.md')).toBe(false);
+    }
+
+    test('single-file scope excludes templates (sync)', () => {
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        singleDocRelPath: 'notes.md',
+      });
+      assertSingleFileScope(filter);
+    });
+    test('single-file scope excludes templates (async)', async () => {
+      const filter = await createContentFilterAsync({
+        projectDir,
+        contentDir: projectDir,
+        singleDocRelPath: 'notes.md',
+      });
+      assertSingleFileScope(filter);
+    });
+
+    // The watcher-ignore glob strip drops the four blanket `.ok` forms so the
+    // @parcel/watcher backend (which consults globs, not the function predicates)
+    // still delivers external edits under `<folder>/.ok/templates/`. The rename
+    // of the strip helper kept this exact set; a more specific `.ok/local` glob
+    // does not block the carve-out trees and is preserved, as are unrelated
+    // ignores.
+    function assertGlobStripSet(filter: ContentFilter) {
+      const globs = filter.getWatcherIgnoreGlobs();
+      for (const blanket of ['.ok', '.ok/**', '**/.ok', '**/.ok/**']) {
+        expect(globs, blanket).not.toContain(blanket);
+      }
+      expect(globs).toContain('.ok/local');
+      expect(globs).toContain('dist/');
+      expect(globs).toContain('node_modules/');
+    }
+
+    test('watcher glob strip drops blanket .ok, keeps the rest (sync)', () => {
+      writeFileSync(
+        join(projectDir, '.gitignore'),
+        'dist/\nnode_modules/\n.ok\n.ok/**\n**/.ok\n**/.ok/**\n.ok/local\n',
+      );
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertGlobStripSet(filter);
+    });
+    test('watcher glob strip drops blanket .ok, keeps the rest (async)', async () => {
+      writeFileSync(
+        join(projectDir, '.gitignore'),
+        'dist/\nnode_modules/\n.ok\n.ok/**\n**/.ok\n**/.ok/**\n.ok/local\n',
+      );
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertGlobStripSet(filter);
+    });
+  });
+
+  describe('templates-as-content carve-out stays below the skip-dir floor', () => {
+    // The segment-shaped template carve-out runs BEFORE the always-skip floor and
+    // the configurable-rules floor, so a template-shaped tail vendored inside a
+    // dependency or build-output tree must not be admitted just because its last
+    // three segments match `.ok/templates/<name>.md`. `isExcluded` /
+    // `isPathIgnored` are consulted directly per raw watcher event on the full
+    // path (not only via the top-down walk that prunes the skip-dir root first),
+    // so the bound has to live in the predicate. Legitimate templates the user
+    // owns at any depth stay admitted.
+    function assertSkipDirAncestorExcluded(filter: ContentFilter) {
+      for (const vendored of [
+        'node_modules/pkg/.ok/templates/x.md',
+        'dist/.ok/templates/x.md',
+        'vendor/lib/.ok/templates/note.md',
+      ]) {
+        // Admission (isExcluded) and the ungated serve path (isPathIgnored).
+        expect(filter.isExcluded(vendored), vendored).toBe(true);
+        expect(filter.isPathIgnored(vendored), vendored).toBe(true);
+      }
+      // The bound is the skip-dir ANCESTOR, not depth: a template the user owns
+      // at any nesting stays admitted — the fix must not regress the carve-out.
+      expect(filter.isExcluded('docs/.ok/templates/x.md')).toBe(false);
+      expect(filter.isExcluded('a/b/c/.ok/templates/x.md')).toBe(false);
+      expect(filter.isPathIgnored('docs/.ok/templates/x.md')).toBe(false);
+      // Dir predicate is bounded too: a `.ok` (or `.ok/templates`) under a
+      // skip-dir tree is not a descendable template ancestor. The walk already
+      // prunes the skip-dir root top-down, but the direct/per-event callers stay
+      // consistent with the file predicates.
+      expect(filter.isDirExcluded('node_modules/pkg/.ok')).toBe(true);
+      expect(filter.isDirExcluded('dist/.ok/templates')).toBe(true);
+    }
+
+    test('skip-dir ancestor excluded from admission and serve path (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSkipDirAncestorExcluded(filter);
+    });
+    test('skip-dir ancestor excluded from admission and serve path (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSkipDirAncestorExcluded(filter);
     });
   });
 
@@ -935,15 +1200,19 @@ describe('ContentFilter', () => {
       expect(filter.isExcluded('__config__/project.md', REVEAL)).toBe(true);
       expect(filter.isExcluded('__local__/project.md', REVEAL)).toBe(true);
 
-      // `isPathIgnored` keeps the absolute floor — showOk widens the listing
-      // walk only, never asset serving.
+      // `isPathIgnored` keeps the absolute floor for non-carve-out `.ok`
+      // content (config), but the skills/templates carve-outs are ungated here,
+      // so a template `.md` leaf is servable content like a skill file.
       expect(filter.isPathIgnored('.ok/config.yml', REVEAL)).toBe(true);
-      expect(filter.isPathIgnored('.ok/templates/daily.md', REVEAL)).toBe(true);
+      expect(filter.isPathIgnored('.ok/templates/daily.md', REVEAL)).toBe(false);
 
-      // showOk lifts only the always-skip floor: without bypassFilters the
-      // configurable BUILTIN_SKIP_DIRS rule still hides non-skill `.ok`
-      // content, so a stray showOk on a normal-mode caller reveals nothing.
-      expect(filter.isDirExcluded('.ok/templates', { showOk: true })).toBe(true);
+      // showOk lifts the always-skip floor; the templates/skills carve-outs
+      // reach the index in normal + showOk mode (both non-bypass), so a template
+      // dir stays descendable. A non-carve-out `.ok` child still hides without
+      // bypass — the configurable BUILTIN_SKIP_DIRS rule catches it past the
+      // lifted floor.
+      expect(filter.isDirExcluded('.ok/templates', { showOk: true })).toBe(false);
+      expect(filter.isDirExcluded('.ok/local', { showOk: true })).toBe(true);
       expect(filter.isExcluded('.ok/config.yml', { showOk: true })).toBe(true);
     }
 

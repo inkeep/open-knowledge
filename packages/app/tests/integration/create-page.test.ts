@@ -139,6 +139,18 @@ describe('/api/create-page — reserved name (QA-010)', () => {
     expect(body.type).toBe('urn:ok:error:reserved-doc-name');
     expect(body.title).toMatch(/reserved/i);
   });
+
+  test('rejects a raw create into .ok/templates so templates keep their validating route (QA-013)', async () => {
+    // Templates are content docs for reading and watching, but the create-page
+    // guard must still refuse a raw create into `.ok/templates/` — the `template`
+    // verb is the only authoring route. This pins that the read carve-out did not
+    // open the create chokepoint.
+    const { status, body } = await createPage('.ok/templates/greeting.md');
+    expect(status).toBe(400);
+    expect(body.type).toBe('urn:ok:error:reserved-doc-name');
+    expect(body.title).toMatch(/reserved/i);
+    expect(existsSync(join(server.contentDir, '.ok', 'templates', 'greeting.md'))).toBe(false);
+  });
 });
 
 describe('/api/create-page — template seeding', () => {

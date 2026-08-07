@@ -22,6 +22,7 @@ import {
   computeActivityMountList,
   computeEditorMountGate,
   computeEffectiveSourceMode,
+  computeIsNewDoc,
   EditorActivityPool,
   getServerRestartRecoveryView,
   LARGE_DOC_CHAR_THRESHOLD,
@@ -547,6 +548,59 @@ describe('computeEffectiveSourceMode — hidden-entry mode freeze', () => {
   test('a hidden entry whose frozen mode matches the global mode is unaffected', () => {
     expect(computeEffectiveSourceMode(false, true, true)).toBe(true);
     expect(computeEffectiveSourceMode(false, false, false)).toBe(false);
+  });
+});
+
+describe('computeIsNewDoc — create-mode affordance gate', () => {
+  test('a doc absent from every surface is a new doc (create-mode draft)', () => {
+    expect(computeIsNewDoc({ docName: 'brand-new/idea', pages: new Set(), loading: false })).toBe(
+      true,
+    );
+  });
+
+  test('a doc present in the page index is not new', () => {
+    expect(
+      computeIsNewDoc({ docName: 'notes/real', pages: new Set(['notes/real']), loading: false }),
+    ).toBe(false);
+  });
+
+  test('nothing is new while the page list is still loading', () => {
+    // The empty-then-populated page list must not flash the create affordance on
+    // a doc that simply has not arrived yet.
+    expect(computeIsNewDoc({ docName: 'brand-new/idea', pages: new Set(), loading: true })).toBe(
+      false,
+    );
+  });
+
+  test('a freshly created template is not flagged as a new doc during the index-lag window', () => {
+    // A template content doc enters `pages` only after the async `files` refetch;
+    // keying purely on membership would flash the create-mode affordance for a
+    // real template. The structural check suppresses it at both depths even with
+    // an empty page set.
+    expect(
+      computeIsNewDoc({ docName: '.ok/templates/daily', pages: new Set(), loading: false }),
+    ).toBe(false);
+    expect(
+      computeIsNewDoc({ docName: 'docs/.ok/templates/note', pages: new Set(), loading: false }),
+    ).toBe(false);
+  });
+
+  test('a template already indexed in pages is likewise not new', () => {
+    expect(
+      computeIsNewDoc({
+        docName: 'docs/.ok/templates/note',
+        pages: new Set(['docs/.ok/templates/note']),
+        loading: false,
+      }),
+    ).toBe(false);
+  });
+
+  test('a managed-artifact doc absent from pages is not new (global skill)', () => {
+    // Managed artifacts never appear in `pages`; the create affordance must not
+    // fire for them either.
+    expect(
+      computeIsNewDoc({ docName: '__skill__/global/foo', pages: new Set(), loading: false }),
+    ).toBe(false);
   });
 });
 

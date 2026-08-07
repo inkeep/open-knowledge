@@ -1,7 +1,10 @@
 /**
- * Persistence for managed-artifact docs — skills (`__skill__/<scope>/<name>`)
- * and templates (`__template__/<folderRel>/<name>`). The CRDT amendment
- * makes these first-class CRDT documents that persist to `.ok/`.
+ * Persistence for managed-artifact docs — skills (`__skill__/<scope>/<name>`).
+ * The CRDT amendment makes these first-class CRDT documents that persist to
+ * `.ok/`. Templates are ordinary content docs now (`<folder>/.ok/templates/<name>`,
+ * hydrated by the content persistence path); the retired `__template__/…`
+ * synthetic name survives here only as a load/store tombstone so a stale client
+ * name never seeds a second doc or writes a literal `__template__/…` file.
  *
  * Shape: a HYBRID of the two existing persistence branches.
  *  - LOAD/STORE BODY mirrors the *document* branch (`persistence.ts`
@@ -35,7 +38,6 @@ import {
   parseExternalSkillDocName,
   parseManagedArtifactName,
   SKILL_NAME_REGEX,
-  TEMPLATE_NAME_REGEX,
 } from '@inkeep/open-knowledge-core';
 import {
   atomicWriteFile,
@@ -116,47 +118,44 @@ export function homeFor(ctx: Pick<ManagedArtifactCtx, 'homedirOverride'>): strin
 }
 
 /**
- * The `.ok/` artifact key + shadow-commit subject for a managed-artifact doc, so
- * an EDITOR-driven CRDT edit can be attributed + versioned exactly like the HTTP
+ * The `.ok/` artifact key + shadow-commit subject for a managed skill doc, so an
+ * EDITOR-driven CRDT edit can be attributed + versioned exactly like the HTTP
  * `write`/`edit` path does via `attributeOkArtifactWrite`. The key must match the
- * timeline query's doc-key (`.ok/skills/<name>` / `<folder>/.ok/templates/<name>`,
- * NOT the synthetic `__skill__/...` doc name) and the subject must carry the
- * `skill-`/`template-` action prefix the timeline filters on.
+ * timeline query's doc-key (`.ok/skills/<name>`, NOT the synthetic
+ * `__skill__/...` doc name) and the subject carries the `skill-` action prefix
+ * the timeline filters on.
  *
- * Returns `null` for unversioned artifacts: global skills live outside any
- * project shadow repo, so there is nothing to version.
+ * Returns `null` for anything unversioned: global skills live outside any
+ * project shadow repo, and templates are content docs attributed on their own
+ * path by the content store — neither resolves to a managed docKey here.
  */
 export function managedArtifactContributorAttribution(
   documentName: string,
 ): { docKey: string; subject: string } | null {
   const parsed = parseManagedArtifactName(documentName);
-  if (parsed === null) return null;
-  if (parsed.kind === 'skill') {
-    if (parsed.scope !== 'project') return null; // global = unversioned
-    return {
-      docKey: `${LEGACY_SKILL_STORE_ROOT}/${parsed.name}`,
-      subject: `skill-edit: ${parsed.name}/SKILL.md`,
-    };
-  }
-  const folder = parsed.folder.replace(/\/$/, '');
-  const docKey = `${folder ? `${folder}/` : ''}.ok/templates/${parsed.name}`;
-  return { docKey, subject: `template-edit: ${docKey}.md` };
+  if (parsed === null || parsed.kind !== 'skill' || parsed.scope !== 'project') return null;
+  return {
+    docKey: `${LEGACY_SKILL_STORE_ROOT}/${parsed.name}`,
+    subject: `skill-edit: ${parsed.name}/SKILL.md`,
+  };
 }
 
 /**
- * The shadow-repo paths for a managed-artifact doc, derived once so every
+ * The shadow-repo paths for a managed skill doc, derived once so every
  * timeline-family subsystem (history pathspec + OkActor filter, version read,
  * diff, rollback) addresses the same key the write path commits under. The
- * synthetic `__skill__/...` / `__template__/...` doc name the editor uses never
- * matches on disk — this is the single translation point that bridges it.
+ * synthetic `__skill__/...` doc name the editor uses never matches on disk —
+ * this is the single translation point that bridges it. Templates resolve to
+ * `{ managed: false }` here: their doc name IS their real committed content path,
+ * so the ordinary `pathFor` translation applies with no managed detour.
  *
  *  - `{ managed: false }`             — not a managed-artifact name (ordinary doc)
  *  - `{ managed: true, versioned: false }` — global skill: lives outside any
  *      project shadow repo, so there is no version history to address
- *  - `{ managed: true, versioned: true, docKey, filePath }` — project skill /
- *      template: `docKey` (`.ok/skills/<name>` / `<folder>/.ok/templates/<name>`)
- *      drives OkActor matching; `filePath` (the SKILL.md / `<name>.md` leaf) is
- *      the content-root-relative git path commits actually touch.
+ *  - `{ managed: true, versioned: true, docKey, filePath }` — project skill:
+ *      `docKey` (`.ok/skills/<name>`) drives OkActor matching; `filePath` (the
+ *      bundle's `SKILL.md` leaf) is the content-root-relative git path commits
+ *      actually touch.
  */
 export function managedArtifactTimelinePaths(
   documentName: string,
@@ -166,10 +165,16 @@ export function managedArtifactTimelinePaths(
   | { managed: true; versioned: true; docKey: string; filePath: string } {
   const parsed = parseManagedArtifactName(documentName);
   if (!parsed) return { managed: false };
+  // `attr` is non-null only for a project skill (global skills are unversioned
+  // above), whose committed leaf is the bundle's `SKILL.md`.
   const attr = managedArtifactContributorAttribution(documentName);
   if (!attr) return { managed: true, versioned: false };
-  const filePath = parsed.kind === 'skill' ? `${attr.docKey}/SKILL.md` : `${attr.docKey}.md`;
-  return { managed: true, versioned: true, docKey: attr.docKey, filePath };
+  return {
+    managed: true,
+    versioned: true,
+    docKey: attr.docKey,
+    filePath: `${attr.docKey}/SKILL.md`,
+  };
 }
 
 /**
@@ -185,17 +190,15 @@ export function managedArtifactSkillsRoots(ctx: ManagedArtifactCtx): string[] {
 }
 
 /**
- * Resolve the on-disk path for a managed-artifact doc name.
+ * Resolve the on-disk path for a managed skill doc name.
  *
  * Security: the name segment is OPEN (one per artifact), unlike the bounded
  * config-doc set, so the resolver guards on (1) the name slug grammar
- * (`SKILL_NAME_REGEX` / `TEMPLATE_NAME_REGEX`), (2) for templates, a folder that
- * stays under `projectDir` (no `..`), and (3) the resolved path staying within
- * the expected `.ok/{skills,templates}` root. Any failure throws — a malformed
- * name/folder must never write outside `.ok/`.
+ * (`SKILL_NAME_REGEX`), and (2) the resolved path staying within the expected
+ * `.ok/skills` root. Any failure throws — a malformed name must never write
+ * outside `.ok/`.
  *
- *  - skill    → `<scope-root>/.ok/skills/<name>/SKILL.md`
- *  - template → `<projectDir>/<folder>/.ok/templates/<name>.md`
+ *  - skill → `<scope-root>/.ok/skills/<name>/SKILL.md`
  */
 /** Bind an ext-less skill bundle-file base path to the real file on disk: `.md`
  *  preferred, `.mdx` fallback, default `.md` for a not-yet-created file. Shared
@@ -270,14 +273,8 @@ function managedSkillBundleDir(
  * worst place to get this wrong: the resurrected dir lands under a harness root
  * (`~/.claude/skills/…`) that OK does not own.
  *
- * Templates are deliberately NOT bounded. `PUT /api/template` composes the
- * bytes, routes them through the template's CRDT doc, and leaves the file write
- * to persistence — so creating `.ok/templates` here is how a template gets
- * created, not evidence of a stale doc, and the container alone cannot tell the
- * two apart.
- *
- * Null means "nothing to bound" (a template, or an unparsable / unregistered
- * doc name); the latter are already short-circuited upstream.
+ * Null means "nothing to bound" (an unparsable / unregistered doc name); those
+ * are already short-circuited upstream.
  */
 function managedArtifactContainerDir(
   documentName: string,
@@ -311,11 +308,8 @@ export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifac
     return ext.rel === null ? abs : resolveBundleFileOnDisk(abs);
   }
   const parsed = parseManagedArtifactName(documentName);
-  if (parsed === null) {
-    throw new Error(`managedArtifactAbsPath: not a managed-artifact doc name: ${documentName}`);
-  }
-  if (parsed.kind === 'template') {
-    return templateAbsPath(parsed.folder, parsed.name, ctx, documentName);
+  if (parsed === null || parsed.kind !== 'skill') {
+    throw new Error(`managedArtifactAbsPath: not a managed skill doc name: ${documentName}`);
   }
   const skillDir = managedSkillBundleDir(parsed.scope, parsed.name, ctx);
   let abs: string;
@@ -334,44 +328,8 @@ export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifac
   // Guard 2: containment on the resolved path. Cheap defense-in-depth — the slug
   // grammar in `managedSkillBundleDir` (guard 1, which now runs a call earlier)
   // plus the `..` reject above already forbid escape, so this only fires if that
-  // grammar is ever weakened. (Mirrors templateAbsPath.)
+  // grammar is ever weakened.
   if (!abs.startsWith(skillDir + sep)) {
-    throw new Error(`managedArtifactAbsPath: path escape for ${documentName}`);
-  }
-  return abs;
-}
-
-/** Normalize a project-root-relative folder (strip leading/trailing slashes). */
-function normalizeTemplateFolder(folder: string): string {
-  return folder.replace(/^\/+/, '').replace(/\/+$/, '');
-}
-
-/**
- * Resolve `<projectDir>/<folder>/.ok/templates/<name>.md` with escape guards.
- * `folder` is project-root-relative (`''` = root, may be nested); `name` is the
- * `.md`-less filename.
- */
-function templateAbsPath(
-  folder: string,
-  name: string,
-  ctx: Pick<ManagedArtifactCtx, 'projectDir'>,
-  documentName: string,
-): string {
-  if (!TEMPLATE_NAME_REGEX.test(name) || name.length > 64) {
-    throw new Error(`managedArtifactAbsPath: invalid template name: ${JSON.stringify(name)}`);
-  }
-  const folderRel = normalizeTemplateFolder(folder);
-  if (folderRel.split('/').includes('..')) {
-    throw new Error(`managedArtifactAbsPath: template folder escape for ${documentName}`);
-  }
-  const projectAbs = resolve(ctx.projectDir);
-  const folderAbs = folderRel ? resolve(projectAbs, folderRel) : projectAbs;
-  if (folderAbs !== projectAbs && !folderAbs.startsWith(projectAbs + sep)) {
-    throw new Error(`managedArtifactAbsPath: template folder escape for ${documentName}`);
-  }
-  const templatesDir = resolve(folderAbs, '.ok', 'templates');
-  const abs = resolve(templatesDir, `${name}.md`);
-  if (!abs.startsWith(templatesDir + sep)) {
     throw new Error(`managedArtifactAbsPath: path escape for ${documentName}`);
   }
   return abs;
@@ -379,10 +337,10 @@ function templateAbsPath(
 
 /**
  * Reverse of {@link managedArtifactAbsPath}: map an on-disk leaf path back to its
- * `__skill__/<scope>/<name>` or `__template__/<folderRel>/<name>` doc name, or
- * `null` when the path is not a well-formed managed-artifact leaf. Used by the
- * file-watcher (`.ok/` is watcher-excluded by default, so disk edits reach a
- * live doc only via the explicit managed-artifact watch).
+ * `__skill__/<scope>/<name>` doc name, or `null` when the path is not a
+ * well-formed managed skill leaf. Used by the global-skills watcher (`<home>/.ok/`
+ * is watcher-excluded, so disk edits reach a live global-skill doc only via the
+ * explicit managed-artifact watch).
  *
  * Applies the same slug grammar as the forward resolver so a path with an
  * invalid name segment is rejected rather than routed to a malformed doc name.
@@ -421,30 +379,6 @@ export function managedArtifactDocNameForPath(
     }
     return null; // under a global skills root but not an editable md doc
   }
-  // Template: `<projectDir>/<folderRel>/.ok/templates/<name>.md`.
-  if (norm.endsWith('.md')) {
-    const projectAbs = resolve(ctx.projectDir);
-    if (norm !== projectAbs && !norm.startsWith(projectAbs + sep)) return null;
-    const rel = norm === projectAbs ? '' : norm.slice(projectAbs.length + 1);
-    const marker = `.ok${sep}templates${sep}`;
-    const idx = rel.indexOf(marker);
-    if (idx < 0) return null;
-    // `.ok/templates/` must be a clean path boundary: at the start, or preceded
-    // by a separator (so `x.ok/templates` can't false-match).
-    if (idx > 0 && rel[idx - 1] !== sep) return null;
-    const after = rel.slice(idx + marker.length);
-    if (after.includes(sep) || !after.endsWith('.md')) return null; // single .md leaf
-    const name = after.slice(0, -3);
-    if (!TEMPLATE_NAME_REGEX.test(name) || name.length > 64) return null;
-    const folderRel = idx === 0 ? '' : rel.slice(0, idx - 1);
-    const folderEncoded = folderRel
-      ? folderRel
-          .split(sep)
-          .map((s) => encodeURIComponent(s))
-          .join('/')
-      : '';
-    return `${MANAGED_ARTIFACT_PREFIX_TEMPLATE}${folderEncoded ? `${folderEncoded}/` : ''}${encodeURIComponent(name)}`;
-  }
   return null;
 }
 
@@ -465,6 +399,13 @@ export function loadManagedArtifactDoc(
   // doc competing with the content doc for the same file (double-doc corruption).
   const parsed = parseManagedArtifactName(documentName);
   if (parsed?.kind === 'skill' && parsed.scope === 'project') return;
+
+  // Templates are content docs now (`<folder>/.ok/templates/<name>`), hydrated
+  // via the normal content persistence path. The retired `__template__/...`
+  // synthetic name is a tombstone — refuse to seed it so a stale client name
+  // never becomes a SECOND CRDT doc competing with the content doc for one file
+  // (double-doc corruption), and never mints a lineage epoch for a dead name.
+  if (documentName.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE)) return;
 
   // Editable-unmanaged skill whose external dir was never registered (e.g. a
   // server restart dropped the in-memory registry): nothing to seed, no-op —
@@ -591,6 +532,11 @@ export async function storeManagedArtifactDoc(
   // `__skill__/project/...` synthetic doc back to disk (see load guard).
   const parsedStore = parseManagedArtifactName(documentName);
   if (parsedStore?.kind === 'skill' && parsedStore.scope === 'project') return 'no-op';
+
+  // Templates persist through the content path; never write the retired
+  // `__template__/...` synthetic doc back to disk (see load guard) — that would
+  // create a literal `__template__/...` file.
+  if (documentName.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE)) return 'no-op';
 
   // Editable-unmanaged skill whose external dir isn't registered: nothing to
   // write back to (see load guard).

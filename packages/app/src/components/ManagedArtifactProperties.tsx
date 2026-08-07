@@ -2,7 +2,9 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   isExternalSkillDocName,
   parseManagedArtifactName,
+  parseTemplateContentDocName,
   type SkillScope,
+  templateContentDocName,
 } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
@@ -14,11 +16,7 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { docNameForTabId, isSkillDocName } from '@/editor/editor-tabs';
 import { hashFromDocName, replaceHashWithoutNavigation } from '@/lib/doc-hash';
 import { moveTemplate } from '@/lib/folder-config-api';
-import {
-  parseProjectSkillContentDocName,
-  skillLiveDocName,
-  templateDocName,
-} from '@/lib/managed-artifact-doc-name';
+import { parseProjectSkillContentDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { moveSkill } from '@/lib/skills-api';
 
 /**
@@ -48,16 +46,6 @@ export function ManagedArtifactProperties({
     }
     return <SkillPropertiesPanel provider={provider} scope={parsed.scope} name={parsed.name} />;
   }
-  if (parsed?.kind === 'template') {
-    return (
-      <TemplatePropertiesPanel
-        provider={provider}
-        docName={docName}
-        folder={parsed.folder}
-        name={parsed.name}
-      />
-    );
-  }
   // Project skills open as content docs (`.ok/skills/<name>/SKILL`) rather than
   // `__skill__/project/...`, but render the SAME identity panel as global
   // skills so the two scopes aren't a disconnected experience.
@@ -66,6 +54,21 @@ export function ManagedArtifactProperties({
     // A project skill opens as a content doc (`<dir>/SKILL`) rather than a
     // managed-artifact doc, but its identity panel is the same one.
     return <SkillPropertiesPanel provider={provider} scope="project" name={projectSkillName} />;
+  }
+  // Templates are content docs (`<folder>/.ok/templates/<name>`) too, dispatched
+  // on the content shape rather than a synthetic name. `name` is identity, not
+  // free-form frontmatter — committing it relocates the template on disk and
+  // re-points the open tab.
+  const parsedTemplate = parseTemplateContentDocName(docName);
+  if (parsedTemplate) {
+    return (
+      <TemplatePropertiesPanel
+        provider={provider}
+        docName={docName}
+        folder={parsedTemplate.folder}
+        name={parsedTemplate.name}
+      />
+    );
   }
   // An editable-unmanaged skill (`__extskill__/<name>`, edited in place) is routed
   // here by `isManagedArtifactDocName`, but its frontmatter (name/description/
@@ -218,7 +221,7 @@ function TemplatePropertiesPanel({
       return;
     }
     toast.success(t`Template renamed`);
-    retarget(docName, templateDocName(folder, next));
+    retarget(docName, templateContentDocName(folder, next));
   }
 
   return (

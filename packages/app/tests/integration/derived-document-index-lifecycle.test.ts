@@ -125,8 +125,17 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
       }),
     );
     expect(created.status).toBe(200);
-    expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual(['folder/item']);
-    expect(await backlinkSources(server.baseUrl, 'target')).toEqual(['folder/item']);
+    // The template itself carries `tags: [lifecycle]` and a `[[target]]` link, so
+    // as an ordinary content doc it indexes as a tag/backlink SOURCE alongside
+    // the doc generated from it (it sorts first — `.` precedes letters).
+    expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
+      '.ok/templates/lifecycle',
+      'folder/item',
+    ]);
+    expect(await backlinkSources(server.baseUrl, 'target')).toEqual([
+      '.ok/templates/lifecycle',
+      'folder/item',
+    ]);
 
     const fileDuplicate = await expectRelationSignalsAfter(relationSignals.signals, () =>
       postJson(server.baseUrl, '/api/duplicate-path', {
@@ -136,6 +145,7 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
     );
     expect(fileDuplicate.status).toBe(200);
     expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
+      '.ok/templates/lifecycle',
       'folder/item',
       'folder/item copy',
     ]);
@@ -148,6 +158,7 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
     );
     expect(folderDuplicate.status).toBe(200);
     expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
+      '.ok/templates/lifecycle',
       'folder copy/item',
       'folder copy/item copy',
       'folder/item',
@@ -163,12 +174,14 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
     );
     expect(renamed.status).toBe(200);
     expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
+      '.ok/templates/lifecycle',
       'archive/item',
       'archive/item copy',
       'folder/item',
       'folder/item copy',
     ]);
     expect(await backlinkSources(server.baseUrl, 'target')).toEqual([
+      '.ok/templates/lifecycle',
       'archive/item',
       'archive/item copy',
       'folder/item',
@@ -182,11 +195,15 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
       }),
     );
     expect(deleted.status).toBe(200);
+    // The generated docs are gone, but the template SOURCE persists (it was never
+    // touched), so it remains under its own tag and as a backlink source.
     expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
+      '.ok/templates/lifecycle',
       'folder/item',
       'folder/item copy',
     ]);
     expect(await backlinkSources(server.baseUrl, 'target')).toEqual([
+      '.ok/templates/lifecycle',
       'folder/item',
       'folder/item copy',
     ]);

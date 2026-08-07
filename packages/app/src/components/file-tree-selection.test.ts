@@ -457,7 +457,7 @@ describe('previewTabIdForTreePath — revealed .ok rows', () => {
   // the selection action resolves. Deriving the tab id from the action alone
   // yields an id no pane owns, so the double-click is a silent no-op on exactly
   // these rows whenever "Show .ok folders" is on.
-  test('a template row resolves to its managed-artifact doc tab', () => {
+  test('a template row resolves to its content doc tab', () => {
     expect(
       previewTabIdForTreePath(
         '.ok/templates/meeting.md',
@@ -472,7 +472,7 @@ describe('previewTabIdForTreePath — revealed .ok rows', () => {
         ],
         new Set<string>(),
       ),
-    ).toBe(docTabId('__template__/meeting'));
+    ).toBe(docTabId('.ok/templates/meeting'));
   });
 
   test('a non-page .ok doc row resolves to the read-only asset tab', () => {

@@ -1,20 +1,18 @@
 /**
- * Builders for managed-artifact doc names — a skill (`__skill__/<scope>/<name>`)
- * or a template (`__template__/<folderRel>/<name>`). These are real CRDT doc
- * names opened as ordinary editor tabs (via `openDocument`), so they follow the
- * SAME convention as document doc names: the canonical key is the raw/decoded
- * string. `hashFromDocName` builds the `#/…` hash without encoding (the browser
- * encodes the URL); `docNameFromHash` decodes it back — so a builder that
- * encoded here would round-trip to a different key than the tab/provider uses.
+ * Builders for skill live-doc names. A GLOBAL skill is a managed-artifact doc
+ * (`__skill__/global/<name>`); a PROJECT skill is a content doc at its real path
+ * (`.ok/skills/<name>/SKILL`). These are real CRDT doc names opened as ordinary
+ * editor tabs, so they follow the SAME convention as document doc names: the
+ * canonical key is the raw/decoded string. `hashFromDocName` builds the `#/…`
+ * hash without encoding (the browser encodes the URL); `docNameFromHash` decodes
+ * it back — so a builder that encoded here would round-trip to a different key
+ * than the tab/provider uses.
  *
- * Parsing the other direction is `parseManagedArtifactName` from
- * `@inkeep/open-knowledge-core` (shared with the server). Skill/template names
- * are slash-free by grammar; template folders carry their own `/` separators,
- * which are structural and belong in the doc name verbatim.
+ * Templates are content docs too — build their doc name with
+ * `templateContentDocName` from `@inkeep/open-knowledge-core`, not here.
  */
 
 import {
-  MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   parseProjectSkillBundleDoc,
   type SkillsListEntry,
   skillFileLiveDocName,
@@ -29,15 +27,6 @@ export { skillLiveDocName };
 // — so the only correct builder is `skillLiveDocName` (project → content doc,
 // global → `__skill__/global/<name>`), re-exported above. A bare synthetic
 // builder opened a phantom empty tab for project skills (round-trip data loss).
-
-/**
- * The CRDT doc name for a template — folder-addressed
- * (`__template__/<folderRel>/<name>`, `folder` empty for the project root).
- */
-export function templateDocName(folder: string, name: string): string {
-  const trimmed = folder.replace(/^\/+|\/+$/g, '');
-  return `${MANAGED_ARTIFACT_PREFIX_TEMPLATE}${trimmed ? `${trimmed}/` : ''}${name}`;
-}
 
 /**
  * Live CRDT doc name for a skill LIST ENTRY. A project entry is a content doc

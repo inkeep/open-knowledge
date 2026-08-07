@@ -1528,6 +1528,107 @@ describe('SyncEngine push cycle with non-ASCII filenames', () => {
   });
 });
 
+describe('SyncEngine push cycle vs gitignored content (precedent #55 at the staging boundary)', () => {
+  // Content admission is broader than git sync scope for managed artifacts:
+  // the content filter admits `<folder>/.ok/templates/*.md` even when a
+  // local-only-sharing project excludes `.ok/` via `.git/info/exclude`.
+  // Naming such a path in `git add` fatals with `addIgnoredFile`, which used
+  // to wedge every push cycle. The stub filter admits everything, standing in
+  // for that carve-out.
+  const templatePath = join('trips', '.ok', 'templates', 'article.md');
+  const templateRel = 'trips/.ok/templates/article.md';
+
+  async function initRepoWithBareRemote() {
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'README.md'), '# Test\n');
+    await git.add('.');
+    await git.commit('Initial');
+
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await git.addRemote('origin', bareDir);
+    await git.push(['--set-upstream', 'origin', 'main']);
+    return git;
+  }
+
+  function makePushEngine() {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+    });
+  }
+
+  test('skips untracked ignored paths instead of failing the whole push cycle', async () => {
+    const git = await initRepoWithBareRemote();
+    writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
+
+    mkdirSync(join(projectDir, 'trips', '.ok', 'templates'), { recursive: true });
+    writeFileSync(join(projectDir, templatePath), '# Template\n');
+    writeFileSync(join(projectDir, 'note.md'), 'new note\n');
+
+    const engine = makePushEngine();
+    try {
+      await engine.start();
+      await engine.trigger('push');
+
+      const status = engine.getStatus();
+      expect(status.pushError).toBeUndefined();
+      expect(status.consecutiveFailures).toBe(0);
+
+      const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(headPaths).toContain('note.md');
+      expect(headPaths).not.toContain(templateRel);
+
+      const remoteHead = (await git.revparse(['origin/main'])).trim();
+      expect(remoteHead).toBe((await git.revparse(['HEAD'])).trim());
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('keeps syncing edits to a tracked file that an ignore rule also matches', async () => {
+    // git's ignore rules never apply to tracked files, so a template that was
+    // committed while the project was in shared mode must keep syncing after a
+    // switch to local-only. This also pins the deletion-set pairing: a filter
+    // consulting an unseeded index would misread the file as untracked, skip
+    // it, and commit its HEAD entry as a deletion.
+    const git = await initRepoWithBareRemote();
+    mkdirSync(join(projectDir, 'trips', '.ok', 'templates'), { recursive: true });
+    writeFileSync(join(projectDir, templatePath), '# Template v1\n');
+    await git.add('.');
+    await git.commit('add template while shared');
+    await git.push(['origin', 'main']);
+
+    writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
+    writeFileSync(join(projectDir, templatePath), '# Template v2\n');
+
+    const engine = makePushEngine();
+    try {
+      await engine.start();
+      await engine.trigger('push');
+
+      const status = engine.getStatus();
+      expect(status.pushError).toBeUndefined();
+
+      const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(headPaths).toContain(templateRel);
+      const blob = await git.raw(['show', `HEAD:${templateRel}`]);
+      expect(blob).toBe('# Template v2\n');
+
+      const remoteHead = (await git.revparse(['origin/main'])).trim();
+      expect(remoteHead).toBe((await git.revparse(['HEAD'])).trim());
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
 describe('SyncEngine per-operation error isolation', () => {
   // Regression: a single shared error field let a successful fetch clear a
   // failed push's error, so the sync popover flashed the push error for a

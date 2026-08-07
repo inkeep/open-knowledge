@@ -185,3 +185,90 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
     }
   });
 });
+
+/**
+ * Templates-as-content on the chokidar backend. Templates enter the ordinary
+ * content pipeline, so the carve-out that admits `<folder>/.ok/templates/<name>.md`
+ * must hold on the chokidar path too — the packaged desktop build has no
+ * @parcel/watcher and runs entirely on chokidar. These pin the two capabilities
+ * the dedicated template watcher lacked (new-folder rescue, conflict-marker
+ * classification) for a template path on this backend; the sync/async filter
+ * carve-out itself is unit-pinned in content-filter.test.ts, and the full-server
+ * parcel-backend twins live in the app integration suite.
+ */
+describe('chokidar backend — templates-as-content watching (forceBackend)', () => {
+  let tmpDir: string;
+  let contentDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-chokidar-template-'));
+    contentDir = resolve(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    lastKnownHash.clear();
+    writeTracker.clear();
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function until(predicate: () => boolean, timeoutMs = 6000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return true;
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    return predicate();
+  }
+
+  test('a template created in a brand-new .ok/templates folder dispatches a DiskEvent', async () => {
+    const filter = createContentFilter({ projectDir: tmpDir, contentDir });
+    const events: DiskEvent[] = [];
+    const handle = await startWatcher(contentDir, async (e) => void events.push(e), filter, {
+      forceBackend: 'chokidar',
+    });
+    try {
+      const target = resolve(contentDir, 'notes', '.ok', 'templates', 'standup.md');
+      mkdirSync(resolve(target, '..'), { recursive: true });
+      const src = '---\ntitle: Standup\ndescription: a standup template\n---\n\n# {{date}}\n';
+      // The folder was absent at watch start; chokidar arms the subwatch on its
+      // addDir handler. Re-emit until the armed subwatch catches a write — the
+      // deterministic form of the brand-new-folder rescue on this backend.
+      expect(
+        await until(() => {
+          writeFileSync(target, src);
+          return events.some(
+            (e) =>
+              (e.kind === 'create' || e.kind === 'update') &&
+              e.docName === 'notes/.ok/templates/standup',
+          );
+        }),
+      ).toBe(true);
+    } finally {
+      await handle.unsubscribe();
+    }
+  });
+
+  test('conflict markers in a template file dispatch a conflict DiskEvent', async () => {
+    // Seed the templates folder so it is watched from the initial scan — this
+    // isolates conflict classification from the new-folder subwatch-arming race.
+    mkdirSync(resolve(contentDir, '.ok', 'templates'), { recursive: true });
+    const filter = createContentFilter({ projectDir: tmpDir, contentDir });
+    const events: DiskEvent[] = [];
+    const handle = await startWatcher(contentDir, async (e) => void events.push(e), filter, {
+      forceBackend: 'chokidar',
+    });
+    try {
+      const target = resolve(contentDir, '.ok', 'templates', 'daily.md');
+      const conflicted = '# Daily\n\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n';
+      writeFileSync(target, conflicted);
+      expect(
+        await until(() =>
+          events.some((e) => e.kind === 'conflict' && e.docName === '.ok/templates/daily'),
+        ),
+      ).toBe(true);
+    } finally {
+      await handle.unsubscribe();
+    }
+  });
+});

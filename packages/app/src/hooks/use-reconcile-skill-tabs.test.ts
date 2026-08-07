@@ -52,9 +52,9 @@ describe('parseSkillTabDocName', () => {
     ).toEqual({ scope: 'global', name: 'demo', rel: 'notes' });
   });
 
-  test('rejects a non-skill doc (plain page, template)', () => {
+  test('rejects a non-skill doc (plain page, template content doc)', () => {
     expect(parseSkillTabDocName('notes/standup')).toBeNull();
-    expect(parseSkillTabDocName('__template__/notes/daily')).toBeNull();
+    expect(parseSkillTabDocName('notes/.ok/templates/daily')).toBeNull();
   });
 });
 
@@ -231,7 +231,7 @@ describe('computeSkillTabReconcile', () => {
   });
 
   test('ignores non-skill tabs entirely', () => {
-    const actions = computeSkillTabReconcile(['notes/standup', '__template__/notes/daily'], []);
+    const actions = computeSkillTabReconcile(['notes/standup', 'notes/.ok/templates/daily'], []);
     expect(actions).toEqual([]);
   });
 });

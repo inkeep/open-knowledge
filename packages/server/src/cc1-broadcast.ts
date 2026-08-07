@@ -67,11 +67,13 @@ export function isConfigDoc(documentName: string): boolean {
 }
 
 /**
- * True for managed-artifact docs — skills (`__skill__/<scope>/<name>`) and
- * templates (`__template__/<folderRel>/<name>`). A THIRD doc class distinct from
- * system/config docs: like them it is excluded from the document tree / search /
- * create-page, but UNLIKE config docs the observer bridge RUNS for it (so the
- * full WYSIWYG+source document editor works.
+ * True for managed-artifact docs — live skills (`__skill__/<scope>/<name>`) plus
+ * the stale template tombstone (`__template__/…`). A THIRD doc class distinct
+ * from system/config docs: like them it is excluded from the document tree /
+ * search / create-page, but UNLIKE config docs the observer bridge RUNS for a
+ * live skill (so the full WYSIWYG+source document editor works). `__template__/`
+ * matches only to keep the reserved-name gates — templates are content docs now,
+ * so no `__template__/…` doc is ever seeded or stored.
  *
  * Gate discipline: tree/index/create-page sites short-circuit on
  * `isReservedForUserTree` (system || config || managed-artifact); bridge /
@@ -129,11 +131,13 @@ export function isReservedForUserTree(documentName: string): boolean {
 }
 
 /**
- * True when a doc name must be excluded from the link / graph / backlink INDEX —
- * system + config docs only. Managed-artifact docs (skills/templates) ARE
- * indexed: they participate in the link graph like documents (outgoing links,
- * backlinks, broken-link resolution) even though `isReservedForUserTree` keeps
- * them out of the document TREE. The two axes are deliberately separate.
+ * True when a doc name must be excluded from the link / graph / backlink / tag
+ * INDEX as a SOURCE — system + config docs only. Everything else that reaches
+ * the file index is link-indexed like a document (outgoing links, backlinks,
+ * authored tags): skills (`__skill__/<scope>/<name>`, tree-excluded by
+ * `isReservedForUserTree` yet link-indexed) and folder-local template content
+ * docs (`<folder>/.ok/templates/<name>`, ordinary content docs on disk) both
+ * participate. The index axis and the tree axis are deliberately separate.
  */
 export function isLinkIndexExcludedDoc(documentName: string): boolean {
   return isSystemDoc(documentName) || isConfigDoc(documentName);
@@ -143,8 +147,9 @@ export function isLinkIndexExcludedDoc(documentName: string): boolean {
  * True when a doc name is excluded from the markdown L1 store spine
  * (`storeDocumentNow`) because its persistence flows through a dedicated
  * store/load path: system docs (never persisted), config docs (config
- * persistence + validation hook), managed artifacts (skill/template
- * persistence), Mermaid docs, and editable text docs (both Y.Text-only
+ * persistence + validation hook), managed artifacts (skill persistence; a
+ * `__template__/…` tombstone is quarantined — its store/load guards no-op),
+ * Mermaid docs, and editable text docs (both Y.Text-only
  * persistence). Shared by
  * `PersistenceHandle.forceStore` and the staleness watchdog so the two
  * gates cannot drift. The debounced `onStoreDocument` hook dispatches each

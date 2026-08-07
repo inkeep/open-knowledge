@@ -1484,12 +1484,19 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
    * live in this closure and importing them into the artifact module would
    * close a cycle.
    *
-   * The anchor is filed under the artifact's TIMELINE key
-   * (`.ok/skills/<name>` / `<folder>/.ok/templates/<name>`), not the synthetic
-   * `__skill__` / `__template__` doc name, so it addresses the same path the
+   * The anchor is filed under the artifact's TIMELINE key (`.ok/skills/<name>`),
+   * not the synthetic `__skill__` doc name, so it addresses the same path the
    * history surface reads. Global skills live outside any project shadow repo
    * and are unversioned by construction — they get the ring breadcrumb and the
    * detector, but no anchor, because there is nowhere to file one.
+   *
+   * The anchored (versioned) branch below — the one that writes an actual
+   * `managed-artifact-reconcile` checkpoint — is currently UNREACHABLE: the only
+   * artifacts that reach this hook are global + external skills, both
+   * unversioned, so the `!paths.versioned` early return always wins. Templates
+   * were the last versioned artifact routed here; they are ordinary content docs
+   * now, reconciled on the content path. Re-add an anchor-writing regression test
+   * if a new versioned managed-artifact class is ever introduced.
    */
   function checkpointBeforeManagedArtifactReconcile(
     document: Y.Doc,
@@ -2829,8 +2836,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         );
         // Version editor-driven CRDT edits exactly like a regular doc: an
         // attributed shadow commit per edit, recorded under the `.ok/` artifact
-        // key + `skill-`/`template-` subject the timeline filters on (so the edit
-        // surfaces in skill history / the folder timeline). This is the SAME
+        // key + `skill-` subject the timeline filters on (so the edit surfaces
+        // in skill history). Templates are content docs and never reach this
+        // managed branch. This is the SAME
         // safety-net `storeDocumentNow` uses for browser writes: MCP `write`/
         // `edit` go through agent sessions and are attributed by the
         // api-extension handler (rich actor + summary), so the store skips agent

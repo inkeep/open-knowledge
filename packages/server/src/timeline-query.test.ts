@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { templateContentDocName } from '@inkeep/open-knowledge-core';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -27,7 +28,7 @@ import {
   saveVersion,
   type WriterIdentity,
 } from './shadow-repo';
-import { getDocumentHistory, historyWalkCap } from './timeline-query';
+import { getDocumentHistory, getFolderTimeline, historyWalkCap } from './timeline-query';
 
 let tmpDir: string;
 
@@ -1100,4 +1101,200 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
     // A full page despite multi-writer fan-out noise within the bounded window.
     expect(result.entries).toHaveLength(10);
   }, 60_000);
+});
+
+describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 / D11)', () => {
+  // A template is now an ordinary content doc at `<folder>/.ok/templates/<name>`.
+  // Every lifecycle write — HTTP typed writes AND editor CRDT edits — attributes
+  // under that one content-relative key (byte-equal to okArtifactKey('template',
+  // …) and to the client's doc name), which is why the timeline stays whole.
+  // These helpers hand-build that shared-key shadow history so the query
+  // behavior can be pinned deterministically without the full server.
+  const httpWriter: WriterIdentity = {
+    id: 'agent-11111111-1111-4111-1111-111111111111',
+    name: 'template-http',
+    email: 'agent-11111111-1111-4111-1111-111111111111@openknowledge.local',
+  };
+
+  function increasingDates() {
+    let t = Date.parse('2026-07-01T12:00:00.000Z');
+    return () => {
+      t += 1000;
+      return new Date(t).toISOString();
+    };
+  }
+
+  /**
+   * Commit `body` at the template's real content path with a hand-formatted
+   * ok-actor declaring the content-doc key in `docs[]` — the exact shape the
+   * attribution path records. `commitWip` writes the message (subject +
+   * ok-actor) verbatim, so the caller controls the subject a lifecycle write
+   * would stamp.
+   */
+  async function commitTemplate(
+    shadow: ShadowHandle,
+    contentDir: string,
+    folderRel: string,
+    name: string,
+    subject: string,
+    body: string,
+    date: string,
+    writer: WriterIdentity = httpWriter,
+  ): Promise<string> {
+    const docKey = templateContentDocName(folderRel, name);
+    const abs = resolve(contentDir, `${docKey}.md`);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, body);
+    const actor: OkActorEntry = {
+      v: 1,
+      writer_id: writer.id,
+      principal: null,
+      agent_session: writer.id.startsWith('agent-') ? writer.id.slice(6) : null,
+      agent_type: null,
+      client_name: writer.name,
+      client_version: null,
+      label: null,
+      display_name: writer.name,
+      color_seed: writer.id,
+      docs: [docKey],
+    };
+    const message = `${subject}\n\n${formatOkActor(actor)}`;
+    return commitWip(shadow, writer, 'content/docs', message, 'main', { date });
+  }
+
+  test('doc history is one continuous chain across typed lifecycle writes and wip editor edits', async () => {
+    const { contentDir, shadow } = await setup();
+    const next = increasingDates();
+    const docName = templateContentDocName('notes', 'standup'); // notes/.ok/templates/standup
+
+    // Two HTTP lifecycle writes stamped typed template-* subjects (what the
+    // create/edit routes emit), keyed on the content path.
+    const createSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-create: notes/.ok/templates/standup',
+      '---\ntemplate:\n  title: Standup\n---\n# v1\n',
+      next(),
+    );
+    const editSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-edit: notes/.ok/templates/standup',
+      '---\ntemplate:\n  title: Standup\n---\n# v2\n',
+      next(),
+    );
+
+    // The same file is an ordinary content doc, so an editor CRDT edit lands as a
+    // raw wip: commit under the SAME key — a different writer, same doc.
+    const wipSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'wip: notes/.ok/templates/standup',
+      '---\ntemplate:\n  title: Standup\n---\n# v3 edited in the editor\n',
+      next(),
+      human,
+    );
+
+    const result = await getDocumentHistory(shadow, { docName }, 'content/docs');
+    const shas = result.entries.map((e) => e.sha);
+    // All three rows — typed and wip — are returned for the one content-doc name.
+    // Nothing splits the timeline at the cutover and no fan-out noise leaks in.
+    expect(new Set(shas)).toEqual(new Set([createSha, editSha, wipSha]));
+
+    // Each row attributes under the byte-identical content-doc key; that shared
+    // key is precisely why the typed and wip rows unify into one history.
+    for (const entry of result.entries) {
+      expect(entry.contributors.some((c) => c.docs.includes(docName))).toBe(true);
+    }
+  });
+
+  test('folder timeline keeps the four typed lifecycle subjects and drops import + wip', async () => {
+    const { contentDir, shadow } = await setup();
+    const next = increasingDates();
+    const docName = templateContentDocName('notes', 'standup');
+
+    const createSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-create: notes/.ok/templates/standup',
+      '# create\n',
+      next(),
+    );
+    const editSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-edit: notes/.ok/templates/standup',
+      '# edit\n',
+      next(),
+    );
+    const renameSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-rename: notes/.ok/templates/scrum -> notes/.ok/templates/standup',
+      '# rename\n',
+      next(),
+    );
+    const deleteSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-delete: notes/.ok/templates/standup',
+      '# delete\n',
+      next(),
+    );
+    // The import route stamps `template-import:`, but the folder subject filter
+    // omits `import` — minted-but-never-surfaced. A pre-existing gap this
+    // migration preserves unchanged (the filter also carries a `template-move`
+    // alternation that no route mints, since moves stamp `template-rename`).
+    const importSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'template-import: notes/.ok/templates/standup',
+      '# import\n',
+      next(),
+    );
+    // An editor CRDT edit stamps a raw wip: subject — a real edit, but not a
+    // typed folder event.
+    const wipSha = await commitTemplate(
+      shadow,
+      contentDir,
+      'notes',
+      'standup',
+      'wip: notes/.ok/templates/standup',
+      '# editor edit\n',
+      next(),
+      human,
+    );
+
+    const folder = await getFolderTimeline(shadow, 'notes', 'content/docs');
+    const folderShas = folder.entries.map((e) => e.sha);
+    expect(folderShas).toContain(createSha);
+    expect(folderShas).toContain(editSha);
+    expect(folderShas).toContain(renameSha);
+    expect(folderShas).toContain(deleteSha);
+    expect(folderShas).not.toContain(importSha);
+    expect(folderShas).not.toContain(wipSha);
+    // Exactly the four typed lifecycle subjects — nothing else is a folder event.
+    expect(folder.entries).toHaveLength(4);
+
+    // The wip editor edit still belongs to the template's OWN document history:
+    // it is a real edit, just not something the folder card surfaces.
+    const doc = await getDocumentHistory(shadow, { docName }, 'content/docs');
+    expect(doc.entries.map((e) => e.sha)).toContain(wipSha);
+  });
 });

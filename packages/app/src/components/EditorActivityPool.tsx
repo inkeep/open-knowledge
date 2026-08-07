@@ -38,6 +38,7 @@ import {
   isEditableTextDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
+  parseTemplateContentDocName,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Loader2, RefreshCw } from 'lucide-react';
@@ -222,6 +223,35 @@ export function computeEffectiveSourceMode(
   lastActiveIsSourceMode: boolean,
 ): boolean {
   return isActive ? isSourceMode : lastActiveIsSourceMode;
+}
+
+/**
+ * Whether an Activity entry should render the create-mode "new doc" affordance
+ * (empty draft that starts a page on first keystroke). A doc counts as new only
+ * when it is genuinely absent from every surface a real doc registers under:
+ * the page index, managed artifacts, template content docs, and Mermaid /
+ * editable-text docs.
+ *
+ * Templates and project skills only enter the page list after the async `files`
+ * refetch, so a purely `pages`-membership check would flash the create-mode
+ * affordance for a freshly created template during that index-lag window. The
+ * structural `parseTemplateContentDocName` / `isManagedArtifactDocName` checks
+ * suppress that even before the index catches up.
+ */
+export function computeIsNewDoc(args: {
+  docName: string;
+  pages: ReadonlySet<string>;
+  loading: boolean;
+}): boolean {
+  const { docName, pages, loading } = args;
+  return (
+    !loading &&
+    !pages.has(docName) &&
+    !isManagedArtifactDocName(docName) &&
+    parseTemplateContentDocName(docName) === null &&
+    !isMermaidDocFile(docName) &&
+    !isEditableTextDocFile(docName)
+  );
 }
 
 /**
@@ -527,13 +557,7 @@ function EditorActivityPoolInner({
             }
             isSourceMode={isSourceMode}
             editorPlaceholder={editorPlaceholder}
-            isNewDoc={
-              !loading &&
-              !pages.has(entry.docName) &&
-              !isManagedArtifactDocName(entry.docName) &&
-              !isMermaidDocFile(entry.docName) &&
-              !isEditableTextDocFile(entry.docName)
-            }
+            isNewDoc={computeIsNewDoc({ docName: entry.docName, pages, loading })}
             previousDocName={previousDocName}
             onNavigateBack={onNavigateBack}
             onRecycle={onRecycle}
@@ -1449,7 +1473,8 @@ function ActivityEntry({
                         PropertyPanel (frontmatter table, null when empty). */}
                       {!effectiveIsSourceMode &&
                         (isManagedArtifactDocName(entry.docName) ||
-                        parseProjectSkillContentDocName(entry.docName) ? (
+                        parseProjectSkillContentDocName(entry.docName) ||
+                        parseTemplateContentDocName(entry.docName) ? (
                           <Suspense fallback={null}>
                             <ManagedArtifactProperties
                               docName={entry.docName}

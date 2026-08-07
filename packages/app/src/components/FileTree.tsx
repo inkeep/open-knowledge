@@ -1017,11 +1017,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     const docEntry = entries.find(
       (item): item is DocumentEntry => isDocumentEntry(item) && item.docName === action.path,
     );
-    // Revealed `.ok` document rows never open the raw editable editor: the
-    // shared routing sends template files to the template editor, keeps
-    // indexed skill docs on the normal doc flow (null), and lands everything
-    // else on the read-only text viewer — same rule the hash resolver's
-    // doc-open guard applies.
+    // Revealed `.ok` document rows never open the raw create-mode editor. The
+    // shared routing returns null for the sanctioned content docs — template
+    // leaves (matched by shape, so a freshly-created template that lags the page
+    // index still routes right) and indexed skill docs (matched by page-list
+    // membership) — which fall through to the editable doc open below; every
+    // other `.ok` file resolves to the read-only text viewer. Same rule the hash
+    // resolver's doc-open guard applies.
     const okTarget = okContentNavigationTarget(action.path, {
       pages,
       docExt: docEntry?.docExt,

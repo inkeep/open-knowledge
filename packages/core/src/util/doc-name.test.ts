@@ -18,6 +18,14 @@ describe('isHiddenDocName', () => {
     // at the root and nested.
     'opencode.json',
     'config/opencode.json',
+    // Folder templates live under `.ok` with NO skill-style bundle carve-out, so
+    // `isHiddenDocName` treats them like any hidden dot-path: a search rank
+    // penalty plus exclusion from embeddings and egress, even though they are
+    // content docs on disk. (It is deliberately NOT applied to listings /
+    // backlinks / `[[` autocomplete, so templates still surface there.) Contrast
+    // the skill-bundle carve-out in the visible list below.
+    '.ok/templates/daily-standup',
+    'notes/.ok/templates/meeting',
   ])
     test(`hidden: ${JSON.stringify(name)}`, () => expect(isHiddenDocName(name)).toBe(true));
   for (const name of [

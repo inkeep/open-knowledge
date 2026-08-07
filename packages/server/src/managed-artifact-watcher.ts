@@ -33,37 +33,15 @@ import { getLogger } from './logger.ts';
 /** Cleanup function returned by `startManagedArtifactWatcher`. Idempotent. */
 export type ManagedArtifactWatcherUnsubscribe = () => Promise<void>;
 
-export interface ManagedArtifactWatchOptions {
-  /**
-   * chokidar `depth` for the watched roots. Skills nest one level
-   * (`<name>/SKILL.md`, depth 1); templates are flat (`<name>.md` directly in
-   * the watched `.ok/templates` dir, depth 0).
-   */
-  depth: number;
-  /** True for a path that is a managed-artifact leaf (e.g. `SKILL.md` / `*.md`). */
-  acceptLeaf: (absPath: string) => boolean;
-}
-
-/** Skills: nested `<name>/SKILL.md` (the default). */
-const SKILL_WATCH_OPTIONS: ManagedArtifactWatchOptions = {
-  depth: 1,
-  acceptLeaf: (p) => basename(p) === 'SKILL.md',
-};
-
-/** Templates: flat `<name>.md` directly in a `.ok/templates` dir. */
-export const TEMPLATE_WATCH_OPTIONS: ManagedArtifactWatchOptions = {
-  depth: 0,
-  // Skip atomic-write temp files (`<name>.md.tmp.<pid>.<ts>`) — they end in a
-  // numeric suffix, not `.md`.
-  acceptLeaf: (p) => basename(p).endsWith('.md'),
-};
+/** True for a managed-artifact leaf we reconcile: the `SKILL.md` file. */
+const isSkillLeaf = (absPath: string): boolean => basename(absPath) === 'SKILL.md';
 
 /**
  * Watch one or more managed-artifact root directories for leaf-file changes.
  * Resolves once chokidar's initial scan completes (`ready`), so callers/tests
  * can write immediately without racing the first event.
  *
- * On `add` / `change` of a leaf (per `opts.acceptLeaf`): reads the file and
+ * On `add` / `change` of a leaf (per `isSkillLeaf`): reads the file and
  * fires `onChange(absPath, content)`. `unlink` does NOT fire `onChange` (the
  * live doc retains its current state — deletion of live content is a separate,
  * explicit surface) but DOES fire the optional `onUnlink(absPath)`, so callers
@@ -74,7 +52,6 @@ export const TEMPLATE_WATCH_OPTIONS: ManagedArtifactWatchOptions = {
 export async function startManagedArtifactWatcher(
   roots: ReadonlyArray<string>,
   onChange: (absPath: string, content: string) => void,
-  opts: ManagedArtifactWatchOptions = SKILL_WATCH_OPTIONS,
   onUnlink?: (absPath: string) => void,
 ): Promise<ManagedArtifactWatcherUnsubscribe> {
   const log = getLogger('managed-artifact-watcher');
@@ -96,10 +73,11 @@ export async function startManagedArtifactWatcher(
   }
 
   // Leaf filtering happens in the handler (atomic-write `.tmp.<uuid>` siblings
-  // are dropped by `acceptLeaf`).
+  // are dropped by `isSkillLeaf`).
   const watcher = watch(watchRoots, {
     ignoreInitial: true,
-    depth: opts.depth,
+    // Skills nest one level under the root: `<name>/SKILL.md`.
+    depth: 1,
     usePolling: true,
     interval: 200,
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
@@ -112,7 +90,7 @@ export async function startManagedArtifactWatcher(
   const lastContent = new Map<string, string | null>();
 
   const handlePath = (path: string): void => {
-    if (!opts.acceptLeaf(path)) return;
+    if (!isSkillLeaf(path)) return;
     let content: string;
     try {
       content = readFileSync(path, 'utf-8');
@@ -138,7 +116,7 @@ export async function startManagedArtifactWatcher(
   watcher.on('add', handler);
   watcher.on('change', handler);
   watcher.on('unlink', (path) => {
-    if (!opts.acceptLeaf(path)) return;
+    if (!isSkillLeaf(path)) return;
     lastContent.delete(path);
     log.debug({ path }, 'managed-artifact leaf unlinked; live doc retained at current state');
     if (onUnlink) {

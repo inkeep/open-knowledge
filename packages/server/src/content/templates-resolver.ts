@@ -127,8 +127,9 @@ export interface ProjectTemplatesResult {
  *
  * Every call re-walks, deliberately. Templates reach disk through two
  * unrelated substrates (the filesystem writers in `templates-write.ts` and
- * the CRDT managed-artifact persistence path behind `PUT /api/template`) as
- * well as plain external edits, so any memo here has to be invalidated from
+ * the CRDT content persistence path behind `PUT /api/template` — a template is
+ * a content doc, so the managed-artifact store no-ops its name) as well as
+ * plain external edits, so any memo here has to be invalidated from
  * each of them — a completeness obligation that is easy to violate silently,
  * and whose failure mode is a template the user just created not appearing.
  * The async walk is what removes the latency harm; caching on top bought

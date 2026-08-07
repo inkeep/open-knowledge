@@ -216,7 +216,8 @@ function isSkillContentFile(relativePath: string): boolean {
  * True for the directories that must stay DESCENDABLE so a tree walk reaches
  * skill files: `.ok` itself (to get to `.ok/skills`), `.ok/skills`, and anything
  * under it. `.ok` is descendable but does NOT admit its other children — the
- * file-level predicates still exclude `.ok/local`, `.ok/templates`, etc.
+ * file-level predicates still exclude `.ok/local`, config, etc. (Templates under
+ * `.ok/templates` are admitted, but by their own segment-shaped carve-out.)
  */
 function isSkillContentAncestorDir(relativePath: string): boolean {
   return (
@@ -228,21 +229,90 @@ function isSkillContentAncestorDir(relativePath: string): boolean {
 
 /**
  * True for a watcher-ignore glob that would stop the OS file-watcher from
- * seeing `.ok/skills/**`. The watcher-ignore list is glob-derived from
- * `.gitignore` / `.okignore` / `.git/info/exclude` (e.g. clone appends `.ok/`),
- * and the @parcel/watcher backend consults THESE globs — not the function
- * predicates (`isDirExcluded` / `isExcluded`) that carry the skills-as-content
- * carve-out and that the chokidar backend uses. So a blanket `.ok` ignore glob
+ * seeing `.ok/` content the carve-outs admit: `.ok/skills/**` and the template
+ * leaves under any `<folder>/.ok/templates/`. The watcher-ignore list is
+ * glob-derived from `.gitignore` / `.okignore` / `.git/info/exclude` (e.g. clone
+ * appends `.ok/`), and the @parcel/watcher backend consults THESE globs — not
+ * the function predicates (`isDirExcluded` / `isExcluded`) that carry the
+ * carve-outs and that the chokidar backend uses. So a blanket `.ok` ignore glob
  * makes parcel (the default backend on Linux) never deliver external edits to
- * project skills. Dropping the blanket-`.ok` globs lets the watcher reach
- * `.ok/skills`; the non-skill `.ok` children (`.ok/local`, `.ok/templates`, …)
- * are still pruned downstream by the function predicates in `handleRawEvents`,
- * so they never reach the index. A more specific glob like `.ok/local` does NOT
- * block the skill tree and is kept.
+ * project skills or templates. Dropping the blanket-`.ok` globs lets the watcher
+ * reach them; the non-carve-out `.ok` children (`.ok/local`, config, …) are
+ * still pruned downstream by the function predicates in `handleRawEvents`, so
+ * they never reach the index. A more specific glob like `.ok/local` does NOT
+ * block the carve-out trees and is kept.
  */
-function globBlocksSkillContent(pattern: string): boolean {
+function globBlocksOkContent(pattern: string): boolean {
   const p = pattern.replace(/^\/+/, '').replace(/\/+$/, '').trim();
   return p === '.ok' || p === '.ok/**' || p === '**/.ok' || p === '**/.ok/**';
+}
+
+/*
+ * Template carve-out family (the three predicates below). Templates are
+ * ordinary content docs at `<folder>/.ok/templates/<name>.md` for any folder
+ * depth, so — unlike the root-anchored `.ok/skills` carve-out — the predicates
+ * are SEGMENT-shaped: a `.ok` segment immediately followed by `templates`. A
+ * `startsWith` twin would silently miss every nested-folder template. The shape
+ * match alone is NOT sufficient: these predicates run before the always-skip and
+ * configurable-rules floors, and `isExcluded` / `isPathIgnored` are consulted
+ * per raw watcher event on the full path (not only via the top-down walk that
+ * prunes skip-dir roots first), so a template tail vendored under
+ * `node_modules` / `dist` / a gitignored tree would leak in.
+ * `templateFolderPrefixIsSkipped` bounds the carve-out below the skip-dir floor.
+ */
+
+/**
+ * True when a template-shaped path sits under a `BUILTIN_SKIP_DIRS` ancestor.
+ * Only the folder prefix strictly above the template's `.ok` is checked — the
+ * `.ok` segment is itself a skip dir by design and must not self-reject the
+ * template. `okIndex` is the position of that `.ok` segment.
+ */
+function templateFolderPrefixIsSkipped(segments: string[], okIndex: number): boolean {
+  for (let i = 0; i < okIndex; i++) {
+    if (BUILTIN_SKIP_DIRS.has(segments[i])) return true;
+  }
+  return false;
+}
+
+/**
+ * True for a single `.md` template leaf directly under any
+ * `<folder>/.ok/templates/`. `.md` ONLY — a `.mdx` (or any other extension)
+ * under `.ok/templates` is not a template and stays excluded. A leaf inside a
+ * subdirectory (`.ok/templates/sub/x.md`) is rejected: templates are flat, one
+ * leaf per dir.
+ */
+function isTemplateContentFile(relativePath: string): boolean {
+  const segments = relativePath.split('/');
+  const n = segments.length;
+  if (n < 3) return false;
+  if (
+    segments[n - 3] !== OK_DIR ||
+    segments[n - 2] !== 'templates' ||
+    extname(segments[n - 1]) !== '.md'
+  ) {
+    return false;
+  }
+  return !templateFolderPrefixIsSkipped(segments, n - 3);
+}
+
+/**
+ * True for the directories that must stay DESCENDABLE so the normal index walk
+ * reaches template leaves at any depth: a `<folder>/.ok` (to reach its
+ * `templates` child) and a `<folder>/.ok/templates` (to reach the leaves). A
+ * subdirectory under `.ok/templates` is NOT an ancestor — templates are flat,
+ * so it falls through to the always-skip floor and stays pruned, keeping the
+ * walk bounded.
+ */
+function isTemplateContentAncestorDir(relativePath: string): boolean {
+  const segments = relativePath.split('/');
+  const n = segments.length;
+  if (segments[n - 1] === OK_DIR) {
+    return !templateFolderPrefixIsSkipped(segments, n - 1);
+  }
+  if (n >= 2 && segments[n - 1] === 'templates' && segments[n - 2] === OK_DIR) {
+    return !templateFolderPrefixIsSkipped(segments, n - 2);
+  }
+  return false;
 }
 
 /**
@@ -863,7 +933,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     // Skip negation (!) and comment (#) lines — they aren't directly usable
     // as fast-path globs for the OS watcher.
     const newWatcherGlobs = newRootPatterns.filter(
-      (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksSkillContent(p),
+      (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksOkContent(p),
     );
 
     // Atomic swap.
@@ -934,9 +1004,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   function isRejectedByConfigurableRules(relativePath: string): boolean {
     // BUILTIN_SKIP_DIRS — must mirror isDirExcluded. The seed walk skips
     // these dirs at boot, but watcher events for files born inside them
-    // (e.g. MCP `write({ template })` creating `<folder>/.ok/templates/foo.md`)
-    // reach classifyEvents and must be rejected here, otherwise they leak
-    // into the file index and surface in the file tree.
+    // (e.g. a file written into `node_modules/`, or a non-carve-out `.ok`
+    // child like `.ok/local/`) reach classifyEvents and must be rejected here,
+    // otherwise they leak into the file index and surface in the file tree.
+    // The `.ok/skills` and `.ok/templates` carve-outs run earlier in
+    // `isExcluded`, so admitted skill/template leaves never reach this check.
     for (const segment of relativePath.split('/')) {
       if (BUILTIN_SKIP_DIRS.has(segment)) return true;
     }
@@ -991,6 +1063,18 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         if (isSupportedDocFile(relativePath)) return false;
         const ext = extname(relativePath).slice(1).toLowerCase();
         return !LINKABLE_ASSET_EXTENSIONS.has(ext);
+      }
+
+      // (0b') Template-as-content carve-out — a `.md` template leaf under any
+      // `<folder>/.ok/templates/` is a content doc. Unlike skills, ONLY the
+      // `.md` leaf is admitted (no linkable assets, no subdirectories). Same
+      // `!bypassFilters` gate as the skills carve-out so Show All Files defers
+      // to the always-skip floor; the single-file scope obligation is inherited
+      // (omitting it would admit every template under `?docPath=`). Must precede
+      // the always-skip floor, which prunes any `.ok` segment.
+      if (!opts?.bypassFilters && isTemplateContentFile(relativePath)) {
+        if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
+        return false;
       }
 
       // (0c) Always-skip floor — VCS / dependency / OK-state dirs stay
@@ -1049,15 +1133,17 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // skills carve-out: a secret dir nested under a skill (`.ok/skills/x/.ssh`)
       // would otherwise be kept descendable by the ancestor carve-out.
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
-      // Skills-as-content: keep `.ok`, `.ok/skills`, and `.ok/skills/**`
-      // descendable so the NORMAL index walk reaches skill files; the file-level
-      // predicates keep the rest of `.ok/` excluded. Gated on `!bypassFilters`:
-      // under Show All Files the always-skip floor below must still prune `.ok`
-      // (it's an internal dir, not user content — surfacing it as a folder broke
-      // the showAll folder-listing contract and the hasFolders gate).
+      // Skills- and templates-as-content: keep `.ok`, `.ok/skills[/**]`, and
+      // any `<folder>/.ok/templates` descendable so the NORMAL index walk
+      // reaches skill + template leaves; the file-level predicates keep the rest
+      // of `.ok/` excluded. Gated on `!bypassFilters`: under Show All Files the
+      // always-skip floor below must still prune `.ok` (it's an internal dir,
+      // not user content — surfacing it as a folder broke the showAll
+      // folder-listing contract and the hasFolders gate).
       if (
         !opts?.bypassFilters &&
         (isSkillContentAncestorDir(relativePath) ||
+          isTemplateContentAncestorDir(relativePath) ||
           isInPlaceSkillAncestorDir(relativePath, inPlaceSkillDirs))
       )
         return false;
@@ -1122,6 +1208,10 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         (isInPlaceSkillFile(relativePath, inPlaceSkillDirs) && !isIgnored(relativePath))
       )
         return false;
+      // Templates-as-content: a `.md` template leaf is servable content too.
+      // Ungated (like the skills carve-out here) and admitted before the `.ok`
+      // always-skip floor.
+      if (isTemplateContentFile(relativePath)) return false;
       if (pathHasAlwaysSkipSegment(relativePath)) return true;
       if (isAlwaysSkipFile(relativePath)) return true;
       if (opts?.bypassFilters) return false;
@@ -1617,7 +1707,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     ig = newIg;
     okignoreIg = newOkignoreIg;
     watcherIgnoreGlobs = newRootPatterns.filter(
-      (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksSkillContent(p),
+      (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksOkContent(p),
     );
     dirCount.clear();
     for (const [k, v] of newDirCount) dirCount.set(k, v);
@@ -1650,6 +1740,13 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         const skillExt = extname(relativePath).slice(1).toLowerCase();
         return !LINKABLE_ASSET_EXTENSIONS.has(skillExt);
       }
+      // Template-as-content carve-out — a `.md` template leaf under any
+      // `<folder>/.ok/templates/` is a content doc (see sync variant, incl. the
+      // `!bypassFilters` gate and the inherited single-file scope obligation).
+      if (!opts?.bypassFilters && isTemplateContentFile(relativePath)) {
+        if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
+        return false;
+      }
       // Always-skip floor — survives bypass; `showOk` re-admits `.ok` minus
       // `worktrees`/`local` (see sync variant for rationale).
       if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
@@ -1676,12 +1773,14 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // MUST precede the skills carve-out so a secret dir nested under a skill
       // (`.ok/skills/x/.ssh`) isn't kept descendable by the ancestor carve-out.
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
-      // Skills-as-content: keep `.ok` / `.ok/skills` / `.ok/skills/**`
-      // descendable for the NORMAL index walk only (see sync variant); under
-      // bypass the always-skip floor below keeps `.ok` pruned.
+      // Skills- and templates-as-content: keep `.ok` / `.ok/skills[/**]` and any
+      // `<folder>/.ok/templates` descendable for the NORMAL index walk only (see
+      // sync variant); under bypass the always-skip floor below keeps `.ok`
+      // pruned.
       if (
         !opts?.bypassFilters &&
         (isSkillContentAncestorDir(relativePath) ||
+          isTemplateContentAncestorDir(relativePath) ||
           isInPlaceSkillAncestorDir(relativePath, inPlaceSkillDirs))
       )
         return false;
@@ -1727,6 +1826,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         (isInPlaceSkillFile(relativePath, inPlaceSkillDirs) && !isIgnored(relativePath))
       )
         return false;
+      // Templates-as-content: a `.md` template leaf is servable content too
+      // (ungated, see sync variant).
+      if (isTemplateContentFile(relativePath)) return false;
       if (pathHasAlwaysSkipSegment(relativePath)) return true;
       if (isAlwaysSkipFile(relativePath)) return true;
       if (opts?.bypassFilters) return false;

@@ -21,10 +21,11 @@ export function docNameFromHash(hash: string): string | null {
   // A pre-install skill preview (`#/__skill-preview__/…`) is a full-pane viewer
   // keyed by import coordinates, not a doc — it resolves via `skillPreviewFromHash`.
   if (hash.startsWith(SKILL_PREVIEW_HASH_PREFIX)) return null;
-  // Skill (`#/__skill__/…`) and template (`#/__template__/…`) hashes ARE
-  // documents — they open as ordinary editor tabs, so they resolve to their
-  // synthetic doc name here like any other `#/<docName>` hash (per-segment
-  // decode below yields the raw `__skill__/<scope>/<name>` key the tab uses).
+  // A global-skill hash (`#/__skill__/…`) and a LEGACY template hash
+  // (`#/__template__/…`) decode to their raw name here like any other
+  // `#/<docName>` hash; a legacy template name is then redirected to its content
+  // doc at navigation resolution. New templates use their content-path hash
+  // (`#/<folder>/.ok/templates/<name>`), decoded per-segment like any doc.
   if (!hash.startsWith('#/')) return null;
   const rest = hash.slice(2);
   const delimiter = firstRouteDelimiterIndex(rest);

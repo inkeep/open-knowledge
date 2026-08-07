@@ -806,8 +806,11 @@ describe('GET /api/search — operational budget (D15)', () => {
 // from the search corpus by `isHiddenDocName`. The predicate split admits them to
 // SEARCH (rank-deprioritized in core) while keeping them out of the embedding /
 // egress path. System + config synthetic docs (`__config__/project`) stay out of
-// both. `.ok/` never reaches the index at all (ContentFilter excludes it upstream
-// of this harness, so it is not exercised here).
+// both. `.ok/` content the ContentFilter admits (skills index with skill-aware
+// docs; templates index as ordinary content docs, rank-deprioritized by
+// `isHiddenDocName` like the other hidden dot-paths above) is covered in
+// dedicated suites; this dot-path harness seeds none of it, so it is not
+// exercised here.
 
 describe('GET /api/search — dot-path searchability', () => {
   test('a tracked dot-path markdown is searchable (AC3)', async () => {

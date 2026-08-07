@@ -64,7 +64,6 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
     cleanup = await startManagedArtifactWatcher(
       [skillsRoot],
       (p) => changed.push(p),
-      undefined,
       (p) => unlinked.push(p),
     );
 

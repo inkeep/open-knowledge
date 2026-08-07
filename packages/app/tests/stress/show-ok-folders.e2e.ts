@@ -105,7 +105,9 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
   await expect(page.getByText('MUTATION-ATTEMPT')).toHaveCount(0);
   await expect(page.getByText(`Raw probe ${stamp}`)).toBeVisible();
 
-  // A template file row routes to the managed-artifact template editor.
+  // A template file row routes to its content doc (templates are content docs
+  // now; the row navigates to the real `.ok/templates/` path, not the retired
+  // `__template__/` synthetic name).
   await folderRow(page, 'templates').click();
   await fileRow(page, `${templateName}.md`).waitFor({ state: 'visible', timeout: 15_000 });
   await fileRow(page, `${templateName}.md`).click();
@@ -113,7 +115,7 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
     .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
       timeout: 15_000,
     })
-    .toBe(`#/__template__/${templateName}`);
+    .toBe(`#/.ok/templates/${templateName}`);
 
   // Restore the worker-shared default from the same popover; the `.ok` rows
   // retire with the flip.
@@ -259,4 +261,35 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   // Restore the worker-shared default from the same popover.
   await toggleShowOkFolders(page);
   await expect(folderRow(page, '.ok')).toHaveCount(0, { timeout: 15_000 });
+});
+
+test('a legacy __template__ bookmark redirects to the content doc and opens it', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  const stamp = uniqueStamp();
+  const anchorDoc = `tmpl-legacy-anchor-${stamp}`;
+  const templateName = `legacy-greeting-${stamp}`;
+  const bodyMarker = `Legacy redirect ${stamp}`;
+
+  await api.createPage(`${anchorDoc}.md`);
+  mkdirSync(join(workerServer.contentDir, '.ok', 'templates'), { recursive: true });
+  writeFileSync(
+    join(workerServer.contentDir, '.ok', 'templates', `${templateName}.md`),
+    `# ${bodyMarker}\n`,
+    'utf-8',
+  );
+
+  // Land on an ordinary doc first so the redirect has somewhere to move FROM.
+  await page.goto(`/#/${anchorDoc}`);
+  await fileRow(page, `${anchorDoc}.md`).waitFor({ state: 'visible', timeout: 15_000 });
+
+  // A pre-migration bookmark of the retired synthetic name resolves at
+  // navigation to the content doc, so the template still opens (its body
+  // renders) rather than stranding on a phantom empty tab.
+  await page.evaluate((name) => {
+    window.location.hash = `#/__template__/${name}`;
+  }, templateName);
+  await expect(page.getByText(bodyMarker)).toBeVisible({ timeout: 15_000 });
 });

@@ -88,7 +88,6 @@ import {
   createConflictLifecycleSeedExtension,
   entryMatchesDocName,
 } from './conflict-lifecycle-seed.ts';
-import { resolveProjectTemplates } from './content/templates-resolver.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
@@ -149,7 +148,7 @@ import {
   managedArtifactDocNameForPath,
   managedArtifactSkillsRoots,
 } from './managed-artifact-persistence.ts';
-import { startManagedArtifactWatcher, TEMPLATE_WATCH_OPTIONS } from './managed-artifact-watcher.ts';
+import { startManagedArtifactWatcher } from './managed-artifact-watcher.ts';
 import { recoverPendingManagedRename } from './managed-rename-journal.ts';
 import { mdManager, schema } from './md-manager.ts';
 import {
@@ -3541,7 +3540,6 @@ export function createServer(options: ServerOptions): ServerInstance {
         const skillsCleanup = await startManagedArtifactWatcher(
           skillsRoots,
           reconcileManagedArtifactDisk,
-          undefined,
           handleManagedArtifactUnlink,
         );
         configFileWatcherCleanups.push({ docName: '__skill-files__', cleanup: skillsCleanup });
@@ -3574,38 +3572,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       } catch (err) {
         log.warn({ err }, '[skill-state-watcher] failed to start');
         degraded.push('skill-state-watcher');
-      }
-
-      // Template watcher. Templates live in any folder's `.ok/templates/`, so the
-      // watch roots are enumerated from the existing templates at boot (plus the
-      // project root). Bounded — a template created in a BRAND-NEW folder mid-
-      // session is reconciled only after a restart; the common case (editing a
-      // template that existed at boot) is covered.
-      try {
-        const templateFolders = new Set<string>(['']);
-        try {
-          for (const t of (await resolveProjectTemplates(projectDir)).templates) {
-            templateFolders.add(t.source_folder);
-          }
-        } catch (err) {
-          log.warn({ err }, '[managed-artifact-watcher] template enumeration failed; root only');
-        }
-        const templateRoots = [...templateFolders].map((f) =>
-          f ? resolve(projectDir, f, '.ok', 'templates') : resolve(projectDir, '.ok', 'templates'),
-        );
-        const templateCleanup = await startManagedArtifactWatcher(
-          templateRoots,
-          reconcileManagedArtifactDisk,
-          TEMPLATE_WATCH_OPTIONS,
-        );
-        configFileWatcherCleanups.push({ docName: '__template-files__', cleanup: templateCleanup });
-        log.info(
-          { rootCount: templateRoots.length },
-          '[managed-artifact-watcher] templates started',
-        );
-      } catch (err) {
-        log.warn({ err }, '[managed-artifact-watcher] templates failed to start');
-        degraded.push('managed-artifact-watcher:templates');
       }
     }
 

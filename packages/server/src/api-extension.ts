@@ -134,7 +134,6 @@ import {
   LocalOpOkInitResponseSchema,
   lintDocument,
   MANAGED_ARTIFACT_PREFIX_SKILL,
-  MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   MarkdownlintRuleWriteRequestSchema,
   mediaKindForSidebarAssetExtension,
   OK_DIR,
@@ -228,6 +227,7 @@ import {
   scanHeadingLine,
   skillLiveDocName,
   stripFrontmatter,
+  TEMPLATE_NAME_REGEX,
   TemplateDeleteSuccessSchema,
   TemplateGetSuccessSchema,
   TemplateImportRequestSchema,
@@ -243,6 +243,7 @@ import {
   TestResetSuccessSchema,
   TrashCleanupRequestSchema,
   TrashCleanupSuccessSchema,
+  templateContentDocName,
   UploadAssetSuccessSchema,
   UploadRequestSchema,
   unwrapFrontmatterFences,
@@ -3384,13 +3385,13 @@ export function createApiExtension(
         admitted.add(alias);
       }
     }
-    // Managed-artifact docs (skills/templates) are link-axis participants — a
-    // doc that links to one must resolve it as a known doc (title, not a dead
-    // link rendered as the raw `__skill__/...` name). They live outside
-    // getFileIndex() (tree-excluded), so enumerate them from disk here. The
-    // names match what the backlink index normalizes link targets to via
-    // `managedArtifactDocNameFromContentTarget`. Best-effort: a scan failure
-    // just narrows the set, it never fails the link endpoint.
+    // Managed skill docs are link-axis participants — a doc that links to one
+    // must resolve it as a known doc (title, not a dead link rendered as the raw
+    // `__skill__/...` name). They live outside getFileIndex() (tree-excluded), so
+    // enumerate them from disk here. The names match what the backlink index
+    // normalizes link targets to. Templates need no enumeration: they are content
+    // docs now, so getFileIndex() already carries them. Best-effort: a scan
+    // failure just narrows the set, it never fails the link endpoint.
     try {
       for (const scope of ['project', 'global'] as const) {
         const skillsRoot =
@@ -3400,9 +3401,6 @@ export function createApiExtension(
         for (const skill of resolveSkillsList(skillsRoot, scope).skills) {
           admitted.add(`${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${skill.name}`);
         }
-      }
-      for (const tpl of (await resolveProjectTemplates(resolve(contentDir))).templates) {
-        admitted.add(templateDocNameFor(tpl.source_folder, tpl.name));
       }
     } catch (err) {
       log.warn({ err }, '[collectAdmittedDocNames] managed-artifact enumeration failed');
@@ -12311,9 +12309,8 @@ export function createApiExtension(
     return { folderRel, resolvedContentDir };
   }
 
-  const TEMPLATE_NAME_RE = /^[A-Za-z0-9_-]+$/;
   function validateTemplateName(name: string, res: ServerResponse, handler = 'template'): boolean {
-    if (!name || !TEMPLATE_NAME_RE.test(name)) {
+    if (!name || !TEMPLATE_NAME_REGEX.test(name)) {
       errorResponse(
         res,
         400,
@@ -12526,27 +12523,21 @@ export function createApiExtension(
   );
 
   /**
-   * Conflict-aware refusal helper for the template handlers. Templates
-   * write to `<folder>/.ok/templates/<name>.md`, under `.ok/`, which the
-   * watcher excludes from the CRDT document index — so the target path
-   * cannot carry a `lifecycle.status` Y.Map in production. The check is
-   * kept structural so (a) any future loosening that loads
-   * `.ok/templates/*` into Y.Docs inherits the refusal contract for free,
-   * (b) the meta-test sees an explicit `respondDocInConflict` site at
-   * the handler boundary. Returns `true` when the gate fired (caller
-   * short-circuits); `false` when the mutation may proceed.
+   * Conflict-aware refusal helper for the template handlers. A template is a
+   * content doc now (`<folder>/.ok/templates/<name>`), so its live Y.Doc carries
+   * a `lifecycle.status` Y.Map — a mutation against one mid-conflict must refuse
+   * exactly like the sibling content-write handlers, whose paired-write path
+   * (`composeAndWriteRawBody`) would otherwise clobber a doc the user is
+   * mid-resolving. Takes the pre-resolved content doc name — same shape as the
+   * sibling `checkSkillDocConflictGate`, so the two gates read as one pattern.
+   * Returns `true` when the gate fired (caller short-circuits); `false` when
+   * the mutation may proceed.
    */
   function checkTemplateConflictGate(
-    folder: string,
-    name: string,
+    templateDocName: string,
     handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
     res: ServerResponse,
   ): boolean {
-    if (!name) return false;
-    const templateDocName =
-      folder === ''
-        ? `.ok/templates/${name}`
-        : `${folder.replace(/\/$/, '')}/.ok/templates/${name}`;
     const doc = hocuspocus.documents.get(templateDocName);
     if (doc && isDocInConflict(doc)) {
       respondDocInConflict(res, new DocInConflictError({ file: `${templateDocName}.md` }), handler);
@@ -12728,11 +12719,19 @@ export function createApiExtension(
         if (!validated) return;
 
         // Conflict-aware refusal. See `checkTemplateConflictGate`.
-        if (checkTemplateConflictGate(validated.folderRel, name, 'template-put', res)) return;
+        if (
+          checkTemplateConflictGate(
+            templateDocNameFor(validated.folderRel, name),
+            'template-put',
+            res,
+          )
+        )
+          return;
 
         // Compose + validate the `.md` bytes server-side, then route the body
         // through the template's CRDT doc (precedent #24 / #38) — same shape as
-        // skill-put. The managed-artifact persistence branch writes the file.
+        // skill-put. Templates are content docs, so the ordinary content
+        // persistence path (not the managed-artifact branch) writes the file.
         const composed = composeTemplateContent({
           name,
           body: typeof body.body === 'string' ? body.body : '',
@@ -12782,6 +12781,12 @@ export function createApiExtension(
           respondDiskDivergence(res, 'template-put');
           return;
         }
+
+        // Close the dropped-FSEvent gap at the source (see helper): the flush
+        // may have just created this folder's `.ok/templates/` dir — exactly
+        // the brand-new-subdir race where the watcher's create event can be
+        // lost. Same net as the sibling agent-write handlers.
+        registerWrittenDocInFileIndex(templateDocName, composed.content);
 
         attributeOkArtifactWrite(
           actor,
@@ -12836,12 +12841,19 @@ export function createApiExtension(
         }
 
         // Conflict-aware refusal. See `checkTemplateConflictGate`.
-        if (checkTemplateConflictGate(validated.folderRel, name, 'template-delete', res)) return;
+        if (
+          checkTemplateConflictGate(
+            templateDocNameFor(validated.folderRel, name),
+            'template-delete',
+            res,
+          )
+        )
+          return;
 
-        // Tear down the live `__template__` doc (if open) BEFORE removing the
-        // file, so the managed-artifact persistence branch can't re-store
-        // (resurrect) it on a later unload. Same spine doc-delete + skill-delete
-        // use; no-op when the doc was never opened.
+        // Tear down the live template content doc (if open) BEFORE removing the
+        // file, so its debounced content store can't re-store (resurrect) it on
+        // a later unload. Same spine doc-delete + skill-delete use; no-op when
+        // the doc was never opened.
         await captureAndCloseDocuments(
           [templateDocNameFor(validated.folderRel, name)],
           'deleted-upstream',
@@ -12879,6 +12891,9 @@ export function createApiExtension(
             `template-delete: ${result.path}`,
           );
           await commitOkArtifactWrite('template-delete');
+          // Mark the content doc removed so a stale tab redirects instead of
+          // offering to resurrect it (parity with ordinary doc deletion).
+          recentlyRemovedDocs?.setDeleted(templateDocNameFor(validated.folderRel, name));
         }
         successResponse(
           res,
@@ -12923,14 +12938,19 @@ export function createApiExtension(
 
         // Refuse moving a source whose target doc is in an unresolved conflict.
         if (
-          checkTemplateConflictGate(fromValidated.folderRel, body.fromName, 'template-move', res)
+          checkTemplateConflictGate(
+            templateDocNameFor(fromValidated.folderRel, body.fromName),
+            'template-move',
+            res,
+          )
         ) {
           return;
         }
 
-        // Tear down the live source `__template__` doc (if open) BEFORE the
-        // git-mv relocates the file — otherwise its persistence branch would
-        // re-store at the now-stale from-path, resurrecting the moved template.
+        // Tear down the live source template content doc (if open) BEFORE the
+        // git-mv relocates the file — otherwise its debounced content store
+        // would re-store at the now-stale from-path, resurrecting the moved
+        // template.
         await captureAndCloseDocuments(
           [templateDocNameFor(fromValidated.folderRel, body.fromName)],
           'renamed',
@@ -13000,6 +13020,11 @@ export function createApiExtension(
           return;
         }
 
+        // Mark the source content doc removed (the move relocated its file) so a
+        // stale tab on the old name redirects instead of offering to resurrect
+        // it (parity with ordinary doc deletion).
+        recentlyRemovedDocs?.setDeleted(templateDocNameFor(fromValidated.folderRel, body.fromName));
+
         // Optional atomic move+edit: rewrite the relocated template's content.
         // The move already succeeded and persisted the original content, so any
         // failure here is captured and reported AFTER the move is attributed —
@@ -13038,6 +13063,22 @@ export function createApiExtension(
             });
             if (!writeResult.ok) contentEditError = writeResult.error;
           }
+        }
+
+        // Close the dropped-FSEvent gap for the DESTINATION (parity with
+        // put/import): the relocate may have just created `toFolder`'s
+        // `.ok/templates/` dir — the brand-new-subdir race where the watcher's
+        // create event can be lost. Read the final on-disk bytes (post the
+        // optional edit above) so the index entry matches what landed.
+        // Best-effort like the helper itself: on a read failure the CRDT/disk
+        // copy exists regardless and a rescan re-seeds the index.
+        try {
+          registerWrittenDocInFileIndex(
+            templateDocNameFor(toValidated.folderRel, body.toName),
+            readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
+          );
+        } catch {
+          // Unreadable destination — leave index membership to the watcher.
         }
 
         // The move succeeded — attribute + commit + signal regardless of the
@@ -13216,7 +13257,14 @@ export function createApiExtension(
         const validated = validateFolderRel(body.targetFolder, res, 'folder', 'template-import');
         if (!validated) return;
 
-        if (checkTemplateConflictGate(validated.folderRel, name, 'template-import', res)) return;
+        if (
+          checkTemplateConflictGate(
+            templateDocNameFor(validated.folderRel, name),
+            'template-import',
+            res,
+          )
+        )
+          return;
 
         // Parse existing frontmatter of the source file to extract the title/description/tags
         const { frontmatter: sourceFmText, body: sourceBody } = stripFrontmatter(sourceContent);
@@ -13302,6 +13350,12 @@ export function createApiExtension(
           respondDiskDivergence(res, 'template-import');
           return;
         }
+
+        // Close the dropped-FSEvent gap at the source (see helper): the flush
+        // may have just created the target folder's `.ok/templates/` dir —
+        // exactly the brand-new-subdir race where the watcher's create event
+        // can be lost. Same net as the sibling agent-write handlers.
+        registerWrittenDocInFileIndex(templateDocName, composed.content);
 
         attributeOkArtifactWrite(
           actor,
@@ -13830,14 +13884,13 @@ export function createApiExtension(
   }
 
   /**
-   * Build the folder-addressed `__template__/<folderRel>/<name>` CRDT doc name.
-   * Each path segment is percent-encoded so `parseManagedArtifactName` decodes
-   * back to the exact folder/name (folders may carry spaces/unicode). `''`
-   * folder → `__template__/<name>` (project root).
+   * The CRDT doc name a template opens/persists under — its content-relative path
+   * (`<folderRel>/.ok/templates/<name>`, ext-less, RAW). Delegates to the core
+   * builder so server handlers, the client open path, and the properties panel
+   * share one identity. `''` folder → `.ok/templates/<name>` (project root).
    */
   function templateDocNameFor(folderRel: string, name: string): string {
-    const segs = folderRel ? folderRel.split('/').filter(Boolean).map(encodeURIComponent) : [];
-    return `${MANAGED_ARTIFACT_PREFIX_TEMPLATE}${[...segs, encodeURIComponent(name)].join('/')}`;
+    return templateContentDocName(folderRel, name);
   }
 
   function parseSearchRanking(value: unknown): WorkspaceSearchRanking | undefined {
