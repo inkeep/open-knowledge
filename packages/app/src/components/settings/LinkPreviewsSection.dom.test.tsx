@@ -13,6 +13,7 @@ import type { Config, ConfigBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { describedTextOf } from './settings-a11y.test-helper';
 
 // Radix Dialog mounts a focus-trap that reaches for DOM globals the jsdom
 // preload doesn't expose. Hoist the same shims the sibling settings DOM tests
@@ -114,6 +115,21 @@ describe('LinkPreviewsSection', () => {
     const toggle = screen.getByTestId('settings-link-previews-toggle');
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(screen.getByTestId('settings-link-previews-body').textContent).toContain(
+      'sends its URL to the destination site',
+    );
+  });
+
+  test('the egress disclosure is announced with the toggle, not just shown beside it', () => {
+    // The body text is what tells you hovering a link reaches out to the
+    // destination site. Without aria-describedby a screen-reader user hears
+    // only "Enable external link previews" and never learns that.
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithLinkPreviews(true);
+
+    render(<LinkPreviewsSection />);
+
+    expect(describedTextOf('settings-link-previews-toggle')).toContain(
       'sends its URL to the destination site',
     );
   });

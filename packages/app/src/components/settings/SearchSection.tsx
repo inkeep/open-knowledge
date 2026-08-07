@@ -313,7 +313,11 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
             <label htmlFor="settings-search-semantic-toggle" className="text-sm font-medium">
               <Trans>Semantic search</Trans>
             </label>
-            <p className="text-muted-foreground text-1sm" data-testid="settings-search-body">
+            <p
+              id="settings-search-semantic-toggle-description"
+              className="text-muted-foreground text-1sm"
+              data-testid="settings-search-body"
+            >
               {enabled ? (
                 <Trans>
                   On — your search queries and the text of matching pages are sent to your
@@ -326,6 +330,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
           </div>
           <Switch
             id="settings-search-semantic-toggle"
+            aria-describedby="settings-search-semantic-toggle-description"
             checked={enabled}
             disabled={!bindingReady}
             onCheckedChange={onToggleRequest}

@@ -61,12 +61,15 @@ export function ContentRulesSection() {
       </div>
 
       <div className="divide-y rounded-md border">
-        <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="min-w-0">
             <Label htmlFor="settings-content-rules-links" className="text-sm font-medium">
               <Trans>Broken internal links</Trans>
             </Label>
-            <p className="text-sm text-muted-foreground">
+            <p
+              id="settings-content-rules-links-description"
+              className="text-1sm text-muted-foreground"
+            >
               <Trans>
                 How unresolved wiki-links are reported in the Problems panel, audits, and agent
                 tools.
@@ -80,6 +83,7 @@ export function ContentRulesSection() {
           >
             <SelectTrigger
               id="settings-content-rules-links"
+              aria-describedby="settings-content-rules-links-description"
               className="w-36 shrink-0"
               data-testid="settings-content-rules-links"
             >
@@ -99,12 +103,15 @@ export function ContentRulesSection() {
           </Select>
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="min-w-0">
             <Label htmlFor="settings-content-rules-indicators" className="text-sm font-medium">
               <Trans>Problem indicators in the file explorer</Trans>
             </Label>
-            <p className="text-sm text-muted-foreground">
+            <p
+              id="settings-content-rules-indicators-description"
+              className="text-1sm text-muted-foreground"
+            >
               <Trans>
                 Tint and badge files that have lint or link problems, without opening them.
               </Trans>
@@ -112,6 +119,7 @@ export function ContentRulesSection() {
           </div>
           <Switch
             id="settings-content-rules-indicators"
+            aria-describedby="settings-content-rules-indicators-description"
             checked={indicatorsOn}
             disabled={!bindingReady}
             onCheckedChange={(next) => write({ fileTreeIndicators: next })}

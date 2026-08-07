@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
+import { describedTextOf } from './settings-a11y.test-helper';
 
 const linguiMacroMock = {
   t: renderLinguiTemplate,
@@ -70,6 +71,16 @@ describe('ContentRulesSection', () => {
     expect(screen.getByTestId('settings-content-rules-indicators').getAttribute('data-state')).toBe(
       'unchecked',
     );
+  });
+
+  test('both controls are described by their own row description', () => {
+    render(<ContentRulesSection />);
+    for (const [testId, expected] of [
+      ['settings-content-rules-links', 'How unresolved wiki-links are reported'],
+      ['settings-content-rules-indicators', 'Tint and badge files'],
+    ] as const) {
+      expect(describedTextOf(testId)).toContain(expected);
+    }
   });
 
   test('toggling indicators writes a validation patch', () => {

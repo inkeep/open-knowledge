@@ -127,8 +127,9 @@ export function ProjectPluginsManageSection() {
       <div className="divide-y rounded-md border" data-testid="settings-plugins-list">
         {LINT_PLUGIN_META.map((plugin) => {
           const on = contentRules?.[plugin.id]?.enabled === true;
+          const descriptionId = `settings-plugin-toggle-${plugin.id}-description`;
           return (
-            <div key={plugin.id} className="flex items-center justify-between gap-3 px-3 py-2">
+            <div key={plugin.id} className="flex items-center justify-between gap-3 px-3 py-3">
               <div className="min-w-0">
                 <Label
                   htmlFor={`settings-plugin-toggle-${plugin.id}`}
@@ -137,12 +138,13 @@ export function ProjectPluginsManageSection() {
                   {plugin.label}
                   {plugin.id === 'frontmatter' ? <PluginBetaBadge /> : null}
                 </Label>
-                <p className="text-sm text-muted-foreground">
+                <p id={descriptionId} className="text-1sm text-muted-foreground">
                   <PluginManageDescription id={plugin.id} />
                 </p>
               </div>
               <Switch
                 id={`settings-plugin-toggle-${plugin.id}`}
+                aria-describedby={descriptionId}
                 checked={on}
                 disabled={!bindingReady}
                 onCheckedChange={(next) => {
@@ -198,12 +200,15 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
       </div>
 
       <div className="divide-y rounded-md border" data-testid="settings-user-plugins-list">
-        <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="min-w-0">
             <Label htmlFor="settings-plugin-toggle-theme" className="text-sm font-medium">
               <Trans>Themes</Trans>
             </Label>
-            <p className="text-sm text-muted-foreground">
+            <p
+              id="settings-plugin-toggle-theme-description"
+              className="text-1sm text-muted-foreground"
+            >
               <Trans>
                 A personal color-theme picker — not shared with your project. When on, it appears
                 under Plugins in the sidebar.
@@ -212,6 +217,7 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
           </div>
           <Switch
             id="settings-plugin-toggle-theme"
+            aria-describedby="settings-plugin-toggle-theme-description"
             checked={themeEnabled}
             disabled={userBinding === null}
             onCheckedChange={(next) => {
@@ -229,7 +235,7 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
             data-testid="settings-plugin-toggle-theme"
           />
         </div>
-        <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="min-w-0">
             <Label
               htmlFor="settings-plugin-toggle-slides"
@@ -238,7 +244,10 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
               <Trans>Slidev</Trans>
               <PluginBetaBadge />
             </Label>
-            <p className="text-sm text-muted-foreground">
+            <p
+              id="settings-plugin-toggle-slides-description"
+              className="text-1sm text-muted-foreground"
+            >
               <Trans>
                 Present a document as a slide deck in its own window. Works in the OpenKnowledge
                 desktop app only, and needs the Slidev CLI, which you install separately. When on,
@@ -248,6 +257,7 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
           </div>
           <Switch
             id="settings-plugin-toggle-slides"
+            aria-describedby="settings-plugin-toggle-slides-description"
             checked={slidesEnabled}
             disabled={userBinding === null}
             onCheckedChange={(next) => {

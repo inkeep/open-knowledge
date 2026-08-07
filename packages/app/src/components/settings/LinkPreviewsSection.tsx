@@ -105,7 +105,11 @@ export function LinkPreviewsSection() {
             <label htmlFor="settings-link-previews-toggle" className="text-sm font-medium">
               <Trans>External link previews</Trans>
             </label>
-            <p className="text-muted-foreground text-1sm" data-testid="settings-link-previews-body">
+            <p
+              id="settings-link-previews-toggle-description"
+              className="text-muted-foreground text-1sm"
+              data-testid="settings-link-previews-body"
+            >
               {enabled ? (
                 <Trans>
                   On — hovering an external link sends its URL to the destination site to fetch a
@@ -121,6 +125,7 @@ export function LinkPreviewsSection() {
           <Switch
             ref={switchRef}
             id="settings-link-previews-toggle"
+            aria-describedby="settings-link-previews-toggle-description"
             checked={enabled}
             disabled={!bindingReady}
             onCheckedChange={onToggleRequest}

@@ -16,6 +16,7 @@ import {
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { describedTextOf } from './settings-a11y.test-helper';
 
 // Radix Dialog mounts a focus-trap that reaches for DOM globals the jsdom
 // preload doesn't expose. Hoist the same shims the sibling settings DOM tests
@@ -126,6 +127,21 @@ describe('SearchSection', () => {
     );
     expect(screen.queryByTestId('settings-search-coverage')).toBeNull();
     expect(screen.queryByTestId('settings-search-needs-key')).toBeNull();
+  });
+
+  test('the egress disclosure is announced with the toggle, not just shown beside it', () => {
+    // The body text is the only place that says queries and page text go to an
+    // embeddings provider. Without aria-describedby a screen-reader user hears
+    // only "Enable semantic search" and never learns content leaves the machine.
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+
+    render(<SearchSection />);
+
+    expect(describedTextOf('settings-search-semantic-toggle')).toContain(
+      'sent to your embeddings provider',
+    );
   });
 
   test('toggle is disabled until the project-local binding has synced', () => {

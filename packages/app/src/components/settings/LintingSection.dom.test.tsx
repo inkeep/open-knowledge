@@ -10,6 +10,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { describedTextOf } from './settings-a11y.test-helper';
 
 // Radix primitives reach for DOM globals the jsdom preload doesn't expose;
 // hoist the same shims the sibling settings DOM tests use.
@@ -184,6 +185,25 @@ describe('ProjectPluginsManageSection', () => {
     expect(rows[0]?.closest('label')?.textContent).toContain('Frontmatter schemas');
   });
 
+  test('every plugin toggle is described by its own row description', () => {
+    // Hand-rolled rows do not get the aria-describedby wiring that the
+    // schema-driven SettingsField gets for free from FormControl, so a screen
+    // reader on the switch would otherwise hear the plugin name and nothing
+    // about what the plugin does.
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    render(<ProjectPluginsManageSection />);
+
+    // Both plugins, because their descriptions come from separate branches of
+    // PluginManageDescription and each carries the same screen-reader promise.
+    expect(describedTextOf('settings-plugin-toggle-markdownlint')).toContain(
+      'Common markdown issues',
+    );
+    expect(describedTextOf('settings-plugin-toggle-frontmatter')).toContain(
+      'Validate document frontmatter',
+    );
+  });
+
   test('toggling a project plugin writes the per-plugin enabled patch', async () => {
     const { binding, calls } = makeBinding();
     mockProjectBinding = binding;
@@ -266,6 +286,19 @@ describe('UserPluginsManageSection', () => {
     render(<UserPluginsManageSection userBinding={null} />);
     expect(screen.getByTestId('settings-plugin-toggle-theme')).toBeDefined();
     expect(screen.queryByTestId('settings-plugin-toggle-markdownlint')).toBeNull();
+  });
+
+  test('every user-scope toggle is described by its row description, like the project rows', () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    render(<UserPluginsManageSection userBinding={null} />);
+
+    expect(describedTextOf('settings-plugin-toggle-theme')).toContain(
+      'A personal color-theme picker',
+    );
+    expect(describedTextOf('settings-plugin-toggle-slides')).toContain(
+      'Present a document as a slide deck',
+    );
   });
 
   test('the Themes toggle writes the user-scope enabled patch', async () => {
