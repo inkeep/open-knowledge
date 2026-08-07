@@ -238,15 +238,19 @@ type TestLaunch = {
 function DockHarness({
   v,
   l,
+  p = 'bottom',
+  targetAvailable = true,
   onVisibleChange,
   bridge,
   // biome-ignore lint/suspicious/noExplicitAny: test harness props
 }: any) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
+  const [rightContainer, setRightContainer] = useState<HTMLDivElement | null>(null);
   const [editorRegionEl, setEditorRegionEl] = useState<HTMLDivElement | null>(null);
   return (
     <TooltipProvider>
       <TerminalDock
+        placement={p}
         visible={v}
         onVisibleChange={onVisibleChange}
         onBottomContainer={setBottomContainer}
@@ -254,26 +258,37 @@ function DockHarness({
       >
         <div data-testid="editor-child" />
       </TerminalDock>
+      {p === 'right' && targetAvailable ? (
+        <div ref={setRightContainer} data-testid="terminal-right-mount" />
+      ) : null}
       <SessionsHost
         surface="terminal-dock"
+        terminalPlacement={p}
         bridge={bridge}
         terminalCapable
         visible={v}
         onVisibleChange={onVisibleChange}
         launch={l ?? null}
-        container={bottomContainer}
-        isShowing={v && bottomContainer != null}
+        container={p === 'right' ? rightContainer : bottomContainer}
+        isShowing={v && (p === 'right' ? rightContainer != null : bottomContainer != null)}
         onRequestEditorFocus={() => editorRegionEl?.focus()}
       />
     </TooltipProvider>
   );
 }
 
-function renderDock(visible: boolean, launch?: TestLaunch | null) {
+function renderDock(visible: boolean, launch?: TestLaunch | null, placement = 'bottom') {
   const onVisibleChange = vi.fn((_v: boolean) => {});
   const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge();
-  const ui = (v: boolean, l?: TestLaunch | null) => (
-    <DockHarness v={v} l={l ?? null} onVisibleChange={onVisibleChange} bridge={bridge} />
+  const ui = (v: boolean, l?: TestLaunch | null, p = placement, targetAvailable = true) => (
+    <DockHarness
+      v={v}
+      l={l ?? null}
+      p={p}
+      targetAvailable={targetAvailable}
+      onVisibleChange={onVisibleChange}
+      bridge={bridge}
+    />
   );
   const utils = render(ui(visible, launch));
   return {
@@ -284,7 +299,8 @@ function renderDock(visible: boolean, launch?: TestLaunch | null) {
     input,
     viewMenuPushes,
     dispatchMenuAction,
-    rerender: (v: boolean, l?: TestLaunch | null) => utils.rerender(ui(v, l)),
+    rerender: (v: boolean, l?: TestLaunch | null, p = placement, targetAvailable = true) =>
+      utils.rerender(ui(v, l, p, targetAvailable)),
   };
 }
 
@@ -338,10 +354,84 @@ describe('TerminalDock multi-session', () => {
     __resetLocalMenuActionBusForTests();
   });
 
-  test('tab strip exposes the collapse button, and no way to move the dock', () => {
+  test('moving the terminal reuses the live session subtree', async () => {
+    const dock = renderDock(true);
+    await waitFor(() => expect(dock.create).toHaveBeenCalledTimes(1));
+    const session = screen.getByTestId('terminal-session');
+
+    dock.rerender(true, null, 'right');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('terminal-right-mount').contains(session)).toBe(true);
+    });
+    expect(screen.getByTestId('terminal-session')).toBe(session);
+    expect(dock.create).toHaveBeenCalledTimes(1);
+    expect(dock.kill).not.toHaveBeenCalled();
+    expect(document.getElementById(TERMINAL_PANEL_ID)).toBeNull();
+
+    dock.rerender(true, null, 'bottom');
+
+    await waitFor(() => {
+      expect(document.getElementById(TERMINAL_PANEL_ID)?.contains(session)).toBe(true);
+    });
+    expect(screen.getByTestId('terminal-session')).toBe(session);
+    expect(screen.queryByTestId('terminal-right-mount')).toBeNull();
+    expect(dock.create).toHaveBeenCalledTimes(1);
+    expect(dock.kill).not.toHaveBeenCalled();
+  });
+
+  test('a transiently missing target retains the session until the rail attaches', async () => {
+    const dock = renderDock(true);
+    await waitFor(() => expect(dock.create).toHaveBeenCalledTimes(1));
+    const session = screen.getByTestId('terminal-session');
+
+    dock.rerender(true, null, 'right', false);
+
+    expect(screen.queryByTestId('terminal-session')).toBeNull();
+    expect(dock.create).toHaveBeenCalledTimes(1);
+    expect(dock.kill).not.toHaveBeenCalled();
+
+    dock.rerender(true, null, 'right');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('terminal-right-mount').contains(session)).toBe(true);
+    });
+    expect(screen.getByTestId('terminal-session')).toBe(session);
+    expect(dock.create).toHaveBeenCalledTimes(1);
+    expect(dock.kill).not.toHaveBeenCalled();
+  });
+
+  test('rapid moves preserve tab order, active selection, and every session node', async () => {
+    const user = userEvent.setup();
+    const dock = renderDock(true);
+    await waitFor(() => expect(dock.create).toHaveBeenCalledTimes(1));
+    await addTerminalTab(user);
+    await waitFor(() => expect(dock.create).toHaveBeenCalledTimes(2));
+    const sessionNodes = screen.getAllByTestId('terminal-session');
+    const orderedIds = sessionPanels().map((panel) => panel.dataset.terminalSession);
+    const activeId = activePanelId();
+
+    dock.rerender(true, null, 'right');
+    dock.rerender(true, null, 'bottom');
+    dock.rerender(true, null, 'right');
+
+    expect(screen.getAllByTestId('terminal-session')).toEqual(sessionNodes);
+    expect(sessionPanels().map((panel) => panel.dataset.terminalSession)).toEqual(orderedIds);
+    expect(activePanelId()).toBe(activeId);
+    expect(dock.create).toHaveBeenCalledTimes(2);
+    expect(dock.kill).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('[data-terminal-session]')).toHaveLength(2);
+    expect(document.getElementById(TERMINAL_PANEL_ID)).toBeNull();
+    expect(
+      screen.getByTestId('terminal-right-mount').querySelectorAll('[data-terminal-session]'),
+    ).toHaveLength(2);
+  });
+
+  test('tab strip exposes the collapse button without obsolete dock or drag controls', () => {
     renderDock(true);
-    expect(screen.getByRole('button', { name: 'Collapse panel' })).not.toBeNull();
-    // The terminal owns the bottom edge outright: no dock-toggle, no drag grip.
+    expect(screen.getByRole('button', { name: 'Collapse Terminal' })).not.toBeNull();
+    // Placement lives in the strip's context menu, so the old dock button and
+    // drag-to-dock grip must stay absent.
     expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Drag to dock the terminal' })).toBeNull();
   });

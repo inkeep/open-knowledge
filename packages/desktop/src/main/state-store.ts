@@ -12,6 +12,7 @@
 
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { OkTerminalRestartSnapshot } from '@inkeep/open-knowledge-core/desktop-bridge';
 
 interface RecentProject {
   path: string;
@@ -102,6 +103,11 @@ export interface ProjectSessionState {
   panes: PersistedEditorPane[];
   /** Pane that owns the active editor target. */
   focusedPaneId: string;
+}
+
+export interface PersistedTerminalDockState {
+  terminalVisible: boolean;
+  terminalSnapshot: OkTerminalRestartSnapshot;
 }
 
 /**
@@ -274,6 +280,8 @@ export interface AppState {
    * recents.
    */
   projectWindowBounds: Record<string, PersistedWindowBounds>;
+  /** Full-restart terminal visibility + tab snapshot, keyed by project or loose-file identity. */
+  terminalDockStates: Record<string, PersistedTerminalDockState>;
   /**
    * Schema version of the persisted state, written by whichever build last
    * touched it. Reads default to `1` when the field is missing. The boot
@@ -354,6 +362,7 @@ export function emptyState(): AppState {
     dismissedRepairForBundle: null,
     projectSessions: {},
     projectWindowBounds: {},
+    terminalDockStates: {},
     schemaVersion: CURRENT_SCHEMA_VERSION,
     lastUsedProjectParent: null,
     pendingWindowRestore: null,
@@ -644,12 +653,15 @@ export function removeRecentProject(state: AppState, projectPath: string): AppSt
   delete projectSessions[projectPath];
   const projectWindowBounds = { ...state.projectWindowBounds };
   delete projectWindowBounds[projectPath];
+  const terminalDockStates = { ...state.terminalDockStates };
+  delete terminalDockStates[projectPath];
   return {
     ...state,
     recentProjects: state.recentProjects.filter((p) => p.path !== projectPath),
     lastOpenedProject: state.lastOpenedProject === projectPath ? null : state.lastOpenedProject,
     projectSessions,
     projectWindowBounds,
+    terminalDockStates,
   };
 }
 
@@ -686,6 +698,90 @@ export function setProjectSessionState(
     projectSessions: {
       ...state.projectSessions,
       [projectPath]: parseProjectSessionState(session),
+    },
+  };
+}
+
+function emptyTerminalDockState(): PersistedTerminalDockState {
+  return {
+    terminalVisible: false,
+    terminalSnapshot: { tabs: [], activeOrdinal: null },
+  };
+}
+
+export function normalizeTerminalRestartSnapshot(raw: unknown): OkTerminalRestartSnapshot {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { tabs: [], activeOrdinal: null };
+  }
+  const obj = raw as Record<string, unknown>;
+  const seenOrdinals = new Set<number>();
+  const tabs = Array.isArray(obj.tabs)
+    ? obj.tabs.flatMap((rawTab) => {
+        if (typeof rawTab !== 'object' || rawTab === null || Array.isArray(rawTab)) return [];
+        const tab = rawTab as Record<string, unknown>;
+        if (
+          typeof tab.ordinal !== 'number' ||
+          !Number.isInteger(tab.ordinal) ||
+          tab.ordinal < 1 ||
+          seenOrdinals.has(tab.ordinal)
+        ) {
+          return [];
+        }
+        seenOrdinals.add(tab.ordinal);
+        return [
+          {
+            ordinal: tab.ordinal,
+            customLabel: typeof tab.customLabel === 'string' ? tab.customLabel : null,
+          },
+        ];
+      })
+    : [];
+  const activeOrdinal =
+    typeof obj.activeOrdinal === 'number' &&
+    Number.isInteger(obj.activeOrdinal) &&
+    seenOrdinals.has(obj.activeOrdinal)
+      ? obj.activeOrdinal
+      : null;
+  return { tabs, activeOrdinal };
+}
+
+function parsePersistedTerminalDockState(raw: unknown): PersistedTerminalDockState {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return emptyTerminalDockState();
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    terminalVisible: obj.terminalVisible === true,
+    terminalSnapshot: normalizeTerminalRestartSnapshot(obj.terminalSnapshot),
+  };
+}
+
+function parseTerminalDockStates(raw: unknown): Record<string, PersistedTerminalDockState> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  const states: Record<string, PersistedTerminalDockState> = {};
+  for (const [projectPath, value] of Object.entries(raw)) {
+    if (projectPath.length > 0) states[projectPath] = parsePersistedTerminalDockState(value);
+  }
+  return states;
+}
+
+export function getTerminalDockState(
+  state: AppState,
+  projectPath: string,
+): PersistedTerminalDockState {
+  return state.terminalDockStates[projectPath] ?? emptyTerminalDockState();
+}
+
+export function setTerminalDockState(
+  state: AppState,
+  projectPath: string,
+  dockState: PersistedTerminalDockState,
+): AppState {
+  return {
+    ...state,
+    terminalDockStates: {
+      ...state.terminalDockStates,
+      [projectPath]: parsePersistedTerminalDockState(dockState),
     },
   };
 }
@@ -893,6 +989,7 @@ export function parseAppState(raw: unknown): AppState | null {
   // Additive field: a state.json predating window-bounds memory (or a
   // corrupted per-entry blob) coerces to the empty map — cascade placement.
   const projectWindowBounds = parseProjectWindowBounds(obj.projectWindowBounds);
+  const terminalDockStates = parseTerminalDockStates(obj.terminalDockStates);
   // Defensive: only string values survive; everything else (null, undefined,
   // wrong type from a corrupted state.json) coerces to null and the read
   // handler falls back to the platform default.
@@ -926,6 +1023,7 @@ export function parseAppState(raw: unknown): AppState | null {
     dismissedRepairForBundle,
     projectSessions,
     projectWindowBounds,
+    terminalDockStates,
     schemaVersion,
     lastUsedProjectParent,
     pendingWindowRestore,

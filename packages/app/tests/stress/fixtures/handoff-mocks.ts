@@ -627,7 +627,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           setMeta: () => {},
           setOrder: () => {},
           getDockState: async () => ({ terminalVisible: false, agentPanelVisible: false }),
-          setDockState: () => {},
+          setDockState: async () => ({ ok: true as const }),
           onData: () => () => {},
           onExit: () => () => {},
           claudePreflight: async () => ({ claude: 'present' as const, mcp: 'wired' as const }),

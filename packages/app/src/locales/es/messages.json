@@ -22,6 +22,7 @@
     ],
     "-7s4fw": ["Buscar agentes"],
     "-8PP0T": ["Distinguir mayúsculas"],
+    "-Al4WQ": ["Mostrar u ocultar Terminal"],
     "-FeyRg": ["Conservar el archivo original"],
     "-K0AvT": ["Desconectar"],
     "-LHLx7": ["plantilla editada"],
@@ -213,6 +214,7 @@
     "2RnFoM": ["No se pudo reanudar este chat: ", ["0"]],
     "2Snes1": ["Esto envía la dirección del enlace fuera de tu equipo"],
     "2UgoBZ": ["desaparecida"],
+    "2VSPan": ["Se cerró Terminal para dejar espacio al panel de agentes."],
     "2XQ8Ww": ["Abrir la vista previa cuando el agente edite"],
     "2YOwme": ["Reiniciado: ahora se ejecuta la v", ["appRuntime"], "."],
     "2YZwPB": ["La respuesta de enlaces salientes no tenía la forma esperada."],
@@ -801,6 +803,7 @@
       "\": todavía no está entre las habilidades del proyecto."
     ],
     "9wQrUU": ["Refactorización"],
+    "9xCnv8": ["Ocultar Terminal"],
     "9zb2WA": ["Conectando"],
     "A1taO8": ["Buscar"],
     "A50vr3": ["Usa solo letras minúsculas, dígitos y <0>-</0>."],
@@ -1562,6 +1565,7 @@
     "KDuPiY": ["Subiendo ", ["fileName"]],
     "KDw4GX": ["Inténtalo de nuevo"],
     "KFd4xz": ["ausente"],
+    "KGF42E": ["Se cerró el panel de agentes para mantener Terminal legible."],
     "KGJb9_": ["Conflictos"],
     "KH5bQi": [
       "Se está usando la variable de entorno <0>OK_EMBEDDINGS_API_KEY</0> (gestionada fuera de OpenKnowledge)."
@@ -1764,6 +1768,7 @@
       "Un enlace simbólico apunta a la carpeta de origen en lugar de ser una carpeta propia. Todas las ubicaciones leen exactamente los mismos bytes, así que nada se desvía, y una ubicación deja de funcionar si se elimina el origen."
     ],
     "MTs6g3": ["No se pudo reconectar tras el reinicio del servidor"],
+    "MU_NVW": ["Contraer Terminal"],
     "MUrVEo": ["No hay proyectos recientes."],
     "MV-Dkb": ["Se encontraron ", ["countDisplay"], " archivos markdown"],
     "MVxpbf": ["Buscar y reemplazar"],
@@ -1831,7 +1836,6 @@
     "NRSLBe": ["hace ", ["diffMin"], " min"],
     "NSnIUP": ["Dos páginas (pares)"],
     "NUr4kz": ["Un punto de partida reutilizable para los documentos nuevos de esta carpeta."],
-    "NUw7lo": ["Muestra u oculta el panel inferior, donde vive la terminal."],
     "NYUhy5": ["Nombre de la subcarpeta"],
     "NYn1cR": ["Cargando el editor"],
     "NYu2Pt": ["Proyecto nuevo…"],
@@ -2001,6 +2005,7 @@
       "Esta carpeta todavía no está en GitHub. El enlace no funcionará hasta que se suba."
     ],
     "PrVaZo": ["¿Desinstalar OpenKnowledge?"],
+    "PrWQiT": ["Mover Terminal a la derecha"],
     "PrhzDE": ["Desplazar hacia arriba"],
     "Q-DKvr": ["Instalar desde ", ["source"]],
     "Q1mtyd": ["Ocultar la barra lateral"],
@@ -2151,6 +2156,7 @@
     "S9Vnum": ["Quitar ", ["patternText"]],
     "S9t1PI": ["Arreglando ", ["0"], "/", ["1"]],
     "SCoBBH": ["Sugerencias de etiquetas"],
+    "SCveu1": ["Muestra u oculta Terminal en su panel actual."],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SF9qpO": ["Comparte tu correo para que podamos hacer seguimiento"],
     "SFEWV6": ["No se pudieron cargar las habilidades de OpenKnowledge. Inténtalo de nuevo."],
@@ -2241,6 +2247,7 @@
     "Tn5sik": [
       "Indica a los agentes cuándo recurrir a esta habilidad. Puedes editarlo más adelante."
     ],
+    "Tofsyo": ["Mover Terminal a la parte inferior"],
     "Tq3pcs": ["Conservar el mío"],
     "Tq9kNX": ["No hay chats abiertos. Reabre uno anterior o inicia uno nuevo con el botón ＋."],
     "TsZmgr": ["El archivo en el disco, y el id que usan los agentes."],
@@ -2477,7 +2484,6 @@
     "Wh0im4": ["editando [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Tachado"],
     "Wi-VWy": ["No se pudo enviar el informe"],
-    "WiGqD8": ["Mostrar el panel inferior"],
     "WkTLN7": ["Mostrar solo archivos markdown"],
     "WkyP2p": ["Sección Habilidades"],
     "WmPbvm": ["Recibe novedades del producto en tu correo."],
@@ -2594,7 +2600,6 @@
     "YJPN3F": ["Demasiado lento"],
     "YKLP_-": ["Plantilla renombrada"],
     "YLMBSd": ["p. ej. El editor se quedó bloqueado al pegar una tabla grande"],
-    "YM5oO0": ["Mostrar u ocultar el panel inferior"],
     "YMlS7s": ["Abrir en la aplicación predeterminada"],
     "YPFBfr": [
       ["detail"],
@@ -3281,6 +3286,7 @@
       ["descriptorLabel"],
       "> (probablemente por una propiedad incorrecta). Copia el código para ver qué falló o elimina el bloque."
     ],
+    "g5V4_P": ["Contraer el panel de agentes"],
     "g5w1sF": [
       "Elige una carpeta para fusionarla DENTRO de ",
       ["display"],
@@ -3562,6 +3568,7 @@
     "jZ_E5M": ["Falló el fetch: consulta los registros del servidor para ver los detalles."],
     "j_Z6g7": ["Valor compartido por defecto"],
     "jbSG8V": ["Mostrar Archivos (", ["sidebarShortcutLabel"], ")"],
+    "jcEoUi": ["Mover al panel derecho"],
     "jdGUeI": ["No se pudo crear la plantilla: ", ["error"]],
     "jeCFV7": ["Mover a un panel nuevo a la derecha"],
     "jeJexw": ["No se pudo terminar de instalar ", ["0"], "; mira abajo."],
@@ -3957,7 +3964,6 @@
     "o0bHtA": ["Por OpenKnowledge"],
     "o2yoFu": ["Mostrar en el Finder, sin espacio de trabajo"],
     "o49mDZ": ["Cargando el historial de la cronología"],
-    "o5jB-D": ["Contraer el panel"],
     "o9CrsQ": ["nota-de-investigacion"],
     "o9fPtM": ["Actualizar automáticamente desde el origen"],
     "oAFVKX": ["No se pudo actualizar la sincronización por defecto del proyecto — ", ["detail"]],
@@ -4026,7 +4032,6 @@
       "Gracias por suscribirte. Estate atento a tu correo para recibir novedades del producto."
     ],
     "pCralD": ["Mover a un panel nuevo a la izquierda"],
-    "pDD2Hm": ["Ocultar el panel inferior"],
     "pEQFsW": ["Ningún proyecto coincide."],
     "pFPzHA": ["Selector de emojis"],
     "pFRz_E": ["Dejar estos comentarios fuera de este mensaje"],
@@ -4683,6 +4688,7 @@
     "xeXS4P": ["O usa un paquete inicial"],
     "xeiujy": ["Texto"],
     "xhlFsx": ["Heredado: define aquí un valor para reemplazarlo."],
+    "xi9KGG": ["Mostrar Terminal"],
     "xiv-dW": ["Todavía no hay archivos."],
     "xlQpTE": ["Más opciones de rechazo"],
     "xloBjn": ["Ruta relativa"],

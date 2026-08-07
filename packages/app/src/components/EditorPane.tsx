@@ -1,4 +1,4 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import type { TerminalCli, TerminalPlacement } from '@inkeep/open-knowledge-core';
 import {
   lazy,
   Suspense,
@@ -28,6 +28,8 @@ import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { readTerminalPlacement, writeTerminalPlacement } from '@/lib/terminal-placement-store';
+import { readTerminalRightWidth, writeTerminalRightWidth } from '@/lib/terminal-right-width-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { AuthModal } from './AuthModal';
@@ -136,8 +138,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   }, [authPromptPending]);
   const [activeTab, setActiveTab] = useState<PanelTab>(TABS[0].id);
   const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
-  // Bottom-docked terminal — desktop-only (the bridge is absent in the web
-  // host, where a real shell is out of scope). Visibility starts hidden; the
+  // Docked terminal — desktop-only (the bridge is absent in the web host,
+  // where a real shell is out of scope). Visibility starts hidden; the
   // Cmd/Ctrl+J + View-menu toggle drives this state (wired below).
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   // The terminal feature (dock + header New chat / toggle) needs not just a
@@ -152,6 +154,17 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     desktopBridge.terminal != null &&
     desktopBridge.config.ptyAvailable === true;
   const [terminalVisible, setTerminalVisible] = useState(false);
+  const [terminalRestoreRevealNonce, setTerminalRestoreRevealNonce] = useState(0);
+  const [terminalPlacement, setTerminalPlacement] = useState<TerminalPlacement>(() =>
+    readTerminalPlacement(),
+  );
+  const [terminalRightWidth, setTerminalRightWidth] = useState(() => readTerminalRightWidth());
+  useEffect(() => {
+    writeTerminalPlacement(terminalPlacement);
+  }, [terminalPlacement]);
+  useEffect(() => {
+    writeTerminalRightWidth(terminalRightWidth);
+  }, [terminalRightWidth]);
   // The agents panel is independent of the terminal — different edge, different
   // kind, its own toggle (⌘L). Universal: agent threads are server-hosted, so it
   // works on the web host and where pty does not.
@@ -268,7 +281,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   //
   // Which panel it lands in is the HOSTS' call, not this pane's: they own the
   // live session state and both resolve the same preferred AI, so the passage
-  // reuses a running CLI in the bottom dock or an open thread in the agents
+  // reuses a running CLI in the terminal's current dock or an open thread in the agents
   // panel, and the winner reveals itself. Resolving here instead would limit ⌘J
   // to the CLI slice this pane can see, ignoring a preferred in-app agent — and
   // this pane cannot know which panel is the right one anyway.
@@ -297,8 +310,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const sendSelectionToAgentsEvent = useEffectEvent(() => sendSelectionToTerminal(false, 'agents'));
   const launchNewChatEvent = useEffectEvent(() => launchNewChat());
 
-  // Bottom-dock toggle, dual-wired like the DocPanel: on desktop the View →
-  // Bottom Dock item's ⌘J/Ctrl+J accelerator is OS-captured and dispatches
+  // Terminal visibility is dual-wired like the DocPanel: on desktop the View
+  // item's ⌘J/Ctrl+J accelerator is OS-captured and dispatches
   // `toggle-terminal`; the web host has no menu, so a window keydown stands in.
   //
   // ⌘J is a pure toggle: selection-send moved to ⌘L, whose chord names the panel
@@ -309,6 +322,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return subscribeLocalMenuAction((action) => {
       if (action === 'toggle-terminal') {
         setTerminalVisible((visible) => !visible);
+      } else if (action === 'move-terminal') {
+        setTerminalPlacement((placement) => (placement === 'bottom' ? 'right' : 'bottom'));
       } else if (action === 'new-terminal') {
         // Terminal menu "New Terminal": reveal the dock (it never hides, unlike
         // the toggle). The dock adds the new tab itself off the same action; this
@@ -359,7 +374,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // of the shortcut is menu-delivered. Add one the menu cannot carry — an
   // Electron menu item holds a single accelerator — and that binding becomes
   // undeliverable on desktop, silently. The fix then is to stay mounted and
-  // filter by `matchesRendererShortcut`, as the bottom-dock listener above does.
+  // filter by `matchesRendererShortcut`, as the Terminal listener above does.
   useEffect(() => {
     if (window.okDesktop != null) return;
     function handleKeyDown(event: KeyboardEvent) {
@@ -458,7 +473,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   }, [terminalVisible]);
 
   // Reflect terminal visibility to main so the View menu label flips between
-  // "Show Bottom Dock" and "Hide Bottom Dock". Gated on the dock-state restore so the
+  // "Show Terminal" and "Hide Terminal". Gated on the dock-state restore so the
   // mount-initial `false` can't overwrite main's retained per-window visibility
   // before the restore reads it (the reload re-expand depends on that value).
   // The first push after the restore settles carries the restored — or
@@ -467,7 +482,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     if (window.okDesktop == null) return;
     if (!dockRestoreSettled) return;
     // Mirror into the renderer store so the Cmd+K palette can show a
-    // state-reflecting "Show/Hide Bottom Dock" label (bridge push is main-only).
+    // state-reflecting "Show/Hide Terminal" label (bridge push is main-only).
     // Deliberately behind BOTH gates, unlike the unconditional sibling mirrors
     // in FileSidebar / EditorArea: publishing the mount-initial `false` before
     // the restore settles would flash a wrong palette label on a window whose
@@ -476,6 +491,13 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     setViewMenuState({ terminalVisible });
     window.okDesktop.editor.notifyViewMenuStateChanged({ terminalVisible });
   }, [terminalVisible, dockRestoreSettled]);
+
+  useEffect(() => {
+    if (window.okDesktop == null) return;
+    if (!dockRestoreSettled) return;
+    setViewMenuState({ terminalPlacement });
+    window.okDesktop.editor.notifyViewMenuStateChanged({ terminalPlacement });
+  }, [terminalPlacement, dockRestoreSettled]);
 
   // The agents panel's twin of the push above, behind the same restore gate for
   // the same reason: its retained per-window visibility is what a reloaded window
@@ -550,6 +572,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         // The restore — not the user — is driving this reveal; mark it so the
         // adoption telemetry below skips it.
         restoreRevealRef.current = true;
+        setTerminalRestoreRevealNonce((nonce) => nonce + 1);
         setTerminalVisible(true);
       })
       .catch((err) => {
@@ -714,7 +737,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             onActiveTabChange={setActiveTab}
             terminalBridge={terminalAvailable ? desktopBridge : null}
             terminalVisible={terminalVisible}
+            terminalPlacement={terminalPlacement}
+            terminalRightWidth={terminalRightWidth}
             onTerminalVisibleChange={setTerminalVisible}
+            onTerminalRightWidthChange={setTerminalRightWidth}
             agentsVisible={agentsVisible}
             onAgentsVisibleChange={setAgentsVisible}
             onSessionPlacements={setPlacements}
@@ -760,9 +786,13 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         <Suspense fallback={null}>
           <SessionsHost
             surface="terminal-dock"
+            terminalPlacement={terminalPlacement}
+            onTerminalPlacementChange={setTerminalPlacement}
+            reserveRightRevealTabGutter={terminalPlacement === 'right' && !agentsVisible}
             bridge={desktopBridge}
             terminalCapable
             visible={terminalVisible}
+            terminalRestoreRevealNonce={terminalRestoreRevealNonce}
             onVisibleChange={setTerminalVisible}
             launch={terminalLaunch}
             commandLaunch={terminalCommand}

@@ -22,6 +22,7 @@
     ],
     "-7s4fw": ["Rechercher des agents"],
     "-8PP0T": ["Respecter la casse"],
+    "-Al4WQ": ["Afficher ou masquer Terminal"],
     "-FeyRg": ["Conserver le fichier d'origine"],
     "-K0AvT": ["Déconnecter"],
     "-LHLx7": ["modèle modifié"],
@@ -223,6 +224,7 @@
     "2RnFoM": ["Impossible de reprendre ce chat : ", ["0"]],
     "2Snes1": ["Ceci envoie l'adresse du lien hors de votre machine"],
     "2UgoBZ": ["disparu"],
+    "2VSPan": ["Terminal a été fermé pour faire de la place au panneau des agents."],
     "2XQ8Ww": ["Ouvrir l'aperçu quand l'agent modifie"],
     "2YOwme": ["Redémarré — exécute maintenant la v", ["appRuntime"], "."],
     "2YZwPB": ["La réponse des liens sortants ne correspond pas à la forme attendue."],
@@ -826,6 +828,7 @@
       " » — elle ne fait pas encore partie des compétences du projet."
     ],
     "9wQrUU": ["Refactorisation"],
+    "9xCnv8": ["Masquer Terminal"],
     "9zb2WA": ["Connexion"],
     "A1taO8": ["Rechercher"],
     "A50vr3": ["Utilisez uniquement des lettres minuscules, des chiffres et <0>-</0>."],
@@ -1588,6 +1591,7 @@
     "KDuPiY": ["Envoi de ", ["fileName"]],
     "KDw4GX": ["Réessayer"],
     "KFd4xz": ["absent"],
+    "KGF42E": ["Le panneau des agents a été fermé pour que Terminal reste lisible."],
     "KGJb9_": ["Conflits"],
     "KH5bQi": [
       "Utilise la variable d'environnement <0>OK_EMBEDDINGS_API_KEY</0> (gérée en dehors d'OpenKnowledge)."
@@ -1788,6 +1792,7 @@
       "Un lien symbolique pointe vers le dossier source au lieu d'être un dossier à part entière. Chaque emplacement lit exactement les mêmes octets, donc rien ne peut diverger, et un emplacement cesse de fonctionner si la source est supprimée."
     ],
     "MTs6g3": ["Impossible de se reconnecter après le redémarrage du serveur"],
+    "MU_NVW": ["Réduire Terminal"],
     "MUrVEo": ["Aucun projet récent."],
     "MV-Dkb": [["countDisplay"], " fichiers markdown trouvés"],
     "MVxpbf": ["Rechercher et remplacer"],
@@ -1855,7 +1860,6 @@
     "NRSLBe": ["il y a ", ["diffMin"], " min"],
     "NSnIUP": ["Deux pages (paires)"],
     "NUr4kz": ["Un point de départ réutilisable pour les nouveaux documents de ce dossier."],
-    "NUw7lo": ["Affiche ou masque le panneau inférieur, où se trouve le terminal."],
     "NYUhy5": ["Nom du sous-dossier"],
     "NYn1cR": ["Chargement de l'éditeur"],
     "NYu2Pt": ["Nouveau projet…"],
@@ -2027,6 +2031,7 @@
       "Ce dossier n'est pas encore sur GitHub. Le lien ne fonctionnera pas tant qu'il n'aura pas été poussé."
     ],
     "PrVaZo": ["Désinstaller OpenKnowledge ?"],
+    "PrWQiT": ["Déplacer Terminal à droite"],
     "PrhzDE": ["Faire défiler vers le haut"],
     "Q-DKvr": ["Installer depuis ", ["source"]],
     "Q1mtyd": ["Masquer la barre latérale"],
@@ -2181,6 +2186,7 @@
     "S9Vnum": ["Retirer ", ["patternText"]],
     "S9t1PI": ["Correction de ", ["0"], "/", ["1"]],
     "SCoBBH": ["Suggestions d'étiquettes"],
+    "SCveu1": ["Affichez ou masquez Terminal dans son panneau actuel."],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SF9qpO": ["Partagez votre e-mail pour le suivi"],
     "SFEWV6": ["Impossible de charger les compétences OpenKnowledge. Réessayez."],
@@ -2271,6 +2277,7 @@
     "Tn5sik": [
       "Indique aux agents quand recourir à cette compétence. Vous pourrez le modifier plus tard."
     ],
+    "Tofsyo": ["Déplacer Terminal en bas"],
     "Tq3pcs": ["Garder la mienne"],
     "Tq9kNX": [
       "Aucun chat ouvert. Rouvrez-en un ancien ou démarrez-en un nouveau avec le bouton ＋."
@@ -2517,7 +2524,6 @@
     "Wh0im4": ["modifie [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Barré"],
     "Wi-VWy": ["Impossible d'envoyer le rapport"],
-    "WiGqD8": ["Afficher le panneau inférieur"],
     "WkTLN7": ["N'afficher que les fichiers markdown"],
     "WkyP2p": ["Section Compétences"],
     "WmPbvm": ["Recevez les nouveautés du produit dans votre boîte mail."],
@@ -2632,7 +2638,6 @@
     "YJPN3F": ["Trop lent"],
     "YKLP_-": ["Modèle renommé"],
     "YLMBSd": ["par ex. L'éditeur s'est figé après avoir collé un grand tableau"],
-    "YM5oO0": ["Afficher ou masquer le panneau inférieur"],
     "YMlS7s": ["Ouvrir dans l'application par défaut"],
     "YPFBfr": [
       ["detail"],
@@ -3316,6 +3321,7 @@
       ["descriptorLabel"],
       "> a échoué (probablement une propriété incorrecte). Copiez la source pour voir ce qui ne va pas, ou supprimez le bloc."
     ],
+    "g5V4_P": ["Réduire le panneau des agents"],
     "g5w1sF": [
       "Choisissez un dossier à fusionner DANS ",
       ["display"],
@@ -3599,6 +3605,7 @@
     "jZ_E5M": ["Échec de la récupération — consultez les journaux du serveur pour les détails."],
     "j_Z6g7": ["Valeur par défaut partagée"],
     "jbSG8V": ["Afficher les fichiers (", ["sidebarShortcutLabel"], ")"],
+    "jcEoUi": ["Déplacer vers le panneau de droite"],
     "jdGUeI": ["Impossible de créer le modèle : ", ["error"]],
     "jeCFV7": ["Déplacer vers un nouveau volet à droite"],
     "jeJexw": ["Impossible de terminer l'installation de ", ["0"], " — voir ci-dessous."],
@@ -3996,7 +4003,6 @@
     "o0bHtA": ["Par OpenKnowledge"],
     "o2yoFu": ["Afficher dans le Finder, sans espace de travail"],
     "o49mDZ": ["Chargement de l'historique de la chronologie"],
-    "o5jB-D": ["Réduire le panneau"],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Mise à jour automatique depuis la source"],
     "oAFVKX": ["Échec de la mise à jour de la synchronisation par défaut du projet — ", ["detail"]],
@@ -4065,7 +4071,6 @@
       "Merci pour votre abonnement. Surveillez votre boîte mail pour les nouveautés du produit."
     ],
     "pCralD": ["Déplacer vers un nouveau volet à gauche"],
-    "pDD2Hm": ["Masquer le panneau inférieur"],
     "pEQFsW": ["Aucun projet correspondant."],
     "pFPzHA": ["Sélecteur d'émojis"],
     "pFRz_E": ["Ne pas inclure ces commentaires dans ce message"],
@@ -4739,6 +4744,7 @@
     "xeXS4P": ["Ou utilisez un pack de démarrage"],
     "xeiujy": ["Texte"],
     "xhlFsx": ["Hérité — définissez une valeur ici pour le remplacer."],
+    "xi9KGG": ["Afficher Terminal"],
     "xiv-dW": ["Pas encore de fichiers."],
     "xlQpTE": ["Plus d'options de refus"],
     "xloBjn": ["Chemin relatif"],

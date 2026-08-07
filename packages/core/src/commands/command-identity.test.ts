@@ -11,6 +11,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     host: 'desktop',
     activeTargetKind: 'doc',
     singleFile: false,
+    terminalCapable: true,
     terminalLive: false,
     canExpandAll: true,
     canCollapseAll: true,
@@ -76,6 +77,21 @@ describe('evaluateCommandAvailability', () => {
     ).toBe(false);
   });
 
+  test('requiresTerminalCapability gates on actual PTY support', () => {
+    expect(
+      evaluateCommandAvailability(
+        { requiresTerminalCapability: true },
+        ctx({ terminalCapable: false }),
+      ),
+    ).toBe(false);
+    expect(
+      evaluateCommandAvailability(
+        { requiresTerminalCapability: true },
+        ctx({ terminalCapable: true }),
+      ),
+    ).toBe(true);
+  });
+
   // Real commands combine gates (e.g. rename is host:desktop + requiresTargetKinds).
   // Pin the multi-gate path so a reorder or short-circuit interaction can't pass.
   test('compound gates: host AND target-kind must both pass', () => {
@@ -93,6 +109,19 @@ describe('evaluateCommandAvailability', () => {
 });
 
 describe('COMMAND_IDENTITIES registry invariants', () => {
+  test('every PTY-backed palette command declares the terminal capability gate', () => {
+    const gatedIds = COMMAND_IDENTITIES.filter(
+      (command) => command.palette && command.availability.requiresTerminalCapability,
+    ).map((command) => command.id);
+
+    expect(gatedIds).toEqual(['toggle-terminal', 'new-terminal', 'move-terminal', 'kill-terminal']);
+  });
+
+  test('the menu-only terminal window command declares the terminal capability gate', () => {
+    const command = COMMAND_IDENTITIES.find((entry) => entry.id === 'new-terminal-window');
+    expect(command?.availability.requiresTerminalCapability).toBe(true);
+  });
+
   test('command ids are unique', () => {
     const ids = COMMAND_IDENTITIES.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -111,11 +140,15 @@ describe('COMMAND_IDENTITIES registry invariants', () => {
     }
   });
 
-  test('every menu placement labelKey / stateToggle key resolves in MENU_LABELS', () => {
+  test('every menu placement and dynamic label key resolves in MENU_LABELS', () => {
     for (const cmd of COMMAND_IDENTITIES) {
       if (cmd.stateToggle) {
         expect(MENU_LABELS[cmd.stateToggle.showKey]).toBeDefined();
         expect(MENU_LABELS[cmd.stateToggle.hideKey]).toBeDefined();
+      }
+      if (cmd.placementToggle) {
+        expect(MENU_LABELS[cmd.placementToggle.bottomKey]).toBeDefined();
+        expect(MENU_LABELS[cmd.placementToggle.rightKey]).toBeDefined();
       }
       for (const placement of cmd.menu ?? []) {
         if (placement.menuLabelKey) expect(MENU_LABELS[placement.menuLabelKey]).toBeDefined();
@@ -125,6 +158,7 @@ describe('COMMAND_IDENTITIES registry invariants', () => {
           placement.menuLabelText !== undefined ||
           placement.menuLabelKey !== undefined ||
           cmd.stateToggle !== undefined ||
+          cmd.placementToggle !== undefined ||
           cmd.labelKey !== undefined;
         expect({ id: cmd.id, resolvable }).toEqual({ id: cmd.id, resolvable: true });
       }

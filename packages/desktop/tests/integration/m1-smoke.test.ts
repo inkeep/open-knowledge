@@ -363,8 +363,9 @@ describe('M1 smoke', () => {
 
     const coreMembers = extractLiteralUnion(readFileSync(corePath, 'utf-8'), 'OkMenuAction');
     expect(coreMembers.size).toBeGreaterThan(0);
-    // 26 baseline + 2 worktree + 2 Help + 3 sidebar + 2 navigation + 1 agents panel.
-    expect(coreMembers.size).toBe(36);
+    // 26 baseline + 2 worktree + 2 Help + 3 sidebar + 2 navigation + 1 agents panel
+    // + 1 terminal placement action.
+    expect(coreMembers.size).toBe(37);
     // Pin the visibility toggles explicitly: a bare count check wouldn't
     // notice a simultaneous add+remove that nets to the same size.
     expect(coreMembers.has('toggle-show-hidden-files')).toBe(true);
@@ -377,6 +378,7 @@ describe('M1 smoke', () => {
     expect(coreMembers.has('navigate-back')).toBe(true);
     expect(coreMembers.has('navigate-forward')).toBe(true);
     expect(coreMembers.has('toggle-agent-panel')).toBe(true);
+    expect(coreMembers.has('move-terminal')).toBe(true);
   });
 
   test('M1 invariant: EntryPoint / OkProjectEntryPoint literal-union drift catcher', async () => {

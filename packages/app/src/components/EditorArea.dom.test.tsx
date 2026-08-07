@@ -10,6 +10,20 @@ type SettingsDialogShellProps = {
 let settingsRouteOpen = false;
 let closeSettingsRouteMock = vi.fn(() => {});
 let shellProps: SettingsDialogShellProps[] = [];
+let toastInfoMessages: string[] = [];
+
+vi.doMock('sonner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sonner')>();
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      info: (message: string) => {
+        toastInfoMessages.push(message);
+      },
+    },
+  };
+});
 
 vi.doMock('@/lib/perf', () => ({
   mark: () => {},
@@ -69,6 +83,11 @@ const ASSET_DOC_CTX = {
 // branch, so a later provider-null render counts as a mid-session navigation
 // rather than a cold start.
 const FOLDER_LIVE_CTX = { ...FOLDER_DOC_CTX, activeProvider: {} as never };
+const DOC_LIVE_CTX = {
+  ...FOLDER_LIVE_CTX,
+  activeDocName: 'docs/notes',
+  activeTarget: { kind: 'doc', target: 'docs/notes', docName: 'docs/notes' },
+};
 // A doc target whose provider has gone transiently null — the close→neighbor
 // gap (the neighbor activates async via hashchange) or a switch to a cold tab.
 // Reaches the hash-load skeleton branch (not large-file/folder/asset, and
@@ -85,6 +104,7 @@ const DOC_COLD_CTX = {
 let docCtx:
   | typeof FOLDER_DOC_CTX
   | typeof FOLDER_LIVE_CTX
+  | typeof DOC_LIVE_CTX
   | typeof EMPTY_DOC_CTX
   | typeof LARGE_FILE_DOC_CTX
   | typeof ASSET_DOC_CTX
@@ -124,12 +144,24 @@ vi.doMock('@/components/EditorSkeleton', () => ({
 }));
 
 vi.doMock('./TerminalDock', () => ({
-  TerminalDock: ({ children, visible }: { children: ReactNode; visible?: boolean }) => {
+  TerminalDock: ({
+    children,
+    placement,
+    visible,
+  }: {
+    children: ReactNode;
+    placement?: string;
+    visible?: boolean;
+  }) => {
     useEffect(() => {
       terminalDockMounts += 1;
     }, []);
     return (
-      <div data-testid="terminal-dock" data-visible={String(visible)}>
+      <div
+        data-testid="terminal-dock"
+        data-placement={placement ?? 'bottom'}
+        data-visible={String(visible)}
+      >
         {children}
       </div>
     );
@@ -168,12 +200,13 @@ vi.doMock('./EditorWorkspace', () => ({
 let groupLayout: Record<string, number> = {};
 let groupSetLayoutCalls: Array<Record<string, number>> = [];
 let panelIsCollapsed = false;
+let mockGroupPx = 1360;
 vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({
     current: {
       collapse: () => {},
       expand: () => {},
-      getSize: () => ({ asPercentage: 25, inPixels: 340 }),
+      getSize: () => ({ asPercentage: 25, inPixels: mockGroupPx / 4 }),
       isCollapsed: () => panelIsCollapsed,
     },
   }),
@@ -195,7 +228,21 @@ vi.doMock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => (
     <div data-testid="resizable-group">{children}</div>
   ),
-  ResizablePanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ResizablePanel: ({
+    children,
+    id,
+    minSize,
+    maxSize,
+  }: {
+    children: ReactNode;
+    id?: string;
+    minSize?: string | number;
+    maxSize?: string | number;
+  }) => (
+    <div id={id} data-min-size={minSize} data-max-size={maxSize}>
+      {children}
+    </div>
+  ),
   // Forward onPointerDown so drag-lifecycle behavior (the terminal handle's
   // drag-to-close pointerup check) is exercisable; drop non-DOM props.
   ResizableHandle: ({ onPointerDown }: { onPointerDown?: (e: unknown) => void }) => (
@@ -248,6 +295,10 @@ vi.doMock('@/components/LargeFileEditorState', () => ({
   ),
 }));
 
+vi.doMock('./EditorFooter', () => ({
+  EditorFooter: () => <div data-testid="editor-footer" />,
+}));
+
 vi.doMock('@/components/settings/SettingsDialogShell', () => ({
   SettingsDialogShell: (props: SettingsDialogShellProps) => {
     shellProps.push(props);
@@ -264,6 +315,7 @@ vi.doMock('@/lib/use-settings-route', () => ({
 
 const { EditorArea } = await import('./EditorArea');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
+const { emitLocalMenuAction } = await import('@/lib/local-menu-action-bus');
 
 function renderEditorArea() {
   return render(
@@ -375,7 +427,7 @@ describe('EditorArea empty-state terminal host', () => {
   });
 });
 
-describe('EditorArea right-rail layout assert on agents-column mount/unmount', () => {
+describe('EditorArea right-rail layout assert on column mount/unmount', () => {
   // react-resizable-panels caches layouts per panel-ID set and restores the
   // cached layout whenever the set changes — so before the corrective assert,
   // hiding the right column resurrected a doc panel the user had closed while it
@@ -403,13 +455,274 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
   // px→% conversion basis fixed by the panel mock: 340px at 25% → 1360px.
   const MOCK_GROUP_PX = 1360;
   const pctOf = (px: number) => (px / MOCK_GROUP_PX) * 100;
+  const getAgentsHandle = () => {
+    const handle = screen.getAllByTestId('resizable-handle').at(-1);
+    if (handle == null) throw new Error('agents resize handle not found');
+    return handle;
+  };
 
   beforeEach(() => {
     cleanup();
+    localStorage.clear();
     docCtx = EMPTY_DOC_CTX;
     groupLayout = {};
     groupSetLayoutCalls = [];
     panelIsCollapsed = false;
+    mockGroupPx = 1360;
+    toastInfoMessages = [];
+  });
+
+  test('moving the terminal right at a narrow width closes agents without moving focus', async () => {
+    setViewportWidth(650);
+    mockGroupPx = 650;
+    const agentsChanges: boolean[] = [];
+    const focusTarget = document.createElement('button');
+    document.body.append(focusTarget);
+    focusTarget.focus();
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="bottom"
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+    groupLayout = { 'editor-main': 52, 'terminal-column': 30, 'agents-column': 18 };
+
+    view.rerender(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+    await act(async () => {});
+
+    expect(agentsChanges).toEqual([false]);
+    expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    expect(document.activeElement).toBe(focusTarget);
+  });
+
+  test('a narrow restored layout keeps the right terminal and closes agents', async () => {
+    setViewportWidth(650);
+    mockGroupPx = 650;
+    const agentsChanges: boolean[] = [];
+    const terminalChanges: boolean[] = [];
+    render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    groupLayout = { 'editor-main': 52, 'terminal-column': 30, 'agents-column': 18 };
+    await act(async () => {});
+
+    expect(agentsChanges).toEqual([false]);
+    expect(terminalChanges).toHaveLength(0);
+    expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+  });
+
+  test('opening agents at a narrow width closes the existing right terminal', async () => {
+    setViewportWidth(650);
+    mockGroupPx = 650;
+    const terminalChanges: boolean[] = [];
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible={false}
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    groupLayout = { 'editor-main': 52, 'terminal-column': 30, 'agents-column': 18 };
+
+    view.rerender(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    await act(async () => {});
+
+    expect(terminalChanges).toEqual([false]);
+    expect(toastInfoMessages).toEqual(['Terminal closed to make room for the agent panel.']);
+  });
+
+  test('a wide workspace keeps both rails and their independent size constraints', async () => {
+    setViewportWidth(2000);
+    mockGroupPx = 2000;
+    groupLayout = { 'editor-main': 47, 'terminal-column': 37, 'agents-column': 16 };
+    const agentsChanges: boolean[] = [];
+    const terminalChanges: boolean[] = [];
+    render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    await act(async () => {});
+
+    const terminalPanel = document.getElementById('terminal-column');
+    const agentsPanel = document.getElementById('agents-column');
+    expect(terminalPanel?.getAttribute('data-min-size')).toBe('325px');
+    expect(terminalPanel?.hasAttribute('data-max-size')).toBe(false);
+    expect(agentsPanel?.getAttribute('data-min-size')).toBe('320px');
+    expect(agentsPanel?.getAttribute('data-max-size')).toBe('95%');
+    expect(agentsChanges).toHaveLength(0);
+    expect(terminalChanges).toHaveLength(0);
+  });
+
+  test('repeated resize events below the boundary close agents once and keep Terminal open', async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const observations: Array<{
+      callback: ResizeObserverCallback;
+      observer: ResizeObserver;
+      target: Element;
+    }> = [];
+    class TestResizeObserver implements ResizeObserver {
+      readonly callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe(target: Element) {
+        observations.push({ callback: this.callback, observer: this, target });
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      value: TestResizeObserver,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      setViewportWidth(2000);
+      mockGroupPx = 2000;
+      groupLayout = { 'editor-main': 47, 'terminal-column': 37, 'agents-column': 16 };
+      const agentsChanges: boolean[] = [];
+      const terminalChanges: boolean[] = [];
+      render(
+        <EditorArea
+          {...baseProps}
+          agentsVisible
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+          onTerminalVisibleChange={(visible: boolean) => {
+            terminalChanges.push(visible);
+          }}
+        />,
+      );
+      await act(async () => {});
+      expect(agentsChanges).toHaveLength(0);
+
+      mockGroupPx = 650;
+      const panels = document.querySelector('[data-editor-area-panels]');
+      const panelObservation = observations.find(({ target }) => target === panels);
+      expect(panelObservation).toBeDefined();
+      act(() => {
+        panelObservation?.callback([], panelObservation.observer);
+        panelObservation?.callback([], panelObservation.observer);
+      });
+
+      expect(agentsChanges).toEqual([false]);
+      expect(terminalChanges).toHaveLength(0);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      Object.defineProperty(globalThis, 'ResizeObserver', {
+        value: originalResizeObserver,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  test('revealing the right terminal pins its width and routes the remainder to the editor', async () => {
+    setViewportWidth(1400);
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        terminalVisible
+        terminalPlacement="bottom"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+    groupLayout = { 'editor-main': 65, 'terminal-column': 35 };
+
+    view.rerender(
+      <EditorArea
+        {...baseProps}
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+    await act(async () => {});
+
+    const corrected = groupSetLayoutCalls.at(-1);
+    expect(corrected?.['terminal-column']).toBeCloseTo(pctOf(740), 3);
+    expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(740), 3);
+  });
+
+  test('opens the collapsed doc panel while both permanent rail columns are hidden', () => {
+    setViewportWidth(1024);
+    docCtx = DOC_LIVE_CTX;
+    render(<EditorArea {...baseProps} />);
+    groupLayout = {
+      'editor-main': 100,
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+
+    const corrected = groupSetLayoutCalls.at(-1);
+    expect(corrected?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(corrected?.['terminal-column']).toBe(0);
+    expect(corrected?.['agents-column']).toBe(0);
+    expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(320), 3);
   });
 
   test('hiding the agents panel re-asserts the collapsed doc panel over the stale panel-set restore', async () => {
@@ -464,8 +777,7 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
         }}
       />,
     );
-    // The empty view renders no doc panel, so the only handle is the column's.
-    const handle = screen.getByTestId('resizable-handle');
+    const handle = getAgentsHandle();
     act(() => {
       fireEvent.pointerDown(handle);
     });
@@ -488,7 +800,7 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
         }}
       />,
     );
-    const handle = screen.getByTestId('resizable-handle');
+    const handle = getAgentsHandle();
     act(() => {
       fireEvent.pointerDown(handle);
     });
@@ -509,7 +821,7 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
   test('a pointercancel-terminated drag still clears the flag that gates the layout assert', async () => {
     setViewportWidth(1400);
     const view = render(<EditorArea {...baseProps} agentsVisible />);
-    const handle = screen.getByTestId('resizable-handle');
+    const handle = getAgentsHandle();
     act(() => {
       fireEvent.pointerDown(handle);
     });
@@ -541,7 +853,7 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
     // What the group holds mid-drag: the editor plus the column the drag has
     // been shrinking. The assert needs a live panel-ID set to correct against.
     groupLayout = { 'editor-main': 70, 'agents-column': 30 };
-    const handle = screen.getByTestId('resizable-handle');
+    const handle = getAgentsHandle();
     act(() => {
       fireEvent.pointerDown(handle);
     });
@@ -575,7 +887,7 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
         }}
       />,
     );
-    const handle = screen.getByTestId('resizable-handle');
+    const handle = getAgentsHandle();
     act(() => {
       fireEvent.pointerDown(handle, { pointerId: 1 });
     });
@@ -598,7 +910,7 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
   test('a different pointer cancelling does not end an in-flight drag', async () => {
     setViewportWidth(1400);
     const view = render(<EditorArea {...baseProps} agentsVisible />);
-    const handle = screen.getByTestId('resizable-handle');
+    const handle = getAgentsHandle();
     act(() => {
       fireEvent.pointerDown(handle, { pointerId: 1 });
     });
@@ -681,6 +993,50 @@ describe('EditorArea session-panel edge reveal tabs', () => {
     expect(header).toBeTruthy();
     expect(panels?.contains(agentMount)).toBe(true);
     expect(header?.contains(agentMount)).toBe(false);
+  });
+});
+
+describe('EditorArea terminal placement', () => {
+  beforeEach(() => {
+    cleanup();
+    docCtx = DOC_LIVE_CTX;
+  });
+
+  test('places a visible right terminal between the document and agents rails', () => {
+    const placements: unknown[] = [];
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalVisible
+        terminalPlacement="right"
+        agentsVisible
+        onTerminalVisibleChange={() => {}}
+        onSessionPlacements={(value) => placements.push(value)}
+      />,
+    );
+
+    const documentPanel = document.getElementById('doc-panel');
+    const terminalPanel = document.getElementById('terminal-column');
+    const agentsPanel = document.getElementById('agents-column');
+    expect(terminalPanel).not.toBeNull();
+    expect(
+      documentPanel?.compareDocumentPosition(terminalPanel as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      terminalPanel?.compareDocumentPosition(agentsPanel as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-placement')).toBe('right');
+    const latest = placements.at(-1) as {
+      terminal?: { container?: Element; isShowing?: boolean };
+    };
+    expect(latest.terminal?.container).toBe(document.querySelector('[data-terminal-panel-mount]'));
+    expect(latest.terminal?.isShowing).toBe(true);
   });
 });
 

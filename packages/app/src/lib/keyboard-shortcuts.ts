@@ -222,8 +222,8 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
   {
     id: 'toggle-terminal-panel',
     category: 'general',
-    title: msg`Show or hide bottom dock`,
-    description: msg`Toggle the bottom dock, where the terminal lives.`,
+    title: msg`Show or hide Terminal`,
+    description: msg`Toggle Terminal in its current dock.`,
     scope: msg`OK Desktop`,
     // ⌘J must stay bindings[0]: `formatShortcut` renders only the first binding,
     // and the menu-accelerator parity ratchet compares that against the View

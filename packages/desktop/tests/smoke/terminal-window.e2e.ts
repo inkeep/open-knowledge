@@ -10,11 +10,8 @@
  * kills the host); this asserts the observable window-close.
  *
  * Skip gates mirror terminal-dock.e2e.ts: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, the electron-vite build must exist, and CI-skipped (the
- * live-Electron terminal surface is not yet validated on the CI runner — same
- * caveat as the docked-terminal smoke). Runs in local dev to keep the seam
- * covered. Not part of `pnpm check`; run via `pnpm exec playwright test` or
- * `pnpm run check:full:parallel`.
+ * darwin-only, and the electron-vite build must exist. Not part of `pnpm check`;
+ * run via `pnpm exec playwright test` or `pnpm run check:full:parallel`.
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -29,7 +26,6 @@ const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 interface Seed {
@@ -103,15 +99,36 @@ async function findWindowByMode(
   return page;
 }
 
-async function clickNewTerminalWindow(app: ElectronApplication): Promise<boolean> {
-  return app.evaluate(async ({ Menu }) => {
+async function clickNewTerminalWindow(
+  app: ElectronApplication,
+  sourceWebContentsId?: number,
+): Promise<boolean> {
+  return app.evaluate(async ({ BrowserWindow, Menu }, expectedSourceId) => {
     const menu = Menu.getApplicationMenu();
     const terminal = menu?.items.find((i) => i.label === 'Terminal');
     const item = terminal?.submenu?.items.find((i) => i.label === 'New Terminal Window');
     if (!item) return false;
-    item.click();
+    if (expectedSourceId === undefined) {
+      item.click();
+      return true;
+    }
+    const source = BrowserWindow.getAllWindows().find(
+      (candidate) => candidate.webContents.id === expectedSourceId,
+    );
+    if (!source) return false;
+    // Electron's headless test runner cannot establish native macOS focus, while
+    // the production menu command intentionally resolves project context from
+    // BrowserWindow.getFocusedWindow(). Scope that platform seam to this click so
+    // the test still exercises the real menu and project-inheritance path.
+    const getFocusedWindow = BrowserWindow.getFocusedWindow;
+    Reflect.set(BrowserWindow, 'getFocusedWindow', () => source);
+    try {
+      item.click();
+    } finally {
+      Reflect.set(BrowserWindow, 'getFocusedWindow', getFocusedWindow);
+    }
     return true;
-  });
+  }, sourceWebContentsId);
 }
 
 async function terminalWindowCount(app: ElectronApplication): Promise<number> {
@@ -132,11 +149,6 @@ test.describe('Standalone terminal window — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Desktop is darwin-only.');
   test.skip(!TARGET.exists, TARGET.missingReason);
-  test.skip(
-    IS_CI,
-    'Quarantined on CI: constrained-runner degradation on the live-Electron terminal surface, same class as terminal-dock (inkeep/agents-private#2187). Runs in local dev.',
-  );
-
   test.afterEach(() => {
     for (const target of cleanup.splice(0)) {
       try {
@@ -154,11 +166,16 @@ test.describe('Standalone terminal window — live Electron', () => {
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
-    // The editor window must be focused so the command inherits its project.
-    await findWindowByMode(app, 'editor');
+    // The main-process command inherits project context from the source editor.
+    const editor = await findWindowByMode(app, 'editor');
+    const editorWindow = await app.browserWindow(editor);
+    const editorWebContentsId = await editorWindow.evaluate(
+      (win: unknown) => (win as { webContents: { id: number } }).webContents.id,
+    );
 
-    expect(await clickNewTerminalWindow(app)).toBe(true);
+    expect(await clickNewTerminalWindow(app, editorWebContentsId)).toBe(true);
     const term = await findWindowByMode(app, 'terminal');
+    expect(await term.evaluate(() => window.okDesktop?.config.collabUrl)).not.toBe('');
 
     // A live shell tab spawned in the new window.
     await expect(term.locator('[data-terminal-status]').first()).toHaveAttribute(

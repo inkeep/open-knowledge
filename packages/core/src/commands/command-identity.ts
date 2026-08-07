@@ -50,6 +50,8 @@ export interface CommandAvailabilitySpec {
   readonly requiresTargetKinds?: readonly ContextualTargetKind[];
   /** Hidden in a no-project single-file session. */
   readonly singleFileHidden?: boolean;
+  /** Requires the current surface to expose working PTY support. */
+  readonly requiresTerminalCapability?: boolean;
   /** Requires a live (mounted) terminal session. */
   readonly requiresTerminalLive?: boolean;
   /** Requires an expandable tree (smart-hide when everything is expanded). */
@@ -73,6 +75,7 @@ export interface CommandContext {
   readonly host: 'desktop' | 'web';
   readonly activeTargetKind: ContextualTargetKind;
   readonly singleFile: boolean;
+  readonly terminalCapable: boolean;
   readonly terminalLive: boolean;
   readonly canExpandAll: boolean;
   readonly canCollapseAll: boolean;
@@ -87,6 +90,7 @@ export function evaluateCommandAvailability(
 ): boolean {
   if (spec.host === 'desktop' && ctx.host !== 'desktop') return false;
   if (spec.singleFileHidden && ctx.singleFile) return false;
+  if (spec.requiresTerminalCapability && !ctx.terminalCapable) return false;
   if (spec.requiresTerminalLive && !ctx.terminalLive) return false;
   if (spec.requiresCanExpandAll && !ctx.canExpandAll) return false;
   if (spec.requiresCanCollapseAll && !ctx.canCollapseAll) return false;
@@ -190,6 +194,12 @@ export interface CommandStateToggle {
   readonly overrideField?: 'hasEditorSelection';
 }
 
+/** Terminal-placement labels (one row whose destination flips with its current home). */
+interface CommandPlacementToggle {
+  readonly bottomKey: MenuLabelKey;
+  readonly rightKey: MenuLabelKey;
+}
+
 /** View-menu-state checkbox field a command's check indicator reads. */
 export type CommandCheckField =
   | 'showHiddenFiles'
@@ -223,6 +233,8 @@ export interface CommandIdentity {
   readonly shortcutDesktopOnly?: boolean;
   /** Show/Hide toggle metadata (sidebar / document panel / terminal). */
   readonly stateToggle?: CommandStateToggle;
+  /** Terminal placement metadata (bottom means offer right, and vice versa). */
+  readonly placementToggle?: CommandPlacementToggle;
   /** Checkbox check-state field (palette check indicator + menu checked source). */
   readonly checkField?: CommandCheckField;
   readonly availability: CommandAvailabilitySpec;
@@ -590,17 +602,12 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     id: 'toggle-terminal',
     menuActionId: 'toggle-terminal',
     labelKey: 'terminalShow',
-    // The label says "Bottom Dock", not "terminal", so the terminal words have
-    // to live here or ⌘K search for the thing in the dock stops finding the
-    // dock. `matchesCommandQuery` substring-matches the query against
-    // label+keywords JOINED, so a multi-word query only hits a contiguous run:
-    // the phrases below are what keep "show terminal" / "hide terminal" queries
-    // working and admit Zed's own name for the command.
     keywords: [
       'terminal',
       'shell',
       'console',
       'panel',
+      'toggle terminal',
       'toggle bottom dock',
       'show terminal',
       'hide terminal',
@@ -612,7 +619,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
       stateField: 'terminalVisible',
       defaultVisible: false,
     },
-    availability: { host: 'desktop' },
+    availability: { host: 'desktop', requiresTerminalCapability: true },
     palette: { group: 'view', visibility: 'search-only' },
     menu: [{ section: 'view-panels', order: 2, accelerator: 'CmdOrCtrl+J' }],
   },
@@ -703,7 +710,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     menuActionId: 'new-terminal',
     labelKey: 'newTerminal',
     keywords: ['terminal', 'shell', 'new', 'tab'],
-    availability: { host: 'desktop' },
+    availability: { host: 'desktop', requiresTerminalCapability: true },
     palette: { group: 'terminal', visibility: 'search-only' },
     menu: [{ section: 'terminal', order: 0 }],
   },
@@ -711,17 +718,34 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     // Menu-only leaf; opens a dedicated terminal window in main (no renderer handler).
     id: 'new-terminal-window',
     keywords: [],
-    availability: { host: 'desktop' },
+    availability: { host: 'desktop', requiresTerminalCapability: true },
     menu: [{ section: 'terminal', order: 1, menuLabelText: 'New Terminal Window' }],
+  },
+  {
+    id: 'move-terminal',
+    menuActionId: 'move-terminal',
+    labelKey: 'terminalMoveRight',
+    keywords: ['terminal', 'move', 'dock', 'right', 'bottom', 'placement'],
+    placementToggle: {
+      bottomKey: 'terminalMoveRight',
+      rightKey: 'terminalMoveBottom',
+    },
+    availability: { host: 'desktop', requiresTerminalCapability: true },
+    palette: { group: 'terminal', visibility: 'search-only' },
+    menu: [{ section: 'terminal', order: 2 }],
   },
   {
     id: 'kill-terminal',
     menuActionId: 'kill-terminal',
     labelKey: 'killTerminal',
     keywords: ['terminal', 'kill', 'close', 'session'],
-    availability: { host: 'desktop', requiresTerminalLive: true },
+    availability: {
+      host: 'desktop',
+      requiresTerminalCapability: true,
+      requiresTerminalLive: true,
+    },
     palette: { group: 'terminal', visibility: 'search-only' },
-    menu: [{ section: 'terminal', order: 2 }],
+    menu: [{ section: 'terminal', order: 3 }],
   },
   // ── Application group (palette) / App + Edit + Help (menu) ───────────────────
   {

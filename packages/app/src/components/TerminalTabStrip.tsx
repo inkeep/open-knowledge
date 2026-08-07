@@ -8,9 +8,22 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PanelBottomIcon,
+  PanelRightIcon,
+  XIcon,
+} from 'lucide-react';
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { InputGroup, InputGroupInput } from '@/components/ui/input-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -19,6 +32,7 @@ import {
   createTabReorderModifier,
   getSortableTabStyle,
   measureTabReorderBounds,
+  shouldOpenTabContextMenu,
   TAB_REORDER_AUTO_SCROLL,
   type TabReorderBounds,
   tabRunCollisionDetection,
@@ -32,22 +46,24 @@ const TERMINAL_TAB_SORTABLE_SELECTOR = '[data-terminal-tab-sortable]';
 /**
  * One terminal tab as a `@dnd-kit/sortable` node. Only the pointer listeners +
  * transform are wired (no `attributes` spread and no `KeyboardSensor`): dnd-kit's
- * `attributes` would inject `role="button"` + `tabIndex` onto this wrapper and
- * break the Radix tablist's roving-focus semantics, and keyboard reorder is a
- * dedicated ⌘⇧←/→ chord in the host rather than dnd-kit's Space-lift model. The
- * wrapper is not focusable, so its listeners never intercept Radix arrow keys or
- * the trigger's F2. `disabled` short-circuits sortable while any rename is open.
+ * `attributes` would overwrite the Radix trigger's tab semantics, while keyboard
+ * reorder belongs to the host's dedicated ⌘⇧←/→ chord rather than dnd-kit's
+ * Space-lift model. The pointer listeners attach to the trigger, but without a
+ * keyboard sensor they do not claim Radix arrow keys or F2. `disabled`
+ * short-circuits sortable while any rename is open.
  */
 function SortableTerminalTab({
   id,
   disabled,
-  isActive,
   children,
 }: {
   id: string;
   disabled: boolean;
-  isActive: boolean;
-  children: ReactNode;
+  children: (sortable: {
+    setNodeRef: (node: HTMLElement | null) => void;
+    listeners: ReturnType<typeof useSortable>['listeners'];
+    style: ReturnType<typeof getSortableTabStyle>;
+  }) => ReactNode;
 }) {
   const { setNodeRef, listeners, rect, transform, transition, isDragging } = useSortable({
     id,
@@ -59,23 +75,7 @@ function SortableTerminalTab({
     transform,
     transition,
   });
-  return (
-    // dnd-kit pointer listeners on a non-focusable wrapper; the role="tab" child
-    // owns keyboard + a11y, so this div carries no interactive role of its own.
-    <div
-      ref={setNodeRef}
-      data-terminal-tab-sortable=""
-      style={style}
-      className={cn(
-        'group flex shrink-0 cursor-default items-center rounded-md pr-0.5 transition-colors',
-        isActive ? 'bg-muted' : 'hover:bg-muted/50',
-        isDragging && 'z-10',
-      )}
-      {...listeners}
-    >
-      {children}
-    </div>
-  );
+  return children({ setNodeRef, listeners, style });
 }
 
 /** One session as the tab strip sees it: a stable id, a display label, and an
@@ -89,14 +89,67 @@ export interface TerminalTabDescriptor {
   readonly icon?: ReactNode;
 }
 
-/** Which edge of the editor a session panel occupies. The terminal dock owns the
- *  bottom, the agents panel owns the right; the strip only needs it to point the
- *  collapse chevron the way the panel slides shut. */
+/** Which edge of the editor a session panel occupies. The strip uses the edge to
+ *  point the collapse chevron; accessible identity comes from the session kind. */
 export type SessionPanelEdge = 'bottom' | 'right';
+type SessionKind = 'terminal' | 'agent';
+
+function BottomTerminalPlacementMenu({
+  children,
+  onMoveRight,
+}: {
+  readonly children: ReactElement;
+  readonly onMoveRight?: () => void;
+}) {
+  const keyboardTriggerRef = useRef<HTMLElement | null>(null);
+  if (onMoveRight == null) return children;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        asChild
+        onKeyDown={(event) => {
+          if (!shouldOpenTabContextMenu(event)) return;
+          event.preventDefault();
+          keyboardTriggerRef.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          const rect = event.currentTarget.getBoundingClientRect();
+          event.currentTarget.dispatchEvent(
+            new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left,
+              clientY: rect.bottom,
+            }),
+          );
+        }}
+      >
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        onCloseAutoFocus={(event) => {
+          if (keyboardTriggerRef.current == null) return;
+          event.preventDefault();
+          keyboardTriggerRef.current.focus();
+          keyboardTriggerRef.current = null;
+        }}
+      >
+        <ContextMenuGroup>
+          <ContextMenuItem onSelect={onMoveRight}>
+            <PanelRightIcon aria-hidden="true" />
+            <Trans>Move to right panel</Trans>
+          </ContextMenuItem>
+        </ContextMenuGroup>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
 
 interface TerminalTabStripProps {
   /** Sessions in tab order. */
   readonly sessions: readonly TerminalTabDescriptor[];
+  /** Kept separate from edge because the terminal can occupy either edge. */
+  readonly sessionKind: SessionKind;
   /** Currently active session id (controlled — the strip keeps no selection state). */
   readonly activeSessionId: string;
   /** Fires with a session id when the user activates a tab (click or arrow keys). */
@@ -139,6 +192,10 @@ interface TerminalTabStripProps {
    *  Absent on the standalone terminal window (nothing to collapse — the window
    *  is the terminal). */
   readonly edge?: SessionPanelEdge;
+  /** Moves the terminal workspace to another editor edge. Terminal dock only. */
+  readonly onPlacementChange?: (placement: SessionPanelEdge) => void;
+  /** Leaves room for the agents-panel reveal tab when it overlays the right edge. */
+  readonly reserveRightRevealTabGutter?: boolean;
   /** Fires when the user collapses (hides) the panel — sessions stay alive.
    *  The collapse button renders only when provided. */
   readonly onCollapse?: () => void;
@@ -178,10 +235,10 @@ interface TerminalTabStripProps {
  * (immediately right of the scrollable tablist, outside the scroll container so
  * the fade mask never clips it): its primary opens a new tab in the default CLI,
  * its carat switches CLI or opens a bare terminal. A flex-1 spacer then pushes the
- * trailing controls to the far right: a dock-toggle that flips the terminal
- * between the bottom dock and the right column, and a collapse button that hides
- * the terminal (sessions stay alive). The consumer owns dock position +
- * visibility; this strip only fires the callbacks.
+ * trailing controls to the far right. Terminal placement is available from a
+ * dock button on either edge and from the bottom strip's context menu; the
+ * collapse button hides the panel while sessions stay alive. The consumer owns
+ * placement and visibility; this strip only fires the callbacks.
  *
  * The standalone terminal window is the second placement (via the session
  * host's window variant): it passes `draggable` (the row doubles as the macOS
@@ -192,6 +249,7 @@ interface TerminalTabStripProps {
  */
 export function TerminalTabStrip({
   sessions,
+  sessionKind,
   activeSessionId,
   onSelect,
   onTabActivate,
@@ -202,6 +260,8 @@ export function TerminalTabStrip({
   onReorder,
   onDragActiveChange,
   edge,
+  onPlacementChange,
+  reserveRightRevealTabGutter,
   onCollapse,
   children,
   className,
@@ -209,6 +269,12 @@ export function TerminalTabStrip({
 }: TerminalTabStripProps) {
   const { t } = useLingui();
   const rightEdge = edge === 'right';
+  const placementTarget: SessionPanelEdge = rightEdge ? 'bottom' : 'right';
+  const placementLabel = rightEdge ? t`Move Terminal to bottom` : t`Move Terminal to right`;
+  const onMoveRight =
+    sessionKind === 'terminal' && edge === 'bottom' && onPlacementChange != null
+      ? () => onPlacementChange('right')
+      : undefined;
 
   // Inline rename is transient presentation state owned here; the host owns the
   // durable custom label and receives the commit via onRename. Mirrors the
@@ -216,6 +282,7 @@ export function TerminalTabStrip({
   // to commit, Escape to cancel) without any of its document-rename plumbing.
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   // Set the instant Escape fires so the ensuing blur does not commit —
   // Escape-then-blur must cancel. Reset after each rename ends.
@@ -323,56 +390,33 @@ export function TerminalTabStrip({
       onValueChange={onSelect}
       className={cn('flex min-h-0 min-w-0 flex-1 flex-col', className)}
     >
-      <div
-        ref={rowRef}
-        // Window mode: this row is the macOS title bar — h-[62px] to center the
-        // tabs against the traffic lights, traffic-light reserve so the first tab
-        // clears them, and a drag handle on the empty area (controls opt out via
-        // no-drag below). The dock omits all of this.
-        data-electron-drag={draggable ? '' : undefined}
-        className={cn(
-          'flex shrink-0 flex-row items-center gap-1 px-1.5 py-1',
-          // h-[62px] centers the tab on the traffic-light row: the lights sit at
-          // trafficLightPosition.y=24 with ~14px height (center ~y31), so an
-          // items-center row must be ~62px tall (center 31) for the tab to line
-          // up with the bubbles rather than floating above them.
-          //
-          // Left padding = the shared traffic-light reserve PLUS an extra 0.75rem:
-          // the reserve (78px) is tuned for the editor's icon content, but a tab
-          // is a background pill, so the bare reserve leaves its left edge touching
-          // the green light. The extra gutter clears the bubbles cleanly.
-          // pr-[22px] matches the traffic lights' own inset from the left edge
-          // (trafficLightPosition.x=22) so the trailing "+" sits the same distance
-          // from the right edge as the bubbles are from the left — a consistent
-          // window gutter.
-          draggable &&
-            'h-[62px] [-webkit-app-region:drag] pr-[22px] pl-[calc(var(--ok-titlebar-reserve-left,1rem)+0.75rem)]',
-        )}
-      >
-        <TabsList
-          ref={tabListRef}
-          variant="line"
-          // Named per panel, not a shared "Sessions": both panels can be open at
-          // once, and two identically-named tablists give a screen-reader user no
-          // way to tell them apart (WCAG 1.3.1). The standalone terminal window
-          // has no edge and is a terminal, so it falls to the terminal name.
-          aria-label={rightEdge ? t`Agent chats` : t`Terminal sessions`}
-          // Remap a vertical wheel to horizontal scroll so the main scroll wheel
-          // moves the tabs sideways, matching the editor tab strip (which native
-          // overflow-x alone doesn't do for a plain vertical wheel).
-          onWheel={scrollTabStripOnWheel}
-          // No `flex-1`: the list sizes to its tabs so "New chat" can hug the
-          // last one. `min-w-0` + `overflow-x-auto` keep the tabs scrolling
-          // internally when they overflow the space the trailing controls leave.
-          // `overflow-y-hidden` is load-bearing: `overflow-x: auto` alone computes
-          // the y-axis from `visible` to `auto`, so the tab status-dot's 2px
-          // `-bottom-0.5` bleed becomes a stray couple-pixel vertical scroll.
-          // Window mode: the whole tab run (incl. inter-tab gaps) is `no-drag` so
-          // a pointer drag crossing a gap reorders instead of moving the window;
-          // the row's empty space outside the run stays a drag region.
+      <BottomTerminalPlacementMenu onMoveRight={onMoveRight}>
+        <div
+          ref={rowRef}
+          data-terminal-tab-row=""
+          // Window mode: this row is the macOS title bar — h-[62px] to center the
+          // tabs against the traffic lights, traffic-light reserve so the first tab
+          // clears them, and a drag handle on the empty area (controls opt out via
+          // no-drag below). The dock omits all of this.
+          data-electron-drag={draggable ? '' : undefined}
           className={cn(
-            'flex h-auto min-w-0 items-center justify-start gap-0.5 overflow-x-auto overflow-y-hidden bg-transparent p-0 [scrollbar-width:none] scroll-fade-mask-x',
-            draggable && '[-webkit-app-region:no-drag]',
+            'flex shrink-0 flex-row items-center gap-1 px-1.5 py-1',
+            rightEdge && reserveRightRevealTabGutter && 'pr-9',
+            // h-[62px] centers the tab on the traffic-light row: the lights sit at
+            // trafficLightPosition.y=24 with ~14px height (center ~y31), so an
+            // items-center row must be ~62px tall (center 31) for the tab to line
+            // up with the bubbles rather than floating above them.
+            //
+            // Left padding = the shared traffic-light reserve PLUS an extra 0.75rem:
+            // the reserve (78px) is tuned for the editor's icon content, but a tab
+            // is a background pill, so the bare reserve leaves its left edge touching
+            // the green light. The extra gutter clears the bubbles cleanly.
+            // pr-[22px] matches the traffic lights' own inset from the left edge
+            // (trafficLightPosition.x=22) so the trailing "+" sits the same distance
+            // from the right edge as the bubbles are from the left — a consistent
+            // window gutter.
+            draggable &&
+              'h-[62px] [-webkit-app-region:drag] pr-[22px] pl-[calc(var(--ok-titlebar-reserve-left,1rem)+0.75rem)]',
           )}
         >
           <DndContext
@@ -384,7 +428,7 @@ export function TerminalTabStrip({
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
             // Portal dnd-kit's SR live-region/described-by helpers to the body so
-            // they don't land inside the tablist flex flow (same as editor tabs).
+            // they don't land inside the tablist grid (same as editor tabs).
             accessibility={{
               container: typeof document !== 'undefined' ? document.body : undefined,
             }}
@@ -393,172 +437,214 @@ export function TerminalTabStrip({
               items={sessions.map((session) => session.id)}
               strategy={horizontalListSortingStrategy}
             >
-              {sessions.map((session) => {
-                const isActive = session.id === activeSessionId;
-                return (
-                  <SortableTerminalTab
-                    key={session.id}
-                    id={session.id}
-                    // Drag off while a rename is open (strip-wide) or when the host
-                    // supplies no onReorder.
-                    disabled={!reorderEnabled || renamingId != null}
-                    isActive={isActive}
-                  >
-                    {renamingId === session.id ? (
-                      // Rename mode: the input REPLACES the trigger inside this group
-                      // div (never nested inside the `role="tab"` button — that is
-                      // invalid interactive nesting). The close control is hidden
-                      // while editing so a stray click can't kill the tab mid-rename.
-                      <InputGroup
-                        className={cn(
-                          'h-7 w-40 rounded-md border-0 bg-transparent dark:bg-transparent',
-                          draggable && '[-webkit-app-region:no-drag]',
-                        )}
+              {/* The scrollable visual run is a grid, while the semantic tablist and
+                auxiliary controls are sibling ownership trees. `display: contents`
+                lets both sets share the same grid cells: close/rename controls stay
+                visually attached to their tab without becoming invalid tablist
+                children. */}
+              <div
+                onWheel={scrollTabStripOnWheel}
+                className={cn(
+                  'grid h-auto w-fit max-w-full min-w-0 grid-flow-col items-center justify-start gap-0.5 overflow-x-auto overflow-y-hidden [grid-auto-columns:max-content] [scrollbar-width:none] scroll-fade-mask-x',
+                  draggable && '[-webkit-app-region:no-drag]',
+                )}
+              >
+                <TabsList
+                  ref={tabListRef}
+                  variant="line"
+                  aria-label={sessionKind === 'agent' ? t`Agent chats` : t`Terminal sessions`}
+                  className="contents"
+                >
+                  {sessions.map((session, index) => {
+                    const isActive = session.id === activeSessionId;
+                    const isRenaming = renamingId === session.id;
+                    return (
+                      <SortableTerminalTab
+                        key={session.id}
+                        id={session.id}
+                        disabled={!reorderEnabled || renamingId != null}
                       >
-                        <InputGroupInput
-                          ref={renameInputRef}
-                          value={renameValue}
-                          aria-label={t`Rename ${session.label}`}
-                          data-testid="terminal-tab-rename-input"
-                          className="h-7 px-2 text-xs"
-                          onChange={(event) => setRenameValue(event.target.value)}
-                          onKeyDown={(event) => {
-                            // Enter/Escape only blur — endRename (the blur handler)
-                            // is the single commit/cancel point.
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              renameInputRef.current?.blur();
-                            } else if (event.key === 'Escape') {
-                              event.preventDefault();
-                              cancelRenameRef.current = true;
-                              renameInputRef.current?.blur();
-                            }
-                          }}
-                          onBlur={() => endRename(session.id)}
-                        />
-                      </InputGroup>
-                    ) : (
-                      <>
-                        {/* The label truncates at max-w-40, so a process-set title
-                        (OSC 0/2) that overflows is hard-clipped in the tab — the
-                        tooltip surfaces the full title on hover. */}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <TabsTrigger
-                              value={session.id}
-                              // Anchor for focus-return after a rename ends.
-                              data-tab-id={session.id}
-                              // Pointer/Enter activation routes through onClick (arrow-key
-                              // navigation does not fire it), so the consumer can focus the
-                              // terminal on a deliberate select without stealing focus while
-                              // the user arrows across tabs. The second click of a
-                              // double-click is skipped (detail >= 2): otherwise its
-                              // activation would focus the terminal and blur-commit the
-                              // rename that same double-click is opening.
-                              onClick={(event) => {
-                                if (event.detail >= 2) return;
-                                onTabActivate?.(session.id);
-                              }}
-                              // Double-click (pointer) and F2 (keyboard) enter rename —
-                              // the same two idioms the editor file tabs use. Inert
-                              // when the host supplies no onRename.
-                              onDoubleClick={() => enterRename(session)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'F2') {
-                                  event.preventDefault();
-                                  enterRename(session);
-                                }
-                              }}
-                              className={cn(
-                                'h-7 flex-none gap-1.5 rounded-md px-2 text-xs',
-                                draggable && '[-webkit-app-region:no-drag]',
-                              )}
-                            >
-                              {session.icon}
-                              <span className="max-w-40 truncate">{session.label}</span>
-                            </TabsTrigger>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" sideOffset={8}>
-                            {session.label}
-                          </TooltipContent>
-                        </Tooltip>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={t`Close ${session.label}`}
-                          // Match the editor-tab pattern: only the active tab's close
-                          // control sits in the tab order, so a keyboard user reaches a
-                          // tab's close after activating it rather than tabbing past every
-                          // inactive tab's close button.
-                          tabIndex={isActive ? 0 : -1}
-                          // Close reveals on tab hover or keyboard focus; the active tab
-                          // keeps it persistently visible. Opacity (not unmount) keeps the
-                          // control in layout + a11y tree so tabs don't reflow and the
-                          // keyboard target stays reachable.
+                        {({ setNodeRef, listeners, style }) => (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <TabsTrigger
+                                ref={setNodeRef}
+                                value={session.id}
+                                data-terminal-tab-sortable=""
+                                data-tab-id={session.id}
+                                style={{ ...style, gridColumn: index + 1, gridRow: 1 }}
+                                {...listeners}
+                                onMouseEnter={() => setHoveredId(session.id)}
+                                onMouseLeave={() => setHoveredId(null)}
+                                onClick={(event) => {
+                                  if (event.detail >= 2) return;
+                                  onTabActivate?.(session.id);
+                                }}
+                                onDoubleClick={() => enterRename(session)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'F2') {
+                                    event.preventDefault();
+                                    enterRename(session);
+                                  }
+                                }}
+                                className={cn(
+                                  'h-7 flex-none gap-1.5 rounded-md py-0 pr-7 pl-2 text-xs transition-colors motion-reduce:transition-none',
+                                  isActive ? 'bg-muted' : 'hover:bg-muted/50',
+                                  isRenaming && 'w-40 opacity-0',
+                                  draggable && '[-webkit-app-region:no-drag]',
+                                )}
+                              >
+                                {session.icon}
+                                <span className="max-w-40 truncate">{session.label}</span>
+                              </TabsTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" sideOffset={8}>
+                              {session.label}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </SortableTerminalTab>
+                    );
+                  })}
+                </TabsList>
+                <div className="contents">
+                  {sessions.map((session, index) => {
+                    const isActive = session.id === activeSessionId;
+                    if (renamingId === session.id) {
+                      return (
+                        <InputGroup
+                          key={session.id}
+                          style={{ gridColumn: index + 1, gridRow: 1 }}
                           className={cn(
-                            'text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100',
-                            isActive && 'opacity-100',
+                            'z-20 h-7 w-40 rounded-md border-0 bg-transparent dark:bg-transparent',
                             draggable && '[-webkit-app-region:no-drag]',
                           )}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onClose(session.id);
-                          }}
                         >
-                          <XIcon aria-hidden="true" />
-                        </Button>
-                      </>
-                    )}
-                  </SortableTerminalTab>
-                );
-              })}
+                          <InputGroupInput
+                            ref={renameInputRef}
+                            value={renameValue}
+                            aria-label={t`Rename ${session.label}`}
+                            data-testid="terminal-tab-rename-input"
+                            className="h-7 px-2 text-xs"
+                            onChange={(event) => setRenameValue(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                renameInputRef.current?.blur();
+                              } else if (event.key === 'Escape') {
+                                event.preventDefault();
+                                cancelRenameRef.current = true;
+                                renameInputRef.current?.blur();
+                              }
+                            }}
+                            onBlur={() => endRename(session.id)}
+                          />
+                        </InputGroup>
+                      );
+                    }
+                    return (
+                      <Button
+                        key={session.id}
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={t`Close ${session.label}`}
+                        tabIndex={isActive ? 0 : -1}
+                        style={{ gridColumn: index + 1, gridRow: 1 }}
+                        className={cn(
+                          'z-20 mr-0.5 justify-self-end text-muted-foreground opacity-0 transition-opacity hover:text-foreground hover:opacity-100 focus-visible:opacity-100',
+                          (isActive || hoveredId === session.id) && 'opacity-100',
+                          tabReorderBounds != null && 'pointer-events-none opacity-0',
+                          draggable && '[-webkit-app-region:no-drag]',
+                        )}
+                        onMouseEnter={() => setHoveredId(session.id)}
+                        onMouseLeave={() => setHoveredId(null)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onClose(session.id);
+                        }}
+                      >
+                        <XIcon aria-hidden="true" />
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
             </SortableContext>
           </DndContext>
-        </TabsList>
-        {/* The host's "new session" split button hugs the last tab (outside the
+          {/* The host's "new session" split button hugs the last tab (outside the
             tablist's scroll+fade so it is never clipped). Wrapped so window mode
             can opt it out of the title-bar drag region. */}
-        {newButton != null ? (
-          <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
-            {newButton}
-          </div>
-        ) : null}
-        {/* Spacer pushes the trailing controls to the far right. */}
-        <div className="flex-1" />
-        {/* Host-provided trailing controls (e.g. conversation history), just left
+          {newButton != null ? (
+            <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
+              {newButton}
+            </div>
+          ) : null}
+          {/* Spacer pushes the trailing controls to the far right. */}
+          <div className="flex-1" />
+          {/* Host-provided trailing controls (e.g. conversation history), just left
             of the collapse button. */}
-        {trailingControls != null ? (
-          <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
-            {trailingControls}
-          </div>
-        ) : null}
-        {onCollapse != null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t`Collapse panel`}
-                className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                onClick={onCollapse}
-              >
-                {/* Chevron points the way the panel slides shut: down for the
+          {trailingControls != null ? (
+            <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
+              {trailingControls}
+            </div>
+          ) : null}
+          {sessionKind === 'terminal' && edge != null && onPlacementChange != null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={placementLabel}
+                  className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                  onClick={() => onPlacementChange(placementTarget)}
+                >
+                  {rightEdge ? (
+                    <PanelBottomIcon aria-hidden="true" />
+                  ) : (
+                    <PanelRightIcon aria-hidden="true" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={8}>
+                {placementLabel}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          {onCollapse != null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={
+                    sessionKind === 'terminal' ? t`Collapse Terminal` : t`Collapse agent panel`
+                  }
+                  className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                  onClick={onCollapse}
+                >
+                  {/* Chevron points the way the panel slides shut: down for the
                     bottom dock, right for the right column. */}
-                {rightEdge ? (
-                  <ChevronRightIcon aria-hidden="true" />
+                  {rightEdge ? (
+                    <ChevronRightIcon aria-hidden="true" />
+                  ) : (
+                    <ChevronDownIcon aria-hidden="true" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={8}>
+                {sessionKind === 'terminal' ? (
+                  <Trans>Collapse Terminal</Trans>
                 ) : (
-                  <ChevronDownIcon aria-hidden="true" />
+                  <Trans>Collapse agent panel</Trans>
                 )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={8}>
-              <Trans>Collapse panel</Trans>
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-      </div>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
+      </BottomTerminalPlacementMenu>
       {children}
     </Tabs>
   );

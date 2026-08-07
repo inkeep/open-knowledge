@@ -1196,31 +1196,31 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
   });
 });
 
-describe('buildMenuTemplate — View → Show/Hide Bottom Dock', () => {
-  // The bottom-dock toggle mirrors the sidebar/doc-panel single-row pattern
-  // but inverts the default: the dock starts HIDDEN, so undefined/false reads
-  // "Show Bottom Dock" (the sidebar/doc-panel start visible, so they default
+describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
+  // The Terminal toggle mirrors the sidebar/doc-panel single-row pattern but
+  // inverts the default: the Terminal starts HIDDEN, so undefined/false reads
+  // "Show Terminal" (the sidebar/doc-panel start visible, so they default
   // to "Hide"). ⌘J / Ctrl+J is OS-captured before the renderer, matching the
   // sidebar item's accelerator model.
 
-  test('renders "Show Bottom Dock" when terminalVisible is unset or false', () => {
+  test('renders "Show Terminal" when terminalVisible is unset or false', () => {
     const unsetDeps = buildMenuTemplate(makeDeps({ onToggleTerminal: vi.fn(() => {}) }));
-    expect(findByLabel(unsetDeps, 'Show Bottom Dock')).toBeDefined();
-    expect(findByLabel(unsetDeps, 'Hide Bottom Dock')).toBeUndefined();
+    expect(findByLabel(unsetDeps, 'Show Terminal')).toBeDefined();
+    expect(findByLabel(unsetDeps, 'Hide Terminal')).toBeUndefined();
 
     const hidden = buildMenuTemplate(
       makeDeps({ onToggleTerminal: vi.fn(() => {}), terminalVisible: false }),
     );
-    expect(findByLabel(hidden, 'Show Bottom Dock')).toBeDefined();
-    expect(findByLabel(hidden, 'Hide Bottom Dock')).toBeUndefined();
+    expect(findByLabel(hidden, 'Show Terminal')).toBeDefined();
+    expect(findByLabel(hidden, 'Hide Terminal')).toBeUndefined();
   });
 
-  test('renders "Hide Bottom Dock" when terminalVisible is true', () => {
+  test('renders "Hide Terminal" when terminalVisible is true', () => {
     const visible = buildMenuTemplate(
       makeDeps({ onToggleTerminal: vi.fn(() => {}), terminalVisible: true }),
     );
-    expect(findByLabel(visible, 'Hide Bottom Dock')).toBeDefined();
-    expect(findByLabel(visible, 'Show Bottom Dock')).toBeUndefined();
+    expect(findByLabel(visible, 'Hide Terminal')).toBeDefined();
+    expect(findByLabel(visible, 'Show Terminal')).toBeUndefined();
   });
 
   test('Terminal binds CmdOrCtrl+J accelerator (⌘J on macOS, VS Code panel convention)', () => {
@@ -1231,30 +1231,30 @@ describe('buildMenuTemplate — View → Show/Hide Bottom Dock', () => {
     // renderer-delivered, and a menu item may hold only one. ⌃` is also distinct
     // from the ⌘` this comment warns about — Control, not Command.
     const hidden = buildMenuTemplate(makeDeps({ onToggleTerminal: vi.fn(() => {}) }));
-    expect(findByLabel(hidden, 'Show Bottom Dock')?.accelerator).toBe('CmdOrCtrl+J');
+    expect(findByLabel(hidden, 'Show Terminal')?.accelerator).toBe('CmdOrCtrl+J');
 
     const visible = buildMenuTemplate(
       makeDeps({ onToggleTerminal: vi.fn(() => {}), terminalVisible: true }),
     );
-    expect(findByLabel(visible, 'Hide Bottom Dock')?.accelerator).toBe('CmdOrCtrl+J');
+    expect(findByLabel(visible, 'Hide Terminal')?.accelerator).toBe('CmdOrCtrl+J');
   });
 
   test('Terminal DISABLED when toggle handler missing (unit-test default)', () => {
     const template = buildMenuTemplate(makeDeps());
-    expect(findByLabel(template, 'Show Bottom Dock')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Show Terminal')?.enabled).toBe(false);
   });
 
   test('Terminal click dispatches deps.onToggleTerminal', () => {
     const onToggleTerminal = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onToggleTerminal }));
-    (findByLabel(template, 'Show Bottom Dock')?.click as (() => void) | undefined)?.();
+    (findByLabel(template, 'Show Terminal')?.click as (() => void) | undefined)?.();
     expect(onToggleTerminal).toHaveBeenCalledTimes(1);
 
     const onToggleTerminal2 = vi.fn(() => {});
     const visible = buildMenuTemplate(
       makeDeps({ onToggleTerminal: onToggleTerminal2, terminalVisible: true }),
     );
-    (findByLabel(visible, 'Hide Bottom Dock')?.click as (() => void) | undefined)?.();
+    (findByLabel(visible, 'Hide Terminal')?.click as (() => void) | undefined)?.();
     expect(onToggleTerminal2).toHaveBeenCalledTimes(1);
   });
 
@@ -1266,7 +1266,7 @@ describe('buildMenuTemplate — View → Show/Hide Bottom Dock', () => {
     const sub = view?.submenu as MenuItemConstructorOptions[] | undefined;
     const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
     const docPanelIdx = labels.indexOf('Hide document panel');
-    const terminalIdx = labels.indexOf('Show Bottom Dock');
+    const terminalIdx = labels.indexOf('Show Terminal');
     const resetZoomIdx = labels.indexOf('[role:resetZoom]');
     expect(terminalIdx).toBeGreaterThan(docPanelIdx);
     expect(resetZoomIdx).toBeGreaterThan(terminalIdx);
@@ -1302,7 +1302,7 @@ describe('buildMenuTemplate — View → Show/Hide Agents', () => {
       makeDeps({ onToggleAgentPanel: vi.fn(() => {}), onToggleTerminal: vi.fn(() => {}) }),
     );
     expect(findByLabel(template, 'Show Agents')?.accelerator).toBe('CmdOrCtrl+L');
-    expect(findByLabel(template, 'Show Bottom Dock')?.accelerator).toBe('CmdOrCtrl+J');
+    expect(findByLabel(template, 'Show Terminal')?.accelerator).toBe('CmdOrCtrl+J');
   });
 
   test('Agents click dispatches deps.onToggleAgentPanel', () => {
@@ -1324,12 +1324,14 @@ describe('buildMenuTemplate — View → Show/Hide Agents', () => {
       makeDeps({
         onToggleAgentPanel: vi.fn(() => {}),
         onToggleTerminal: undefined,
+        onMoveTerminal: undefined,
         onNewTerminal: undefined,
         onKillTerminal: undefined,
       }),
     );
     expect(findByLabel(template, 'Show Agents')?.enabled).toBe(true);
-    expect(findByLabel(template, 'Show Bottom Dock')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Show Terminal')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Move Terminal to right')?.enabled).toBe(false);
   });
 
   test('Agents follows the Terminal toggle in the View panel cluster', () => {
@@ -1338,13 +1340,13 @@ describe('buildMenuTemplate — View → Show/Hide Agents', () => {
     );
     const sub = findByLabel(template, 'View')?.submenu as MenuItemConstructorOptions[] | undefined;
     const labels = sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
-    expect(labels.indexOf('Show Agents')).toBeGreaterThan(labels.indexOf('Show Bottom Dock'));
+    expect(labels.indexOf('Show Agents')).toBeGreaterThan(labels.indexOf('Show Terminal'));
   });
 });
 
-describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
+describe('buildMenuTemplate — top-level Terminal menu', () => {
   // VS Code-style top-level Terminal menu, placed between View and Window. The
-  // View → Show/Hide Bottom Dock toggle is kept too (⌘J muscle memory); this menu
+  // View → Show/Hide Terminal toggle is kept too (⌘J muscle memory); this menu
   // is the discoverable home. New Terminal is click-only (no accelerator — ⌘J
   // belongs to the View toggle); Kill Terminal gates on a live session.
 
@@ -1357,11 +1359,12 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
     expect(windowIdx).toBeGreaterThan(terminalIdx);
   });
 
-  test('contains New Terminal, New Terminal Window, then Kill Terminal; New Terminal is click-only (no ⌘J)', () => {
+  test('contains new, window, placement, and kill actions in order', () => {
     const template = buildMenuTemplate(
       makeDeps({
         onNewTerminal: vi.fn(() => {}),
         onNewTerminalWindow: vi.fn(() => {}),
+        onMoveTerminal: vi.fn(() => {}),
         onKillTerminal: vi.fn(() => {}),
       }),
     );
@@ -1371,44 +1374,95 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
     expect(sub?.map((i) => i.label)).toEqual([
       'New Terminal',
       'New Terminal Window',
+      'Move Terminal to right',
       'Kill Terminal',
     ]);
-    // No accelerator: ⌘J belongs to the View → Show/Hide Bottom Dock toggle, so
+    // No accelerator: ⌘J belongs to the View → Show/Hide Terminal toggle, so
     // advertising it here too would only mislabel this item.
     expect(findByLabel(template, 'New Terminal')?.accelerator).toBeUndefined();
   });
 
+  test('placement label inverts with current home and dispatches the shared action', () => {
+    const onMoveTerminal = vi.fn(() => {});
+    const bottom = buildMenuTemplateForPlatform(
+      'darwin',
+      makeDeps({ terminalPlacement: 'bottom', onMoveTerminal }),
+    );
+    const moveRight = findByLabel(bottom, 'Move Terminal to right');
+    expect(moveRight?.enabled).toBe(true);
+    (moveRight?.click as (() => void) | undefined)?.();
+    expect(onMoveTerminal).toHaveBeenCalledTimes(1);
+
+    const right = buildMenuTemplateForPlatform(
+      'darwin',
+      makeDeps({ terminalPlacement: 'right', onMoveTerminal }),
+    );
+    expect(findByLabel(right, 'Move Terminal to bottom')).toBeDefined();
+    expect(findByLabel(right, 'Move Terminal to right')).toBeUndefined();
+  });
+
   test('New Terminal dispatches onNewTerminal; disabled when the handler is unwired', () => {
     const onNewTerminal = vi.fn(() => {});
-    const item = findByLabel(buildMenuTemplate(makeDeps({ onNewTerminal })), 'New Terminal');
+    const item = findByLabel(
+      buildMenuTemplateForPlatform('darwin', makeDeps({ onNewTerminal })),
+      'New Terminal',
+    );
     expect(item?.enabled).toBe(true);
     (item?.click as (() => void) | undefined)?.();
     expect(onNewTerminal).toHaveBeenCalledTimes(1);
 
-    expect(findByLabel(buildMenuTemplate(makeDeps()), 'New Terminal')?.enabled).toBe(false);
+    expect(
+      findByLabel(buildMenuTemplateForPlatform('darwin', makeDeps()), 'New Terminal')?.enabled,
+    ).toBe(false);
   });
 
   test('Kill Terminal is disabled with no live session, enabled + kills when one is live', () => {
     // Wired handler but no live session → disabled (spec: disable when no session).
-    const offline = buildMenuTemplate(makeDeps({ onKillTerminal: vi.fn(() => {}) }));
+    const offline = buildMenuTemplateForPlatform(
+      'darwin',
+      makeDeps({ onKillTerminal: vi.fn(() => {}) }),
+    );
     expect(findByLabel(offline, 'Kill Terminal')?.enabled).toBe(false);
 
     // A live session but no wired handler (unit-test default) → still disabled.
-    const unwired = buildMenuTemplate(makeDeps({ terminalLive: true }));
+    const unwired = buildMenuTemplateForPlatform('darwin', makeDeps({ terminalLive: true }));
     expect(findByLabel(unwired, 'Kill Terminal')?.enabled).toBe(false);
 
     // Live + wired → enabled; clicking runs the kill path.
     const onKillTerminal = vi.fn(() => {});
-    const live = buildMenuTemplate(makeDeps({ onKillTerminal, terminalLive: true }));
+    const live = buildMenuTemplateForPlatform(
+      'darwin',
+      makeDeps({ onKillTerminal, terminalLive: true }),
+    );
     const killItem = findByLabel(live, 'Kill Terminal');
     expect(killItem?.enabled).toBe(true);
     (killItem?.click as (() => void) | undefined)?.();
     expect(onKillTerminal).toHaveBeenCalledTimes(1);
   });
 
-  test('the View → Show/Hide Bottom Dock toggle is preserved alongside the Terminal menu', () => {
+  test('PTY-backed commands stay disabled off macOS even when handlers are wired', () => {
+    const template = buildMenuTemplateForPlatform(
+      'linux',
+      makeDeps({
+        onToggleTerminal: vi.fn(() => {}),
+        onMoveTerminal: vi.fn(() => {}),
+        onNewTerminal: vi.fn(() => {}),
+        onNewTerminalWindow: vi.fn(() => {}),
+        onKillTerminal: vi.fn(() => {}),
+        terminalLive: true,
+      }),
+    );
+
+    expect(findByLabel(template, 'Show Terminal')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Move Terminal to right')?.enabled).toBe(false);
+    expect(findByLabel(template, 'New Terminal')?.enabled).toBe(false);
+    expect(findByLabel(template, 'New Terminal Window')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Kill Terminal')?.enabled).toBe(false);
+  });
+
+  test('the View → Show/Hide Terminal toggle is preserved alongside the Terminal menu', () => {
     const template = buildMenuTemplate(makeDeps({ onToggleTerminal: vi.fn(() => {}) }));
-    expect(findByLabel(template, 'Show Bottom Dock')).toBeDefined();
+    expect(findByLabel(template, 'Show Terminal')).toBeDefined();
     expect(findByLabel(template, 'Terminal')).toBeDefined();
   });
 });
@@ -1488,7 +1542,10 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
 
 describe('Terminal menu — New Terminal Window', () => {
   test('appears in the Terminal submenu beside New Terminal', () => {
-    const template = buildMenuTemplate(makeDeps({ onNewTerminalWindow: vi.fn(() => {}) }));
+    const template = buildMenuTemplateForPlatform(
+      'darwin',
+      makeDeps({ onNewTerminalWindow: vi.fn(() => {}) }),
+    );
     const terminalMenu = template.find((i) => i.label === 'Terminal');
     const sub = terminalMenu?.submenu as MenuItemConstructorOptions[] | undefined;
     if (!sub) throw new Error('Terminal submenu missing');
@@ -1499,7 +1556,7 @@ describe('Terminal menu — New Terminal Window', () => {
 
   test('renders with no keyboard accelerator', () => {
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ onNewTerminalWindow: vi.fn(() => {}) })),
+      buildMenuTemplateForPlatform('darwin', makeDeps({ onNewTerminalWindow: vi.fn(() => {}) })),
       'New Terminal Window',
     );
     expect(item).toBeDefined();
@@ -1509,7 +1566,7 @@ describe('Terminal menu — New Terminal Window', () => {
   test('click invokes onNewTerminalWindow', () => {
     const onNewTerminalWindow = vi.fn(() => {});
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ onNewTerminalWindow })),
+      buildMenuTemplateForPlatform('darwin', makeDeps({ onNewTerminalWindow })),
       'New Terminal Window',
     );
     (item?.click as (() => void) | undefined)?.();
@@ -1517,9 +1574,12 @@ describe('Terminal menu — New Terminal Window', () => {
   });
 
   test('disabled when the dep is omitted, enabled when wired', () => {
-    expect(findByLabel(buildMenuTemplate(makeDeps()), 'New Terminal Window')?.enabled).toBe(false);
+    expect(
+      findByLabel(buildMenuTemplateForPlatform('darwin', makeDeps()), 'New Terminal Window')
+        ?.enabled,
+    ).toBe(false);
     const wired = findByLabel(
-      buildMenuTemplate(makeDeps({ onNewTerminalWindow: vi.fn(() => {}) })),
+      buildMenuTemplateForPlatform('darwin', makeDeps({ onNewTerminalWindow: vi.fn(() => {}) })),
       'New Terminal Window',
     );
     expect(wired?.enabled).toBe(true);

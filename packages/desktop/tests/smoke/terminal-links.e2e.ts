@@ -13,11 +13,6 @@
  *
  * Skip gates mirror the sibling terminal smokes: opt-in via OK_DESKTOP_E2E_SMOKE=1,
  * darwin-only, and the electron-vite build must exist (out/main/index.js).
- *
- * QUARANTINED ON CI (test.skip(IS_CI)): same live-Electron terminal surface +
- * constrained-runner degradation as terminal-dock (shells exit before "running"
- * after a few launches on the 6-vCPU runner). Allowlisted in the CI no-skip guard
- * (QUARANTINE_ALLOWLIST); tracked in inkeep/agents-private#2187.
  */
 
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,7 +27,6 @@ const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 interface Seed {
@@ -114,18 +108,18 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
-/** Open the terminal via the View menu, bottom-dock it, and wait for a live shell. */
+/** Open the terminal via the View menu and wait for a live shell. */
 async function openRunningTerminal(app: ElectronApplication, page: Page): Promise<void> {
   const label = await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
+      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
     );
-    if (!item) return false;
-    if (item.label === 'Show Bottom Dock') item.click();
+    if (!item) throw new Error('View menu is missing the required Terminal visibility item');
+    if (item.label === 'Show Terminal') item.click();
     return item.label;
   });
-  expect(label).toBeTruthy();
+  expect(label).toMatch(/^(Show|Hide) Terminal$/);
   await expect(page.locator('section[aria-label="Terminal"]')).toBeVisible({ timeout: 15_000 });
   // The terminal is bottom-docked outright now, so it is already wide enough for
   // a printed URL to render on one row — which the link-click assertions need.
@@ -153,16 +147,21 @@ async function runInTerminal(page: Page, command: string, marker: string): Promi
 /**
  * Click the last rendered occurrence of `linkText` in the terminal. xterm's DOM
  * renderer paints each glyph run as a span; the printed token (URL / path) is a
- * contiguous run, so clicking that span's box lands on the link's cells and
- * triggers xterm's link activation.
+ * contiguous run, so its box identifies the link's cells. Pointer events land
+ * on xterm's screen element rather than the paint-only span, so drive the mouse
+ * at the physical coordinates instead of asking Playwright to click the span.
  */
 async function clickTerminalLink(page: Page, linkText: string): Promise<void> {
   const span = page
     .locator('section[aria-label="Terminal"] .xterm-rows span', { hasText: linkText })
     .last();
   await span.scrollIntoViewIfNeeded();
-  await span.hover();
-  await span.click();
+  const box = await span.boundingBox();
+  if (box == null) throw new Error(`terminal link ${JSON.stringify(linkText)} has no layout box`);
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.click(x, y);
 }
 
 /** Replace `shell.openExternal` in main with a recorder (no real browser opens). */
@@ -192,11 +191,6 @@ test.describe('Terminal clickable links — live Electron', () => {
     !SMOKE_ENABLED || !DARWIN || !TARGET.exists,
     `Live-Electron smoke: set OK_DESKTOP_E2E_SMOKE=1 on darwin. ${TARGET.missingReason}`,
   );
-  test.skip(
-    IS_CI,
-    'Quarantined on CI: live-Electron terminal smoke degrades on the constrained runner (see inkeep/agents-private#2187).',
-  );
-
   test.afterAll(() => {
     for (const p of cleanup.splice(0)) rmSync(p, { recursive: true, force: true });
   });

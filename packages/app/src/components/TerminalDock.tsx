@@ -1,3 +1,4 @@
+import type { TerminalPlacement } from '@inkeep/open-knowledge-core';
 import { useTheme } from 'next-themes';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { usePanelRef } from 'react-resizable-panels';
@@ -23,6 +24,7 @@ export const MAX_STRANDED_REPORTS = 5;
 interface TerminalDockProps {
   /** The editor chrome (header + area) the terminal docks beneath. */
   readonly children: ReactNode;
+  readonly placement?: TerminalPlacement;
   /**
    * Controlled visibility. Drag-collapsing the bottom panel reports back through
    * {@link onVisibleChange}.
@@ -42,16 +44,16 @@ interface TerminalDockProps {
 }
 
 /**
- * The bottom layout shell for the docked terminal: a vertical split with the
- * editor on top and a collapsible bottom panel beneath. It owns the bottom panel's
- * height (persist + drag) and collapse, and exposes the bottom mount + editor
- * region elements. It deliberately owns NO session state — the live terminal lives
- * in {@link SessionsHost}, mounted above the panel group, and portals into
- * the bottom mount this component renders. That separation is what lets the editor
- * re-render (and the view kind change) without re-spawning the PTY.
+ * The vertical editor shell for the docked terminal. It renders and owns the
+ * persisted bottom split only while the bottom edge is active; the editor region
+ * remains mounted when the terminal moves right. It deliberately owns NO session
+ * state — the live terminal lives in {@link SessionsHost}, mounted above this
+ * shell. That separation lets the presentation edge change without re-spawning
+ * the PTY.
  */
 export function TerminalDock({
   children,
+  placement = 'bottom',
   visible,
   onVisibleChange,
   onBottomContainer,
@@ -59,7 +61,8 @@ export function TerminalDock({
 }: TerminalDockProps) {
   const { resolvedTheme } = useTheme();
   const panelRef = usePanelRef();
-  const [isCollapsed, setIsCollapsed] = useState(!visible);
+  const bottomVisible = placement === 'bottom' && visible;
+  const [isCollapsed, setIsCollapsed] = useState(!bottomVisible);
   const xtermBackground = useLiveXtermTheme(resolvedTheme).background;
   // Snapshot the persisted height once at mount; the ref carries the running value
   // during user drag.
@@ -123,7 +126,7 @@ export function TerminalDock({
     const panel = panelRef.current;
     if (panel == null) return;
     try {
-      if (visible) {
+      if (bottomVisible) {
         panel.resize(`${heightPxRef.current}px`);
       } else {
         panel.collapse();
@@ -135,7 +138,7 @@ export function TerminalDock({
       // guard cannot see it: recovery is the next `visible` transition
       // re-running this effect, or any later change to the panel's own box.
     }
-  }, [visible, panelRef]);
+  }, [bottomVisible, panelRef]);
 
   // The persisted height is viewport-relative: `readTerminalHeight` caps it at
   // 50vh, but only at read time, and this shell snapshots it once at mount. A
@@ -149,7 +152,7 @@ export function TerminalDock({
       const next = clampTerminalHeight(heightPxRef.current);
       if (next === heightPxRef.current) return;
       heightPxRef.current = next;
-      if (!visible) return;
+      if (!bottomVisible) return;
       try {
         panelRef.current?.resize(`${next}px`);
       } catch {
@@ -158,7 +161,7 @@ export function TerminalDock({
     };
     window.addEventListener('resize', reclampToViewport);
     return () => window.removeEventListener('resize', reclampToViewport);
-  }, [visible, panelRef]);
+  }, [bottomVisible, panelRef]);
 
   return (
     <ResizablePanelGroup
@@ -183,112 +186,116 @@ export function TerminalDock({
           in and drag-up-to-open would be a hidden second entry point. Gating on
           controlled props (not `isCollapsed`) means an in-progress drag-to-collapse
           completes before the handle disables on the next commit. */}
-      <ResizableHandle
-        withHandle={visible}
-        disabled={!visible}
-        onPointerDown={(event) => {
-          if (!visible) return;
-          // A prior gesture that never saw a release would otherwise leave the
-          // flag set forever.
-          endDragRef.current?.();
-          setIsDragging(true);
-          isDraggingRef.current = true;
-          const { pointerId } = event;
-          // A drag ends on `pointerup` OR `pointercancel`: a cancelled pointer
-          // fires NO pointerup — once the browser suppresses a pointer stream
-          // (touch pan/zoom/scroll takeover, or the OS invalidating the
-          // pointer) no further events arrive for that pointerId. Without the
-          // cancel arm the flag stays set, and every later imperative or
-          // observer-driven resize reads as a user drag: `onVisibleChange`
-          // fires spuriously, the persisted height gets overwritten, and the
-          // stranded-dock guard stops firing.
-          //
-          // `window` is the right target because a release outside the dock
-          // still lands there; both listeners are scoped to the originating
-          // `pointerId` so a second touch's cancel cannot end this drag.
-          const end = () => {
-            setIsDragging(false);
-            isDraggingRef.current = false;
-            window.removeEventListener('pointerup', onEnd);
-            window.removeEventListener('pointercancel', onEnd);
-            endDragRef.current = null;
-          };
-          const onEnd = (ev: PointerEvent) => {
-            if (ev.pointerId !== pointerId) return;
-            end();
-          };
-          endDragRef.current = end;
-          window.addEventListener('pointerup', onEnd);
-          window.addEventListener('pointercancel', onEnd);
-        }}
-      />
-      <ResizablePanel
-        id={TERMINAL_PANEL_ID}
-        // Paint the whole dock surface with the exact xterm canvas color so the tab
-        // strip, its controls, and any chrome read as one continuous surface with
-        // the terminal — no app-background seam between the strip and canvas.
-        style={{ backgroundColor: xtermBackground }}
-        panelRef={panelRef}
-        defaultSize={visible ? `${initialHeightPx}px` : 0}
-        minSize="120px"
-        // The terminal can be dragged tall — up to 95% of the dock — leaving the
-        // editor a 5% sliver (its panel `minSize`). Pair the two: the terminal's max
-        // plus the editor's min must sum to 100% or the drag can't reach it.
-        maxSize="95%"
-        collapsible
-        collapsedSize={0}
-        onResize={(size) => {
-          const collapsed = size.asPercentage === 0;
-          setIsCollapsed(collapsed);
-          // Invariant: the bottom panel occupies ZERO height whenever the dock is
-          // hidden. The `visible` effect asserts that only on a TRANSITION, so
-          // any path leaving the panel expanded without flipping `visible` — a
-          // library re-layout, or a collapse
-          // issued while the group was unmeasurable and therefore discarded —
-          // strands the editor behind an empty band with no dock chrome and
-          // nothing left to re-assert it. This is the panel's own resize signal,
-          // so it catches that state whatever produced it. The handle is disabled
-          // while hidden, so an expanded-hidden panel is never a user width worth
-          // preserving.
-          //
-          // Gate on pixels rather than `collapsed`: an unmeasurable group makes
-          // `asPercentage` NaN, which compares false against 0 and would read as
-          // "expanded", firing this guard spuriously on a panel that has no size
-          // at all.
-          if (!visible && size.inPixels > 0 && !isDraggingRef.current) {
-            reportStrandedDock(size.inPixels, size.asPercentage);
-            try {
-              panelRef.current?.collapse();
-            } catch {
-              // Panel unregistered mid-flight — the next resize re-asserts.
-            }
-            return;
-          }
-          // Persist + reflect to controlled visibility only on a user drag;
-          // imperative replays from the `visible` effect also fire onResize and must
-          // not overwrite the persisted value or loop onVisibleChange.
-          if (isDraggingRef.current) {
-            if (collapsed && visible) onVisibleChange(false);
-            else if (!collapsed && !visible) onVisibleChange(true);
-            if (size.inPixels > 0) {
-              heightPxRef.current = size.inPixels;
-              debouncedWriteHeight(size.inPixels);
-            }
-          }
-        }}
-        // react-resizable-panels does not apply inert on collapse — children stay in
-        // the DOM, tab order, and a11y tree. The explicit `inert` removes the
-        // collapsed terminal from focus order.
-        inert={isCollapsed}
-        className={cn(
-          'flex flex-col',
-          !isDragging &&
-            'transition-[flex-grow] duration-150 ease-out motion-reduce:transition-none motion-reduce:duration-0',
-        )}
-      >
-        {/* Mount point for the terminal host's stable host div. */}
-        <div ref={onBottomContainer} className="flex min-h-0 flex-1 flex-col overflow-hidden" />
-      </ResizablePanel>
+      {placement === 'bottom' ? (
+        <>
+          <ResizableHandle
+            withHandle={bottomVisible}
+            disabled={!bottomVisible}
+            onPointerDown={(event) => {
+              if (!bottomVisible) return;
+              // A prior gesture that never saw a release would otherwise leave the
+              // flag set forever.
+              endDragRef.current?.();
+              setIsDragging(true);
+              isDraggingRef.current = true;
+              const { pointerId } = event;
+              // A drag ends on `pointerup` OR `pointercancel`: a cancelled pointer
+              // fires NO pointerup — once the browser suppresses a pointer stream
+              // (touch pan/zoom/scroll takeover, or the OS invalidating the
+              // pointer) no further events arrive for that pointerId. Without the
+              // cancel arm the flag stays set, and every later imperative or
+              // observer-driven resize reads as a user drag: `onVisibleChange`
+              // fires spuriously, the persisted height gets overwritten, and the
+              // stranded-dock guard stops firing.
+              //
+              // `window` is the right target because a release outside the dock
+              // still lands there; both listeners are scoped to the originating
+              // `pointerId` so a second touch's cancel cannot end this drag.
+              const end = () => {
+                setIsDragging(false);
+                isDraggingRef.current = false;
+                window.removeEventListener('pointerup', onEnd);
+                window.removeEventListener('pointercancel', onEnd);
+                endDragRef.current = null;
+              };
+              const onEnd = (ev: PointerEvent) => {
+                if (ev.pointerId !== pointerId) return;
+                end();
+              };
+              endDragRef.current = end;
+              window.addEventListener('pointerup', onEnd);
+              window.addEventListener('pointercancel', onEnd);
+            }}
+          />
+          <ResizablePanel
+            id={TERMINAL_PANEL_ID}
+            // Paint the whole dock surface with the exact xterm canvas color so the tab
+            // strip, its controls, and any chrome read as one continuous surface with
+            // the terminal — no app-background seam between the strip and canvas.
+            style={{ backgroundColor: xtermBackground }}
+            panelRef={panelRef}
+            defaultSize={bottomVisible ? `${initialHeightPx}px` : 0}
+            minSize="120px"
+            // The terminal can be dragged tall — up to 95% of the dock — leaving the
+            // editor a 5% sliver (its panel `minSize`). Pair the two: the terminal's max
+            // plus the editor's min must sum to 100% or the drag can't reach it.
+            maxSize="95%"
+            collapsible
+            collapsedSize={0}
+            onResize={(size) => {
+              const collapsed = size.asPercentage === 0;
+              setIsCollapsed(collapsed);
+              // Invariant: the bottom panel occupies ZERO height whenever the dock is
+              // hidden. The `visible` effect asserts that only on a TRANSITION, so
+              // any path leaving the panel expanded without flipping `visible` — a
+              // library re-layout, or a collapse
+              // issued while the group was unmeasurable and therefore discarded —
+              // strands the editor behind an empty band with no dock chrome and
+              // nothing left to re-assert it. This is the panel's own resize signal,
+              // so it catches that state whatever produced it. The handle is disabled
+              // while hidden, so an expanded-hidden panel is never a user width worth
+              // preserving.
+              //
+              // Gate on pixels rather than `collapsed`: an unmeasurable group makes
+              // `asPercentage` NaN, which compares false against 0 and would read as
+              // "expanded", firing this guard spuriously on a panel that has no size
+              // at all.
+              if (!bottomVisible && size.inPixels > 0 && !isDraggingRef.current) {
+                reportStrandedDock(size.inPixels, size.asPercentage);
+                try {
+                  panelRef.current?.collapse();
+                } catch {
+                  // Panel unregistered mid-flight — the next resize re-asserts.
+                }
+                return;
+              }
+              // Persist + reflect to controlled visibility only on a user drag;
+              // imperative replays from the `visible` effect also fire onResize and must
+              // not overwrite the persisted value or loop onVisibleChange.
+              if (isDraggingRef.current) {
+                if (collapsed && bottomVisible) onVisibleChange(false);
+                else if (!collapsed && !bottomVisible) onVisibleChange(true);
+                if (size.inPixels > 0) {
+                  heightPxRef.current = size.inPixels;
+                  debouncedWriteHeight(size.inPixels);
+                }
+              }
+            }}
+            // react-resizable-panels does not apply inert on collapse — children stay in
+            // the DOM, tab order, and a11y tree. The explicit `inert` removes the
+            // collapsed terminal from focus order.
+            inert={isCollapsed}
+            className={cn(
+              'flex flex-col',
+              !isDragging &&
+                'transition-[flex-grow] duration-150 ease-out motion-reduce:transition-none motion-reduce:duration-0',
+            )}
+          >
+            {/* Mount point for the terminal host's stable host div. */}
+            <div ref={onBottomContainer} className="flex min-h-0 flex-1 flex-col overflow-hidden" />
+          </ResizablePanel>
+        </>
+      ) : null}
     </ResizablePanelGroup>
   );
 }

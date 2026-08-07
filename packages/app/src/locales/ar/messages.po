@@ -1365,6 +1365,10 @@ msgstr "ملف إعداد الوكيل"
 msgid "Agent mode"
 msgstr "وضع الوكيل"
 
+#: src/components/EditorArea.tsx
+msgid "Agent panel closed to keep Terminal readable."
+msgstr "أُغلقت لوحة الوكيل لإبقاء Terminal سهل القراءة."
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
 msgstr "إعدادات الوكيل"
@@ -2496,6 +2500,10 @@ msgstr "طيّ"
 msgid "Collapse {keyName}"
 msgstr "طيّ {keyName}"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Collapse agent panel"
+msgstr "طي لوحة الوكيل"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -2520,8 +2528,8 @@ msgid "Collapse graph"
 msgstr "طيّ الرسم البياني"
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse panel"
-msgstr "طيّ اللوحة"
+msgid "Collapse Terminal"
+msgstr "طي Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -5738,10 +5746,6 @@ msgstr "إخفاء المتقدم"
 msgid "Hide Agents"
 msgstr "إخفاء الوكلاء"
 
-#: src/components/command-palette-commands.ts
-msgid "Hide Bottom Dock"
-msgstr "إخفاء اللوحة السفلية"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Hide details"
 msgstr "إخفاء التفاصيل"
@@ -5815,6 +5819,10 @@ msgstr "إخفاء معاينة التحديد"
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "إخفاء الشريط الجانبي"
+
+#: src/components/command-palette-commands.ts
+msgid "Hide Terminal"
+msgstr "إخفاء Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Hide these comments"
@@ -7019,6 +7027,16 @@ msgstr "انقل هذا الملف أو أعد تسميته داخل المها�
 msgid "Move succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "نجح النقل لكن الشريط الجانبي قد يكون قديمًا — حدّث لإعادة المزامنة"
 
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to bottom"
+msgstr "نقل Terminal إلى الأسفل"
+
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to right"
+msgstr "نقل Terminal إلى اليمين"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the current block up or down one position."
 msgstr "حرّك الكتلة الحالية موضعًا واحدًا لأعلى أو لأسفل."
@@ -7053,6 +7071,10 @@ msgstr "النقل إلى جزء جديد على اليسار"
 #: src/components/EditorTabs.tsx
 msgid "Move to new pane right"
 msgstr "النقل إلى جزء جديد على اليمين"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Move to right panel"
+msgstr "نقل إلى اللوحة اليمنى"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move to the next CodeMirror lint diagnostic."
@@ -10594,10 +10616,6 @@ msgstr "إظهار الوكلاء"
 msgid "Show All"
 msgstr "إظهار الكل"
 
-#: src/components/command-palette-commands.ts
-msgid "Show Bottom Dock"
-msgstr "إظهار اللوحة السفلية"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Show details"
 msgstr "إظهار التفاصيل"
@@ -10666,16 +10684,16 @@ msgid "Show or hide agents"
 msgstr "إظهار الوكلاء أو إخفاؤهم"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide bottom dock"
-msgstr "إظهار اللوحة السفلية أو إخفاؤها"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr "إظهار لوحة المستند أو إخفاؤها"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
 msgstr "إظهار الملفات أو إخفاؤها"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide Terminal"
+msgstr "إظهار Terminal أو إخفاؤه"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -10716,6 +10734,10 @@ msgstr "إظهار الشريط الجانبي"
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
 msgstr "إظهار المصدر"
+
+#: src/components/command-palette-commands.ts
+msgid "Show Terminal"
+msgstr "إظهار Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Show these comments"
@@ -11540,6 +11562,10 @@ msgstr "الطرفية {0}"
 msgid "Terminal access isn't enabled for this project."
 msgstr "الوصول إلى الطرفية غير مفعّل لهذا المشروع."
 
+#: src/components/EditorArea.tsx
+msgid "Terminal closed to make room for the agent panel."
+msgstr "أُغلق Terminal لإفساح المجال للوحة الوكيل."
+
 #: src/components/TerminalGate.tsx
 msgid "Terminal disabled"
 msgstr "الطرفية معطّلة"
@@ -12285,8 +12311,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "بدّل تنسيق الخط في المنتصف."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives."
-msgstr "إظهار اللوحة السفلية أو إخفاؤها، حيث توجد الطرفية."
+msgid "Toggle Terminal in its current dock."
+msgstr "أظهر Terminal أو أخفه في موضع الإرساء الحالي."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

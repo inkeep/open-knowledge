@@ -71,6 +71,65 @@ describe('computeStickyRepinLayout', () => {
     expect(next.editor).toBeCloseTo(100, 6);
   });
 
+  test('preserves peer key order and passes an unpinned peer through (four-peer rail)', () => {
+    // editor | doc-panel | terminal-column | agents-column, with the terminal
+    // column unpinned. The returned layout must keep the same key order (the
+    // library has no ordering prop — source/DOM order is the contract) and pass
+    // the unpinned terminal's share through unchanged.
+    const currentLayout = {
+      editor: 40,
+      'doc-panel': 20,
+      'terminal-column': 20,
+      'agents-column': 20,
+    };
+    const next = computeStickyRepinLayout({
+      currentLayout,
+      containerPx: 1000,
+      pinnedPx: { 'doc-panel': 300, 'agents-column': 200 },
+      residualId: 'editor',
+    });
+    expect(Object.keys(next)).toEqual(['editor', 'doc-panel', 'terminal-column', 'agents-column']);
+    expect(next['terminal-column']).toBeCloseTo(20, 6);
+    expect(next['doc-panel']).toBeCloseTo(30, 6);
+    expect(next['agents-column']).toBeCloseTo(20, 6);
+    expect(next.editor).toBeCloseTo(30, 6);
+  });
+
+  test('expands one rail column while its hidden neighbour stays shut (editor pays)', () => {
+    // Both rail columns are permanent members of the group, so a hidden one is
+    // a zero-width peer rather than an absent panel. Showing the terminal must
+    // take its width from the editor: the panel API cannot do this, because
+    // `expand()`/`resize()` trade with the ADJACENT separator, and the adjacent
+    // agents column has nothing to give at zero width.
+    const next = computeStickyRepinLayout({
+      currentLayout: { editor: 70, 'doc-panel': 30, 'terminal-column': 0, 'agents-column': 0 },
+      containerPx: 2000,
+      pinnedPx: { 'terminal-column': 740, 'agents-column': 0 },
+      residualId: 'editor',
+    });
+    expect(next['terminal-column']).toBeCloseTo(37, 6);
+    expect(next['agents-column']).toBe(0);
+    expect(next['doc-panel']).toBeCloseTo(30, 6);
+    expect(next.editor).toBeCloseTo(33, 6);
+  });
+
+  test('hiding a rail column returns its width to the editor, not the other rail', () => {
+    const next = computeStickyRepinLayout({
+      currentLayout: {
+        editor: 23,
+        'doc-panel': 15,
+        'terminal-column': 37,
+        'agents-column': 25,
+      },
+      containerPx: 2000,
+      pinnedPx: { 'terminal-column': 0, 'agents-column': 500 },
+      residualId: 'editor',
+    });
+    expect(next['terminal-column']).toBe(0);
+    expect(next['agents-column']).toBeCloseTo(25, 6);
+    expect(next.editor).toBeCloseTo(60, 6);
+  });
+
   test('is a no-op when the container has no measurable width', () => {
     const input = { editor: 60, 'doc-panel': 40 };
     expect(

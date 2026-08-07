@@ -98,10 +98,10 @@ export const MENU_LABELS = {
   docPanelHide: 'Hide document panel',
   back: 'Back',
   forward: 'Forward',
-  // Named for the surface, not its contents: ⌘J toggles the bottom dock, which
-  // currently hosts the terminal. The Terminal menu's own leaves stay terminal-named.
-  terminalShow: 'Show Bottom Dock',
-  terminalHide: 'Hide Bottom Dock',
+  terminalShow: 'Show Terminal',
+  terminalHide: 'Hide Terminal',
+  terminalMoveRight: 'Move Terminal to right',
+  terminalMoveBottom: 'Move Terminal to bottom',
   agentPanelShow: 'Show Agents',
   agentPanelHide: 'Hide Agents',
   // ⌘L stages a selection rather than toggling when one exists, so the item

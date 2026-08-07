@@ -1725,6 +1725,19 @@ export {
   type TemplateIdentity,
   type TemplateModel,
 } from './templates/template-format.ts';
+export {
+  DEFAULT_TERMINAL_PLACEMENT,
+  MIN_TERMINAL_RIGHT_WIDTH,
+  normalizeTerminalPlacement,
+  normalizeTerminalRightWidth,
+  PREFERRED_TERMINAL_RIGHT_WIDTH,
+  RIGHT_TERMINAL_CELL_WIDTH_PX,
+  RIGHT_TERMINAL_CHROME_WIDTH_PX,
+  RIGHT_TERMINAL_MIN_COLUMNS,
+  RIGHT_TERMINAL_PREFERRED_COLUMNS,
+  TERMINAL_PLACEMENTS,
+  type TerminalPlacement,
+} from './terminal-layout.ts';
 // Types
 export type { Actor, PrincipalId, SessionId } from './types/actor.ts';
 export type {

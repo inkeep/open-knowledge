@@ -203,8 +203,10 @@ const PALETTE_COMMAND_LABELS = {
   sidebarHide: msg`Hide sidebar`,
   docPanelShow: msg`Show document panel`,
   docPanelHide: msg`Hide document panel`,
-  terminalShow: msg`Show Bottom Dock`,
-  terminalHide: msg`Hide Bottom Dock`,
+  terminalShow: msg`Show Terminal`,
+  terminalHide: msg`Hide Terminal`,
+  terminalMoveRight: msg`Move Terminal to right`,
+  terminalMoveBottom: msg`Move Terminal to bottom`,
   agentPanelShow: msg`Show Agents`,
   agentPanelHide: msg`Hide Agents`,
   agentPanelAskSelection: msg`Ask AI About Selection`,
@@ -260,6 +262,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'toggle-sidebar': PanelLeft,
   'toggle-doc-panel': PanelRight,
   'toggle-terminal': SquareTerminal,
+  'move-terminal': SquareTerminal,
   'toggle-agent-panel': MessageSquare,
   'toggle-show-hidden-files': Eye,
   'toggle-show-ok-folders': Folder,
@@ -373,6 +376,8 @@ function paletteCoreContext(ctx: PaletteCommandContext): CommandContext {
     host: ctx.bridge !== null ? 'desktop' : 'web',
     activeTargetKind: ctx.contextualTargetKind,
     singleFile: ctx.singleFile,
+    terminalCapable:
+      ctx.bridge !== null && ctx.bridge.terminal != null && ctx.bridge.config.ptyAvailable === true,
     terminalLive: ctx.viewMenuState.terminalLive === true,
     canExpandAll: ctx.viewMenuState.canExpandAll !== false,
     canCollapseAll: ctx.viewMenuState.canCollapseAll !== false,
@@ -397,6 +402,13 @@ function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): 
     // native menu's default-visible fallback.
     const visible = ctx.viewMenuState[cmd.stateToggle.stateField] === true;
     const key = visible ? cmd.stateToggle.hideKey : cmd.stateToggle.showKey;
+    return i18n._(PALETTE_COMMAND_LABELS[key as PaletteLabelKey]);
+  }
+  if (cmd.placementToggle) {
+    const key =
+      ctx.viewMenuState.terminalPlacement === 'right'
+        ? cmd.placementToggle.rightKey
+        : cmd.placementToggle.bottomKey;
     return i18n._(PALETTE_COMMAND_LABELS[key as PaletteLabelKey]);
   }
   return i18n._(PALETTE_COMMAND_LABELS[cmd.labelKey as PaletteLabelKey]);

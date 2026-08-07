@@ -239,13 +239,10 @@ test.describe('non-embedded UA', () => {
     await page.goto('/#/qa-doc-handle-collapse');
     await waitForActiveProviderSynced(page);
 
-    // The sessions dock's bottom shell renders on every host now, so its
-    // (disabled, horizontal) handle coexists with the doc-panel handle.
-    // The doc panel's is the only VERTICAL separator while the right dock
-    // column is hidden, so scope by orientation.
-    const docPanelHandle = page.locator(
-      '[data-slot="resizable-handle"][aria-orientation="vertical"]',
-    );
+    // The permanent right-rail topology keeps hidden terminal and agent handles
+    // in the DOM, so scope to the document panel's explicit hook rather than
+    // counting every vertical separator.
+    const docPanelHandle = page.locator('[data-doc-panel-handle]');
     await expect(docPanelHandle).toHaveCount(1);
 
     // Expanded (default at WIDE): interactive — focusable and not disabled.

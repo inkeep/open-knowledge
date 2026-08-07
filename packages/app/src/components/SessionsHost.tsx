@@ -1,6 +1,10 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
+import {
+  TERMINAL_CLIS,
+  type TerminalCli,
+  type TerminalPlacement,
+} from '@inkeep/open-knowledge-core';
 import type { ThreadInfo, ThreadStatus } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
 import { Loader2, SquareTerminalIcon } from 'lucide-react';
@@ -40,10 +44,11 @@ import {
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
 import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
-import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkTerminalRestartSnapshot } from '@/lib/desktop-bridge-types';
 import {
   type DockSessionOrder,
   type DockSurface,
+  readDockRestoreState,
   readDockSessionOrder,
   readWebDockSessionOrder,
   writeDockSessionOrder,
@@ -162,11 +167,11 @@ function focusInsideHost(hostEl: HTMLElement | null): boolean {
 }
 
 /**
- * Which surface a host instance is. Each owns one edge and one session kind:
- * the terminal dock owns the bottom and PTYs, the agents panel owns the right
- * and ACP threads, and the standalone terminal window is its own window. The
+ * Which surface a host instance is. Each owns one session kind: the terminal
+ * dock owns PTYs at the currently selected edge, the agents panel owns ACP
+ * threads on the right, and the standalone terminal window is its own window. The
  * host is one component because the tab mechanics (order, active tab, rename,
- * reorder, reload placement, focus) are identical across all three; only the
+ * reorder, reload ordering, focus) are identical across all three; only the
  * kind gates and chrome differ.
  */
 export type SessionSurface = 'terminal-dock' | 'agents-panel' | 'terminal-window';
@@ -247,15 +252,26 @@ interface SessionsHostProps {
    */
   readonly terminalCapable?: boolean;
   /**
-   * Which surface this host is. `'terminal-dock'` is the bottom panel: terminals
-   * only, visibility-driven seeding, a collapse control, ⌘1–9 scoped to focus
-   * inside the host. `'agents-panel'` is the right panel: agent threads only,
+   * Which surface this host is. `'terminal-dock'` is the movable terminal
+   * workspace: terminals only, visibility-driven seeding, a collapse control,
+   * ⌘1–9 scoped to focus inside the host. `'agents-panel'` is the right panel: agent threads only,
    * otherwise identical chrome. `'terminal-window'` is the standalone terminal
    * window: terminals only, always visible, seeds its first tab on mount, the tab
    * row doubles as the macOS title bar, no collapse control, and ⌘1–9 is
    * scope-free.
    */
   readonly surface: SessionSurface;
+  readonly terminalPlacement?: TerminalPlacement;
+  /** Moves the docked terminal workspace without changing session ownership. */
+  readonly onTerminalPlacementChange?: (placement: TerminalPlacement) => void;
+  /** Leaves room for the right-edge agents reveal tab in terminal chrome. */
+  readonly reserveRightRevealTabGutter?: boolean;
+  /**
+   * Increments when persisted visibility, rather than a user action, reveals the
+   * dock. The host consumes the token so an unknown PTY inventory cannot be
+   * mistaken for a cold start and synthesize a replacement shell.
+   */
+  readonly terminalRestoreRevealNonce?: number;
   /** Controlled visibility. The host reflects it and reports close-last back
    *  through {@link onVisibleChange}; it never owns it. */
   readonly visible: boolean;
@@ -328,6 +344,10 @@ export function SessionsHost({
   bridge,
   terminalCapable = false,
   surface,
+  terminalPlacement = 'bottom',
+  onTerminalPlacementChange,
+  reserveRightRevealTabGutter,
+  terminalRestoreRevealNonce = 0,
   visible,
   onVisibleChange,
   launch = null,
@@ -347,7 +367,7 @@ export function SessionsHost({
   // `terminal` surface (a session-only bridge, some E2E hosts, has none).
   const terminalAvailable = hostTerminals && terminalCapable && bridge?.terminal != null;
   // Which edge this panel occupies — the strip points its collapse chevron by it.
-  const edge: SessionPanelEdge = hostThreads ? 'right' : 'bottom';
+  const edge: SessionPanelEdge = hostThreads ? 'right' : terminalPlacement;
   // Which per-window record this panel's tab order persists under. The two
   // panels persist independently; the standalone window has nothing to restore
   // into, so it does not persist at all.
@@ -445,6 +465,7 @@ export function SessionsHost({
   const seedOwedRef = useRef(false);
   const lastHandledCommandNonceRef = useRef<number | null>(null);
   const prevVisibleRef = useRef(isWindow ? false : visible);
+  const consumedRestoreRevealNonceRef = useRef(terminalRestoreRevealNonce);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
 
@@ -491,15 +512,21 @@ export function SessionsHost({
    *  the post-commit refs so it is correct when called from a ptyId callback. */
   function persistDockOrderNow() {
     if (!persistsOrder) return; // the standalone window IS the surface — nothing to restore into
+    if (canRehydrate && !rehydrationSettled) return;
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessionsRef.current
       .map((session) => computePersistKey(session, ptyMap))
       .filter((key): key is string => key != null);
     const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    writeDockSessionOrder(bridge, persistSurface, {
-      order,
-      activeKey: active != null ? computePersistKey(active, ptyMap) : null,
-    });
+    writeDockSessionOrder(
+      bridge,
+      persistSurface,
+      {
+        order,
+        activeKey: active != null ? computePersistKey(active, ptyMap) : null,
+      },
+      buildTerminalRestartSnapshot(sessionsRef.current, activeSessionIdRef.current),
+    );
   }
 
   function setSessionPtyId(id: string, ptyId: string | null) {
@@ -1094,16 +1121,22 @@ export function SessionsHost({
   // computation uses only listed deps + the module-pure `computePersistKey`.
   useEffect(() => {
     if (!persistsOrder) return;
+    if (!rehydrationSettled) return;
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessions
       .map((session) => computePersistKey(session, ptyMap))
       .filter((key): key is string => key != null);
     const active = sessions.find((s) => s.id === activeSessionId);
-    writeDockSessionOrder(bridge, persistSurface, {
-      order,
-      activeKey: active != null ? computePersistKey(active, ptyMap) : null,
-    });
-  }, [sessions, activeSessionId, persistsOrder, persistSurface, bridge]);
+    writeDockSessionOrder(
+      bridge,
+      persistSurface,
+      {
+        order,
+        activeKey: active != null ? computePersistKey(active, ptyMap) : null,
+      },
+      buildTerminalRestartSnapshot(sessions, activeSessionId),
+    );
+  }, [sessions, activeSessionId, persistsOrder, persistSurface, bridge, rehydrationSettled]);
 
   // ── Thread reconciliation (agents panel) ────────────────────────────────
   // Mirror the server-authoritative open-thread list into thread descriptors: add
@@ -1243,6 +1276,9 @@ export function SessionsHost({
       hostThreads &&
       threadLaunch != null &&
       threadLaunch.nonce !== lastHandledThreadNonceRef.current;
+    const restoredVisibility =
+      hostTerminals && terminalRestoreRevealNonce !== consumedRestoreRevealNonceRef.current;
+    if (restoredVisibility) consumedRestoreRevealNonceRef.current = terminalRestoreRevealNonce;
     if (
       visible &&
       !wasVisible &&
@@ -1250,6 +1286,7 @@ export function SessionsHost({
       !threadLaunchPending &&
       !(hostThreads && hasInflightThreadLaunch())
     ) {
+      if (restoredVisibility) return;
       seedOwedRef.current = !seedOnRevealRef.current();
       return;
     }
@@ -1273,6 +1310,8 @@ export function SessionsHost({
     rehydrationSettled,
     hostThreads,
     effectiveDefaultAgent,
+    hostTerminals,
+    terminalRestoreRevealNonce,
   ]);
 
   // "Start an agent" launch intent (agents panel): resolve the agent and start a
@@ -1325,24 +1364,26 @@ export function SessionsHost({
     void (async () => {
       // Read the persisted unified order first so terminal survivors are placed by
       // it (and threads, arriving async, land at their persisted slots too).
-      const persisted = await readDockSessionOrder(bridge, persistSurface).catch(() => null);
+      const { sessionOrder: persisted, terminalSnapshot: restartSnapshot } =
+        await readDockRestoreState(bridge, persistSurface);
       if (!cancelled && persisted != null) {
         reloadOrderRef.current = persisted.order;
         pendingActiveKeyRef.current = persisted.activeKey;
       }
-      let survivors: readonly {
-        ptyId: string;
-        customLabel: string | null;
-        ordinal: number | null;
-      }[] = [];
+      let survivors:
+        | readonly {
+            ptyId: string;
+            customLabel: string | null;
+            ordinal: number | null;
+          }[]
+        | null = null;
       try {
         survivors = (await bridge.terminal.list()) ?? [];
       } catch (err) {
-        console.error('[terminal] reload session list() failed; cold-starting:', err);
-        survivors = [];
+        console.error('[terminal] reload session list() failed; preserving restart snapshot:', err);
       }
       if (cancelled) return;
-      if (survivors.length > 0) {
+      if (survivors != null && survivors.length > 0) {
         const order = reloadOrderRef.current;
         const rankOf = (ptyId: string) => {
           const i = order.indexOf(ptyId);
@@ -1372,6 +1413,24 @@ export function SessionsHost({
           });
         sessionCounterRef.current = Math.max(recovered.length, ...recovered.map((r) => r.ordinal));
         setSessions(recovered);
+      } else if (survivors != null && restartSnapshot != null && restartSnapshot.tabs.length > 0) {
+        const recovered = restartSnapshot.tabs.map((entry, index) => ({
+          kind: 'terminal' as const,
+          commandId: null,
+          id: makeSessionId(index + 1),
+          launch: null,
+          title: null,
+          customLabel: entry.customLabel,
+          ordinal: entry.ordinal,
+          adoptPtyId: null,
+        }));
+        sessionCounterRef.current = Math.max(recovered.length, ...recovered.map((r) => r.ordinal));
+        pendingActiveKeyRef.current = null;
+        setSessions(recovered);
+        const active = recovered.find(
+          (session) => session.ordinal === restartSnapshot?.activeOrdinal,
+        );
+        if (active != null) setActiveSessionId(active.id);
       }
       setRehydrationSettled(true);
       // Bound the reload-active wait: if the restored active tab never materializes
@@ -1613,6 +1672,7 @@ export function SessionsHost({
   const sessionViews = showStrip ? (
     <TerminalTabStrip
       sessions={tabDescriptors}
+      sessionKind={hostThreads ? 'agent' : 'terminal'}
       activeSessionId={activeSessionId}
       onSelect={(id) => {
         // A deliberate tab selection is the user taking over the active slot.
@@ -1632,6 +1692,8 @@ export function SessionsHost({
         dragActiveRef.current = active;
       }}
       edge={edge}
+      onPlacementChange={surface === 'terminal-dock' ? onTerminalPlacementChange : undefined}
+      reserveRightRevealTabGutter={reserveRightRevealTabGutter}
       onCollapse={isWindow ? undefined : () => onVisibleChange(false)}
       draggable={isWindow}
       className="h-full"
@@ -1796,6 +1858,23 @@ function computePersistKey(
 ): string | null {
   if (session.kind === 'thread') return session.threadId;
   return session.adoptPtyId ?? ptyMap.get(session.id) ?? null;
+}
+
+function buildTerminalRestartSnapshot(
+  sessions: readonly SessionDescriptor[],
+  activeSessionId: string,
+): OkTerminalRestartSnapshot {
+  const terminals = sessions.filter(
+    (session): session is TerminalSessionDescriptor => session.kind === 'terminal',
+  );
+  const active = terminals.find((session) => session.id === activeSessionId);
+  return {
+    tabs: terminals.map((session) => ({
+      ordinal: session.ordinal,
+      customLabel: session.customLabel,
+    })),
+    activeOrdinal: active?.ordinal ?? null,
+  };
 }
 
 /**

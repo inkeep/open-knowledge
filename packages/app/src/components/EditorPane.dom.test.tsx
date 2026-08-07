@@ -190,10 +190,18 @@ vi.doMock('./EditorHeader', () => ({
 vi.doMock('./EditorArea', () => ({
   EditorArea: ({
     renderWorkspaceHeader,
+    terminalPlacement,
+    terminalRightWidth,
   }: {
     renderWorkspaceHeader?: (tabs: ReactNode) => ReactNode;
+    terminalPlacement?: string;
+    terminalRightWidth?: number;
   }) => (
-    <div data-testid="editor-area">
+    <div
+      data-testid="editor-area"
+      data-terminal-placement={terminalPlacement}
+      data-terminal-right-width={terminalRightWidth}
+    >
       {renderWorkspaceHeader?.(<div data-testid="workspace-tabs" />)}
     </div>
   ),
@@ -213,6 +221,9 @@ vi.doMock('./SessionsHost', () => ({
     surface,
     bridge,
     terminalCapable,
+    terminalPlacement,
+    onTerminalPlacementChange,
+    reserveRightRevealTabGutter,
     visible,
     launch,
     threadLaunch,
@@ -220,6 +231,9 @@ vi.doMock('./SessionsHost', () => ({
     surface: string;
     bridge?: unknown;
     terminalCapable?: boolean;
+    terminalPlacement?: string;
+    onTerminalPlacementChange?: (placement: 'bottom' | 'right') => void;
+    reserveRightRevealTabGutter?: boolean;
     visible?: boolean;
     launch?: { nonce: number; stagePaste?: string } | null;
     threadLaunch?: { nonce: number; agentId?: string; prompt?: string | null } | null;
@@ -229,12 +243,25 @@ vi.doMock('./SessionsHost', () => ({
         data-testid={surface === 'agents-panel' ? 'agents-panel' : 'terminal-dock'}
         data-has-bridge={String(bridge != null)}
         data-terminal-capable={String(terminalCapable === true)}
+        data-terminal-placement={terminalPlacement}
+        data-reserve-right-reveal-gutter={String(reserveRightRevealTabGutter === true)}
         data-visible={String(visible)}
         data-launch-nonce={launch ? String(launch.nonce) : 'none'}
         data-launch-stage={launch?.stagePaste ?? 'none'}
         data-thread-launch-nonce={threadLaunch ? String(threadLaunch.nonce) : 'none'}
         data-thread-launch-agent={threadLaunch?.agentId ?? 'none'}
-      />
+      >
+        {surface === 'terminal-dock' ? (
+          <>
+            <button type="button" onClick={() => onTerminalPlacementChange?.('right')}>
+              Move mock Terminal right
+            </button>
+            <button type="button" onClick={() => onTerminalPlacementChange?.('bottom')}>
+              Move mock Terminal bottom
+            </button>
+          </>
+        ) : null}
+      </div>
     );
   },
 }));
@@ -451,7 +478,12 @@ describe('EditorPane auto-sync onboarding gate', () => {
 // empty `{}` stub would no longer model the boundary now that EditorPane calls
 // them on mount. getDockState resolves both panels hidden so the restore is a
 // no-op — these tests exercise the start-hidden toggle/launch behavior.
-type DockStateResult = { terminalVisible: boolean; agentPanelVisible: boolean };
+type DockStateResult = {
+  terminalVisible: boolean;
+  agentPanelVisible: boolean;
+  placement?: 'bottom' | 'right';
+  rightWidth?: number;
+};
 function makeOkDesktopStub(
   getDockState: () => Promise<DockStateResult> = async () => ({
     terminalVisible: false,
@@ -464,8 +496,10 @@ function makeOkDesktopStub(
     agentPanelVisible?: boolean;
     canViewInSource?: boolean;
   }> = [];
+  const dockStateUpdates: unknown[] = [];
   return {
     viewMenuPushes,
+    dockStateUpdates,
     dispatchMenuAction(action: string) {
       for (const cb of menuHandlers) cb(action);
     },
@@ -492,6 +526,9 @@ function makeOkDesktopStub(
       },
       terminal: {
         getDockState,
+        setDockState(state: unknown) {
+          dockStateUpdates.push(state);
+        },
         cliInstalledMap: async () => ({
           claude: true,
           codex: false,
@@ -506,6 +543,7 @@ function makeOkDesktopStub(
 describe('EditorPane session-panel wiring', () => {
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     delete (window as { okDesktop?: unknown }).okDesktop;
     terminalOpenedCalls.length = 0;
     clearSelection();
@@ -592,7 +630,7 @@ describe('EditorPane session-panel wiring', () => {
     await renderEditorPane();
 
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
-    // Mount pushes terminalVisible:false so the View menu reads "Show Bottom Dock".
+    // Mount pushes terminalVisible:false so the View menu reads "Show Terminal".
     // Both panels push on mount, so name the field rather than taking the last.
     expect(desk.viewMenuPushes).toContainEqual({ terminalVisible: false });
 
@@ -603,6 +641,29 @@ describe('EditorPane session-panel wiring', () => {
     act(() => desk.dispatchMenuAction('toggle-terminal'));
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
     expect(desk.viewMenuPushes.at(-1)).toEqual({ terminalVisible: false });
+  });
+
+  test('desktop: move-terminal changes home while terminal toggles preserve it', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    const placement = () =>
+      screen.getByTestId('editor-area').getAttribute('data-terminal-placement');
+
+    expect(placement()).toBe('bottom');
+
+    act(() => desk.dispatchMenuAction('move-terminal'));
+    expect(placement()).toBe('right');
+
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    expect(placement()).toBe('right');
+
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    expect(placement()).toBe('right');
+
+    act(() => desk.dispatchMenuAction('move-terminal'));
+    expect(placement()).toBe('bottom');
   });
 
   test('desktop: hiding the terminal clears the launch intent so a reopen is blank (regression)', async () => {
@@ -818,6 +879,7 @@ describe('EditorPane session-panel wiring', () => {
   });
 
   test('desktop: a reload with BOTH panels retained restores both', async () => {
+    localStorage.setItem('ok-terminal-placement-v1', 'right');
     (window as { okDesktop?: unknown }).okDesktop = {
       config: { ptyAvailable: true },
       onMenuAction: () => () => {},
@@ -831,6 +893,96 @@ describe('EditorPane session-panel wiring', () => {
 
     expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('true');
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
+    expect(
+      screen.getByTestId('terminal-dock').getAttribute('data-reserve-right-reveal-gutter'),
+    ).toBe('false');
+  });
+
+  test('desktop: per-install right layout reaches both editor and stable terminal host', async () => {
+    localStorage.setItem('ok-terminal-placement-v1', 'right');
+    localStorage.setItem('ok-terminal-right-width-v1', '812');
+    const desk = makeOkDesktopStub(async () => ({
+      terminalVisible: true,
+      agentPanelVisible: false,
+    }));
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-placement')).toBe('right');
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-right-width')).toBe('812');
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-terminal-placement')).toBe(
+      'right',
+    );
+    expect(
+      screen.getByTestId('terminal-dock').getAttribute('data-reserve-right-reveal-gutter'),
+    ).toBe('true');
+    expect(desk.dockStateUpdates).toEqual([]);
+  });
+
+  test('desktop: a late project-state restore cannot override a user-owned per-install layout', async () => {
+    localStorage.setItem('ok-terminal-placement-v1', 'right');
+    localStorage.setItem('ok-terminal-right-width-v1', '812');
+    let resolveDockState: ((state: DockStateResult) => void) | undefined;
+    const desk = makeOkDesktopStub(
+      () =>
+        new Promise<DockStateResult>((resolve) => {
+          resolveDockState = resolve;
+        }),
+    );
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    const { EditorPane } = await import('./EditorPane');
+    render(<EditorPane />);
+
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-placement')).toBe('right');
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-right-width')).toBe('812');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move mock Terminal bottom' }));
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-placement')).toBe(
+      'bottom',
+    );
+
+    await act(async () => {
+      resolveDockState?.({
+        terminalVisible: false,
+        agentPanelVisible: false,
+        placement: 'right',
+        rightWidth: 480,
+      });
+    });
+
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-placement')).toBe(
+      'bottom',
+    );
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-right-width')).toBe('812');
+    expect(desk.dockStateUpdates).toEqual([]);
+  });
+
+  test('desktop: the stable terminal host can move the shared layout in both directions', async () => {
+    const user = userEvent.setup();
+    (window as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
+      onMenuAction: () => () => {},
+      editor: { notifyViewMenuStateChanged() {} },
+      terminal: {
+        getDockState: async () => ({ terminalVisible: true, agentPanelVisible: false }),
+      },
+    };
+    await renderEditorPane();
+
+    await user.click(screen.getByRole('button', { name: 'Move mock Terminal right' }));
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-placement')).toBe('right');
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-terminal-placement')).toBe(
+      'right',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Move mock Terminal bottom' }));
+    expect(screen.getByTestId('editor-area').getAttribute('data-terminal-placement')).toBe(
+      'bottom',
+    );
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-terminal-placement')).toBe(
+      'bottom',
+    );
   });
 
   // The agents panel's launch intent had no coverage: the host mock captured

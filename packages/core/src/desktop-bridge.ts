@@ -37,10 +37,50 @@ import type {
   ShareTargetStatusResponse,
 } from './schemas/api/share.ts';
 import type { RecentProjectEntry } from './sharing/index.ts';
+import type { TerminalPlacement } from './terminal-layout.ts';
 
 export type { OkFolderState } from './constants/folder-state.ts';
 export type { BridgeWorktreeEntry } from './git/worktree-list-parser.ts';
 export type { RecentProjectEntry } from './sharing/index.ts';
+export type { TerminalPlacement } from './terminal-layout.ts';
+
+export interface OkTerminalRestartTab {
+  ordinal: number;
+  customLabel: string | null;
+}
+
+export interface OkTerminalRestartSnapshot {
+  tabs: OkTerminalRestartTab[];
+  activeOrdinal: number | null;
+}
+
+export interface OkTerminalDockState {
+  terminalVisible: boolean;
+  agentPanelVisible: boolean;
+  terminal?: { order: string[]; activeKey: string | null };
+  terminalSnapshot?: OkTerminalRestartSnapshot;
+  agents?: { order: string[]; activeKey: string | null };
+}
+
+export type OkTerminalDockStateUpdate =
+  | {
+      surface: 'terminal';
+      order: string[];
+      activeKey: string | null;
+      terminalSnapshot: OkTerminalRestartSnapshot;
+    }
+  | {
+      surface: 'agents';
+      order: string[];
+      activeKey: string | null;
+    };
+
+export type OkTerminalDockStateWriteResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: 'invalid-request' | 'no-window-context' | 'persist-failed' | 'ipc-unavailable';
+    };
 
 /** Render mode picked by the main process when creating a BrowserWindow. */
 export type OkDesktopMode = 'editor' | 'navigator' | 'terminal';
@@ -128,6 +168,7 @@ export type OkMenuAction =
   | 'collapse-all-tree'
   | 'toggle-doc-panel'
   | 'toggle-terminal'
+  | 'move-terminal'
   // Right agents-panel visibility. Unlike the terminal, agent threads are
   // server-hosted and the panel is available outside the desktop PTY host.
   | 'toggle-agent-panel'
@@ -846,6 +887,7 @@ export interface OkEditorViewMenuStateSnapshot {
   readonly sidebarVisible: boolean;
   readonly docPanelVisible?: boolean;
   readonly terminalVisible?: boolean;
+  readonly terminalPlacement?: TerminalPlacement;
   readonly terminalLive?: boolean;
   readonly agentPanelVisible?: boolean;
   readonly canViewInSource?: boolean;
@@ -1800,7 +1842,7 @@ export interface OkDesktopBridge {
     collapseAll(cb: () => void): OkUnsubscribe;
   };
 
-  /** Bottom-docked terminal panel surface. */
+  /** Docked terminal panel surface (bottom or right). */
   terminal: {
     create(opts: {
       cols: number;
@@ -1827,18 +1869,9 @@ export interface OkDesktopBridge {
      */
     setOrder(orderedPtyIds: readonly string[]): void;
     /** Per-window state for the independent terminal and agents panels. */
-    getDockState(): Promise<{
-      terminalVisible: boolean;
-      agentPanelVisible: boolean;
-      terminal?: { order: string[]; activeKey: string | null };
-      agents?: { order: string[]; activeKey: string | null };
-    }>;
-    /** Persist one panel's tab order and active key per window. */
-    setDockState(state: {
-      surface: 'terminal' | 'agents';
-      order: string[];
-      activeKey: string | null;
-    }): void;
+    getDockState(): Promise<OkTerminalDockState>;
+    /** Persist one panel's session state per window and report durable-write failures. */
+    setDockState(state: OkTerminalDockStateUpdate): Promise<OkTerminalDockStateWriteResult>;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;

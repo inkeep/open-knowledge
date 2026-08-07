@@ -1361,6 +1361,10 @@ msgstr ""
 msgid "Agent mode"
 msgstr ""
 
+#: src/components/EditorArea.tsx
+msgid "Agent panel closed to keep Terminal readable."
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
 msgstr ""
@@ -2492,6 +2496,10 @@ msgstr ""
 msgid "Collapse {keyName}"
 msgstr ""
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Collapse agent panel"
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -2516,7 +2524,7 @@ msgid "Collapse graph"
 msgstr ""
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse panel"
+msgid "Collapse Terminal"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -5734,10 +5742,6 @@ msgstr ""
 msgid "Hide Agents"
 msgstr ""
 
-#: src/components/command-palette-commands.ts
-msgid "Hide Bottom Dock"
-msgstr ""
-
 #: src/components/acp/ThreadView.tsx
 msgid "Hide details"
 msgstr ""
@@ -5810,6 +5814,10 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
+msgstr ""
+
+#: src/components/command-palette-commands.ts
+msgid "Hide Terminal"
 msgstr ""
 
 #: src/comments/comment-chips.tsx
@@ -7015,6 +7023,16 @@ msgstr ""
 msgid "Move succeeded but the sidebar may be out of date — refresh to resync"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to bottom"
+msgstr ""
+
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to right"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the current block up or down one position."
 msgstr ""
@@ -7048,6 +7066,10 @@ msgstr ""
 
 #: src/components/EditorTabs.tsx
 msgid "Move to new pane right"
+msgstr ""
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Move to right panel"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -10590,10 +10612,6 @@ msgstr ""
 msgid "Show All"
 msgstr ""
 
-#: src/components/command-palette-commands.ts
-msgid "Show Bottom Dock"
-msgstr ""
-
 #: src/components/acp/ThreadView.tsx
 msgid "Show details"
 msgstr ""
@@ -10662,15 +10680,15 @@ msgid "Show or hide agents"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide bottom dock"
-msgstr ""
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide Terminal"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
@@ -10711,6 +10729,10 @@ msgstr ""
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
+msgstr ""
+
+#: src/components/command-palette-commands.ts
+msgid "Show Terminal"
 msgstr ""
 
 #: src/comments/comment-chips.tsx
@@ -11536,6 +11558,10 @@ msgstr ""
 msgid "Terminal access isn't enabled for this project."
 msgstr ""
 
+#: src/components/EditorArea.tsx
+msgid "Terminal closed to make room for the agent panel."
+msgstr ""
+
 #: src/components/TerminalGate.tsx
 msgid "Terminal disabled"
 msgstr ""
@@ -12281,7 +12307,7 @@ msgid "Toggle strikethrough formatting."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives."
+msgid "Toggle Terminal in its current dock."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

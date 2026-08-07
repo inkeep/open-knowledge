@@ -9,6 +9,35 @@ export function mergeViewMenuState(
   return { ...prev, ...partial };
 }
 
+export class EditorViewMenuStateRegistry {
+  readonly #states = new Map<number, EditorViewMenuStateSnapshot>();
+  #selectedWindowId: number | null = null;
+
+  update(windowId: number, partial: Partial<EditorViewMenuStateSnapshot>): void {
+    const previous = this.#states.get(windowId) ?? createDefaultEditorViewMenuState();
+    this.#states.set(windowId, mergeViewMenuState(previous, partial));
+    this.#selectedWindowId ??= windowId;
+  }
+
+  select(windowId: number): void {
+    this.#selectedWindowId = windowId;
+  }
+
+  get(windowId: number): EditorViewMenuStateSnapshot {
+    return this.#states.get(windowId) ?? createDefaultEditorViewMenuState();
+  }
+
+  current(focusedWindowId: number | null = null): EditorViewMenuStateSnapshot {
+    const windowId = focusedWindowId ?? this.#selectedWindowId;
+    return windowId === null ? createDefaultEditorViewMenuState() : this.get(windowId);
+  }
+
+  delete(windowId: number): void {
+    this.#states.delete(windowId);
+    if (this.#selectedWindowId === windowId) this.#selectedWindowId = null;
+  }
+}
+
 /**
  * The View-menu state main holds before the first renderer push lands.
  * Defaults match the renderer's resolved config defaults so the menu
@@ -34,6 +63,7 @@ export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot 
     sidebarVisible: true,
     docPanelVisible: true,
     terminalVisible: false,
+    terminalPlacement: 'bottom',
     terminalLive: false,
     agentPanelVisible: false,
     canViewInSource: false,
@@ -59,6 +89,7 @@ type ViewMenuStateDeps = Pick<
   | 'sidebarVisible'
   | 'docPanelVisible'
   | 'terminalVisible'
+  | 'terminalPlacement'
   | 'terminalLive'
   | 'agentPanelVisible'
   | 'hasEditorSelection'
@@ -69,6 +100,7 @@ type ViewMenuStateDeps = Pick<
   | 'onToggleSidebar'
   | 'onToggleDocPanel'
   | 'onToggleTerminal'
+  | 'onMoveTerminal'
   | 'onToggleAgentPanel'
   | 'onNewTerminal'
   | 'onKillTerminal'
@@ -97,6 +129,7 @@ export function buildViewMenuStateDeps(
     sidebarVisible: state.sidebarVisible,
     docPanelVisible: state.docPanelVisible,
     terminalVisible: state.terminalVisible,
+    terminalPlacement: state.terminalPlacement,
     terminalLive: state.terminalLive,
     agentPanelVisible: state.agentPanelVisible,
     hasEditorSelection: state.hasEditorSelection,
@@ -107,6 +140,7 @@ export function buildViewMenuStateDeps(
     onToggleSidebar: () => sendMenuAction('toggle-sidebar'),
     onToggleDocPanel: () => sendMenuAction('toggle-doc-panel'),
     onToggleTerminal: () => sendMenuAction('toggle-terminal'),
+    onMoveTerminal: () => sendMenuAction('move-terminal'),
     onToggleAgentPanel: () => sendMenuAction('toggle-agent-panel'),
     onNewTerminal: () => sendMenuAction('new-terminal'),
     onKillTerminal: () => sendMenuAction('kill-terminal'),

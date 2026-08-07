@@ -2,8 +2,34 @@ import { describe, expect, test } from 'vitest';
 import {
   buildViewMenuStateDeps,
   createDefaultEditorViewMenuState,
+  EditorViewMenuStateRegistry,
   mergeViewMenuState,
 } from './view-menu-state';
+
+describe('EditorViewMenuStateRegistry — focused-window ownership', () => {
+  test('keeps two window snapshots independent and selects the focused one', () => {
+    const registry = new EditorViewMenuStateRegistry();
+    registry.update(11, { terminalPlacement: 'bottom', terminalVisible: true });
+    registry.update(22, { terminalPlacement: 'right', terminalVisible: false });
+
+    registry.select(11);
+    expect(registry.current().terminalPlacement).toBe('bottom');
+    expect(registry.current().terminalVisible).toBe(true);
+
+    registry.select(22);
+    expect(registry.current().terminalPlacement).toBe('right');
+    expect(registry.current().terminalVisible).toBe(false);
+  });
+
+  test('deleting a closed selected window falls back to safe defaults', () => {
+    const registry = new EditorViewMenuStateRegistry();
+    registry.update(11, { terminalPlacement: 'right', terminalVisible: true });
+    registry.select(11);
+    registry.delete(11);
+
+    expect(registry.current()).toEqual(createDefaultEditorViewMenuState());
+  });
+});
 
 describe('mergeViewMenuState — multi-publisher non-clobbering contract', () => {
   const initial = {
@@ -155,6 +181,7 @@ describe('createDefaultEditorViewMenuState — pre-first-push menu state', () =>
       sidebarVisible: true,
       docPanelVisible: true,
       terminalVisible: false,
+      terminalPlacement: 'bottom',
       terminalLive: false,
       agentPanelVisible: false,
       // Restrictive by design: this one gates a context-menu row, and a row
@@ -181,6 +208,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     sidebarVisible: false,
     docPanelVisible: false,
     terminalVisible: true,
+    terminalPlacement: 'right',
     terminalLive: true,
     agentPanelVisible: true,
     hasEditorSelection: true,
@@ -197,6 +225,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     expect(deps.sidebarVisible).toBe(false);
     expect(deps.docPanelVisible).toBe(false);
     expect(deps.terminalVisible).toBe(true);
+    expect(deps.terminalPlacement).toBe('right');
     expect(deps.terminalLive).toBe(true);
     expect(deps.agentPanelVisible).toBe(true);
     expect(deps.hasEditorSelection).toBe(true);
@@ -215,6 +244,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     deps.onToggleSidebar?.();
     deps.onToggleDocPanel?.();
     deps.onToggleTerminal?.();
+    deps.onMoveTerminal?.();
     deps.onToggleAgentPanel?.();
     deps.onNewTerminal?.();
     deps.onKillTerminal?.();
@@ -229,6 +259,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
       'toggle-sidebar',
       'toggle-doc-panel',
       'toggle-terminal',
+      'move-terminal',
       'toggle-agent-panel',
       'new-terminal',
       'kill-terminal',

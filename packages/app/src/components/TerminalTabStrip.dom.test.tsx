@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -24,11 +24,13 @@ function renderStrip(props?: {
   sessions?: readonly TerminalTabDescriptor[];
   activeSessionId?: string;
   edge?: 'bottom' | 'right';
+  sessionKind?: 'terminal' | 'agent';
   draggable?: boolean;
   /** Omit the rename handler to assert the affordance is inert without it. */
   renameDisabled?: boolean;
   /** Render a stub trailing control (stands in for the history menu). */
   withTrailing?: boolean;
+  reserveRightRevealTabGutter?: boolean;
 }) {
   const onSelect = vi.fn((_id: string) => {});
   const onTabActivate = vi.fn((_id: string) => {});
@@ -36,6 +38,7 @@ function renderStrip(props?: {
   const onClose = vi.fn((_id: string) => {});
   const onRename = vi.fn((_id: string, _label: string) => {});
   const onCollapse = vi.fn(() => {});
+  const onPlacementChange = vi.fn((_placement: 'bottom' | 'right') => {});
   const view = render(
     // The app mounts a root TooltipProvider (main.tsx); the strip's control
     // tooltips need that context, so the isolated render supplies its own.
@@ -57,7 +60,10 @@ function renderStrip(props?: {
         }
         onClose={onClose}
         onRename={props?.renameDisabled ? undefined : onRename}
+        sessionKind={props?.sessionKind ?? (props?.edge === 'right' ? 'agent' : 'terminal')}
         edge={props?.draggable ? undefined : (props?.edge ?? 'bottom')}
+        onPlacementChange={props?.draggable ? undefined : onPlacementChange}
+        reserveRightRevealTabGutter={props?.reserveRightRevealTabGutter}
         onCollapse={props?.draggable ? undefined : onCollapse}
         draggable={props?.draggable}
       />
@@ -70,6 +76,7 @@ function renderStrip(props?: {
     onClose,
     onRename,
     onCollapse,
+    onPlacementChange,
     rerender: view.rerender,
   };
 }
@@ -84,6 +91,17 @@ describe('TerminalTabStrip', () => {
     expect(tabs.map((tab) => tab.textContent)).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3']);
   });
 
+  test('keeps accessible close controls outside the tablist ownership tree', () => {
+    renderStrip();
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
+
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
+    for (const label of ['Terminal 1', 'Terminal 2', 'Terminal 3']) {
+      const closeButton = screen.getByRole('button', { name: `Close ${label}` });
+      expect(tablist.contains(closeButton)).toBe(false);
+    }
+  });
+
   // Both panels can be open at once, so a shared "Sessions" name would leave a
   // screen-reader user with two indistinguishable tablists (WCAG 1.3.1). The
   // names must differ by edge, not merely exist.
@@ -94,6 +112,13 @@ describe('TerminalTabStrip', () => {
 
     cleanup();
     renderStrip({ edge: 'bottom' });
+    expect(screen.getByRole('tablist', { name: 'Terminal sessions' })).toBeTruthy();
+    expect(screen.queryByRole('tablist', { name: 'Agent chats' })).toBeNull();
+  });
+
+  test('keeps terminal identity when its panel occupies the right edge', () => {
+    renderStrip({ edge: 'right', sessionKind: 'terminal' });
+
     expect(screen.getByRole('tablist', { name: 'Terminal sessions' })).toBeTruthy();
     expect(screen.queryByRole('tablist', { name: 'Agent chats' })).toBeNull();
   });
@@ -206,7 +231,7 @@ describe('TerminalTabStrip', () => {
   test('the New button hugs the last tab, preceding the trailing collapse control', () => {
     renderStrip();
     const newButton = screen.getByRole('button', { name: 'New session' });
-    const collapse = screen.getByRole('button', { name: 'Collapse panel' });
+    const collapse = screen.getByRole('button', { name: 'Collapse Terminal' });
     // The New button sits immediately right of the tablist; the spacer pushes the
     // trailing group to the far right.
     expect(
@@ -218,7 +243,7 @@ describe('TerminalTabStrip', () => {
     renderStrip({ withTrailing: true });
     const trailing = screen.getByRole('button', { name: 'Reopen a past chat' });
     const newButton = screen.getByRole('button', { name: 'New session' });
-    const collapse = screen.getByRole('button', { name: 'Collapse panel' });
+    const collapse = screen.getByRole('button', { name: 'Collapse Terminal' });
     // The New button hugs the tabs on the left; the trailing control sits in the
     // far-right cluster, before the collapse control.
     expect(
@@ -241,21 +266,112 @@ describe('TerminalTabStrip', () => {
     expect(onNewButtonClick).not.toHaveBeenCalled();
   });
 
-  // Each panel owns one edge now, so the strip offers no way to move it — a
-  // leftover dock-toggle would be a control with nothing to do.
-  test('offers no dock-position control on either edge', () => {
-    renderStrip({ edge: 'bottom' });
-    expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
-    cleanup();
-    renderStrip({ edge: 'right' });
-    expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
+  test('the bottom Terminal context menu contains one placement action that moves it right', async () => {
+    const user = userEvent.setup();
+    const { onPlacementChange } = renderStrip({ edge: 'bottom', sessionKind: 'terminal' });
+
+    fireEvent.contextMenu(screen.getByRole('tablist', { name: 'Terminal sessions' }));
+
+    const menu = await screen.findByRole('menu');
+    const placementAction = within(menu).getByRole('menuitem', {
+      name: 'Move to right panel',
+    });
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
+
+    await user.click(placementAction);
+
+    expect(onPlacementChange).toHaveBeenCalledWith('right');
+  });
+
+  test('Shift+F10 opens the placement menu from a focused Terminal tab and preserves operable focus', async () => {
+    const user = userEvent.setup();
+    const { onPlacementChange } = renderStrip({ edge: 'bottom', sessionKind: 'terminal' });
+    const focusedTab = screen.getByRole('tab', { name: 'Terminal 1' });
+    act(() => focusedTab.focus());
+
+    fireEvent.keyDown(focusedTab, { key: 'F10', shiftKey: true });
+
+    const placementAction = await screen.findByRole('menuitem', {
+      name: 'Move to right panel',
+    });
+    expect(placementAction).toBe(document.activeElement);
+
+    await user.keyboard('{Enter}');
+
+    expect(onPlacementChange).toHaveBeenCalledWith('right');
+    expect(focusedTab).toBe(document.activeElement);
+  });
+
+  test('the platform context-menu key opens placement and Escape restores the focused Terminal tab', async () => {
+    const user = userEvent.setup();
+    const { onPlacementChange } = renderStrip({ edge: 'bottom', sessionKind: 'terminal' });
+    const focusedTab = screen.getByRole('tab', { name: 'Terminal 2' });
+    act(() => focusedTab.focus());
+
+    fireEvent.keyDown(focusedTab, { key: 'ContextMenu' });
+
+    expect(await screen.findByRole('menuitem', { name: 'Move to right panel' })).toBe(
+      document.activeElement,
+    );
+
+    await user.keyboard('{Escape}');
+
+    expect(onPlacementChange).not.toHaveBeenCalled();
+    expect(focusedTab).toBe(document.activeElement);
+  });
+
+  test('the right Terminal header has a named 24px dock control that moves it bottom', async () => {
+    const user = userEvent.setup();
+    const { onPlacementChange } = renderStrip({ edge: 'right', sessionKind: 'terminal' });
+    const dockButton = screen.getByRole('button', { name: 'Move Terminal to bottom' });
+
+    expect(dockButton.getAttribute('data-size')).toBe('icon-xs');
+    expect(dockButton.className).toContain('focus-visible:ring-3');
+
+    await user.click(dockButton);
+
+    expect(onPlacementChange).toHaveBeenCalledWith('bottom');
+  });
+
+  test('the bottom Terminal header has a named 24px dock control that moves it right', async () => {
+    const user = userEvent.setup();
+    const { onPlacementChange } = renderStrip({ edge: 'bottom', sessionKind: 'terminal' });
+    const dockButton = screen.getByRole('button', { name: 'Move Terminal to right' });
+
+    expect(dockButton.getAttribute('data-size')).toBe('icon-xs');
+    expect(dockButton.className).toContain('focus-visible:ring-3');
+
+    await user.click(dockButton);
+
+    expect(onPlacementChange).toHaveBeenCalledWith('right');
+  });
+
+  test('the right Terminal header clears the collapsed agents reveal control', () => {
+    renderStrip({
+      edge: 'right',
+      sessionKind: 'terminal',
+      reserveRightRevealTabGutter: true,
+    });
+
+    expect(document.querySelector('[data-terminal-tab-row]')?.className).toContain('pr-9');
+  });
+
+  test('the agent strip keeps independent names and controls without Terminal placement actions', () => {
+    renderStrip({ edge: 'right', sessionKind: 'agent' });
+
+    expect(screen.getByRole('tablist', { name: 'Agent chats' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Collapse agent panel' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Move Terminal/ })).toBeNull();
+
+    fireEvent.contextMenu(screen.getByRole('tablist', { name: 'Agent chats' }));
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   test('the collapse control reports onCollapse and never onClose / new-button', async () => {
     const user = userEvent.setup();
     const { onCollapse, onClose, onNewButtonClick } = renderStrip();
 
-    await user.click(screen.getByRole('button', { name: 'Collapse panel' }));
+    await user.click(screen.getByRole('button', { name: 'Collapse Terminal' }));
 
     expect(onCollapse).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
@@ -269,7 +385,7 @@ describe('TerminalTabStrip', () => {
 
   test('every strip-owned icon-only control exposes an accessible name', () => {
     renderStrip();
-    expect(screen.getByRole('button', { name: 'Collapse panel' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Collapse Terminal' })).toBeDefined();
     for (const label of ['Terminal 1', 'Terminal 2', 'Terminal 3']) {
       expect(screen.getByRole('button', { name: `Close ${label}` })).toBeDefined();
     }
@@ -283,7 +399,7 @@ describe('TerminalTabStrip', () => {
     expect(document.querySelector('[data-electron-drag]')).not.toBeNull();
     // The window has no collapse control — window management is the OS title
     // bar's job — but keeps the New button (feature parity).
-    expect(screen.queryByRole('button', { name: 'Collapse panel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse Terminal' })).toBeNull();
     expect(screen.getByRole('button', { name: 'New session' })).toBeDefined();
     cleanup();
     renderStrip();
@@ -312,11 +428,13 @@ describe('TerminalTabStrip', () => {
     const input = screen.getByRole('textbox', { name: 'Rename Terminal 2' });
     expect(input).toBe(document.activeElement);
     expect((input as HTMLInputElement).value).toBe('Terminal 2');
-    // The renaming tab's trigger is REPLACED by the input (never nested inside a
-    // role="tab" button); the other tabs keep their triggers.
-    expect(screen.queryByRole('tab', { name: 'Terminal 2' })).toBeNull();
+    // Rename is an auxiliary control outside the tablist ownership tree. The
+    // session remains represented by its tab throughout the edit, while the
+    // focused input overlays it visually without invalid interactive nesting.
+    expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Terminal 1' })).toBeDefined();
     expect(input.closest('[role="tab"]')).toBeNull();
+    expect(screen.getByRole('tablist', { name: 'Terminal sessions' }).contains(input)).toBe(false);
   });
 
   test('double-click that opens rename fires onTabActivate at most once (second click suppressed)', async () => {
@@ -443,6 +561,7 @@ describe('TerminalTabStrip', () => {
             { id: 's1', label: 'Terminal 1' },
             { id: 's2', label: 'Terminal 2' },
           ]}
+          sessionKind="terminal"
           activeSessionId="s1"
           onSelect={() => {}}
           newButton={stubNewButton(() => {})}

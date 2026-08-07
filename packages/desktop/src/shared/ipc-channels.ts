@@ -128,6 +128,9 @@ import type {
   OkSharePayloadFields,
   OkSharingSetModeResult,
   OkSharingStatusResult,
+  OkTerminalDockState,
+  OkTerminalDockStateUpdate,
+  OkTerminalDockStateWriteResult,
   OkThemeSource,
   OkUpdateChannel,
   OkSeedApplyOptions as SeedApplyOptions,
@@ -1681,16 +1684,11 @@ export interface RequestChannels {
   /** Per-window state for the independent terminal and agents panels. */
   'ok:terminal:dock-state': {
     args: [];
-    result: {
-      terminalVisible: boolean;
-      agentPanelVisible: boolean;
-      terminal?: { order: string[]; activeKey: string | null };
-      agents?: { order: string[]; activeKey: string | null };
-    };
+    result: OkTerminalDockState;
   };
-  /** Persist one panel's tab order and active key per window. */
+  /** Persist one panel's tab state and report whether any durable write succeeded. */
   'ok:terminal:set-dock-state': {
-    args: [req: { surface: 'terminal' | 'agents'; order: string[]; activeKey: string | null }];
-    result: undefined;
+    args: [req: OkTerminalDockStateUpdate];
+    result: OkTerminalDockStateWriteResult;
   };
 }

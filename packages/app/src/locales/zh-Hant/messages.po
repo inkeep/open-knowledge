@@ -1365,6 +1365,10 @@ msgstr "代理設定檔"
 msgid "Agent mode"
 msgstr "代理模式"
 
+#: src/components/EditorArea.tsx
+msgid "Agent panel closed to keep Terminal readable."
+msgstr "為保持 Terminal 清晰可讀，已關閉智慧代理面板。"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
 msgstr "代理設定"
@@ -2496,6 +2500,10 @@ msgstr "摺疊"
 msgid "Collapse {keyName}"
 msgstr "摺疊 {keyName}"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Collapse agent panel"
+msgstr "收合智慧代理面板"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -2520,8 +2528,8 @@ msgid "Collapse graph"
 msgstr "摺疊關係圖"
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse panel"
-msgstr "摺疊面板"
+msgid "Collapse Terminal"
+msgstr "收合 Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -5738,10 +5746,6 @@ msgstr "隱藏進階選項"
 msgid "Hide Agents"
 msgstr "隱藏「代理」"
 
-#: src/components/command-palette-commands.ts
-msgid "Hide Bottom Dock"
-msgstr "隱藏底部面板"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Hide details"
 msgstr "隱藏詳細資料"
@@ -5815,6 +5819,10 @@ msgstr "隱藏選取範圍預覽"
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "隱藏側邊欄"
+
+#: src/components/command-palette-commands.ts
+msgid "Hide Terminal"
+msgstr "隱藏 Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Hide these comments"
@@ -7019,6 +7027,16 @@ msgstr "在技能內部移動或重新命名這個檔案——路徑仍會留在
 msgid "Move succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "移動成功，但側邊欄可能不是最新的——請重新整理以重新同步"
 
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to bottom"
+msgstr "將 Terminal 移到底部"
+
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to right"
+msgstr "將 Terminal 移到右側"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the current block up or down one position."
 msgstr "把目前的區塊往上或往下移一個位置。"
@@ -7053,6 +7071,10 @@ msgstr "移動到左側新窗格"
 #: src/components/EditorTabs.tsx
 msgid "Move to new pane right"
 msgstr "移動到右側新窗格"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Move to right panel"
+msgstr "移到右側面板"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move to the next CodeMirror lint diagnostic."
@@ -10594,10 +10616,6 @@ msgstr "顯示「代理」"
 msgid "Show All"
 msgstr "顯示全部"
 
-#: src/components/command-palette-commands.ts
-msgid "Show Bottom Dock"
-msgstr "顯示底部面板"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Show details"
 msgstr "顯示詳細資料"
@@ -10666,16 +10684,16 @@ msgid "Show or hide agents"
 msgstr "顯示或隱藏代理"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide bottom dock"
-msgstr "顯示或隱藏底部面板"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr "顯示或隱藏文件面板"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
 msgstr "顯示或隱藏「檔案」"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide Terminal"
+msgstr "顯示或隱藏 Terminal"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -10716,6 +10734,10 @@ msgstr "顯示側邊欄"
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
 msgstr "顯示原始碼"
+
+#: src/components/command-palette-commands.ts
+msgid "Show Terminal"
+msgstr "顯示 Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Show these comments"
@@ -11540,6 +11562,10 @@ msgstr "終端機 {0}"
 msgid "Terminal access isn't enabled for this project."
 msgstr "這個專案沒有啟用終端機存取。"
 
+#: src/components/EditorArea.tsx
+msgid "Terminal closed to make room for the agent panel."
+msgstr "已關閉 Terminal，為智慧代理面板騰出空間。"
+
 #: src/components/TerminalGate.tsx
 msgid "Terminal disabled"
 msgstr "終端機已停用"
@@ -12285,8 +12311,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "切換刪除線格式。"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives."
-msgstr "顯示或隱藏底部面板，終端機就在那裡。"
+msgid "Toggle Terminal in its current dock."
+msgstr "在目前的停靠位置顯示或隱藏 Terminal。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

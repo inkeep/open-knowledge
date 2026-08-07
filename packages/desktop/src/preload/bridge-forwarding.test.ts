@@ -43,6 +43,20 @@ type BridgeProbe = {
     }): Promise<unknown>;
     create(request: Record<string, unknown>): Promise<unknown>;
   };
+  terminal: {
+    setDockState(state: {
+      surface: 'terminal';
+      order: string[];
+      activeKey: string | null;
+      terminalSnapshot: { tabs: []; activeOrdinal: null };
+    }): Promise<{ ok: true } | { ok: false; reason: string }>;
+  };
+  editor: {
+    notifyViewMenuStateChanged(state: {
+      terminalVisible?: boolean;
+      terminalPlacement?: 'bottom' | 'right';
+    }): void;
+  };
 };
 
 async function loadBridge(): Promise<BridgeProbe> {
@@ -63,6 +77,22 @@ function dispatchedPayload(channel: string): Record<string, unknown> {
 
 beforeEach(() => {
   invokeMock.mockClear();
+});
+
+describe('preload editor view-menu state marshalling', () => {
+  it('forwards terminal placement through the existing view-state channel', async () => {
+    const bridge = await loadBridge();
+
+    bridge.editor.notifyViewMenuStateChanged({
+      terminalVisible: true,
+      terminalPlacement: 'right',
+    });
+
+    expect(dispatchedPayload('ok:editor:view-menu-state-changed')).toEqual({
+      terminalVisible: true,
+      terminalPlacement: 'right',
+    });
+  });
 });
 
 describe('preload bugReport.send marshalling', () => {
@@ -155,5 +185,54 @@ describe('preload bugReport.create marshalling', () => {
       ...request,
       kind: 'create',
     });
+  });
+});
+
+describe('preload terminal dock-state marshalling', () => {
+  it('forwards terminal tab state and returns the main-process persistence result', async () => {
+    const bridge = await loadBridge();
+
+    const result = await bridge.terminal.setDockState({
+      surface: 'terminal',
+      order: ['pty-a', 'pty-b'],
+      activeKey: 'pty-b',
+      terminalSnapshot: { tabs: [], activeOrdinal: null },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(dispatchedPayload('ok:terminal:set-dock-state')).toEqual({
+      surface: 'terminal',
+      order: ['pty-a', 'pty-b'],
+      activeKey: 'pty-b',
+      terminalSnapshot: { tabs: [], activeOrdinal: null },
+    });
+  });
+
+  it('propagates an unrecognized invoke failure instead of reporting false success', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('serialization bug'));
+    const bridge = await loadBridge();
+
+    await expect(
+      bridge.terminal.setDockState({
+        surface: 'terminal',
+        order: [],
+        activeKey: null,
+        terminalSnapshot: { tabs: [], activeOrdinal: null },
+      }),
+    ).rejects.toThrow('serialization bug');
+  });
+
+  it('classifies a destroyed IPC endpoint as an unavailable write', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('Object has been destroyed'));
+    const bridge = await loadBridge();
+
+    await expect(
+      bridge.terminal.setDockState({
+        surface: 'terminal',
+        order: [],
+        activeKey: null,
+        terminalSnapshot: { tabs: [], activeOrdinal: null },
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'ipc-unavailable' });
   });
 });

@@ -234,12 +234,20 @@ function recent(name: string, path = `/projects/${name.toLowerCase()}`) {
   return { name, path: path.replaceAll(' ', '-') };
 }
 
-function createBridge() {
+function createBridge({
+  ptyAvailable = true,
+  terminalAvailable = true,
+}: {
+  ptyAvailable?: boolean;
+  terminalAvailable?: boolean;
+} = {}) {
   return {
     config: {
       projectName: 'Current Project',
       projectPath: '/projects/current',
+      ptyAvailable,
     },
+    terminal: terminalAvailable ? {} : undefined,
     project: {
       listRecent: vi.fn(() =>
         Promise.resolve([
@@ -975,6 +983,7 @@ describe('Cmd+K menu-parity backfill', () => {
       sidebarVisible: true,
       docPanelVisible: true,
       terminalVisible: true,
+      terminalPlacement: 'bottom',
       terminalLive: true,
     });
     busActions = [];
@@ -1001,6 +1010,7 @@ describe('Cmd+K menu-parity backfill', () => {
     { testid: 'command-palette-toggle-sidebar', query: 'sidebar', id: 'toggle-sidebar' },
     { testid: 'command-palette-toggle-doc-panel', query: 'document panel', id: 'toggle-doc-panel' },
     { testid: 'command-palette-toggle-terminal', query: 'hide terminal', id: 'toggle-terminal' },
+    { testid: 'command-palette-move-terminal', query: 'move terminal', id: 'move-terminal' },
     {
       testid: 'command-palette-toggle-agent-panel',
       query: 'agents',
@@ -1215,7 +1225,7 @@ describe('Cmd+K menu-parity backfill', () => {
     );
     await setQuery('hide terminal');
     expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
-      'Hide Bottom Dock',
+      'Hide Terminal',
     );
 
     cleanup();
@@ -1227,22 +1237,36 @@ describe('Cmd+K menu-parity backfill', () => {
     );
     await setQuery('show terminal');
     expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
-      'Show Bottom Dock',
+      'Show Terminal',
     );
   });
 
-  // The row's label ("Bottom Dock") doesn't contain the words users actually
-  // search for, so those live in the command's keywords instead.
-  // `matchesCommandQuery` joins label+keywords and substring-matches, so a
-  // multi-word query only resolves against a contiguous run — these are the
-  // queries that must keep finding the dock command.
-  test('AC5: the bottom-dock toggle stays reachable by its terminal-era queries', async () => {
+  test('terminal placement label and action invert with the current home', async () => {
+    setViewMenuState({ terminalPlacement: 'bottom' });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('move terminal');
+    const moveRight = screen.getByTestId('command-palette-move-terminal');
+    expect(moveRight.textContent).toContain('Move Terminal to right');
+    fireEvent.click(moveRight);
+    expect(busActions).toContain('move-terminal');
+
+    cleanup();
+    setViewMenuState({ terminalPlacement: 'right' });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('move terminal');
+    expect(screen.getByTestId('command-palette-move-terminal').textContent).toContain(
+      'Move Terminal to bottom',
+    );
+  });
+
+  test('AC5: the Terminal toggle stays reachable by its established queries', async () => {
     setViewMenuState({ terminalVisible: false });
     await renderPalette({ bridge: createBridge() });
     for (const query of [
       'terminal',
       'show terminal',
       'hide terminal',
+      'toggle terminal',
       'bottom dock',
       'toggle bottom dock',
       'shell',
@@ -1250,8 +1274,31 @@ describe('Cmd+K menu-parity backfill', () => {
       await setQuery(query);
       expect(
         screen.queryByTestId('command-palette-toggle-terminal'),
-        `query "${query}" should surface the bottom-dock toggle`,
+        `query "${query}" should surface the Terminal toggle`,
       ).not.toBeNull();
+    }
+  });
+
+  test('off-mac and incomplete desktop bridges hide every PTY-backed palette command', async () => {
+    const terminalCommands = [
+      ['show terminal', 'toggle-terminal'],
+      ['new terminal', 'new-terminal'],
+      ['move terminal', 'move-terminal'],
+      ['kill terminal', 'kill-terminal'],
+    ] as const;
+
+    setViewMenuState({ terminalLive: true });
+    await renderPalette({ bridge: createBridge({ ptyAvailable: false }) });
+    for (const [query, id] of terminalCommands) {
+      await setQuery(query);
+      expect(screen.queryByTestId(`command-palette-${id}`)).toBeNull();
+    }
+
+    cleanup();
+    await renderPalette({ bridge: createBridge({ terminalAvailable: false }) });
+    for (const [query, id] of terminalCommands) {
+      await setQuery(query);
+      expect(screen.queryByTestId(`command-palette-${id}`)).toBeNull();
     }
   });
 

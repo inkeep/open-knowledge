@@ -109,10 +109,12 @@ const { SessionsHost } = await import('./SessionsHost');
 function ReloadHarness({
   bridge,
   visible,
+  terminalRestoreRevealNonce = 0,
   launch = null,
 }: {
   bridge: OkDesktopBridge;
   visible: boolean;
+  terminalRestoreRevealNonce?: number;
   launch?: { prompt: string; cli: string; nonce: number } | null;
 }) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
@@ -131,6 +133,7 @@ function ReloadHarness({
         bridge={bridge}
         terminalCapable
         visible={visible}
+        terminalRestoreRevealNonce={terminalRestoreRevealNonce}
         onVisibleChange={() => {}}
         // biome-ignore lint/suspicious/noExplicitAny: test launch shape
         launch={launch as any}
@@ -242,6 +245,27 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     expect(tabs.map((tab) => tab.textContent)).toEqual(['deploy', 'Terminal 1', 'logs']);
   });
 
+  test('a rejected dock-state read preserves main survivor order and settles rehydration', async () => {
+    const { bridge } = makeSurvivingMainBridge([
+      { ptyId: 'pty-3', customLabel: 'deploy', ordinal: 3 },
+      { ptyId: 'pty-1', customLabel: null, ordinal: 1 },
+      { ptyId: 'pty-2', customLabel: 'logs', ordinal: 2 },
+    ]);
+    bridge.terminal.getDockState = vi.fn(async () => {
+      throw new Error('ipc torn down mid-reload');
+    });
+
+    renderDock(bridge, true);
+
+    await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(3), {
+      timeout: 2000,
+    });
+    const tabs = within(screen.getByRole('tablist', { name: 'Terminal sessions' })).getAllByRole(
+      'tab',
+    );
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['deploy', 'Terminal 1', 'logs']);
+  });
+
   test('a rename pushes the new custom label to main (renderer->main persist path)', async () => {
     const { bridge, setMeta } = makeSurvivingMainBridge([
       { ptyId: 'pty-1', customLabel: null, ordinal: 1 },
@@ -316,6 +340,40 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(1), {
       timeout: 2000,
     });
+  });
+
+  test('a rejecting list() never treats a restart snapshot as proof that no PTY survived', async () => {
+    const create = vi.fn(async () => ({ ok: true as const, ptyId: 'duplicate-pty' }));
+    const bridge = {
+      onMenuAction: () => () => {},
+      editor: { notifyViewMenuStateChanged: () => {} },
+      terminal: {
+        create,
+        kill: vi.fn(async (_id: string) => {}),
+        list: vi.fn(async () => {
+          throw new Error('inventory transport failed');
+        }),
+        getDockState: vi.fn(async () => ({
+          terminalVisible: true,
+          agentPanelVisible: false,
+          terminalSnapshot: {
+            tabs: [{ ordinal: 1, customLabel: 'survivor' }],
+            activeOrdinal: 1,
+          },
+        })),
+      },
+    } as unknown as OkDesktopBridge;
+
+    const { rerender } = render(
+      <ReloadHarness bridge={bridge} visible={false} terminalRestoreRevealNonce={0} />,
+    );
+    await waitFor(() => expect(bridge.terminal.list).toHaveBeenCalled());
+    await act(async () => {});
+    rerender(<ReloadHarness bridge={bridge} visible terminalRestoreRevealNonce={1} />);
+    await act(async () => {});
+
+    expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
+    expect(create).not.toHaveBeenCalled();
   });
 
   test('an Ask-AI selection does NOT raw-write into a reload survivor (unknown shell type)', async () => {

@@ -87,6 +87,10 @@ import {
   type UninstallIntent,
   type UninstallScreenSpec,
 } from '@inkeep/open-knowledge-core';
+import type {
+  OkTerminalDockStateWriteResult,
+  OkTerminalRestartSnapshot,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import {
   assertGitAvailable,
   BUNDLE_SKILL_NAME,
@@ -147,7 +151,6 @@ import type {
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
-  EditorViewMenuStateSnapshot,
   McpWiringEditorId,
   MenuDispatchCommand,
   MenuDispatchRole,
@@ -378,7 +381,9 @@ import {
   emptyState,
   evaluateSchemaCompatibility,
   getProjectSessionState,
+  getTerminalDockState,
   MAX_SUPPORTED_SCHEMA_VERSION,
+  normalizeTerminalRestartSnapshot,
   type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
@@ -391,6 +396,7 @@ import {
   type UpdateChannel,
 } from './state-store.ts';
 import { isTerminalConsented, isTerminalConsentedWithGrace } from './terminal-consent.ts';
+import { commitTerminalDockState } from './terminal-dock-persistence.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
   clampPtyDimension,
@@ -399,6 +405,7 @@ import {
   DEFAULT_PTY_ROWS,
   type PtyUtilityLike,
 } from './terminal-manager.ts';
+import { terminalStateKeyForContext } from './terminal-state-key.ts';
 import {
   recordConcurrentSessions,
   recordShellExit,
@@ -435,11 +442,7 @@ import {
 import { migrateLegacyUserDataDir } from './userdata-migration.ts';
 import { buildUtilityForkEnv } from './utility-fork-env.ts';
 import { computeFirstLaunchAfterUpgrade } from './version-drift.ts';
-import {
-  buildViewMenuStateDeps,
-  createDefaultEditorViewMenuState,
-  mergeViewMenuState,
-} from './view-menu-state.ts';
+import { buildViewMenuStateDeps, EditorViewMenuStateRegistry } from './view-menu-state.ts';
 import { applyThemeToWindow, buildNonDarwinChromeOpts } from './window-chrome.ts';
 import {
   type BrowserWindowLike,
@@ -684,6 +687,8 @@ function recordWindowFocusSeq(key: string): void {
 function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void {
   win.on('focus', () => {
     if (focusTrackingFrozen) return;
+    editorViewMenuStates.select(win.id);
+    refreshApplicationMenu();
     recordWindowFocusSeq(projectPath);
     if (appState.lastOpenedProject !== projectPath) {
       appState = { ...appState, lastOpenedProject: projectPath };
@@ -700,6 +705,8 @@ function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void 
 function trackEphemeralWindowFocus(win: BrowserWindow, fileKey: string): void {
   win.on('focus', () => {
     if (focusTrackingFrozen) return;
+    editorViewMenuStates.select(win.id);
+    refreshApplicationMenu();
     recordWindowFocusSeq(fileKey);
   });
 }
@@ -887,7 +894,7 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
     // The native menu attaches to every editable field in the window, so the
     // view-in-source row needs the renderer's answer for whether the jump is
     // live. Read per right-click, like the spell-check flag above.
-    canViewInSource: () => editorViewMenuState.canViewInSource === true,
+    canViewInSource: () => editorViewMenuStates.get(win.id).canViewInSource === true,
     setSpellCheckEnabled: setSpellCheckEnabledAppWide,
     addToDictionary: (word) => {
       session.defaultSession.addWordToSpellCheckerDictionary(word);
@@ -930,10 +937,8 @@ let terminalReaper: TerminalReaper | null = null;
 const slidesDeckRegistry = createSlidesDeckRegistry();
 /**
  * Per-window docked-terminal visibility, recorded from the renderer's view-menu
- * push so a reloaded renderer can restore an expanded dock. Keyed by windowId
- * (multi-window safe) with the same lifetime as the window's PTY sessions —
- * cleared on window-close and app-quit, so a fresh launch with no surviving
- * sessions restores nothing and the dock correctly stays hidden.
+ * push so a reloaded renderer can restore an expanded dock. The durable
+ * project-or-loose-file-keyed copy in AppState carries it across a full restart.
  */
 const dockVisibleForWindow = new Map<number, boolean>();
 /**
@@ -948,13 +953,40 @@ const agentPanelVisibleForWindow = new Map<number, boolean>();
  * arrangement. Keyed by surface because the terminal dock and agents panel write
  * independently — one shared record would let each write erase the other's keys
  * and clobber the shared active tab. Same windowId-keyed lifetime as
- * {@link dockVisibleForWindow} — cleared on window-close and app-quit.
+ * {@link dockVisibleForWindow} — cleared on window-close and app-quit. Terminal
+ * order also has a state-keyed restart snapshot because PTY ids cannot survive a
+ * process exit; agent-thread ids remain server-owned and reload-only here.
  */
 type DockOrderRecord = { order: string[]; activeKey: string | null };
 const dockOrderForWindow = new Map<
   number,
   Partial<Record<'terminal' | 'agents', DockOrderRecord>>
 >();
+const terminalSnapshotForWindow = new Map<number, OkTerminalRestartSnapshot>();
+
+function terminalStateKey(win: BrowserWindow): string | null {
+  const context = wm?.getContextForBrowserWindow(win as unknown as BrowserWindowLike) ?? null;
+  return terminalStateKeyForContext(context);
+}
+
+function persistTerminalDockForWindow(
+  win: BrowserWindow,
+  update: Partial<{
+    terminalVisible: boolean;
+    terminalSnapshot: OkTerminalRestartSnapshot;
+  }>,
+): OkTerminalDockStateWriteResult {
+  const stateKey = terminalStateKey(win);
+  if (stateKey === null) return { ok: false, reason: 'no-window-context' };
+  const committed = commitTerminalDockState({
+    current: appState,
+    stateKey,
+    update,
+    save: saveAppState,
+  });
+  appState = committed.state;
+  return committed.result;
+}
 /**
  * Singleton show-gate registry — coordinates window.show() against the
  * dual-signal contract (`ready-to-show` + `ok:theme:applied`). Module-level
@@ -1277,12 +1309,12 @@ let editorActiveTarget: EditorActiveTargetSnapshot = { kind: null };
  * View-menu state pushed by the renderer via
  * `ok:editor:view-menu-state-changed`. Drives the View menu's checkbox
  * reflection for the visibility toggles and the smart-hide on Expand All /
- * Collapse All, plus the editor context menu's view-in-source row. Module-scope
- * rather than per-window for the same reason `editorActiveTarget` is — the menu
- * is a singleton. Pre-push defaults (and their rationale) live with
- * `createDefaultEditorViewMenuState`.
+ * Collapse All, plus the editor context menu's view-in-source row. The native
+ * menu is a singleton, but its state belongs to the focused BrowserWindow.
+ * Per-window snapshots prevent a background renderer push from changing the
+ * focused window's checkmarks or terminal-placement label.
  */
-let editorViewMenuState: EditorViewMenuStateSnapshot = createDefaultEditorViewMenuState();
+const editorViewMenuStates = new EditorViewMenuStateRegistry();
 
 /**
  * electron-vite dev-server URL. Set by `electron-vite dev` at launch time.
@@ -1443,6 +1475,7 @@ function ensureWindowManager() {
         trackEphemeralWindowFocus(win, opts.focusKey);
       }
       attachSpellcheckMenuToWindow(win);
+      win.on('closed', () => editorViewMenuStates.delete(win.id));
       // Per-window PTY reap: closing the window kills its shell (no orphan).
       // Idempotent — the manager no-ops for a window that never opened one. The
       // onReap clears the window's retained dock-visibility so it can't restore
@@ -1452,6 +1485,7 @@ function ensureWindowManager() {
           dockVisibleForWindow.delete(windowId);
           agentPanelVisibleForWindow.delete(windowId);
           dockOrderForWindow.delete(windowId);
+          terminalSnapshotForWindow.delete(windowId);
         });
       return win as unknown as BrowserWindowLike;
     },
@@ -2807,6 +2841,8 @@ function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebConte
 }
 
 async function runApplicationMenuRefresh(): Promise<void> {
+  const focusedWindowId = BrowserWindow.getFocusedWindow()?.id ?? null;
+  const editorViewMenuState = editorViewMenuStates.current(focusedWindowId);
   // installApplicationMenu is async because it dynamically imports
   // `electron.Menu` (see menu.ts header — keeps `buildMenuTemplate`
   // unit-testable under Bun). Failures are logged; an uninstallable menu
@@ -2963,6 +2999,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
       ? { onNewTerminalWindow: () => openTerminalWindow() }
       : {
           onToggleTerminal: undefined,
+          onMoveTerminal: undefined,
           onNewTerminal: undefined,
           onKillTerminal: undefined,
           onNewTerminalWindow: undefined,
@@ -4524,34 +4561,73 @@ function registerIpcHandlers() {
 
   handle('ok:terminal:dock-state', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return { terminalVisible: false, agentPanelVisible: false };
+    if (!win)
+      return {
+        terminalVisible: false,
+        agentPanelVisible: false,
+      };
+    const stateKey = terminalStateKey(win);
+    const persisted = stateKey === null ? null : getTerminalDockState(appState, stateKey);
     const orders = dockOrderForWindow.get(win.id);
     return {
-      terminalVisible: dockVisibleForWindow.get(win.id) ?? false,
+      terminalVisible: dockVisibleForWindow.get(win.id) ?? persisted?.terminalVisible ?? false,
+      // Agent-panel visibility is intentionally scoped to this renderer
+      // session. Only Terminal placement, width, tabs, and visibility are part
+      // of the full-restart restoration contract.
       agentPanelVisible: agentPanelVisibleForWindow.get(win.id) ?? false,
       terminal: orders?.terminal,
+      terminalSnapshot: terminalSnapshotForWindow.get(win.id) ?? persisted?.terminalSnapshot,
       agents: orders?.agents,
     };
   });
 
   handle('ok:terminal:set-dock-state', async (event, req) => {
-    // Same untrusted-discriminant problem as cli-preflight above: `req.surface`
-    // is a compile-time union that `createHandler` casts without runtime
-    // enforcement, and here it indexes straight into the per-window order map.
-    // An out-of-registry value would store a phantom key that `getDockState`
-    // never reads back, so the panel silently cold-starts with the wrong order.
-    if (req.surface !== 'terminal' && req.surface !== 'agents') {
-      getLogger('terminal').warn({ surface: req.surface }, 'set-dock-state: unknown surface');
-      return undefined;
+    // createHandler's typed request has crossed IPC without runtime validation.
+    // Read the raw discriminant before using it as a map key so a forged value
+    // cannot create a phantom surface that the renderer will never restore.
+    const surface = Reflect.get(req, 'surface');
+    if (surface !== 'terminal' && surface !== 'agents') {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:terminal:set-dock-state',
+        reason: 'invalid-request',
+        handler: 'setTerminalDockState',
+      });
+      return { ok: false, reason: 'invalid-request' } as const;
     }
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) {
-      dockOrderForWindow.set(win.id, {
-        ...dockOrderForWindow.get(win.id),
-        [req.surface]: { order: req.order, activeKey: req.activeKey },
+    if (!win) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:terminal:set-dock-state',
+        reason: 'no-window-context',
+        handler: 'setTerminalDockState',
       });
+      return { ok: false, reason: 'no-window-context' } as const;
     }
-    return undefined;
+    const order = Reflect.get(req, 'order');
+    const activeKey = Reflect.get(req, 'activeKey');
+    if (!Array.isArray(order) || (typeof activeKey !== 'string' && activeKey !== null)) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:terminal:set-dock-state',
+        reason: 'invalid-request',
+        handler: 'setTerminalDockState',
+      });
+      return { ok: false, reason: 'invalid-request' } as const;
+    }
+    const validOrder = order.filter((key): key is string => typeof key === 'string');
+    dockOrderForWindow.set(win.id, {
+      ...dockOrderForWindow.get(win.id),
+      [surface]: { order: validOrder, activeKey },
+    });
+    if (surface === 'agents') return { ok: true } as const;
+
+    const terminalSnapshot = Reflect.get(req, 'terminalSnapshot');
+    if (terminalSnapshot === undefined) return { ok: true } as const;
+    const normalizedSnapshot = normalizeTerminalRestartSnapshot(terminalSnapshot);
+    terminalSnapshotForWindow.set(win.id, normalizedSnapshot);
+    return persistTerminalDockForWindow(win, { terminalSnapshot: normalizedSnapshot });
   });
 
   handle('ok:dialog:open-folder', async (_event, opts) => {
@@ -4910,18 +4986,25 @@ function registerIpcHandlers() {
   });
 
   handle('ok:editor:view-menu-state-changed', async (event, state) => {
-    // Sibling of the active-target push. Stored in module scope so the
-    // next `refreshApplicationMenu` rebuild reads the latest snapshot.
-    // Last-write-wins across windows matches the singleton menu model.
-    editorViewMenuState = mergeViewMenuState(editorViewMenuState, state);
-    // The menu snapshot is a singleton, but panel visibility must recover
-    // per-window after a reload — record each panel keyed by the sender window
-    // so the reloaded renderer reads back its own state, not another window's.
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) editorViewMenuStates.update(win.id, state);
+    // Panel visibility must recover per-window after a reload — record each
+    // panel keyed by the sender window so the reloaded renderer reads back its
+    // own state, not another window's.
     if (state.terminalVisible !== undefined || state.agentPanelVisible !== undefined) {
-      const win = BrowserWindow.fromWebContents(event.sender);
       if (win) {
-        if (state.terminalVisible !== undefined)
+        if (state.terminalVisible !== undefined) {
           dockVisibleForWindow.set(win.id, state.terminalVisible);
+          const result = persistTerminalDockForWindow(win, {
+            terminalVisible: state.terminalVisible,
+          });
+          if (!result.ok) {
+            getLogger('terminal').warn(
+              { reason: result.reason },
+              'terminal visibility persistence failed',
+            );
+          }
+        }
         if (state.agentPanelVisible !== undefined)
           agentPanelVisibleForWindow.set(win.id, state.agentPanelVisible);
       }
@@ -5022,7 +5105,10 @@ function registerIpcHandlers() {
           canCheckForUpdates: autoUpdaterHandle != null,
           canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
           activeTarget: editorActiveTarget ?? { kind: null },
-          viewMenuState: editorViewMenuState,
+          viewMenuState: (() => {
+            const win = BrowserWindow.fromWebContents(event.sender);
+            return win ? editorViewMenuStates.get(win.id) : editorViewMenuStates.current();
+          })(),
         };
       case 'menu-action':
         sendMenuActionToFocused(request.action);
@@ -7801,6 +7887,7 @@ function bootPrimaryInstance(): void {
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();
+    terminalSnapshotForWindow.clear();
     autoUpdaterHandle?.destroy();
     autoUpdaterHandle = null;
     bundleReplaceWatcherHandle?.stop();

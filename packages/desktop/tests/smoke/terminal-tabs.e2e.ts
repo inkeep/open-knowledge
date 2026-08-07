@@ -19,10 +19,8 @@
  * reorder); this pins the live-session outcome.
  *
  * Skip gates mirror the sibling terminal smokes: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, the electron-vite build must exist (out/main/index.js), and
- * CI-quarantined (the live-Electron terminal surface degrades on the constrained
- * runner — allowlisted in the CI no-skip guard, not hidden). Runs in local dev /
- * the release gate. Not part of `pnpm check`.
+ * darwin-only, and the electron-vite build must exist (out/main/index.js). Runs
+ * in local dev / the release gate. Not part of `pnpm check`.
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -37,7 +35,6 @@ const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 interface Seed {
@@ -112,11 +109,14 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
 
 async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
   await app.evaluate(async ({ Menu }) => {
-    const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+    const menu = Menu.getApplicationMenu();
+    if (!menu) throw new Error('application menu is unavailable');
+    const view = menu.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
+      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
     );
-    item?.click();
+    if (!item) throw new Error('View menu is missing the required Terminal visibility item');
+    item.click();
   });
 }
 
@@ -163,7 +163,7 @@ async function waitActiveRunning(page: Page, timeoutMs = 25_000): Promise<void> 
 /** Open a second (or further) tab running a BARE shell via the New-chat carat →
  *  "Terminal" pick. The new tab activates; wait for its shell to be running. */
 async function openBareTab(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Choose CLI for new chat' }).click();
+  await page.getByTestId('terminal-new-chat-menu').click();
   await page.getByRole('menuitem', { name: 'Terminal' }).click();
   await waitActiveRunning(page);
 }
@@ -216,11 +216,6 @@ test.describe('Terminal tabs — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Desktop is darwin-only.');
   test.skip(!TARGET.exists, TARGET.missingReason);
-  test.skip(
-    IS_CI,
-    'Quarantined on CI: the live-Electron terminal surface degrades on the constrained runner — see inkeep/agents-private#2187.',
-  );
-
   test.afterEach(() => {
     for (const target of cleanup.splice(0)) {
       try {

@@ -44,6 +44,7 @@ import {
   NATIVE_MENU_LABELS,
   OPEN_KNOWLEDGE_GITHUB_URL,
   SHOW_INSTALL_SKILL,
+  type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
@@ -296,12 +297,14 @@ export interface MenuDeps {
   docPanelVisible?: boolean;
   onToggleDocPanel?(): void;
   /**
-   * Bottom-dock visibility — drives the View → Show/Hide Bottom Dock label.
-   * Unlike the sidebar/doc-panel (visible by default), the dock starts hidden,
-   * so `undefined`/`false` reads as "Show Bottom Dock".
+   * Terminal visibility drives the View → Show/Hide Terminal label. Unlike the
+   * sidebar/doc-panel (visible by default), Terminal starts hidden, so
+   * `undefined`/`false` reads as "Show Terminal".
    */
   terminalVisible?: boolean;
   onToggleTerminal?(): void;
+  terminalPlacement?: TerminalPlacement;
+  onMoveTerminal?(): void;
   /**
    * Right agents-panel visibility — drives the View → Show/Hide Agents label.
    * Starts hidden like the terminal, so `undefined`/`false` reads as "Show
@@ -603,6 +606,10 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     click: (d) => () => d.onToggleTerminal?.(),
     enabled: (d) => d.onToggleTerminal !== undefined,
   },
+  'move-terminal': {
+    click: (d) => () => d.onMoveTerminal?.(),
+    enabled: (d) => d.onMoveTerminal !== undefined,
+  },
   'toggle-agent-panel': {
     click: (d) => () => d.onToggleAgentPanel?.(),
     enabled: (d) => d.onToggleAgentPanel !== undefined,
@@ -670,6 +677,7 @@ function menuCommandContext(deps: MenuDeps): CommandContext {
     activeTargetKind: menuTargetKind(deps.activeTarget),
     // The native menu has no single-file concept; those commands never gate here.
     singleFile: false,
+    terminalCapable: process.platform === 'darwin',
     terminalLive: deps.terminalLive === true,
     canExpandAll: deps.canExpandAll ?? true,
     canCollapseAll: deps.canCollapseAll ?? true,
@@ -699,6 +707,13 @@ function menuLeafLabel(
     }
     const visible = deps[stateField] ?? defaultVisible;
     return translate(MENU_LABELS[visible ? hideKey : showKey]);
+  }
+  if (cmd.placementToggle) {
+    const key =
+      deps.terminalPlacement === 'right'
+        ? cmd.placementToggle.rightKey
+        : cmd.placementToggle.bottomKey;
+    return translate(MENU_LABELS[key]);
   }
   const key = placement.menuLabelKey ?? cmd.labelKey;
   if (key === undefined) {

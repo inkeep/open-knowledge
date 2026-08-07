@@ -74,6 +74,11 @@ import { createUninstallBridge } from './uninstall.ts';
 
 const invoke = createInvoker(ipcRenderer);
 
+function isDockStateIpcTeardown(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /destroyed|disposed|closed|no handler registered/i.test(error.message);
+}
+
 /**
  * Async-iterable stream over a streamId-keyed IPC event channel. The
  * factory subscribes to `eventChannel` immediately so events that arrive
@@ -824,12 +829,29 @@ const bridge: OkDesktopBridge = {
       invoke('ok:pty:set-order', { orderedPtyIds: [...orderedPtyIds] }).catch(() => {});
     },
     getDockState: () => invoke('ok:terminal:dock-state'),
-    setDockState: (state) => {
-      invoke('ok:terminal:set-dock-state', {
-        surface: state.surface,
-        order: [...state.order],
-        activeKey: state.activeKey,
-      }).catch(() => {});
+    setDockState: async (state) => {
+      const request =
+        state.surface === 'terminal'
+          ? {
+              surface: state.surface,
+              order: [...state.order],
+              activeKey: state.activeKey,
+              terminalSnapshot: {
+                tabs: state.terminalSnapshot.tabs.map((tab) => ({ ...tab })),
+                activeOrdinal: state.terminalSnapshot.activeOrdinal,
+              },
+            }
+          : {
+              surface: state.surface,
+              order: [...state.order],
+              activeKey: state.activeKey,
+            };
+      try {
+        return await invoke('ok:terminal:set-dock-state', request);
+      } catch (error) {
+        if (isDockStateIpcTeardown(error)) return { ok: false, reason: 'ipc-unavailable' };
+        throw error;
+      }
     },
     onData(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyData) => cb(msg);

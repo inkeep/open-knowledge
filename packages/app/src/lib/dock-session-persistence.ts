@@ -20,7 +20,7 @@
  * the server replays). The host maps its descriptors to these keys.
  */
 
-import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkTerminalRestartSnapshot } from '@/lib/desktop-bridge-types';
 
 /** Which panel a persisted order belongs to. */
 export type DockSurface = 'terminal' | 'agents';
@@ -30,6 +30,11 @@ export interface DockSessionOrder {
   readonly order: readonly string[];
   /** The active session's key, or null when nothing is active. */
   readonly activeKey: string | null;
+}
+
+export interface DockRestoreState {
+  readonly sessionOrder: DockSessionOrder | null;
+  readonly terminalSnapshot: OkTerminalRestartSnapshot | undefined;
 }
 
 /** localStorage keys for the web backend — UI-pref stores like the other panel
@@ -80,31 +85,46 @@ function writeWeb(surface: DockSurface, state: DockSessionOrder): void {
  * Desktop reads main's per-window state; web reads localStorage synchronously
  * (wrapped in a promise for one call shape).
  */
+export async function readDockRestoreState(
+  bridge: OkDesktopBridge | null | undefined,
+  surface: DockSurface,
+): Promise<DockRestoreState> {
+  if (typeof bridge?.terminal?.getDockState === 'function') {
+    try {
+      const state = await bridge.terminal.getDockState();
+      const record = state[surface];
+      if (record == null) {
+        return { sessionOrder: null, terminalSnapshot: state.terminalSnapshot };
+      }
+      const { order, activeKey } = coerceOrder(record);
+      // No retained order at all (fresh launch) reads as null so the caller
+      // cold-starts rather than seeding an empty arrangement.
+      const sessionOrder = order.length === 0 && activeKey === null ? null : { order, activeKey };
+      return { sessionOrder, terminalSnapshot: state.terminalSnapshot };
+    } catch (err) {
+      // Cold-starting is the right fallback, but silence makes the three
+      // failure modes (handler missing, main crashed, serialization) look
+      // identical to "nothing was retained" — leaving a user report of "my
+      // panel comes back empty" with nothing to grep for.
+      console.warn('[dock-session-persistence] getDockState failed; cold-starting:', err);
+      return { sessionOrder: null, terminalSnapshot: undefined };
+    }
+  }
+
+  // A live terminal bridge is desktop state even when an older host lacks the
+  // dock-state capability. Mixing in origin-wide web storage can reorder main's
+  // per-window survivors, so this capability gap must cold-start instead.
+  return {
+    sessionOrder: bridge?.terminal == null ? readWebDockSessionOrder(surface) : null,
+    terminalSnapshot: undefined,
+  };
+}
+
 export function readDockSessionOrder(
   bridge: OkDesktopBridge | null | undefined,
   surface: DockSurface,
 ): Promise<DockSessionOrder | null> {
-  if (typeof bridge?.terminal?.getDockState === 'function') {
-    return bridge.terminal
-      .getDockState()
-      .then((state) => {
-        const record = state[surface];
-        if (record == null) return null;
-        const { order, activeKey } = coerceOrder(record);
-        // No retained order at all (fresh launch) reads as null so the caller
-        // cold-starts rather than seeding an empty arrangement.
-        return order.length === 0 && activeKey === null ? null : { order, activeKey };
-      })
-      .catch((err) => {
-        // Cold-starting is the right fallback, but silence makes the three
-        // failure modes (handler missing, main crashed, serialization) look
-        // identical to "nothing was retained" — leaving a user report of "my
-        // panel comes back empty" with nothing to grep for.
-        console.warn('[dock-session-persistence] getDockState failed; cold-starting:', err);
-        return null;
-      });
-  }
-  return Promise.resolve(readWebDockSessionOrder(surface));
+  return readDockRestoreState(bridge, surface).then((state) => state.sessionOrder);
 }
 
 /** Persist one panel's order for this window/origin. Fire-and-forget on both backends. */
@@ -112,14 +132,32 @@ export function writeDockSessionOrder(
   bridge: OkDesktopBridge | null | undefined,
   surface: DockSurface,
   state: DockSessionOrder,
+  terminalSnapshot: OkTerminalRestartSnapshot = { tabs: [], activeOrdinal: null },
 ): void {
   if (typeof bridge?.terminal?.setDockState === 'function') {
-    bridge.terminal.setDockState({
-      surface,
+    const sessionState = {
       order: [...state.order],
       activeKey: state.activeKey,
-    });
+    };
+    const write =
+      surface === 'terminal'
+        ? bridge.terminal.setDockState({ surface: 'terminal', ...sessionState, terminalSnapshot })
+        : bridge.terminal.setDockState({ surface: 'agents', ...sessionState });
+    void Promise.resolve(write)
+      .then((result) => {
+        if (result?.ok === false) {
+          if (result.reason === 'ipc-unavailable') {
+            console.warn('[dock-session-persistence] setDockState skipped during window teardown');
+          } else {
+            console.error('[dock-session-persistence] setDockState failed:', result.reason);
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[dock-session-persistence] setDockState rejected:', err);
+      });
     return;
   }
+  if (bridge?.terminal != null) return;
   writeWeb(surface, state);
 }

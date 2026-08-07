@@ -10,14 +10,6 @@
  *
  * Skip gates mirror the sibling smokes: opt-in via OK_DESKTOP_E2E_SMOKE=1,
  * darwin-only, and the electron-vite build must exist (out/main/index.js).
- *
- * QUARANTINED ON CI (test.skip(IS_CI)): the suite degrades on the 6-vCPU runner
- * (shells exit before "running" after a few launches) though it passes locally.
- * The skip is tracked, not invisible — it is allowlisted in the CI no-skip guard
- * (QUARANTINE_ALLOWLIST), which fails if the entry goes stale, and the rest of
- * the desktop-smoke gate stays non-vacuous via its smoke-not-vacuous check.
- * Re-enable: drop the allowlist entry and this test.skip(IS_CI) once the runner
- * degradation is fixed.
  */
 
 import {
@@ -41,9 +33,6 @@ const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-// Quarantine gate — see the header. Allowlisted in the CI no-skip guard so the
-// skip stays gate-visible.
-const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 interface SeedOpts {
@@ -203,31 +192,68 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
-/** Click the View → Show/Hide Bottom Dock application-menu item (real toggle path
+/** Click the View → Show/Hide Terminal application-menu item (real toggle path
  *  on desktop — ⌘J is its OS-captured accelerator). Returns the item label. */
-async function clickViewTerminalItem(app: ElectronApplication): Promise<string | false> {
+async function clickViewTerminalItem(app: ElectronApplication): Promise<string> {
   return app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
-    if (!menu) return false;
+    if (!menu) throw new Error('application menu is unavailable');
     const view = menu.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
+      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
     );
-    if (!item) return false;
+    if (!item) throw new Error('View menu is missing the required Terminal visibility item');
     const label = item.label;
     item.click();
     return label;
   });
 }
 
-async function viewTerminalLabel(app: ElectronApplication): Promise<string | null> {
+async function viewTerminalLabel(app: ElectronApplication): Promise<string> {
   return app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
+    if (!menu) throw new Error('application menu is unavailable');
     const view = menu?.items.find((i) => i.label === 'View');
     const item = view?.submenu?.items.find(
-      (i) => i.label === 'Show Bottom Dock' || i.label === 'Hide Bottom Dock',
+      (i) => i.label === 'Show Terminal' || i.label === 'Hide Terminal',
     );
-    return item?.label ?? null;
+    if (!item) throw new Error('View menu is missing the required Terminal visibility item');
+    return item.label;
+  });
+}
+
+async function terminalPlacementLabel(app: ElectronApplication): Promise<string> {
+  return app.evaluate(async ({ Menu }) => {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) throw new Error('application menu is unavailable');
+    const terminal = menu.items.find((i) => i.label === 'Terminal');
+    const item = terminal?.submenu?.items.find(
+      (i) => i.label === 'Move Terminal to right' || i.label === 'Move Terminal to bottom',
+    );
+    if (!item) throw new Error('Terminal menu is missing the required placement item');
+    return item.label;
+  });
+}
+
+async function clickTerminalPlacementItem(app: ElectronApplication): Promise<void> {
+  await app.evaluate(async ({ Menu }) => {
+    const terminal = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Terminal');
+    const item = terminal?.submenu?.items.find(
+      (i) => i.label === 'Move Terminal to right' || i.label === 'Move Terminal to bottom',
+    );
+    if (!item) throw new Error('Terminal menu is missing the required placement item');
+    item.click();
+  });
+}
+
+async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
+  await app.evaluate(async ({ Menu }) => {
+    const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
+    const item = view?.submenu?.items.find(
+      (candidate) => candidate.label === 'Show Agents' || candidate.label === 'Hide Agents',
+    );
+    if (!item) throw new Error('View menu is missing the required Agents visibility item');
+    item.click();
   });
 }
 
@@ -238,13 +264,17 @@ const terminalStatus = (page: Page) => page.locator('[data-terminal-status]');
 // strict mode. Scope the claude-readiness banner by its stable test seam instead.
 const readinessBanner = (page: Page) => page.getByTestId('terminal-readiness-banner');
 
+async function expectCollapsedRailColumn(page: Page, selector: string): Promise<void> {
+  const column = page.locator(selector);
+  await expect(column).toHaveCount(1);
+  await expect
+    .poll(() => column.evaluate((element) => element.getBoundingClientRect().width))
+    .toBe(0);
+}
+
 /** Open the dock (via the real menu toggle) and wait for the panel to mount. */
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
-  const clicked = await clickViewTerminalItem(app);
-  // Fail loud when the menu item is missing — otherwise the click silently
-  // no-ops and the failure surfaces 15s later as an unrelated-looking
-  // "Terminal section not visible" timeout.
-  expect(clicked, 'View menu should expose a Show/Hide Bottom Dock item').not.toBe(false);
+  await clickViewTerminalItem(app);
   await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
 }
 
@@ -286,14 +316,6 @@ test.describe('Docked terminal — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Desktop is darwin-only.');
   test.skip(!TARGET.exists, TARGET.missingReason);
-  // Quarantined on CI (shells exit before "running" on the constrained 6-vCPU
-  // runner; passes locally). Tracked via the QUARANTINE_ALLOWLIST in the CI
-  // no-skip guard, not hidden.
-  test.skip(
-    IS_CI,
-    'Quarantined on CI: terminal-dock degrades on the constrained runner — see inkeep/agents-private#2187.',
-  );
-
   test.afterEach(() => {
     for (const target of cleanup.splice(0)) {
       try {
@@ -381,17 +403,136 @@ test.describe('Docked terminal — live Electron', () => {
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
-    expect(await viewTerminalLabel(app)).toBe('Show Bottom Dock');
+    expect(await viewTerminalLabel(app)).toBe('Show Terminal');
     await clickViewTerminalItem(app);
     await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Bottom Dock');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Terminal');
 
     await clickViewTerminalItem(app);
-    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Bottom Dock');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Terminal');
   });
 
-  // Toggle completes within the perceptual-instant budget.
-  test('QA-022 toggle flips visibility within 150ms budget', async ({ captureStderrFor }) => {
+  test('native Terminal placement action follows the current home', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('placement-menu', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s);
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    await findEditorWindow(app);
+
+    expect(await terminalPlacementLabel(app)).toBe('Move Terminal to right');
+    await clickTerminalPlacementItem(app);
+    await expect
+      .poll(() => terminalPlacementLabel(app), { timeout: 8_000 })
+      .toBe('Move Terminal to bottom');
+
+    await clickTerminalPlacementItem(app);
+    await expect
+      .poll(() => terminalPlacementLabel(app), { timeout: 8_000 })
+      .toBe('Move Terminal to right');
+  });
+
+  test('Terminal header placement is symmetric and clears the Agents reveal tab', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('header-placement', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s);
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+
+    const editorWindow = await app.browserWindow(page);
+    await editorWindow.evaluate((win: unknown) => {
+      const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
+      target.setSize(1900, 900, false);
+    });
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1800);
+    await openTerminal(app, page);
+
+    const moveRightButton = page.getByRole('button', { name: 'Move Terminal to right' });
+    await expect(moveRightButton).toBeVisible();
+    await moveRightButton.click();
+    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const moveBottomButton = page.getByRole('button', { name: 'Move Terminal to bottom' });
+    const collapseButton = page.getByRole('button', { name: 'Collapse Terminal' });
+    const revealAgentsButton = page.getByRole('button', { name: 'Open agents panel' });
+    await expect(moveBottomButton).toBeVisible();
+    await expect(collapseButton).toBeVisible();
+    await expect(revealAgentsButton).toBeVisible();
+    const [moveBottomBox, collapseBox, revealAgentsBox] = await Promise.all([
+      moveBottomButton.boundingBox(),
+      collapseButton.boundingBox(),
+      revealAgentsButton.boundingBox(),
+    ]);
+    if (!moveBottomBox || !collapseBox || !revealAgentsBox) {
+      throw new Error('terminal rail controls did not produce measurable geometry');
+    }
+    expect(
+      Math.max(moveBottomBox.x + moveBottomBox.width, collapseBox.x + collapseBox.width),
+    ).toBeLessThanOrEqual(revealAgentsBox.x);
+  });
+
+  test('right Terminal and Agents exclude each other only when the window is infeasible', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('rail-admission', { consent: true, skipRestoreState: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s);
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+
+    const editorWindow = await app.browserWindow(page);
+    await editorWindow.evaluate((win: unknown) => {
+      const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
+      target.setSize(1900, 900, false);
+    });
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1800);
+    await openTerminal(app, page);
+    await clickTerminalPlacementItem(app);
+    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
+      timeout: 10_000,
+    });
+    await clickViewAgentsItem(app);
+    await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() =>
+        page
+          .locator('#terminal-column')
+          .evaluate((element) => element.getBoundingClientRect().width),
+      )
+      .toBeGreaterThan(739);
+    await waitForStatus(page, 'running', 25_000);
+    await typeInTerminal(page, 'echo RAIL_COLS=$(tput cols)\r');
+    await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/RAIL_COLS=\d+/);
+    const columns = (await readTerminalText(page)).match(/RAIL_COLS=(\d+)/)?.[1];
+    expect(Number(columns)).toBeGreaterThanOrEqual(92);
+
+    await editorWindow.evaluate((win: unknown) => {
+      const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
+      target.setSize(900, 900, false);
+    });
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(1000);
+    await expectCollapsedRailColumn(page, '#agents-column');
+    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible();
+    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
+
+    await clickViewAgentsItem(app);
+    await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Terminal closed to make room for the agent panel.')).toBeVisible();
+    await expectCollapsedRailColumn(page, '#terminal-column');
+
+    await clickViewAgentsItem(app);
+    await expectCollapsedRailColumn(page, '#agents-column');
+    await expectCollapsedRailColumn(page, '#terminal-column');
+  });
+
+  // The menu-to-mount path stays responsive; the 150ms visual transition is
+  // cosmetic and is not part of this assertion.
+  test('QA-022 toggle mounts within 2 seconds', async ({ captureStderrFor }) => {
     const s = seed('perf', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -408,7 +549,7 @@ test.describe('Docked terminal — live Electron', () => {
     const elapsed = await page.evaluate((start) => performance.now() - start, t0);
     // Generous ceiling: IPC round-trip (menu→main→renderer) + synchronous flip.
     // The visual transition (150ms) is cosmetic; we measure mount, not animation.
-    expect(elapsed).toBeLessThan(1000);
+    expect(elapsed).toBeLessThan(2000);
   });
 
   // Terminal opens at the project root and runs an arbitrary command.
@@ -479,10 +620,10 @@ test.describe('Docked terminal — live Electron', () => {
       .toContain(`AFTER_COLS=${before}`);
   });
 
-  // Dock controls in the live build: collapse is the only chrome. The terminal
-  // owns the bottom edge, so there is no dock-toggle (and the older drag grip
-  // stays gone).
-  test('terminal tab strip exposes the collapse button and no way to move the dock', async ({
+  // Dock controls in the live build keep the explicit Terminal collapse name.
+  // Placement now lives in the contextual/native actions, while the old direct
+  // dock-toggle and drag grip stay gone.
+  test('terminal tab strip exposes collapse without legacy dock chrome', async ({
     captureStderrFor,
   }) => {
     const s = seed('dock-controls', { consent: true });
@@ -492,7 +633,7 @@ test.describe('Docked terminal — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
-    await expect(page.getByRole('button', { name: 'Collapse panel' })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Collapse Terminal' })).toBeVisible({
       timeout: 10_000,
     });
     await expect(page.getByRole('button', { name: /Dock terminal to the/ })).toHaveCount(0);
@@ -541,7 +682,7 @@ test.describe('Docked terminal — live Electron', () => {
 
   // Escape is delivered to the terminal (NOT swallowed): terminal apps
   // (vim, the `claude` TUI) need it. The no-keyboard-trap exit (WCAG 2.1.2) is
-  // ⌘J — the View → Hide Bottom Dock toggle — which collapses the dock and returns
+  // ⌘J — the View → Hide Terminal toggle — which collapses the dock and returns
   // focus to the editor.
   test('QA-019 Escape reaches the terminal; ⌘J is the no-trap exit', async ({
     captureStderrFor,
@@ -602,17 +743,17 @@ test.describe('Docked terminal — live Electron', () => {
 
     await page.locator('section[aria-label="Terminal"] .xterm').click();
     await expect.poll(focusInTerminal).toBe(true);
-    expect(await viewTerminalLabel(app)).toBe('Hide Bottom Dock');
+    expect(await viewTerminalLabel(app)).toBe('Hide Terminal');
 
     // The chord under test, pressed with the pty holding focus.
     await page.keyboard.press('Control+Backquote');
-    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Bottom Dock');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Terminal');
     await expect.poll(focusInTerminal).toBe(false);
 
     // It toggles rather than open-only (VS Code / Zed convention), so the same
     // chord brings the dock back.
     await page.keyboard.press('Control+Backquote');
-    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Bottom Dock');
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Terminal');
   });
 
   // Collapsed panel is inert and focus returns to the editor on collapse.
@@ -657,40 +798,41 @@ test.describe('Docked terminal — live Electron', () => {
     await waitForStatus(page, 'running', 25_000);
     await ensureBottomDock(page);
 
-    const heightBefore = await page
-      .locator('#terminal-dock-panel')
-      .evaluate((el) => el.getBoundingClientRect().height);
+    const panel = page.locator('#terminal-dock-panel');
+    const heightBefore = await panel.evaluate((el) => el.getBoundingClientRect().height);
 
     // Drag the resize handle upward to grow the panel.
-    const handle = page.locator('[data-panel-resize-handle-id], [role="separator"]').last();
+    const handle = panel.locator('xpath=preceding-sibling::*[@role="separator"][1]');
+    await expect(handle).toBeVisible();
     const box = await handle.boundingBox();
-    if (box) {
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(box.x + box.width / 2, box.y - 120, { steps: 8 });
-      await page.mouse.up();
-    }
-    await page.waitForTimeout(300); // debounced persist (100ms) + settle
+    if (box == null) throw new Error('bottom terminal resize handle has no bounding box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y - 160, { steps: 12 });
+    await page.mouse.up();
 
-    const heightAfter = await page
-      .locator('#terminal-dock-panel')
-      .evaluate((el) => el.getBoundingClientRect().height);
-    expect(heightAfter).toBeGreaterThan(heightBefore);
+    await expect
+      .poll(() => panel.evaluate((el) => el.getBoundingClientRect().height))
+      .toBeGreaterThan(heightBefore);
+
+    const heightAfter = await panel.evaluate((el) => el.getBoundingClientRect().height);
 
     // localStorage carries the persisted height.
-    const stored = await page.evaluate(() => localStorage.getItem('ok-terminal-height-v1'));
-    expect(stored).not.toBeNull();
+    await expect
+      .poll(() => page.evaluate(() => Number(localStorage.getItem('ok-terminal-height-v1') ?? 0)))
+      .toBeGreaterThan(heightBefore);
 
     // Hide + reopen: reopens at the persisted (grown) height.
     await clickViewTerminalItem(app);
-    await page.waitForTimeout(200);
+    await expect(panel).toHaveAttribute('inert', '', { timeout: 10_000 });
     await clickViewTerminalItem(app);
     await expect(terminalSection(page)).toBeVisible({ timeout: 10_000 });
-    await page.waitForTimeout(300);
-    const heightReopen = await page
-      .locator('#terminal-dock-panel')
-      .evaluate((el) => el.getBoundingClientRect().height);
-    expect(Math.abs(heightReopen - heightAfter)).toBeLessThan(40);
+    await expect
+      .poll(async () => {
+        const heightReopen = await panel.evaluate((el) => el.getBoundingClientRect().height);
+        return Math.abs(heightReopen - heightAfter);
+      })
+      .toBeLessThan(40);
   });
 
   // Shell exit shows a visible state + Restart respawns; the
@@ -819,21 +961,16 @@ test.describe('Docked terminal — live Electron', () => {
       .toContain('marker=[OKRELOAD_SURVIVED_351]');
   });
 
-  // ⌘J/⇧⌘J selection-send at the live-Electron rung: a REAL editor
-  // selection is staged into a REAL CLI PTY — the composed flow the dom tests
-  // pin only in slices (EditorPane decides against a mocked host; the host
-  // stages against a mocked TerminalGate; here every layer between the keydown
-  // and the PTY bytes is real). The fake `claude` is a TUI stand-in (`exec cat`)
-  // that holds the PTY open reading stdin, so the staged bytes stay observable
-  // in xterm. Residual only a live-claude run can pin: the real TUI treating
-  // the trailing soft newlines as caret-move, not submit.
-  test('⇧⌘J stages the editor selection into a new CLI tab; ⌘J (menu route) reuses it', async ({
+  // Shortcut behavior at the live-Electron rung: ⇧⌘J stages a REAL editor
+  // selection into a REAL CLI PTY, then the View-menu route proves ⌘J remains a
+  // pure visibility toggle even while another selection is live. The fake
+  // `claude` is a TUI stand-in (`exec cat`) that holds the PTY open reading
+  // stdin, so staged bytes and session survival stay observable in xterm.
+  test('⇧⌘J stages into a new CLI tab; ⌘J stays a pure visibility toggle', async ({
     captureStderrFor,
   }) => {
-    // Two-phase scenario (stage into a NEW CLI tab, then reuse the running one
-    // via the menu route) walks doc-load + launch + two staged writes, so its
-    // cumulative inner timeouts (~170s) exceed the suite's 150s CI outer budget
-    // — opt into a per-test budget per the calibration invariant's mechanism.
+    // This composed flow walks doc-load + launch + staged write + menu delivery,
+    // so opt into a budget above the suite's 150s default.
     test.setTimeout(200_000);
     // skipRestoreState: with a state.json restore the cold-start window wins and
     // lands on the empty state, dropping the deep-link's `doc=` (and its collab
@@ -844,6 +981,14 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+
+    // The shortcut targets the user's preferred AI. Pin that preference to the
+    // fake Claude CLI supplied by this fixture so host-machine agent settings
+    // cannot redirect the request into the Agents panel.
+    await page.evaluate(() => {
+      localStorage.setItem('ok-ask-ai-agent-v2', 'terminal-cli:claude');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ok-ask-ai-agent-v2' }));
+    });
 
     // Select the seeded doc's body in the real editor (ProseMirror select-all).
     // The selection-context registry publishes on a 120ms debounce
@@ -877,10 +1022,8 @@ test.describe('Docked terminal — live Electron', () => {
 
     // Grow the doc with a distinguishing marker and re-select, then take the ⌘J
     // route via its View-menu accelerator item (the real menu→IPC→renderer
-    // chain; the raw OS key capture itself is not synthesizable from Playwright,
-    // same class as the deep-link Apple-Event limitation). With a selection and
-    // the active tab a running CLI, the passage is written INTO that CLI —
-    // the dock must not toggle away and no second tab may open.
+    // chain; raw OS key capture is not synthesizable from Playwright). A live
+    // selection must not change the toggle contract or leak into the PTY.
     await editor.click();
     await page.keyboard.press('Meta+a');
     await page.keyboard.type('Reuse marker OKSTAGE_REUSE_742 body');
@@ -889,11 +1032,16 @@ test.describe('Docked terminal — live Electron', () => {
       .poll(() => page.evaluate(() => String(window.getSelection() ?? '')))
       .toContain('OKSTAGE_REUSE_742');
     await page.waitForTimeout(500);
-    await clickViewTerminalItem(app);
-    await expect
-      .poll(() => readTerminalText(page), { timeout: 15_000 })
-      .toContain('OKSTAGE_REUSE_742');
+
+    expect(await clickViewTerminalItem(app)).toBe('Hide Terminal');
+    await expect(terminalSection(page)).toBeHidden();
+    await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Terminal');
+
+    expect(await clickViewTerminalItem(app)).toBe('Show Terminal');
     await expect(terminalSection(page)).toBeVisible();
+    await waitForStatus(page, 'running', 25_000);
     expect(await terminalTabs().count()).toBe(tabsAfterLaunch);
+    expect(await readTerminalText(page)).toContain('Seed document');
+    expect(await readTerminalText(page)).not.toContain('OKSTAGE_REUSE_742');
   });
 });

@@ -1365,6 +1365,10 @@ msgstr "ایجنٹ کی کنفیگریشن فائل"
 msgid "Agent mode"
 msgstr "ایجنٹ موڈ"
 
+#: src/components/EditorArea.tsx
+msgid "Agent panel closed to keep Terminal readable."
+msgstr "Terminal کو پڑھنے کے قابل رکھنے کے لیے ایجنٹ پینل بند کر دیا گیا۔"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
 msgstr "ایجنٹ کی ترتیبات"
@@ -2496,6 +2500,10 @@ msgstr "سکیڑیں"
 msgid "Collapse {keyName}"
 msgstr "{keyName} سکیڑیں"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Collapse agent panel"
+msgstr "ایجنٹ پینل سمیٹیں"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -2520,8 +2528,8 @@ msgid "Collapse graph"
 msgstr "گراف سکیڑیں"
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse panel"
-msgstr "پینل سکیڑیں"
+msgid "Collapse Terminal"
+msgstr "Terminal سمیٹیں"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -5738,10 +5746,6 @@ msgstr "اعلیٰ آپشنز چھپائیں"
 msgid "Hide Agents"
 msgstr "ایجنٹس چھپائیں"
 
-#: src/components/command-palette-commands.ts
-msgid "Hide Bottom Dock"
-msgstr "نچلا پینل چھپائیں"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Hide details"
 msgstr "تفصیلات چھپائیں"
@@ -5815,6 +5819,10 @@ msgstr "انتخاب کا پیش منظر چھپائیں"
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "سائیڈ بار چھپائیں"
+
+#: src/components/command-palette-commands.ts
+msgid "Hide Terminal"
+msgstr "Terminal چھپائیں"
 
 #: src/comments/comment-chips.tsx
 msgid "Hide these comments"
@@ -7019,6 +7027,16 @@ msgstr "اس فائل کو مہارت کے اندر منتقل کریں یا ا�
 msgid "Move succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "منتقلی ہو گئی مگر سائیڈ بار پرانا ہو سکتا ہے — دوبارہ مطابقت کے لیے تازہ کریں"
 
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to bottom"
+msgstr "Terminal کو نیچے منتقل کریں"
+
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to right"
+msgstr "Terminal کو دائیں منتقل کریں"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the current block up or down one position."
 msgstr "موجودہ بلاک کو ایک درجہ اوپر یا نیچے لے جائیں۔"
@@ -7053,6 +7071,10 @@ msgstr "بائیں جانب نئے پین میں منتقل کریں"
 #: src/components/EditorTabs.tsx
 msgid "Move to new pane right"
 msgstr "دائیں جانب نئے پین میں منتقل کریں"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Move to right panel"
+msgstr "دائیں پینل میں منتقل کریں"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move to the next CodeMirror lint diagnostic."
@@ -10594,10 +10616,6 @@ msgstr "ایجنٹس دکھائیں"
 msgid "Show All"
 msgstr "سب دکھائیں"
 
-#: src/components/command-palette-commands.ts
-msgid "Show Bottom Dock"
-msgstr "نچلا پینل دکھائیں"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Show details"
 msgstr "تفصیلات دکھائیں"
@@ -10666,16 +10684,16 @@ msgid "Show or hide agents"
 msgstr "ایجنٹس دکھائیں یا چھپائیں"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide bottom dock"
-msgstr "نچلا پینل دکھائیں یا چھپائیں"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr "دستاویز کا پینل دکھائیں یا چھپائیں"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
 msgstr "فائلیں دکھائیں یا چھپائیں"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide Terminal"
+msgstr "Terminal دکھائیں یا چھپائیں"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -10716,6 +10734,10 @@ msgstr "سائیڈ بار دکھائیں"
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
 msgstr "سورس دکھائیں"
+
+#: src/components/command-palette-commands.ts
+msgid "Show Terminal"
+msgstr "Terminal دکھائیں"
 
 #: src/comments/comment-chips.tsx
 msgid "Show these comments"
@@ -11540,6 +11562,10 @@ msgstr "ٹرمینل {0}"
 msgid "Terminal access isn't enabled for this project."
 msgstr "اس پروجیکٹ کے لیے ٹرمینل کی رسائی فعال نہیں۔"
 
+#: src/components/EditorArea.tsx
+msgid "Terminal closed to make room for the agent panel."
+msgstr "ایجنٹ پینل کے لیے جگہ بنانے کی خاطر Terminal بند کر دیا گیا۔"
+
 #: src/components/TerminalGate.tsx
 msgid "Terminal disabled"
 msgstr "ٹرمینل بند"
@@ -12285,8 +12311,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "درمیان سے کٹی فارمیٹنگ بدلیں۔"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives."
-msgstr "نچلا پینل دکھائیں یا چھپائیں، جہاں ٹرمینل ہوتا ہے۔"
+msgid "Toggle Terminal in its current dock."
+msgstr "Terminal کو اس کی موجودہ ڈاک میں دکھائیں یا چھپائیں۔"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

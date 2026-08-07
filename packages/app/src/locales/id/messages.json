@@ -6,6 +6,7 @@
     "-5jISU": [["0", "plural", { "other": ["#", " templat"] }]],
     "-7s4fw": ["Cari agen"],
     "-8PP0T": ["Cocokkan huruf besar-kecil"],
+    "-Al4WQ": ["Tampilkan atau sembunyikan Terminal"],
     "-FeyRg": ["Simpan berkas asli"],
     "-K0AvT": ["Putuskan koneksi"],
     "-LHLx7": ["templat disunting"],
@@ -189,6 +190,7 @@
     "2RnFoM": ["Tidak dapat melanjutkan obrolan ini: ", ["0"]],
     "2Snes1": ["Ini mengirim alamat tautannya keluar dari komputer Anda"],
     "2UgoBZ": ["hilang"],
+    "2VSPan": ["Terminal ditutup untuk memberi ruang bagi panel agen."],
     "2XQ8Ww": ["Buka pratinjau saat agen menyunting"],
     "2YOwme": ["Dimulai ulang — kini menjalankan v", ["appRuntime"], "."],
     "2YZwPB": ["Respons tautan keluar tidak sesuai bentuk yang diharapkan."],
@@ -677,6 +679,7 @@
     "9uI_rE": ["Batalkan"],
     "9uRLEH": ["\"", ["name"], "\" tidak bisa dibuka — ia belum ada di keterampilan proyek ini."],
     "9wQrUU": ["Refaktor"],
+    "9xCnv8": ["Sembunyikan Terminal"],
     "9zb2WA": ["Menghubungkan"],
     "A1taO8": ["Cari"],
     "A50vr3": ["Pakai hanya huruf kecil, angka, dan <0>-</0>."],
@@ -1338,6 +1341,7 @@
     "KDuPiY": ["Mengunggah ", ["fileName"]],
     "KDw4GX": ["Coba lagi"],
     "KFd4xz": ["tidak ada"],
+    "KGF42E": ["Panel agen ditutup agar Terminal tetap mudah dibaca."],
     "KGJb9_": ["Konflik"],
     "KH5bQi": [
       "Memakai variabel lingkungan <0>OK_EMBEDDINGS_API_KEY</0> (dikelola di luar OpenKnowledge)."
@@ -1508,6 +1512,7 @@
       "Symlink adalah penunjuk ke folder sumber, bukan folder tersendiri. Setiap lokasi membaca bita yang persis sama, jadi tidak ada yang bisa melenceng, dan sebuah lokasi berhenti bekerja jika sumbernya dihapus."
     ],
     "MTs6g3": ["Tidak bisa tersambung kembali setelah server dimulai ulang"],
+    "MU_NVW": ["Ciutkan Terminal"],
     "MUrVEo": ["Tidak ada proyek terbaru."],
     "MV-Dkb": ["Ditemukan ", ["countDisplay"], " berkas markdown"],
     "MVxpbf": ["Cari dan ganti"],
@@ -1575,7 +1580,6 @@
     "NRSLBe": [["diffMin"], " mnt lalu"],
     "NSnIUP": ["Dua halaman (genap)"],
     "NUr4kz": ["Titik awal yang bisa dipakai ulang untuk dokumen baru di folder ini."],
-    "NUw7lo": ["Tampilkan atau sembunyikan panel bawah, tempat terminal berada."],
     "NYUhy5": ["Nama subfolder"],
     "NYn1cR": ["Memuat penyunting"],
     "NYu2Pt": ["Proyek baru…"],
@@ -1741,6 +1745,7 @@
     ],
     "PrJYSN": ["Folder ini belum ada di GitHub. Tautannya tidak akan berfungsi sampai ia dikirim."],
     "PrVaZo": ["Copot OpenKnowledge?"],
+    "PrWQiT": ["Pindahkan Terminal ke kanan"],
     "PrhzDE": ["Geser ke atas"],
     "Q-DKvr": ["Pasang dari ", ["source"]],
     "Q1mtyd": ["Sembunyikan bilah sisi"],
@@ -1876,6 +1881,7 @@
     "S9Vnum": ["Hapus ", ["patternText"]],
     "S9t1PI": ["Memperbaiki ", ["0"], "/", ["1"]],
     "SCoBBH": ["Saran tag"],
+    "SCveu1": ["Tampilkan atau sembunyikan Terminal di dok saat ini."],
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SF9qpO": ["Bagikan surel Anda untuk tindak lanjut"],
     "SFEWV6": ["Keterampilan OpenKnowledge tidak dapat dimuat. Coba lagi."],
@@ -1949,6 +1955,7 @@
     "Tn5sik": [
       "Memberi tahu agen kapan harus memakai keterampilan ini. Anda bisa menyuntingnya nanti."
     ],
+    "Tofsyo": ["Pindahkan Terminal ke bawah"],
     "Tq3pcs": ["Pakai punya saya"],
     "Tq9kNX": [
       "Tidak ada obrolan terbuka. Buka kembali obrolan sebelumnya, atau mulai yang baru dengan tombol ＋."
@@ -2161,7 +2168,6 @@
     "Wh0im4": ["menyunting [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Coret"],
     "Wi-VWy": ["Laporannya tidak bisa dikirim"],
-    "WiGqD8": ["Tampilkan panel bawah"],
     "WkTLN7": ["Tampilkan hanya berkas markdown"],
     "WkyP2p": ["Bagian Keterampilan"],
     "WmPbvm": ["Dapatkan kabar terbaru produk di kotak masuk Anda."],
@@ -2270,7 +2276,6 @@
     "YJPN3F": ["Terlalu lambat"],
     "YKLP_-": ["Nama templat diganti"],
     "YLMBSd": ["mis. Penyunting membeku setelah saya menempelkan tabel besar"],
-    "YM5oO0": ["Tampilkan atau sembunyikan panel bawah"],
     "YMlS7s": ["Buka di aplikasi bawaan"],
     "YPFBfr": [["detail"], " - ", ["kind"], " \"", ["createdPath"], "\" masih ada di disk"],
     "YRavYS": [
@@ -2837,6 +2842,7 @@
       ["descriptorLabel"],
       "> gagal dirender (kemungkinan prop yang salah). Salin sumbernya untuk melihat apa yang salah, atau hapus bloknya."
     ],
+    "g5V4_P": ["Ciutkan panel agen"],
     "g5w1sF": [
       "Pilih sebuah folder untuk digabungkan KE DALAM ",
       ["display"],
@@ -3111,6 +3117,7 @@
     "jZ_E5M": ["Fetch gagal — periksa log server untuk detailnya."],
     "j_Z6g7": ["Bawaan bersama"],
     "jbSG8V": ["Tampilkan Berkas (", ["sidebarShortcutLabel"], ")"],
+    "jcEoUi": ["Pindahkan ke panel kanan"],
     "jdGUeI": ["Templat tidak bisa dibuat: ", ["error"]],
     "jeCFV7": ["Pindahkan ke panel baru di kanan"],
     "jeJexw": ["Pemasangan ", ["0"], " tidak bisa diselesaikan — lihat di bawah."],
@@ -3467,7 +3474,6 @@
     "o0bHtA": ["Oleh OpenKnowledge"],
     "o2yoFu": ["Tampilkan di Finder, tanpa ruang kerja"],
     "o49mDZ": ["Memuat riwayat lini masa"],
-    "o5jB-D": ["Ciutkan panel"],
     "o9CrsQ": ["catatan-riset"],
     "o9fPtM": ["Perbarui otomatis dari sumber"],
     "oAFVKX": ["Gagal memperbarui sinkronisasi bawaan proyek — ", ["detail"]],
@@ -3534,7 +3540,6 @@
       "Terima kasih sudah berlangganan. Pantau kotak masuk Anda untuk kabar terbaru produk."
     ],
     "pCralD": ["Pindahkan ke panel baru di kiri"],
-    "pDD2Hm": ["Sembunyikan panel bawah"],
     "pEQFsW": ["Tidak ada proyek yang cocok."],
     "pFPzHA": ["Pemilih emoji"],
     "pFRz_E": ["Jangan sertakan komentar ini dalam pesan ini"],
@@ -4093,6 +4098,7 @@
     "xeXS4P": ["Atau pakai paket awal"],
     "xeiujy": ["Teks"],
     "xhlFsx": ["Diwarisi — setel sebuah nilai di sini untuk menggantinya."],
+    "xi9KGG": ["Tampilkan Terminal"],
     "xiv-dW": ["Belum ada berkas."],
     "xlQpTE": ["Opsi penolakan lainnya"],
     "xloBjn": ["Jalur Relatif"],

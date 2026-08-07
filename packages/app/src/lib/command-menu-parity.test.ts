@@ -102,8 +102,10 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'Hide sidebar',
   'Show document panel',
   'Hide document panel',
-  'Show Bottom Dock',
-  'Hide Bottom Dock',
+  'Show Terminal',
+  'Hide Terminal',
+  'Move Terminal to right',
+  'Move Terminal to bottom',
   'Show Agents',
   'Hide Agents',
   'Show hidden files',
@@ -178,7 +180,9 @@ function makeFullDeps(): MenuDeps {
     docPanelVisible: true,
     onToggleDocPanel: noop,
     terminalVisible: true,
+    terminalPlacement: 'bottom',
     onToggleTerminal: noop,
+    onMoveTerminal: noop,
     onNewTerminal: noop,
     onKillTerminal: noop,
     onNewTerminalWindow: noop,
@@ -360,7 +364,7 @@ describe('command-menu parity ratchet', () => {
     { menuLabel: 'Settings', shortcutId: 'settings' },
     { menuLabel: 'Hide sidebar', shortcutId: 'toggle-files-sidebar' },
     { menuLabel: 'Hide document panel', shortcutId: 'toggle-document-panel' },
-    { menuLabel: 'Hide Bottom Dock', shortcutId: 'toggle-terminal-panel' },
+    { menuLabel: 'Hide Terminal', shortcutId: 'toggle-terminal-panel' },
     { menuLabel: 'Hide Agents', shortcutId: 'toggle-agent-panel' },
   ];
 
@@ -631,11 +635,11 @@ describe('menu state-dependent rendering', () => {
     const labels = new Set(leaves.map((leaf) => normalizeLabel(leaf.label)));
     expect(labels.has('Show sidebar')).toBe(true);
     expect(labels.has('Show document panel')).toBe(true);
-    expect(labels.has('Show Bottom Dock')).toBe(true);
+    expect(labels.has('Show Terminal')).toBe(true);
     // A flipped `visible ? hideKey : showKey` would leave the Hide variants here.
     expect(labels.has('Hide sidebar')).toBe(false);
     expect(labels.has('Hide document panel')).toBe(false);
-    expect(labels.has('Hide Bottom Dock')).toBe(false);
+    expect(labels.has('Hide Terminal')).toBe(false);
   });
 
   test('Show/Hide toggles render the Hide variant when the panel is visible', () => {

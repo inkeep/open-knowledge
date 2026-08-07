@@ -8,6 +8,7 @@ import {
   annotateMissing,
   emptyState,
   getProjectSessionState,
+  getTerminalDockState,
   type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
@@ -17,6 +18,7 @@ import {
   setProjectSessionState,
   setProjectWindowBounds,
   setSpellCheckEnabled,
+  setTerminalDockState,
 } from '../../src/main/state-store.ts';
 
 function persistedWorkspace(
@@ -257,6 +259,71 @@ describe('state-store (recent projects + LRU)', () => {
     expect(parseAppState('not state')).toBeNull();
     expect(parseAppState(null)).toBeNull();
     expect(parseAppState(42)).toBeNull();
+  });
+});
+
+describe('state-store (terminal full-restart state)', () => {
+  test('defaults legacy state to a hidden dock with no tabs', () => {
+    const parsed = parseAppState({ recentProjects: [] });
+    expect(parsed?.terminalDockStates).toEqual({});
+    expect(getTerminalDockState(parsed ?? emptyState(), '/tmp/project')).toEqual({
+      terminalVisible: false,
+      terminalSnapshot: { tabs: [], activeOrdinal: null },
+    });
+  });
+
+  test('round-trips project-scoped visibility, tab order, and active tab', () => {
+    const state = setTerminalDockState(emptyState(), '/tmp/project', {
+      terminalVisible: true,
+      terminalSnapshot: {
+        tabs: [
+          { ordinal: 2, customLabel: 'Build' },
+          { ordinal: 1, customLabel: null },
+        ],
+        activeOrdinal: 1,
+      },
+    });
+    const parsed = parseAppState(JSON.parse(JSON.stringify(state)));
+    expect(getTerminalDockState(parsed ?? emptyState(), '/tmp/project')).toEqual(
+      state.terminalDockStates['/tmp/project'],
+    );
+  });
+
+  test('drops legacy layout fields while coercing tab metadata at the persistence boundary', () => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      terminalDockStates: {
+        '/tmp/project': {
+          terminalVisible: 'yes',
+          placement: 'sideways',
+          rightWidth: 100,
+          terminalSnapshot: {
+            tabs: [
+              { ordinal: 2, customLabel: 'Build' },
+              { ordinal: 2, customLabel: 'duplicate' },
+              { ordinal: -1, customLabel: null },
+            ],
+            activeOrdinal: 99,
+          },
+        },
+      },
+    });
+    expect(getTerminalDockState(parsed ?? emptyState(), '/tmp/project')).toEqual({
+      terminalVisible: false,
+      terminalSnapshot: {
+        tabs: [{ ordinal: 2, customLabel: 'Build' }],
+        activeOrdinal: null,
+      },
+    });
+  });
+
+  test('removing a recent project also removes its terminal state', () => {
+    let state = addRecentProject(emptyState(), '/tmp/project', 'project');
+    state = setTerminalDockState(state, '/tmp/project', {
+      terminalVisible: true,
+      terminalSnapshot: { tabs: [{ ordinal: 1, customLabel: null }], activeOrdinal: 1 },
+    });
+    expect(removeRecentProject(state, '/tmp/project').terminalDockStates).toEqual({});
   });
 });
 

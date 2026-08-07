@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
+  readDockRestoreState,
   readDockSessionOrder,
   readWebDockSessionOrder,
   writeDockSessionOrder,
@@ -25,7 +26,12 @@ function makeDesktopBridge(
 ) {
   const store = { ...initial };
   const setDockState = vi.fn(
-    (state: { surface: 'terminal' | 'agents'; order: string[]; activeKey: string | null }) => {
+    (state: {
+      surface: 'terminal' | 'agents';
+      order: string[];
+      activeKey: string | null;
+      terminalSnapshot?: { tabs: []; activeOrdinal: null };
+    }) => {
       store[state.surface] = { order: state.order, activeKey: state.activeKey };
     },
   );
@@ -127,6 +133,28 @@ describe('desktop backend (bridge)', () => {
     });
   });
 
+  test('reads session order and the terminal restart snapshot from one bridge state', async () => {
+    const getDockState = vi.fn(async () => ({
+      terminalVisible: true,
+      agentPanelVisible: false,
+      terminal: { order: ['pty-1'], activeKey: 'pty-1' },
+      terminalSnapshot: {
+        tabs: [{ ordinal: 1, customLabel: 'deploy' }],
+        activeOrdinal: 1,
+      },
+    }));
+    const bridge = { terminal: { getDockState } } as unknown as OkDesktopBridge;
+
+    await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
+      sessionOrder: { order: ['pty-1'], activeKey: 'pty-1' },
+      terminalSnapshot: {
+        tabs: [{ ordinal: 1, customLabel: 'deploy' }],
+        activeOrdinal: 1,
+      },
+    });
+    expect(getDockState).toHaveBeenCalledOnce();
+  });
+
   test('writes carry the surface, so main files them apart', () => {
     const { bridge, setDockState, store } = makeDesktopBridge();
 
@@ -140,6 +168,30 @@ describe('desktop backend (bridge)', () => {
     });
     expect(store.agents).toEqual({ order: ['thread-a'], activeKey: 'thread-a' });
     expect(store.terminal).toEqual({ order: ['pty-1'], activeKey: null });
+    expect(setDockState).toHaveBeenNthCalledWith(2, {
+      surface: 'terminal',
+      order: ['pty-1'],
+      activeKey: null,
+      terminalSnapshot: { tabs: [], activeOrdinal: null },
+    });
+  });
+
+  test('window-teardown writes warn without reporting a persistence error', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bridge = {
+      terminal: {
+        setDockState: async () => ({ ok: false as const, reason: 'ipc-unavailable' as const }),
+      },
+    } as unknown as OkDesktopBridge;
+
+    writeDockSessionOrder(bridge, 'terminal', { order: ['pty-1'], activeKey: 'pty-1' });
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledOnce());
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      '[dock-session-persistence] setDockState skipped during window teardown',
+    );
   });
 
   test('an absent sub-record reads null (fresh launch → cold start)', async () => {
@@ -163,6 +215,37 @@ describe('desktop backend (bridge)', () => {
     } as unknown as OkDesktopBridge;
 
     await expect(readDockSessionOrder(bridge, 'terminal')).resolves.toBeNull();
+  });
+
+  test('a rejecting dock-state read settles the complete restore state', async () => {
+    const bridge = {
+      terminal: {
+        getDockState: async () => {
+          throw new Error('ipc torn down mid-reload');
+        },
+      },
+    } as unknown as OkDesktopBridge;
+
+    await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
+      sessionOrder: null,
+      terminalSnapshot: undefined,
+    });
+  });
+
+  test('a live terminal bridge without dock-state capability ignores stale web order', async () => {
+    writeDockSessionOrder(null, 'terminal', { order: ['stale-pty'], activeKey: 'stale-pty' });
+    const bridge = { terminal: { list: async () => [] } } as unknown as OkDesktopBridge;
+
+    await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
+      sessionOrder: null,
+      terminalSnapshot: undefined,
+    });
+
+    writeDockSessionOrder(bridge, 'terminal', { order: ['desktop-pty'], activeKey: null });
+    expect(readWebDockSessionOrder('terminal')).toEqual({
+      order: ['stale-pty'],
+      activeKey: 'stale-pty',
+    });
   });
 
   test('a bridge with no dock-state methods falls back to the web backend', async () => {

@@ -1361,6 +1361,10 @@ msgstr "Berkas konfigurasi agen"
 msgid "Agent mode"
 msgstr "Mode agen"
 
+#: src/components/EditorArea.tsx
+msgid "Agent panel closed to keep Terminal readable."
+msgstr "Panel agen ditutup agar Terminal tetap mudah dibaca."
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
 msgstr "Pengaturan agen"
@@ -2492,6 +2496,10 @@ msgstr "Ciutkan"
 msgid "Collapse {keyName}"
 msgstr "Ciutkan {keyName}"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Collapse agent panel"
+msgstr "Ciutkan panel agen"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -2516,8 +2524,8 @@ msgid "Collapse graph"
 msgstr "Ciutkan graf"
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse panel"
-msgstr "Ciutkan panel"
+msgid "Collapse Terminal"
+msgstr "Ciutkan Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -5734,10 +5742,6 @@ msgstr "Sembunyikan opsi lanjutan"
 msgid "Hide Agents"
 msgstr "Sembunyikan Agen"
 
-#: src/components/command-palette-commands.ts
-msgid "Hide Bottom Dock"
-msgstr "Sembunyikan panel bawah"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Hide details"
 msgstr "Sembunyikan detail"
@@ -5811,6 +5815,10 @@ msgstr "Sembunyikan pratinjau pilihan"
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "Sembunyikan bilah sisi"
+
+#: src/components/command-palette-commands.ts
+msgid "Hide Terminal"
+msgstr "Sembunyikan Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Hide these comments"
@@ -7015,6 +7023,16 @@ msgstr "Pindahkan atau ganti nama berkas ini di dalam keterampilan — jalurnya 
 msgid "Move succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "Pemindahan berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
 
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to bottom"
+msgstr "Pindahkan Terminal ke bawah"
+
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to right"
+msgstr "Pindahkan Terminal ke kanan"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the current block up or down one position."
 msgstr "Menaikkan atau menurunkan blok saat ini satu posisi."
@@ -7049,6 +7067,10 @@ msgstr "Pindahkan ke panel baru di kiri"
 #: src/components/EditorTabs.tsx
 msgid "Move to new pane right"
 msgstr "Pindahkan ke panel baru di kanan"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Move to right panel"
+msgstr "Pindahkan ke panel kanan"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move to the next CodeMirror lint diagnostic."
@@ -10590,10 +10612,6 @@ msgstr "Tampilkan Agen"
 msgid "Show All"
 msgstr "Tampilkan semua"
 
-#: src/components/command-palette-commands.ts
-msgid "Show Bottom Dock"
-msgstr "Tampilkan panel bawah"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Show details"
 msgstr "Tampilkan detail"
@@ -10662,16 +10680,16 @@ msgid "Show or hide agents"
 msgstr "Tampilkan atau sembunyikan agen"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide bottom dock"
-msgstr "Tampilkan atau sembunyikan panel bawah"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr "Tampilkan atau sembunyikan panel dokumen"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
 msgstr "Tampilkan atau sembunyikan Berkas"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide Terminal"
+msgstr "Tampilkan atau sembunyikan Terminal"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -10712,6 +10730,10 @@ msgstr "Tampilkan bilah sisi"
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
 msgstr "Tampilkan sumber"
+
+#: src/components/command-palette-commands.ts
+msgid "Show Terminal"
+msgstr "Tampilkan Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Show these comments"
@@ -11536,6 +11558,10 @@ msgstr "Terminal {0}"
 msgid "Terminal access isn't enabled for this project."
 msgstr "Akses terminal belum diaktifkan untuk proyek ini."
 
+#: src/components/EditorArea.tsx
+msgid "Terminal closed to make room for the agent panel."
+msgstr "Terminal ditutup untuk memberi ruang bagi panel agen."
+
 #: src/components/TerminalGate.tsx
 msgid "Terminal disabled"
 msgstr "Terminal dinonaktifkan"
@@ -12281,8 +12307,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "Menyalakan atau mematikan format coret."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives."
-msgstr "Tampilkan atau sembunyikan panel bawah, tempat terminal berada."
+msgid "Toggle Terminal in its current dock."
+msgstr "Tampilkan atau sembunyikan Terminal di dok saat ini."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

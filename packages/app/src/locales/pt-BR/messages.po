@@ -1361,6 +1361,10 @@ msgstr "Arquivo de configuração do agente"
 msgid "Agent mode"
 msgstr "Modo agente"
 
+#: src/components/EditorArea.tsx
+msgid "Agent panel closed to keep Terminal readable."
+msgstr "O painel de agentes foi fechado para manter o Terminal legível."
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
 msgstr "Configurações do agente"
@@ -2492,6 +2496,10 @@ msgstr "Recolher"
 msgid "Collapse {keyName}"
 msgstr "Recolher {keyName}"
 
+#: src/components/TerminalTabStrip.tsx
+msgid "Collapse agent panel"
+msgstr "Recolher o painel de agentes"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -2516,8 +2524,8 @@ msgid "Collapse graph"
 msgstr "Recolher o grafo"
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse panel"
-msgstr "Recolher o painel"
+msgid "Collapse Terminal"
+msgstr "Recolher o Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -5734,10 +5742,6 @@ msgstr "Ocultar as opções avançadas"
 msgid "Hide Agents"
 msgstr "Ocultar Agentes"
 
-#: src/components/command-palette-commands.ts
-msgid "Hide Bottom Dock"
-msgstr "Ocultar o painel inferior"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Hide details"
 msgstr "Ocultar detalhes"
@@ -5811,6 +5815,10 @@ msgstr "Ocultar a pré-visualização da seleção"
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr "Ocultar a barra lateral"
+
+#: src/components/command-palette-commands.ts
+msgid "Hide Terminal"
+msgstr "Ocultar o Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Hide these comments"
@@ -7015,6 +7023,16 @@ msgstr "Mova ou renomeie este arquivo dentro da habilidade — o caminho continu
 msgid "Move succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "A movimentação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
 
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to bottom"
+msgstr "Mover o Terminal para a parte inferior"
+
+#: src/components/command-palette-commands.ts
+#: src/components/TerminalTabStrip.tsx
+msgid "Move Terminal to right"
+msgstr "Mover o Terminal para a direita"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the current block up or down one position."
 msgstr "Sobe ou desce o bloco atual uma posição."
@@ -7049,6 +7067,10 @@ msgstr "Mover para um novo painel à esquerda"
 #: src/components/EditorTabs.tsx
 msgid "Move to new pane right"
 msgstr "Mover para um novo painel à direita"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Move to right panel"
+msgstr "Mover para o painel direito"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move to the next CodeMirror lint diagnostic."
@@ -10590,10 +10612,6 @@ msgstr "Mostrar Agentes"
 msgid "Show All"
 msgstr "Mostrar tudo"
 
-#: src/components/command-palette-commands.ts
-msgid "Show Bottom Dock"
-msgstr "Mostrar o painel inferior"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Show details"
 msgstr "Mostrar detalhes"
@@ -10662,16 +10680,16 @@ msgid "Show or hide agents"
 msgstr "Mostrar ou ocultar os agentes"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Show or hide bottom dock"
-msgstr "Mostrar ou ocultar o painel inferior"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
 msgstr "Mostrar ou ocultar o painel do documento"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Files"
 msgstr "Mostrar ou ocultar Arquivos"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide Terminal"
+msgstr "Mostrar ou ocultar o Terminal"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -10712,6 +10730,10 @@ msgstr "Mostrar a barra lateral"
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"
 msgstr "Mostrar o código"
+
+#: src/components/command-palette-commands.ts
+msgid "Show Terminal"
+msgstr "Mostrar o Terminal"
 
 #: src/comments/comment-chips.tsx
 msgid "Show these comments"
@@ -11536,6 +11558,10 @@ msgstr "Terminal {0}"
 msgid "Terminal access isn't enabled for this project."
 msgstr "O acesso ao terminal não está ativado neste projeto."
 
+#: src/components/EditorArea.tsx
+msgid "Terminal closed to make room for the agent panel."
+msgstr "O Terminal foi fechado para abrir espaço para o painel de agentes."
+
 #: src/components/TerminalGate.tsx
 msgid "Terminal disabled"
 msgstr "Terminal desativado"
@@ -12281,8 +12307,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "Liga ou desliga o tachado."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives."
-msgstr "Mostra ou oculta o painel inferior, onde fica o terminal."
+msgid "Toggle Terminal in its current dock."
+msgstr "Mostre ou oculte o Terminal no painel atual."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

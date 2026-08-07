@@ -65,9 +65,11 @@ describe('palette label map covers every registry labelKey (Phase 2b)', () => {
     if (!cmd.palette) continue;
     const keys = cmd.stateToggle
       ? [cmd.stateToggle.showKey, cmd.stateToggle.hideKey]
-      : cmd.labelKey !== undefined
-        ? [cmd.labelKey]
-        : [];
+      : cmd.placementToggle
+        ? [cmd.placementToggle.bottomKey, cmd.placementToggle.rightKey]
+        : cmd.labelKey !== undefined
+          ? [cmd.labelKey]
+          : [];
     for (const key of keys) {
       it(`palette command "${cmd.id}" label key "${key}" has a descriptor`, () => {
         expect(key in PALETTE_COMMAND_LABELS).toBe(true);
