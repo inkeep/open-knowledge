@@ -7,7 +7,8 @@
  *   1. write_document with payload FM updates the YAML region of Y.Text.
  *   2. write_document with body-only payload preserves existing FM.
  *   3. append/prepend never duplicate or stomp FM.
- *   4. agent-patch refuses spliced edits to the FM region.
+ *   4. agent-patch refuses spliced edits that LAND in the FM region (and only
+ *      those — a `---` or `key: value` find in the body applies normally).
  *   5. body-only agent-patch continues to work.
  *   6. agent-undo reverts the FM region in lock-step with body changes.
  */
@@ -217,6 +218,156 @@ describe('POST /api/agent-write-md (write_document) — frontmatter handling', (
     }
   });
 
+  test('append payload opening with a `---`-fenced NON-mapping span lands verbatim (PRD-7858)', async () => {
+    // `FRONTMATTER_RE` claims any payload that opens and closes with a `---`
+    // fence — including an ordinary body whose first line is a thematic break.
+    // Append used to partition that span off and then REFUSE the write because
+    // it wasn't parseable YAML, leaving the agent no option but a whole-doc
+    // rewrite that clobbers concurrent writers. It's body text: write it.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const existingFm = '---\ntitle: Stable\n---\n';
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(session.dc.document, `${existingFm}# Header\n`, 'replace');
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(
+        hocuspocus,
+        sessionManager,
+        contentDir,
+        '/api/agent-write-md',
+        {
+          docName: 'test-doc',
+          markdown: '---\n\n## Findings\n\n---\n\nTrailing note.\n',
+          position: 'append',
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(ytextFm(session.dc.document)).toBe(existingFm);
+      expect(fmMap(session.dc.document)).toEqual({ title: 'Stable' });
+
+      const ytext = session.dc.document.getText('source').toString();
+      expect(ytext).toContain('## Findings');
+      expect(ytext).toContain('Trailing note.');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('prepend of a `---`-fenced non-mapping span onto an FM-LESS doc is refused (byte-0 promotion)', async () => {
+    // Un-splitting the span is right everywhere it lands mid-document. At byte
+    // 0 the composed bytes re-partition and the agent's body text BECOMES the
+    // frontmatter region — content disappears from the rendered doc, the
+    // property panel shows the malformed-FM banner, and editing it back is
+    // refused as an FM intersect. Refuse instead, matching what `replace`
+    // already does with the same bytes.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const original = '# Header\n\nExisting body.\n';
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(session.dc.document, original, 'replace');
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(
+        hocuspocus,
+        sessionManager,
+        contentDir,
+        '/api/agent-write-md',
+        {
+          docName: 'test-doc',
+          markdown: '---\n\n## Findings\n\n---\n\nTrailing note.\n',
+          position: 'prepend',
+        },
+      );
+
+      expect(response.status).toBe(400);
+      const parsed = JSON.parse(response.body);
+      expect(parsed.type).toBe('urn:ok:error:frontmatter-malformed');
+      expect(parsed.parseError).toContain('byte 0');
+      // The advice is about placement. The default YAML-quoting hint would
+      // send the agent after syntax that was never parsed.
+      expect(parsed.detail).toContain('blank line');
+      expect(parsed.detail).not.toContain('Quote string values');
+
+      // Bytes never landed — the document is untouched and still FM-less.
+      expect(session.dc.document.getText('source').toString()).toBe(original);
+      expect(ytextFm(session.dc.document)).toBe('');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('append of the same span onto an FM-less doc with an EMPTY body is refused too', async () => {
+    // `currentBody.length > 0` is false, so append also places the payload at
+    // byte 0 — the sibling of the prepend case above.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const response = await callApi(
+        hocuspocus,
+        sessionManager,
+        contentDir,
+        '/api/agent-write-md',
+        {
+          docName: 'test-doc',
+          markdown: '---\n\n## Findings\n\n---\n',
+          position: 'append',
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body).type).toBe('urn:ok:error:frontmatter-malformed');
+      expect(session.dc.document.getText('source').toString()).toBe('');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('prepend of the same span onto an FM-BEARING doc lands (the guard is byte-0, not `---`)', async () => {
+    // Sibling of the append case above, on the other position. With existing
+    // frontmatter the payload can never reach offset 0, so the promotion guard
+    // is structurally unreachable here — this pins that, so a future widening
+    // of the guard that forgets the FM-bearing case fails loudly.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const existingFm = '---\ntitle: Stable\n---\n';
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(session.dc.document, `${existingFm}# Header\n`, 'replace');
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(
+        hocuspocus,
+        sessionManager,
+        contentDir,
+        '/api/agent-write-md',
+        {
+          docName: 'test-doc',
+          markdown: '---\n\n## Findings\n\n---\n\nTrailing note.\n',
+          position: 'prepend',
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(ytextFm(session.dc.document)).toBe(existingFm);
+      expect(fmMap(session.dc.document)).toEqual({ title: 'Stable' });
+
+      const ytext = session.dc.document.getText('source').toString();
+      expect(ytext).toContain('## Findings');
+      expect(ytext).toContain('Trailing note.');
+      expect(ytext).toContain('# Header');
+    } finally {
+      await cleanup();
+    }
+  });
+
   test('append payload that itself starts with FM does NOT double-write FM', async () => {
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
@@ -379,6 +530,9 @@ describe('POST /api/frontmatter-patch (edit_frontmatter) — fence spacing (PRD-
 });
 
 describe('POST /api/agent-patch (edit_document) — frontmatter rejection', () => {
+  // Every rejection here is position-based: the find MATCHED inside the FM
+  // region. A find that merely LOOKS like frontmatter but lands in the body
+  // applies — see the body-`---` / yaml-shape cases at the end of this block.
   test('rejects yaml-shape find (e.g. "cluster: misc") with 400 + migration hint', async () => {
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
@@ -488,6 +642,99 @@ describe('POST /api/agent-patch (edit_document) — frontmatter rejection', () =
     }
   });
 
+  test('refuses a byte-0 edit whose replace opens a VALID YAML-mapping fence (promotion)', async () => {
+    // The document has no frontmatter, so there is no region for the position
+    // check to protect — but a match at byte 0 whose replacement opens a fence
+    // pair would CREATE frontmatter through the one surface whose contract is
+    // body-only. Refused, consistent with this handler's own error text.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const original = 'Lead paragraph.\n\nRest of body.\n';
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(session.dc.document, original, 'replace');
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(hocuspocus, sessionManager, contentDir, '/api/agent-patch', {
+        docName: 'test-doc',
+        find: 'Lead paragraph.',
+        replace: '---\ntitle: Sneaky\n---\n\nLead paragraph.',
+      });
+
+      expect(response.status).toBe(400);
+      const parsed = JSON.parse(response.body);
+      expect(parsed.type).toBe('urn:ok:error:frontmatter-edit-not-supported');
+      expect(parsed.title).toContain(
+        "would turn the replacement text into the document's frontmatter",
+      );
+
+      expect(session.dc.document.getText('source').toString()).toBe(original);
+      expect(ytextFm(session.dc.document)).toBe('');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('refuses a byte-0 edit whose replace opens a NON-mapping fence (same verdict)', async () => {
+    // Same shape, span that is not YAML at all. Without the promotion guard
+    // this one silently lost the fenced span instead of writing it.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const original = 'Lead paragraph.\n\nRest of body.\n';
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(session.dc.document, original, 'replace');
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(hocuspocus, sessionManager, contentDir, '/api/agent-patch', {
+        docName: 'test-doc',
+        find: 'Lead paragraph.',
+        replace: '---\n\n## Findings\n\n---\n\nLead paragraph.',
+      });
+
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body).type).toBe('urn:ok:error:frontmatter-edit-not-supported');
+      expect(session.dc.document.getText('source').toString()).toBe(original);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('a `---` replace that lands mid-body on an FM-LESS doc still applies', async () => {
+    // The promotion guard is keyed on byte 0, not on the presence of `---`.
+    // The same replacement one paragraph in composes to a document whose first
+    // bytes are still prose, so nothing re-partitions and the write goes
+    // through — this is the case the PR exists to unblock.
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(
+          session.dc.document,
+          'Lead paragraph.\n\nOld section.\n',
+          'replace',
+        );
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(hocuspocus, sessionManager, contentDir, '/api/agent-patch', {
+        docName: 'test-doc',
+        find: 'Old section.',
+        replace: '---\n\n## New section\n\n---\n',
+      });
+
+      expect(response.status).toBe(200);
+      const ytext = session.dc.document.getText('source').toString();
+      expect(ytext).toContain('## New section');
+      expect(ytext.startsWith('Lead paragraph.')).toBe(true);
+      expect(ytextFm(session.dc.document)).toBe('');
+    } finally {
+      await cleanup();
+    }
+  });
+
   test('body-only patch with non-yaml find still applies (regression — body path unaffected)', async () => {
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
@@ -553,7 +800,11 @@ describe('POST /api/agent-patch (edit_document) — frontmatter rejection', () =
     }
   });
 
-  test('rejects yaml-shape find even when no FM exists in the doc (heuristic precheck is doc-stateless)', async () => {
+  test('applies a yaml-SHAPE find that lands in the body (PRD-7858 — no doc-stateless precheck)', async () => {
+    // The rejection follows where the match LANDS, never what the string
+    // looks like. `foo: bar` is prose in the body of a doc with no FM at all;
+    // the old string-shape precheck refused it before reading the doc, and
+    // the agent's only workaround was a whole-document rewrite.
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       const session = await sessionManager.getSession('test-doc');
@@ -572,13 +823,47 @@ describe('POST /api/agent-patch (edit_document) — frontmatter rejection', () =
         replace: 'baz: qux',
       });
 
-      expect(response.status).toBe(400);
-      const parsed = JSON.parse(response.body);
-      expect(parsed.title).toContain('Frontmatter edits are not supported');
+      expect(response.status).toBe(200);
 
       const ytext = session.dc.document.getText('source').toString();
-      expect(ytext).toContain('foo: bar appears here.');
-      expect(ytext).not.toContain('baz: qux');
+      expect(ytext).toContain('baz: qux appears here.');
+      expect(ytext).not.toContain('foo: bar');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('applies an edit whose find AND replace carry a body `---` thematic break (PRD-7858)', async () => {
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      const existingFm = '---\ntitle: Doc\n---\n';
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(
+          session.dc.document,
+          `${existingFm}# Body\n\n---\n\n## Old Section\n`,
+          'replace',
+        );
+      }, AGENT_WRITE_ORIGIN);
+
+      const response = await callApi(hocuspocus, sessionManager, contentDir, '/api/agent-patch', {
+        docName: 'test-doc',
+        find: '---\n\n## Old Section\n',
+        replace: '---\n\n## New Section\n\nWith content.\n',
+      });
+
+      expect(response.status).toBe(200);
+
+      // The doc's own frontmatter is untouched — the find matched the body's
+      // thematic break, which starts well after the FM-end byte.
+      expect(ytextFm(session.dc.document)).toBe(existingFm);
+      expect(fmMap(session.dc.document)).toEqual({ title: 'Doc' });
+
+      const ytext = session.dc.document.getText('source').toString();
+      expect(ytext).toContain('## New Section');
+      expect(ytext).toContain('With content.');
+      expect(ytext).not.toContain('## Old Section');
     } finally {
       await cleanup();
     }
@@ -607,6 +892,77 @@ describe('POST /api/agent-patch (edit_document) — frontmatter rejection', () =
       const ytext = session.dc.document.getText('source').toString();
       expect(ytext).toContain('NOTE: read this.');
       expect(ytext).not.toContain('IMPORTANT:');
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe('byte-0 promotion refusal reaches every write surface', () => {
+  // The guard lives in `applyAgentMarkdownWriteInner`, so it fires from every
+  // handler that composes an append. Each handler catches
+  // `FrontmatterMalformedError` separately, and two of those catches had no
+  // test — a comment was the only thing standing between them and being
+  // deleted as dead code, which is exactly what the comment warns against.
+
+  test('/api/agent-write (the non-md surface) returns the typed envelope', async () => {
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('test-doc');
+
+      // Empty body + no frontmatter: `${content}\n` lands at byte 0.
+      const response = await callApi(hocuspocus, sessionManager, contentDir, '/api/agent-write', {
+        docName: 'test-doc',
+        content: '---\n\n## Findings\n\n---',
+      });
+
+      expect(response.status).toBe(400);
+      const parsed = JSON.parse(response.body);
+      expect(parsed.type).toBe('urn:ok:error:frontmatter-malformed');
+      expect(parsed.parseError).toContain('byte 0');
+      // Placement advice, not the YAML-quoting default.
+      expect(parsed.detail).toContain('blank line');
+      expect(parsed.detail).not.toContain('Quote string values');
+
+      // Refused writes leave the document untouched.
+      expect(session.dc.document.getText('source').toString()).toBe('');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test('/api/agent-write-batch reports it per entry, with the placement hint', async () => {
+    const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
+    try {
+      const session = await sessionManager.getSession('batch-doc');
+
+      const response = await callApi(
+        hocuspocus,
+        sessionManager,
+        contentDir,
+        '/api/agent-write-batch',
+        {
+          docs: [
+            {
+              docName: 'batch-doc',
+              markdown: '---\n\n## Findings\n\n---\n',
+              position: 'append',
+            },
+          ],
+        },
+      );
+
+      // The batch envelope is 200; the refusal rides on the entry.
+      expect(response.status).toBe(200);
+      const parsed = JSON.parse(response.body);
+      const entry = parsed.results[0];
+      expect(entry.error.type).toBe('urn:ok:error:frontmatter-malformed');
+      // The entry detail carries the same hint the single-doc surface gives —
+      // this is what the shared helpers exist to keep aligned.
+      expect(entry.error.detail).toContain('blank line');
+      expect(entry.error.detail).not.toContain('Quote string values');
+
+      expect(session.dc.document.getText('source').toString()).toBe('');
     } finally {
       await cleanup();
     }

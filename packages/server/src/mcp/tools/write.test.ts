@@ -11,7 +11,8 @@
 
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { describe, expect, it } from 'vitest';
-import { composeWithFrontmatter } from './write.ts';
+import { splitPayloadFrontmatter } from '../../payload-frontmatter.ts';
+import { composeWithFrontmatter, frontmatterIgnoredNote } from './write.ts';
 
 /** Count leading-or-anywhere `---` fence lines that open a frontmatter block. */
 function frontmatterBlockCount(markdown: string): number {
@@ -106,5 +107,54 @@ describe('composeWithFrontmatter', () => {
     if (!result.ok) return;
     expect(frontmatterBlockCount(result.markdown)).toBe(0);
     expect(result.markdown).toBe('\nBody.');
+  });
+});
+
+describe('splitPayloadFrontmatter — the shared append/prepend partition rule', () => {
+  it('treats a `---`-fenced NON-mapping span as body, so no drop is announced', () => {
+    const payload = '---\n\n## Findings\n\n---\n\nTrailing note.\n';
+    const split = splitPayloadFrontmatter(payload);
+    expect(split.frontmatter).toBe('');
+    expect(split.body).toBe(payload);
+  });
+
+  it('still partitions a real YAML-mapping block off the payload', () => {
+    const split = splitPayloadFrontmatter('---\ntitle: Second\n---\n\nExtra.\n');
+    expect(split.frontmatter).toBe('---\ntitle: Second\n---\n');
+    expect(split.body).toBe('\nExtra.\n');
+  });
+
+  it('leaves a payload with no leading fence untouched', () => {
+    const split = splitPayloadFrontmatter('Just a paragraph.\n');
+    expect(split.frontmatter).toBe('');
+    expect(split.body).toBe('Just a paragraph.\n');
+  });
+});
+
+describe('frontmatterIgnoredNote — the two outcomes are distinguishable', () => {
+  // A YAML typo is the only difference between "your frontmatter was dropped"
+  // and "your frontmatter is now body text". The note has to say which.
+  const dropped = frontmatterIgnoredNote('append', '---\ntitle: Fine\n---\nbody\n');
+  const asBody = frontmatterIgnoredNote('append', '---\ntitle: Foo: Bar\n---\nbody\n');
+
+  it('says DROPPED for a well-formed mapping', () => {
+    expect(dropped).toContain('was ignored');
+    expect(dropped).not.toContain('written as BODY');
+  });
+
+  it('says WRITTEN AS BODY for a span that is not a mapping', () => {
+    // Without this branch the malformed case is silent — the write returns 200
+    // and the agent's keys land in the document as literal text with no signal.
+    expect(asBody).toContain('written as BODY');
+    expect(asBody).toContain('not a YAML mapping');
+  });
+
+  it('stays silent when the payload never opened with a fence pair', () => {
+    expect(frontmatterIgnoredNote('append', 'just a paragraph\n')).toBeNull();
+    expect(frontmatterIgnoredNote('append', '---\njust a break\n')).toBeNull();
+  });
+
+  it('stays silent on replace, which does not drop anything', () => {
+    expect(frontmatterIgnoredNote('replace', '---\ntitle: Fine\n---\nbody\n')).toBeNull();
   });
 });

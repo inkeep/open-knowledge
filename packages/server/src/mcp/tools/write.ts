@@ -37,6 +37,7 @@ import { parentFolderOf } from '../../content/nested-folder-rules.ts';
 import { applySubstitution, todayIsoUtc } from '../../content/substitution.ts';
 import { resolveTemplatesAvailable } from '../../content/templates-resolver.ts';
 import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
+import { splitPayloadFrontmatter } from '../../payload-frontmatter.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import {
   formatAdvisoryBriefs,
@@ -148,20 +149,39 @@ type WriteOneResult =
 // notes).
 
 /**
- * A `---` frontmatter block in a `prepend`/`append` payload is dropped by the
- * CRDT write path (a second FM block would be invalid). Surface a note instead
- * of silently discarding it.
+ * Describe what the write path did with a `---` block opening a
+ * `prepend`/`append` payload. Two outcomes, and the agent needs to tell them
+ * apart because they differ by nothing more than a YAML typo:
+ *
+ *   - Parses as a mapping → real frontmatter, DROPPED (a second FM block would
+ *     be invalid). The body still lands.
+ *   - Does not parse as a mapping → never frontmatter, so the whole payload
+ *     lands as BODY, fence lines included.
+ *
+ * The second case is the one that bites: an agent that meant to set
+ * frontmatter and mistyped the YAML gets its keys written into the document as
+ * literal text. Reporting only the first case would leave that silent, which
+ * is worse than the refusal this path used to return — the bytes are fine, but
+ * the agent has no signal that its intent was not honoured.
  */
-function frontmatterIgnoredNote(position: string, markdown: string | undefined): string | null {
+export function frontmatterIgnoredNote(
+  position: string,
+  markdown: string | undefined,
+): string | null {
   if ((position !== 'prepend' && position !== 'append') || !markdown) return null;
-  if (stripFrontmatter(markdown).frontmatter.trim() === '') return null;
-  return `Note: a \`---\` frontmatter block in this \`${position}\` payload was ignored — frontmatter is written only with \`position: "replace"\`. To change frontmatter, use \`edit({ document: { path, frontmatter } })\` (patch) or \`write({ document: { path, content, position: "replace" } })\` (full rewrite).`;
+  // The raw regex claim vs. what the mapping-only rule actually partitions.
+  const claimed = stripFrontmatter(markdown).frontmatter.trim() !== '';
+  if (!claimed) return null;
+  if (splitPayloadFrontmatter(markdown).frontmatter.trim() !== '') {
+    return `Note: a \`---\` frontmatter block in this \`${position}\` payload was ignored — frontmatter is written only with \`position: "replace"\`. To change frontmatter, use \`edit({ document: { path, frontmatter } })\` (patch) or \`write({ document: { path, content, position: "replace" } })\` (full rewrite).`;
+  }
+  return `Note: this \`${position}\` payload opens with a \`---\` fence pair, but what is between the fences is not a YAML mapping, so it was written as BODY text (fence lines included) rather than treated as frontmatter. If you meant a thematic break, that is the correct outcome — \`***\` or \`___\` avoids the ambiguity. If you meant to set frontmatter, the YAML did not parse: use \`edit({ document: { path, frontmatter } })\` (patch) or \`write({ document: { path, content, position: "replace" } })\` (full rewrite).`;
 }
 
 /** An `append`/`prepend` whose body is empty is a server-side no-op. */
 function emptyAppendNoOpNote(position: string, markdown: string | undefined): string | null {
   if ((position !== 'prepend' && position !== 'append') || markdown === undefined) return null;
-  if (stripFrontmatter(markdown).body !== '') return null;
+  if (splitPayloadFrontmatter(markdown).body !== '') return null;
   return `No content to ${position} — document unchanged. To clear a document, use \`position: "replace"\` with empty \`content\`.`;
 }
 

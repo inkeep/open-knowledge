@@ -364,8 +364,9 @@ import {
   type SemanticSearchService,
 } from './embeddings/index.ts';
 import {
-  classifyParseError,
   FrontmatterMalformedError,
+  frontmatterRefusalDetail,
+  logFrontmatterRefusal,
   respondFrontmatterMalformed,
 } from './frontmatter-malformed-error.ts';
 import { assertNoSymlinkEscape } from './fs-safety.ts';
@@ -740,39 +741,10 @@ function agentPatchFmTouchCounter(): ReturnType<ReturnType<typeof getMeter>['cre
     'ok.frontmatter.agent_patch_fm_touch_total',
     {
       description:
-        'Count of agent-patch calls whose find string targets the frontmatter region. Measures incidence during the soft-deprecation window before agent-patch FM-intersecting calls are enforced as 400. Bounded label: result ∈ {rejected, pre_deprecation_passthrough}.',
+        'Count of agent-patch calls refused for touching the frontmatter region. Bounded labels: result ∈ {rejected, pre_deprecation_passthrough}, reason ∈ {intersect, promoted}. `intersect` is a find that MATCHED inside the existing frontmatter; `promoted` is a byte-0 replace that would CREATE frontmatter on a document that had none. They refuse for opposite reasons, so a spike in one says nothing about the other — the append/prepend surface separates the same pair via the `byte-0-promotion` class on `frontmatter-malformed-write-refused`.',
     },
   );
   return _agentPatchFmTouchCounter;
-}
-
-/**
- * Heuristic FM-intersection check for `agent-patch` find strings. Pure
- * function on the find string — runs before any doc state is read.
- *
- * Rejection signal:
- *   - find contains `---` (FM/body separator — opening or closing fence)
- *   - find matches `/^\s*[\w-]+:/` (yaml-style key-value at start)
- *
- * Catches the common case: agents that copy a YAML line verbatim into
- * `find` to splice an FM property. The position-based check inside the
- * transact block catches the rarer case where a non-yaml-shape find
- * happens to land in the FM region (e.g., `find: 'draft'` matching
- * `status: draft`). Together they cover both "find looks like FM" and
- * "find lands in FM."
- */
-function findLooksLikeFrontmatter(find: string): boolean {
-  // Line-anchored `---` (YAML document fence). Mid-string `---` (e.g. body
-  // text containing em-dash sequences or markdown thematic breaks embedded
-  // in larger find strings) flows to the position-based check below.
-  if (/(^|\n)---(\s|\n|$)/.test(find)) return true;
-  // YAML key-value shape — require an actual value (`\s+\S` after the
-  // colon) so prose like `Note:` / `IMPORTANT:` / `Warning:` (no value)
-  // is left to the position-based check, which rejects only when the find
-  // actually lands inside the FM region. Empty-value YAML keys like
-  // `draft:` similarly fall through to position-based rejection.
-  if (/^\s*[\w-]+:\s+\S/.test(find)) return true;
-  return false;
 }
 
 let _renameAttributionCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
@@ -5263,14 +5235,13 @@ export function createApiExtension(
           respondDocInConflict(res, e, 'agent-write');
           return;
         }
-        // Symmetry-only catch: `agent-write` calls `applyAgentMarkdownWrite`
-        // with `position: 'append'`, which routes through the FM-dropping
-        // branch (`finalFm = existingFm`). The malformed-FM gate fires only
-        // when `finalFm !== existingFm`, so this catch is structurally
-        // unreachable from this handler today. Kept as a forward-compat
-        // slot in case a future shape lets `agent-write` accept FM-bearing
-        // payloads — at that point the existing test coverage on
-        // `agent-write-md` already pins the envelope shape.
+        // Live catch. `agent-write` appends, so it inherits `existingFm` and
+        // can never trip the malformed-FM gate's first arm
+        // (`finalFm !== existingFm`). It DOES reach the second arm: appending
+        // content that opens with a `---` fence pair to a document with no
+        // frontmatter and an empty body places that pair at byte 0, where the
+        // composed document would re-read it as its frontmatter region. Not
+        // dead code — deleting it turns that refusal into a 500.
         if (e instanceof FrontmatterMalformedError) {
           respondFrontmatterMalformed(res, e, 'agent-write');
           return;
@@ -5724,20 +5695,16 @@ export function createApiExtension(
             );
           }
           if (e instanceof FrontmatterMalformedError) {
-            console.warn(
-              JSON.stringify({
-                event: 'frontmatter-malformed-write-refused',
-                handler: 'agent-write-batch',
-                class: classifyParseError(e.parseError),
-                'doc.name': docName,
-                parseError: e.parseError,
-              }),
-            );
+            // Same event and same detail composition as the single-doc
+            // surface. Reading `parseError` directly here is what made a
+            // byte-0 promotion refusal count as a YAML parse error on this
+            // path alone and drop its placement hint.
+            logFrontmatterRefusal(e, 'agent-write-batch');
             return entryError(
               docName,
               'urn:ok:error:frontmatter-malformed',
               'Frontmatter YAML is malformed.',
-              e.parseError,
+              frontmatterRefusalDetail(e),
             );
           }
           if (e instanceof AgentSessionCapacityError) {
@@ -6513,23 +6480,6 @@ export function createApiExtension(
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
 
-        // Heuristic precheck: reject `find` strings that look like a YAML
-        // frontmatter block before doing any Y.Doc work. The position-based
-        // postcheck below catches non-yaml strings whose first match falls
-        // inside the FM region. Frontmatter edits must go through
-        // write with position:"replace", not a body find/replace.
-        if (findLooksLikeFrontmatter(find)) {
-          agentPatchFmTouchCounter().add(1, { result: 'rejected' });
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:frontmatter-edit-not-supported',
-            'Frontmatter edits are not supported via a body find/replace. Use edit({ document: { path, frontmatter } }) to change frontmatter, or write({ document: { path, content, position: "replace" } }) to rewrite the whole document including its YAML block.',
-            { handler: 'agent-patch' },
-          );
-          return;
-        }
-
         if (isSystemDoc(docName) || isConfigDoc(docName)) {
           errorResponse(
             res,
@@ -6600,6 +6550,7 @@ export function createApiExtension(
         let notFound = false;
         let staleTarget = false;
         let fmIntersect = false;
+        let fmPromoted = false;
         // Site A content-divergence captured from the in-transact gate.
         // Surfaced as the response's `warning` field on successful patches.
         let patchDivergence: AgentWriteContentDivergence | undefined;
@@ -6677,29 +6628,51 @@ export function createApiExtension(
               return;
             }
 
-            // Position-based FM-intersection check. The string-shape
-            // heuristic above handles yaml-style find strings; this catches
-            // the residual class where a non-yaml find (e.g. a single word
-            // like `draft`) happens to first-match in the FM region.
-            // `pos < currentFm.length` is the necessary-and-sufficient
-            // signal — FM is contiguous at doc start, so any match starting
-            // before the FM-end byte overlaps the FM region.
+            // The FM-intersection check, and the ONLY one. `pos <
+            // currentFm.length` is necessary and sufficient: the FM region is
+            // contiguous at doc start, so a match starting before its end byte
+            // overlaps it and a match at or after cannot. Catches both the
+            // yaml-shaped find copied out of the FM block and the plain-word
+            // find (e.g. `draft`) that happens to first-match inside it —
+            // without refusing those same strings when they live in the body.
+            // A string-shape precheck used to reject any find containing a
+            // line-anchored `---` or a `key: value` line before reading the
+            // doc at all; it refused body thematic breaks and prose, and the
+            // agent's only recourse was a whole-document `write` that clobbers
+            // concurrent writers.
             if (pos < currentFm.length) {
               fmIntersect = true;
               return;
             }
 
-            // Splice at the character level, then write the recomposed body
-            // via the `'patch'` position. Only body-region patches reach here,
-            // so this branch never modifies the FM: applyAgentMarkdownWrite
-            // reads the current FM from the YAML region of Y.Text and keeps it
-            // intact for a body-only payload. `'patch'` (NOT `'replace'`) routes
-            // the write through the INCREMENTAL primitive, so this surgical
-            // find/replace produces a minimal item-preserving Y.Text delta
-            // instead of an atomic whole-doc overwrite — replace stays atomic,
-            // the edit body find/replace stays surgical.
             const newFull =
               currentFull.slice(0, pos) + replace + currentFull.slice(pos + find.length);
+
+            // Frontmatter-PROMOTION check, the mirror of the intersection
+            // check above. A document with no FM has no region to protect by
+            // position, so a match at byte 0 whose `replace` opens a `---`
+            // fence pair silently turns the agent's body text into the
+            // document's frontmatter region — creating frontmatter through the
+            // one surface whose whole contract is "body only". Refuse it: this
+            // handler already tells agents that frontmatter edits go through
+            // `edit({ document: { path, frontmatter } })`, and a find/replace
+            // that CREATES frontmatter is a frontmatter edit.
+            if (currentFm === '' && stripFrontmatter(newFull).frontmatter !== '') {
+              fmPromoted = true;
+              return;
+            }
+
+            // The promotion guard above is what keeps this splice honest: every
+            // payload that survives it recomposes with its FM region byte-
+            // identical to `currentFm`, so stripping it back off here cannot
+            // drop anything. `applyAgentMarkdownWrite` then reads the current
+            // FM from the YAML region of Y.Text and keeps it intact for the
+            // body-only payload — `finalFm === existingFm` still always holds
+            // from this handler. `'patch'` (NOT `'replace'`) routes the write
+            // through the INCREMENTAL primitive, so this surgical find/replace
+            // produces a minimal item-preserving Y.Text delta instead of an
+            // atomic whole-doc overwrite — replace stays atomic, the edit body
+            // find/replace stays surgical.
             const { body: newBody } = stripFrontmatter(newFull);
             const beforeBlocks = snapshotBlocks(session.dc.document);
             patchDivergence = applyAgentMarkdownWrite(
@@ -6736,7 +6709,7 @@ export function createApiExtension(
               }),
             );
           }
-          if (!notFound && !staleTarget && !fmIntersect) {
+          if (!notFound && !staleTarget && !fmIntersect && !fmPromoted) {
             // Only count + record when the patch actually applied. The
             // adoption-rate denominator excludes 404/409 + FM-intersect 400
             // so the metric reflects successful writes, not total attempts.
@@ -6776,12 +6749,23 @@ export function createApiExtension(
           return;
         }
         if (fmIntersect) {
-          agentPatchFmTouchCounter().add(1, { result: 'rejected' });
+          agentPatchFmTouchCounter().add(1, { result: 'rejected', reason: 'intersect' });
           errorResponse(
             res,
             400,
             'urn:ok:error:frontmatter-edit-not-supported',
             'Frontmatter edits are not supported via a body find/replace. Use edit({ document: { path, frontmatter } }) to change frontmatter, or write({ document: { path, content, position: "replace" } }) to rewrite the whole document including its YAML block.',
+            { handler: 'agent-patch' },
+          );
+          return;
+        }
+        if (fmPromoted) {
+          agentPatchFmTouchCounter().add(1, { result: 'rejected', reason: 'promoted' });
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:frontmatter-edit-not-supported',
+            "This edit would turn the replacement text into the document's frontmatter: the document has no frontmatter, the match starts at byte 0, and `replace` opens a `---` fence pair — so the composed document would re-read that block as its YAML region. Use edit({ document: { path, frontmatter } }) to set frontmatter, or keep the `---` out of the first line (a leading blank line, or `***` / `___` for a thematic break).",
             { handler: 'agent-patch' },
           );
           return;

@@ -26,6 +26,7 @@ import {
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
+import { splitPayloadFrontmatter } from './payload-frontmatter.ts';
 
 export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
@@ -353,7 +354,9 @@ export function snapshotBlocks(document: Document): string[] {
  * body-only; we handle both. On 'replace', an FM in the payload supersedes
  * the existing FM. On 'prepend'/'append', the payload's FM (if any) is
  * dropped defensively to avoid producing a document with two FM blocks
- * (double-FM is a CommonMark invalid state). Stripping FM is orthogonal to
+ * (double-FM is a CommonMark invalid state) — but ONLY when it parses as a
+ * YAML mapping, since `FRONTMATTER_RE` also claims ordinary bodies that open
+ * and close with a `---` thematic break. Stripping FM is orthogonal to
  * the byte-faithful contract — body bytes survive verbatim, only the
  * FM-handling logic prevents structural breakage.
  *
@@ -372,14 +375,6 @@ export function snapshotBlocks(document: Document): string[] {
 interface ComposedAgentWrite {
   existingFm: string;
   finalFm: string;
-  /**
-   * The span append/prepend partitioned off the payload and discarded. Empty
-   * on replace/patch, which supersede the FM region instead of dropping it.
-   * Dropping a well-formed block is the documented bound; dropping a span that
-   * is NOT a YAML mapping means the payload never had frontmatter and the
-   * partition just ate the agent's BODY, which the gate refuses.
-   */
-  droppedPayloadFm: string;
   /** Full document bytes (FM + body) the primitives apply verbatim. */
   newContent: string;
 }
@@ -390,7 +385,17 @@ function composeAgentWrite(
   position: 'append' | 'prepend' | 'replace' | 'patch',
 ): ComposedAgentWrite | undefined {
   const { frontmatter: existingFm, body: currentBody } = stripFrontmatter(currentYText);
-  const { frontmatter: payloadFm, body: payloadBody } = stripFrontmatter(markdown);
+  // Append/prepend DISCARD whatever the frontmatter partition claims, so the
+  // mapping-only rule in `splitPayloadFrontmatter` is what keeps the regex
+  // from silently eating body content that merely opens with a `---` fence
+  // pair. `replace`/`patch` supersede the FM region rather than discarding
+  // it, so they keep the raw `stripFrontmatter` partition. The rule lives in
+  // its own module because the MCP `write` tool's advisory notes must agree
+  // with it byte-for-byte — see `splitPayloadFrontmatter`.
+  const { frontmatter: payloadFm, body: payloadBody } =
+    position === 'append' || position === 'prepend'
+      ? splitPayloadFrontmatter(markdown)
+      : stripFrontmatter(markdown);
 
   // append/prepend with an empty body is a no-op — there is nothing to add,
   // so return before the write and leave the document byte-unchanged.
@@ -439,7 +444,6 @@ function composeAgentWrite(
   return {
     existingFm,
     finalFm,
-    droppedPayloadFm: position === 'append' || position === 'prepend' ? payloadFm : '',
     newContent: prependFrontmatter(finalFm, newBody),
   };
 }
@@ -462,7 +466,7 @@ function applyAgentMarkdownWriteInner(
     if (composed === undefined) {
       return;
     }
-    const { existingFm, finalFm, droppedPayloadFm, newContent } = composed;
+    const { existingFm, finalFm, newContent } = composed;
 
     // A `replace`/`patch` that rebuilds the fragment over un-propagated WYSIWYG
     // content silently discards it — wire the paired-intake derive-loss detector
@@ -494,10 +498,12 @@ function applyAgentMarkdownWriteInner(
       //
       // Gate is targeted: only fires when the agent CHANGES the FM
       // (`finalFm !== existingFm`). Append/prepend can never satisfy that —
-      // they inherit `existingFm` by construction — so they carry their own
-      // arm below, keyed on the payload span they discard. Existing docs that
-      // already carry malformed FM keep accepting body-only writes — the
-      // rejection follows the introducer, not the inheritor.
+      // they inherit `existingFm` by construction — and they no longer need
+      // an arm of their own: `composeAgentWrite` only partitions a payload FM
+      // off an append/prepend when it parses as a YAML mapping, so there is no
+      // unparseable span left to refuse. Existing docs that already carry
+      // malformed FM keep accepting body-only writes — the rejection follows
+      // the introducer, not the inheritor.
       //
       // No byte mutation: we parse for validation only. The agent's bytes
       // are preserved verbatim once they pass (Y.Text-is-truth, precedent
@@ -530,21 +536,35 @@ function applyAgentMarkdownWriteInner(
       // `frontmatter-malformed-write-refused` structured log already
       // carries the refusal signal.
       recordFrontmatterEditSurface('mcp-write');
-    } else if (droppedPayloadFm !== '') {
-      // Append/prepend partition the payload with the same `FRONTMATTER_RE` and
-      // discard the claimed span. Dropping a well-formed block is the
-      // documented bound and stays silent — the payload's BODY still lands
-      // intact. But a span that isn't a YAML mapping was never frontmatter:
-      // the partition just ate the agent's content, and the same payload sent
-      // as `replace` is already refused with this exact error and class. Same
-      // predicate, same envelope, same event — the asymmetry was the bug.
-      const droppedParsed = parseFrontmatterYaml(unwrapFrontmatterFences(droppedPayloadFm));
-      if (droppedParsed.map === null) {
-        throw new FrontmatterMalformedError({
-          file: docNameToFile(document.name),
-          parseError: droppedParsed.parseError ?? 'unknown YAML parse error',
-        });
-      }
+    } else if (finalFm === '' && stripFrontmatter(newContent).frontmatter !== '') {
+      // Frontmatter PROMOTION, the residue of the un-split above. Writing a
+      // `---`-fenced non-mapping span through as body is right everywhere it
+      // lands mid-document, but append/prepend can put it at byte 0 (prepend
+      // onto a document with no frontmatter, or append onto one whose body is
+      // empty). There the composed bytes re-partition: every other consumer —
+      // `stripFrontmatter`, the XmlFragment derive, the FM bridge, the next
+      // `edit` — reads that span as the frontmatter region, so the content
+      // vanishes from the rendered document, the property panel shows the
+      // malformed-FM banner, and editing it back is refused as an FM
+      // intersect. Refusing here keeps the three write positions in agreement
+      // about which byte sequences make an acceptable document: `replace`
+      // already refuses these exact bytes at the gate above.
+      //
+      // The span is necessarily a non-mapping — a well-formed mapping block
+      // stays partitioned off as `payloadFm` and is dropped, never un-split —
+      // so the malformed-FM envelope is the honest one. It carries its own
+      // class and hint because nothing here was parsed: the default advice
+      // ("quote your YAML-significant characters") would send the agent after
+      // syntax when the problem is placement, and bucketing this as a parse
+      // error would put placement refusals in the counter that exists to
+      // catch schema regressions.
+      throw new FrontmatterMalformedError({
+        file: docNameToFile(document.name),
+        parseError:
+          "the payload's leading `---` fence pair would land at byte 0, where the composed document re-reads it as the frontmatter region instead of body",
+        refusalClass: 'byte-0-promotion',
+        hint: 'Start the payload with a blank line so the fence pair cannot open the document, or use `***` / `___` for the thematic break.',
+      });
     }
 
     // Hand the composed full bytes (FM + body) to the shared primitive.

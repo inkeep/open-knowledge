@@ -10,12 +10,20 @@
  * string value containing an unquoted YAML-significant character (`:`, `#`,
  * leading `-`), e.g. `title: The End of 3% Mortgages: Why ...`.
  *
- * The gate lives at `applyAgentMarkdownWriteInner` and ONLY fires when the
- * agent's write actually CHANGES the FM region (`finalFm !== existingFm`).
- * Append/prepend never touch FM (payload FM is dropped defensively in that
- * path), so the gate skips them. Existing docs that already carry malformed
- * FM on disk continue to accept body-only writes — the rejection is targeted
- * at the introducer, not the inheritor.
+ * The gate lives at `applyAgentMarkdownWriteInner` and fires when the agent's
+ * write actually CHANGES the FM region (`finalFm !== existingFm`). Existing
+ * docs that already carry malformed FM on disk continue to accept body-only
+ * writes — the rejection is targeted at the introducer, not the inheritor.
+ *
+ * A second arm catches the same outcome by a different route: an append or
+ * prepend inherits `existingFm` by construction, so it can never trip the
+ * first arm, but it CAN place a `---`-fenced non-mapping span at byte 0 of a
+ * document that has no frontmatter. The composed bytes then re-partition and
+ * that span becomes the FM region — malformed frontmatter the agent never
+ * asked for. Same envelope, but it carries its own `refusalClass`
+ * (`byte-0-promotion`) and `hint`: nothing was parsed, so the YAML-quoting
+ * advice would misdirect, and counting it as a parse error would blunt the
+ * one signal the class label exists to give.
  *
  * Wire shape — slim RFC 9457 envelope at HTTP 400:
  *
@@ -51,12 +59,15 @@ const FIX_HINT =
   'Frontmatter must be a top-level YAML mapping. Quote string values containing YAML-significant characters (`:`, `#`, leading `-`), e.g. `title: "Foo: bar"`.';
 
 /**
- * Typed throw from `applyAgentMarkdownWriteInner` when the COMPOSED
- * frontmatter (`finalFm`) is unparseable AND the agent is the cause (i.e.,
- * `finalFm !== existingFm`). The `file` field carries the doc path so the
- * HTTP boundary can surface it as the `file` extension on the RFC 9457
- * envelope. `parseError` is the raw `yaml@2` parser message — useful for
- * agents to diagnose the offending line/column without round-tripping.
+ * Typed throw from `applyAgentMarkdownWriteInner` when the agent's write is
+ * the cause of a malformed FM region — either because the COMPOSED
+ * frontmatter it introduces is unparseable (`finalFm !== existingFm`), or
+ * because an append/prepend would promote body bytes into the FM region at
+ * byte 0. The `file` field carries the doc path so the HTTP boundary can
+ * surface it as the `file` extension on the RFC 9457 envelope. `parseError`
+ * is the raw `yaml@2` parser message for the first case — useful for agents
+ * to diagnose the offending line/column without round-tripping — and a
+ * placement description for the second.
  *
  * Throw shape rather than return-value branching: this matches the same
  * uniform error-composition contract as `DocInConflictError` — every write
@@ -66,12 +77,28 @@ const FIX_HINT =
 export class FrontmatterMalformedError extends Error {
   readonly file: string;
   readonly parseError: string;
+  /**
+   * Set by a throw site that already KNOWS its class, so the response helper
+   * does not have to re-derive it by sniffing prose it was just handed.
+   * Omitted for the YAML gates, whose `parseError` is a real parser message
+   * that `classifyParseError` reads correctly.
+   */
+  readonly refusalClass?: FrontmatterMalformedClass;
+  /** Fix advice replacing `FIX_HINT` when the YAML-quoting hint would not apply. */
+  readonly hint?: string;
   override readonly name = 'FrontmatterMalformedError' as const;
 
-  constructor(opts: { file: string; parseError: string }) {
+  constructor(opts: {
+    file: string;
+    parseError: string;
+    refusalClass?: FrontmatterMalformedClass;
+    hint?: string;
+  }) {
     super(`Frontmatter YAML is malformed in ${opts.file}: ${opts.parseError}`);
     this.file = opts.file;
     this.parseError = opts.parseError;
+    if (opts.refusalClass !== undefined) this.refusalClass = opts.refusalClass;
+    if (opts.hint !== undefined) this.hint = opts.hint;
   }
 }
 
@@ -96,6 +123,17 @@ export class FrontmatterMalformedError extends Error {
  *                                   FrontmatterValueSchema (e.g. function,
  *                                   Symbol leaf; `null` shapes are coerced to
  *                                   empty values, not rejected)
+ *   - `'byte-0-promotion'`        ← NOT a parse outcome: the bytes never got
+ *                                   as far as YAML. An append/prepend would
+ *                                   have placed a `---` fence pair at offset
+ *                                   0, so the composed document would read
+ *                                   the agent's body as its frontmatter.
+ *                                   Carried on the error by the throw site
+ *                                   rather than inferred from `parseError`,
+ *                                   which keeps placement refusals out of the
+ *                                   `yaml-parse-error` bucket — that bucket's
+ *                                   whole job is spotting a schema/parser
+ *                                   regression by its count.
  *   - `'unknown'`                 ← fallback (should be unreachable; logged
  *                                   so a future parseError prefix that
  *                                   doesn't match any branch surfaces
@@ -105,6 +143,7 @@ export type FrontmatterMalformedClass =
   | 'yaml-parse-error'
   | 'non-mapping-top-level'
   | 'schema-rejection'
+  | 'byte-0-promotion'
   | 'unknown';
 
 export function classifyParseError(parseError: string): FrontmatterMalformedClass {
@@ -125,16 +164,51 @@ export function classifyParseError(parseError: string): FrontmatterMalformedClas
 }
 
 /**
+ * The refusal's bounded-cardinality class. A throw site that knows its own
+ * class wins; only the YAML gates fall through to prose classification.
+ *
+ * Module-private on purpose: both refusal surfaces reach it through
+ * `logFrontmatterRefusal`, which is the single emission site. Exporting it
+ * would re-open the door this consolidation closed — a caller reading the
+ * class itself is one step from composing its own event and drifting on the
+ * label, which is exactly how placement refusals ended up counted as YAML
+ * parse errors on the batch path.
+ */
+function frontmatterRefusalClass(err: FrontmatterMalformedError): FrontmatterMalformedClass {
+  return err.refusalClass ?? classifyParseError(err.parseError);
+}
+
+/** Agent-facing detail: the diagnosis plus whichever fix advice applies. */
+export function frontmatterRefusalDetail(err: FrontmatterMalformedError): string {
+  return `${err.parseError}. ${err.hint ?? FIX_HINT}`;
+}
+
+/**
+ * Emit the structured refusal event. Both refusal surfaces route through here
+ * so the grouped-by-handler counter stays consistent across gates.
+ */
+export function logFrontmatterRefusal(err: FrontmatterMalformedError, handler: string): void {
+  console.warn(
+    JSON.stringify({
+      event: 'frontmatter-malformed-write-refused',
+      handler,
+      class: frontmatterRefusalClass(err),
+      'doc.name': stripDocExtension(err.file),
+      parseError: err.parseError,
+    }),
+  );
+}
+
+/**
  * Translate a `FrontmatterMalformedError` into the slim RFC 9457 problem+json
  * envelope at HTTP 400. The exact wire shape is a 1-way-door contract — see
  * the file header for the literal body.
  *
  * Callers wrap their handler body in `try { ... } catch (err) { if (err
  * instanceof FrontmatterMalformedError) { respondFrontmatterMalformed(res, err, 'handler-name'); return; } throw err; }`.
- *
- * Emits the structured log event `frontmatter-malformed-write-refused` on
- * every refusal — single emission site so the grouped-by-handler counter
- * stays consistent across gates.
+ * A surface that composes something other than an HTTP response (see
+ * `agent-write-batch`) calls `logFrontmatterRefusal` + `frontmatterRefusalDetail`
+ * instead, so the event and the detail stay identical across both.
  */
 export function respondFrontmatterMalformed(
   res: ServerResponse,
@@ -150,19 +224,10 @@ export function respondFrontmatterMalformed(
   // nested mappings + arrays of objects — a spike in `schema-rejection` is
   // now the signal that the schema regressed or a new non-representable
   // value class surfaced.
-  const refusalClass = classifyParseError(err.parseError);
-  console.warn(
-    JSON.stringify({
-      event: 'frontmatter-malformed-write-refused',
-      handler,
-      class: refusalClass,
-      'doc.name': stripDocExtension(err.file),
-      parseError: err.parseError,
-    }),
-  );
+  logFrontmatterRefusal(err, handler);
   errorResponse(res, 400, 'urn:ok:error:frontmatter-malformed', 'Frontmatter YAML is malformed.', {
     handler,
-    detail: `${err.parseError}. ${FIX_HINT}`,
+    detail: frontmatterRefusalDetail(err),
     extensions: {
       file: err.file,
       parseError: err.parseError,

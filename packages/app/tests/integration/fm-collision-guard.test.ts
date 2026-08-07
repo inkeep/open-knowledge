@@ -413,13 +413,26 @@ describe('A3 — append/prepend payload partition', () => {
   }
 
   /**
-   * Append and prepend partition the payload with the same regex and discard
-   * the claimed span. When that span is not a YAML mapping the payload never
-   * had frontmatter and the partition just ate the agent's BODY — the same
-   * payload sent as `replace` is already refused, so the asymmetry was the bug.
+   * The verdict follows the COMPOSED DOCUMENT, not the payload's shape.
+   *
+   * This file's whole thesis is a document whose body OPENS with a `---` fence
+   * pair — offset 0 is what makes the span satisfy `FRONTMATTER_RE` and vanish
+   * into the YAML region. `replace` puts the payload at offset 0 by
+   * definition, and `prepend` puts it there whenever the document carries no
+   * frontmatter, so both still refuse. An `append` onto a non-empty body
+   * cannot reach offset 0: the same bytes compose into a document with no
+   * frontmatter region at all, where the fence pair is an ordinary thematic
+   * break. Refusing that was the bug this pins against — it left the agent no
+   * move but a whole-document rewrite, which clobbers concurrent writers.
+   *
+   * The earlier reading judged the payload in isolation and called the
+   * position split an asymmetry. It is one rule ("may the composed document
+   * end up with a frontmatter region the agent never asked for?") reaching
+   * three different composed documents. Same anchor the sibling WYSIWYG guard
+   * above uses: `normalizeBridge`'s doc-start step is anchored at offset 0.
    *
    */
-  test('an ambiguous payload is refused, matching replace', async () => {
+  test('an ambiguous payload is refused where it would land at offset 0', async () => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, 'seed\n', {
@@ -429,12 +442,77 @@ describe('A3 — append/prepend payload partition', () => {
       await settled(client);
 
       const ambiguous = '---\n\nx\n\n---\n\ny\n';
+      // `replace` makes the payload the whole document: the fence pair IS the
+      // frontmatter region, and it is not a mapping.
       expect(await writeRaw(client.docName, ambiguous, 'replace')).toBe(400);
-      expect(await writeRaw(client.docName, ambiguous, 'append')).toBe(400);
+      // `prepend` onto a frontmatter-less document lands at offset 0 too.
       expect(await writeRaw(client.docName, ambiguous, 'prepend')).toBe(400);
 
-      // Refused writes leave the document untouched.
+      // Both refusals leave the document untouched.
       expect(getServerState(server, client.docName)?.ytext.toString()).toBe('seed\n');
+    } finally {
+      await client.cleanup();
+    }
+  });
+
+  /**
+   * The other side of the same rule, and the case the bug report was filed
+   * about. Appending onto a non-empty body puts the fence pair mid-document,
+   * where it is a thematic break and nothing is claimed as frontmatter — so
+   * the write lands, and the content survives all the way into the fragment
+   * rather than disappearing into a YAML region.
+   *
+   */
+  test('the same payload appended onto a non-empty body lands, with no collision', async () => {
+    const client = await createTestClient(server.port);
+    const violations: unknown[] = [];
+    const detach = attachBridgeInvariantWatcher(client.doc, {
+      onViolation: (info) => violations.push(info),
+    });
+    try {
+      await agentWriteMd(server.port, 'seed\n', {
+        docName: client.docName,
+        position: 'replace',
+      });
+      await settled(client);
+
+      expect(await writeRaw(client.docName, '---\n\nx\n\n---\n\ny\n', 'append')).toBe(200);
+      const ytext = await settled(client);
+
+      // No frontmatter region was created — the document still opens with its
+      // own body, so the fence pair never reaches offset 0.
+      expect(stripFrontmatter(ytext).frontmatter).toBe('');
+      expect(ytext.startsWith('seed')).toBe(true);
+
+      // The agent's bytes are intact: no re-spell, no dropped span. This is
+      // the byte-sacred agent path, not the WYSIWYG mint.
+      expect(ytext).toContain('---');
+      expect(ytext).toContain('x');
+      expect(ytext).toContain('y');
+
+      // And the content reached the fragment rather than vanishing into a
+      // YAML region — the collision this file exists to catch did not happen.
+      const state = getServerState(server, client.docName);
+      expect(state?.md).toContain('x');
+      expect(state?.md).toContain('y');
+      expect(violations).toEqual([]);
+    } finally {
+      detach();
+      await client.cleanup();
+    }
+  });
+
+  /**
+   * The offset-0 sibling of the append case: with an EMPTY body there is
+   * nothing in front of the payload, so append lands at offset 0 exactly like
+   * prepend and refuses on the same rule.
+   *
+   */
+  test('append onto an EMPTY body refuses — it lands at offset 0 too', async () => {
+    const client = await createTestClient(server.port);
+    try {
+      expect(await writeRaw(client.docName, '---\n\nx\n\n---\n\ny\n', 'append')).toBe(400);
+      expect(getServerState(server, client.docName)?.ytext.toString() ?? '').toBe('');
     } finally {
       await client.cleanup();
     }
