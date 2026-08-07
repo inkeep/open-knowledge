@@ -849,6 +849,13 @@ export interface OkEditorViewMenuStateSnapshot {
   readonly terminalLive?: boolean;
   readonly agentPanelVisible?: boolean;
   readonly canViewInSource?: boolean;
+  /**
+   * Is there a live editor selection? ⌘L stages that selection in the agents
+   * panel instead of toggling it, so the menu item has to know: without this the
+   * label reads "Hide Agents" while the click stages a passage and the panel
+   * stays open.
+   */
+  readonly hasEditorSelection?: boolean;
 }
 
 /**

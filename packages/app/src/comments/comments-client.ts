@@ -155,10 +155,11 @@ export function editComment(threadId: string, body: string): Promise<CommentThre
   return mutate<unknown>({ action: 'edit', id: threadId, body }).then(parseThread);
 }
 
-export function resolveThread(threadId: string): Promise<CommentThreadMeta> {
-  return mutate<unknown>({ action: 'resolve', id: threadId }).then(parseThread);
-}
-
+/**
+ * No `resolve` caller. The endpoint still takes the action, but a comment
+ * settles by being sent — `completeDispatchBatch` resolves what shipped — so
+ * there is no client route to it that isn't a send.
+ */
 export function reopenThread(threadId: string): Promise<CommentThreadMeta> {
   return mutate<unknown>({ action: 'reopen', id: threadId }).then(parseThread);
 }
@@ -185,8 +186,7 @@ export function unqueueThread(threadId: string): Promise<CommentThreadMeta> {
 
 /**
  * Delete a thread outright — destructive and irreversible. Distinct from
- * `unqueueThread` (drop from the batch, keep the comment) and `resolveThread`
- * (close it, keep the history).
+ * `unqueueThread`, which drops it from the batch and keeps the comment.
  */
 export function deleteThread(threadId: string): Promise<{ threadId: string }> {
   return request<unknown>(`/api/comment?id=${encodeURIComponent(threadId)}`, {

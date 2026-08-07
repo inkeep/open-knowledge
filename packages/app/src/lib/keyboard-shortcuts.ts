@@ -223,7 +223,7 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'toggle-terminal-panel',
     category: 'general',
     title: msg`Show or hide bottom dock`,
-    description: msg`Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead.`,
+    description: msg`Toggle the bottom dock, where the terminal lives.`,
     scope: msg`OK Desktop`,
     // ⌘J must stay bindings[0]: `formatShortcut` renders only the first binding,
     // and the menu-accelerator parity ratchet compares that against the View
@@ -255,6 +255,27 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     title: msg`Show or hide agents`,
     description: msg`Toggle the right agents panel, where agent conversations live.`,
     scope: msg`Global`,
+    bindings: [
+      {
+        mac: '⌘ L',
+        windowsLinux: 'Ctrl L',
+        match: { key: 'l', mod: true },
+      },
+    ],
+  },
+  {
+    // Second row on ⌘L, disambiguated by selection state — the same two-rows-one-
+    // chord shape `command-palette` and `add-link` use, so each behavior gets an
+    // honest name in the shortcuts list rather than one row with a buried clause.
+    // A selection claims the chord; without one it falls through to the toggle
+    // above. Deliberately targets the agents panel rather than resolving the
+    // user's preferred AI globally: a chord should name one destination, and this
+    // one already means "agents panel".
+    id: 'ask-ai-selection',
+    category: 'general',
+    title: msg`Ask AI about selection`,
+    description: msg`Stage the selected passage in the agents panel, ready to extend and send.`,
+    scope: msg`Editor selection`,
     bindings: [
       {
         mac: '⌘ L',
@@ -622,16 +643,24 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
-    id: 'edit-with-ai',
+    // ⌘Enter is already TipTap's hardBreak and CodeMirror's insertBlankLine, so a
+    // window listener on it would fire while someone types a line break. ⇧⌘Enter
+    // is free: `prosemirror-keymap` resolves it to `Shift-Meta-Enter`, and its
+    // strip-Shift-and-retry fallback is gated on `name.length == 1`, so a named
+    // key can never degrade into its non-shift binding.
+    //
+    // Global rather than panel-scoped: the queue is project-wide, and the panel is
+    // a view of it, not the thing itself.
+    id: 'send-comment-queue',
     category: 'general',
-    title: msg`Ask AI (from selection)`,
-    description: msg`Open and focus the Ask AI composer for the current editor selection.`,
-    scope: msg`Editor selection`,
+    title: msg`Send checked comments to chat`,
+    description: msg`Hand the checked comments to an agent in one turn. On This doc, that document's comments only; on This project, every checked comment. Does nothing while the Comments tab is closed.`,
+    scope: msg`When the Comments tab is open`,
     bindings: [
       {
-        mac: '⇧⌘ I',
-        windowsLinux: 'Ctrl Shift I',
-        match: { key: 'i', mod: true, shiftKey: true },
+        mac: '⇧⌘ Enter',
+        windowsLinux: 'Ctrl Shift Enter',
+        match: { key: 'Enter', mod: true, shiftKey: true },
       },
     ],
   },

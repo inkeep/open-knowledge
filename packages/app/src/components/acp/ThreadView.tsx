@@ -46,7 +46,15 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { Fragment, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
@@ -56,6 +64,7 @@ import {
   useQueuedComments,
   useSelectedCommentCount,
 } from '@/comments/comment-chips';
+import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, selectAllQueued } from '@/comments/store';
 import type { CommentThread } from '@/comments/types';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
@@ -435,6 +444,7 @@ export function ThreadView({
   const selectedCommentCount = useSelectedCommentCount();
   const [commentsAttached, setCommentsAttached] = useState(false);
   const [commentsExpanded, setCommentsExpanded] = useState(false);
+
   const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
 
   /**
@@ -523,7 +533,15 @@ export function ThreadView({
    * Re-entrant sends are held off by `dispatchComments` itself, which guards the
    * one queue across every surface that drains it.
    */
-  const submitQueuedComments = async (instruction: string): Promise<void> => {
+  const submitQueuedComments = async (
+    instruction: string,
+    /**
+     * Send exactly these instead of the whole checked queue. Set by the Comments
+     * panel, whose This-doc scope counts one document's comments — the composer's
+     * own chip leaves it unset, because that chip IS the whole checked queue.
+     */
+    threadIds?: readonly string[],
+  ): Promise<void> => {
     // A mid-turn send only reaches the server's MESSAGE queue, and both a
     // cancel and a terminal status drop that queue before the agent ever reads
     // it. Resolving there would close review work nobody has acted on — the one
@@ -533,6 +551,7 @@ export function ThreadView({
     // sitting side by side.
     const queuedBehindTurn = canQueue;
     const shipped = await dispatchComments({
+      threadIds,
       resolve: !queuedBehindTurn,
       compose: (items) =>
         sendText(
@@ -557,6 +576,37 @@ export function ThreadView({
     setCommentsAttached(false);
     setCommentsExpanded(false);
   };
+
+  /**
+   * The Comments panel sending a batch into THIS conversation.
+   *
+   * Runs the same path the composer's own send takes for an attached batch, so
+   * a comment sent from the panel and one sent from the chip are one turn shape
+   * and one resolve rule. Whatever is already typed rides along as the batch's
+   * shared instruction rather than being cleared — you were in the middle of
+   * saying something, and the comments are being added to it.
+   *
+   * An effect event, not a ref written during render: the subscription installs
+   * once per thread id, and this has to read the CURRENT draft and thread status
+   * at the moment the signal arrives.
+   */
+  const sendCommentsFromPanel = useEffectEvent((threadIds?: readonly string[]) => {
+    // The composer's own guard: a busy thread accepts a queued message, a dead
+    // one accepts nothing.
+    if (!(canPrompt || canQueue)) return;
+    submitQueuedComments(draft.trim(), threadIds).catch((err) => {
+      console.warn('[acp] panel comment send rejected unexpectedly', err);
+    });
+  });
+
+  // Keyed by thread id because every ThreadView stays mounted — an unkeyed
+  // signal would send the batch from whichever thread answered first.
+  useEffect(() => {
+    return subscribeSendInThread((sendTo, threadIds) => {
+      if (sendTo !== info.threadId) return;
+      sendCommentsFromPanel(threadIds);
+    });
+  }, [info.threadId]);
 
   const retryThread = (): void => {
     setRetryPending(true);

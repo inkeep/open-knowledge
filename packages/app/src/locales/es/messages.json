@@ -174,7 +174,6 @@
     "1njn7W": ["Claro"],
     "1nke1r": ["Abrir ", ["0"], " en GitHub (se abre en una pestaña nueva)"],
     "1oSHI0": ["No se pudo instalar ", ["skillName"], ": ", ["0"]],
-    "1oawp3": ["No se pudieron borrar ", ["failed"], " de ", ["0"], " comentarios."],
     "1t_NnN": ["Rechazar"],
     "1u-mAI": ["No se pudo iniciar la sincronización. Revisa tu conexión y vuelve a intentarlo."],
     "1vn0CI": ["Respuesta del servidor no válida"],
@@ -201,7 +200,6 @@
     "2FnYUD": [
       "Información de la aplicación y del sistema, registros recientes de la aplicación y registros del servidor del proyecto: lo imprescindible para reproducir el problema."
     ],
-    "2FoHU3": ["Resolver"],
     "2G-56b": ["No se pudieron actualizar las reglas de markdownlint"],
     "2GT3Hf": ["Global"],
     "2H43L8": ["Los secretos como claves de API y tokens se ocultan automáticamente."],
@@ -362,7 +360,6 @@
     "4E9jPa": ["Crea tu primer proyecto"],
     "4EZrJN": ["Reglas"],
     "4ErgAf": ["OpenKnowledge instaló una habilidad"],
-    "4GWjF8": ["No se pudo determinar a dónde enviar los comentarios; siguen pendientes."],
     "4Gz2wC": ["No se pudo subir el archivo"],
     "4KmEoC": ["Atajos de teclado"],
     "4NC2Ym": ["Ir a la celda siguiente o anterior de la tabla."],
@@ -398,6 +395,7 @@
     "4sKwf6": ["El archivo ya existe"],
     "4sUdTJ": ["vista previa con tema"],
     "4uNLmk": ["Haciendo pull"],
+    "4uaCUA": [["mins"], "min"],
     "4v2Yyz": [
       "Selecciona todas las filas visibles del árbol de archivos cuando el foco está en la barra lateral Archivos."
     ],
@@ -417,6 +415,7 @@
     "56WWtu": ["No se pudieron cargar los paquetes iniciales: ", ["error"]],
     "56xUL1": ["Nombre de la propiedad"],
     "57fiu8": ["(solo lectura: por ahora edítalo en modo código)"],
+    "58qIOK": ["Comentar esta selección"],
     "5ALjdr": ["Recorre los resultados de búsqueda del editor visual desde el campo de búsqueda."],
     "5Ajb15": ["La fórmula <0>c = √(a² + b²)</0> se renderiza en línea."],
     "5AzM72": ["Este ajuste es de cada equipo y no se comparte con tus colaboradores."],
@@ -455,6 +454,9 @@
     "5aahsI": ["nada (", ["0"], " no es un patrón válido)"],
     "5b3WD-": ["OpenKnowledge guardó un punto de control"],
     "5e1Dri": ["La etiqueta de menú con la que los agentes eligen esta plantilla (obligatoria)."],
+    "5ecEGe": [
+      "Entrega los comentarios marcados a un agente en un solo turno. En Este documento, solo los comentarios de ese documento; en Este proyecto, todos los comentarios marcados. No hace nada mientras la pestaña Comentarios está cerrada."
+    ],
     "5gr_ev": [
       "Se convierte en el contenido del documento cuando alguien crea uno a partir de esta plantilla. Escribe <0>",
       ["dateToken"],
@@ -528,6 +530,7 @@
     "6V3Ea3": ["Copiado"],
     "6VqW-1": ["Quitar ", ["keyName"]],
     "6WdDG7": ["Página"],
+    "6YBJ3m": ["Preguntar a la IA sobre la selección"],
     "6YtxFj": ["Nombre"],
     "6ZhdPI": ["Lo que el agente puede leer, escribir y mostrar."],
     "6_ZOw4": ["Ruta completa copiada"],
@@ -698,11 +701,11 @@
     "8fRyLo": ["Carga de parche no válida"],
     "8fc_3j": ["Rama protegida: no se puede hacer push"],
     "8k6INX": ["Pega un token de acceso personal para <0>", ["host"], "</0>."],
-    "8kBLOT": ["Esa aplicación no está disponible; los comentarios siguen pendientes de envío."],
     "8lwQlE": [["0"], " añadidos, ", ["1"], " eliminados"],
     "8m8diM": ["No hay ninguna ubicación seleccionada. Usa Examinar para elegir una carpeta."],
     "8nOdkO": ["Alinear al centro"],
     "8nWu1k": ["Diagrama vacío"],
+    "8oWgty": ["Marcar todos los comentarios para enviar"],
     "8qgfac": ["Servidores MCP"],
     "8ruqQi": ["Enlaces internos rotos"],
     "8sMErm": ["¿Activar Seguir?"],
@@ -942,6 +945,7 @@
     "C0hoX6": ["Siempre incluido"],
     "C3Zc44": ["Explorar habilidades"],
     "C62P6b": ["Selección del editor"],
+    "C7PKTv": ["Enviar los comentarios marcados al chat"],
     "C7waqI": [
       [
         "0",
@@ -988,6 +992,9 @@
     "ChAtFg": ["No tienes permiso para hacer push a este repositorio"],
     "ChMshD": ["Salir de ", ["appName"]],
     "Ck9XRt": ["No se pudo guardar la clave; inténtalo de nuevo."],
+    "ClTEde": [
+      "Prepara el fragmento seleccionado en el panel de agentes, listo para ampliar y enviar."
+    ],
     "CmeH9S": ["Añadir propiedad a ", ["keyName"]],
     "CnOGgs": ["Modo de sincronización"],
     "CoHvYd": ["Se movió ", ["0"], " a la posición ", ["1"], " de ", ["2"]],
@@ -1265,7 +1272,7 @@
     "G0YZ-I": ["Aumentar o reducir la sangría del elemento de lista"],
     "G1Gw0v": ["Plantilla nueva"],
     "G1XxbZ": ["Casilla de verificación"],
-    "G4-bgo": ["Preguntar a la IA (desde la selección)"],
+    "G1zJlD": ["Ocultar comentarios resueltos"],
     "G4m8rL": ["Comentar la selección"],
     "G6Lrs_": ["Hacer que ", ["0"], " deje de leer esta habilidad"],
     "G7-rf8": ["Error de sintaxis en el patrón: ", ["message"]],
@@ -1641,6 +1648,7 @@
     "LXdWeS": ["Encabezado de sección mediano."],
     "LXfNU-": ["Navegación y sugerencias"],
     "LYufDw": ["No se pudo activar la búsqueda semántica — ", ["detail"]],
+    "LaskKp": ["Enviar al chat (", ["0"], ")"],
     "Lbl6KA": ["No se pudo instalar desde ", ["0"], ": ", ["1"]],
     "LbmLyU": ["No se puede editar con seguridad la configuración de esta herramienta"],
     "Lcehxn": ["Guardar la resolución"],
@@ -1802,6 +1810,7 @@
     "N55YNr": [
       "Elige si la configuración de OpenKnowledge de este proyecto, incluidas sus conexiones con herramientas de IA, se guarda con el proyecto para que tus compañeros también la reciban, o se queda solo en tu equipo."
     ],
+    "NBdIgR": ["Comentar"],
     "NCmYhK": [
       "Las habilidades enseñan a los agentes tareas repetibles. Créalas y gestiónalas desde la sección Habilidades del editor; el menú de instalación de cada habilidad controla dónde vive. Estas son las carpetas de habilidades de este proyecto."
     ],
@@ -1820,9 +1829,7 @@
     "NRSLBe": ["hace ", ["diffMin"], " min"],
     "NSnIUP": ["Dos páginas (pares)"],
     "NUr4kz": ["Un punto de partida reutilizable para los documentos nuevos de esta carpeta."],
-    "NVtrN-": [
-      "Muestra u oculta el panel inferior, donde vive la terminal. Si hay texto seleccionado, lo prepara para la IA que prefieras."
-    ],
+    "NUw7lo": ["Muestra u oculta el panel inferior, donde vive la terminal."],
     "NYUhy5": ["Nombre de la subcarpeta"],
     "NYn1cR": ["Cargando el editor"],
     "NYu2Pt": ["Proyecto nuevo…"],
@@ -1835,6 +1842,7 @@
     "NeY1Np": ["Slidev tardó demasiado en iniciarse. Inténtalo de nuevo."],
     "NfraGd": ["Otras formas de instalar Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " activos"],
+    "NiGIcB": ["Abrir Comentarios"],
     "NjrIak": ["Archivo: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Editar ", ["tag"]],
     "NkXEFS": ["Falló la restauración: el documento no cambió"],
@@ -1844,11 +1852,11 @@
     "NnQapF": ["Abrir con la IA ", ["targetDisplayName"]],
     "NoY1k4": ["La estructura de la respuesta del servidor no es válida"],
     "NpC29w": ["Crea un elemento de lista nuevo a partir del elemento actual."],
-    "NpuPmi": ["Por enviar"],
     "NrFwux": ["No se pudieron guardar las reglas de contenido — ", ["0"]],
     "Ns0z5o": [
       "Cuando instalas una habilidad publicada, se avisa al directorio de habilidades (skills.sh) para que su recuento de instalaciones sea exacto. Se envía el nombre de la habilidad, su repositorio de origen y a qué herramientas de IA fue; nunca el contenido de los archivos, y nunca en el caso de una habilidad de un origen privado, local o escrito a mano. Una vez por habilidad y equipo."
     ],
+    "Ns5f4J": ["Desmarcar todos los comentarios"],
     "Nu4DdT": ["Sincronización"],
     "Nu4oKW": ["Descripción"],
     "NuH1jp": ["Repositorio público"],
@@ -1912,6 +1920,7 @@
     ],
     "Okd2Xv": ["Activa o desactiva el subrayado."],
     "OlAl5i": ["Expandir todo"],
+    "OlFVNr": ["Preguntar a la IA sobre la selección"],
     "Oo_WWc": ["No se encontraron páginas"],
     "Oos8fo": ["Copiar comando"],
     "OplnBG": ["La gestión de herramientas de IA no está disponible en esta compilación."],
@@ -1981,7 +1990,6 @@
     "PkeYXL": ["Modo de grafo expandido"],
     "Pkw7J9": ["Esta carpeta está vacía."],
     "PlGC6r": ["el archivo de exclusión de git no admite escritura"],
-    "Pnvg8e": ["No se pudo abrir la terminal; los comentarios siguen pendientes de envío."],
     "Pp0Vgd": ["Haz clic para instalarlo en ", ["label"]],
     "PpJy-V": ["El endpoint no respondió a tiempo."],
     "PqYWiC": [
@@ -2015,6 +2023,7 @@
     "QB-moX": ["Instálala en tus otros editores (Claude Code, Cursor, Codex) para compartirla."],
     "QDZbvN": ["hace ", ["diffDays"], " d"],
     "QHCx0c": ["Historial de informes de error"],
+    "QIrBIx": ["Expandir todos los archivos"],
     "QKgePK": [
       "Se alineó ",
       ["editor"],
@@ -2046,6 +2055,7 @@
     "QlAG4m": ["Cuéntanos más (opcional)"],
     "QlkiD5": ["Volver a colocar sobre el texto seleccionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
+    "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Etiqueta <0>(texto visible del enlace)</0>"],
     "Quz_Qu": ["Los cambios se aplican en vivo. El modo claro u oscuro viene del esquema."],
     "Qvls7J": ["Especificaciones de ingeniería"],
@@ -2054,6 +2064,7 @@
     ],
     "QySH4I": ["Proyectos de OpenKnowledge detectados"],
     "QyioBP": ["Subir"],
+    "QzofTX": ["Todavía no hay comentarios en este proyecto. Comenta un fragmento para empezar."],
     "R0cyYB": [
       [
         "0",
@@ -2115,7 +2126,6 @@
     "Rj01Fz": ["Enlaces"],
     "RlCInP": ["Comandos de barra"],
     "RmBY0A": ["No hay remoto de git"],
-    "RmmhAh": ["Enviar más tarde"],
     "RnrnTe": ["Ya está configurado: ok está disponible en tu terminal"],
     "RoafuO": ["Enviar comentarios"],
     "RobAKV": ["Actualiza el destino y el ancla de sección opcional."],
@@ -2509,6 +2519,7 @@
     "XV5sC0": ["Abrir el worktree"],
     "XVnIvs": ["Instalar habilidades"],
     "XW18jo": ["La respuesta de los encabezados de página no coincide con el esquema de éxito"],
+    "XWEqQj": [["days"], "d"],
     "XXA1b_": [["componentLabel"], " (vacío)"],
     "XYlJJT": ["Configurando"],
     "XZkdtg": ["Cambiar de rama"],
@@ -2631,7 +2642,6 @@
     "Yy90sM": ["Se creó la habilidad \"", ["name"], "\""],
     "YyXtnN": ["Subrayado"],
     "Yzs3QX": ["Más acciones de habilidad"],
-    "YzyyG2": ["Todavía no hay nada que enviar. Comenta un pasaje para añadirlo aquí."],
     "Z0W6SO": [
       "Esta carpeta es un clon de ",
       ["actualOwner"],
@@ -2668,7 +2678,6 @@
     "ZBxvV3": ["Terminal nueva"],
     "ZDOq9A": ["Lo que compartes se envía al equipo de OpenKnowledge."],
     "ZGVsOD": ["Envía esta rama a GitHub antes de compartir."],
-    "ZHAM1l": ["Incluir en el envío"],
     "ZI8uvA": ["No se encontraron problemas."],
     "ZJ99sD": ["Insertar columna a la izquierda"],
     "ZNK2Tq": ["raíz"],
@@ -2762,6 +2771,7 @@
       "Copia de solo lectura de un bloque MirrorSource de otro documento. Edítalo en el origen y se actualiza en vivo."
     ],
     "_XWY2J": ["Terminal desactivada"],
+    "_YEyHO": ["Mostrar comentarios resueltos"],
     "_YWqV2": ["OpenKnowledge resolvió un conflicto"],
     "_ayOfA": [
       "Una base de conocimiento que sigue el Open Knowledge Format de Google, una forma común de organizar lo que sabes. Elige esto si quieres que tus notas funcionen bien con otras herramientas que entienden el formato."
@@ -2775,6 +2785,7 @@
     "_gO_m8": ["Esperando tu aprobación"],
     "_gkGSK": ["plantilla eliminada"],
     "_mcDqU": [["count"], " habilidades en esta fuente"],
+    "_oqig9": [["hours"], "h"],
     "_pY_Vq": ["El repositorio se movió, se renombró o se eliminó."],
     "_qD6mn": ["Elige la carpeta donde lo has clonado."],
     "_rP3HI": ["hace ", ["minutes"], " min"],
@@ -2782,9 +2793,6 @@
     "_tjopj": ["Pegar duplicado"],
     "_yB-24": ["todo lo que hay en cualquier carpeta ", ["0"], "/"],
     "a-cKXz": ["Seleccionar todo el código"],
-    "a3H_MR": [
-      "Abre y enfoca el compositor de Preguntar a la IA con la selección actual del editor."
-    ],
     "a3LDKx": ["Seguridad"],
     "a45f2c": ["Patrones glob a los que se aplica este esquema"],
     "a4FRQv": ["¿Deshacer hasta esta edición?"],
@@ -3156,7 +3164,6 @@
     "emMrXQ": ["El servidor devolvió una respuesta de duplicación con formato incorrecto."],
     "emgiet": ["Contenido autoritativo; se replica literalmente allí donde se referencia."],
     "enPTnx": ["línea ", ["displayLine"]],
-    "eoEUI3": ["No se pudo resolver ese comentario."],
     "epuNYK": [
       "Marca un bloque como fuente de verdad. Los espejos de otros sitios se actualizan en vivo mientras lo editas."
     ],
@@ -3216,6 +3223,7 @@
     "fcgvCA": ["Claude"],
     "fdeFfN": ["(archivo binario, sin vista previa)"],
     "fevEu0": ["Traer los últimos cambios"],
+    "ffH3Rt": ["Añadir comentario (Intro)"],
     "fg1U4e": ["Descubrimiento de habilidades gracias a <0>skills.sh</0>"],
     "fhaxJL": ["No se pudo clonar: el cuerpo de la respuesta está vacío"],
     "fiMNLl": [
@@ -3701,7 +3709,6 @@
       ["4"],
       ") que no tocará el resto de tu sistema."
     ],
-    "l7X_SM": ["Enviar a la IA"],
     "l87Deg": ["Elige qué inicia una pestaña nueva"],
     "l9s3IX": [["agentName"], " no pudo iniciar una conversación."],
     "lAiyU_": ["Solo el documento actual usa <0>#", ["tag"], "</0>."],
@@ -4228,6 +4235,7 @@
     ],
     "rwrPbS": ["Navegación por los límites de los componentes"],
     "rxWGWX": ["Adelante"],
+    "ryhHUm": ["Cuando la pestaña Comentarios está abierta"],
     "s-MGs7": ["Recursos"],
     "s-XOaI": ["Nombre del archivo"],
     "s-pW_v": ["No se pudo instalar: ", ["0"]],
@@ -4268,6 +4276,7 @@
     "sNeKjP": ["No se pudo guardar el token: inténtalo de nuevo"],
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
+    "sR0I-f": ["Contraer todos los archivos"],
     "sW5OjU": ["obligatorio"],
     "sZ2IOu": [
       "Este ",
@@ -4328,6 +4337,7 @@
       "</0> se creará a partir del commit actual, en su propio worktree dentro de <1>.ok/worktrees/</1>."
     ],
     "t6w1cq": ["Abre una pestaña de editor en blanco."],
+    "t7YoBO": ["Enviar este comentario"],
     "t9Qn8y": ["No hay agentes activados"],
     "tA0b9E": ["la carpeta de habilidades por defecto (la ruta exacta aparece al guardar)"],
     "tA2-xC": ["\"", ["0"], "\" ya se había añadido (contenido idéntico)."],
@@ -4417,7 +4427,6 @@
     "u_lS4C": ["Clonación completada: abriendo el proyecto"],
     "uaUc6t": ["Reiniciar el servidor"],
     "ubMwcO": ["La sesión de terminal terminó (señal ", ["0"], ")."],
-    "ubx-L3": ["Comentarios por enviar"],
     "ucXZ0k": ["Cargando agentes…"],
     "ugQcJX": [
       ["display"],
@@ -4610,6 +4619,7 @@
       "Elegiste ~/Downloads. Los archivos de ahí suelen ser pasajeros; plantéate una carpeta más estable."
     ],
     "wndeIl": ["Páginas de todo el proyecto sin aristas entrantes ni salientes en el grafo."],
+    "wqD3pI": ["No se pudieron actualizar ", ["failed"], " de ", ["0"], " comentarios."],
     "ws5o1F": ["Comprobado por: ", ["0"]],
     "wtcxiD": ["¿Compartir esta configuración con tu equipo?"],
     "wvK7Ay": ["Tu copia local de la rama <0>", ["branch"], "</0> está por detrás."],
@@ -4812,7 +4822,6 @@
     "zL0LPh": ["Global fuera de los campos de texto"],
     "zLGXna": ["No hay paquetes iniciales disponibles."],
     "zLak8b": ["Activar pestaña nueva"],
-    "zO-IiA": ["La terminal no está disponible aquí; los comentarios siguen pendientes de envío."],
     "zQBg2C": ["Sube o baja una posición el bloque actual."],
     "zXj1rA": ["Buscar por significado"],
     "zYp8Sr": [
@@ -4832,7 +4841,6 @@
     "zkz0Fg": ["Configurar la sincronización"],
     "zlErBl": ["La respuesta de error de los encabezados de página no cumple RFC 9457"],
     "zo3Dl7": ["Mostrar u ocultar las miniaturas"],
-    "zovxVp": ["Listo para enviar"],
     "zpfN9p": ["Todavía no hay comentarios. Selecciona texto en el documento para añadir uno."],
     "zq2eBA": ["Ver en el código"],
     "zrP8HX": [

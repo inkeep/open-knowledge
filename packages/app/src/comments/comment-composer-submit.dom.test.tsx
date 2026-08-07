@@ -8,7 +8,8 @@
  *
  * What is left is what this component owns: which payload gets filed, that a
  * filed passage stops being selected while a cancelled one does not, and that
- * "Send to AI" hands over rather than queueing.
+ * filing is the only thing the card does — the batch goes out from the Comments
+ * tab, which this card only routes to.
  */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
@@ -49,7 +50,7 @@ const captured = {
   created: [] as CreateArgs[],
   startComment: null as (() => void) | null,
   collapsedTo: [] as number[],
-  sent: [] as { threadIds?: readonly string[]; submit?: boolean; resolve?: boolean }[],
+  panelTabs: [] as string[],
 };
 
 /** The field, doubled as a plain textarea that honours the same handle. */
@@ -97,11 +98,8 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
   },
 }));
 
-vi.doMock('./append-to-open-session', () => ({
-  appendQueueToOpenSession: (args: Record<string, unknown>) => {
-    captured.sent.push(args);
-    return Promise.resolve(1);
-  },
+vi.doMock('@/components/doc-panel-events', () => ({
+  requestDocPanelTab: (tab: string) => captured.panelTabs.push(tab),
 }));
 
 vi.doMock('./store', () => ({
@@ -161,7 +159,7 @@ afterEach(() => {
   cleanup();
   captured.created.length = 0;
   captured.collapsedTo.length = 0;
-  captured.sent.length = 0;
+  captured.panelTabs.length = 0;
   captured.startComment = null;
 });
 
@@ -192,29 +190,39 @@ describe('the comment composer', () => {
     expect(args.onCreated).toBeUndefined();
   });
 
-  test('Enter files it too, so the keyboard never reaches the irreversible one', async () => {
+  test('Enter queues the comment', async () => {
     const field = await openComposer();
     fireEvent.change(field, { target: { value: 'press it?' } });
     fireEvent.keyDown(field, { key: 'Enter' });
 
     expect(captured.created).toHaveLength(1);
+    // No `onCreated` is what makes this a queue-only filing: a hand-off would be
+    // sequenced behind creation, so its absence means nothing shipped.
     expect(captured.created[0].onCreated).toBeUndefined();
   });
 
-  test('Send to AI hands the comment over and resolves it', async () => {
+  // The modifier used to reach a second, irreversible action. With that action
+  // gone, ⌘Enter must land on the one that is left rather than on nothing.
+  test('Cmd/Ctrl+Enter queues too — there is no send-now twin', async () => {
     const field = await openComposer();
     fireEvent.change(field, { target: { value: 'press it?' } });
-    fireEvent.click(screen.getByRole('button', { name: /send to ai/i }));
+    fireEvent.keyDown(field, { key: 'Enter', metaKey: true });
 
-    const [args] = captured.created;
-    expect(args.body).toBe('press it?');
-    // The send is sequenced behind creation because only the store has the id.
-    expect(args.onCreated).toBeDefined();
+    expect(captured.created).toHaveLength(1);
+    // No `onCreated` is what makes this queue-only: a hand-off would be
+    // sequenced behind creation, so its absence means nothing shipped.
+    expect(captured.created[0].onCreated).toBeUndefined();
+  });
 
-    args.onCreated?.('t1');
-    // `resolve` is what keeps it out of the queue: a sent comment is not a
-    // review item waiting to go, and leaving it open would send it twice.
-    expect(captured.sent).toEqual([{ threadIds: ['t1'], submit: true, resolve: true }]);
+  test('the card routes to the Comments tab instead of dispatching', async () => {
+    const field = await openComposer();
+    fireEvent.change(field, { target: { value: 'press it?' } });
+    fireEvent.click(screen.getByRole('button', { name: /open comments/i }));
+
+    expect(captured.panelTabs).toEqual(['comments']);
+    // Leaving is not filing: the draft survives the trip so nothing is lost.
+    expect(captured.created).toEqual([]);
+    expect(screen.queryByPlaceholderText('Add a comment')).not.toBeNull();
   });
 
   test('posting collapses the selection — the passage has been filed', async () => {
@@ -238,10 +246,9 @@ describe('the comment composer', () => {
     expect(captured.collapsedTo).toEqual([]);
   });
 
-  test('an empty draft files nothing, from either button', async () => {
+  test('an empty draft files nothing', async () => {
     await openComposer();
     fireEvent.click(screen.getByRole('button', { name: /add comment/i }));
-    fireEvent.click(screen.getByRole('button', { name: /send to ai/i }));
 
     expect(captured.created).toEqual([]);
   });

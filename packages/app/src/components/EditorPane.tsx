@@ -15,7 +15,7 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
 import { requestPreviewTabPromotion } from '@/editor/preview-tab-promotion';
-import { getSelectionContext } from '@/editor/selection-context';
+import { getSelectionContext, subscribeSelectionContext } from '@/editor/selection-context';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
 import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
@@ -278,7 +278,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   //
   // Returns true when a selection was staged (caller skips the toggle / new-tab
   // fallback).
-  function sendSelectionToTerminal(newTab: boolean): boolean {
+  function sendSelectionToTerminal(newTab: boolean, target?: 'agents'): boolean {
     if (activeDocName == null) return false;
     const snapshot = getSelectionContext(activeDocName, editorMode);
     const selectionMarkdown = snapshot?.markdown ?? '';
@@ -288,23 +288,26 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     const staged = `${composeTerminalSelectionPaste(activeDocName, selectionMarkdown)}\n\n`;
     // Raw selected material, not an instruction — written and left for the user
     // to extend and send, on a CLI and on an agent thread alike.
-    requestActiveTerminalInput(staged, { newTab, submit: false });
+    requestActiveTerminalInput(staged, { newTab, submit: false, target });
     return true;
   }
   // Effect Events so the once-bound key/menu listeners below read the current
   // closures (fresh activeDocName / editorMode) without re-subscribing.
   const sendSelectionToTerminalEvent = useEffectEvent(sendSelectionToTerminal);
+  const sendSelectionToAgentsEvent = useEffectEvent(() => sendSelectionToTerminal(false, 'agents'));
   const launchNewChatEvent = useEffectEvent(() => launchNewChat());
 
   // Bottom-dock toggle, dual-wired like the DocPanel: on desktop the View →
   // Bottom Dock item's ⌘J/Ctrl+J accelerator is OS-captured and dispatches
   // `toggle-terminal`; the web host has no menu, so a window keydown stands in.
-  // With a selection, the chord sends it to the terminal (reusing the active
-  // tab) instead of toggling.
+  //
+  // ⌘J is a pure toggle: selection-send moved to ⌘L, whose chord names the panel
+  // a passage actually lands in. Do not re-add a selection branch here — one
+  // chord per destination is the point, and two would put the same intent behind
+  // a key that says "terminal".
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
       if (action === 'toggle-terminal') {
-        if (sendSelectionToTerminalEvent(false)) return;
         setTerminalVisible((visible) => !visible);
       } else if (action === 'new-terminal') {
         // Terminal menu "New Terminal": reveal the dock (it never hides, unlike
@@ -312,6 +315,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         // only owns visibility and covers the case where no dock is mounted yet.
         setTerminalVisible(true);
       } else if (action === 'toggle-agent-panel') {
+        // With a selection ⌘L stages it in the agents panel; the host reveals
+        // itself, so this must not also toggle (that would hide it again).
+        if (sendSelectionToAgentsEvent()) return;
         setAgentsVisible((visible) => !visible);
       }
     });
@@ -326,14 +332,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     function handleKeyDown(event: KeyboardEvent) {
       if (!matchesRendererShortcut(event, 'toggle-terminal-panel', hasNativeMenu)) return;
       if (isOverlayLayerOpen()) return;
-      // Claim the chord only when we will actually act on it. A selection send is
-      // the whole of ⌘J on a shell-less host; with no selection AND no shell there
+      // Claim the chord only when we will actually act on it: with no shell there
       // is nothing to toggle, so let the browser keep its own ⌘J rather than
       // swallowing it for a no-op.
-      if (sendSelectionToTerminalEvent(false)) {
-        event.preventDefault();
-        return;
-      }
       if (!terminalAvailable) return;
       event.preventDefault();
       setTerminalVisible((visible) => !visible);
@@ -344,11 +345,15 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [terminalAvailable]);
 
-  // ⌘L / Ctrl+L toggles the agents panel. On desktop the View menu item's
+  // ⌘L / Ctrl+L: with a selection, stage it in the agents panel; otherwise toggle
+  // the panel. Same dual wiring as ⌘J — on desktop the View menu item's
   // accelerator is OS-captured and dispatches `toggle-agent-panel` (handled
-  // above), so this window keydown is the web host's stand-in. Unlike ⌘J it has
-  // no selection-send behavior: a selection goes to whichever panel the user's
-  // preferred AI lives in, which the hosts arbitrate off ⌘J.
+  // above), so this window keydown is the web host's stand-in.
+  //
+  // Two registry rows share this chord (`ask-ai-selection` and
+  // `toggle-agent-panel`), disambiguated by selection state, the same shape ⌘K
+  // uses for add-link vs the palette. Both resolve here rather than in separate
+  // listeners so the order can't drift.
   //
   // Skipping the desktop host wholesale stays correct only while EVERY binding
   // of the shortcut is menu-delivered. Add one the menu cannot carry — an
@@ -361,6 +366,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       if (!matchesKeyboardShortcut(event, 'toggle-agent-panel')) return;
       if (isOverlayLayerOpen()) return;
       event.preventDefault();
+      // The host reveals itself for a staged passage, so this must not also
+      // toggle — that would hide the panel the passage just landed in.
+      if (sendSelectionToAgentsEvent()) return;
       setAgentsVisible((visible) => !visible);
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
@@ -478,6 +486,38 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     setViewMenuState({ agentPanelVisible: agentsVisible });
     window.okDesktop.editor.notifyViewMenuStateChanged({ agentPanelVisible: agentsVisible });
   }, [agentsVisible, dockRestoreSettled]);
+
+  /**
+   * Publish whether a selection is live, so View → Agents can rename itself to
+   * what ⌘L will actually do.
+   *
+   * Without it the item reads "Hide Agents" while a selection is up, and the
+   * click stages a passage and leaves the panel open — the label naming an
+   * action the command is not performing. Mirrored into the renderer store too,
+   * so the command palette's row agrees with the native menu.
+   *
+   * Subscribed rather than derived from render state: the selection lives in a
+   * module registry the editors publish to, and it changes on every caret move
+   * without re-rendering this pane. NOT behind `dockRestoreSettled` — unlike
+   * panel visibility there is no retained value a mount-initial `false` could
+   * overwrite.
+   */
+  useEffect(() => {
+    let last: boolean | null = null;
+    const publish = () => {
+      const snapshot =
+        activeDocName === null ? null : getSelectionContext(activeDocName, editorMode);
+      const hasEditorSelection = (snapshot?.markdown ?? '').trim() !== '';
+      // The registry fires on every caret move; only a CHANGE is worth an IPC
+      // hop and a menu rebuild.
+      if (hasEditorSelection === last) return;
+      last = hasEditorSelection;
+      setViewMenuState({ hasEditorSelection });
+      window.okDesktop?.editor.notifyViewMenuStateChanged({ hasEditorSelection });
+    };
+    publish();
+    return subscribeSelectionContext(publish);
+  }, [activeDocName, editorMode]);
 
   // Restore both panels' expanded state after a renderer reload: main retains the
   // per-window visibility of each (written by the gated pushes above once this

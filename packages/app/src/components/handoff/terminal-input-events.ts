@@ -36,18 +36,34 @@ export interface ActiveTerminalInputDetail {
    * session, never any live PTY.
    */
   readonly submit: boolean;
+  /**
+   * Which panel must answer, overriding the preferred-AI resolution described
+   * above. Only ⌘L sets it: that chord names the agents panel, so a selection
+   * sent with it goes there whatever the user's preferred AI is.
+   *
+   * Absent — every other sender — keeps the global resolution, which is still
+   * the default and still the reason the two hosts never double-land a passage.
+   * Do NOT reach for this to "make sure" a send arrives somewhere; a sender with
+   * no destination opinion must not express one.
+   */
+  readonly target?: 'agents';
 }
 
 export function requestActiveTerminalInput(
   text: string,
-  options?: { newTab?: boolean; submit?: boolean },
+  options?: { newTab?: boolean; submit?: boolean; target?: 'agents' },
   target: Pick<Window, 'dispatchEvent'> | EventTarget = typeof window === 'undefined'
     ? new EventTarget()
     : window,
 ): void {
   target.dispatchEvent(
     new CustomEvent<ActiveTerminalInputDetail>(ACTIVE_TERMINAL_INPUT_EVENT, {
-      detail: { text, newTab: options?.newTab === true, submit: options?.submit === true },
+      detail: {
+        text,
+        newTab: options?.newTab === true,
+        submit: options?.submit === true,
+        ...(options?.target === 'agents' ? { target: 'agents' as const } : {}),
+      },
     }),
   );
 }
@@ -69,6 +85,7 @@ export function subscribeToActiveTerminalInput(
         text: detail.text,
         newTab: detail.newTab === true,
         submit: detail.submit === true,
+        ...(detail.target === 'agents' ? { target: 'agents' as const } : {}),
       });
     }
   };

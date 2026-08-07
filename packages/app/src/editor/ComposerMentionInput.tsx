@@ -83,6 +83,14 @@ export function ComposerMentionInput({
    *  inline mentions (a file mentioned inline is not also shown as a top chip).
    *  Optional — surfaces with no top-row chips omit it. */
   onMentionsChange?: (mentions: string[]) => void;
+  /**
+   * Enter (and ⌘/Ctrl+Enter) with the `@`-popup closed.
+   *
+   * Carries no modifier flag: every host has ONE filing action, so both chords
+   * mean the same thing. It briefly reported which one fired, for a second
+   * "send now" action on the comment composer that no longer exists — and a flag
+   * nobody reads is a flag that drifts from what the keys actually do.
+   */
   onSubmit: () => void;
   /**
    * Escape, when the `@`-popup is NOT open.
@@ -154,6 +162,9 @@ export function ComposerMentionInput({
           // prompt; returning false lets that handler run.
           const suggestionActive = composerMentionSuggestionKey.getState(view.state)?.active;
           if (suggestionActive) return false;
+          // Claimed here rather than left to the document's hardBreak binding:
+          // this is the composer's own editor instance, so ⌘Enter never reaches
+          // the surrounding document keymap.
           onSubmitRef.current();
           return true;
         }

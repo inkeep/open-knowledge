@@ -207,6 +207,7 @@ const PALETTE_COMMAND_LABELS = {
   terminalHide: msg`Hide Bottom Dock`,
   agentPanelShow: msg`Show Agents`,
   agentPanelHide: msg`Hide Agents`,
+  agentPanelAskSelection: msg`Ask AI About Selection`,
   showHiddenFiles: msg`Show hidden files`,
   showOkFolders: msg`Show .ok folders`,
   showOnlyMarkdownFiles: msg`Show only markdown files`,
@@ -382,6 +383,16 @@ function paletteCoreContext(ctx: PaletteCommandContext): CommandContext {
 
 function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): string {
   if (cmd.stateToggle) {
+    const { overrideKey, overrideField } = cmd.stateToggle;
+    // Same precedence as the native menu: an override names an action the
+    // toggle is not performing, so it wins over the show/hide pair.
+    if (
+      overrideKey !== undefined &&
+      overrideField !== undefined &&
+      ctx.viewMenuState[overrideField] === true
+    ) {
+      return i18n._(PALETTE_COMMAND_LABELS[overrideKey as PaletteLabelKey]);
+    }
     // Palette form: `state ? Hide : Show` (undefined → Show), independent of the
     // native menu's default-visible fallback.
     const visible = ctx.viewMenuState[cmd.stateToggle.stateField] === true;

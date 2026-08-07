@@ -104,6 +104,10 @@ export const MENU_LABELS = {
   terminalHide: 'Hide Bottom Dock',
   agentPanelShow: 'Show Agents',
   agentPanelHide: 'Hide Agents',
+  // ⌘L stages a selection rather than toggling when one exists, so the item
+  // renames itself to what it will actually do. Without this it reads "Hide
+  // Agents" and then does not hide them.
+  agentPanelAskSelection: 'Ask AI About Selection',
   // Palette form for the install command, whose native-menu leaf renders a
   // different literal via the placement's `menuLabelText` ("…(desktop app)"
   // lowercase), so only this palette string participates in the shared-label

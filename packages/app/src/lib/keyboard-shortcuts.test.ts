@@ -27,7 +27,9 @@ describe('keyboard shortcut registry', () => {
     expect(formatShortcut('file-tree-paste', 'windowsLinux')).toBe('Ctrl V');
     expect(formatShortcut('file-tree-delete', 'mac')).toBe('⌘ Backspace');
     expect(formatShortcut('file-tree-delete', 'windowsLinux')).toBe('Delete');
-    expect(formatShortcut('edit-with-ai', 'mac')).toBe('⇧⌘ I');
+    expect(formatShortcut('ask-ai-selection', 'mac')).toBe('⌘ L');
+    expect(formatShortcut('send-comment-queue', 'mac')).toBe('⇧⌘ Enter');
+    expect(formatShortcut('send-comment-queue', 'windowsLinux')).toBe('Ctrl Shift Enter');
     expect(formatShortcut('tab-new', 'mac')).toBe('⌘ T');
     expect(formatShortcut('tab-next', 'mac')).toBe('⌃ Tab');
     expect(formatShortcut('tab-previous', 'mac')).toBe('⌃⇧ Tab');
@@ -758,42 +760,43 @@ describe('keyboard shortcut registry', () => {
     ).toBe(true);
   });
 
-  test('matches Edit with AI shortcut only with Cmd/Ctrl+Shift+I', () => {
+  // The queue send takes Shift and nothing else. ⌘Enter is also TipTap's
+  // hardBreak and CodeMirror's insertBlankLine, so this GLOBAL listener staying
+  // off it is what keeps a line break from dispatching a batch.
+  test('the queue send answers Shift+Cmd+Enter only', () => {
+    const cmdEnter = { metaKey: true, ctrlKey: false, altKey: false, key: 'Enter' };
+    const shiftCmdEnter = { ...cmdEnter, shiftKey: true };
+
+    expect(matchesKeyboardShortcut(shiftCmdEnter, 'send-comment-queue', 'mac')).toBe(true);
+    expect(
+      matchesKeyboardShortcut({ ...cmdEnter, shiftKey: false }, 'send-comment-queue', 'mac'),
+    ).toBe(false);
     expect(
       matchesKeyboardShortcut(
-        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'I' },
-        'edit-with-ai',
-        'mac',
-      ),
-    ).toBe(true);
-    expect(
-      matchesKeyboardShortcut(
-        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'i' },
-        'edit-with-ai',
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'Enter' },
+        'send-comment-queue',
         'windowsLinux',
       ),
     ).toBe(true);
+    // Bare Shift+Enter is the composer's newline — it must never dispatch.
     expect(
       matchesKeyboardShortcut(
-        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'k' },
-        'edit-with-ai',
+        { metaKey: false, ctrlKey: false, altKey: false, shiftKey: true, key: 'Enter' },
+        'send-comment-queue',
         'mac',
       ),
     ).toBe(false);
-    expect(
-      matchesKeyboardShortcut(
-        { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'i' },
-        'edit-with-ai',
-        'mac',
-      ),
-    ).toBe(false);
-    expect(
-      matchesKeyboardShortcut(
-        { metaKey: true, ctrlKey: false, altKey: true, shiftKey: true, key: 'i' },
-        'edit-with-ai',
-        'mac',
-      ),
-    ).toBe(false);
+  });
+
+  // ⌘L carries two rows disambiguated by selection state (the ⌘K/add-link shape),
+  // so both must match the same event — the handler, not the registry, picks.
+  test('matches both agents-panel rows on Cmd/Ctrl+L', () => {
+    const cmdL = { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'l' };
+    expect(matchesKeyboardShortcut(cmdL, 'toggle-agent-panel', 'mac')).toBe(true);
+    expect(matchesKeyboardShortcut(cmdL, 'ask-ai-selection', 'mac')).toBe(true);
+    expect(matchesKeyboardShortcut({ ...cmdL, shiftKey: true }, 'ask-ai-selection', 'mac')).toBe(
+      false,
+    );
   });
 
   test('detects editable shortcut targets', () => {

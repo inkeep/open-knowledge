@@ -1,16 +1,17 @@
 /**
- * Comments tab shell — one tab with a "This doc / All comments" scope toggle,
+ * Comments tab shell — one tab with a "This doc / This project" scope toggle,
  * reusing the header Problems uses for per-doc vs. project scope
- * (PanelScopeHeader). "This doc" shows the current document's threads; "All
- * comments" shows the batch waiting to be sent, which spans every file.
+ * (PanelScopeHeader). Both sides render the same list; the scope only widens the
+ * set from the open document to every file.
  */
 
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
-import { CommentQueuePanel } from './CommentQueuePanel';
+import { CommentProjectPanel } from './CommentProjectPanel';
 import { CommentsPanel } from './CommentsPanel';
 import { consumePendingQueueScope, subscribeQueueScopeRequests } from './reveal-queue';
+import { setVisibleCommentScope } from './visible-scope';
 
 export function CommentsTab({ docName }: { docName: string }) {
   const { t } = useLingui();
@@ -23,13 +24,20 @@ export function CommentsTab({ docName }: { docName: string }) {
     if (consumePendingQueueScope()) setScope('project');
     return subscribeQueueScopeRequests(() => setScope('project'));
   }, []);
+  // Publish what is on screen so ⇧⌘Enter sends the batch the visible button
+  // would. Cleared on unmount — this tab is conditionally rendered, so leaving a
+  // stale scope behind would have the chord scoping to a panel that closed.
+  useEffect(() => {
+    setVisibleCommentScope({ scope, docName });
+    return () => setVisibleCommentScope(null);
+  }, [scope, docName]);
   return (
     <div className="flex h-full min-h-0 flex-col pt-2">
-      {/* "All comments", not "Project": this side is the batch waiting to be
-          sent, gathered from every file rather than just this one. */}
-      <PanelScopeHeader scope={scope} onScopeChange={setScope} projectLabel={t`To send`} />
+      {/* "This project" rather than Problems' bare "Project", so the two sides
+          read as one pair — the same list, this file or all of them. */}
+      <PanelScopeHeader scope={scope} onScopeChange={setScope} projectLabel={t`This project`} />
       <div className="min-h-0 flex-1">
-        {scope === 'doc' ? <CommentsPanel docName={docName} /> : <CommentQueuePanel />}
+        {scope === 'doc' ? <CommentsPanel docName={docName} /> : <CommentProjectPanel />}
       </div>
     </div>
   );

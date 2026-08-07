@@ -154,7 +154,6 @@
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
-    "1oawp3": [["failed"], " of ", ["0"], " comments could not be cleared."],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
     "1vn0CI": ["Invalid server response"],
@@ -179,7 +178,6 @@
     "2FnYUD": [
       "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
     ],
-    "2FoHU3": ["Resolve"],
     "2G-56b": ["Failed to update markdownlint rules"],
     "2GT3Hf": ["Global"],
     "2H43L8": ["Secrets like API keys and tokens are redacted automatically."],
@@ -309,7 +307,6 @@
     "4E9jPa": ["Create your first project"],
     "4EZrJN": ["Rules"],
     "4ErgAf": ["OpenKnowledge installed a skill"],
-    "4GWjF8": ["Couldn't work out where to send the comments — they're still waiting."],
     "4Gz2wC": ["Failed to upload file"],
     "4KmEoC": ["Hotkeys"],
     "4NC2Ym": ["Move to the next or previous table cell."],
@@ -335,6 +332,7 @@
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],
     "4uNLmk": ["Pulling"],
+    "4uaCUA": [["mins"], "m"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
     "4wo5UV": ["Install selected"],
     "4xtLTl": ["Hidden folder “", ["basename"], "”"],
@@ -352,6 +350,7 @@
     "56WWtu": ["Couldn't load starter packs: ", ["error"]],
     "56xUL1": ["Property name"],
     "57fiu8": ["(read-only — edit in source mode for now)"],
+    "58qIOK": ["Comment on this selection"],
     "5ALjdr": ["Move through visual-editor find results from the find field."],
     "5Ajb15": ["The formula <0>c = √(a² + b²)</0> renders inline."],
     "5AzM72": ["This setting is per-machine and isn't shared with collaborators."],
@@ -388,6 +387,9 @@
     "5aahsI": ["nothing (", ["0"], " is not a valid pattern)"],
     "5b3WD-": ["OpenKnowledge saved a checkpoint"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
+    "5ecEGe": [
+      "Hand the checked comments to an agent in one turn. On This doc, that document's comments only; on This project, every checked comment. Does nothing while the Comments tab is closed."
+    ],
     "5gr_ev": [
       "Becomes the document's content when someone creates a doc from this template. Type <0>",
       ["dateToken"],
@@ -452,6 +454,7 @@
     "6V3Ea3": ["Copied"],
     "6VqW-1": ["Remove ", ["keyName"]],
     "6WdDG7": ["Page"],
+    "6YBJ3m": ["Ask AI about selection"],
     "6YtxFj": ["Name"],
     "6ZhdPI": ["What the agent may read, write, and surface."],
     "6_ZOw4": ["Copied full path"],
@@ -596,11 +599,11 @@
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
     "8k6INX": ["Paste a personal access token for <0>", ["host"], "</0>."],
-    "8kBLOT": ["That app isn't available — the comments are still waiting to send."],
     "8lwQlE": [["0"], " added, ", ["1"], " removed"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nOdkO": ["Align center"],
     "8nWu1k": ["Empty diagram"],
+    "8oWgty": ["Mark every comment to send"],
     "8qgfac": ["MCP servers"],
     "8ruqQi": ["Broken internal links"],
     "8sMErm": ["Enable Follow?"],
@@ -811,6 +814,7 @@
     "C0hoX6": ["Always included"],
     "C3Zc44": ["Explore skills"],
     "C62P6b": ["Editor selection"],
+    "C7PKTv": ["Send checked comments to chat"],
     "C7waqI": [["0", "plural", { "one": ["#", " document"], "other": ["#", " documents"] }]],
     "C9TBvF": ["No Outgoing"],
     "CB7c0Z": ["Save queued message"],
@@ -847,6 +851,7 @@
     "ChAtFg": ["You don't have permission to push to this repo"],
     "ChMshD": ["Quit ", ["appName"]],
     "Ck9XRt": ["Couldn't save the key — please try again."],
+    "ClTEde": ["Stage the selected passage in the agents panel, ready to extend and send."],
     "CmeH9S": ["Add property to ", ["keyName"]],
     "CnOGgs": ["Sync mode"],
     "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
@@ -1094,7 +1099,7 @@
     "G0YZ-I": ["Indent or outdent list item"],
     "G1Gw0v": ["New template"],
     "G1XxbZ": ["Checkbox"],
-    "G4-bgo": ["Ask AI (from selection)"],
+    "G1zJlD": ["Hide resolved comments"],
     "G4m8rL": ["Comment on selection"],
     "G6Lrs_": ["Stop ", ["0"], " reading this skill"],
     "G7-rf8": ["Pattern syntax error: ", ["message"]],
@@ -1413,6 +1418,7 @@
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
+    "LaskKp": ["Send to chat (", ["0"], ")"],
     "Lbl6KA": ["Couldn't install from ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Can't safely edit this tool's config"],
     "Lcehxn": ["Save resolution"],
@@ -1554,6 +1560,7 @@
     "N55YNr": [
       "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
     ],
+    "NBdIgR": ["Comment"],
     "NCmYhK": [
       "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
     ],
@@ -1572,9 +1579,7 @@
     "NRSLBe": [["diffMin"], "m ago"],
     "NSnIUP": ["Two-page (even)"],
     "NUr4kz": ["A reusable starting point for new documents in this folder."],
-    "NVtrN-": [
-      "Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead."
-    ],
+    "NUw7lo": ["Toggle the bottom dock, where the terminal lives."],
     "NYUhy5": ["Subfolder name"],
     "NYn1cR": ["Loading editor"],
     "NYu2Pt": ["New project…"],
@@ -1587,6 +1592,7 @@
     "NeY1Np": ["Slidev timed out while starting. Try again."],
     "NfraGd": ["Other ways to install Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
+    "NiGIcB": ["Open Comments"],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Edit ", ["tag"]],
     "NkXEFS": ["Restore failed — document unchanged"],
@@ -1596,11 +1602,11 @@
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
     "NoY1k4": ["Invalid server response shape"],
     "NpC29w": ["Create a new list item from the current list item."],
-    "NpuPmi": ["To send"],
     "NrFwux": ["Failed to save content rules — ", ["0"]],
     "Ns0z5o": [
       "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
     ],
+    "Ns5f4J": ["Unmark every comment"],
     "Nu4DdT": ["Sync"],
     "Nu4oKW": ["Description"],
     "NuH1jp": ["Public repository"],
@@ -1660,6 +1666,7 @@
     ],
     "Okd2Xv": ["Toggle underline formatting."],
     "OlAl5i": ["Expand all"],
+    "OlFVNr": ["Ask AI About Selection"],
     "Oo_WWc": ["No pages found"],
     "Oos8fo": ["Copy command"],
     "OplnBG": ["Managing AI tools is unavailable in this build."],
@@ -1727,7 +1734,6 @@
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
     "PlGC6r": ["the git exclude file isn't writable"],
-    "Pnvg8e": ["Couldn't open the terminal — the comments are still waiting to send."],
     "Pp0Vgd": ["Click to install in ", ["label"]],
     "PpJy-V": ["The endpoint didn't respond in time."],
     "PqYWiC": [
@@ -1757,6 +1763,7 @@
     "QB-moX": ["Install it to your other editors (Claude Code, Cursor, Codex) to share it."],
     "QDZbvN": [["diffDays"], "d ago"],
     "QHCx0c": ["Bug report history"],
+    "QIrBIx": ["Expand all files"],
     "QKgePK": ["Aligned ", ["editor"], " to the source (its bytes are backed up)"],
     "QLgdT6": ["any doc named ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
@@ -1780,6 +1787,7 @@
     "QlAG4m": ["Tell us more (optional)"],
     "QlkiD5": ["Re-place on selected text"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
+    "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
     "Quz_Qu": ["Edits apply live. Light or dark comes from the scheme."],
     "Qvls7J": ["Eng specs"],
@@ -1788,6 +1796,7 @@
     ],
     "QySH4I": ["Detected OpenKnowledge projects"],
     "QyioBP": ["Move up"],
+    "QzofTX": ["No comments in this project yet. Comment on a passage to start one."],
     "R0cyYB": [
       [
         "0",
@@ -1848,7 +1857,6 @@
     "Rj01Fz": ["Links"],
     "RlCInP": ["Slash commands"],
     "RmBY0A": ["No git remote"],
-    "RmmhAh": ["Send later"],
     "RnrnTe": ["Already set up — ok is available in your terminal"],
     "RoafuO": ["Send feedback"],
     "RobAKV": ["Update the destination and optional section anchor."],
@@ -2191,6 +2199,7 @@
     "XV5sC0": ["Open worktree"],
     "XVnIvs": ["Install skills"],
     "XW18jo": ["Page headings response did not match success schema"],
+    "XWEqQj": [["days"], "d"],
     "XXA1b_": [["componentLabel"], " (empty)"],
     "XYlJJT": ["Setting up"],
     "XZkdtg": ["Switch branch"],
@@ -2286,7 +2295,6 @@
     "Yy90sM": ["Skill \"", ["name"], "\" created"],
     "YyXtnN": ["Underline"],
     "Yzs3QX": ["More skill actions"],
-    "YzyyG2": ["Nothing to send yet. Comment on a passage to add it here."],
     "Z0W6SO": [
       "This folder is a clone of ",
       ["actualOwner"],
@@ -2321,7 +2329,6 @@
     "ZBxvV3": ["New Terminal"],
     "ZDOq9A": ["What you share is sent to the OpenKnowledge team."],
     "ZGVsOD": ["Push this branch to GitHub before sharing."],
-    "ZHAM1l": ["Include in dispatch"],
     "ZI8uvA": ["No problems found."],
     "ZJ99sD": ["Insert column left"],
     "ZNK2Tq": ["root"],
@@ -2403,6 +2410,7 @@
       "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
     ],
     "_XWY2J": ["Terminal disabled"],
+    "_YEyHO": ["Show resolved comments"],
     "_YWqV2": ["OpenKnowledge resolved a conflict"],
     "_ayOfA": [
       "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
@@ -2414,6 +2422,7 @@
     "_gO_m8": ["Waiting for your approval"],
     "_gkGSK": ["deleted template"],
     "_mcDqU": [["count"], " skills at this source"],
+    "_oqig9": [["hours"], "h"],
     "_pY_Vq": ["The repository was moved, renamed, or deleted."],
     "_qD6mn": ["Pick the folder where you've cloned it."],
     "_rP3HI": [["minutes"], "m ago"],
@@ -2421,7 +2430,6 @@
     "_tjopj": ["Paste duplicate"],
     "_yB-24": ["everything under any ", ["0"], "/ folder"],
     "a-cKXz": ["Select all source"],
-    "a3H_MR": ["Open and focus the Ask AI composer for the current editor selection."],
     "a3LDKx": ["Security"],
     "a45f2c": ["Glob patterns this schema applies to"],
     "a4FRQv": ["Undo to this edit?"],
@@ -2725,7 +2733,6 @@
     "emMrXQ": ["Server returned a malformed duplicate response."],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
-    "eoEUI3": ["Couldn't resolve that comment."],
     "epuNYK": [
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
     ],
@@ -2775,6 +2782,7 @@
     "fcgvCA": ["Claude"],
     "fdeFfN": ["(binary file, not previewable)"],
     "fevEu0": ["Pull latest changes"],
+    "ffH3Rt": ["Add Comment (Enter)"],
     "fg1U4e": ["Skill discovery powered by <0>skills.sh</0>"],
     "fhaxJL": ["Clone failed — empty response body"],
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
@@ -3214,7 +3222,6 @@
       ["4"],
       ") that won't touch the rest of your system."
     ],
-    "l7X_SM": ["Send to AI"],
     "l87Deg": ["Choose what a new tab starts"],
     "l9s3IX": [["agentName"], " couldn't start a conversation."],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
@@ -3688,6 +3695,7 @@
     ],
     "rwrPbS": ["Component boundary navigation"],
     "rxWGWX": ["Forward"],
+    "ryhHUm": ["When the Comments tab is open"],
     "s-MGs7": ["Resources"],
     "s-XOaI": ["File name"],
     "s-pW_v": ["Couldn't install: ", ["0"]],
@@ -3722,6 +3730,7 @@
     "sNeKjP": ["Failed to store the token — try again"],
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
+    "sR0I-f": ["Collapse all files"],
     "sW5OjU": ["required"],
     "sZ2IOu": [
       "This ",
@@ -3776,6 +3785,7 @@
       "</0> will be created from the current commit, in its own worktree under <1>.ok/worktrees/</1>."
     ],
     "t6w1cq": ["Open a blank editor tab."],
+    "t7YoBO": ["Send this comment"],
     "t9Qn8y": ["No agents enabled"],
     "tA0b9E": ["the default skills folder (the exact path appears once saved)"],
     "tA2-xC": ["\"", ["0"], "\" was already added (identical content)."],
@@ -3857,7 +3867,6 @@
     "u_lS4C": ["Clone complete — opening project"],
     "uaUc6t": ["Restart server"],
     "ubMwcO": ["The terminal session ended (signal ", ["0"], ")."],
-    "ubx-L3": ["Comments to send"],
     "ucXZ0k": ["Loading agents…"],
     "ugQcJX": [
       ["display"],
@@ -4015,6 +4024,7 @@
       "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
     ],
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
+    "wqD3pI": [["failed"], " of ", ["0"], " comments could not be updated."],
     "ws5o1F": ["Checked by: ", ["0"]],
     "wtcxiD": ["Share this setup with your team?"],
     "wvK7Ay": ["Your local copy of branch <0>", ["branch"], "</0> is behind."],
@@ -4187,7 +4197,6 @@
     "zL0LPh": ["Global outside text fields"],
     "zLGXna": ["No starter packs available."],
     "zLak8b": ["Activate new tab"],
-    "zO-IiA": ["The terminal isn't available here — the comments are still waiting to send."],
     "zQBg2C": ["Move the current block up or down one position."],
     "zXj1rA": ["Search by meaning"],
     "zYp8Sr": [
@@ -4205,7 +4214,6 @@
     "zkz0Fg": ["Set up syncing"],
     "zlErBl": ["Page headings error response did not match RFC 9457"],
     "zo3Dl7": ["Toggle thumbnails"],
-    "zovxVp": ["Ready to send"],
     "zpfN9p": ["No comments yet. Select text in the document to add one."],
     "zq2eBA": ["View in source"],
     "zrP8HX": [

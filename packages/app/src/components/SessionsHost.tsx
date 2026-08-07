@@ -72,6 +72,7 @@ const ThreadView = lazy(() =>
   import('@/components/acp/ThreadView').then((mod) => ({ default: mod.ThreadView })),
 );
 
+import { sendQueuedCommentsInThread, subscribeSendToOpenChat } from '@/comments/open-chat-send';
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
 import type { TerminalCommandId } from './handoff/terminal-command-events';
 import {
@@ -671,6 +672,40 @@ export function SessionsHost({
   });
 
   /**
+   * Where an EXPLICITLY agents-targeted passage belongs — only ⌘L sends one.
+   *
+   * The single surface-scoped resolution here, and the exception the header's
+   * global-scoping argument allows rather than contradicts: that argument is
+   * about senders with no destination opinion, which must not have one inferred
+   * per-surface. ⌘L is the opposite case — the chord names the agents panel, so
+   * the destination is the user's own choice and resolving it globally would
+   * discard it.
+   *
+   * `terminalAvailable: false` is what makes it agents-only: the resolver then
+   * cannot yield `cli`, so a user whose preferred AI is a CLI still gets their
+   * default thread agent here instead of the passage veering into the terminal.
+   * With nothing enabled it still yields `none`, which routes to agent settings
+   * exactly as the global path does.
+   */
+  const agentsTargetedSelection = resolveLauncherSelection({
+    sticky: stickyAgentId,
+    effectiveThreadAgent: effectiveDefaultAgent,
+    enabledClis: [],
+    enabledDesktopTargets: [],
+    installedClis: {},
+    terminalAvailable: false,
+    // `hostThreads`, not `!isWindow`: this resolution is SURFACE-scoped (only
+    // the agents panel claims an agents-targeted passage), so it takes the same
+    // shape as the New-button resolution above rather than the global ones. The
+    // two agree in practice — the terminal dock returns before reading this —
+    // but `!isWindow` would claim a global scope this does not have.
+    threadsAvailable: hostThreads,
+    desktopSelectable: false,
+    preferBareTerminal: false,
+    bareTerminalFallback: false,
+  });
+
+  /**
    * Where a promptless ⇧⌘J new session belongs. Globally scoped like
    * {@link askAiSelection}, but with the bare-terminal knobs ON: ⇧⌘J carries no
    * passage, so "Terminal" is a legitimate answer and a user whose last pick was
@@ -752,12 +787,12 @@ export function SessionsHost({
   function publishReusableSessionFrom(sessionList: readonly SessionDescriptor[], activeId: string) {
     const active = sessionList.find((s) => s.id === activeId);
     if (active == null) {
-      publishReusableSession(null);
+      publishReusableSession(persistSurface, null);
       return;
     }
     if (active.kind === 'thread') {
       const info = threadInfoById.get(active.threadId);
-      publishReusableSession({
+      publishReusableSession(persistSurface, {
         id: active.id,
         kind: 'thread',
         label: info?.agent.name ?? t`the open agent`,
@@ -771,10 +806,10 @@ export function SessionsHost({
     // Same three-part gate as the reuse branch below — a bare shell or a reload
     // survivor is NOT appendable.
     if (livePtyId == null || bridge?.terminal == null || cli == null) {
-      publishReusableSession(null);
+      publishReusableSession(persistSurface, null);
       return;
     }
-    publishReusableSession({
+    publishReusableSession(persistSurface, {
       id: active.id,
       kind: 'terminal',
       label: TERMINAL_CLIS[cli].displayName,
@@ -807,10 +842,16 @@ export function SessionsHost({
     if (!visible) onVisibleChange(true);
   }
 
-  function dispatchAskAi({ text, newTab, submit }: ActiveTerminalInputDetail) {
-    // Not this panel's kind — the sibling host answers. Returning here (rather
-    // than falling through) is what stops a passage double-landing.
-    if (!claimsSessionKind(askAiSelection.kind)) return;
+  function dispatchAskAi({ text, newTab, submit, target }: ActiveTerminalInputDetail) {
+    // An agents-targeted passage (⌘L) is claimed by the agents panel alone, so the
+    // arbitration is the surface rather than the resolved kind. Everything else
+    // keeps the global resolution: not this panel's kind means the sibling host
+    // answers, and returning here (rather than falling through) is what stops a
+    // passage double-landing.
+    const selection = target === 'agents' ? agentsTargetedSelection : askAiSelection;
+    if (target === 'agents') {
+      if (!hostThreads) return;
+    } else if (!claimsSessionKind(selection.kind)) return;
     // The passage is landing here, so this panel must be on screen for it.
     if (!visible) onVisibleChange(true);
     const activeId = activeSessionIdRef.current;
@@ -840,21 +881,23 @@ export function SessionsHost({
         return;
       }
     }
-    if (askAiSelection.kind === 'thread') {
-      const agent = { source: askAiSelection.agent.source, id: askAiSelection.agent.id };
+    if (selection.kind === 'thread') {
+      const agent = { source: selection.agent.source, id: selection.agent.id };
       // `prompt` runs on creation, `stageDraft` waits — the thread twins of the
       // launch intent's `prompt` / `stagePaste`.
       if (submit) launchAgentThread(agent, text, null, null, null);
       else launchAgentThread(agent, null, null, null, text);
-    } else if (askAiSelection.kind === 'cli') {
-      requestTerminalLaunch(text, askAiSelection.cli, { stage: !submit });
+    } else if (selection.kind === 'cli') {
+      requestTerminalLaunch(text, selection.cli, { stage: !submit });
     } else {
-      // Only `none` reaches here. `askAiSelection` is built with
+      // Only `none` reaches here, whichever selection `selection` resolved to:
+      // `askAiSelection` and `agentsTargetedSelection` are BOTH built with
       // `desktopSelectable: false` + `bareTerminalFallback/preferBareTerminal: false`,
-      // so the resolver cannot yield `desktop` or `terminal` for this path — flip
-      // either knob and a bare shell would land in this branch silently instead of
-      // being refused. Nothing enabled to ask, so send the user where they can
-      // enable something: the same destination the New primary uses in this state.
+      // so neither resolver can yield `desktop` or `terminal` for this path —
+      // flip either knob on either one and a bare shell would land in this
+      // branch silently instead of being refused. Nothing enabled to ask, so
+      // send the user where they can enable something: the same destination the
+      // New primary uses in this state.
       openAgentSettings();
     }
   }
@@ -990,6 +1033,7 @@ export function SessionsHost({
   const openSessionRef = useRef(openSession);
   const seedOnRevealRef = useRef(seedOnReveal);
   const dispatchAskAiRef = useRef(dispatchAskAi);
+  const revealForReuseRef = useRef(revealForReuse);
   const launchPreferredSessionRef = useRef(launchPreferredSession);
 
   // Close a tab — kind-dispatched. A terminal is removed from the list (its panel
@@ -1026,6 +1070,7 @@ export function SessionsHost({
     openSessionRef.current = openSession;
     seedOnRevealRef.current = seedOnReveal;
     dispatchAskAiRef.current = dispatchAskAi;
+    revealForReuseRef.current = revealForReuse;
     launchPreferredSessionRef.current = launchPreferredSession;
     moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
@@ -1388,6 +1433,24 @@ export function SessionsHost({
     if (!terminalAvailable && !hostThreads) return;
     return subscribeToActiveTerminalInput((detail) => dispatchAskAiRef.current(detail));
   }, [terminalAvailable, hostThreads]);
+
+  // The Comments panel staging a batch onto the chat you are already in. This
+  // host resolves WHICH session that is and reveals itself, the same two things
+  // it does for a reuse write; the thread's own composer owns the chip. Only a
+  // live thread answers — comments never go to a terminal, so a CLI tab is not a
+  // session this can stage onto, and the panel starts a fresh thread instead.
+  useEffect(() => {
+    if (!hostThreads) return;
+    return subscribeSendToOpenChat(({ threadIds }) => {
+      const activeId = activeSessionIdRef.current;
+      const active = sessionsRef.current.find((session) => session.id === activeId);
+      if (active?.kind !== 'thread') return;
+      // Relayed verbatim: this host resolves WHERE, never WHAT.
+      sendQueuedCommentsInThread(active.threadId, threadIds);
+      revealForReuseRef.current();
+      queueMicrotask(() => focusSession(active));
+    });
+  }, [hostThreads]);
 
   // ⇧⌘J with no selection: open a new session with the preferred AI. Arbitrated
   // like an Ask-AI passage — the GLOBAL resolution decides which panel owns the

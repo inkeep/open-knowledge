@@ -175,6 +175,19 @@ export interface CommandStateToggle {
     | 'agentPanelVisible';
   /** Menu default when the state is unknown (sidebar/doc-panel start visible → "Hide"). */
   readonly defaultVisible: boolean;
+  /**
+   * A third label that REPLACES show/hide entirely while `overrideField` is
+   * true, for a command whose action changes with state rather than merely
+   * inverting.
+   *
+   * Exists because a show/hide pair can only ever describe a toggle. ⌘L stages a
+   * selection instead of toggling when one exists, so with only the pair the
+   * item promised "Hide Agents" and then neither hid them nor said what it did.
+   * A menu item that cannot name its own action is worse than one with an
+   * unusual name, so the override wins over the pair — never the reverse.
+   */
+  readonly overrideKey?: MenuLabelKey;
+  readonly overrideField?: 'hasEditorSelection';
 }
 
 /** View-menu-state checkbox field a command's check indicator reads. */
@@ -617,6 +630,8 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
       hideKey: 'agentPanelHide',
       stateField: 'agentPanelVisible',
       defaultVisible: false,
+      overrideKey: 'agentPanelAskSelection',
+      overrideField: 'hasEditorSelection',
     },
     availability: {},
     palette: { group: 'view', visibility: 'search-only' },

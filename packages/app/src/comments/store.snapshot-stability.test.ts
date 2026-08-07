@@ -31,7 +31,6 @@ vi.mock('./comments-client', () => ({
   listThreads: vi.fn(async () => [QUEUED_META]),
   createThread: vi.fn(async () => QUEUED_META),
   reply: vi.fn(async () => QUEUED_META),
-  resolveThread: vi.fn(async () => QUEUED_META),
   reopenThread: vi.fn(async () => QUEUED_META),
   replaceAnchor: vi.fn(async () => QUEUED_META),
   queueThread: vi.fn(async () => ({ meta: QUEUED_META, orphaned: false })),

@@ -1,11 +1,11 @@
 /**
  * Selection composer — where a comment is written.
  *
- * The "Comment" button in the selection toolbar (next to "Ask AI", see
- * CommentBubbleButton) opens this composer on the current selection. Posting a
- * comment adds it to the project-wide QUEUE — it does NOT dispatch to an
- * agent immediately; the user batches comments and dispatches the queue in one
- * action. Living in the toolbar (rather than a second floating pill) means it
+ * The "Comment" button in the selection toolbar (see CommentBubbleButton) opens
+ * this composer on the current selection. Posting a comment adds it to the
+ * project-wide QUEUE — it does NOT dispatch to an agent; the user batches
+ * comments and dispatches them from the Comments tab, which this card offers a
+ * route to. Living in the toolbar (rather than a second floating pill) means it
  * can't be occluded by the native formatting bar.
  *
  * The captured passage is marked in the DOCUMENT (see `setCommentDraftRange`)
@@ -25,9 +25,10 @@ import { commentQuoteText } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { posToDOMRect } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
-import { X } from 'lucide-react';
+import { MessageSquare, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { Button } from '@/components/ui/button';
 import {
   ComposerMentionInput,
@@ -37,7 +38,6 @@ import { getEditorView } from '@/editor/utils/get-editor-view';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { setCommentDraftRange } from './anchor-decorations';
 import { captureSelectionContext } from './anchor-search';
-import { appendQueueToOpenSession } from './append-to-open-session';
 import { selectedSpan } from './selected-span';
 import { createThread, emitStartComment, subscribeStartComment } from './store';
 
@@ -193,17 +193,16 @@ export function CommentSelectionAffordance({
   });
 
   /**
-   * File the comment. `dispatch` decides which of the two buttons ran it:
-   * queue it for a later batch, or hand it to an agent now.
+   * File the comment into the queue.
    *
-   * Both write the same thread — sending is not a different KIND of comment,
-   * just a comment that does not wait. That is why one function takes a flag
-   * rather than there being two creation paths to keep in step.
+   * There is no send-now twin. Writing a note and dispatching a batch are
+   * separate decisions, and the dispatch belongs where the batch is visible —
+   * the Comments tab — not behind a button on a card that shows one comment.
    */
-  function post(dispatch: boolean) {
+  function post() {
     if (captured === null) return;
     // `getContent` renders each mention chip inline as its `@path`, so the
-    // comment an agent reads names files the same way the Ask AI composer does.
+    // comment an agent reads names files the same way the chat composer does.
     const body = inputRef.current?.getContent().instruction.trim() ?? '';
     if (body.length === 0) return;
     // Posted straight into the queue by the store — no separate addToQueue.
@@ -213,23 +212,6 @@ export function CommentSelectionAffordance({
       prefix: captured.prefix,
       suffix: captured.suffix,
       body,
-      // Reuse-or-launch is the same decision the queue's own send makes, and it
-      // is made by the sessions dock, not here: a live chat takes the comment,
-      // and with none open one starts. Deliberately NOT the `deliver` hook the
-      // queue batch uses — that is only installed while the Comments tab is
-      // mounted, so a send from the editor with the panel closed did nothing.
-      onCreated: dispatch
-        ? (threadId) => {
-            // `resolve` so it does not also land in the queue: this was a send,
-            // not a review item filed for later, and leaving it open would mean
-            // the reviewer's next batch carried the same note a second time.
-            void appendQueueToOpenSession({
-              threadIds: [threadId],
-              submit: true,
-              resolve: true,
-            });
-          }
-        : undefined,
     });
     // Collapse the picked range: the passage has been filed, so it is no longer
     // "selected for whatever you do next". Left selected it re-pins itself in
@@ -250,8 +232,8 @@ export function CommentSelectionAffordance({
       data-testid="comment-composer"
     >
       {/* Dismiss sits in the corner rather than the action row: the row is for
-          the two things that FILE the comment, and a third button beside them
-          made discarding look like a peer of sending.
+          filing the comment, and a button beside that one made discarding look
+          like a peer of it.
 
           Its own row rather than absolute positioning — overlaying the card
           floated it on top of the textarea's rounded corner, and any offset that
@@ -270,29 +252,49 @@ export function CommentSelectionAffordance({
           <X className="size-3.5" />
         </Button>
       </div>
-      {/* The Ask AI composer's field, not a plain textarea — so `@` mentions a
+      {/* The chat composer's field, not a plain textarea — so `@` mentions a
           file here exactly as it does there, and the comment an agent receives
           carries real paths rather than a name it has to go find.
 
-          Enter files the comment. Sending is a click: the field cannot tell this
-          host whether a modifier was held (Enter and ⌘Enter reach `onSubmit`
-          identically), so a keyboard shortcut for the irreversible action would
-          have to be guessed at. */}
+          Enter posts, with or without a modifier: there is one action now, so a
+          modifier that reached a different one would be reaching for something
+          that no longer exists. */}
       <ComposerMentionInput
         ref={inputRef}
         ariaLabel={t`Add a comment`}
         placeholder={t`Add a comment`}
         onEmptyChange={setEmpty}
-        onSubmit={() => post(false)}
+        onSubmit={post}
         onEscape={reset}
         className="max-h-40 min-h-16 overflow-y-auto rounded-md border px-2 py-1 text-sm"
       />
-      <div className="flex items-center justify-end gap-1.5">
-        <Button size="sm" variant="outline" onClick={() => post(false)} disabled={empty}>
-          <Trans>Add Comment</Trans>
+      {/* Two different weights, deliberately: filing the comment is what this
+          card is for, and the tab is where the batch already filed lives. The
+          route out sits at the far end of the row so it reads as leaving rather
+          than as a second way to post.
+
+          The chord sits INLINE, not in a tooltip like the bubble bar — the field
+          above has focus, so a hint you have to hover to find is a hint the
+          keyboard user never sees. Bare glyph, NOT `Kbd`: its pill carries a
+          height, min-width, padding and background, and it was reshaping the row
+          it annotates. `normal-case tracking-normal` undoes the button's
+          uppercase treatment for the glyph alone; the aria-label keeps it out of
+          the accessible name. */}
+      <div className="flex items-center justify-between gap-1.5">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => requestDocPanelTab('comments')}
+          className="gap-1 px-2 text-muted-foreground hover:text-foreground"
+        >
+          <MessageSquare className="size-3.5" aria-hidden="true" />
+          <Trans>Open Comments</Trans>
         </Button>
-        <Button size="sm" onClick={() => post(true)} disabled={empty}>
-          <Trans>Send to AI</Trans>
+        <Button size="sm" onClick={post} disabled={empty} aria-label={t`Add Comment (Enter)`}>
+          <Trans>Add Comment</Trans>
+          <span className="ml-0.5 text-[11px] tracking-normal normal-case text-primary-foreground/75">
+            ⏎
+          </span>
         </Button>
       </div>
     </div>,

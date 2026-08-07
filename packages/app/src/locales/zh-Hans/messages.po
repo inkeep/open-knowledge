@@ -276,8 +276,6 @@ msgid "{0} is over {destination}."
 msgstr "{0} 位于 {destination} 上方。"
 
 #. placeholder {0}: resolvedTarget.displayName
-#. placeholder {0}: target.displayName
-#: src/comments/use-comment-delivery.ts
 #: src/components/BottomComposer.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} 尚未安装——正在打开它的下载页面。"
@@ -506,6 +504,10 @@ msgstr "此来源有 {count} 个技能"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# 天前}}"
 
+#: src/comments/ThreadCard.tsx
+msgid "{days}d"
+msgstr "{days}天"
+
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
 msgstr "{days} 天前"
@@ -546,7 +548,6 @@ msgstr "{display} 是独立副本，而该技能的其他位置是符号链接�
 msgid "{displayName} ({bin}) isn't installed or on your PATH."
 msgstr "{displayName}（{bin}）未安装，也不在你的 PATH 中。"
 
-#: src/comments/use-comment-agent-picker.ts
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -574,8 +575,8 @@ msgstr "已开启 {enabledCount}/{0}"
 
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
-msgid "{failed} of {0} comments could not be cleared."
-msgstr "{0} 条评论中有 {failed} 条无法清除。"
+msgid "{failed} of {0} comments could not be updated."
+msgstr "{0} 条评论中有 {failed} 条无法更新。"
 
 #: src/components/FileTree.tsx
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
@@ -600,6 +601,10 @@ msgstr "{folderCount, plural, other {文件夹}}"
 #: src/components/HelpPopover.tsx
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 个 GitHub star"
+
+#: src/comments/ThreadCard.tsx
+msgid "{hours}h"
+msgstr "{hours}小时"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
@@ -662,6 +667,10 @@ msgstr "{loadErrorTitle}：{message}"
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分钟前}}"
+
+#: src/comments/ThreadCard.tsx
+msgid "{mins}m"
+msgstr "{mins}分"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{minutes} min ago"
@@ -735,6 +744,10 @@ msgstr "{propPanelDescriptorLabel} 属性"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "{seconds}s ago"
 msgstr "{seconds} 秒前"
+
+#: src/comments/ThreadCard.tsx
+msgid "{secs}s"
+msgstr "{secs}秒"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{settingsDescriptorLabel} properties"
@@ -1186,6 +1199,10 @@ msgstr "请至少加入一个字母或数字。"
 msgid "Add Comment"
 msgstr "添加评论"
 
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Add Comment (Enter)"
+msgstr "添加评论（Enter）"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add cursors or select matching occurrences through CodeMirror."
 msgstr "通过 CodeMirror 添加光标或选中匹配项。"
@@ -1597,7 +1614,6 @@ msgstr "询问 {0} CLI"
 msgid "Ask {agentName}"
 msgstr "询问 {agentName}"
 
-#: src/comments/CommentBubbleButton.tsx
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
 #: src/components/OnboardingCard.tsx
@@ -1607,8 +1623,12 @@ msgid "Ask AI"
 msgstr "问 AI"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Ask AI (from selection)"
-msgstr "问 AI（基于所选内容）"
+msgid "Ask AI about selection"
+msgstr "就选中内容问 AI"
+
+#: src/components/command-palette-commands.ts
+msgid "Ask AI About Selection"
+msgstr "就选中内容问 AI"
 
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
@@ -2116,7 +2136,6 @@ msgstr "检查者：{0}"
 msgid "Checking"
 msgstr "正在检查"
 
-#: src/comments/CommentQueuePanel.tsx
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
 msgstr "正在查找智能体"
@@ -2195,7 +2214,7 @@ msgstr "选择图标"
 msgid "Choose what a new tab starts"
 msgstr "选择新标签页启动的内容"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "选择把这些评论发送到哪里"
 
@@ -2231,7 +2250,6 @@ msgstr "Claude Desktop"
 msgid "Cleanup log"
 msgstr "清理日志"
 
-#: src/comments/CommentQueuePanel.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Clear"
@@ -2353,7 +2371,7 @@ msgstr "正在克隆 {repoName}…"
 msgid "Cloning..."
 msgstr "正在克隆…"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -2489,6 +2507,10 @@ msgstr "全部折叠"
 msgid "Collapse all file groups"
 msgstr "折叠所有文件分组"
 
+#: src/comments/CommentListPanel.tsx
+msgid "Collapse all files"
+msgstr "折叠全部文件"
+
 #: src/components/BottomComposer.tsx
 msgid "Collapse Ask AI"
 msgstr "折叠「问 AI」"
@@ -2537,6 +2559,10 @@ msgstr "命令"
 msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
 msgstr "命令将以你在这台电脑上的 macOS 用户账户的全部权限运行。关闭此项可禁用 shell。"
 
+#: src/comments/CommentBubbleButton.tsx
+msgid "Comment"
+msgstr "评论"
+
 #: src/comments/PropertyCommentButton.tsx
 msgid "Comment on {address}"
 msgstr "对 {address} 发表评论"
@@ -2544,6 +2570,10 @@ msgstr "对 {address} 发表评论"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Comment on selection"
 msgstr "对所选内容发表评论"
+
+#: src/comments/CommentBubbleButton.tsx
+msgid "Comment on this selection"
+msgstr "对选中内容添加评论"
 
 #. placeholder {0}: descriptor.displayName ?? descriptor.name
 #: src/editor/extensions/JsxComponentView.tsx
@@ -2555,14 +2585,10 @@ msgid "Comment or ask AI about this code block"
 msgstr "对此代码块发表评论或询问 AI"
 
 #: src/comments/comment-chips.tsx
-#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
 msgstr "评论"
-
-#: src/comments/CommentQueuePanel.tsx
-msgid "Comments to send"
-msgstr "待发送的评论"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
@@ -3316,10 +3342,6 @@ msgstr "无法打开文档"
 msgid "Couldn't open the terminal — please try again."
 msgstr "无法打开终端——请重试。"
 
-#: src/comments/use-comment-delivery.ts
-msgid "Couldn't open the terminal — the comments are still waiting to send."
-msgstr "无法打开终端——这些评论仍在等待发送。"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Couldn't open the worktree. Try again."
 msgstr "无法打开 worktree。请重试。"
@@ -3412,10 +3434,6 @@ msgstr "无法重命名模板：{0}"
 #: src/comments/store.ts
 msgid "Couldn't reopen that comment."
 msgstr "无法重新打开那条评论。"
-
-#: src/comments/store.ts
-msgid "Couldn't resolve that comment."
-msgstr "无法解决那条评论。"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't resolve the conflict for {filePath}."
@@ -3542,10 +3560,6 @@ msgstr "无法更新技能共享设置"
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "无法更新技能共享设置——{detail}。"
-
-#: src/comments/use-comment-delivery.ts
-msgid "Couldn't work out where to send the comments — they're still waiting."
-msgstr "无法确定把这些评论发送到哪里——它们仍在等待。"
 
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
@@ -3891,7 +3905,7 @@ msgstr "删除表格"
 msgid "Delete this chat?"
 msgstr "删除此对话？"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
 msgstr "删除这条评论"
 
@@ -4198,8 +4212,7 @@ msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code e
 msgstr "没看到<0>技能</0>？请先启用<1>设置 <2/> 功能 <3/> 代码执行与文件创建</1>。"
 
 #: src/comments/comment-chips.tsx
-#: src/comments/CommentQueuePanel.tsx
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Don't send this comment"
 msgstr "不要发送这条评论"
 
@@ -4389,7 +4402,7 @@ msgstr "编辑源码"
 msgid "Edit source pane and code property fields"
 msgstr "编辑源码面板和代码类属性字段"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Edit this comment"
 msgstr "编辑这条评论"
 
@@ -4717,6 +4730,10 @@ msgstr "全部展开"
 #: src/components/ProblemsPanel.tsx
 msgid "Expand all file groups"
 msgstr "展开所有文件分组"
+
+#: src/comments/CommentListPanel.tsx
+msgid "Expand all files"
+msgstr "展开全部文件"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -5565,7 +5582,6 @@ msgstr "跳转到 {1} 的第 {0} 行"
 
 #. placeholder {0}: docBasename(thread.docName)
 #: src/comments/comment-chips.tsx
-#: src/comments/CommentQueuePanel.tsx
 msgid "Go to this comment in {0}"
 msgstr "在 {0} 中查看这条评论"
 
@@ -5597,6 +5613,10 @@ msgstr "指导你的 AI 智能体在这里如何工作。"
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "guides/install or https://example.com"
 msgstr "guides/install 或 https://example.com"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Hand the checked comments to an agent in one turn. On This doc, that document's comments only; on This project, every checked comment. Does nothing while the Comments tab is closed."
+msgstr "一次性把勾选的评论交给智能体。在“这个文档”下只发送该文档的评论；在“本项目”下发送所有勾选的评论。评论标签页关闭时不做任何事。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Hard break"
@@ -5771,9 +5791,13 @@ msgstr "隐藏问题标记"
 msgid "Hide replace"
 msgstr "隐藏替换"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Hide resolved"
 msgstr "隐藏已解决的"
+
+#: src/comments/CommentListPanel.tsx
+msgid "Hide resolved comments"
+msgstr "隐藏已解决的评论"
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
@@ -5982,10 +6006,6 @@ msgstr "在应用内（beta）"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "在 Claude 桌面应用中"
-
-#: src/comments/CommentQueuePanel.tsx
-msgid "Include in dispatch"
-msgstr "包含在发送中"
 
 #: src/comments/comment-chips.tsx
 msgid "Include this comment in the next send"
@@ -6344,7 +6364,7 @@ msgstr "跳到第 {pageNumber} 页"
 msgid "Jump to tab 1-8"
 msgstr "跳到第 1-8 个标签页"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Jump to the anchored text"
 msgstr "跳到锚定的文本"
 
@@ -6798,6 +6818,10 @@ msgstr "梳理架构"
 #: src/editor/slash-command/component-items.tsx
 msgid "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
 msgstr "把某个块标记为事实来源。你编辑它时，别处的镜像会实时更新。"
+
+#: src/comments/CommentSendFooter.tsx
+msgid "Mark every comment to send"
+msgstr "勾选全部评论以发送"
 
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown"
@@ -7355,7 +7379,7 @@ msgstr "还没有配置任何智能体——请从发送菜单中选一个。"
 msgid "No agents available."
 msgstr "没有可用的智能体。"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 #: src/components/BottomComposer.tsx
 msgid "No agents enabled"
 msgstr "没有启用任何智能体"
@@ -7387,6 +7411,10 @@ msgstr "没有改动"
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
 msgstr "这个 worktree 没有协作服务器——请在这里运行 <0>ok start</0>，或重新打开项目。"
+
+#: src/comments/CommentProjectPanel.tsx
+msgid "No comments in this project yet. Comment on a passage to start one."
+msgstr "本项目还没有评论。对一段内容添加评论即可开始。"
 
 #: src/comments/CommentsPanel.tsx
 msgid "No comments yet. Select text in the document to add one."
@@ -7742,10 +7770,6 @@ msgstr "无（{0} 不是有效的模式）"
 msgid "Nothing set yet."
 msgstr "还没有设置任何内容。"
 
-#: src/comments/CommentQueuePanel.tsx
-msgid "Nothing to send yet. Comment on a passage to add it here."
-msgstr "还没有可发送的内容。对某段文字发表评论即可添加到这里。"
-
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
 msgstr "什么都没有上传。在你把报告通过邮件发给我们之前，它只保存在这台 Mac 上。"
@@ -7945,10 +7969,6 @@ msgid "Open an existing project folder from disk."
 msgstr "从磁盘打开一个已有的项目文件夹。"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Open and focus the Ask AI composer for the current editor selection."
-msgstr "针对当前编辑器选区打开并聚焦「问 AI」输入框。"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "打开并聚焦底部的「问 AI」提示词输入框。"
 
@@ -7966,6 +7986,10 @@ msgstr "打开 CodeMirror 的检查诊断面板。"
 
 #: src/comments/CommentMarginRail.tsx
 msgid "Open comment"
+msgstr "打开评论"
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Open Comments"
 msgstr "打开评论"
 
 #: src/lib/reveal-label.ts
@@ -8436,7 +8460,7 @@ msgstr "原始文件——这个智能体编辑之前的版本。"
 msgid "Orphan mode"
 msgstr "孤立页模式"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Orphaned"
 msgstr "孤立"
 
@@ -9102,7 +9126,7 @@ msgstr "重新通过 GitHub Enterprise Server 认证"
 msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 msgstr "重新生成嵌入向量会随着搜索进行，因此覆盖率会从零重新累积。"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Re-place on selected text"
 msgstr "重新定位到选中的文本上"
 
@@ -9129,10 +9153,6 @@ msgstr "{name} 技能中的只读文件"
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "正在阅读…"
-
-#: src/comments/CommentsPanel.tsx
-msgid "Ready to send"
-msgstr "可以发送了"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -9470,7 +9490,7 @@ msgstr "渲染错误"
 msgid "Rendered"
 msgstr "已渲染"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "重新打开"
 
@@ -9636,10 +9656,6 @@ msgstr "重置视图筛选条件"
 msgid "Resize {handleKey}"
 msgstr "调整 {handleKey} 的大小"
 
-#: src/comments/CommentsPanel.tsx
-msgid "Resolve"
-msgstr "解决"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "在你的终端中解决冲突"
@@ -9652,7 +9668,7 @@ msgstr "删除前请先解决 {files} 上的冲突。"
 msgid "Resolve the conflict on {files}, +{overflow} more before deleting."
 msgstr "删除前请先解决 {files} 以及另外 {overflow} 个文件上的冲突。"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "已解决"
 
@@ -10191,7 +10207,7 @@ msgstr "选中下一处出现"
 msgid "Select the full source document."
 msgstr "选中整个源码文档。"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Select this text in the property"
 msgstr "在属性中选中这段文本"
 
@@ -10244,6 +10260,10 @@ msgstr "发送"
 msgid "Send & continue"
 msgstr "发送并继续"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Send checked comments to chat"
+msgstr "把勾选的评论发送到对话"
+
 #: src/comments/QueueNewChatRow.tsx
 msgid "Send comments to"
 msgstr "把评论发送到"
@@ -10257,21 +10277,22 @@ msgstr "发送反馈"
 msgid "Send feedback…"
 msgstr "发送反馈…"
 
-#: src/comments/CommentsPanel.tsx
-msgid "Send later"
-msgstr "稍后发送"
-
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "发送报告"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Send to AI"
-msgstr "发送给 AI"
+#: src/comments/ThreadCard.tsx
+msgid "Send this comment"
+msgstr "发送这条评论"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
 msgstr "发送到对话"
+
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Send to chat ({0})"
+msgstr "发送到对话（{0}）"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Send when the agent is free"
@@ -10658,9 +10679,13 @@ msgid "Show replace"
 msgstr "显示替换"
 
 #. placeholder {0}: resolved.length
-#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Show resolved ({0})"
 msgstr "显示已解决的（{0}）"
+
+#: src/comments/CommentListPanel.tsx
+msgid "Show resolved comments"
+msgstr "显示已解决的评论"
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
@@ -10961,6 +10986,10 @@ msgstr "源码撤销或重做"
 msgid "Split list item"
 msgstr "拆分列表项"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Stage the selected passage in the agents panel, ready to extend and send."
+msgstr "把选中的内容放入智能体面板，随时可以补充并发送。"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "在 GitHub 上给我们点个星"
@@ -10982,7 +11011,7 @@ msgstr "启动 {agentName}，{hint}"
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
 msgstr "使用 ＋ 按钮开始对话，或从页面启动智能体。"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
 msgstr "开始新对话"
@@ -11544,10 +11573,6 @@ msgstr "感谢你的反馈！"
 msgid "Thanks for the report!"
 msgstr "感谢你的报告！"
 
-#: src/comments/use-comment-delivery.ts
-msgid "That app isn't available — the comments are still waiting to send."
-msgstr "那个应用不可用——这些评论仍在等待发送。"
-
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
@@ -11598,7 +11623,7 @@ msgstr "智能体没有停止。强制停止将关闭此对话并退出智能体
 msgid "The agent's persona, values, and voice."
 msgstr "智能体的人设、价值观和语气。"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "The anchored text is gone. You can re-place it on selected text."
 msgstr "锚定的文本已经不见了。你可以把它重新定位到选中的文本上。"
 
@@ -11749,10 +11774,6 @@ msgstr "模板的文件名（不含 `.md`）。"
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
 msgstr "这个项目关闭了终端。重新开启后才能在这里运行命令。"
 
-#: src/comments/use-comment-delivery.ts
-msgid "The terminal isn't available here — the comments are still waiting to send."
-msgstr "这里没有可用的终端——这些评论仍在等待发送。"
-
 #. placeholder {0}: info.exitCode
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal session ended (exit code {0})."
@@ -11877,7 +11898,7 @@ msgstr "这个分支已在以下位置检出："
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "这可以在「设置 > AI 工具与 CLI」中配置"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "这条评论针对的是整个属性"
 
@@ -12037,6 +12058,7 @@ msgstr "此操作会从“{2}”技能中永久删除 {0}/{1}。SKILL.md 中指�
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "这会永久移除 {path}。在重新创建它，或者由上级文件夹中的同名模板取代之前，按名称引用这个模板的智能体都会失败。"
 
+#: src/comments/CommentsTab.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "This project"
 msgstr "本项目"
@@ -12171,10 +12193,6 @@ msgstr "待办"
 msgid "To do."
 msgstr "待办。"
 
-#: src/comments/CommentsTab.tsx
-msgid "To send"
-msgstr "待发送"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "切换无序列表。"
@@ -12250,8 +12268,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "切换删除线格式。"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead."
-msgstr "切换底部面板（终端所在处）。若已选中文本，则改为将其发送给你偏好的 AI。"
+msgid "Toggle the bottom dock, where the terminal lives."
+msgstr "显示或隐藏底部面板，终端就在那里。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."
@@ -12502,6 +12520,10 @@ msgstr "未知错误"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "unlink"
 msgstr "取消链接"
+
+#: src/comments/CommentSendFooter.tsx
+msgid "Unmark every comment"
+msgstr "取消勾选全部评论"
 
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
@@ -12957,6 +12979,10 @@ msgstr "开启后，智能体每次编辑后都会打开或刷新预览。如果
 #: src/components/CreatedItemsList.tsx
 msgid "When the agent runs its scheduled work."
 msgstr "智能体执行定时任务的时间。"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "When the Comments tab is open"
+msgstr "当评论标签页打开时"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."

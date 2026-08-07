@@ -64,16 +64,30 @@ function makeJumpEditor(markdown: string, caretBlock: number): Editor {
 // Collect the Ask-AI passages EditorPane dispatches to the sessions host (which
 // owns reuse-vs-launch and preferred-AI resolution; mocked here). `newTab` rides
 // along so ⌘J (reuse when sensible) stays distinguishable from ⇧⌘J (always fresh).
+type CapturedInput = {
+  text: string;
+  newTab: boolean;
+  submit: boolean;
+  target: 'agents' | undefined;
+};
+
 function captureActiveTerminalInput(): {
   texts: string[];
-  details: { text: string; newTab: boolean; submit: boolean }[];
+  details: CapturedInput[];
   stop: () => void;
 } {
   const texts: string[] = [];
-  const details: { text: string; newTab: boolean; submit: boolean }[] = [];
+  const details: CapturedInput[] = [];
   const stop = subscribeToActiveTerminalInput((detail) => {
     texts.push(detail.text);
-    details.push({ text: detail.text, newTab: detail.newTab, submit: detail.submit });
+    details.push({
+      text: detail.text,
+      newTab: detail.newTab,
+      submit: detail.submit,
+      // `target` distinguishes ⌘L's agents-panel send from every globally
+      // resolved one, so a test asserting the destination needs it captured.
+      target: detail.target,
+    });
   });
   return { texts, details, stop };
 }
@@ -921,10 +935,9 @@ describe('EditorPane session-panel wiring', () => {
     expect(dock().getAttribute('data-visible')).toBe('true');
   });
 
-  // With no selection AND no shell to spawn, ⌘J has nothing to do on the web
-  // host, so it must leave the browser's own ⌘J alone. It used to preventDefault
-  // and then hit a guard that can never be false — swallowing the chord for a
-  // no-op. The selection-send path below is the half that DOES act here.
+  // With no shell to spawn, ⌘J has nothing to do on the web host, so it must
+  // leave the browser's own ⌘J alone. It used to preventDefault and then hit a
+  // guard that can never be false — swallowing the chord for a no-op.
   test('web host: a Cmd/Ctrl+J keydown with no selection is NOT swallowed', async () => {
     await renderEditorPane();
 
@@ -1049,33 +1062,62 @@ describe('EditorPane session-panel wiring', () => {
     expect(preferred.count).toBe(1);
   });
 
-  test('desktop: ⌘J with a selection sends the passage to the host for reuse (no toggle, no launch)', async () => {
+  // ⌘J is a pure toggle now. Selection-send moved to ⌘L, whose chord names the
+  // panel the passage lands in; leaving a second copy on the terminal's chord
+  // would put one intent behind two keys, one of them lying about the target.
+  test('desktop: ⌘J with a selection toggles the terminal and stages nothing', async () => {
     const desk = makeOkDesktopStub();
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
     seedSelection('run the build');
     const input = captureActiveTerminalInput();
 
-    // ⌘J arrives via the OS-captured menu accelerator → the toggle-terminal action.
     act(() => desk.dispatchMenuAction('toggle-terminal'));
     input.stop();
 
-    // ⌘J means "continue where I am when that makes sense", so `newTab` is unset
-    // and the hosts decide: a running CLI or an open agent thread takes the
-    // passage, otherwise the owner of the preferred family launches one and
-    // reveals itself. EditorPane stages nothing and reveals nothing — whether the
-    // active tab is a CLI, a bare shell, or an agent thread is knowledge only a
-    // host has.
     const dock = screen.getByTestId('terminal-dock');
+    expect(input.texts).toEqual([]);
+    expect(dock.getAttribute('data-visible')).toBe('true');
+    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
+  });
+
+  test('desktop: ⌘L with a selection stages it for the agents panel and does not toggle', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+    seedSelection('run the build');
+    const input = captureActiveTerminalInput();
+
+    // ⌘L arrives via the OS-captured menu accelerator → toggle-agent-panel.
+    act(() => desk.dispatchMenuAction('toggle-agent-panel'));
+    input.stop();
+
     expect(input.details).toHaveLength(1);
+    // `target: 'agents'` is the whole point: it overrides the preferred-AI
+    // resolution so a CLI-preferring user's passage still lands in the panel the
+    // chord names, rather than veering into the terminal.
+    expect(input.details[0]?.target).toBe('agents');
     expect(input.details[0]?.newTab).toBe(false);
-    expect(input.details[0]?.text).toContain('run the build');
     expect(input.details[0]?.submit).toBe(false);
+    expect(input.details[0]?.text).toContain('run the build');
     // Trailing soft newlines land the caret on a blank line below the passage.
     expect(input.details[0]?.text.endsWith('\n\n')).toBe(true);
-    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
-    // The selection send replaces the toggle, so ⌘J did NOT open the terminal.
-    expect(dock.getAttribute('data-visible')).toBe('false');
+    // The host reveals itself for a staged passage, so the pane must not toggle —
+    // that would hide the panel the passage just landed in.
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('false');
+  });
+
+  test('desktop: ⌘L with no selection still toggles the agents panel', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+    const input = captureActiveTerminalInput();
+
+    act(() => desk.dispatchMenuAction('toggle-agent-panel'));
+    input.stop();
+
+    expect(input.texts).toEqual([]);
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('true');
   });
 
   test('desktop: ⌘J with no selection still toggles and stages nothing', async () => {

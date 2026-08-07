@@ -1,5 +1,6 @@
 import { mediaKindForSidebarAssetExtension, SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react';
+import { CommentQueueShortcut } from '@/comments/CommentQueueShortcut';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConnectingBanner } from '@/components/ConnectingBanner';
 import { CreateProjectMenuTrigger } from '@/components/CreateProjectMenuTrigger';
@@ -654,6 +655,11 @@ function AppBody() {
             so the provider wraps both. Its value is desktop-gated; the docked
             terminal that consumes the launch lives in EditorPane. */}
         <TerminalLaunchProvider value={terminalLaunch}>
+          {/* ⇧⌘Enter sends the comment queue, from anywhere. Mounted at the app
+              shell rather than in the queue panel: the queue is project-wide and
+              outlives the tab that displays it, so a listener scoped to that tab
+              would be dead exactly when the panel is closed. */}
+          <CommentQueueShortcut />
           <SidebarProvider className="h-screen overflow-hidden">
             {/* No-project single-file mode drops the file sidebar (file tree +
                 project switcher); the editor inset takes the full width. */}

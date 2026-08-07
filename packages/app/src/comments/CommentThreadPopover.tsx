@@ -18,9 +18,14 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getEditorView } from '@/editor/utils/get-editor-view';
 import { findQuoteRange } from './anchor-search';
-import { ThreadCard } from './CommentsPanel';
 import { propertyRowRect } from './property-row-rect';
-import { emitOpenThreadPopover, subscribeOpenThreadPopover, useCommentThreads } from './store';
+import {
+  emitOpenThreadPopover,
+  subscribeOpenThreadPopover,
+  useCommentThreads,
+  useQueueSelection,
+} from './store';
+import { ThreadCard } from './ThreadCard';
 
 export function CommentThreadPopover({ editor, docName }: { editor: Editor; docName: string }) {
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -28,6 +33,12 @@ export function CommentThreadPopover({ editor, docName }: { editor: Editor; docN
   const floatingRef = useRef<HTMLDivElement>(null);
   const threads = useCommentThreads(docName);
   const thread = threadId ? (threads.find((t) => t.id === threadId) ?? null) : null;
+  // The card's tick is a controlled checkbox, so this popover has to subscribe
+  // to the send list the same way the panels do. Without it the box rendered
+  // from `undefined` — permanently unchecked, however many times you clicked it,
+  // while the click itself went through to the store. The state was right and
+  // only this view disagreed, which is the worst shape a bug like this can take.
+  const sending = useQueueSelection();
 
   // Open on highlight/marker click.
   useEffect(() => {
@@ -121,6 +132,7 @@ export function CommentThreadPopover({ editor, docName }: { editor: Editor; docN
         thread={thread}
         now={now}
         focused={false}
+        sending={sending.includes(thread.id)}
         cardRef={() => {}}
         onClose={() => emitOpenThreadPopover(null)}
       />

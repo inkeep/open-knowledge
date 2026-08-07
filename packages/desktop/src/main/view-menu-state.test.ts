@@ -160,6 +160,10 @@ describe('createDefaultEditorViewMenuState — pre-first-push menu state', () =>
       // Restrictive by design: this one gates a context-menu row, and a row
       // offered before the renderer says the jump is live would do nothing.
       canViewInSource: false,
+      // Same posture: pre-push, assume no selection so View → Agents reads as
+      // the plain Show/Hide toggle. Defaulting true would rename the item to
+      // "Ask AI About Selection" on a window that has no selection at all.
+      hasEditorSelection: false,
     });
   });
 });
@@ -179,6 +183,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     terminalVisible: true,
     terminalLive: true,
     agentPanelVisible: true,
+    hasEditorSelection: true,
   } as const;
 
   test('maps every snapshot field onto its menu dep', () => {
@@ -194,6 +199,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     expect(deps.terminalVisible).toBe(true);
     expect(deps.terminalLive).toBe(true);
     expect(deps.agentPanelVisible).toBe(true);
+    expect(deps.hasEditorSelection).toBe(true);
   });
 
   test('each toggle / tree / terminal handler dispatches its menu-action ID', () => {

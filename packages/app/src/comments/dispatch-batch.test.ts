@@ -54,7 +54,6 @@ vi.mock('./comments-client', () => {
     listThreads: vi.fn(async () => metas),
     createThread: vi.fn(),
     reply: vi.fn(),
-    resolveThread: vi.fn(),
     reopenThread: vi.fn(),
     replaceAnchor: vi.fn(),
     queueThread: vi.fn(),

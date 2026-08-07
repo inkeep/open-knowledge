@@ -59,8 +59,31 @@ export type ReusableSession =
       readonly cli: TerminalCli;
     };
 
+/**
+ * One slot PER DOCK, not one slot.
+ *
+ * Both docks mount at once (the bottom terminal and the right agents panel) and
+ * both publish on every change. With a single slot the last writer won: an
+ * agents panel holding a live thread was overwritten by the terminal dock
+ * publishing `null` for its empty tab list, and every surface outside the docks
+ * then read "nothing to reuse" while a conversation sat open on screen.
+ */
+type DockSurface = 'agents' | 'terminal';
+const bySurface = new Map<DockSurface, ReusableSession | null>();
 let current: ReusableSession | null = null;
 const listeners = new Set<() => void>();
+
+/**
+ * A thread outranks a terminal when both docks have something.
+ *
+ * Not arbitrary: the only caller that can take either is the Ask-AI plumbing,
+ * which resolves its own destination anyway, while the comment surfaces send to
+ * threads alone. Preferring the thread means the answer this returns is the one
+ * a reader can act on.
+ */
+function resolveCurrent(): ReusableSession | null {
+  return bySurface.get('agents') ?? bySurface.get('terminal') ?? null;
+}
 
 function same(a: ReusableSession | null, b: ReusableSession | null): boolean {
   if (a === null || b === null) return a === b;
@@ -75,16 +98,22 @@ function same(a: ReusableSession | null, b: ReusableSession | null): boolean {
 }
 
 /**
- * Publish the active session when it is reusable, `null` when it is not. The
- * host calls this on every change that could flip the answer — active tab,
- * session list, PTY resolution, thread arrival.
+ * Publish the calling dock's active session when it is reusable, `null` when it
+ * is not. The host calls this on every change that could flip the answer —
+ * active tab, session list, PTY resolution, thread arrival.
+ *
+ * `surface` is what keeps the two docks from overwriting each other; each owns
+ * its own slot and the reader resolves across them.
  *
  * A value-equal publish is a no-op so `useSyncExternalStore` sees a stable
  * snapshot; the host re-publishes freely rather than tracking what changed.
  */
-export function publishReusableSession(next: ReusableSession | null): void {
-  if (same(current, next)) return;
-  current = next;
+export function publishReusableSession(surface: DockSurface, next: ReusableSession | null): void {
+  if (bySurface.has(surface) && same(bySurface.get(surface) ?? null, next)) return;
+  bySurface.set(surface, next);
+  const resolved = resolveCurrent();
+  if (same(current, resolved)) return;
+  current = resolved;
   for (const listener of listeners) listener();
 }
 
@@ -111,6 +140,9 @@ export function useReusableSession(): ReusableSession | null {
 
 /** Test-only: drop the published session between cases. */
 export function _resetReusableSession(): void {
+  // The per-surface slots too, or one test's agents thread outranks the next
+  // one's terminal publish and the change never reaches a subscriber.
+  bySurface.clear();
   current = null;
   listeners.clear();
 }

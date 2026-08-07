@@ -184,9 +184,9 @@ export function propertyAddress(key: string, path: readonly (string | number)[])
 }
 
 /**
- * The one line that says what a thread is ON — shared by every list that shows
- * threads (the composer peek, the queue panel, the comments panel) so the three
- * can't drift into describing the same thread differently.
+ * The one line that says what a thread is ON, for the composer chip's expanded
+ * list. Local to this file — the panels' own cards render the target themselves,
+ * with room for a jump target and a badge this compact line has no space for.
  *
  * A whole property renders as `tags:` in the same monospace the quote uses. That
  * reads as the YAML it is, which distinguishes it from a passage without needing
@@ -197,13 +197,7 @@ export function propertyAddress(key: string, path: readonly (string | number)[])
  * neither half identifies it alone: several comments can sit on one field, and
  * the same words can appear in more than one.
  */
-export function ThreadTargetLine({
-  thread,
-  className,
-}: {
-  thread: CommentThread;
-  className?: string;
-}) {
+function ThreadTargetLine({ thread, className }: { thread: CommentThread; className?: string }) {
   const base = 'w-full truncate font-mono text-[11px] text-muted-foreground';
   const quote = thread.anchor?.quote ?? '';
   if (thread.target.kind === 'property') {
@@ -386,10 +380,11 @@ export interface CommentBatchItem {
 /**
  * Server dispatch payload → the shape the batch instruction is composed from.
  *
- * One copy, shared by every send path (the composer, the queue panel's send, the
- * append-to-open-session path, the single-thread delivery hook). They all hand
- * the same payload to the same composer, and four hand-written copies of this
- * mapping is four places for a new field to be forgotten in three of them.
+ * One copy, shared by every send path. They all hand the same payload to the
+ * same composer, so a hand-written copy per path would be one more place for a
+ * new field to be forgotten in all but one of them. Deliberately uncounted: the
+ * set of send paths has changed twice already, and a number here rots silently
+ * while the reason does not.
  */
 export function toCommentBatchItem(payload: DispatchPayload): CommentBatchItem {
   return {

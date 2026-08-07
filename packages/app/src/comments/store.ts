@@ -215,6 +215,22 @@ export function useCommentThreads(docName: string): readonly CommentThread[] {
   );
 }
 
+/**
+ * Every thread in the project, newest first.
+ *
+ * The reference is stable between refreshes (`allThreads` is reassigned, not
+ * mutated), which is what `useSyncExternalStore` needs to avoid re-rendering
+ * forever.
+ */
+export function getAllThreads(): readonly CommentThread[] {
+  ensureAllLoaded();
+  return allThreads;
+}
+
+export function useAllThreads(): readonly CommentThread[] {
+  return useSyncExternalStore(subscribe, getAllThreads, () => EMPTY);
+}
+
 /** Look a thread up across every doc (the queue is project-wide). */
 export function getThreadById(threadId: string): CommentThread | null {
   for (const threads of threadsByDoc.values()) {
@@ -357,11 +373,11 @@ export function editComment(threadId: string, body: string): void {
   settle(api.editComment(threadId, body), docName, t`Couldn't save that edit.`);
 }
 
-export function resolveThread(threadId: string): void {
-  const docName = getThreadById(threadId)?.docName;
-  settle(api.resolveThread(threadId), docName, t`Couldn't resolve that comment.`);
-}
-
+/**
+ * No `resolveThread` twin. A comment settles by being SENT — the server resolves
+ * what shipped in `completeDispatchBatch` — so a client-side "mark it done"
+ * would be a second, quieter way to reach a state the send already owns.
+ */
 export function reopenThread(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
   settle(api.reopenThread(threadId), docName, t`Couldn't reopen that comment.`);
@@ -456,11 +472,16 @@ export function useQueueSelection(): readonly string[] {
   return useSyncExternalStore(subscribe, getSelectedQueue, () => EMPTY_QUEUE);
 }
 
-export function isQueued(threadId: string): boolean {
-  return getQueue().includes(threadId);
+/**
+ * The checked batch narrowed to one document — what the This-doc footer sends,
+ * and what the chord sends while that scope is the one on screen. Always a
+ * subset of {@link getSelectedQueue}.
+ */
+export function getSelectedQueueForDoc(docName: string): readonly string[] {
+  return getSelectedQueue().filter((id) => getThreadById(id)?.docName === docName);
 }
 
-export function addToQueue(threadId: string): void {
+function addToQueue(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
   // Re-queuing clears any earlier deselection.
   if (deselected.has(threadId)) {
@@ -481,9 +502,49 @@ export function removeFromQueue(threadId: string): void {
   );
 }
 
-export function toggleQueue(threadId: string): void {
-  if (isQueued(threadId)) removeFromQueue(threadId);
+/**
+ * The panels' checkbox: "this comment goes out with the next send."
+ *
+ * Reads the SENDING set, not `queued`, so it agrees with the composer chip —
+ * a comment queued but unchecked there shows unchecked here, and ticking it
+ * re-checks rather than un-queueing something that already looked off.
+ */
+export function toggleSending(threadId: string): void {
+  if (getSelectedQueue().includes(threadId)) removeFromQueue(threadId);
   else addToQueue(threadId);
+}
+
+/**
+ * Tick or clear a whole panel's worth at once.
+ *
+ * Scoped to the ids passed in — the This-doc panel must not reach across the
+ * project. Per-item tolerance, then ONE report: twenty comments must not fire
+ * twenty toasts, and a partial run cannot pass for a complete one.
+ */
+export function setSendingAll(threadIds: readonly string[], sending: boolean): void {
+  const wanted = new Set(getSelectedQueue());
+  const ids = threadIds.filter((id) => wanted.has(id) !== sending);
+  if (ids.length === 0) return;
+  if (sending && deselected.size > 0) {
+    const next = new Set(deselected);
+    for (const id of ids) next.delete(id);
+    deselected = next;
+    bumpSelection();
+  }
+  void Promise.all(
+    ids.map((id) =>
+      (sending ? api.queueThread(id) : api.unqueueThread(id)).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  ).then((results) => {
+    const failed = results.filter((ok) => !ok).length;
+    if (failed > 0) {
+      toast.error(t`${failed} of ${ids.length} comments could not be updated.`);
+    }
+    void refresh().catch(() => undefined);
+  });
 }
 
 /**
@@ -507,27 +568,6 @@ export function toggleQueueSelection(threadId: string): void {
   else next.add(threadId);
   deselected = next;
   bumpSelection();
-}
-
-export function clearQueue(): void {
-  const ids = getQueue();
-  if (ids.length === 0) return;
-  // Per-item tolerance, then ONE report: clearing twenty comments must not fire
-  // twenty toasts, but a partial clear cannot pass for a complete one either.
-  void Promise.all(
-    ids.map((id) =>
-      api
-        .unqueueThread(id)
-        .then(() => true)
-        .catch(() => false),
-    ),
-  ).then((results) => {
-    const failed = results.filter((ok) => !ok).length;
-    if (failed > 0) {
-      toast.error(t`${failed} of ${ids.length} comments could not be cleared.`);
-    }
-    void refresh().catch(() => undefined);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -570,7 +610,7 @@ let dispatchInFlight = false;
  * THE dispatch path. Prepare the batch, hand it over, resolve what shipped.
  *
  * Every surface routes through here — the composer, the queue panel's send, and
- * the append-to-an-open-session path — so the re-entrancy guard, the
+ * the open-chat path (via `useSendQueue`) — so the re-entrancy guard, the
  * re-anchor-on-prepare, and the single `completeDispatchBatch` call site apply
  * to all of them rather than to whichever one remembered.
  *
@@ -641,8 +681,14 @@ async function runDispatch(
   let delivered = false;
   try {
     delivered = await compose(items);
-  } catch {
+  } catch (err) {
     // Leave them queued — a hand-off that never happened must not resolve.
+    // Logged rather than swallowed: the user-visible effect (items stay queued)
+    // is the same whether the target declined or the composition itself threw,
+    // so without this a bug in turn-composition looks like a stuck queue with
+    // no trace of why. No toast — the sibling catch above owns the "nothing was
+    // sent" message, and the queue standing still already says it here.
+    console.warn('[comments] dispatch compose failed; leaving threads queued', err);
     delivered = false;
   }
   const shipped = delivered ? items.map((item) => item.threadId) : [];

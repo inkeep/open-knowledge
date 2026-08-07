@@ -37,6 +37,7 @@ export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot 
     terminalLive: false,
     agentPanelVisible: false,
     canViewInSource: false,
+    hasEditorSelection: false,
   };
 }
 
@@ -60,6 +61,7 @@ type ViewMenuStateDeps = Pick<
   | 'terminalVisible'
   | 'terminalLive'
   | 'agentPanelVisible'
+  | 'hasEditorSelection'
   | 'onToggleShowHiddenFiles'
   | 'onToggleShowOkFolders'
   | 'onToggleShowOnlyMarkdownFiles'
@@ -97,6 +99,7 @@ export function buildViewMenuStateDeps(
     terminalVisible: state.terminalVisible,
     terminalLive: state.terminalLive,
     agentPanelVisible: state.agentPanelVisible,
+    hasEditorSelection: state.hasEditorSelection,
     onToggleShowHiddenFiles: () => sendMenuAction('toggle-show-hidden-files'),
     onToggleShowOkFolders: () => sendMenuAction('toggle-show-ok-folders'),
     onToggleShowOnlyMarkdownFiles: () => sendMenuAction('toggle-show-only-markdown-files'),

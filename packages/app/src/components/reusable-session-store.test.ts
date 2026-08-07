@@ -27,7 +27,7 @@ describe('the reusable-session store', () => {
     // The consumer renders a brand mark from these; with only a name it would
     // fall back to whatever icon it could reach — the Claude mark on a Cursor
     // tab, which is the bug this shape exists to prevent.
-    publishReusableSession({
+    publishReusableSession('agents', {
       id: 'thread-1',
       kind: 'thread',
       label: 'Claude Agent',
@@ -49,7 +49,7 @@ describe('the reusable-session store', () => {
       notified += 1;
     });
 
-    publishReusableSession({
+    publishReusableSession('agents', {
       id: 'thread-1',
       kind: 'thread',
       label: 'Claude Agent',
@@ -57,9 +57,47 @@ describe('the reusable-session store', () => {
     });
     expect(notified).toBe(1);
 
-    publishReusableSession(null);
+    // Cleared on the SAME surface that set it. Clearing the other dock's slot
+    // would leave this thread standing, which is the whole point of the split:
+    // an empty terminal no longer erases a live conversation.
+    publishReusableSession('agents', null);
     expect(notified).toBe(2);
     expect(getReusableSession()).toBeNull();
+  });
+
+  test("an empty dock does not erase the other dock's session", () => {
+    // BOTH docks mount at once and both publish on every change. With one slot
+    // the last writer won: the terminal dock publishing null for its empty tab
+    // list wiped a live agent thread, and every send button outside the docks
+    // then read "nothing to reuse" with a conversation open on screen.
+    publishReusableSession('agents', {
+      id: 'thread-1',
+      kind: 'thread',
+      label: 'Claude Agent',
+      agentId: 'claude',
+    });
+    publishReusableSession('terminal', null);
+
+    expect(getReusableSession()).toMatchObject({ id: 'thread-1', kind: 'thread' });
+  });
+
+  test('a thread outranks a terminal when both docks hold one', () => {
+    publishReusableSession('terminal', {
+      id: 'terminal-session-1',
+      kind: 'terminal',
+      label: 'Claude',
+      cli: 'claude',
+    });
+    publishReusableSession('agents', {
+      id: 'thread-1',
+      kind: 'thread',
+      label: 'Claude Agent',
+      agentId: 'claude',
+    });
+
+    // The comment surfaces send to threads alone, so the answer they read has
+    // to be the one they can act on.
+    expect(getReusableSession()).toMatchObject({ kind: 'thread' });
   });
 
   test('a value-equal publish is a no-op', () => {
@@ -67,7 +105,7 @@ describe('the reusable-session store', () => {
     // store absorbs the churn — otherwise `useSyncExternalStore` would see a
     // new snapshot on every PTY callback and re-render the send button.
     let notified = 0;
-    publishReusableSession({
+    publishReusableSession('terminal', {
       id: 'terminal-session-1',
       kind: 'terminal',
       label: 'Claude',
@@ -77,7 +115,7 @@ describe('the reusable-session store', () => {
       notified += 1;
     });
 
-    publishReusableSession({
+    publishReusableSession('terminal', {
       id: 'terminal-session-1',
       kind: 'terminal',
       label: 'Claude',
@@ -90,24 +128,44 @@ describe('the reusable-session store', () => {
     // Same tab id, different CLI: if the equality check ignored the icon input
     // the button would keep drawing the old brand mark.
     let notified = 0;
-    publishReusableSession({ id: 's1', kind: 'terminal', label: 'Claude', cli: 'claude' });
+    publishReusableSession('terminal', {
+      id: 's1',
+      kind: 'terminal',
+      label: 'Claude',
+      cli: 'claude',
+    });
     subscribeReusableSession(() => {
       notified += 1;
     });
 
-    publishReusableSession({ id: 's1', kind: 'terminal', label: 'Codex', cli: 'codex' });
+    publishReusableSession('terminal', {
+      id: 's1',
+      kind: 'terminal',
+      label: 'Codex',
+      cli: 'codex',
+    });
     expect(notified).toBe(1);
     expect(getReusableSession()).toMatchObject({ cli: 'codex', label: 'Codex' });
   });
 
   test('a thread and a terminal sharing an id are not the same session', () => {
     let notified = 0;
-    publishReusableSession({ id: 's1', kind: 'terminal', label: 'Claude', cli: 'claude' });
+    publishReusableSession('terminal', {
+      id: 's1',
+      kind: 'terminal',
+      label: 'Claude',
+      cli: 'claude',
+    });
     subscribeReusableSession(() => {
       notified += 1;
     });
 
-    publishReusableSession({ id: 's1', kind: 'thread', label: 'Claude', agentId: 'claude' });
+    publishReusableSession('agents', {
+      id: 's1',
+      kind: 'thread',
+      label: 'Claude',
+      agentId: 'claude',
+    });
     expect(notified).toBe(1);
     expect(getReusableSession()?.kind).toBe('thread');
   });
@@ -119,7 +177,12 @@ describe('the reusable-session store', () => {
     });
     unsubscribe();
 
-    publishReusableSession({ id: 's1', kind: 'thread', label: 'Claude Agent', agentId: 'claude' });
+    publishReusableSession('agents', {
+      id: 's1',
+      kind: 'thread',
+      label: 'Claude Agent',
+      agentId: 'claude',
+    });
     expect(notified).toBe(0);
   });
 });

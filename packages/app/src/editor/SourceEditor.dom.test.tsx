@@ -98,16 +98,19 @@ function makeProvider(
   return { provider, ytext };
 }
 
+// `isSourceModeActive` is pinned true rather than exposed as a knob: the only
+// behavior the false case drives is `applyRawMdxNavigation`'s stillInSourceMode
+// bail, and the "raw-MDX replay mode re-check" suite below exercises that
+// directly against the function — a component-level route to the same guard
+// would be a second, slower path to an assertion already made.
 function Harness({
   provider,
   ytext,
   wordWrap,
-  isSourceModeActive = true,
 }: {
   provider: HocuspocusProvider;
   ytext: Y.Text;
   wordWrap: boolean;
-  isSourceModeActive?: boolean;
 }) {
   return (
     <ConfigContext value={makeConfigValue(wordWrap)}>
@@ -115,7 +118,7 @@ function Harness({
         docName={provider.configuration.name ?? 'test-source'}
         ytext={ytext}
         provider={provider}
-        isSourceModeActive={isSourceModeActive}
+        isSourceModeActive
       />
     </ConfigContext>
   );
@@ -189,9 +192,12 @@ describe('SourceEditor word-wrap preference wiring', () => {
     expect(container.querySelector('.cm-editor')).toBe(cmEditor);
   });
 
-  test('Cmd+Shift+I opens the Ask AI composer', async () => {
+  // ⇧⌘I is retired. It was mac-only and source-mode-only, it duplicated ⇧⌘L,
+  // and despite being titled "Ask AI (from selection)" it never staged the
+  // selection — it only opened the composer. Selection→AI is ⌘L now.
+  test('Cmd+Shift+I no longer opens the Ask AI composer', async () => {
     setPlatform('MacIntel');
-    const { provider, ytext } = makeProvider('source-edit-with-ai');
+    const { provider, ytext } = makeProvider('source-edit-with-ai-retired');
     const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
 
     const content = await findCmContent(container);
@@ -205,60 +211,6 @@ describe('SourceEditor word-wrap preference wiring', () => {
           key: 'I',
           code: 'KeyI',
           metaKey: true,
-          shiftKey: true,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    });
-
-    expect(composerOpenRequests).toBe(1);
-  });
-
-  test('Cmd+Shift+I does not fire when source mode is inactive', async () => {
-    setPlatform('MacIntel');
-    const { provider, ytext } = makeProvider('source-edit-with-ai-inactive');
-    const { container } = render(
-      <Harness provider={provider} ytext={ytext} wordWrap={true} isSourceModeActive={false} />,
-    );
-
-    const content = await findCmContent(container);
-    const view = EditorView.findFromDOM(content);
-    expect(view).toBeTruthy();
-    view?.dispatch({ selection: EditorSelection.range(2, 9) });
-
-    await act(async () => {
-      content.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'I',
-          code: 'KeyI',
-          metaKey: true,
-          shiftKey: true,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    });
-
-    expect(composerOpenRequests).toBe(0);
-  });
-
-  test('Cmd+Shift+I does not fire on non-macOS', async () => {
-    setPlatform('Linux x86_64');
-    const { provider, ytext } = makeProvider('source-edit-with-ai-non-mac');
-    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
-
-    const content = await findCmContent(container);
-    const view = EditorView.findFromDOM(content);
-    expect(view).toBeTruthy();
-    view?.dispatch({ selection: EditorSelection.range(2, 9) });
-
-    await act(async () => {
-      content.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'I',
-          code: 'KeyI',
-          ctrlKey: true,
           shiftKey: true,
           bubbles: true,
           cancelable: true,

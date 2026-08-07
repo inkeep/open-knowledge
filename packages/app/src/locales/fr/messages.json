@@ -182,7 +182,6 @@
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
     "1oSHI0": ["Impossible d'installer ", ["skillName"], " : ", ["0"]],
-    "1oawp3": [["failed"], " commentaires sur ", ["0"], " n'ont pas pu être effacés."],
     "1t_NnN": ["Rejeter"],
     "1u-mAI": [
       "Impossible de démarrer la synchronisation. Vérifiez votre connexion, puis réessayez."
@@ -211,7 +210,6 @@
     "2FnYUD": [
       "Informations sur l'application et le système, journaux récents de l'application et journaux du serveur de projet : l'essentiel dont nous avons besoin pour reproduire le problème."
     ],
-    "2FoHU3": ["Résoudre"],
     "2G-56b": ["Échec de la mise à jour des règles markdownlint"],
     "2GT3Hf": ["Global"],
     "2H43L8": ["Les secrets comme les clés API et les jetons sont masqués automatiquement."],
@@ -376,9 +374,6 @@
     "4E9jPa": ["Créez votre premier projet"],
     "4EZrJN": ["Règles"],
     "4ErgAf": ["OpenKnowledge a installé une compétence"],
-    "4GWjF8": [
-      "Impossible de déterminer où envoyer les commentaires — ils sont toujours en attente."
-    ],
     "4Gz2wC": ["Échec de l'envoi du fichier"],
     "4KmEoC": ["Raccourcis clavier"],
     "4NC2Ym": ["Va à la cellule suivante ou précédente du tableau."],
@@ -414,6 +409,7 @@
     "4sKwf6": ["Le fichier existe déjà"],
     "4sUdTJ": ["aperçu thématisé"],
     "4uNLmk": ["Tirage en cours"],
+    "4uaCUA": [["mins"], "min"],
     "4v2Yyz": [
       "Sélectionne toutes les lignes visibles de l'arborescence lorsque le focus est dans la barre latérale Fichiers."
     ],
@@ -433,6 +429,7 @@
     "56WWtu": ["Impossible de charger les packs de démarrage : ", ["error"]],
     "56xUL1": ["Nom de la propriété"],
     "57fiu8": ["(lecture seule — modifiez en mode source pour l'instant)"],
+    "58qIOK": ["Commenter cette sélection"],
     "5ALjdr": [
       "Parcourez les résultats de recherche de l'éditeur visuel depuis le champ de recherche."
     ],
@@ -479,6 +476,9 @@
     "5aahsI": ["rien (", ["0"], " n'est pas un motif valide)"],
     "5b3WD-": ["OpenKnowledge a enregistré un point de contrôle"],
     "5e1Dri": ["Le libellé de menu par lequel les agents choisissent ce modèle (obligatoire)."],
+    "5ecEGe": [
+      "Transmet les commentaires cochés à un agent en un seul tour. Sur Ce document, uniquement les commentaires de ce document ; sur Ce projet, tous les commentaires cochés. Sans effet tant que l'onglet Commentaires est fermé."
+    ],
     "5gr_ev": [
       "Devient le contenu du document lorsque quelqu'un en crée un à partir de ce modèle. Saisissez <0>",
       ["dateToken"],
@@ -549,6 +549,7 @@
     "6V3Ea3": ["Copié"],
     "6VqW-1": ["Retirer ", ["keyName"]],
     "6WdDG7": ["Page"],
+    "6YBJ3m": ["Demander à l'IA à propos de la sélection"],
     "6YtxFj": ["Nom"],
     "6ZhdPI": ["Ce que l'agent peut lire, écrire et faire remonter."],
     "6_ZOw4": ["Chemin complet copié"],
@@ -723,13 +724,11 @@
     "8fRyLo": ["Charge utile de correctif invalide"],
     "8fc_3j": ["Branche protégée — impossible de pousser"],
     "8k6INX": ["Collez un jeton d'accès personnel pour <0>", ["host"], "</0>."],
-    "8kBLOT": [
-      "Cette application n'est pas disponible — les commentaires attendent toujours d'être envoyés."
-    ],
     "8lwQlE": [["0"], " ajouté(s), ", ["1"], " retiré(s)"],
     "8m8diM": ["Aucun emplacement sélectionné. Utilisez Parcourir pour choisir un dossier."],
     "8nOdkO": ["Aligner au centre"],
     "8nWu1k": ["Diagramme vide"],
+    "8oWgty": ["Cocher tous les commentaires à envoyer"],
     "8qgfac": ["Serveurs MCP"],
     "8ruqQi": ["Liens internes cassés"],
     "8sMErm": ["Activer Suivre ?"],
@@ -971,6 +970,7 @@
     "C0hoX6": ["Toujours inclus"],
     "C3Zc44": ["Explorer les compétences"],
     "C62P6b": ["Sélection de l'éditeur"],
+    "C7PKTv": ["Envoyer les commentaires cochés dans la discussion"],
     "C7waqI": [
       [
         "0",
@@ -1015,6 +1015,9 @@
     "ChAtFg": ["Vous n'avez pas la permission de pousser vers ce dépôt"],
     "ChMshD": ["Quitter ", ["appName"]],
     "Ck9XRt": ["Impossible d'enregistrer la clé — veuillez réessayer."],
+    "ClTEde": [
+      "Prépare le passage sélectionné dans le panneau des agents, prêt à être complété et envoyé."
+    ],
     "CmeH9S": ["Ajouter une propriété à ", ["keyName"]],
     "CnOGgs": ["Mode de synchronisation"],
     "CoHvYd": [["0"], " déplacé en position ", ["1"], " sur ", ["2"]],
@@ -1297,7 +1300,7 @@
     "G0YZ-I": ["Augmenter ou réduire le retrait d'un élément de liste"],
     "G1Gw0v": ["Nouveau modèle"],
     "G1XxbZ": ["Case à cocher"],
-    "G4-bgo": ["Demander à l'IA (à partir de la sélection)"],
+    "G1zJlD": ["Masquer les commentaires résolus"],
     "G4m8rL": ["Commenter la sélection"],
     "G6Lrs_": ["Empêcher ", ["0"], " de lire cette compétence"],
     "G7-rf8": ["Erreur de syntaxe du motif : ", ["message"]],
@@ -1671,6 +1674,7 @@
     "LXdWeS": ["Titre de section moyen."],
     "LXfNU-": ["Navigation et suggestions"],
     "LYufDw": ["Échec de l'activation de la recherche sémantique — ", ["detail"]],
+    "LaskKp": ["Envoyer dans la discussion (", ["0"], ")"],
     "Lbl6KA": ["Impossible d'installer depuis ", ["0"], " : ", ["1"]],
     "LbmLyU": ["Impossible de modifier en toute sécurité la configuration de cet outil"],
     "Lcehxn": ["Enregistrer la résolution"],
@@ -1830,6 +1834,7 @@
     "N55YNr": [
       "Choisissez si la configuration OpenKnowledge de ce projet, y compris ses connexions aux outils IA, est enregistrée avec le projet pour que vos coéquipiers l'obtiennent aussi, ou conservée uniquement sur votre ordinateur."
     ],
+    "NBdIgR": ["Commenter"],
     "NCmYhK": [
       "Les compétences apprennent aux agents des tâches répétables. Rédigez-les et gérez-les depuis la section Compétences de l'éditeur ; le menu d'installation de chaque compétence détermine où elle réside. Voici les dossiers de compétences de ce projet."
     ],
@@ -1848,9 +1853,7 @@
     "NRSLBe": ["il y a ", ["diffMin"], " min"],
     "NSnIUP": ["Deux pages (paires)"],
     "NUr4kz": ["Un point de départ réutilisable pour les nouveaux documents de ce dossier."],
-    "NVtrN-": [
-      "Affiche ou masque le panneau inférieur, où se trouve le terminal. Si du texte est sélectionné, il est préparé pour l’IA de votre choix."
-    ],
+    "NUw7lo": ["Affiche ou masque le panneau inférieur, où se trouve le terminal."],
     "NYUhy5": ["Nom du sous-dossier"],
     "NYn1cR": ["Chargement de l'éditeur"],
     "NYu2Pt": ["Nouveau projet…"],
@@ -1863,6 +1866,7 @@
     "NeY1Np": ["Slidev a mis trop de temps à démarrer. Réessayez."],
     "NfraGd": ["Autres méthodes d'installation de Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " activés"],
+    "NiGIcB": ["Ouvrir les commentaires"],
     "NjrIak": ["Fichier : <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Modifier ", ["tag"]],
     "NkXEFS": ["Échec de la restauration — document inchangé"],
@@ -1872,11 +1876,11 @@
     "NnQapF": ["Ouvrir avec l'IA ", ["targetDisplayName"]],
     "NoY1k4": ["Structure de réponse du serveur invalide"],
     "NpC29w": ["Crée un nouvel élément de liste à partir de l'élément courant."],
-    "NpuPmi": ["À envoyer"],
     "NrFwux": ["Échec de l'enregistrement des règles de contenu — ", ["0"]],
     "Ns0z5o": [
       "Quand vous installez une compétence publiée, en informer l'annuaire de compétences (skills.sh) pour que son nombre d'installations soit exact. Envoie le nom de la compétence, son dépôt source, et les outils d'agent vers lesquels elle est allée — jamais le contenu des fichiers, et jamais pour une compétence provenant d'une source privée, locale ou saisie à la main. Une fois par compétence et par machine."
     ],
+    "Ns5f4J": ["Décocher tous les commentaires"],
     "Nu4DdT": ["Synchronisation"],
     "Nu4oKW": ["Description"],
     "NuH1jp": ["Dépôt public"],
@@ -1940,6 +1944,7 @@
     ],
     "Okd2Xv": ["Bascule la mise en forme soulignée."],
     "OlAl5i": ["Tout développer"],
+    "OlFVNr": ["Demander à l'IA à propos de la sélection"],
     "Oo_WWc": ["Aucune page trouvée"],
     "Oos8fo": ["Copier la commande"],
     "OplnBG": ["La gestion des outils IA n'est pas disponible dans cette version."],
@@ -2011,9 +2016,6 @@
     "PkeYXL": ["Mode graphe développé"],
     "Pkw7J9": ["Ce dossier est vide."],
     "PlGC6r": ["le fichier d'exclusion git n'est pas accessible en écriture"],
-    "Pnvg8e": [
-      "Impossible d'ouvrir le terminal — les commentaires attendent toujours d'être envoyés."
-    ],
     "Pp0Vgd": ["Cliquez pour installer dans ", ["label"]],
     "PpJy-V": ["Le point de terminaison n'a pas répondu à temps."],
     "PqYWiC": [
@@ -2049,6 +2051,7 @@
     ],
     "QDZbvN": ["il y a ", ["diffDays"], " j"],
     "QHCx0c": ["Historique des rapports de bug"],
+    "QIrBIx": ["Développer tous les fichiers"],
     "QKgePK": [["editor"], " aligné sur la source (ses octets sont sauvegardés)"],
     "QLgdT6": ["tout document nommé ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
@@ -2076,6 +2079,7 @@
     "QlAG4m": ["Dites-nous en plus (facultatif)"],
     "QlkiD5": ["Replacer sur le texte sélectionné"],
     "QlxHAH": ["Résultats pour « ", ["semanticResultsLabel"], " »"],
+    "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Libellé <0>(texte visible du lien)</0>"],
     "Quz_Qu": [
       "Les modifications s'appliquent en direct. Le mode clair ou sombre vient de la palette."
@@ -2086,6 +2090,9 @@
     ],
     "QySH4I": ["Projets OpenKnowledge détectés"],
     "QyioBP": ["Monter"],
+    "QzofTX": [
+      "Aucun commentaire dans ce projet pour l'instant. Commentez un passage pour commencer."
+    ],
     "R0cyYB": [
       [
         "0",
@@ -2149,7 +2156,6 @@
     "Rj01Fz": ["Liens"],
     "RlCInP": ["Commandes slash"],
     "RmBY0A": ["Aucun dépôt distant git"],
-    "RmmhAh": ["Envoyer plus tard"],
     "RnrnTe": ["Déjà configuré — ok est disponible dans votre terminal"],
     "RoafuO": ["Envoyer un retour"],
     "RobAKV": ["Mettez à jour la destination et l'ancre de section facultative."],
@@ -2553,6 +2559,7 @@
     "XV5sC0": ["Ouvrir le worktree"],
     "XVnIvs": ["Installer des compétences"],
     "XW18jo": ["La réponse des titres de page ne correspond pas au schéma de succès"],
+    "XWEqQj": [["days"], "j"],
     "XXA1b_": [["componentLabel"], " (vide)"],
     "XYlJJT": ["Configuration en cours"],
     "XZkdtg": ["Changer de branche"],
@@ -2677,7 +2684,6 @@
     "Yy90sM": ["Compétence « ", ["name"], " » créée"],
     "YyXtnN": ["Souligné"],
     "Yzs3QX": ["Plus d'actions sur la compétence"],
-    "YzyyG2": ["Rien à envoyer pour l'instant. Commentez un passage pour l'ajouter ici."],
     "Z0W6SO": [
       "Ce dossier est un clone de ",
       ["actualOwner"],
@@ -2712,7 +2718,6 @@
     "ZBxvV3": ["Nouveau terminal"],
     "ZDOq9A": ["Ce que vous partagez est envoyé à l'équipe OpenKnowledge."],
     "ZGVsOD": ["Envoyez cette branche sur GitHub avant de partager."],
-    "ZHAM1l": ["Inclure dans l'envoi"],
     "ZI8uvA": ["Aucun problème trouvé."],
     "ZJ99sD": ["Insérer une colonne à gauche"],
     "ZNK2Tq": ["racine"],
@@ -2804,6 +2809,7 @@
       "Copie en lecture seule d'un bloc MirrorSource d'un autre document. Modifiez à la source et la copie se met à jour en direct."
     ],
     "_XWY2J": ["Terminal désactivé"],
+    "_YEyHO": ["Afficher les commentaires résolus"],
     "_YWqV2": ["OpenKnowledge a résolu un conflit"],
     "_ayOfA": [
       "Une base de connaissances qui suit l'Open Knowledge Format de Google, une manière commune d'organiser ce que vous savez. Choisissez ceci si vous voulez que vos notes fonctionnent bien avec les autres outils qui comprennent ce format."
@@ -2817,6 +2823,7 @@
     "_gO_m8": ["En attente de votre approbation"],
     "_gkGSK": ["modèle supprimé"],
     "_mcDqU": [["count"], " compétences à cette source"],
+    "_oqig9": [["hours"], "h"],
     "_pY_Vq": ["Le dépôt a été déplacé, renommé ou supprimé."],
     "_qD6mn": ["Choisissez le dossier où vous l'avez cloné."],
     "_rP3HI": ["il y a ", ["minutes"], " min"],
@@ -2824,9 +2831,6 @@
     "_tjopj": ["Coller le duplicata"],
     "_yB-24": ["tout ce qui se trouve sous n'importe quel dossier ", ["0"], "/"],
     "a-cKXz": ["Sélectionner toute la source"],
-    "a3H_MR": [
-      "Ouvre et met le focus sur la zone Demander à l'IA pour la sélection actuelle de l'éditeur."
-    ],
     "a3LDKx": ["Sécurité"],
     "a45f2c": ["Motifs glob auxquels ce schéma s'applique"],
     "a4FRQv": ["Annuler jusqu'à cette modification ?"],
@@ -3197,7 +3201,6 @@
     "emMrXQ": ["Le serveur a renvoyé une réponse de duplication mal formée."],
     "emgiet": ["Contenu faisant autorité ; reproduit tel quel partout où il est référencé."],
     "enPTnx": ["ligne ", ["displayLine"]],
-    "eoEUI3": ["Impossible de résoudre ce commentaire."],
     "epuNYK": [
       "Marque un bloc comme source de vérité. Les miroirs situés ailleurs se mettent à jour en direct pendant que vous le modifiez."
     ],
@@ -3257,6 +3260,7 @@
     "fcgvCA": ["Claude"],
     "fdeFfN": ["(fichier binaire, aperçu impossible)"],
     "fevEu0": ["Tirer les dernières modifications"],
+    "ffH3Rt": ["Ajouter un commentaire (Entrée)"],
     "fg1U4e": ["Découverte de compétences propulsée par <0>skills.sh</0>"],
     "fhaxJL": ["Échec du clonage — corps de réponse vide"],
     "fiMNLl": [
@@ -3744,7 +3748,6 @@
       ["4"],
       ") qui ne touchera pas au reste de votre système."
     ],
-    "l7X_SM": ["Envoyer à l'IA"],
     "l87Deg": ["Choisissez ce qu'ouvre un nouvel onglet"],
     "l9s3IX": [["agentName"], " n’a pas pu démarrer de conversation."],
     "lAiyU_": ["Seul le document actuel utilise <0>#", ["tag"], "</0>."],
@@ -4291,6 +4294,7 @@
     ],
     "rwrPbS": ["Navigation entre les limites de composants"],
     "rxWGWX": ["Suivant"],
+    "ryhHUm": ["Lorsque l'onglet Commentaires est ouvert"],
     "s-MGs7": ["Ressources"],
     "s-XOaI": ["Nom du fichier"],
     "s-pW_v": ["Impossible d'installer : ", ["0"]],
@@ -4327,6 +4331,7 @@
     "sNeKjP": ["Échec de l'enregistrement du jeton — réessayez"],
     "sOxZaS": ["Échec du chargement du graphe"],
     "sQoLn0": ["Quitter"],
+    "sR0I-f": ["Réduire tous les fichiers"],
     "sW5OjU": ["obligatoire"],
     "sZ2IOu": [
       "Ce ",
@@ -4387,6 +4392,7 @@
       "</0> sera créée à partir du commit actuel, dans son propre worktree sous <1>.ok/worktrees/</1>."
     ],
     "t6w1cq": ["Ouvre un onglet d'éditeur vierge."],
+    "t7YoBO": ["Envoyer ce commentaire"],
     "t9Qn8y": ["Aucun agent activé"],
     "tA0b9E": [
       "le dossier de compétences par défaut (le chemin exact apparaît une fois enregistré)"
@@ -4477,7 +4483,6 @@
     "u_lS4C": ["Clonage terminé — ouverture du projet"],
     "uaUc6t": ["Redémarrer le serveur"],
     "ubMwcO": ["La session de terminal s'est terminée (signal ", ["0"], ")."],
-    "ubx-L3": ["Commentaires à envoyer"],
     "ucXZ0k": ["Chargement des agents…"],
     "ugQcJX": [
       ["display"],
@@ -4670,6 +4675,7 @@
       "Vous avez choisi ~/Downloads. Les fichiers y sont généralement temporaires — envisagez plutôt un dossier stable."
     ],
     "wndeIl": ["Pages du projet sans arête entrante ni sortante dans le graphe."],
+    "wqD3pI": [["failed"], " commentaires sur ", ["0"], " n'ont pas pu être mis à jour."],
     "ws5o1F": ["Vérifié par : ", ["0"]],
     "wtcxiD": ["Partager cette configuration avec votre équipe ?"],
     "wvK7Ay": ["Votre copie locale de la branche <0>", ["branch"], "</0> est en retard."],
@@ -4872,9 +4878,6 @@
     "zL0LPh": ["Global, hors champs de texte"],
     "zLGXna": ["Aucun pack de démarrage disponible."],
     "zLak8b": ["Activer le nouvel onglet"],
-    "zO-IiA": [
-      "Le terminal n'est pas disponible ici — les commentaires attendent toujours d'être envoyés."
-    ],
     "zQBg2C": ["Déplace le bloc courant d'une position vers le haut ou vers le bas."],
     "zXj1rA": ["Rechercher par le sens"],
     "zYp8Sr": [
@@ -4894,7 +4897,6 @@
     "zkz0Fg": ["Configurer la synchronisation"],
     "zlErBl": ["La réponse d'erreur des titres de page ne respecte pas la RFC 9457"],
     "zo3Dl7": ["Basculer les miniatures"],
-    "zovxVp": ["Prêt à envoyer"],
     "zpfN9p": [
       "Pas encore de commentaires. Sélectionnez du texte dans le document pour en ajouter un."
     ],

@@ -310,6 +310,12 @@ export interface MenuDeps {
    * stays wired off-mac — agent threads are server-hosted, not pty-backed.
    */
   agentPanelVisible?: boolean;
+  /**
+   * Live editor selection. `onToggleAgentPanel` stages that selection in the
+   * agents panel rather than toggling it, so the item renames itself to say so —
+   * see the `overrideKey` on this command's `stateToggle`.
+   */
+  hasEditorSelection?: boolean;
   onToggleAgentPanel?(): void;
   /**
    * Top-level Terminal menu actions. `onNewTerminal` opens a new terminal tab
@@ -684,7 +690,13 @@ function menuLeafLabel(
 ): string {
   if (placement.menuLabelText !== undefined) return translate(placement.menuLabelText);
   if (cmd.stateToggle) {
-    const { stateField, defaultVisible, showKey, hideKey } = cmd.stateToggle;
+    const { stateField, defaultVisible, showKey, hideKey, overrideKey, overrideField } =
+      cmd.stateToggle;
+    // The override wins over the show/hide pair: it names an action the toggle
+    // is not performing, so deferring to the pair would leave the item lying.
+    if (overrideKey !== undefined && overrideField !== undefined && deps[overrideField] === true) {
+      return MENU_LABELS[overrideKey];
+    }
     const visible = deps[stateField] ?? defaultVisible;
     return translate(MENU_LABELS[visible ? hideKey : showKey]);
   }

@@ -1,16 +1,17 @@
 /**
- * The ready-to-send button's hover-swap affordance.
+ * The card's send tick, and the two states around it.
  *
- * "Ready to send" is a settled state that doubles as its own undo: ✓ at rest, ✕ on
- * hover. The properties worth pinning are the ones easy to lose in a restyle —
- * both glyphs must be present (a swap done by conditional render can't
- * cross-fade), the reveal must be keyboard-reachable and not pointer-only, and
- * the accessible name must say what the click DOES rather than echo the label.
+ * The tick is the whole send decision now — both comment scopes list every
+ * thread and the checkbox says which of them go out — so what is worth pinning
+ * is that it reflects the passed-in sending state rather than the raw `queued`
+ * flag (the two differ when a comment is unchecked from the composer chip), and
+ * that a resolved thread offers none: it has been dealt with, and the queue
+ * excludes it by construction.
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
-import { ThreadCard } from './CommentsPanel';
+import { ThreadCard } from './ThreadCard';
 import type { CommentThread } from './types';
 
 function thread(overrides: Partial<CommentThread> = {}): CommentThread {
@@ -27,43 +28,37 @@ function thread(overrides: Partial<CommentThread> = {}): CommentThread {
   };
 }
 
-function renderCard(t: CommentThread) {
-  return render(<ThreadCard thread={t} now={2000} cardRef={() => {}} focused={false} />);
+function renderCard(t: CommentThread, sending = true) {
+  return render(
+    <ThreadCard thread={t} now={2000} cardRef={() => {}} focused={false} sending={sending} />,
+  );
 }
 
 afterEach(() => cleanup());
 
-describe('the ready-to-send toggle', () => {
+describe('the send tick', () => {
   test('names the action, not the state', () => {
     renderCard(thread());
-    // "Ready to send" is the visible label; the accessible name has to tell a screen
-    // reader user that activating it REMOVES the comment from the batch.
-    expect(screen.getByRole('button', { name: /don't send this comment/i })).toBeTruthy();
+    // Checked, so activating it REMOVES the comment from the batch — which is
+    // what a screen reader user has to be told, rather than "checked".
+    const tick = screen.getByRole('checkbox', { name: /don't send this comment/i });
+    expect(tick.getAttribute('data-state')).toBe('checked');
   });
 
-  test('carries both glyphs so the swap can cross-fade', () => {
-    const { container } = renderCard(thread());
-    const button = screen.getByRole('button', { name: /don't send this comment/i });
-    // Two absolutely-positioned icons, one visible at rest and one on hover —
-    // rendering only the current glyph would make the transition impossible.
-    expect(button.querySelectorAll('svg').length).toBe(2);
-    expect(container.querySelector('.group\\/queued')).toBeTruthy();
+  test('follows the sending set, not the raw queued flag', () => {
+    // Queued but unchecked from the composer chip: the panel has to show it as
+    // it will actually behave, or ticking it would read as a no-op.
+    renderCard(thread({ queued: true }), false);
+    const tick = screen.getByRole('checkbox', { name: /^send this comment$/i });
+    expect(tick.getAttribute('data-state')).toBe('unchecked');
   });
 
-  test('reveals on keyboard focus as well as hover, but not after a click', () => {
-    renderCard(thread());
-    const markup = screen.getByRole('button', { name: /don't send this comment/i }).innerHTML;
-    // Keyboard parity: hover alone would make this a pointer-only affordance.
-    expect(markup).toContain('group-focus-visible/queued:opacity-100');
-    expect(markup).toContain('group-hover/queued:opacity-100');
-    // `focus-within` would match the focus a mouse click leaves behind, pinning
-    // one card's ✕ open while every other card rests at ✓.
-    expect(markup).not.toContain('group-focus-within/queued:');
-  });
-
-  test('a comment that is not in the batch offers Send later instead', () => {
-    renderCard(thread({ id: 't2', queued: false }));
-    expect(screen.getByRole('button', { name: /^send later$/i })).toBeTruthy();
+  test('a resolved thread carries no tick', () => {
+    renderCard(thread({ status: 'resolved' }), false);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    // It offers the way back instead — dispatch auto-resolves, so reopening is
+    // the correction when the agent didn't actually settle it.
+    expect(screen.getByRole('button', { name: /reopen/i })).toBeTruthy();
   });
 });
 
@@ -89,11 +84,7 @@ describe('opening an edit', () => {
 
 describe('a property thread in the panel', () => {
   test('shows its key as YAML instead of a quote, and offers no jump', () => {
-    render(
-      <ThreadCard
-        thread={thread({ target: { kind: 'property', key: 'tags', path: [] }, anchor: null })}
-      />,
-    );
+    renderCard(thread({ target: { kind: 'property', key: 'tags', path: [] }, anchor: null }));
     // `tags:` reads as the frontmatter it is — which is the whole distinction
     // from a short quote, since both are a few characters of monospace.
     expect(screen.getByText('tags:')).toBeTruthy();

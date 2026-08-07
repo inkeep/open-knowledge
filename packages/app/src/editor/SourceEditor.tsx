@@ -8,12 +8,10 @@ import {
   type PersistedLinterConfig,
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
-import { isMacOS } from '@tiptap/core';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type * as Y from 'yjs';
-import { emitOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import {
@@ -23,7 +21,6 @@ import {
 } from '@/editor/extensions/nested-cm-extensions';
 import type { RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { useConfigContext } from '@/lib/config-provider';
-import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { registerSourceView, unregisterSourceView } from './active-source-view';
 import { createSourceClipboardExtension } from './clipboard/index.ts';
 import { type CmCacheEntry, mountCmEditor, parkCmEditor } from './editor-cache';
@@ -338,18 +335,6 @@ export function SourceEditor({
                     selectionSnapshotFromSource(update.view, resolvedDocName),
                   );
                 }, SELECTION_STATS_DEBOUNCE_MS);
-              }),
-              EditorView.domEventHandlers({
-                keydown: (event, _view) => {
-                  if (!sourceModeActiveRef.current) return false;
-                  if (!isMacOS()) return false;
-                  if (!matchesKeyboardShortcut(event, 'edit-with-ai')) return false;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.stopImmediatePropagation();
-                  emitOpenAskAiComposer();
-                  return true;
-                },
               }),
               placeholderCompartment.of(cmPlaceholder(placeholder ?? '')),
               EditorView.theme({

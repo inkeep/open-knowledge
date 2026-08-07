@@ -276,8 +276,6 @@ msgid "{0} is over {destination}."
 msgstr "{0} {destination} के ऊपर है।"
 
 #. placeholder {0}: resolvedTarget.displayName
-#. placeholder {0}: target.displayName
-#: src/comments/use-comment-delivery.ts
 #: src/components/BottomComposer.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} अभी इंस्टॉल नहीं है — इसका डाउनलोड पेज खोला जा रहा है।"
@@ -506,6 +504,10 @@ msgstr "इस स्रोत पर {count} स्किल"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {# दिन पहले} other {# दिन पहले}}"
 
+#: src/comments/ThreadCard.tsx
+msgid "{days}d"
+msgstr "{days}दि"
+
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
 msgstr "{days} दिन पहले"
@@ -546,7 +548,6 @@ msgstr "{display} एक स्वतंत्र प्रति है जब�
 msgid "{displayName} ({bin}) isn't installed or on your PATH."
 msgstr "{displayName} ({bin}) इंस्टॉल नहीं है या आपके PATH में नहीं है।"
 
-#: src/comments/use-comment-agent-picker.ts
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -574,8 +575,8 @@ msgstr "{0} में से {enabledCount} चालू"
 
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
-msgid "{failed} of {0} comments could not be cleared."
-msgstr "{0} टिप्पणियों में से {failed} साफ़ नहीं की जा सकीं।"
+msgid "{failed} of {0} comments could not be updated."
+msgstr "{0} में से {failed} टिप्पणियाँ अपडेट नहीं हो सकीं।"
 
 #: src/components/FileTree.tsx
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
@@ -600,6 +601,10 @@ msgstr "{folderCount, plural, one {फ़ोल्डर} other {फ़ोल्
 #: src/components/HelpPopover.tsx
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub स्टार"
+
+#: src/comments/ThreadCard.tsx
+msgid "{hours}h"
+msgstr "{hours}घं"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
@@ -662,6 +667,10 @@ msgstr "{loadErrorTitle}: {message}"
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {# मिनट पहले} other {# मिनट पहले}}"
+
+#: src/comments/ThreadCard.tsx
+msgid "{mins}m"
+msgstr "{mins}मि"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{minutes} min ago"
@@ -735,6 +744,10 @@ msgstr "{propPanelDescriptorLabel} प्रॉपर्टी"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "{seconds}s ago"
 msgstr "{seconds} सेकंड पहले"
+
+#: src/comments/ThreadCard.tsx
+msgid "{secs}s"
+msgstr "{secs}से"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{settingsDescriptorLabel} properties"
@@ -1182,6 +1195,10 @@ msgstr "कम से कम एक अक्षर या अंक जोड�
 msgid "Add Comment"
 msgstr "टिप्पणी जोड़ें"
 
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Add Comment (Enter)"
+msgstr "टिप्पणी जोड़ें (Enter)"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add cursors or select matching occurrences through CodeMirror."
 msgstr "CodeMirror के ज़रिए कर्सर जोड़ें या मेल खाती घटनाएँ चुनें।"
@@ -1593,7 +1610,6 @@ msgstr "{0} CLI से पूछें"
 msgid "Ask {agentName}"
 msgstr "{agentName} से पूछें"
 
-#: src/comments/CommentBubbleButton.tsx
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
 #: src/components/OnboardingCard.tsx
@@ -1603,8 +1619,12 @@ msgid "Ask AI"
 msgstr "AI से पूछें"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Ask AI (from selection)"
-msgstr "AI से पूछें (चयन से)"
+msgid "Ask AI about selection"
+msgstr "चयन के बारे में AI से पूछें"
+
+#: src/components/command-palette-commands.ts
+msgid "Ask AI About Selection"
+msgstr "चयन के बारे में AI से पूछें"
 
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
@@ -2112,7 +2132,6 @@ msgstr "जाँचकर्ता: {0}"
 msgid "Checking"
 msgstr "जाँचा जा रहा है"
 
-#: src/comments/CommentQueuePanel.tsx
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
 msgstr "एजेंट खोजे जा रहे हैं"
@@ -2191,7 +2210,7 @@ msgstr "आइकन चुनें"
 msgid "Choose what a new tab starts"
 msgstr "चुनें कि नया टैब क्या शुरू करे"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "चुनें कि ये टिप्पणियाँ कहाँ भेजनी हैं"
 
@@ -2227,7 +2246,6 @@ msgstr "Claude Desktop"
 msgid "Cleanup log"
 msgstr "सफ़ाई लॉग"
 
-#: src/comments/CommentQueuePanel.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Clear"
@@ -2349,7 +2367,7 @@ msgstr "{repoName} क्लोन किया जा रहा है…"
 msgid "Cloning..."
 msgstr "क्लोन किया जा रहा है…"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -2485,6 +2503,10 @@ msgstr "सभी समेटें"
 msgid "Collapse all file groups"
 msgstr "सभी फ़ाइल समूह समेटें"
 
+#: src/comments/CommentListPanel.tsx
+msgid "Collapse all files"
+msgstr "सभी फ़ाइलें समेटें"
+
 #: src/components/BottomComposer.tsx
 msgid "Collapse Ask AI"
 msgstr "Ask AI समेटें"
@@ -2533,6 +2555,10 @@ msgstr "कमांड"
 msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
 msgstr "कमांड इस मशीन पर आपके macOS उपयोगकर्ता खाते की पूरी पहुँच के साथ चलते हैं। शेल बंद करने के लिए इसे बंद कर दें।"
 
+#: src/comments/CommentBubbleButton.tsx
+msgid "Comment"
+msgstr "टिप्पणी करें"
+
 #: src/comments/PropertyCommentButton.tsx
 msgid "Comment on {address}"
 msgstr "{address} पर टिप्पणी"
@@ -2540,6 +2566,10 @@ msgstr "{address} पर टिप्पणी"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Comment on selection"
 msgstr "चयन पर टिप्पणी"
+
+#: src/comments/CommentBubbleButton.tsx
+msgid "Comment on this selection"
+msgstr "इस चयन पर टिप्पणी करें"
 
 #. placeholder {0}: descriptor.displayName ?? descriptor.name
 #: src/editor/extensions/JsxComponentView.tsx
@@ -2551,14 +2581,10 @@ msgid "Comment or ask AI about this code block"
 msgstr "इस कोड ब्लॉक पर टिप्पणी करें या AI से पूछें"
 
 #: src/comments/comment-chips.tsx
-#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
 msgstr "टिप्पणियाँ"
-
-#: src/comments/CommentQueuePanel.tsx
-msgid "Comments to send"
-msgstr "भेजी जाने वाली टिप्पणियाँ"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
@@ -3312,10 +3338,6 @@ msgstr "दस्तावेज़ नहीं खोला जा सका"
 msgid "Couldn't open the terminal — please try again."
 msgstr "टर्मिनल नहीं खोला जा सका — कृपया फिर कोशिश करें।"
 
-#: src/comments/use-comment-delivery.ts
-msgid "Couldn't open the terminal — the comments are still waiting to send."
-msgstr "टर्मिनल नहीं खोला जा सका — टिप्पणियाँ अब भी भेजे जाने की प्रतीक्षा में हैं।"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Couldn't open the worktree. Try again."
 msgstr "वर्कट्री नहीं खोला जा सका। फिर कोशिश करें।"
@@ -3408,10 +3430,6 @@ msgstr "टेम्पलेट का नाम नहीं बदला ज�
 #: src/comments/store.ts
 msgid "Couldn't reopen that comment."
 msgstr "उस टिप्पणी को फिर से नहीं खोला जा सका।"
-
-#: src/comments/store.ts
-msgid "Couldn't resolve that comment."
-msgstr "उस टिप्पणी को सुलझाया नहीं जा सका।"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't resolve the conflict for {filePath}."
@@ -3538,10 +3556,6 @@ msgstr "स्किल साझाकरण अपडेट नहीं क�
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "स्किल साझाकरण अपडेट नहीं किया जा सका — {detail}."
-
-#: src/comments/use-comment-delivery.ts
-msgid "Couldn't work out where to send the comments — they're still waiting."
-msgstr "यह तय नहीं किया जा सका कि टिप्पणियाँ कहाँ भेजनी हैं — वे अब भी प्रतीक्षा में हैं।"
 
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
@@ -3887,7 +3901,7 @@ msgstr "तालिका हटाएँ"
 msgid "Delete this chat?"
 msgstr "यह चैट हटाएं?"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
 msgstr "यह टिप्पणी हटाएँ"
 
@@ -4194,8 +4208,7 @@ msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code e
 msgstr "<0>Skills</0> नहीं दिख रहा? पहले <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> सक्षम करें।"
 
 #: src/comments/comment-chips.tsx
-#: src/comments/CommentQueuePanel.tsx
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Don't send this comment"
 msgstr "यह टिप्पणी न भेजें"
 
@@ -4385,7 +4398,7 @@ msgstr "स्रोत संपादित करें"
 msgid "Edit source pane and code property fields"
 msgstr "स्रोत पैनल और कोड प्रॉपर्टी फ़ील्ड संपादित करें"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Edit this comment"
 msgstr "यह टिप्पणी संपादित करें"
 
@@ -4713,6 +4726,10 @@ msgstr "सब फैलाएँ"
 #: src/components/ProblemsPanel.tsx
 msgid "Expand all file groups"
 msgstr "सभी फ़ाइल समूह फैलाएँ"
+
+#: src/comments/CommentListPanel.tsx
+msgid "Expand all files"
+msgstr "सभी फ़ाइलें फैलाएँ"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -5561,7 +5578,6 @@ msgstr "{1} में पंक्ति {0} पर जाएँ"
 
 #. placeholder {0}: docBasename(thread.docName)
 #: src/comments/comment-chips.tsx
-#: src/comments/CommentQueuePanel.tsx
 msgid "Go to this comment in {0}"
 msgstr "{0} में इस टिप्पणी पर जाएँ"
 
@@ -5593,6 +5609,10 @@ msgstr "आपके AI एजेंट को यहाँ काम करन�
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "guides/install or https://example.com"
 msgstr "guides/install या https://example.com"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Hand the checked comments to an agent in one turn. On This doc, that document's comments only; on This project, every checked comment. Does nothing while the Comments tab is closed."
+msgstr "चुनी हुई टिप्पणियाँ एक ही बार में एजेंट को सौंपें। यह दस्तावेज़ पर केवल उसी दस्तावेज़ की टिप्पणियाँ; यह प्रोजेक्ट पर सभी चुनी हुई टिप्पणियाँ। टिप्पणियाँ टैब बंद होने पर कुछ नहीं होता।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Hard break"
@@ -5767,9 +5787,13 @@ msgstr "समस्या संकेतक छिपाएँ"
 msgid "Hide replace"
 msgstr "बदलें छिपाएँ"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Hide resolved"
 msgstr "सुलझे हुए छिपाएँ"
+
+#: src/comments/CommentListPanel.tsx
+msgid "Hide resolved comments"
+msgstr "हल की गई टिप्पणियाँ छिपाएँ"
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
@@ -5978,10 +6002,6 @@ msgstr "ऐप में (बीटा)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App में"
-
-#: src/comments/CommentQueuePanel.tsx
-msgid "Include in dispatch"
-msgstr "भेजने में शामिल करें"
 
 #: src/comments/comment-chips.tsx
 msgid "Include this comment in the next send"
@@ -6340,7 +6360,7 @@ msgstr "पेज {pageNumber} पर जाएँ"
 msgid "Jump to tab 1-8"
 msgstr "टैब 1-8 पर जाएँ"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Jump to the anchored text"
 msgstr "एंकर किए गए पाठ पर जाएँ"
 
@@ -6794,6 +6814,10 @@ msgstr "संरचना का नक्शा बनाएँ"
 #: src/editor/slash-command/component-items.tsx
 msgid "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
 msgstr "किसी ब्लॉक को सत्य के स्रोत के रूप में चिह्नित करें। जैसे-जैसे आप उसे संपादित करते हैं, बाकी जगहों के मिरर तुरंत अद्यतित होते हैं।"
+
+#: src/comments/CommentSendFooter.tsx
+msgid "Mark every comment to send"
+msgstr "भेजने के लिए सभी टिप्पणियाँ चुनें"
 
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown"
@@ -7351,7 +7375,7 @@ msgstr "अभी कोई एजेंट सेट अप नहीं है
 msgid "No agents available."
 msgstr "कोई एजेंट उपलब्ध नहीं।"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 #: src/components/BottomComposer.tsx
 msgid "No agents enabled"
 msgstr "कोई एजेंट सक्षम नहीं"
@@ -7383,6 +7407,10 @@ msgstr "कोई बदलाव नहीं"
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
 msgstr "इस वर्कट्री के लिए कोई सहयोग सर्वर नहीं — यहाँ <0>ok start</0> चलाएँ, या प्रोजेक्ट दोबारा खोलें।"
+
+#: src/comments/CommentProjectPanel.tsx
+msgid "No comments in this project yet. Comment on a passage to start one."
+msgstr "इस प्रोजेक्ट में अभी कोई टिप्पणी नहीं है। शुरू करने के लिए किसी अंश पर टिप्पणी करें."
 
 #: src/comments/CommentsPanel.tsx
 msgid "No comments yet. Select text in the document to add one."
@@ -7738,10 +7766,6 @@ msgstr "कुछ नहीं ({0} एक मान्य पैटर्न �
 msgid "Nothing set yet."
 msgstr "अभी कुछ भी सेट नहीं।"
 
-#: src/comments/CommentQueuePanel.tsx
-msgid "Nothing to send yet. Comment on a passage to add it here."
-msgstr "अभी भेजने को कुछ नहीं। इसे यहाँ जोड़ने के लिए किसी अंश पर टिप्पणी करें।"
-
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
 msgstr "कुछ भी अपलोड नहीं हुआ। जब तक आप इसे हमें ईमेल नहीं करते तब तक रिपोर्ट इसी Mac पर रहती है।"
@@ -7941,10 +7965,6 @@ msgid "Open an existing project folder from disk."
 msgstr "डिस्क से कोई मौजूदा प्रोजेक्ट फ़ोल्डर खोलें।"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Open and focus the Ask AI composer for the current editor selection."
-msgstr "मौजूदा संपादक चयन के लिए Ask AI लेखन-पट्टी खोलें और उस पर फ़ोकस करें।"
-
-#: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "नीचे वाली Ask AI प्रॉम्प्ट लेखन-पट्टी खोलें और उस पर फ़ोकस करें।"
 
@@ -7963,6 +7983,10 @@ msgstr "CodeMirror का lint निदान पैनल खोलें।"
 #: src/comments/CommentMarginRail.tsx
 msgid "Open comment"
 msgstr "टिप्पणी खोलें"
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Open Comments"
+msgstr "टिप्पणियाँ खोलें"
 
 #: src/lib/reveal-label.ts
 msgid "Open containing folder"
@@ -8432,7 +8456,7 @@ msgstr "मूल फ़ाइल — इस एजेंट के संपा
 msgid "Orphan mode"
 msgstr "अनाथ मोड"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Orphaned"
 msgstr "अनाथ"
 
@@ -9098,7 +9122,7 @@ msgstr "GitHub Enterprise Server के साथ फिर से प्रम�
 msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 msgstr "फिर से एम्बेड करना खोज चलने के साथ होता है, इसलिए कवरेज शून्य से फिर शुरू होकर भरता है।"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Re-place on selected text"
 msgstr "चयनित पाठ पर फिर से रखें"
 
@@ -9125,10 +9149,6 @@ msgstr "{name} स्किल में केवल पढ़ने योग�
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "पढ़ा जा रहा है…"
-
-#: src/comments/CommentsPanel.tsx
-msgid "Ready to send"
-msgstr "भेजने के लिए तैयार"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -9466,7 +9486,7 @@ msgstr "रेंडर त्रुटि"
 msgid "Rendered"
 msgstr "रेंडर किया गया"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "फिर से खोलें"
 
@@ -9632,10 +9652,6 @@ msgstr "दृश्य फ़िल्टर रीसेट करें"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} का आकार बदलें"
 
-#: src/comments/CommentsPanel.tsx
-msgid "Resolve"
-msgstr "सुलझाएँ"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "अपने टर्मिनल में टकराव सुलझाएँ"
@@ -9648,7 +9664,7 @@ msgstr "हटाने से पहले {files} का विरोध ह�
 msgid "Resolve the conflict on {files}, +{overflow} more before deleting."
 msgstr "हटाने से पहले {files} और {overflow} अन्य फ़ाइलों का विरोध हल करें।"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "सुलझ गया"
 
@@ -10187,7 +10203,7 @@ msgstr "अगली घटना चुनें"
 msgid "Select the full source document."
 msgstr "पूरा स्रोत दस्तावेज़ चुनें।"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "Select this text in the property"
 msgstr "प्रॉपर्टी में यह पाठ चुनें"
 
@@ -10240,6 +10256,10 @@ msgstr "भेजें"
 msgid "Send & continue"
 msgstr "भेजें और जारी रखें"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Send checked comments to chat"
+msgstr "चुनी हुई टिप्पणियाँ चैट में भेजें"
+
 #: src/comments/QueueNewChatRow.tsx
 msgid "Send comments to"
 msgstr "टिप्पणियाँ यहाँ भेजें"
@@ -10253,21 +10273,22 @@ msgstr "प्रतिक्रिया भेजें"
 msgid "Send feedback…"
 msgstr "प्रतिक्रिया भेजें…"
 
-#: src/comments/CommentsPanel.tsx
-msgid "Send later"
-msgstr "बाद में भेजें"
-
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "रिपोर्ट भेजें"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Send to AI"
-msgstr "AI को भेजें"
+#: src/comments/ThreadCard.tsx
+msgid "Send this comment"
+msgstr "यह टिप्पणी भेजें"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
 msgstr "चैट में भेजें"
+
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Send to chat ({0})"
+msgstr "चैट में भेजें ({0})"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Send when the agent is free"
@@ -10654,9 +10675,13 @@ msgid "Show replace"
 msgstr "बदलें दिखाएँ"
 
 #. placeholder {0}: resolved.length
-#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Show resolved ({0})"
 msgstr "सुलझे हुए दिखाएँ ({0})"
+
+#: src/comments/CommentListPanel.tsx
+msgid "Show resolved comments"
+msgstr "हल की गई टिप्पणियाँ दिखाएँ"
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
@@ -10957,6 +10982,10 @@ msgstr "स्रोत में पूर्ववत या फिर से 
 msgid "Split list item"
 msgstr "सूची आइटम बाँटें"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Stage the selected passage in the agents panel, ready to extend and send."
+msgstr "चयनित अंश को एजेंट पैनल में तैयार रखें, जोड़कर भेजने के लिए तैयार।"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "GitHub पर हमें स्टार दें"
@@ -10978,7 +11007,7 @@ msgstr "{agentName} शुरू करें, {hint}"
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
 msgstr "＋ बटन से चैट शुरू करें, या किसी पेज से एजेंट लॉन्च करें।"
 
-#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentSendFooter.tsx
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
 msgstr "नई चैट शुरू करें"
@@ -11540,10 +11569,6 @@ msgstr "प्रतिक्रिया के लिए धन्यवाद
 msgid "Thanks for the report!"
 msgstr "रिपोर्ट के लिए धन्यवाद!"
 
-#: src/comments/use-comment-delivery.ts
-msgid "That app isn't available — the comments are still waiting to send."
-msgstr "वह ऐप उपलब्ध नहीं है — टिप्पणियाँ अब भी भेजे जाने की प्रतीक्षा में हैं।"
-
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
@@ -11594,7 +11619,7 @@ msgstr "एजेंट रुक नहीं रहा है। फ़ोर�
 msgid "The agent's persona, values, and voice."
 msgstr "एजेंट का व्यक्तित्व, मूल्य और स्वर।"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "The anchored text is gone. You can re-place it on selected text."
 msgstr "एंकर किया गया पाठ चला गया है। आप इसे चयनित पाठ पर फिर से रख सकते हैं।"
 
@@ -11745,10 +11770,6 @@ msgstr "टेम्पलेट का फ़ाइल-नाम (`.md` के 
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
 msgstr "इस प्रोजेक्ट के लिए टर्मिनल बंद है। यहाँ कमांड चलाने के लिए इसे वापस चालू करें।"
 
-#: src/comments/use-comment-delivery.ts
-msgid "The terminal isn't available here — the comments are still waiting to send."
-msgstr "टर्मिनल यहाँ उपलब्ध नहीं है — टिप्पणियाँ अब भी भेजे जाने की प्रतीक्षा में हैं।"
-
 #. placeholder {0}: info.exitCode
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal session ended (exit code {0})."
@@ -11873,7 +11894,7 @@ msgstr "यह ब्रांच यहाँ चेक आउट है:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "इसे Settings > AI tools & CLI में कॉन्फ़िगर किया जा सकता है"
 
-#: src/comments/CommentsPanel.tsx
+#: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "यह टिप्पणी पूरी प्रॉपर्टी पर है"
 
@@ -12033,6 +12054,7 @@ msgstr "यह “{2}” स्किल से {0}/{1} को स्थाय�
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "यह {path} को स्थायी रूप से हटा देता है। जो एजेंट इस टेम्पलेट को नाम से संदर्भित करते हैं वे तब तक विफल रहेंगे जब तक यह दोबारा न बने या किसी मूल फ़ोल्डर का टेम्पलेट इसकी जगह न ले।"
 
+#: src/comments/CommentsTab.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "This project"
 msgstr "यह प्रोजेक्ट"
@@ -12167,10 +12189,6 @@ msgstr "करना है"
 msgid "To do."
 msgstr "करना है।"
 
-#: src/comments/CommentsTab.tsx
-msgid "To send"
-msgstr "भेजना है"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "बुलेट सूची चालू या बंद करें।"
@@ -12246,8 +12264,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "काटी हुई फ़ॉर्मैटिंग चालू या बंद करें।"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom dock, where the terminal lives. With text selected, stage it for your preferred AI instead."
-msgstr "निचले पैनल को टॉगल करें, जहाँ टर्मिनल रहता है। यदि टेक्स्ट चयनित है, तो उसे आपकी पसंदीदा AI के लिए तैयार किया जाता है।"
+msgid "Toggle the bottom dock, where the terminal lives."
+msgstr "निचला पैनल दिखाएँ या छिपाएँ, जहाँ टर्मिनल रहता है।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."
@@ -12498,6 +12516,10 @@ msgstr "अज्ञात त्रुटि"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "unlink"
 msgstr "अनलिंक करें"
+
+#: src/comments/CommentSendFooter.tsx
+msgid "Unmark every comment"
+msgstr "सभी टिप्पणियों का चयन हटाएँ"
 
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
@@ -12953,6 +12975,10 @@ msgstr "सक्षम होने पर एजेंट हर संपा�
 #: src/components/CreatedItemsList.tsx
 msgid "When the agent runs its scheduled work."
 msgstr "एजेंट अपना निर्धारित काम कब करता है।"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "When the Comments tab is open"
+msgstr "जब टिप्पणियाँ टैब खुला हो"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
