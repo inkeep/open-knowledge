@@ -1,4 +1,5 @@
 import { type AnyOrama, count, create, insertMultiple, removeMultiple, search } from '@orama/orama';
+import { tokenizer as oramaTokenizer } from '@orama/orama/components';
 import { isHiddenDocName } from '../util/doc-name.ts';
 
 export type WorkspaceSearchKind = 'page' | 'folder' | 'file';
@@ -253,10 +254,96 @@ export function createWorkspaceSearchDocument(input: {
   };
 }
 
+/**
+ * Matches any letter or number that Orama's default `english` tokenizer treats
+ * as a separator rather than a word character. The default splitter
+ * (`/[^A-Za-zàèéìòóù0-9_'-]+/`) keeps only that Latin class, so a run of
+ * Hebrew, Cyrillic, Greek, Arabic, CJK, Thai, … is deleted wholesale on both
+ * the indexing and the query side — such content indexes to zero tokens and is
+ * unsearchable. Read the double negation as: a Unicode letter NOT in the
+ * default-kept Latin set, or a Unicode number NOT in `0-9`.
+ *
+ * Case-insensitive because the base splits `input.toLowerCase()`, so the kept
+ * set is really a set of case-folded letters: `É` is kept (it folds to the kept
+ * `é`) and must NOT count as dropped, or `École` would index the base's
+ * diacritic-folded `ecole` AND an appended `école`, inflating `fieldLength`
+ * for input the base handles fine. Folding also covers lookalikes that fold
+ * into the set, such as the Kelvin sign `K` → `k`.
+ *
+ * The number half admits only `Nd` and `Nl` — the number categories whose
+ * characters segment as word-like. `No` (`½`, `²`, `¾`) never does, so
+ * admitting it would route a whole document through the segmenter to append
+ * nothing: a single `m²` used to double that document's index-build cost
+ * (2000 Latin docs / 1.5 MB: 93 ms admitting `No`, 46 ms not, same tokens).
+ *
+ * Cost when the gate does fire is the segmentation itself, on the same event
+ * loop as the index build: for 2000 docs it is 91 ms Hebrew (3.4 MB), 140 ms
+ * Thai (6.0 MB), and 163 ms Chinese (3.0 MB), against 78 ms for a Latin corpus
+ * that never reaches the segmenter.
+ */
+const DROPPED_SCRIPT_CHAR = /[^\P{L}a-zàèéìòóù]|[^\P{Nd}0-9]|\p{Nl}/iu;
+
+/**
+ * Word segmenter for scripts the default tokenizer drops: plain word splitting
+ * for spaced scripts (Hebrew, Cyrillic, Greek, Arabic), dictionary-based
+ * segmentation for unspaced ones (Thai, Japanese, Chinese). Ships with every
+ * supported runtime (Node ≥ 16, Electron, evergreen browsers) — no dependency.
+ * The locale is pinned so token output never varies with the host machine's
+ * default locale: word-granularity segmentation dispatches by the script of
+ * the text itself, so the pinned value costs nothing for non-English content,
+ * and index/query tokenization stays deterministic across environments (and in
+ * token-level tests). Stateless, so one shared instance serves every index.
+ *
+ * Feature-detected rather than constructed outright: this module is imported by
+ * the command palette and the wiki-link suggestion extension, so a throw here
+ * would fail the app bundle's module evaluation on a runtime without the API,
+ * not merely degrade non-Latin search. `null` falls back to base tokenization,
+ * i.e. Latin-only search.
+ */
+const WORD_SEGMENTER = (() => {
+  const Ctor = (globalThis as { Intl: { Segmenter?: typeof Intl.Segmenter } }).Intl.Segmenter;
+  return Ctor ? new Ctor('en', { granularity: 'word' }) : null;
+})();
+
+/**
+ * The default Orama tokenizer, extended to ALSO emit tokens for scripts the
+ * default splitter deletes. Latin-only input (no {@link DROPPED_SCRIPT_CHAR})
+ * returns the base result unchanged — same tokens, same order — so existing
+ * tokenization and BM25 scores are byte-identical and the pinned flag-OFF
+ * parity fixture keeps passing. Input containing a dropped script additionally
+ * yields that script's `Intl.Segmenter` word segments, lowercased to match the
+ * base pipeline and deduplicated like the base's `allowDuplicates: false`.
+ * Orama routes both indexing and querying through this tokenizer, so the two
+ * sides stay consistent.
+ */
+function createWorkspaceSearchTokenizer() {
+  const base = oramaTokenizer.createTokenizer({ language: 'english' });
+  const baseTokenize = base.tokenize.bind(base);
+  base.tokenize = (input, language, prop, withCache) => {
+    const tokens = baseTokenize(input, language, prop, withCache);
+    if (!WORD_SEGMENTER || typeof input !== 'string') return tokens;
+    if (!DROPPED_SCRIPT_CHAR.test(input)) return tokens;
+    const seen = new Set(tokens);
+    for (const { segment, isWordLike } of WORD_SEGMENTER.segment(input)) {
+      if (!isWordLike || !DROPPED_SCRIPT_CHAR.test(segment)) continue;
+      const token = segment.toLowerCase();
+      if (!seen.has(token)) {
+        seen.add(token);
+        tokens.push(token);
+      }
+    }
+    return tokens;
+  };
+  return base;
+}
+
 function createWorkspaceSearchIndex(
   documents: readonly WorkspaceSearchDocument[],
 ): WorkspaceSearchIndex {
-  const db = create({ schema: WORKSPACE_SEARCH_SCHEMA });
+  const db = create({
+    schema: WORKSPACE_SEARCH_SCHEMA,
+    components: { tokenizer: createWorkspaceSearchTokenizer() },
+  });
   if (documents.length > 0) {
     insertMultiple(db, documents as WorkspaceSearchDocument[]);
   }
@@ -663,9 +750,36 @@ function searchBoost(
   return { title: 8, name: 7, path: 5, pathSegments: 4 };
 }
 
+/**
+ * Scripts where one character carries a whole syllable or morpheme, so a word
+ * is only a few characters long: CJK, Thai, Khmer, and Hangul. An
+ * edit-distance-1 match there lands on a DIFFERENT word rather than correcting
+ * a typo, and because BM25 favors the shorter document the near-miss can
+ * outrank the exact hit. Measured: `访问控制` (access control) fell to third
+ * behind the non-word `防问控制`, and `검색 품질` (search quality) fell behind
+ * `검토` (review).
+ *
+ * Density, not spacing, is the axis — Hangul is spaced yet behaves like CJK
+ * here, while the alphabetic non-Latin scripts (Hebrew, Cyrillic, Greek,
+ * Arabic) keep tolerance deliberately, because one edit there is an ordinary
+ * typo exactly as in Latin, and each was checked to still rank its exact match
+ * first.
+ *
+ * The non-Hangul ranges mirror `NON_SPACE_SCRIPT_RE` in the app's
+ * document-stats, including its escape for the Compatibility Ideographs lower
+ * bound: U+F900 NFC-normalizes to U+8C48, so an editor that auto-normalizes
+ * source would silently widen the range by ~27K codepoints.
+ */
+const DENSE_SCRIPT_CHAR =
+  /[฀-๿ក-៿　-〿぀-ゟ゠-ヿ㐀-䶿一-鿿\uf900-﫿＀-￯\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7ff]/;
+
 function toleranceFor(intent: WorkspaceSearchIntent, query: string): number {
   const normalizedQuery = normalize(query);
   if (normalizedQuery.length < 4) return 0;
+  // Orama takes one tolerance for the whole query, so a mixed-script query
+  // gives up typo tolerance on its Latin half too — worth it to keep the
+  // exact match on top.
+  if (DENSE_SCRIPT_CHAR.test(normalizedQuery)) return 0;
   return intent === 'full_text' ? 1 : 0;
 }
 

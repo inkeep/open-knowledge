@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Workspace search now finds content written in non-Latin scripts. Previously the search index kept only Latin-script words, so document bodies in Hebrew, Cyrillic, Greek, Arabic, Thai, Chinese, Japanese, Korean, and other scripts indexed to zero searchable words — the omnibar and the MCP `search` tool couldn't find them at all, and in a mixed-script query only the Latin words did any work. Search now additionally segments those scripts with the runtime's built-in word segmenter (dictionary-based for unspaced scripts like Thai, Japanese, and Chinese), with no new dependencies and no change to how Latin-only content is matched or ranked. In scripts where a single character carries a whole syllable — Chinese, Japanese, Korean, Thai, Khmer — queries are matched exactly rather than with the one-character typo tolerance applied elsewhere, since there a one-character difference is a different word and near-misses would crowd out the exact match. Thanks to @Guohao1020 for the report, root-cause analysis, and proposed approach, and to @AsafDafna for the implementation and validation (#903).
