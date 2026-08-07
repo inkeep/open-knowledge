@@ -26,6 +26,7 @@ import type { ZipFile } from 'yazl';
 // too, so a value import in either direction would form a runtime cycle.
 import type { DesktopMetadata } from '../diagnose/bundle.ts';
 import { redactContent, SECRET_PATTERN_NAMES } from './bug-report-redact.ts';
+import { DESKTOP_BUNDLE_ID } from './desktop-dispatch.ts';
 
 /**
  * Where `ok bug-report` (and the desktop report flow) write bundles by
@@ -79,6 +80,13 @@ export interface CollectStandardBundleOptions {
   outputPath: string;
   /** Override the user-level logs directory (defaults to `~/.ok/logs`). */
   userLogsDir?: string;
+  /**
+   * Squirrel.Mac ShipIt install logs, already resolved by the caller (see
+   * `collectShipItLogFiles`). Passed in rather than resolved here so this
+   * collector keeps no implicit dependency on the real home directory — the
+   * same reason `userLogsDir` is injectable, but enforced by construction.
+   */
+  shipItLogFiles?: string[];
   /** User note added as `note.txt`, scrubbed like any content file when `redact` is on. */
   note?: string;
   /** Extra files (e.g. an opted-in crash minidump) added under `extra/`. */
@@ -212,6 +220,49 @@ function isProjectTaggable(file: string): boolean {
  */
 export function collectUserLogFiles(projectSlug: string | null, logsDir: string): string[] {
   return collectLogs(projectSlug, logsDir).files;
+}
+
+/**
+ * The one desktop-identity constant, re-exported so ShipIt-log collection and
+ * `open -b` dispatch can never drift apart. Its own drift guard against
+ * `electron-builder.yml`'s `appId` lives beside the declaration.
+ */
+export { DESKTOP_BUNDLE_ID };
+
+/**
+ * The two text logs Squirrel.Mac's ShipIt writes into its per-bundle cache
+ * dir. `ShipItState.plist` sits beside them but is a binary plist — staging it
+ * through the text scrub would garble it, and the swap narrative lives in
+ * stderr regardless.
+ */
+const SHIPIT_LOG_FILES = ['ShipIt_stderr.log', 'ShipIt_stdout.log'] as const;
+
+/**
+ * Squirrel.Mac's own install logs (`~/Library/Caches/<bundleId>.ShipIt/`).
+ *
+ * ShipIt performs the bundle swap AFTER the app has exited, so no OK process
+ * is alive to witness a failed install. The updater's boot-time detector can
+ * report THAT an install did not take but never why — these logs are the only
+ * artifact carrying ShipIt's own reason (the per-step move narration, the
+ * NSError domain/code it aborted on, and its exit status).
+ *
+ * Matched on the exact bundle id rather than a `*.ShipIt` glob: every other
+ * Squirrel app on the machine keeps its install history in a sibling directory,
+ * and harvesting those would leak unrelated software's update history into a
+ * bundle the user forwards to support. Exactness also makes a stale bundle id
+ * fail safe — it degrades to "no ShipIt logs collected", never to another
+ * app's logs being harvested.
+ *
+ * macOS-only by construction — on other platforms the caches dir does not
+ * exist and this returns empty rather than special-casing the platform.
+ */
+export function collectShipItLogFiles(
+  cachesDir: string,
+  bundleId: string = DESKTOP_BUNDLE_ID,
+): string[] {
+  const shipItDir = join(cachesDir, `${bundleId}.ShipIt`);
+  if (!existsSync(shipItDir)) return [];
+  return SHIPIT_LOG_FILES.map((name) => join(shipItDir, name)).filter((p) => existsSync(p));
 }
 
 function collectLogs(
@@ -355,6 +406,10 @@ export async function collectStandardBundle(
   const { files: localSinkFiles } = opts.projectDir
     ? collectLocalSinkLogs(opts.projectDir)
     : { files: [] };
+  // Not project-scoped: ShipIt updates the whole app bundle, so its logs are
+  // host-level evidence regardless of which project the report came from. The
+  // scope disclosure below reports them as user-wide for exactly that reason.
+  const shipItFiles = opts.shipItLogFiles ?? [];
 
   logger?.info(
     {
@@ -364,6 +419,7 @@ export async function collectStandardBundle(
       logFilesExcludedByProjectSlug,
       lockFileCount: lockFiles.length,
       localSinkFileCount: localSinkFiles.length,
+      shipItLogFileCount: shipItFiles.length,
     },
     'files collected',
   );
@@ -376,7 +432,7 @@ export async function collectStandardBundle(
 
   addContentFiles({
     zipfile,
-    files: logFiles,
+    files: [...logFiles, ...shipItFiles],
     prefix: 'logs',
     redact,
     bundleFiles,
@@ -448,6 +504,16 @@ export async function collectStandardBundle(
 
   const totalRedacted = redactions.reduce((sum, r) => sum + r.lineCount, 0);
 
+  // Disclosed independently of project scope, because the thing to disclose is
+  // not scope. These are not the app's own logs at all — they are written by
+  // the macOS update helper that swaps the app bundle after the app has
+  // exited, so an unscoped bundle (where the scope note below correctly stays
+  // silent) would otherwise ship a category of data the README never names.
+  // Intersected with what was actually written, so a file that turned out to
+  // be unreadable is not disclosed as present.
+  const shipItEntryNames = new Set(shipItFiles.map((f) => `logs/${basename(f)}`));
+  const installerLogEntries = bundleFiles.filter((f) => shipItEntryNames.has(f));
+
   // The families the slug cannot narrow are per-machine, per-day singletons, so
   // a project-scoped bundle still carries whatever else the machine was doing
   // that day. Secret scrubbing does not narrow this — it matches credentials,
@@ -456,8 +522,13 @@ export async function collectStandardBundle(
   // Only meaningful against a declared project scope: an unscoped bundle
   // narrows nothing and is user-wide throughout, so there is no narrower
   // reading for the note to correct.
+  // Installer logs are held out and disclosed above instead: they are not
+  // per-day singletons, and listing them here would file them under a sentence
+  // that is not true of them.
   const userWideLogEntries = projectSlug
-    ? bundleFiles.filter((f) => f.startsWith('logs/') && !isProjectTaggable(f))
+    ? bundleFiles.filter(
+        (f) => f.startsWith('logs/') && !isProjectTaggable(f) && !shipItEntryNames.has(f),
+      )
     : [];
 
   const readme = [
@@ -480,6 +551,17 @@ export async function collectStandardBundle(
           'from other projects open on this machine, including captured console',
           'output:',
           ...userWideLogEntries.map((f) => `- ${f}`),
+          '',
+        ]
+      : []),
+    ...(installerLogEntries.length > 0
+      ? [
+          'Installer logs: written by the macOS update helper rather than by',
+          'OpenKnowledge itself, and machine-wide rather than scoped to any one',
+          'project. They record the install and update history of this app on',
+          'this machine. Only this app is collected, never other applications',
+          'that use the same update mechanism:',
+          ...installerLogEntries.map((f) => `- ${f}`),
           '',
         ]
       : []),

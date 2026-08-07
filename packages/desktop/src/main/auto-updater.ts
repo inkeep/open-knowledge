@@ -1243,6 +1243,20 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           // fallback can build its command on the next boot, before the
           // launch check re-validates the cache (see the AppState field doc).
           stagedInstallerPath,
+          // Staged-at for the pending version. This is the only moment the
+          // staging clock can start: `update-downloaded` is when Squirrel has
+          // the bundle and the install becomes requestable.
+          versionPendingInstallStagedAt: now().getTime(),
+          // The age is measured from the staged-at above, so the two move
+          // together: arming restarts the staging clock, which leaves any age
+          // recorded against the previous staging meaningless. Left set, it
+          // would be reported at the NEXT boot-detected failure as if it
+          // described that install — a stale number reads as real signal and
+          // is worse than the age being absent. Unlike
+          // `attemptedInstallSurfacedCount`, which is scoped to the version
+          // and so survives a same-version re-arm, this is scoped to the
+          // staging and resets with it.
+          attemptedInstallStagingAgeMs: null,
           ...(installCommittedAtDownload
             ? {
                 attemptedInstall: version,
@@ -1436,11 +1450,25 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // (install-on-quit is off there, so `onUpdateDownloaded` deliberately did
     // not arm it — see that handler). Same fresh-budget semantics as the
     // download-time arming on the other platforms.
+
+    // How long the update had been staged when the user asked for it. Recorded
+    // here because this is the last moment a live process knows it: the install
+    // happens after the quit, and the boot that detects a failure runs in a
+    // different process. `versionPendingInstallStagedAt` deliberately survives
+    // this persist — a Retry after a failed install measures from the original
+    // staging, which is what "how long has this been staged" means.
+    // A non-positive delta means the wall clock moved backwards between staging
+    // and the click (an NTP correction, a VM resume), not an instant install —
+    // report it as unknown, matching the read-side coercion in `parseAppState`.
+    const stagedAt = snapshot.versionPendingInstallStagedAt;
+    const rawStagingAge = stagedAt === null ? null : now().getTime() - stagedAt;
+    const stagingAgeMs = rawStagingAge !== null && rawStagingAge > 0 ? rawStagingAge : null;
     if (
       !persistSafely(
         {
           ...snapshot,
           versionPendingInstall: null,
+          attemptedInstallStagingAgeMs: stagingAgeMs,
           ...(platform === 'linux'
             ? {
                 attemptedInstall: pending,
@@ -1482,7 +1510,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         });
       }
     }
-    logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', { pending });
+    logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', {
+      pending,
+      stagingAgeMs,
+    });
     onDispatch?.('relaunch-now');
     // Arm the in-flight gate BEFORE the call, not after it returns. On
     // Squirrel.Mac failures surface asynchronously (the `error` event, or a
@@ -1568,7 +1599,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // a genuinely-pending update armed rather than dropping it on garbage.
   if (state.versionPendingInstall && versionAtLeast(currentVersion, state.versionPendingInstall)) {
     const cleared = state.versionPendingInstall;
-    const next = { ...state, versionPendingInstall: null, stagedInstallerPath: null };
+    const next = {
+      ...state,
+      versionPendingInstall: null,
+      stagedInstallerPath: null,
+      versionPendingInstallStagedAt: null,
+    };
     if (persistSafely(next, 'stale-pending-cleared')) {
       state = next;
       logger.info('cleared stale versionPendingInstall — running has caught up', {
@@ -1601,7 +1637,16 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // Running reached the attempted version → install succeeded. Clear the
       // record; the "Updated to Version ..." notice (Toast B, below) handles
       // the success surface.
-      const next = { ...state, attemptedInstall: null, attemptedInstallSurfacedCount: 0 };
+      // The age describes `attemptedInstall`; clearing one without the other
+      // leaves `state.json` self-contradictory for the triage read the whole
+      // record exists to serve. Same pairing as the cross-channel and give-up
+      // branches below.
+      const next = {
+        ...state,
+        attemptedInstall: null,
+        attemptedInstallSurfacedCount: 0,
+        attemptedInstallStagingAgeMs: null,
+      };
       if (persistSafely(next, 'attempted-install-reconciled')) {
         state = next;
         onDispatch?.('attempted-install-reconciled');
@@ -1638,6 +1683,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         attemptedInstallSurfacedCount: 0,
         versionPendingInstall: null,
         stagedInstallerPath: null,
+        versionPendingInstallStagedAt: null,
+        attemptedInstallStagingAgeMs: null,
       };
       if (persistSafely(next, 'attempted-install-cross-channel')) {
         state = next;
@@ -1668,6 +1715,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           attemptedInstallSurfacedCount: 0,
           versionPendingInstall: null,
           stagedInstallerPath: null,
+          versionPendingInstallStagedAt: null,
+          attemptedInstallStagingAgeMs: null,
         };
         if (persistSafely(next, 'install-failed-giveup')) {
           state = next;
@@ -1703,6 +1752,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
             attempted,
             running: currentVersion,
             surfaced: next.attemptedInstallSurfacedCount,
+            // Null when the install was committed by a plain quit rather than a
+            // "Relaunch now" click — there is no request moment to measure to,
+            // and a zero here would read as an instant install.
+            stagingAgeMs: state.attemptedInstallStagingAgeMs,
           });
           // Reuse the relaunch-failed channel: both mean "a committed update did
           // not install". The boot-detected case carries a `downloadUrl` so the

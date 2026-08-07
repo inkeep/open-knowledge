@@ -190,6 +190,28 @@ export interface AppState {
    */
   attemptedInstallSurfacedCount: number;
   /**
+   * Epoch ms at which the pending version was staged. Rewritten by every
+   * `update-downloaded` that arms (a re-fire for the already-pending version
+   * dedupes out before reaching it), so it always describes the most recently
+   * staged artifact rather than the first one seen for that version.
+   *
+   * Deliberately NOT cleared when `relaunch-now` clears `versionPendingInstall`:
+   * a failed install leaves the same artifact staged, and a Retry should measure
+   * from when that artifact was originally staged, not from the retry.
+   */
+  versionPendingInstallStagedAt: number | null;
+  /**
+   * How long `attemptedInstall` had been staged when the install was actually
+   * requested, in ms. Recorded at "Relaunch now" and read on the NEXT boot,
+   * where the failed-install detector runs in a different process than the
+   * install it is reporting on — the age cannot be recomputed there, so it has
+   * to cross the quit as persisted state.
+   *
+   * Null when no explicit relaunch happened (the install-on-quit path commits
+   * without a click, so there is no request moment to measure to).
+   */
+  attemptedInstallStagingAgeMs: number | null;
+  /**
    * Last version the app successfully booted under — compared to
    * `app.getVersion()` at auto-updater start to decide whether to fire
    * Toast B ("Updated to Version ..."). Null before the first recorded boot,
@@ -310,6 +332,11 @@ export interface AppState {
 const RECENT_CAP = 20;
 const RECENT_FILES_CAP = 20;
 
+/** Epoch-ms / duration coercion shared by the additive updater timing fields. */
+function nonNegativeIntOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
 export function emptyState(): AppState {
   return {
     recentProjects: [],
@@ -319,6 +346,8 @@ export function emptyState(): AppState {
     stagedInstallerPath: null,
     attemptedInstall: null,
     attemptedInstallSurfacedCount: 0,
+    versionPendingInstallStagedAt: null,
+    attemptedInstallStagingAgeMs: null,
     lastSeenVersion: null,
     lastSuccessfulCheckAt: null,
     stuckHintShown: false,
@@ -841,6 +870,12 @@ export function parseAppState(raw: unknown): AppState | null {
     obj.attemptedInstallSurfacedCount >= 0
       ? obj.attemptedInstallSurfacedCount
       : 0;
+  // Additive timing fields. Both are diagnostic-only: a missing or corrupt
+  // value coerces to null, which reads downstream as "unknown" and never as a
+  // misleading zero. Negatives are rejected — a clock moving backwards between
+  // staging and the install request cannot produce a real age.
+  const versionPendingInstallStagedAt = nonNegativeIntOrNull(obj.versionPendingInstallStagedAt);
+  const attemptedInstallStagingAgeMs = nonNegativeIntOrNull(obj.attemptedInstallStagingAgeMs);
   const lastSeenVersion = typeof obj.lastSeenVersion === 'string' ? obj.lastSeenVersion : null;
   const lastSuccessfulCheckAt =
     typeof obj.lastSuccessfulCheckAt === 'string' ? obj.lastSuccessfulCheckAt : null;
@@ -883,6 +918,8 @@ export function parseAppState(raw: unknown): AppState | null {
     stagedInstallerPath,
     attemptedInstall,
     attemptedInstallSurfacedCount,
+    versionPendingInstallStagedAt,
+    attemptedInstallStagingAgeMs,
     lastSeenVersion,
     lastSuccessfulCheckAt,
     stuckHintShown,

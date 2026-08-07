@@ -95,6 +95,47 @@ describe('parseAppState — legacy updateChannel tolerance', () => {
   });
 });
 
+describe('parseAppState — updater staging-age fields', () => {
+  test('defaults both timing fields to null on a fresh state', () => {
+    expect(emptyState().versionPendingInstallStagedAt).toBeNull();
+    expect(emptyState().attemptedInstallStagingAgeMs).toBeNull();
+  });
+
+  test('a state.json predating the fields parses cleanly with nulls', () => {
+    const parsed = parseAppState({ recentProjects: [], lastOpenedProject: null });
+    expect(parsed?.versionPendingInstallStagedAt).toBeNull();
+    expect(parsed?.attemptedInstallStagingAgeMs).toBeNull();
+  });
+
+  test('preserves persisted values', () => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      lastOpenedProject: null,
+      versionPendingInstallStagedAt: 1776772800000,
+      attemptedInstallStagingAgeMs: 2060,
+    });
+    expect(parsed?.versionPendingInstallStagedAt).toBe(1776772800000);
+    expect(parsed?.attemptedInstallStagingAgeMs).toBe(2060);
+  });
+
+  // These are diagnostic-only fields. A corrupt value must read as "unknown"
+  // rather than as a small age, which would look like a real measurement and
+  // corroborate a timing hypothesis nothing actually observed.
+  test.each([
+    ['a negative age', -1],
+    ['a non-integer', 12.5],
+    ['a string', '2060'],
+    ['null', null],
+  ])('coerces %s to null rather than a plausible-looking number', (_label, value) => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      lastOpenedProject: null,
+      attemptedInstallStagingAgeMs: value,
+    });
+    expect(parsed?.attemptedInstallStagingAgeMs).toBeNull();
+  });
+});
+
 describe('evaluateSchemaCompatibility — boot-time refuse-downgrade gate', () => {
   test('returns ok when schemaVersion equals max supported (today)', () => {
     const result = evaluateSchemaCompatibility(

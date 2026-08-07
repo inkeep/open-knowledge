@@ -16,6 +16,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   type BundleExtraFile,
   type BundleLogger,
+  collectShipItLogFiles,
   collectStandardBundle,
   collectUserLogFiles,
   resolveProjectSlug,
@@ -53,6 +54,8 @@ export interface CollectReportBundleOptions {
   extraFiles?: BundleExtraFile[];
   /** Override the user-level logs directory (standard-level test seam). */
   userLogsDir?: string;
+  /** Override the macOS caches directory searched for ShipIt install logs (test seam). */
+  cachesDir?: string;
   /**
    * Collection-progress + warning sink. The full level reports its inventory
    * via the manifest and uses this only for warnings (e.g. an opted-in extra
@@ -121,10 +124,12 @@ async function collectFullBundle(
     // the same user-level logs. Omitting them silently dropped the renderer
     // console from every desktop crash report, since the Electron main process
     // captures it here rather than into the project's server sink.
-    userLogFiles: collectUserLogFiles(
-      projectSlug,
-      opts.userLogsDir ?? join(homedir(), '.ok', 'logs'),
-    ),
+    userLogFiles: [
+      ...collectUserLogFiles(projectSlug, opts.userLogsDir ?? join(homedir(), '.ok', 'logs')),
+      // Squirrel.Mac's install log. Not project-scoped — ShipIt swaps the whole
+      // app bundle, and it is the only record of why a post-exit install failed.
+      ...collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
+    ],
     deps: { readDesktopEnv, logger: opts.logger },
   });
   try {
@@ -181,6 +186,7 @@ export async function collectReportBundle(
     redact: opts.redact,
     outputPath: opts.outputPath,
     userLogsDir: opts.userLogsDir,
+    shipItLogFiles: collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     logger: opts.logger,
     note: opts.note,
     extraFiles: opts.extraFiles,

@@ -272,6 +272,33 @@ describe('collectReportBundle — standard level', () => {
     expect(summary.systemWide).toBe(true);
     expect(summary.projectSlug).toBeNull();
   });
+
+  // The collector is tested directly beside `collectShipItLogFiles`, but this
+  // entry is where the caches dir is actually resolved and handed to it — the
+  // seam a triager's bundle depends on, and the one a refactor can drop
+  // without any collector test noticing.
+  test('resolves the ShipIt install log from the caches dir and stages it under logs/', async () => {
+    const cachesDir = makeTmpDir();
+    writeAt(
+      cachesDir,
+      'com.inkeep.open-knowledge.ShipIt/ShipIt_stderr.log',
+      'ShipIt: Failed to move bundle\n',
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'standard',
+      projectDir: makeStandardProjectDir(),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      cachesDir,
+    });
+
+    expect(listZipEntries(zipPath)).toContain('logs/ShipIt_stderr.log');
+    expect(summary.files).toContain('logs/ShipIt_stderr.log');
+    expect(readZipEntry(zipPath, 'logs/ShipIt_stderr.log')).toContain('Failed to move bundle');
+  });
 });
 
 describe('collectReportBundle — full level', () => {
@@ -336,6 +363,34 @@ describe('collectReportBundle — full level', () => {
     expect(body).toContain('app-shell render crash');
     // Staged before the scrub, unlike extra/ payloads.
     expect(body).not.toContain(SECRET);
+  });
+
+  // The full level assembles through `diagnose/bundle.ts` rather than the
+  // standard collector, so its ShipIt wiring is a second seam that can break
+  // on its own. Directory name spelled out rather than imported from
+  // `DESKTOP_BUNDLE_ID`, so this also pins the path macOS actually writes.
+  test('carries the ShipIt install log the standard level collects', async () => {
+    const cachesDir = makeTmpDir();
+    writeAt(
+      cachesDir,
+      'com.inkeep.open-knowledge.ShipIt/ShipIt_stderr.log',
+      `ShipIt: Failed to move bundle\ntoken ${SECRET}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      cachesDir,
+    });
+
+    expect(listZipEntries(zipPath)).toContain('logs/ShipIt_stderr.log');
+    const shipIt = readZipEntry(zipPath, 'logs/ShipIt_stderr.log');
+    expect(shipIt).toContain('Failed to move bundle');
+    expect(shipIt).not.toContain(SECRET);
   });
 
   test('scrubs ROTATED user logs too, whose counter suffix defeats an extension test', async () => {

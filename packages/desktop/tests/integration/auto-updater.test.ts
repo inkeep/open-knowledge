@@ -642,6 +642,127 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
 });
 
 // ————————————————————————————————————————————————————————
+// Staging age
+// ————————————————————————————————————————————————————————
+//
+// ShipIt performs the swap after the app exits, so when an install silently
+// fails no live process saw it and the bundle carries no ShipIt-side reason.
+// How long the update had been staged when the install was requested is the
+// one correlate the app CAN record, and it only becomes comparable across
+// reports if every install request emits it.
+
+describe('staging age — how long the update sat before the install was requested', () => {
+  test('records the staged-at moment when a version is armed', () => {
+    const { rig } = makeRig({ platform: 'darwin' });
+    rig.now = new Date('2026-04-21T12:00:00.000Z');
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    expect(rig.state.versionPendingInstallStagedAt).toBe(Date.parse('2026-04-21T12:00:00.000Z'));
+  });
+
+  test('relaunch-now records the staging age and logs it', () => {
+    const { rig } = makeRig({ platform: 'darwin' });
+    rig.now = new Date('2026-04-21T12:00:00.000Z');
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    // A couple of seconds: the reported shape is a click landing moments after
+    // a newer build re-staged underneath an already-open notification.
+    rig.now = new Date('2026-04-21T12:00:02.060Z');
+    rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.state.attemptedInstallStagingAgeMs).toBe(2060);
+    expect(rig.logger.info).toHaveBeenCalledWith(
+      'relaunch-now invoked — calling autoUpdater.quitAndInstall',
+      expect.objectContaining({ stagingAgeMs: 2060 }),
+    );
+    // The click clears the banner gate but must leave the staged-at stamp
+    // alone: the artifact is still staged, so a Retry after a failed install
+    // measures from the original staging rather than restarting the clock.
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.versionPendingInstallStagedAt).toBe(Date.parse('2026-04-21T12:00:00.000Z'));
+  });
+
+  // `Date.now()` is wall-clock, not monotonic. An NTP correction between
+  // staging and the click makes the delta negative, and there is no age to
+  // report — same "unknown" the no-click path yields, not an instant install.
+  test('reports null rather than zero when the clock moved backwards while staged', () => {
+    const { rig } = makeRig({ platform: 'darwin' });
+    rig.now = new Date('2026-04-21T12:00:00.000Z');
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    rig.now = new Date('2026-04-21T11:59:57.000Z');
+    rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.state.attemptedInstallStagingAgeMs).toBeNull();
+  });
+
+  // The failed-install detector runs on the NEXT boot, in a different process
+  // than the install it reports. Without the persisted age the one number that
+  // could corroborate a timing hypothesis dies with the process that had it.
+  test('the boot-time failure notice reports the age persisted before the quit', () => {
+    const { rig } = makeRig({
+      attemptedInstall: '0.16.0-beta.3',
+      appVersion: '0.16.0-beta.1',
+      attemptedInstallStagingAgeMs: 2060,
+    });
+    expect(rig.logger.warn).toHaveBeenCalledWith(
+      'attempted install did not take — surfacing failure notice',
+      expect.objectContaining({ stagingAgeMs: 2060 }),
+    );
+  });
+
+  // Install-on-quit commits without a click, so there is no request moment to
+  // measure to. Null says "unknown"; a zero would read as "installed instantly
+  // after staging" and corroborate exactly the hypothesis it cannot speak to.
+  test('reports null rather than zero when no relaunch click preceded the failure', () => {
+    const { rig } = makeRig({
+      attemptedInstall: '0.16.0-beta.3',
+      appVersion: '0.16.0-beta.1',
+    });
+    expect(rig.logger.warn).toHaveBeenCalledWith(
+      'attempted install did not take — surfacing failure notice',
+      expect.objectContaining({ stagingAgeMs: null }),
+    );
+  });
+
+  // An age belongs to the version whose install it was recorded for. Arming a
+  // NEW version starts a fresh measurement, so a leftover age from an earlier
+  // click must not travel with it — a stale non-null number reads as real
+  // signal to a triager and is worse than the age simply being absent.
+  test('a newly armed version does not inherit an earlier version staging age', () => {
+    const { rig: session } = makeRig({ platform: 'darwin' });
+    session.now = new Date('2026-04-21T12:00:00.000Z');
+    session.updater.emit('update-downloaded', { version: '0.3.2' });
+    session.now = new Date('2026-04-21T12:00:02.060Z');
+    session.ipc.invoke('ok:update:relaunch-now');
+    expect(session.state.attemptedInstallStagingAgeMs).toBe(2060);
+
+    // A newer build lands and is committed by a plain quit — no click, so the
+    // install of 0.3.3 has no request moment of its own.
+    session.now = new Date('2026-04-21T13:00:00.000Z');
+    session.updater.emit('update-downloaded', { version: '0.3.3' });
+    expect(session.state.attemptedInstall).toBe('0.3.3');
+
+    // 0.3.3 never took: the next boot is still on the old version.
+    const { rig: nextBoot } = makeRig({ ...session.state });
+    expect(nextBoot.logger.warn).toHaveBeenCalledWith(
+      'attempted install did not take — surfacing failure notice',
+      expect.objectContaining({ attempted: '0.3.3', stagingAgeMs: null }),
+    );
+  });
+
+  // Once the install is reconciled as successful the age describes nothing —
+  // leaving it set makes `state.json` self-contradictory for the triage read
+  // the whole record exists to serve.
+  test('a reconciled successful install leaves no staging age behind', () => {
+    const { rig } = makeRig({
+      appVersion: '0.3.1',
+      attemptedInstall: '0.3.1',
+      attemptedInstallStagingAgeMs: 2060,
+    });
+    expect(rig.state.attemptedInstall).toBeNull();
+    expect(rig.state.attemptedInstallStagingAgeMs).toBeNull();
+  });
+});
+
+// ————————————————————————————————————————————————————————
 // Cross-channel veto on update-available
 // ————————————————————————————————————————————————————————
 //

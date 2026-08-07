@@ -11,8 +11,10 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   type BundleLogger,
+  collectShipItLogFiles,
   collectStandardBundle,
   collectUserLogFiles,
+  DESKTOP_BUNDLE_ID,
   defaultBugReportZipPath,
   okBugReportsDir,
 } from './bug-report-bundle.ts';
@@ -458,6 +460,155 @@ describe('collectUserLogFiles — shared collector', () => {
       .sort();
 
     expect(names).toEqual(['cli.2026-08-05.log', 'desktop.2026-08-05.log']);
+  });
+});
+
+describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
+  // ShipIt swaps the bundle after the app exits, so its own log is the only
+  // artifact that records why an install did not take. Without it a bundle can
+  // report the failure but never explain it.
+  test('collects the desktop app ShipIt logs', () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'Installation failed\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stdout.log`, '');
+
+    const names = collectShipItLogFiles(cachesDir)
+      .map((f) => basename(f))
+      .sort();
+
+    expect(names).toEqual(['ShipIt_stderr.log', 'ShipIt_stdout.log']);
+  });
+
+  // Every Squirrel app on the machine keeps its install history in a sibling
+  // directory. A `*.ShipIt` glob would forward unrelated software's update
+  // history to support, so the match must be anchored to our own bundle id.
+  test('never harvests another application ShipIt logs', () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'ours\n');
+    writeAt(cachesDir, 'com.tinyspeck.slackmacgap.ShipIt/ShipIt_stderr.log', 'theirs\n');
+    writeAt(cachesDir, 'com.anthropic.claudefordesktop.ShipIt/ShipIt_stderr.log', 'theirs\n');
+
+    const bodies = collectShipItLogFiles(cachesDir).map((f) => readFileSync(f, 'utf8'));
+
+    expect(bodies).toEqual(['ours\n']);
+  });
+
+  // `userLogFiles` stages by basename alone, so a sub-bundle id whose dir also
+  // holds a `ShipIt_stderr.log` would collide with the app's own in the zip.
+  // Exact-match keeps one writer per staged name.
+  test('ignores sub-bundle ShipIt directories that would collide when staged', () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'app\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.server.ShipIt/ShipIt_stderr.log`, 'server\n');
+
+    const bodies = collectShipItLogFiles(cachesDir).map((f) => readFileSync(f, 'utf8'));
+
+    expect(bodies).toEqual(['app\n']);
+  });
+
+  // Non-macOS hosts have no such directory at all; collection is a no-op there
+  // rather than a platform branch at every call site.
+  test('returns empty when the caches directory does not exist', () => {
+    expect(collectShipItLogFiles(join(makeTmpDir(), 'absent'))).toEqual([]);
+  });
+
+  // The collector existing is not the deliverable — reaching the zip is. This
+  // is the assertion a triager's experience actually depends on.
+  test('stages the ShipIt log into the bundle under logs/', async () => {
+    const userLogsDir = makeTmpDir();
+    const cachesDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    writeAt(
+      cachesDir,
+      `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`,
+      'ShipIt[1:2] Installation completed successfully\n',
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir: makeProjectDir('bundle-proj'),
+      redact: true,
+      outputPath,
+      userLogsDir,
+      shipItLogFiles: collectShipItLogFiles(cachesDir),
+    });
+
+    expect(listZipEntries(zipPath)).toContain('logs/ShipIt_stderr.log');
+  });
+
+  // ShipIt logs record every app-bundle swap on the machine, so a
+  // project-scoped bundle carrying them is no longer project-scoped. The
+  // recipient has to be told — but in its own paragraph: the daily-rotation
+  // sentence that describes the user-wide app logs is not true of an installer
+  // log, so filing it there would disclose it under a false description.
+  test('discloses the ShipIt log in its own paragraph, not the daily user-wide list', async () => {
+    const userLogsDir = makeTmpDir();
+    const cachesDir = makeTmpDir();
+    writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
+    writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'swap\n');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir: makeProjectDir('bundle-proj'),
+      redact: true,
+      outputPath,
+      userLogsDir,
+      shipItLogFiles: collectShipItLogFiles(cachesDir),
+    });
+
+    // Scoped to the Privacy section: the Contents list names every file, so a
+    // whole-README assertion would pass whatever the notes actually said.
+    const readme = readZipEntry(zipPath, 'README.md');
+    const privacy = readme.slice(readme.indexOf('## Privacy'));
+    const scopeNote = privacy.slice(
+      privacy.indexOf('Scope: some collected logs'),
+      privacy.indexOf('Installer logs:'),
+    );
+    expect(scopeNote).toContain('- logs/desktop.2026-08-05.log');
+    expect(scopeNote).not.toContain('ShipIt');
+
+    expect(privacy).toContain('macOS update helper');
+    expect(privacy.match(/^- logs\/ShipIt_stderr\.log$/gm)).toHaveLength(1);
+  });
+
+  // The scope note is deliberately silent on an unscoped bundle — nothing was
+  // narrowed, so there is no narrower reading to correct. What the installer
+  // log needs disclosed is not its scope but what it is, so that disclosure
+  // cannot ride on the scope note: the unscoped bundle is the one most likely
+  // to be attached to a public issue under "safe to attach".
+  test('discloses the installer log in an unscoped bundle too', async () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'swap\n');
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      shipItLogFiles: collectShipItLogFiles(cachesDir),
+    });
+
+    const readme = readZipEntry(zipPath, 'README.md');
+    expect(readme).toContain('Project: (unscoped)');
+    expect(readme).toContain('macOS update helper');
+    expect(readme).toContain('- logs/ShipIt_stderr.log');
+  });
+
+  // The disclosure names files; a bundle with no installer log must not claim
+  // one is present.
+  test('omits the installer disclosure when no ShipIt log was collected', async () => {
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir: makeProjectDir('bundle-proj'),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      shipItLogFiles: collectShipItLogFiles(join(makeTmpDir(), 'absent')),
+    });
+
+    expect(readZipEntry(zipPath, 'README.md')).not.toContain('macOS update helper');
   });
 });
 
