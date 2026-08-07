@@ -71,8 +71,8 @@ afterAll(async () => {
 describe('single-flight dedupe (AC1, AC2)', () => {
   test('N concurrent identical requests trigger exactly one walk and share the result', async () => {
     // Coalescing relies on the handler inserting the in-flight entry synchronously
-    // between the map miss and set (api-extension.ts, the showAll branch - no
-    // `await` in that window). If a future refactor introduces an await there,
+    // between the map miss and set (http/document-routes.ts, the showAll branch
+    // - no `await` in that window). If a future refactor introduces an await there,
     // these requests would each start a walk and `invocations` would jump to N,
     // failing this assertion.
     __resetShowAllWalkStatsForTesting();

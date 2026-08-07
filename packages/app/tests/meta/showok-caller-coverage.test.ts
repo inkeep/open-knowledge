@@ -25,9 +25,13 @@ const CLI_SRC_ROOT = join(import.meta.dirname, '../../../cli/src');
 // Defines the `ContentFilterReadOpts.showOk` opt and consumes it in the
 // always-skip floor of `isExcluded` / `isDirExcluded`.
 const CONTENT_FILTER_PATH = join(SERVER_SRC_ROOT, 'content-filter.ts');
-// The one sanctioned data path: `handleDocumentList` parses `?showOk=true`
-// and threads it through `streamShowAllEntries` / `walkContentDirForShowAll`.
+// Hosts the walk-opts contract (`StreamShowAllOpts.showOk`) and the walk
+// implementations the sanctioned data path threads the flag through.
 const API_EXT_PATH = join(SERVER_SRC_ROOT, 'api-extension.ts');
+// Hosts `handleDocumentList` (query parse + both walk invocations) after its
+// Wave 2 lift; the deps interface restates the walk-opts contract's showOk
+// field types.
+const DOCUMENT_ROUTES_PATH = join(SERVER_SRC_ROOT, 'http/document-routes.ts');
 
 /** Recursively enumerate `.ts` files under `dir`, skipping test files. */
 function listProductionTsFiles(dir: string): string[] {
@@ -61,8 +65,8 @@ function sliceRegion(source: string, startAnchor: string, endAnchor: RegExp): [n
 }
 
 describe('showOk caller coverage', () => {
-  test('no server/cli production file outside the two sanctioned ones names showOk', () => {
-    const allowedFiles = new Set([CONTENT_FILTER_PATH, API_EXT_PATH]);
+  test('no server/cli production file outside the sanctioned files names showOk', () => {
+    const allowedFiles = new Set([CONTENT_FILTER_PATH, API_EXT_PATH, DOCUMENT_ROUTES_PATH]);
     const offenders: string[] = [];
     for (const root of [SERVER_SRC_ROOT, CLI_SRC_ROOT]) {
       for (const file of listProductionTsFiles(root)) {
@@ -82,23 +86,43 @@ describe('showOk caller coverage', () => {
       'export interface StreamShowAllOpts',
       /export async function walkContentDirForShowAll/,
     );
-    // Region B: the documents-list handler (query parse, both walk
-    // invocations, the single-flight key).
-    const [handlerStart, handlerEnd] = sliceRegion(
-      source,
-      'const handleDocumentList = withValidation(',
-      /\bconst handle[A-Z][A-Za-z]*\s*=/,
-    );
-
     const outside: string[] = [];
     for (const match of source.matchAll(/\bshowOk\b/g)) {
       const offset = match.index ?? 0;
       const inWalk = offset >= walkStart && offset < walkEnd;
-      const inHandler = offset >= handlerStart && offset < handlerEnd;
-      if (!inWalk && !inHandler) {
+      if (!inWalk) {
         const line = source.slice(0, offset).split('\n').length;
         outside.push(
-          `api-extension.ts:${line} — showOk outside the walk-opts and document-list regions. ` +
+          `api-extension.ts:${line} — showOk outside the walk-opts region. ` +
+            'Only the tree-listing path may pass the flag; a new consumer needs a deliberate ' +
+            'spec decision, not a new call site.',
+        );
+      }
+    }
+
+    // document-routes.ts (post-lift home of the handler): Region B is the
+    // deps interface (restates the walk-opts showOk contract), Region C the
+    // documents-list handler (query parse, both walk invocations, the
+    // single-flight key).
+    const routesSource = readFileSync(DOCUMENT_ROUTES_PATH, 'utf8');
+    const [depsStart, depsEnd] = sliceRegion(
+      routesSource,
+      'export interface DocumentRouteDeps',
+      /export function createDocumentRoutes/,
+    );
+    const [handlerStart, handlerEnd] = sliceRegion(
+      routesSource,
+      'const handleDocumentList = withValidation(',
+      /\bconst handle[A-Z][A-Za-z]*\s*=/,
+    );
+    for (const match of routesSource.matchAll(/\bshowOk\b/g)) {
+      const offset = match.index ?? 0;
+      const inDeps = offset >= depsStart && offset < depsEnd;
+      const inHandler = offset >= handlerStart && offset < handlerEnd;
+      if (!inDeps && !inHandler) {
+        const line = routesSource.slice(0, offset).split('\n').length;
+        outside.push(
+          `http/document-routes.ts:${line} — showOk outside the deps-contract and document-list regions. ` +
             'Only the tree-listing path may pass the flag; a new consumer needs a deliberate ' +
             'spec decision, not a new call site.',
         );
@@ -111,6 +135,6 @@ describe('showOk caller coverage', () => {
     // If the flag is renamed or removed, this test forces the allowlist and
     // regions above to be revisited rather than rotting into dead authority.
     expect(readFileSync(CONTENT_FILTER_PATH, 'utf8')).toContain('showOk?: boolean');
-    expect(readFileSync(API_EXT_PATH, 'utf8')).toContain("searchParams.get('showOk')");
+    expect(readFileSync(DOCUMENT_ROUTES_PATH, 'utf8')).toContain("searchParams.get('showOk')");
   });
 });

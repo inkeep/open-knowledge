@@ -38,6 +38,12 @@ const SERVER_FACTORY_PATH = join(SERVER_SRC_ROOT, 'server-factory.ts');
 // api-extension wires the accessor into `createSearchService({ getAllFilesIndex })`
 // the same way server-factory wires it into createApiExtension.
 const SEARCH_SERVICE_PATH = join(SERVER_SRC_ROOT, 'services/search.ts');
+// The native document/pages route group: hosts `handleDocumentList` (the
+// `/api/documents` payload site) after its Wave 2 lift out of
+// api-extension.ts. api-extension wires the accessor into
+// `createDocumentRoutes({ getAllFilesIndex })` the same way it wires the
+// search service.
+const DOCUMENT_ROUTES_PATH = join(SERVER_SRC_ROOT, 'http/document-routes.ts');
 
 /**
  * Function-name allowlist for `getAllFilesIndex()` (or `includeFiles:true`)
@@ -160,6 +166,7 @@ describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', ()
     const sites = [
       ...collectAllFilesCallSites(API_EXT_PATH),
       ...collectAllFilesCallSites(SEARCH_SERVICE_PATH),
+      ...collectAllFilesCallSites(DOCUMENT_ROUTES_PATH),
     ];
     const failures: string[] = [];
     for (const site of sites) {
@@ -198,6 +205,7 @@ describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', ()
       API_EXT_PATH,
       SERVER_FACTORY_PATH,
       SEARCH_SERVICE_PATH,
+      DOCUMENT_ROUTES_PATH,
     ]);
     const offenders: string[] = [];
     for (const file of listProductionTsFiles(SERVER_SRC_ROOT)) {
@@ -210,10 +218,13 @@ describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', ()
     expect(offenders).toEqual([]);
   });
 
-  test('ALLOWLISTED_SITES function names actually exist in api-extension.ts', () => {
+  test('ALLOWLISTED_SITES function names actually exist in a scanned source', () => {
     // Guard against allowlist rot: if a site is renamed or removed without
     // updating ALLOWLISTED_SITES, the entry becomes a dead authorization.
-    const source = readFileSync(API_EXT_PATH, 'utf8') + readFileSync(SEARCH_SERVICE_PATH, 'utf8');
+    const source =
+      readFileSync(API_EXT_PATH, 'utf8') +
+      readFileSync(SEARCH_SERVICE_PATH, 'utf8') +
+      readFileSync(DOCUMENT_ROUTES_PATH, 'utf8');
     const missing: string[] = [];
     for (const name of ALLOWLISTED_SITES) {
       const fnRe = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`);

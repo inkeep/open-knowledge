@@ -129,7 +129,11 @@ describe('onRequest request identity + access log', () => {
   });
 
   test('origin-gate 403 rejections still carry the x-request-id echo', async () => {
-    const captured = await callRoute('/api/documents', {
+    // Deliberately an UNREGISTERED path: the origin gate fires before route
+    // resolution, so the pin holds regardless of which router owns any real
+    // route — table-owned paths keep migrating to the native mount during
+    // Wave 2, and this test drives the BASE extension (no native dispatch).
+    const captured = await callRoute('/api/nonexistent-route', {
       origin: 'https://evil.example.com',
     });
     expect(captured.status).toBe(403);

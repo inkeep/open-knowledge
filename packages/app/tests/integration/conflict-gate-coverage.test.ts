@@ -35,9 +35,12 @@ const source = readFileSync(API_EXT_PATH, 'utf8');
  */
 const HANDLER_SOURCES = [
   source,
-  ...['skills-sh-handlers.ts', 'http/link-graph-routes.ts', 'http/metrics-routes.ts'].map((file) =>
-    readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8'),
-  ),
+  ...[
+    'skills-sh-handlers.ts',
+    'http/link-graph-routes.ts',
+    'http/metrics-routes.ts',
+    'http/document-routes.ts',
+  ].map((file) => readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8')),
 ];
 
 /**
