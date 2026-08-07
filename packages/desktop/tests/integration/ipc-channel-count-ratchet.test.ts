@@ -411,10 +411,29 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * appearance surface exists: `ok:menu-action` and `ok:theme:applied` both push
  * the other direction.
  *
+ * Bumped from 92 to 93 for the Cmd+C-on-image clipboard write
+ * (`ok:clipboard:copy-image`): renderer sends a resolved img URL + alt
+ * off the DOM, main fetches bytes (from disk when same-origin as the
+ * asset serve; via network fetch otherwise) and calls
+ * `clipboard.writeImage` — the only path that produces the 9-flavor
+ * raster set macOS's pasteboard writer expands NSImage into, which is
+ * what every rich receiver (Notes, Docs, Slack chat, Notion inline,
+ * iMessage) reads. Chromium's Async Clipboard API in the renderer only
+ * accepts one blob per MIME key, so the write cannot fold there.
+ *
+ * Could not fold onto `ok:clipboard:write-text` (the only sibling
+ * clipboard channel): the two have incompatible payload shapes —
+ * `write-text` takes a plain `string` and returns `undefined`, while
+ * `copy-image` takes a `{src, alt}` params object and returns a
+ * discriminated `CopyImageResult` with five failure reasons the
+ * renderer branches on for the web-fallback path. Widening
+ * `write-text`'s payload to carry both would erase the type safety
+ * of both channels' callers.
+ *
  * The typed-ipc migration remains the committed end state, with the
  * `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 92;
+const REQUEST_CHANNEL_CAP = 93;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

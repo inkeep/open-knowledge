@@ -14,6 +14,12 @@
  * (`source-polish/index.ts`, `image-upload/index.ts`).
  */
 
+// Side-effect import: `copy-image.ts` registers a document-level `copy`
+// capture-phase listener at module load — no exports. TipTapEditor imports
+// this barrel, which drags copy-image in so the listener arms whenever an
+// editor mounts.
+import './copy-image.ts';
+
 export { OPT_OUT_ATTR } from './clipboard-sanitize.ts';
 export { createCopyCutHandler } from './handle-copy.ts';
 export { createHandleDrop, createHandlePaste } from './handle-paste.ts';

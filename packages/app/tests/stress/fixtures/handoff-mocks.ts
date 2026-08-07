@@ -392,6 +392,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         shell: shellStub,
         clipboard: {
           writeText: async () => {},
+          copyImage: async (): Promise<{ ok: true }> => ({ ok: true }),
         },
         project: {
           listRecent: async () => [],

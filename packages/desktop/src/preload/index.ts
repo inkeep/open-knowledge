@@ -459,6 +459,7 @@ const bridge: OkDesktopBridge = {
 
   clipboard: {
     writeText: (text: string) => invoke('ok:clipboard:write-text', text),
+    copyImage: (params) => invoke('ok:clipboard:copy-image', params),
   },
 
   project: {

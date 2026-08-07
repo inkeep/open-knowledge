@@ -1409,6 +1409,31 @@ export interface OkDesktopBridge {
   /** IPC-relayed clipboard writer (sandboxed renderer cannot call clipboard directly). */
   clipboard: {
     writeText(text: string): Promise<void>;
+    /**
+     * Copy an image to the clipboard as raster bytes via `nativeImage`,
+     * which macOS's pasteboard writer expands into the 9-flavor raster
+     * set (`«class PNGf»`, `TIFF picture`, `JPEG picture`, `GIF
+     * picture`, `«class jp2»`, `«class BMP»`, `«class TPIC»`,
+     * `«class 8BPS»`, `«class AVIF»`) — the same shape a macOS
+     * screenshot writes. Every rich receiver (Notes, Docs, Slack chat,
+     * Notion inline, iMessage) picks a compatible flavor and renders
+     * inline first-try.
+     *
+     * Renderer's own `navigator.clipboard.write` can't produce that
+     * 9-flavor set (Chromium's Async Clipboard API only accepts one
+     * blob per MIME key), which is why the copy has to run in main.
+     * `nativeImage.createFromBuffer` decodes PNG + JPEG only; other
+     * formats resolve `empty-image` and the renderer is expected to
+     * fall back to its own best-effort `navigator.clipboard.write`.
+     */
+    copyImage(params: { readonly src: string; readonly alt: string }): Promise<
+      | { ok: true }
+      | {
+          ok: false;
+          reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
+          detail?: string;
+        }
+    >;
   };
 
   /**

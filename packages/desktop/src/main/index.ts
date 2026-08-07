@@ -208,6 +208,7 @@ import {
   runLoginShellProbe,
 } from './claude-readiness.ts';
 import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
+import { copyImageToClipboard } from './copy-image-clipboard.ts';
 import {
   type CrashDetection,
   createCrashDetection,
@@ -5025,6 +5026,27 @@ function registerIpcHandlers() {
   handle('ok:clipboard:write-text', async (_event, text) => {
     clipboard.writeText(text);
     return undefined;
+  });
+
+  handle('ok:clipboard:copy-image', async (event, { src, alt }) => {
+    const callerWin = BrowserWindow.fromWebContents(event.sender);
+    if (!callerWin || !wm) {
+      return { ok: false as const, reason: 'read-error' as const, detail: 'no window context' };
+    }
+    const ctx = wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike);
+    if (!ctx?.projectPath || !ctx.apiOrigin) {
+      return { ok: false as const, reason: 'read-error' as const, detail: 'no project context' };
+    }
+    return copyImageToClipboard(
+      {
+        projectPath: ctx.projectPath,
+        platform: process.platform,
+        assetOrigin: ctx.apiOrigin,
+        clipboard,
+        nativeImage,
+      },
+      { src, alt },
+    );
   });
 
   handle('ok:locale:set-preference', async (_event, { preference }) => {

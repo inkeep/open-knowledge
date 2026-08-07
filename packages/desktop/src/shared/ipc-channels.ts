@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 91 (ratchet cap 91). The 74→75 bump reconciled a merge collision:
+ * Count is 93 (ratchet cap 93). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -804,6 +804,27 @@ export interface RequestChannels {
   };
   /** Clipboard text write (IPC-relay — renderer is sandboxed). */
   'ok:clipboard:write-text': { args: [text: string]; result: undefined };
+  /**
+   * Copy an image to the OS clipboard as raster bytes via `nativeImage`,
+   * which macOS's pasteboard writer expands into the 9-flavor raster
+   * set every rich receiver reads (Notes, Docs, Slack chat, Notion
+   * inline, iMessage). Renderer sends the resolved img URL + alt; main
+   * fetches the bytes (from disk when same-origin as the asset serve —
+   * realpath + containment gate; via `fetch` otherwise), decodes via
+   * nativeImage, and calls `clipboard.writeImage`. Renderer's own
+   * `navigator.clipboard.write` cannot produce the 9-flavor set —
+   * Chromium's Async Clipboard API only accepts one blob per MIME key.
+   */
+  'ok:clipboard:copy-image': {
+    args: [params: { readonly src: string; readonly alt: string }];
+    result:
+      | { ok: true }
+      | {
+          ok: false;
+          reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
+          detail?: string;
+        };
+  };
   /** Read the current window's config (projectPath, collabUrl, etc.). */
   'ok:project:get-info': { args: []; result: OkDesktopConfig };
 
