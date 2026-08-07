@@ -16,11 +16,17 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  inAppEnabledKey,
+  reloadEnabledAgentsFromStorage,
+  setAgentEnabled,
+} from '@/lib/acp/enabled-agents';
 import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import type { ThreadLaunchIntent } from './EditorPane';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
@@ -95,27 +101,80 @@ vi.doMock('@/components/acp/ThreadView', () => ({
 }));
 
 /**
- * The registered in-app agent, when a test wants one. Null (the default) models a
- * machine with no ACP agent set up, so the launcher falls through to the CLI /
- * bare-terminal families.
+ * `supported` mirrors the real registered-agent shape: the catalog sets it false
+ * when no launchable build exists for this host, and the enabled filter drops
+ * such an agent before the resolver ever sees it. Omitting it from the mock left
+ * that branch permanently unexercised, since `undefined` is not `false`.
  */
-let mockRegisteredAgent: { source: 'registry' | 'custom'; id: string; name: string } | null = null;
+type MockAgent = {
+  source: 'registry' | 'custom';
+  id: string;
+  name: string;
+  supported?: boolean;
+};
+
+/**
+ * The agent the store presents — an explicit registration or a detected
+ * suggestion. Null (the default) models a machine with no ACP agent set up, so the
+ * launcher falls through to the CLI / bare-terminal families. For the brand-new
+ * user, set this to the detected agent and leave `mockPersistedDefaultAgent` null:
+ * `useDefaultRegisteredAgent` returns null and `pickEffectiveDefaultAgent` still
+ * leads with that agent (the first enabled one).
+ */
+let mockRegisteredAgent: MockAgent | null = null;
+/** The explicitly persisted default, when a test wants one distinct from above. */
+let mockPersistedDefaultAgent: MockAgent | null = null;
+const registerAgent = vi.fn((_agent: MockAgent) => {});
+
+// The resolver is a pure function already unit-tested in registered-agents.test.ts.
+// Stubbing it here would make every default-resolution assertion tautological —
+// the enabled-filter that keeps a DISABLED agent from leading is precisely what
+// these tests need to exercise — so the real one is used.
+const { pickEffectiveDefaultAgent } = await vi.importActual<
+  typeof import('@/lib/acp/registered-agents')
+>('@/lib/acp/registered-agents');
+
+/**
+ * What the store presents, in order. The persisted default is appended when it is
+ * a DIFFERENT agent, so a test can put it second and prove the resolver actually
+ * consults it — with one agent standing for both, "persisted wins" would hold even
+ * if `useDefaultRegisteredAgent` were never forwarded.
+ */
+function presentedAgents(): MockAgent[] {
+  const list = mockRegisteredAgent === null ? [] : [mockRegisteredAgent];
+  const persisted = mockPersistedDefaultAgent;
+  if (
+    persisted !== null &&
+    !list.some((a) => a.source === persisted.source && a.id === persisted.id)
+  )
+    list.push(persisted);
+  return list;
+}
 
 vi.doMock('@/lib/acp/registered-agents', () => ({
-  useRegisteredAgents: () => (mockRegisteredAgent === null ? [] : [mockRegisteredAgent]),
-  useDefaultRegisteredAgent: () => mockRegisteredAgent,
-  getDefaultRegisteredAgent: () => mockRegisteredAgent,
-  registerAgent: () => {},
+  useRegisteredAgents: presentedAgents,
+  useDefaultRegisteredAgent: () => mockPersistedDefaultAgent,
+  getDefaultRegisteredAgent: () => mockPersistedDefaultAgent,
+  registerAgent,
   // Real code loaded here imports these too (SessionsHost →
   // pickEffectiveDefaultAgent; catalog → hydrateRegisteredAgentMeta). A
   // mock.module replaces the whole module, so any omitted export becomes an
   // unresolved import that fails the file (and can cascade to siblings).
-  pickEffectiveDefaultAgent: () => mockRegisteredAgent,
+  pickEffectiveDefaultAgent,
   hydrateRegisteredAgentMeta: () => {},
 }));
 
-const launchAgentThread = vi.fn(() => {});
-vi.doMock('@/lib/acp/launch-agent-thread', () => ({ launchAgentThread }));
+// Mirrors the real module: a fired launch is "in flight" until its createThread
+// settles. Tests drive the settle — a success lands a thread (setOpenThreads), a
+// failure just clears the set — by flipping this back to false.
+let mockInflightLaunch = false;
+const launchAgentThread = vi.fn(() => {
+  mockInflightLaunch = true;
+});
+vi.doMock('@/lib/acp/launch-agent-thread', () => ({
+  launchAgentThread,
+  hasInflightThreadLaunch: () => mockInflightLaunch,
+}));
 
 let catalogData: unknown;
 // The host and New split-button share the catalog query; keep it controllable.
@@ -156,17 +215,46 @@ function makeTerminalBridge(): OkDesktopBridge {
   } as unknown as OkDesktopBridge;
 }
 
+type HarnessControl = {
+  setVisible: (v: boolean) => void;
+  setThreadLaunch: (t: ThreadLaunchIntent | null) => void;
+  /**
+   * Force a re-render without changing any input. The registry hooks are mocked
+   * as plain reads of module-scope state, so this is how a test plays out the
+   * async agent catalog landing: null at first paint, an agent a beat later.
+   */
+  rerender: () => void;
+};
+
+function makeControl(): { current: HarnessControl | null } {
+  return { current: null };
+}
+
 function Harness({
   bridge = null,
   initialVisible = true,
   onVisibleChange,
+  threadLaunch: initialThreadLaunch = null,
+  control,
 }: {
   bridge?: OkDesktopBridge | null;
   initialVisible?: boolean;
   onVisibleChange?: (v: boolean) => void;
+  threadLaunch?: ThreadLaunchIntent | null;
+  control?: { current: HarnessControl | null };
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(initialVisible);
+  const [threadLaunch, setThreadLaunch] = useState(initialThreadLaunch);
+  const [, setTick] = useState(0);
+  // Hand a test the raw setters so it can reproduce EditorPane's transitions —
+  // notably setting visibility and a launch intent in ONE commit, which is what
+  // makes the reveal effect see the launch as still-pending and stand its seed
+  // down instead of creating a second conversation.
+  useEffect(() => {
+    if (control != null)
+      control.current = { setVisible, setThreadLaunch, rerender: () => setTick((n) => n + 1) };
+  }, [control]);
   return (
     <TooltipProvider>
       <div ref={setContainer} data-testid="dock-container" />
@@ -178,6 +266,7 @@ function Harness({
         // which hands both hosts the same whole-app fact.
         terminalCapable={bridge != null}
         visible={visible}
+        threadLaunch={threadLaunch}
         onVisibleChange={(v) => {
           onVisibleChange?.(v);
           setVisible(v);
@@ -201,8 +290,15 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     openArchivedThread.mockClear();
     deleteThread.mockClear();
     launchAgentThread.mockClear();
+    mockInflightLaunch = false;
+    registerAgent.mockClear();
     catalogData = undefined;
     mockRegisteredAgent = null;
+    mockPersistedDefaultAgent = null;
+    // The enabled-agents store persists to localStorage and caches at module
+    // scope, so a per-test override outlives the test without this reload.
+    localStorage.clear();
+    reloadEnabledAgentsFromStorage();
   });
   afterEach(() => {
     cleanup();
@@ -660,6 +756,374 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
       expect(launchAgentThread).not.toHaveBeenCalled();
       expect(window.location.hash).toBe('#settings/configure-agents');
+    });
+  });
+
+  // A launch intent whose agentId is the empty-string sentinel (Ask AI, the command
+  // palette, a handoff — anything that says "resolve the default for me") must lead
+  // with the SAME effective default the New picker shows, so a brand-new user whose
+  // machine has a detected agent lands in a thread instead of the settings dialog.
+  describe('pickerless thread launch', () => {
+    const sentinelLaunch = (nonce: number): ThreadLaunchIntent => ({
+      agentSource: 'registry',
+      agentId: '',
+      prompt: null,
+      docName: null,
+      titleHint: null,
+      nonce,
+    });
+
+    test('with no persisted default it starts the effective default agent, not Settings', () => {
+      window.location.hash = '';
+      // A detected suggestion is the effective default; nothing is persisted yet.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      render(<Harness threadLaunch={sentinelLaunch(1)} />);
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0]).toEqual([
+        { source: 'registry', id: 'claude-acp' },
+        null,
+        null,
+        null,
+      ]);
+      expect(window.location.hash).toBe('');
+      // The suggestion is launched, never written back as an explicit registration.
+      expect(registerAgent).not.toHaveBeenCalled();
+    });
+
+    test('with nothing enabled it still opens Configure agents', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null; // nothing detected or enabled to lead with
+      render(<Harness threadLaunch={sentinelLaunch(1)} />);
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#settings/configure-agents');
+    });
+
+    test('an agent the user disabled is never what a pickerless launch leads with', () => {
+      window.location.hash = '';
+      // Present in the store, but switched off in Configure agents — the enabled
+      // filter must drop it before the resolver ever sees it.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      setAgentEnabled(inAppEnabledKey('registry', 'claude-acp'), false);
+      render(<Harness threadLaunch={sentinelLaunch(1)} />);
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#settings/configure-agents');
+    });
+
+    test('an agent with no launchable build on this host is not what a launch leads with', () => {
+      window.location.hash = '';
+      // Distinct from the user-disabled case above: nothing is toggled off in
+      // Configure agents, the CATALOG reports no launchable build for this host.
+      // That travels a different argument of the enabled filter, so a refactor
+      // that dropped it would otherwise offer an unlaunchable agent as the lead.
+      mockRegisteredAgent = {
+        source: 'registry',
+        id: 'claude-acp',
+        name: 'Claude Agent',
+        supported: false,
+      };
+      render(<Harness threadLaunch={sentinelLaunch(1)} />);
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#settings/configure-agents');
+    });
+
+    test('an explicitly persisted default still wins over the presented agent', () => {
+      window.location.hash = '';
+      // Deliberately DIFFERENT agents, with the detected one listed first: the
+      // user's own pick has to beat the head of the list, so this fails if the
+      // persisted default ever stops reaching the resolver.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      mockPersistedDefaultAgent = { source: 'registry', id: 'codex-acp', name: 'Codex Agent' };
+      render(<Harness threadLaunch={sentinelLaunch(1)} />);
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'codex-acp' });
+      expect(registerAgent).not.toHaveBeenCalled();
+    });
+
+    // Every surface that emits the sentinel pre-resolves with the same resolver
+    // and only falls back to it when ITS resolution came back empty — so on a
+    // cold start the sentinel arrives precisely while the async agent registry is
+    // still landing. Burning the intent there strands the user in the settings
+    // dialog permanently.
+    test('an intent that arrives before an agent exists still launches once one does', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null; // registry has not landed yet
+      const control = makeControl();
+      render(<Harness threadLaunch={sentinelLaunch(1)} control={control} />);
+
+      // Nothing to launch yet, so the user is offered the catalog.
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#settings/configure-agents');
+
+      // The catalog lands a beat later and claude-acp becomes the lead.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      act(() => control.current?.rerender());
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+    });
+
+    test('the catalog is offered once, not on every render while the registry settles', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null;
+      const control = makeControl();
+      render(<Harness threadLaunch={sentinelLaunch(1)} control={control} />);
+      expect(window.location.hash).toBe('#settings/configure-agents');
+
+      // A user who starts navigating the dialog must not have it yanked back.
+      window.location.hash = '#settings/some-other-tab';
+      act(() => control.current?.rerender());
+      act(() => control.current?.rerender());
+
+      expect(window.location.hash).toBe('#settings/some-other-tab');
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('a launch naming a concrete agent starts that agent, not the default', () => {
+      window.location.hash = '';
+      // An effective default exists but must be ignored when the intent names one.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      render(
+        <Harness
+          threadLaunch={{
+            agentSource: 'custom',
+            agentId: 'my-agent',
+            prompt: 'do the thing',
+            docName: 'notes',
+            titleHint: 'Notes',
+            nonce: 1,
+          }}
+        />,
+      );
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0]).toEqual([
+        { source: 'custom', id: 'my-agent' },
+        'do the thing',
+        'notes',
+        'Notes',
+      ]);
+    });
+  });
+
+  // Revealing an empty agents panel starts the same lead agent the New picker
+  // shows — but a passive reveal must never pop the catalog, so a panel with no
+  // agent to launch simply stays empty.
+  describe('seed on reveal', () => {
+    test('revealing an empty panel starts one conversation when an agent resolves', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+      // Hidden + empty: nothing has launched yet.
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      act(() => control.current?.setVisible(true));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0]).toEqual([
+        { source: 'registry', id: 'claude-acp' },
+        null,
+        null,
+        null,
+      ]);
+      // The detected suggestion is launched, never persisted by a passive reveal.
+      expect(registerAgent).not.toHaveBeenCalled();
+    });
+
+    test('a reveal before the registry lands still gets its conversation once it does', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null; // registry has not landed yet
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      // Revealed during the window: nothing to seed, and never the catalog.
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('');
+
+      // The registry lands; the conversation the reveal was owed arrives.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      act(() => control.current?.rerender());
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+    });
+
+    test('a reveal owed a conversation drops the debt if the panel closes first', () => {
+      mockRegisteredAgent = null;
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      // The user closes the panel before anything resolved — seeding into a
+      // hidden panel would be a conversation they never see.
+      act(() => control.current?.setVisible(false));
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      act(() => control.current?.rerender());
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('the seed keys on the reveal transition, not on being visible', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      // Mounting already-visible presents no transition, so nothing seeds. This is
+      // NOT the restore path: EditorPane starts the panel hidden and flips it from
+      // an async dock-state read, which IS a transition and DOES seed (covered by
+      // the reveal tests above). What this pins is that the trigger is the edge,
+      // not the level — a seed keyed on `visible` alone would fire here, and on the
+      // shared terminal-dock path would open a session on every cold start.
+      render(<Harness initialVisible />);
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('');
+    });
+
+    test('revealing an empty panel with no agent available stays empty and never opens the catalog', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null; // nothing detected or enabled to lead with
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => control.current?.setVisible(true));
+
+      // The surviving half of the panel's rule, and the guard against a naive
+      // fix: no thread, and no Configure agents dialog either.
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('');
+    });
+
+    test('revealing a panel that already has a conversation does not create another', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      // Seeded before mount so the live count never rises 0→1 (no auto-reveal) —
+      // the state of a user reopening a panel they already had a chat in.
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Existing' })]);
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+      await screen.findByTestId('thread-view');
+
+      act(() => control.current?.setVisible(true));
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('revealing while a thread launch is pending does not seed a second conversation', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      // EditorPane reveals the panel AND sets the launch intent together when a
+      // handoff starts an agent. Set both in one commit: the pending launch owns
+      // the creation, so the reveal seed must stand down.
+      act(() => {
+        control.current?.setThreadLaunch({
+          agentSource: 'custom',
+          agentId: 'handoff-agent',
+          prompt: 'do it',
+          docName: null,
+          titleHint: null,
+          nonce: 1,
+        });
+        control.current?.setVisible(true);
+      });
+
+      // Exactly one thread, and it is the handoff's agent — not the seed's
+      // effective default, which would be the duplicate.
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'custom', id: 'handoff-agent' });
+    });
+
+    test('re-revealing while a launched thread is still being created does not seed a duplicate', () => {
+      window.location.hash = '';
+      // The effective default a reveal would seed differs from the concrete agent
+      // the handoff launches, so the per-agent inflight dedup cannot drop the
+      // duplicate — only standing the reveal seed down can.
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      // Handoff: reveal + concrete launch in one commit. The thread starts, but its
+      // createThread is async (npx install + handshake), so nothing lands yet.
+      act(() => {
+        control.current?.setThreadLaunch({
+          agentSource: 'custom',
+          agentId: 'handoff-agent',
+          prompt: 'do it',
+          docName: null,
+          titleHint: null,
+          nonce: 1,
+        });
+        control.current?.setVisible(true);
+      });
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+
+      // The user toggles the panel hidden then visible again (⌘L twice) while the
+      // thread is still being created: sessions is still empty and the launch nonce
+      // is already handled, so `threadLaunchPending` reads false. The reveal must
+      // still not seed a second, wrong-agent conversation on top of the pending one.
+      act(() => control.current?.setVisible(false));
+      act(() => control.current?.setVisible(true));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'custom', id: 'handoff-agent' });
+    });
+
+    test('a launch that fails to land re-enables reveal-seed once it is no longer in flight', () => {
+      window.location.hash = '';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      // Handoff launches a concrete agent; its create is in flight.
+      act(() => {
+        control.current?.setThreadLaunch({
+          agentSource: 'custom',
+          agentId: 'handoff-agent',
+          prompt: null,
+          docName: null,
+          titleHint: null,
+          nonce: 1,
+        });
+        control.current?.setVisible(true);
+      });
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+
+      // createThread rejects (server down): no session ever lands, but the launch
+      // leaves the in-flight set. Revealing an empty panel must seed again rather
+      // than stay disabled for the rest of the session.
+      mockInflightLaunch = false;
+      act(() => control.current?.setVisible(false));
+      act(() => control.current?.setVisible(true));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(2);
+      expect(launchAgentThread.mock.calls[1][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+    });
+
+    test('a conversation created on one reveal is not duplicated on the next reveal', async () => {
+      window.location.hash = '';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      // First reveal seeds exactly one conversation.
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+
+      // That launch lands as a live thread (what the server round-trip does).
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Seeded' })]);
+      await screen.findByTestId('thread-view');
+
+      // Hide, then reveal again: the panel is no longer empty, so no second seed.
+      act(() => control.current?.setVisible(false));
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -75,3 +75,16 @@ export function launchAgentThread(
       inflightLaunches.delete(launchKey);
     });
 }
+
+/**
+ * Whether any agent-thread launch is still mid-flight in this window. `createThread`
+ * resolves the new thread into the shared store seconds later, so a caller that
+ * auto-creates a conversation on some UI transition (e.g. the sessions dock seeding
+ * an empty panel on reveal) would open a duplicate if it fired during that gap.
+ * Gate such seeding on this. Because the set clears in the `finally` above on BOTH
+ * success and failure, a launch that never lands re-enables seeding rather than
+ * disabling it for good.
+ */
+export function hasInflightThreadLaunch(): boolean {
+  return inflightLaunches.size > 0;
+}

@@ -20,14 +20,13 @@ import { publishReusableSession } from '@/components/reusable-session-store';
 import { TabsContent } from '@/components/ui/tabs';
 import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
-import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
+import { hasInflightThreadLaunch, launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import {
   enabledTerminalClis,
   type LauncherSelection,
   resolveLauncherSelection,
 } from '@/lib/acp/launcher-selection';
 import {
-  getDefaultRegisteredAgent,
   pickEffectiveDefaultAgent,
   type RegisteredAgent,
   registerAgent,
@@ -434,6 +433,15 @@ export function SessionsHost({
     coldSeedTerminal && launch ? launch.nonce : null,
   );
   const lastHandledThreadNonceRef = useRef<number | null>(null);
+  // Which nonce already sent the user to Configure agents. Separate from the
+  // handled-nonce above so an intent that arrived before the agent registry
+  // settled stays live — it opens the catalog once, then still launches if an
+  // agent shows up — instead of being burned on a "nothing enabled" that was
+  // only ever "nothing enabled YET".
+  const settingsShownForNonceRef = useRef<number | null>(null);
+  // A reveal that found no agent to seed. Held so the conversation the user was
+  // owed still arrives when the registry settles a beat later.
+  const seedOwedRef = useRef(false);
   const lastHandledCommandNonceRef = useRef<number | null>(null);
   const prevVisibleRef = useRef(isWindow ? false : visible);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
@@ -605,14 +613,33 @@ export function SessionsHost({
     else openAgentSettings();
   }
 
-  // Seed an empty terminal dock on reveal by repeating the New primary's pick —
-  // a bare shell or the picked CLI. The agents panel stays empty until the user
-  // explicitly starts an agent: a passive reveal must not auto-open a thread or
-  // the catalog. A terminal host with nothing enabled likewise just shows empty.
-  function seedOnReveal() {
-    if (!hostTerminals) return;
+  // Seed an empty dock on reveal by repeating the New primary's pick. On the
+  // agents panel that starts the effective default agent's thread — but only when
+  // one resolves: a passive reveal must never pop the catalog, so nothing enabled
+  // leaves the panel empty rather than opening Configure agents. That is this
+  // branch mirroring the New primary MINUS its nothing-resolved openAgentSettings
+  // fallthrough. A terminal host repeats a bare shell or the picked CLI; nothing
+  // enabled there likewise just shows empty.
+  //
+  // Returns false ONLY on the agents panel when no agent resolved yet — the
+  // registry fills from an async catalog fetch, so a panel revealed during that
+  // window would otherwise silently lose its conversation, and the caller holds
+  // the intent open to retry once an agent appears. A terminal host always returns
+  // true (it seeds a shell or the picked CLI), so false is never its signal.
+  function seedOnReveal(): boolean {
+    if (hostThreads) {
+      if (newSessionChoice.kind !== 'agent' || newSessionChoice.agent == null) return false;
+      launchAgentThread(
+        { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
+        null,
+        null,
+        null,
+      );
+      return true;
+    }
     if (newSessionChoice.kind === 'terminal') openSession(null);
     else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
+    return true;
   }
 
   /**
@@ -1139,10 +1166,17 @@ export function SessionsHost({
   }, [sessions, activeSessionId]);
 
   // Open/launch lifecycle: a fresh terminal launch intent opens its own tab;
-  // otherwise an open-from-hidden transition seeds the dock — UNLESS a fresh thread
-  // launch is being handled this cycle (the thread launch effect owns the seed
-  // then, so we don't open a bare terminal alongside the agent). Defined before the
-  // thread launch effect so `threadLaunchPending` reads the not-yet-handled nonce.
+  // otherwise an open-from-hidden transition seeds the dock — UNLESS a thread
+  // launch is still outstanding. That covers two windows: its nonce is unhandled
+  // this cycle (`threadLaunchPending`, the thread launch effect owns the seed
+  // then), or it was handled and its async createThread is still in flight
+  // (`hasInflightThreadLaunch`, which clears on both success and failure so a
+  // failed launch re-enables seeding). Seeding across either opens a duplicate
+  // beside the agent. Both are agents-panel concerns, so both are gated on
+  // `hostThreads` — the launch set is window-wide, and an ungated read lets an
+  // agent-thread launch swallow the TERMINAL dock's shell on an unrelated
+  // reveal. Defined before the thread launch effect so `threadLaunchPending`
+  // reads the not-yet-handled nonce.
   useEffect(() => {
     if (!rehydrationSettled) return;
     const wasVisible = prevVisibleRef.current;
@@ -1164,9 +1198,27 @@ export function SessionsHost({
       hostThreads &&
       threadLaunch != null &&
       threadLaunch.nonce !== lastHandledThreadNonceRef.current;
-    if (visible && !wasVisible && sessions.length === 0 && !threadLaunchPending) {
-      seedOnRevealRef.current();
+    if (
+      visible &&
+      !wasVisible &&
+      sessions.length === 0 &&
+      !threadLaunchPending &&
+      !(hostThreads && hasInflightThreadLaunch())
+    ) {
+      seedOwedRef.current = !seedOnRevealRef.current();
+      return;
     }
+    // A reveal that landed before the agent registry settled is still owed its
+    // conversation; retry now that something changed. Anything that resolves the
+    // debt another way — the panel closing, a conversation arriving, an explicit
+    // launch taking over — drops it rather than seeding on top.
+    if (!seedOwedRef.current) return;
+    if (!visible || sessions.length > 0 || threadLaunchPending) {
+      seedOwedRef.current = false;
+      return;
+    }
+    if (effectiveDefaultAgent === null) return; // still nothing to seed with
+    if (seedOnRevealRef.current()) seedOwedRef.current = false;
   }, [
     visible,
     launch,
@@ -1175,31 +1227,46 @@ export function SessionsHost({
     sessions.length,
     rehydrationSettled,
     hostThreads,
+    effectiveDefaultAgent,
   ]);
 
-  // "Start an agent" launch intent (agents panel): resolve the agent (concrete /
-  // default-registered) and start a thread. Each new nonce opens its own thread
-  // tab; the store reconcile + auto-reveal bring it to front + reveal. When no
-  // agent resolves (nothing enabled yet), open Configure agents so the user can
-  // enable one — the retired agent catalog's replacement.
+  // "Start an agent" launch intent (agents panel): resolve the agent and start a
+  // thread. An intent may name a concrete agent; the empty-string sentinel instead
+  // defers to the SAME effective default the New picker leads with (the enabled
+  // registered default, else the first enabled agent — for a fresh user that is the
+  // top detected suggestion), so a pickerless launch and the on-screen picker never
+  // disagree. Each new nonce opens its own thread tab; the store reconcile +
+  // auto-reveal bring it to front + reveal.
+  //
+  // The nonce is spent only on a launch. Every surface that emits the sentinel
+  // pre-resolves with the same resolver and falls back to it exactly when ITS
+  // resolution came back empty — which on a cold start means the async agent
+  // registry simply has not landed yet, not that the user has nothing. Marking
+  // the intent handled there would strand them in Configure agents for good, so
+  // the intent stays live and this effect re-runs when an agent appears.
   useEffect(() => {
     if (!hostThreads) return;
     if (threadLaunch == null || threadLaunch.nonce === lastHandledThreadNonceRef.current) return;
-    lastHandledThreadNonceRef.current = threadLaunch.nonce;
     let agent: { source: 'registry' | 'custom'; id: string } | null =
       threadLaunch.agentId === ''
         ? null
         : { source: threadLaunch.agentSource, id: threadLaunch.agentId };
-    if (agent === null) {
-      const fallback = getDefaultRegisteredAgent();
-      if (fallback !== null) agent = { source: fallback.source, id: fallback.id };
+    if (agent === null && effectiveDefaultAgent !== null) {
+      agent = { source: effectiveDefaultAgent.source, id: effectiveDefaultAgent.id };
     }
     if (agent === null) {
-      openAgentSettings();
+      // Once per intent: a user with genuinely nothing enabled needs the catalog,
+      // but re-opening it on every re-render while the registry settles would
+      // fight whatever they are doing in it.
+      if (settingsShownForNonceRef.current !== threadLaunch.nonce) {
+        settingsShownForNonceRef.current = threadLaunch.nonce;
+        openAgentSettings();
+      }
       return;
     }
+    lastHandledThreadNonceRef.current = threadLaunch.nonce;
     launchAgentThread(agent, threadLaunch.prompt, threadLaunch.docName, threadLaunch.titleHint);
-  }, [threadLaunch, hostThreads]);
+  }, [threadLaunch, hostThreads, effectiveDefaultAgent]);
 
   // Reload rehydration (capable bridge only): rebuild one terminal tab per PTY
   // survivor and read the persisted unified order + active key, so restored tabs

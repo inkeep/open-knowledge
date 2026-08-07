@@ -160,6 +160,15 @@ vi.doMock('./TerminalGate', () => ({
   },
 }));
 
+// The agent-thread launch set is window-wide, so the dock reads it too. Held
+// here so a test can assert the dock's shell does not depend on whether an
+// agents-panel launch happens to be in flight.
+let mockInflightThreadLaunch = false;
+vi.doMock('@/lib/acp/launch-agent-thread', () => ({
+  launchAgentThread: () => {},
+  hasInflightThreadLaunch: () => mockInflightThreadLaunch,
+}));
+
 vi.doMock('@/lib/terminal-height-store', () => ({
   getInitialTerminalHeight: () => 240,
   writeTerminalHeight: () => {},
@@ -1335,6 +1344,25 @@ describe('TerminalDock extraction pins', () => {
 
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(view.create).toHaveBeenCalledTimes(1);
+  });
+
+  test('pin: an in-flight AGENT-thread launch does not swallow the dock shell', () => {
+    // The agents panel skips its reveal-seed while its own createThread is in
+    // flight, so it cannot open a conversation beside the one already coming.
+    // That set is window-wide; the dock hosts no agent threads, so the same
+    // reveal must still give the user their shell.
+    mockInflightThreadLaunch = true;
+    try {
+      const view = renderDock(false);
+      expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
+
+      act(() => view.rerender(true));
+
+      expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+      expect(view.create).toHaveBeenCalledTimes(1);
+    } finally {
+      mockInflightThreadLaunch = false;
+    }
   });
 
   test('pin: a repeated launch nonce does not open a second tab', () => {
