@@ -251,6 +251,11 @@ msgstr "{0, plural, other {技能}}"
 msgid "{0} · default"
 msgstr "{0} · 默认"
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
+msgstr "{0} 不经询问即执行操作 — OpenKnowledge 无法为其添加权限确认"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -269,6 +274,16 @@ msgstr "{0}，第 {displayLine} 行"
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
 msgstr "{0} 无法继续此对话 — 聊天记录已保留，但智能体会话已丢失。"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} doesn't offer any settings to adjust"
+msgstr "{0} 没有可调整的设置"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} hasn't reported its settings yet"
+msgstr "{0} 尚未报告其设置"
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx

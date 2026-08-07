@@ -251,6 +251,11 @@ msgstr "{0, plural, one {স্কিল} other {স্কিল}}"
 msgid "{0} · default"
 msgstr "{0} · ডিফল্ট"
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
+msgstr "{0} জিজ্ঞাসা না করেই কাজ করে — OpenKnowledge এর জন্য অনুমতির অনুরোধ যোগ করতে পারে না"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -269,6 +274,16 @@ msgstr "{displayLine} নম্বর লাইনে {0}"
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
 msgstr "{0} এই চ্যাট চালিয়ে যেতে পারছে না — ট্রান্সক্রিপ্ট সংরক্ষিত আছে, কিন্তু এজেন্ট সেশনটি আর নেই।"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} doesn't offer any settings to adjust"
+msgstr "{0} সমন্বয় করার মতো কোনো সেটিং দেয় না"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} hasn't reported its settings yet"
+msgstr "{0} এখনও তার সেটিং জানায়নি"
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx

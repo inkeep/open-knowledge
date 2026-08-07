@@ -484,6 +484,81 @@ describe('ThreadView agent settings (modes)', () => {
   });
 });
 
+describe('ThreadView agent settings (disable, not hide)', () => {
+  test('an agent with nothing to configure keeps the trigger, disabled with the reason', () => {
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const trigger = screen.getByTestId('agent-thread-settings');
+    expect(trigger.getAttribute('aria-disabled')).toBe('true');
+    expect(trigger.getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText("Claude Agent doesn't offer any settings to adjust")).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(screen.queryByTestId('agent-thread-settings-popover')).toBeNull();
+  });
+
+  test("before the session settles the reason says 'not yet', not 'none'", () => {
+    render(<ThreadView info={makeInfo({ status: 'spawning' })} />);
+    const trigger = screen.getByTestId('agent-thread-settings');
+    expect(trigger.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText("Claude Agent hasn't reported its settings yet")).toBeTruthy();
+  });
+
+  test("an exited thread that never advertised settings reads 'none', not 'not yet'", () => {
+    // The session ran to completion — "hasn't reported yet" would imply an
+    // answer is still coming.
+    render(<ThreadView info={makeInfo({ status: 'exited' })} />);
+    expect(screen.getByText("Claude Agent doesn't offer any settings to adjust")).toBeTruthy();
+  });
+});
+
+describe('ThreadView permission posture badge', () => {
+  test('a verified autonomous agent warns that prompts cannot be added', () => {
+    render(
+      <ThreadView
+        info={makeInfo({ agent: { id: 'pi-acp', name: 'pi ACP', source: 'registry' } })}
+      />,
+    );
+    const badge = screen.getByTestId('agent-thread-posture');
+    expect(badge.closest('[role="img"]')?.getAttribute('aria-label')).toContain(
+      'acts without asking',
+    );
+  });
+
+  test('every milder posture renders no badge — those signals live elsewhere', () => {
+    // Asks-first (Claude): the permission prompts themselves are the signal.
+    const { unmount: unmountAsks } = render(
+      <ThreadView
+        info={makeInfo({ agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' } })}
+      />,
+    );
+    expect(screen.queryByTestId('agent-thread-posture')).toBeNull();
+    unmountAsks();
+
+    // Self-managed (declared modes): the settings trigger names the mode and
+    // the permissive-mode accent flags the dangerous ones.
+    const { unmount: unmountModes } = render(
+      <ThreadView
+        info={makeInfo({
+          agent: { id: 'someagent', name: 'Some Agent', source: 'registry' },
+          modes: {
+            currentModeId: 'agent',
+            availableModes: [
+              { id: 'agent', name: 'Agent (full access)' },
+              { id: 'plan', name: 'Plan' },
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.queryByTestId('agent-thread-posture')).toBeNull();
+    unmountModes();
+
+    // Unverified with no modes: "can't tell" must never render as the
+    // autonomous warning.
+    render(<ThreadView info={makeInfo()} />);
+    expect(screen.queryByTestId('agent-thread-posture')).toBeNull();
+  });
+});
+
 describe('ThreadView terminal card', () => {
   const terminal = (overrides?: Partial<RenderedTerminal>): RenderedTerminal => ({
     terminalId: 't1',

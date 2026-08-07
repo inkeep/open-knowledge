@@ -620,6 +620,7 @@ export class AcpThreadManager {
         status: 'installing',
         createdAt: now,
         lastActivityAt: now,
+        promptCapabilities: null,
         modes: null,
         configOptions: null,
         lastSeq: -1,
@@ -906,6 +907,14 @@ export class AcpThreadManager {
     }
     if (record.closed) return null;
     record.lastInit = init;
+    // Captured wherever the handshake runs (create, resume, retry). The
+    // post-authenticate retry never re-initializes — `authenticateThread`
+    // reopens the session on this same connection, inheriting this capture.
+    // `{}` — not absence — is the "baseline content only" answer: the wire
+    // contract distinguishes "agent said no" from "handshake hasn't
+    // resolved yet".
+    record.info.promptCapabilities = init.agentCapabilities?.promptCapabilities ?? {};
+    this.emitInfo(record);
     return { conn, init, launch };
   }
 

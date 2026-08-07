@@ -89,6 +89,7 @@ export function useHydrateRegisteredAgentMeta(): void {
         id: agent.id,
         name: agent.name,
         supported: agent.supported,
+        featured: agent.featured,
         ...(agent.iconUrl !== undefined ? { iconUrl: agent.iconUrl } : {}),
       })),
     );

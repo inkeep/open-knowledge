@@ -1726,6 +1726,7 @@
     "PIMM5l": ["Anda sudah berlangganan!"],
     "PKLY-1": ["Membuka..."],
     "PKjGhT": ["Judul"],
+    "PMxZyQ": [["0"], " belum melaporkan pengaturannya"],
     "PMyJ9C": ["Belum ada sesi penyuntingan"],
     "PPFQ3o": ["\"", ["0"], "\" dipasang ke ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" tidak ada."],
@@ -1941,6 +1942,10 @@
     "SkTkKV": ["Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari agen."],
     "Skr_7L": ["Cari worktree"],
     "SlfejT": ["Galat"],
+    "Soy_80": [
+      ["0"],
+      " bertindak tanpa bertanya — OpenKnowledge tidak dapat menambahkan permintaan izin untuknya"
+    ],
     "SqIoy_": ["Perbaikan otomatis — tidak ada masalah di sini yang punya perbaikan otomatis"],
     "SrOuyg": ["Panel dokumen"],
     "SvBFYA": ["Tidak ada proyek terbaru"],
@@ -2118,6 +2123,7 @@
     "VNgKZz": ["Pengaturan lanjutan"],
     "VTulZj": ["Buka di worktree"],
     "VUijjF": ["Menyematkan gambar dengan teks alternatif opsional."],
+    "VVRrPk": [["0"], " tidak menawarkan pengaturan untuk disesuaikan"],
     "VXGFMg": ["Batalkan atau ulangi di bidang kode"],
     "VYd_YA": ["Membuka folder proyek yang sudah ada dari disk."],
     "VZGh8G": [

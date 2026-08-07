@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+In-app agents now show what they actually support instead of silently hiding the difference. Switching agents no longer makes the settings control vanish: an agent that advertises no settings shows the same trigger disabled, with a one-line reason ("doesn't offer any settings to adjust" — or "hasn't reported its settings yet" while it's still starting). The thread header warns when an agent is verified to act fully autonomously — it never asks before editing files or running commands, and OpenKnowledge can't add permission prompts for it (pi today); agents that ask first or govern themselves through their own modes need no badge, since those signals already show as permission prompts and in the agent settings. The prompt-capability handshake (images, audio, embedded context) is now captured per thread and sent to the client, so upcoming attachment features can gate honestly on what each agent accepts. Agent pickers now lead the never-used tail with the featured shortlist instead of an accident of insertion order.

@@ -32,6 +32,13 @@ export interface RegisteredAgent {
    * field existed) — those sort after every stamped agent.
    */
   readonly lastUsedAt?: number;
+  /**
+   * The server marks the first-party shortlist (`FEATURED_AGENT_IDS`) in the
+   * catalog; hydrated like `supported`. Orders the never-picked tail —
+   * featured before the long tail — so a fresh install leads with the agents
+   * the team actually supports rather than an accident of insertion order.
+   */
+  readonly featured?: boolean;
 }
 
 interface RegisteredAgentsState {
@@ -56,7 +63,8 @@ function isRegisteredAgent(value: unknown): value is RegisteredAgent {
     typeof a.name === 'string' &&
     a.name !== '' &&
     (a.iconUrl === undefined || typeof a.iconUrl === 'string') &&
-    (a.lastUsedAt === undefined || typeof a.lastUsedAt === 'number')
+    (a.lastUsedAt === undefined || typeof a.lastUsedAt === 'number') &&
+    (a.featured === undefined || typeof a.featured === 'boolean')
   );
 }
 
@@ -186,14 +194,19 @@ export function registerAgent(
 }
 
 /**
- * Recently used first (explicit picks stamp `lastUsedAt`), alphanumeric for
- * the never-picked tail — one predictable order instead of three concatenated
- * insertion histories (picks, Settings toggles, detected suggestions).
+ * Recently used first (explicit picks stamp `lastUsedAt`), then the featured
+ * shortlist, alphanumeric within each tier — one predictable order instead of
+ * three concatenated insertion histories (picks, Settings toggles, detected
+ * suggestions). Recency stays the top key on purpose: "the agent you chose
+ * last is your agent" beats any editorial ranking.
  */
 function compareAgentsForDisplay(a: RegisteredAgent, b: RegisteredAgent): number {
   const aUsed = a.lastUsedAt ?? 0;
   const bUsed = b.lastUsedAt ?? 0;
   if (aUsed !== bUsed) return bUsed - aUsed;
+  const aFeatured = a.featured === true ? 0 : 1;
+  const bFeatured = b.featured === true ? 0 : 1;
+  if (aFeatured !== bFeatured) return aFeatured - bFeatured;
   return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 }
 
@@ -298,10 +311,12 @@ export function hydrateRegisteredAgentMeta(
     const nextName = patch.name ?? agent.name;
     const nextIconUrl = patch.iconUrl ?? agent.iconUrl;
     const nextSupported = patch.supported ?? agent.supported;
+    const nextFeatured = patch.featured ?? agent.featured;
     if (
       nextName === agent.name &&
       nextIconUrl === agent.iconUrl &&
-      nextSupported === agent.supported
+      nextSupported === agent.supported &&
+      nextFeatured === agent.featured
     )
       return agent;
     changed = true;
@@ -310,6 +325,7 @@ export function hydrateRegisteredAgentMeta(
       name: nextName,
       ...(nextIconUrl !== undefined ? { iconUrl: nextIconUrl } : {}),
       ...(nextSupported !== undefined ? { supported: nextSupported } : {}),
+      ...(nextFeatured !== undefined ? { featured: nextFeatured } : {}),
     };
   });
   if (!changed) return;

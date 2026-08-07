@@ -464,12 +464,76 @@ process.stdin.on('data', (chunk) => {
       type: 'select',
       currentValue: 'sonnet',
     });
+    // Agent advertised no prompt capabilities: the handshake still resolves
+    // the field to {} ("baseline content only"), never leaves it absent.
+    expect(manager.getInfo(info.threadId)?.promptCapabilities).toEqual({});
 
     manager.setConfigOption(info.threadId, 'model', 'opus');
     await waitFor(
       () => manager.getInfo(info.threadId)?.configOptions?.[0]?.currentValue === 'opus',
       10_000,
     );
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('prompt capabilities: advertised at initialize, land on thread info', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const agentPath = join(localDir, 'prompt-caps-agent.mjs');
+    writeFileSync(
+      agentPath,
+      `
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({
+        protocolVersion: 1,
+        agentCapabilities: { promptCapabilities: { image: true, embeddedContext: true } },
+      });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1' });
+    } else if (msg.method === 'session/prompt') {
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+    );
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'caps-agent', name: 'Caps Agent', command: 'node', args: [agentPath] },
+      ]),
+    );
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'caps-agent' } });
+    expect(info.promptCapabilities).toBeNull();
+    const deadline = Date.now() + 15_000;
+    while (manager.getInfo(info.threadId)?.status !== 'ready') {
+      if (Date.now() > deadline) {
+        throw new Error(`timed out; info: ${JSON.stringify(manager.getInfo(info.threadId))}`);
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(manager.getInfo(info.threadId)?.promptCapabilities).toEqual({
+      image: true,
+      embeddedContext: true,
+    });
 
     await manager.closeThread(info.threadId);
   }, 30_000);

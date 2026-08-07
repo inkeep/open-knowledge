@@ -45,6 +45,16 @@
       "types": "./src/acp/thread-protocol.ts",
       "default": "./dist/acp-thread-protocol.mjs"
     },
+    "./acp/agent-posture": {
+      "development": "./src/acp/agent-posture.ts",
+      "types": "./src/acp/agent-posture.ts",
+      "default": "./dist/acp-agent-posture.mjs"
+    },
+    "./acp/permissive-mode": {
+      "development": "./src/acp/permissive-mode.ts",
+      "types": "./src/acp/permissive-mode.ts",
+      "default": "./dist/acp-permissive-mode.mjs"
+    },
     "./desktop-bridge": {
       "development": "./src/desktop-bridge.ts",
       "types": "./src/desktop-bridge.ts",

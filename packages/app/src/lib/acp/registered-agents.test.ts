@@ -169,6 +169,24 @@ describe('registered-agents store', () => {
       'gemini',
     ]);
   });
+
+  test('presented order: featured agents lead the never-picked tail', () => {
+    // No picks at all — the whole list is the tail. Featured (catalog
+    // shortlist) beats alphabetical; alphabetical breaks ties within a tier.
+    registerAgent({ source: 'registry', id: 'auggie', name: 'Auggie CLI' }, { makeDefault: false });
+    registerAgent(
+      { source: 'registry', id: 'gemini', name: 'Gemini CLI', featured: true },
+      { makeDefault: false },
+    );
+    registerAgent(
+      { source: 'registry', id: 'cursor', name: 'Cursor', featured: true },
+      { makeDefault: false },
+    );
+    expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual(['cursor', 'gemini', 'auggie']);
+    // An explicit pick still beats featured: recency is the top sort key.
+    registerAgent({ source: 'registry', id: 'auggie', name: 'Auggie CLI' });
+    expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual(['auggie', 'cursor', 'gemini']);
+  });
 });
 
 describe('hydrateRegisteredAgentMeta', () => {
@@ -205,6 +223,14 @@ describe('hydrateRegisteredAgentMeta', () => {
     registerAgent(codex);
     hydrateRegisteredAgentMeta([{ source: 'registry', id: 'codex-acp', supported: false }]);
     expect(storedAgents().find((a) => a.id === 'codex-acp')?.supported).toBe(false);
+  });
+
+  test('stores the featured flag so the picker order survives a reload', () => {
+    registerAgent(codex);
+    hydrateRegisteredAgentMeta([{ source: 'registry', id: 'codex-acp', featured: true }]);
+    expect(storedAgents().find((a) => a.id === 'codex-acp')?.featured).toBe(true);
+    reloadRegisteredAgentsFromStorage();
+    expect(getRegisteredAgentOptions().find((a) => a.id === 'codex-acp')?.featured).toBe(true);
   });
 });
 

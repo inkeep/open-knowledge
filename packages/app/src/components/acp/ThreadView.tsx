@@ -10,6 +10,7 @@
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
+import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
 import type {
   QueuedMessage,
   SessionConfigOption,
@@ -36,6 +37,7 @@ import {
   Search,
   Settings2,
   Share2,
+  ShieldAlert,
   Shuffle,
   Sparkles,
   Square,
@@ -52,6 +54,7 @@ import {
   type RefObject,
   useEffect,
   useEffectEvent,
+  useId,
   useRef,
   useState,
 } from 'react';
@@ -859,6 +862,43 @@ export function ThreadView({
   );
 }
 
+/**
+ * Warns when the agent is verified to act without ever asking — the one
+ * posture with no signal anywhere else in the UI: no permission prompts
+ * will appear, and without declared modes the settings trigger has no
+ * permissive-mode accent to show. Milder postures (asks-first, governed by
+ * the agent's own mode) stay badge-free on purpose — those are already
+ * legible from the permission prompts and the settings trigger, and a
+ * badge repeating them would be noise.
+ */
+function PermissionPostureBadge({ info }: { info: ThreadInfo }): ReactNode {
+  const { t } = useLingui();
+  if (deriveAgentPosture(info.agent.id, info.modes) !== 'autonomous') return null;
+  const label = t`${info.agent.name} acts without asking — OpenKnowledge can't add permission prompts for it`;
+  // Short name so the focusable span below stays on one line — the biome
+  // suppression only reaches the line directly after it.
+  const focusRing =
+    'inline-flex rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50';
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a status indicator whose detail lives in its tooltip must be focusable or keyboard users can never surface it — same rationale as the tooltip-on-disabled-button span wrapper. */}
+        <span tabIndex={0} role="img" aria-label={label} className={focusRing}>
+          <span
+            className="inline-flex shrink-0 text-amber-500 dark:text-amber-400"
+            data-testid="agent-thread-posture"
+          >
+            <ShieldAlert className="size-3.5" aria-hidden="true" />
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-64">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ThreadHeader({
   info,
   followFile,
@@ -885,6 +925,7 @@ function ThreadHeader({
         </span>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <PermissionPostureBadge info={info} />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -1023,9 +1064,15 @@ function deriveModeSurface(info: ThreadInfo): ModeSurface | null {
   return null;
 }
 
-/** One stable trigger for every setting an ACP agent advertises. */
+/**
+ * One stable trigger for every setting an ACP agent advertises. Renders for
+ * every agent: when this one advertises nothing the trigger stays visible
+ * but disabled, with the reason on it — a control that silently vanishes on
+ * an agent switch reads as breakage, not as a capability difference.
+ */
 function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
   const { t } = useLingui();
+  const reasonId = useId();
   const client = getAgentThreadClient();
   const settingsKey = agentSettingsKey(info.agent);
   const applyConfig = (option: SessionConfigOption, value: string | boolean): void => {
@@ -1040,7 +1087,57 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
   );
   const modeSurface = deriveModeSurface(info);
   const showLegacyModes = modeSurface !== null && modeSurface.configId === null;
-  if (configOptions.length === 0 && !showLegacyModes) return null;
+  if (configOptions.length === 0 && !showLegacyModes) {
+    // Options arrive with `session/new`; until the thread has been ready
+    // once, "none yet" is indistinguishable from "none ever", and the reason
+    // must not claim the agent said no before it answered. An exited thread
+    // (archived ones rehydrate as exited) DID answer — its session ran to
+    // completion without advertising anything. `error` stays unsettled: a
+    // crash before `session/new` really did leave the question unanswered.
+    const settled =
+      info.status === 'ready' ||
+      info.status === 'running' ||
+      info.status === 'awaiting_permission' ||
+      info.status === 'exited';
+    const reason = settled
+      ? t`${info.agent.name} doesn't offer any settings to adjust`
+      : t`${info.agent.name} hasn't reported its settings yet`;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* The trigger sits on a wrapping span so Radix puts its own
+              `aria-describedby` there while the button keeps pointing at the
+              reason below. */}
+          <span className="inline-flex cursor-not-allowed">
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-6 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
+              aria-label={t`Agent settings`}
+              // `aria-disabled` rather than `disabled`: a natively disabled
+              // button leaves the tab order, so a keyboard user could never
+              // reach the tooltip or this description explaining why it
+              // won't act.
+              aria-disabled
+              aria-describedby={reasonId}
+              data-testid="agent-thread-settings"
+            >
+              <span className="truncate text-muted-foreground/50">{t`Settings`}</span>
+              <ChevronDown
+                className="size-3.5 text-muted-foreground/50"
+                data-icon="inline-end"
+                aria-hidden="true"
+              />
+            </Button>
+            <span id={reasonId} className="sr-only">
+              {reason}
+            </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{reason}</TooltipContent>
+      </Tooltip>
+    );
+  }
 
   const legacyModeName = showLegacyModes ? modeSurface.currentName : undefined;
   // Modes carry across threads like everything else, so the thing worth
@@ -2842,10 +2939,9 @@ function ThreadComposer({
         />
         {/* Action bar: model/agent settings on the left, context ring + send/stop
             on the right. The send cluster uses `ml-auto` (not the row's
-            justify-between) so it stays hard-right even when the settings popover
-            renders nothing — while the agent is loading / errored / auth-required
-            it exposes no config options, and justify-between would then float the
-            lone send button to the left. */}
+            justify-between) so it stays hard-right independent of what the
+            settings popover renders (it stays mounted even for agents with no
+            options, showing a disabled trigger instead of vanishing). */}
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
           <AgentSettingsPopover info={info} />
           <div className="ml-auto flex items-center gap-1.5">

@@ -2010,6 +2010,7 @@
     "PIMM5l": ["Vous êtes abonné !"],
     "PKLY-1": ["Ouverture…"],
     "PKjGhT": ["Titres"],
+    "PMxZyQ": [["0"], " n'a pas encore communiqué ses paramètres"],
     "PMyJ9C": ["Pas encore de session de modification"],
     "PPFQ3o": ["« ", ["0"], " » installé dans ", ["1"]],
     "PQCdtv": ["« ", ["docName"], " » n'existe pas."],
@@ -2257,6 +2258,10 @@
     "SkTkKV": ["L'agent ne s'arrête pas. L'arrêt forcé ferme ce chat et quitte l'agent."],
     "Skr_7L": ["Rechercher des worktrees"],
     "SlfejT": ["Erreur"],
+    "Soy_80": [
+      ["0"],
+      " agit sans demander — OpenKnowledge ne peut pas lui ajouter de demandes de permission"
+    ],
     "SqIoy_": ["Correction automatique — aucun problème ici n'a de correction automatique"],
     "SrOuyg": ["Panneaux du document"],
     "SvBFYA": ["Aucun projet récent"],
@@ -2460,6 +2465,7 @@
     "VNgKZz": ["Paramètres avancés"],
     "VTulZj": ["Ouvrir dans un worktree"],
     "VUijjF": ["Intègre une image avec un texte alternatif facultatif."],
+    "VVRrPk": [["0"], " ne propose aucun paramètre à ajuster"],
     "VXGFMg": ["Annuler ou rétablir dans un champ de code"],
     "VYd_YA": ["Ouvrez un dossier de projet existant depuis le disque."],
     "VZGh8G": ["Replier, déplier, tout replier ou tout déplier les plages de la source."],

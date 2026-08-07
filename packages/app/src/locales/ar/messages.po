@@ -251,6 +251,11 @@ msgstr "{0, plural, zero {مهارات} one {مهارة} two {مهارتان} fe
 msgid "{0} · default"
 msgstr "{0} · افتراضي"
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
+msgstr "{0} يتصرف دون سؤال — لا يمكن لـ OpenKnowledge إضافة طلبات أذونات له"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -269,6 +274,16 @@ msgstr "{0} في السطر {displayLine}"
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
 msgstr "{0} لا يمكنه متابعة هذه المحادثة — النص محفوظ، لكن جلسة الوكيل لم تعد موجودة."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} doesn't offer any settings to adjust"
+msgstr "{0} لا يوفر أي إعدادات للضبط"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} hasn't reported its settings yet"
+msgstr "لم يبلغ {0} عن إعداداته بعد"
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx

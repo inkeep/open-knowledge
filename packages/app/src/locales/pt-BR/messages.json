@@ -1962,6 +1962,7 @@
     "PIMM5l": ["Assinatura confirmada!"],
     "PKLY-1": ["Abrindo..."],
     "PKjGhT": ["Títulos"],
+    "PMxZyQ": [["0"], " ainda não informou suas configurações"],
     "PMyJ9C": ["Ainda não há sessão de edição"],
     "PPFQ3o": ["\"", ["0"], "\" instalado em ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" não existe."],
@@ -2203,6 +2204,10 @@
     "SkTkKV": ["O agente não está parando. A parada forçada fecha este chat e encerra o agente."],
     "Skr_7L": ["Buscar worktrees"],
     "SlfejT": ["Erro"],
+    "Soy_80": [
+      ["0"],
+      " age sem perguntar — o OpenKnowledge não consegue adicionar pedidos de permissão para ele"
+    ],
     "SqIoy_": ["Correção automática — nenhum problema aqui tem correção automática"],
     "SrOuyg": ["Painéis do documento"],
     "SvBFYA": ["Nenhum projeto recente"],
@@ -2396,6 +2401,7 @@
     "VNgKZz": ["Configurações avançadas"],
     "VTulZj": ["Abrir em um worktree"],
     "VUijjF": ["Incorpora uma imagem com texto alternativo opcional."],
+    "VVRrPk": [["0"], " não oferece configurações para ajustar"],
     "VXGFMg": ["Desfazer ou refazer no campo de código"],
     "VYd_YA": ["Abre do disco uma pasta de projeto existente."],
     "VZGh8G": ["Dobra, desdobra, dobra tudo ou desdobra todos os trechos do código."],

@@ -251,6 +251,11 @@ msgstr "{0, plural, one {Skill} other {Skills}}"
 msgid "{0} · default"
 msgstr "{0} · default"
 
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
+msgstr "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
+
 #. placeholder {0}: result.additions
 #. placeholder {0}: stat.additions
 #. placeholder {1}: result.deletions
@@ -269,6 +274,16 @@ msgstr "{0} at line {displayLine}"
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
 msgstr "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} doesn't offer any settings to adjust"
+msgstr "{0} doesn't offer any settings to adjust"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} hasn't reported its settings yet"
+msgstr "{0} hasn't reported its settings yet"
 
 #. placeholder {0}: activeData.label
 #: src/components/EditorWorkspace.tsx

@@ -19,6 +19,7 @@
 import type {
   ContentBlock,
   PermissionOption,
+  PromptCapabilities,
   SessionConfigOption,
   SessionModeState,
   SessionUpdate,
@@ -141,6 +142,16 @@ export interface ThreadInfo {
   status: ThreadStatus;
   createdAt: number;
   lastActivityAt: number;
+  /**
+   * Prompt content the agent declared it can accept at `initialize`, beyond
+   * the protocol baseline of text + resource links (image / audio /
+   * embedded context). Set from the moment the handshake resolves; `{}`
+   * means the handshake resolved and the agent accepts baseline content
+   * only. Null or absent means the handshake hasn't resolved yet — "not yet
+   * known" is a different answer than "no", and the UI renders the two
+   * differently.
+   */
+  promptCapabilities?: PromptCapabilities | null;
   /** Present once the agent advertised modes (Ask / Architect / Code …). */
   modes?: SessionModeState | null;
   /**
@@ -649,6 +660,7 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
 export type {
   ContentBlock,
   PermissionOption,
+  PromptCapabilities,
   SessionConfigOption,
   SessionModeState,
   SessionUpdate,

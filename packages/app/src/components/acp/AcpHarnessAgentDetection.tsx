@@ -19,6 +19,7 @@ export function AcpHarnessAgentDetection() {
       source: agent.source,
       id: agent.id,
       name: agent.name,
+      featured: agent.featured,
       ...(agent.iconUrl !== undefined ? { iconUrl: agent.iconUrl } : {}),
     }));
     setDetectedRegisteredAgentSuggestions(suggestions);

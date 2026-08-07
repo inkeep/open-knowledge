@@ -1984,6 +1984,7 @@
     "PIMM5l": ["¡Te has suscrito!"],
     "PKLY-1": ["Abriendo..."],
     "PKjGhT": ["Encabezados"],
+    "PMxZyQ": [["0"], " aún no ha comunicado sus ajustes"],
     "PMyJ9C": ["Todavía no hay sesión de edición"],
     "PPFQ3o": ["Se instaló \"", ["0"], "\" en ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" no existe."],
@@ -2227,6 +2228,10 @@
     "SkTkKV": ["El agente no se detiene. La detención forzada cierra este chat y sale del agente."],
     "Skr_7L": ["Buscar worktrees"],
     "SlfejT": ["Error"],
+    "Soy_80": [
+      ["0"],
+      " actúa sin preguntar — OpenKnowledge no puede añadirle solicitudes de permiso"
+    ],
     "SqIoy_": ["Arreglo automático: ningún problema de aquí tiene arreglo automático"],
     "SrOuyg": ["Paneles del documento"],
     "SvBFYA": ["No hay proyectos recientes"],
@@ -2422,6 +2427,7 @@
     "VNgKZz": ["Ajustes avanzados"],
     "VTulZj": ["Abrir en un worktree"],
     "VUijjF": ["Incrusta una imagen con texto alternativo opcional."],
+    "VVRrPk": [["0"], " no ofrece ajustes que configurar"],
     "VXGFMg": ["Deshacer o rehacer en el campo de código"],
     "VYd_YA": ["Abre desde el disco una carpeta de proyecto existente."],
     "VZGh8G": ["Pliega, despliega, pliega todo o despliega todos los rangos del código."],
