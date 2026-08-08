@@ -307,7 +307,8 @@ export interface BootServerOptions
    * behind the default-off discipline.
    *
    * Sirv is configured with `single: true` (SPA fallback to `index.html`),
-   * `gzip: true`, and `immutable: true`. Unlike `ok ui`'s static handler,
+   * `gzip: true`, `dev: true`, and `etag: true` (see the call site for why
+   * live-disk lookup over a boot-time map). Unlike `ok ui`'s static handler,
    * `extensions: []` is NOT set here: that flag suppresses sirv's
    * directory-index resolution that `single: true` rides on for `/` and
    * bare deep-links. `ok ui` keeps it because its handler shares URL
@@ -846,9 +847,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   }
 
-  // React-shell serving — Electron utility opt-in.
+  // React-shell serving — the default for plain `ok start`, and the Electron
+  // utility path.
   //   - `single: true` — SPA fallback to `index.html` for unknown routes
-  //   - `gzip: true` + `immutable: true` — standard hashed-asset perf flags
+  //   - `gzip: true` — standard hashed-asset perf flag
   // Mounted in `mountMcpAndApi` AFTER `/mcp`, `/api/*`, the WS upgrade, and
   // `contentAssetMiddleware` — so existing surfaces keep priority and the
   // React shell is purely a fallback for non-data routes.
@@ -863,11 +865,27 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // behavior to work for unknown routes, which `extensions: []`
   // suppresses (it disables sirv's directory-index resolution path
   // that `single: true` rides on for `/` and bare deep-links).
+  // `dev: true` resolves each request against live disk instead of a
+  // boot-time file map — same rationale as `ok ui`'s shell handler: an
+  // in-place rebuild or `npm i -g` upgrade that rewrites the dist while this
+  // server is running must degrade to a 404/refresh, not stream from a
+  // boot-time map entry whose file is gone (observed: unhandled ENOENT from
+  // the stale map crashed the whole server). `etag: true` restores 304
+  // revalidation that dev mode otherwise drops; `immutable` is inert under
+  // `dev` (sirv only emits Cache-Control with `maxAge`).
+  //
+  // Dotfiles: sirv's dev lookup (`viaLocal`) has NO dotfile filter — that
+  // guard runs only in the boot-time cache path — so a `dotfiles: false`
+  // option here would be inert. This is safe ONLY because the shell dist is
+  // build output with no dotfiles; do not point this middleware at a tree
+  // that could contain them without adding an explicit dotfile reject in
+  // front. (`ok ui`'s shell handler carries the same constraint.)
   const reactShellMiddleware = opts.reactShellDistDir
     ? sirv(opts.reactShellDistDir, {
         single: true,
         gzip: true,
-        immutable: true,
+        etag: true,
+        dev: true,
       })
     : undefined;
 

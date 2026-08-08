@@ -40,10 +40,14 @@ In a sub-folder of a git repo, `ok init` sets the project up at the git root —
 Once you have initialized your project, launch the app in your browser:
 
 ```bash
-ok start --open
+ok start
 ```
 
-`ok start` also takes `-p/--port` and `-H/--host` to pick the address, and `--mode app` to hand off to the desktop app instead of running a server in the terminal (macOS with the desktop app installed; can't be combined with `--open`).
+One server on one port serves everything — the editor, the API, the MCP endpoint, and real-time collaboration — and the editor opens in your browser automatically (pass `--no-open-browser` to skip that). Running `ok start` again while a server is already up prints the running server's URL and exits.
+
+`ok start` also takes `-p/--port` and `--bind` to pick the address, `--idle-shutdown` (`off` or a duration like `30m`) to control when an unused server exits, `--only server` to run without the editor UI, and `--mode app` to hand off to the desktop app instead of running a server in the terminal (macOS with the desktop app installed).
+
+Idle shutdown is on by default at 30 minutes — a server with no connected clients exits so it doesn't linger. If you keep a session open for a long time without interacting, pass `--idle-shutdown off` (or a longer duration) to keep it running.
 
 For a complete list of every file OpenKnowledge creates or changes — during install, at runtime, and in the desktop app — see [What OpenKnowledge writes to your system](/docs/reference/what-open-knowledge-writes).
 

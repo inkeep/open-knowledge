@@ -52,8 +52,16 @@ export function bindTestUiLock(cwd: string, port = TEST_UI_PORT): string {
  * duration of the test. Used by tests exercising `preview_url`'s
  * backend-ensure branches, which key off `server.lock` state.
  */
-export function bindTestServerLock(cwd: string, port = 4321): void {
+export function bindTestServerLock(cwd: string, port = 4321, capabilities?: string[]): void {
   const lockDir = resolve(cwd, OK_DIR, LOCAL_DIR);
-  acquireServerLock(lockDir, { port: 0, worktreeRoot: cwd });
+  // `capabilities` survives the port update — `updateServerLockPort` reads the
+  // acquired metadata and rewrites only port/url. Pass `['http','ws']` to model
+  // an `--only server` boot (no `ui`), or `['http','ws','ui']` for a shell-
+  // serving server whose `ui.lock` hasn't bound yet.
+  acquireServerLock(lockDir, {
+    port: 0,
+    worktreeRoot: cwd,
+    ...(capabilities !== undefined ? { capabilities } : {}),
+  });
   updateServerLockPort(lockDir, port);
 }

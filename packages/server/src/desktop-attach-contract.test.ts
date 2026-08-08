@@ -4,6 +4,7 @@ import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { bootCompositionRig, parseProblem } from './composition-rig.test-helper.ts';
+import { readServerLock } from './server-lock.ts';
 import { acquireUiLock, readUiLock, releaseUiLock, updateUiLockPort } from './ui-lock.ts';
 
 /**
@@ -159,6 +160,73 @@ describe('ui.lock — the Desktop attach advertisement', () => {
         expect(body.detail).toContain('ok ui');
         expect(body.detail).toContain('ui.lock');
         expect(existsSync(resolve(tmp, '.ok', 'local', 'ui.lock'))).toBe(false);
+      } finally {
+        await booted.destroy();
+      }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+/**
+ * The canonical attach contract that replaces the ui.lock flow above: a
+ * server that serves the React shell advertises ONE record — `server.lock`'s
+ * `url` plus `capabilities` containing `"ui"`. Claude Desktop's pre-declared
+ * entrypoint (and the MCP preview tools via `resolveUiInfo`) dial that URL
+ * directly; every surface (`/`, `/api/*`, `/mcp`, `/collab`) lives at the one
+ * origin. The ui.lock behaviors above stay pinned for the version-skew
+ * window; readers must prefer this record whenever the `ui` capability is
+ * present.
+ */
+describe('server.lock v2 — the canonical Claude Desktop attach contract', () => {
+  test('a shell-serving server advertises url + the ui capability, and that url serves the shell', async () => {
+    const tmp = await mkdtemp(resolve(tmpdir(), 'ok-attach-v2-'));
+    try {
+      const projectDir = mkdtempSync(resolve(tmp, 'proj-'));
+      const shellDistDir = mkdtempSync(resolve(tmp, 'dist-'));
+      writeFileSync(resolve(shellDistDir, 'index.html'), '<html>shell</html>', 'utf-8');
+
+      const booted = await bootCompositionRig(projectDir, { reactShellDistDir: shellDistDir });
+      try {
+        await booted.ready;
+
+        // The advertisement: one URL, the ui capability, a bound port.
+        const lock = readServerLock(resolve(projectDir, '.ok', 'local'));
+        expect(lock).not.toBeNull();
+        expect(lock?.port).toBe(booted.port);
+        expect(lock?.url).toBe(`http://127.0.0.1:${booted.port}`);
+        expect(lock?.capabilities).toContain('ui');
+        expect(lock?.capabilities).toContain('http');
+        expect(lock?.capabilities).toContain('ws');
+
+        // Attach exactly as a pre-registered Desktop pane does: dial the
+        // advertised URL cold and expect the SPA shell.
+        const shellRes = await fetch(`${lock?.url}/`);
+        expect(shellRes.status).toBe(200);
+        expect(await shellRes.text()).toContain('shell');
+
+        // Route precedence at the same origin: /api stays a data surface
+        // (problem+json), never the SPA fallback.
+        const apiRes = await fetch(`${lock?.url}/api/definitely-not-a-route`);
+        expect(apiRes.headers.get('content-type')).toContain('json');
+      } finally {
+        await booted.destroy();
+      }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('a server not serving the shell advertises no ui capability', async () => {
+    const tmp = await mkdtemp(resolve(tmpdir(), 'ok-attach-v2-noui-'));
+    try {
+      const booted = await bootCompositionRig(tmp);
+      try {
+        await booted.ready;
+        const lock = readServerLock(resolve(tmp, '.ok', 'local'));
+        expect(lock).not.toBeNull();
+        expect(lock?.capabilities).toEqual(['http', 'ws']);
       } finally {
         await booted.destroy();
       }

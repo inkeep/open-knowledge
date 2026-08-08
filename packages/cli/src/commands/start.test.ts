@@ -18,13 +18,21 @@ import {
   connectUiSibling,
   decideUiSpawn,
   deriveServerProcessTitle,
+  formatServerReuseNotice,
   formatShutdownNotice,
+  isLoopbackHost,
   isServerLockCollision,
   OkDirMissingError,
+  parseIdleShutdownFlag,
+  parseOnlyModule,
+  resolveBundledReactShellDir,
   resolveCollabPort,
   resolveHost,
+  resolveServerReuse,
   resolveStartConsoleLevel,
+  resolveStartShellDir,
   shouldConnectToExistingServer,
+  shouldOpenBrowser,
   spawnOkUi,
   startCommand,
   teardownUiSibling,
@@ -36,7 +44,7 @@ import {
 import { closeHttpServers, startUiServer, type UiServerHandle } from './ui.ts';
 
 describe('resolveHost', () => {
-  test('returns --host flag when present (highest priority)', () => {
+  test('returns --host flag when --bind is absent (second priority, after --bind)', () => {
     expect(resolveHost({ host: '0.0.0.0' }, { HOST: '127.0.0.2' })).toBe('0.0.0.0');
   });
 
@@ -937,6 +945,25 @@ describe('bootStartServer (integration)', () => {
     expect(body.status).toBe(404);
     expect(body.detail).toContain('React UI is served by `ok ui`');
     expect(body.detail).toContain('/');
+  });
+
+  test('idleThresholdMs: null (--idle-shutdown off) threads through and boots (not the 30-min default)', async () => {
+    // Load-bearing distinction: bootStartServer uses an explicit `=== undefined`
+    // check, not `??`, so `null` disables idle shutdown rather than falling back
+    // to DEFAULT_IDLE_THRESHOLD_MS. A refactor to `?? DEFAULT` would silently
+    // re-enable the 30-min timer under `--idle-shutdown off`. Boot succeeding
+    // with `null` proves the value is accepted and threaded to bootServer,
+    // whose own `idleShutdownMs: null` contract disables the timer.
+    booted = await bootStartServer({
+      config: makeTestConfig(),
+      cwd: tmpDir,
+      host: TEST_HOST,
+      skipAutoInit: true,
+      skipUiAutoSpawn: true,
+      idleThresholdMs: null,
+    });
+    expect(booted.port).toBeGreaterThan(0);
+    await booted.ready;
   });
 
   test('GET /assets/anything also returns the same pointer (no static fallthrough)', async () => {
@@ -2120,6 +2147,7 @@ describe('tryDescribeLockCollision', () => {
     class ServerLockCollisionError extends Error {}
     return {
       ServerLockCollisionError,
+      resolveLockDir: (projectDir: string) => join(projectDir, '.ok', 'local'),
       readServerLock: () => {
         if (opts.throwOnRead) throw new Error('synthetic read failure');
         return opts.meta;
@@ -2134,12 +2162,12 @@ describe('tryDescribeLockCollision', () => {
     expect(result).toBeNull();
   });
 
-  test("kind='interactive' → desktop-running message", () => {
+  test("kind='interactive' → generic message (covers terminal AND desktop holders)", () => {
     const fm = fakeServerModule({ meta: { kind: 'interactive', pid: 42, port: 3000 } });
     const err = new fm.ServerLockCollisionError();
     const result = tryDescribeLockCollision(err, '/tmp/proj', fm);
-    expect(result).toContain('desktop is currently running');
-    expect(result).toContain('--cwd');
+    expect(result).toContain('already running');
+    expect(result).not.toContain('desktop');
   });
 
   test("kind='mcp-spawned' → MCP idle-shutdown message", () => {
@@ -2227,5 +2255,454 @@ describe('withEphemeralTempDirReap', () => {
     );
     await expect(wrapped()).rejects.toThrow('destroy failed');
     expect(removed).toEqual(['/tmp/ok-ephemeral-throw']);
+  });
+});
+
+describe('resolveHost — --bind precedence', () => {
+  test('--bind wins over the deprecated --host alias and env', () => {
+    expect(resolveHost({ bind: ['0.0.0.0'], host: '127.0.0.2' }, { HOST: '127.0.0.3' })).toBe(
+      '0.0.0.0',
+    );
+  });
+
+  test('empty bind list falls through to --host', () => {
+    expect(resolveHost({ bind: [], host: '127.0.0.2' }, {})).toBe('127.0.0.2');
+  });
+});
+
+describe('parseOnlyModule', () => {
+  test('accepts ui and server', () => {
+    expect(parseOnlyModule('ui')).toBe('ui');
+    expect(parseOnlyModule('server')).toBe('server');
+  });
+
+  test('rejects anything else', () => {
+    expect(() => parseOnlyModule('api')).toThrow(/--only must be/);
+  });
+});
+
+describe('resolveBundledReactShellDir (candidate-path probe)', () => {
+  test('returns the first candidate that exists', () => {
+    // Injected existsFn accepts any path — asserts the probe returns the FIRST
+    // hit (the published `dist/public` slot is tried before the monorepo paths).
+    const dir = resolveBundledReactShellDir(() => true);
+    expect(dir).not.toBeUndefined();
+    expect(dir?.endsWith('public')).toBe(true);
+  });
+
+  test('returns undefined when no candidate exists (→ API/MCP-only degrade)', () => {
+    expect(resolveBundledReactShellDir(() => false)).toBeUndefined();
+  });
+});
+
+describe('resolveStartShellDir (the Wave 3 default-flip decision)', () => {
+  const bundled = () => '/bundled/dist';
+  const noBundle = () => undefined;
+
+  test('default: resolves the bundled shell — the flip', () => {
+    expect(
+      resolveStartShellDir({
+        explicitDir: undefined,
+        only: undefined,
+        uiPortSet: false,
+        remoteEnabled: false,
+        findBundledDir: bundled,
+      }),
+    ).toEqual({ dir: '/bundled/dist', missingBundle: false });
+  });
+
+  test('explicit --react-shell-dist-dir always wins', () => {
+    expect(
+      resolveStartShellDir({
+        explicitDir: '/explicit',
+        only: undefined,
+        uiPortSet: true,
+        remoteEnabled: false,
+        findBundledDir: noBundle,
+      }).dir,
+    ).toBe('/explicit');
+  });
+
+  test('--only server opts out of the UI module entirely', () => {
+    expect(
+      resolveStartShellDir({
+        explicitDir: undefined,
+        only: 'server',
+        uiPortSet: false,
+        remoteEnabled: false,
+        findBundledDir: bundled,
+      }),
+    ).toEqual({ dir: undefined, missingBundle: false });
+  });
+
+  test('--ui-port keeps the legacy sibling model (worktree-preview recipe)', () => {
+    expect(
+      resolveStartShellDir({
+        explicitDir: undefined,
+        only: undefined,
+        uiPortSet: true,
+        remoteEnabled: false,
+        findBundledDir: bundled,
+      }),
+    ).toEqual({ dir: undefined, missingBundle: false });
+  });
+
+  test('remote overrides the --ui-port opt-out — one tunnel covers everything', () => {
+    expect(
+      resolveStartShellDir({
+        explicitDir: undefined,
+        only: undefined,
+        uiPortSet: true,
+        remoteEnabled: true,
+        findBundledDir: bundled,
+      }).dir,
+    ).toBe('/bundled/dist');
+  });
+
+  test('missing bundle degrades (API/MCP-only) and is flagged for the warning', () => {
+    expect(
+      resolveStartShellDir({
+        explicitDir: undefined,
+        only: undefined,
+        uiPortSet: false,
+        remoteEnabled: false,
+        findBundledDir: noBundle,
+      }),
+    ).toEqual({ dir: undefined, missingBundle: true });
+  });
+});
+
+describe('isLoopbackHost', () => {
+  test('loopback shapes', () => {
+    expect(isLoopbackHost('127.0.0.1')).toBe(true);
+    expect(isLoopbackHost('127.1.2.3')).toBe(true);
+    expect(isLoopbackHost('localhost')).toBe(true);
+    expect(isLoopbackHost('::1')).toBe(true);
+    expect(isLoopbackHost('[::1]')).toBe(true);
+  });
+
+  test('non-loopback shapes', () => {
+    expect(isLoopbackHost('0.0.0.0')).toBe(false);
+    expect(isLoopbackHost('::')).toBe(false);
+    expect(isLoopbackHost('192.168.1.5')).toBe(false);
+  });
+});
+
+describe('shouldOpenBrowser (interactive-loopback default open)', () => {
+  const base = {
+    openBrowser: true,
+    legacyOpen: false,
+    host: '127.0.0.1',
+    isTTY: true,
+    remoteEnabled: false,
+    ephemeral: false,
+    only: undefined,
+    servesUi: true,
+  } as const;
+
+  test('interactive loopback start serving the UI opens by default', () => {
+    expect(shouldOpenBrowser({ ...base })).toBe(true);
+  });
+
+  test('--no-open-browser suppresses', () => {
+    expect(shouldOpenBrowser({ ...base, openBrowser: false })).toBe(false);
+  });
+
+  test('deprecated --open force-opens even without a TTY (pre-flip contract)', () => {
+    expect(shouldOpenBrowser({ ...base, legacyOpen: true, isTTY: false })).toBe(true);
+  });
+
+  test('no TTY (spawned/CI) stays quiet', () => {
+    expect(shouldOpenBrowser({ ...base, isTTY: false })).toBe(false);
+  });
+
+  test('non-loopback bind stays quiet', () => {
+    expect(shouldOpenBrowser({ ...base, host: '0.0.0.0' })).toBe(false);
+  });
+
+  test('remote mode stays quiet', () => {
+    expect(shouldOpenBrowser({ ...base, remoteEnabled: true })).toBe(false);
+  });
+
+  test('ephemeral single-file stays quiet (owns its own open flow)', () => {
+    expect(shouldOpenBrowser({ ...base, ephemeral: true })).toBe(false);
+  });
+
+  test('--only server stays quiet', () => {
+    expect(shouldOpenBrowser({ ...base, only: 'server' })).toBe(false);
+  });
+
+  test('a start that ended up serving no shell stays quiet', () => {
+    expect(shouldOpenBrowser({ ...base, servesUi: false })).toBe(false);
+  });
+
+  // Guard-ordering regressions: --open must not override the "nothing to open"
+  // or "explicit no" suppressions (only the TTY / loopback gates).
+  test('--open does NOT open a dead tab at a shell-less --only server', () => {
+    expect(shouldOpenBrowser({ ...base, legacyOpen: true, only: 'server', servesUi: false })).toBe(
+      false,
+    );
+  });
+
+  test('--open does NOT open when no shell was served', () => {
+    expect(shouldOpenBrowser({ ...base, legacyOpen: true, servesUi: false })).toBe(false);
+  });
+
+  test('--no-open-browser wins over --open (explicit no)', () => {
+    expect(shouldOpenBrowser({ ...base, legacyOpen: true, openBrowser: false })).toBe(false);
+  });
+});
+
+describe('resolveServerReuse (spawn-or-reuse)', () => {
+  const immediate = { now: () => 0, sleep: async () => {}, timeoutMs: 1000, pollIntervalMs: 10 };
+
+  test('ui-capable holder: reports the lock v2 url (the canonical one-URL contract)', async () => {
+    const info = await resolveServerReuse({
+      ...immediate,
+      readServerLock: () => ({
+        pid: 42,
+        port: 24_550,
+        url: 'http://127.0.0.1:24550',
+        kind: 'interactive',
+        capabilities: ['http', 'ws', 'ui'],
+      }),
+      readUiLock: () => null,
+    });
+    expect(info).toEqual({
+      url: 'http://127.0.0.1:24550',
+      kind: 'interactive',
+      pid: 42,
+      servesUi: true,
+    });
+  });
+
+  test('sibling topology (no ui capability): reports the live ui.lock advertisement', async () => {
+    const info = await resolveServerReuse({
+      ...immediate,
+      readServerLock: () => ({
+        pid: 42,
+        port: 24_550,
+        url: 'http://127.0.0.1:24550',
+        capabilities: ['http', 'ws'],
+      }),
+      readUiLock: () => ({ pid: 43, port: 39_847 }),
+    });
+    expect(info?.url).toBe('http://localhost:39847');
+    expect(info?.servesUi).toBe(false);
+  });
+
+  test('sibling topology: prefers the ui.lock url when present (IPv6 bind, not localhost)', async () => {
+    const info = await resolveServerReuse({
+      ...immediate,
+      readServerLock: () => ({ pid: 42, port: 24_550, capabilities: ['http', 'ws'] }),
+      readUiLock: () => ({ pid: 43, port: 39_847, url: 'http://[::1]:39847' }),
+    });
+    expect(info?.url).toBe('http://[::1]:39847');
+    expect(info?.servesUi).toBe(false);
+  });
+
+  test('no ui anywhere: falls back to the server address', async () => {
+    const info = await resolveServerReuse({
+      ...immediate,
+      readServerLock: () => ({ pid: 42, port: 24_550 }),
+      readUiLock: () => null,
+    });
+    expect(info?.url).toBe('http://127.0.0.1:24550');
+  });
+
+  test('polls through the pre-listen port-0 sentinel to the bound port', async () => {
+    let clock = 0;
+    let reads = 0;
+    const info = await resolveServerReuse({
+      readServerLock: () => {
+        reads += 1;
+        return reads < 3
+          ? { pid: 42, port: 0 }
+          : {
+              pid: 42,
+              port: 24_550,
+              url: 'http://127.0.0.1:24550',
+              capabilities: ['http', 'ws', 'ui'],
+            };
+      },
+      readUiLock: () => null,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      timeoutMs: 1000,
+      pollIntervalMs: 10,
+    });
+    expect(info?.url).toBe('http://127.0.0.1:24550');
+  });
+
+  test('draining holder yields null (caller falls back to the error path)', async () => {
+    const info = await resolveServerReuse({
+      ...immediate,
+      readServerLock: () => ({ pid: 42, port: 24_550, draining: true }),
+      readUiLock: () => null,
+    });
+    expect(info).toBeNull();
+  });
+
+  test('sentinel that never binds times out to null', async () => {
+    let clock = 0;
+    const info = await resolveServerReuse({
+      readServerLock: () => ({ pid: 42, port: 0 }),
+      readUiLock: () => null,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      timeoutMs: 100,
+      pollIntervalMs: 10,
+    });
+    expect(info).toBeNull();
+  });
+
+  test('missing lock yields null', async () => {
+    const info = await resolveServerReuse({
+      ...immediate,
+      readServerLock: () => null,
+      readUiLock: () => null,
+    });
+    expect(info).toBeNull();
+  });
+});
+
+describe('formatServerReuseNotice', () => {
+  test("kind='interactive' gets the neutral copy — it covers terminal AND desktop holders", () => {
+    const lines = formatServerReuseNotice({
+      url: 'http://127.0.0.1:1',
+      kind: 'interactive',
+      pid: 7,
+      servesUi: true,
+    });
+    expect(lines[0]).toContain('already running');
+    expect(lines[0]).not.toContain('desktop');
+    expect(lines.join('\n')).toContain('http://127.0.0.1:1');
+  });
+
+  test('names the mcp-spawned holder and the generic holder', () => {
+    expect(
+      formatServerReuseNotice({ url: 'u', kind: 'mcp-spawned', pid: 7, servesUi: true })[0],
+    ).toContain('MCP-spawned');
+    expect(formatServerReuseNotice({ url: 'u', pid: 7, servesUi: false })[0]).toContain(
+      'already running',
+    );
+  });
+});
+
+describe('parseIdleShutdownFlag (--idle-shutdown, Table 3 semantics)', () => {
+  test("'off' disables idle shutdown (null)", () => {
+    expect(parseIdleShutdownFlag('off')).toBeNull();
+  });
+
+  test('parses s/m/h durations to ms', () => {
+    expect(parseIdleShutdownFlag('90s')).toBe(90_000);
+    expect(parseIdleShutdownFlag('30m')).toBe(1_800_000);
+    expect(parseIdleShutdownFlag('2h')).toBe(7_200_000);
+  });
+
+  test('rejects unitless, zero-led, and unknown-unit values', () => {
+    for (const bad of ['30', '0s', '05m', '1d', 'forever', '']) {
+      expect(() => parseIdleShutdownFlag(bad)).toThrow(/--idle-shutdown/);
+    }
+  });
+});
+
+describe('startCommand — flag-conflict guards (exit 2)', () => {
+  function quietCommand() {
+    const cmd = startCommand(() => makeTestConfig());
+    cmd.exitOverride();
+    cmd.configureOutput({ writeOut: () => {}, writeErr: () => {} });
+    return cmd;
+  }
+
+  /**
+   * Parse argv against the real `startCommand` action with process.exit +
+   * stderr stubbed, returning the captured exit code and stderr. Each guard
+   * exits before any server boot, so no teardown is needed.
+   */
+  async function captureGuard(
+    argv: string[],
+  ): Promise<{ code: number | undefined; stderr: string }> {
+    const cmd = quietCommand();
+    let code: number | undefined;
+    let stderr = '';
+    const originalExit = process.exit;
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.exit = ((c?: number) => {
+      code = c;
+      throw new Error('exit-stub');
+    }) as never;
+    process.stderr.write = ((chunk: unknown) => {
+      stderr += String(chunk);
+      return true;
+    }) as never;
+    try {
+      await cmd.parseAsync(argv, { from: 'user' });
+    } catch (err) {
+      if ((err as Error).message !== 'exit-stub') throw err;
+    } finally {
+      process.exit = originalExit;
+      process.stderr.write = originalWrite;
+    }
+    return { code, stderr };
+  }
+
+  test('multiple --bind addresses exit 2', async () => {
+    const { code, stderr } = await captureGuard(['--bind', '127.0.0.1', '--bind', '10.0.0.1']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--bind');
+  });
+
+  test('--server-url without --only ui exits 2', async () => {
+    const { code, stderr } = await captureGuard(['--server-url', 'http://127.0.0.1:24550']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--server-url');
+  });
+
+  test('--only ui without --server-url exits 2', async () => {
+    const { code, stderr } = await captureGuard(['--only', 'ui']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--server-url');
+  });
+
+  test('--only server + --react-shell-dist-dir exits 2', async () => {
+    const { code, stderr } = await captureGuard([
+      '--only',
+      'server',
+      '--react-shell-dist-dir',
+      '/tmp/shell',
+    ]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--react-shell-dist-dir');
+  });
+
+  test('--only ui + --mode app exits 2 (would silently drop --mode app)', async () => {
+    const { code, stderr } = await captureGuard([
+      '--only',
+      'ui',
+      '--server-url',
+      'http://127.0.0.1:24550',
+      '--mode',
+      'app',
+    ]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--mode app');
+  });
+
+  test('--only ui + --remote exits 2 (would silently drop --remote)', async () => {
+    const { code, stderr } = await captureGuard([
+      '--only',
+      'ui',
+      '--server-url',
+      'http://127.0.0.1:24550',
+      '--remote',
+      'https://tunnel.example.com',
+    ]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--remote');
   });
 });

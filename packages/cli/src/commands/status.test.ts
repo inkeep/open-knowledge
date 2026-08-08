@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { LockState } from './lock-state.ts';
 import { buildStatusReport, renderStatusText, runStatus } from './status.ts';
 
-function alive(pid: number, port: number, host = 'host'): LockState {
+function alive(pid: number, port: number, host = 'host', capabilities?: string[]): LockState {
   return {
     status: 'alive',
     lockPath: `/tmp/fake-${pid}.lock`,
@@ -12,6 +12,7 @@ function alive(pid: number, port: number, host = 'host'): LockState {
       hostname: host,
       startedAt: '2026-04-16T00:00:00Z',
       worktreeRoot: '/x',
+      ...(capabilities !== undefined ? { capabilities } : {}),
     },
   };
 }
@@ -88,6 +89,24 @@ describe('buildStatusReport', () => {
     expect(r.server.alive).toBe('unknown');
     expect(r.server.host).toBe('other-box');
   });
+
+  test('single-listener default: ui.lock missing but server advertises `ui` → ui served by server', () => {
+    // The Wave 3 flip writes only server.lock (capabilities incl. `ui`); a
+    // "not running" ui row would be a false negative. Synthesize it instead.
+    const r = buildStatusReport(alive(100, 3001, 'host', ['http', 'ws', 'ui']), missing());
+    expect(r.ui.state).toBe('alive');
+    expect(r.ui.alive).toBe(true);
+    expect(r.ui.servedByServer).toBe(true);
+    expect(r.ui.pid).toBe(100);
+    expect(r.ui.port).toBe(3001);
+  });
+
+  test('server without the `ui` capability leaves a missing ui.lock as not-running', () => {
+    // `--only server`: no UI anywhere, so the ui row must stay honest.
+    const r = buildStatusReport(alive(100, 3001, 'host', ['http', 'ws']), missing());
+    expect(r.ui.state).toBe('missing');
+    expect(r.ui.servedByServer).toBeUndefined();
+  });
 });
 
 describe('renderStatusText', () => {
@@ -96,6 +115,14 @@ describe('renderStatusText', () => {
     expect(out).toContain('pid=100 port=3001');
     expect(out).toContain('pid=200 port=3000');
     expect(out).toContain('started=2026-04-16T00:00:00Z');
+  });
+
+  test('ui served by server renders "served by server", not "not running"', () => {
+    const out = renderStatusText(
+      buildStatusReport(alive(100, 3001, 'host', ['http', 'ws', 'ui']), missing()),
+    );
+    expect(out).toContain('served by server  pid=100 port=3001');
+    expect(out).not.toContain('ui      not running');
   });
 
   test('missing entries render "not running"', () => {

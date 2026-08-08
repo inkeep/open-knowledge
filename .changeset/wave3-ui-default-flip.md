@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": minor
+---
+
+`ok start` now serves the editor UI from the project server by default — one process, one port, one URL for the editor, `/api/*`, `/mcp`, and `/collab`. The separate `ok ui` sibling process is no longer spawned; `ok ui` keeps working as a deprecated fallback for older desktop builds and will be removed in a later release. Running `ok start` against a project whose server is already up now reports the running server's URL and exits cleanly instead of failing with a lock error, and interactive starts open the editor in your browser automatically (suppress with `--no-open-browser`). New flags: `--bind` replaces `--host` (which keeps working as an alias), `--idle-shutdown <duration|off>` controls the idle window, and `--only server` / `--only ui --server-url <url>` let operators run one module at a time. Desktop and agent tooling discover the editor through `server.lock`'s `url` plus `capabilities: ["ui"]` — the single attach record for every surface.

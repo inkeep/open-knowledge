@@ -20,6 +20,10 @@ interface StatusEntry {
   /** Resolved `alive` verdict — `true` for local-live locks, `false` for
    *  `missing` / `dead-pid` / `corrupt`, `'unknown'` for foreign-host. */
   alive: boolean | 'unknown';
+  /** UI only: the UI is served by the project server itself (single-listener
+   *  default — server.lock advertises the `ui` capability and no ui.lock
+   *  exists), rather than by a separate `ok ui` sibling. */
+  servedByServer?: boolean;
 }
 
 interface StatusReport {
@@ -28,10 +32,30 @@ interface StatusReport {
 }
 
 export function buildStatusReport(server: LockState, ui: LockState): StatusReport {
-  return {
-    server: summarize('server', server),
-    ui: summarize('ui', ui),
-  };
+  const serverEntry = summarize('server', server);
+  let uiEntry = summarize('ui', ui);
+  // Single-listener default (Wave 3 flip): plain `ok start` serves the UI from
+  // the project server and writes NO ui.lock. Without this, the ui row would
+  // read "not running" while the editor is fully up at the server's port — a
+  // false negative for anyone scripting against `ok status`. Synthesize the ui
+  // state from server.lock's `ui` capability instead.
+  if (
+    uiEntry.state === 'missing' &&
+    server.status === 'alive' &&
+    server.lock.capabilities?.includes('ui') === true
+  ) {
+    uiEntry = {
+      name: 'ui',
+      state: 'alive',
+      pid: server.lock.pid,
+      port: server.lock.port,
+      startedAt: server.lock.startedAt,
+      host: server.lock.hostname,
+      alive: true,
+      servedByServer: true,
+    };
+  }
+  return { server: serverEntry, ui: uiEntry };
 }
 
 function summarize(name: 'server' | 'ui', state: LockState): StatusEntry {
@@ -92,6 +116,9 @@ function renderEntry(entry: StatusEntry): string {
     return `${label}  stale (dead pid=${entry.pid}) — run \`ok clean\``;
   }
   // alive
+  if (entry.servedByServer === true) {
+    return `${label}  served by server  pid=${entry.pid} port=${entry.port}`;
+  }
   return `${label}  alive  pid=${entry.pid} port=${entry.port} started=${entry.startedAt}`;
 }
 

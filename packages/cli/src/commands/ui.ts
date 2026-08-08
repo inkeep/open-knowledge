@@ -1,6 +1,14 @@
 /**
  * `open-knowledge ui` — serves the React editor UI as a sibling to `ok start`.
  *
+ * DEPRECATED as a user-facing command: plain `ok start` now serves the shell
+ * from the project server on one port. This command remains functional for
+ * the Desktop version-skew window (older desktop builds attach through it and
+ * `ui.lock`) and as the engine behind `ok start --only ui --server-url` (the
+ * explicit split-mode, which passes `upstreamUrl` instead of discovering the
+ * upstream via `server.lock`). Do not remove until the Desktop attach
+ * re-point has shipped in a stable release.
+ *
  * Default port `DEFAULT_UI_PORT` (39847 — quirky, IANA-unassigned, unlikely to
  * collide with other dev servers); `PORT` env and `--port` flag override. When the
  * default port is busy, the bind layer falls back to kernel-allocation
@@ -149,6 +157,41 @@ interface StartUiServerOptions {
    * controlled tmp dist — but also lets an embedder point at a custom build.
    */
   assetDir?: string;
+  /**
+   * Explicit upstream project-server URL (`ok start --only ui --server-url`).
+   * When set, `/api/*` proxying and `/collab` upgrade forwarding dial this
+   * address instead of discovering the upstream via `server.lock` — the
+   * split-mode contract where the operator owns the wiring. `http:` only (the
+   * proxy speaks plain `node:http`; TLS termination belongs to the operator's
+   * ingress, in front of both halves).
+   */
+  upstreamUrl?: string;
+}
+
+/**
+ * Parse `--server-url` into the host/port pair the proxy dials. Exported for
+ * tests. Rejects non-`http:` schemes: the split-mode proxy is plain
+ * `node:http`, and a TLS upstream would silently downgrade.
+ *
+ * IPv6: `url.hostname` KEEPS the brackets (`[::1]`), but `node:http`'s `host`
+ * option wants the bare address (`::1`) — so strip them here, or the proxy
+ * would fail to dial an IPv6 upstream.
+ */
+export function parseUpstreamUrl(raw: string): { host: string; port: number } {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`Invalid --server-url '${raw}' — expected e.g. http://127.0.0.1:24550`);
+  }
+  if (url.protocol !== 'http:') {
+    throw new Error(
+      `--server-url must be http: (got '${url.protocol}//') — the UI proxy speaks plain HTTP; terminate TLS at your ingress`,
+    );
+  }
+  const port = url.port !== '' ? Number(url.port) : 80;
+  const host = url.hostname.replace(/^\[(.+)\]$/, '$1');
+  return { host, port };
 }
 
 /**
@@ -240,6 +283,22 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       })
     : null;
 
+  // Upstream resolution — one closure shared by the `/api` proxy, the
+  // `/collab` upgrade forwarder, and `/api/config`. An explicit
+  // `--server-url` (split mode) wins; otherwise discover the project server
+  // via `server.lock` on every call so a later `ok start` shows up without a
+  // UI restart.
+  const explicitUpstream =
+    opts.upstreamUrl !== undefined ? parseUpstreamUrl(opts.upstreamUrl) : null;
+  const resolveUpstream = (): { host: string; port: number } | null => {
+    if (explicitUpstream !== null) return explicitUpstream;
+    const lock = readServerLock(lockDir);
+    if (!lock || lock.port <= 0) return null;
+    // Dial the data server on the same numeric IPv4 loopback it binds — see
+    // DEFAULT_SERVER_HOST's JSDoc for why not `localhost`.
+    return { host: DEFAULT_SERVER_HOST, port: lock.port };
+  };
+
   // Resolved port — filled in after listen(). /api/config reads from this so
   // the advertised `port` matches what the kernel actually bound (matters
   // when opts.port is 0).
@@ -289,7 +348,6 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       // `useCollabUrl` hook, default ~2s cadence while unresolved) never lets
       // the 12h timer fire mid-session.
       apiConfigNudge?.();
-      const lock = readServerLock(lockDir);
       // Advertise the collab WebSocket on the **same origin** the shell
       // loaded from — `ok ui` forwards `/collab` upgrades to the collab
       // server in its `on('upgrade')` handler below. Same-origin avoids the
@@ -299,7 +357,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       // `req.headers.host` is guaranteed present and loopback-shaped; the
       // `?? <localhost>` fallback is defense-in-depth only.
       const sameOriginHost = req.headers.host ?? `localhost:${resolvedPort}`;
-      const collabUrl = lock && lock.port > 0 ? `ws://${sameOriginHost}/collab` : null;
+      const collabUrl = resolveUpstream() !== null ? `ws://${sameOriginHost}/collab` : null;
       const body = JSON.stringify({ collabUrl, previewUrl: null, port: resolvedPort });
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Cache-Control', 'no-store');
@@ -326,8 +384,8 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
     // "Start `ok start`" title instead of a generic HTTP-503 fallback.
     if (url?.startsWith('/api/')) {
       apiConfigNudge?.();
-      const lock = readServerLock(lockDir);
-      if (!lock || lock.port <= 0) {
+      const upstream = resolveUpstream();
+      if (upstream === null) {
         emitProblem(
           res,
           503,
@@ -338,10 +396,8 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
         return;
       }
       proxyRequest(req, res, {
-        // Dial the data server on the same numeric IPv4 loopback it binds — see
-        // DEFAULT_SERVER_HOST's JSDoc for why not `localhost`.
-        upstreamHost: DEFAULT_SERVER_HOST,
-        upstreamPort: lock.port,
+        upstreamHost: upstream.host,
+        upstreamPort: upstream.port,
       });
       return;
     }
@@ -422,8 +478,8 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       clientSocket.destroy();
       return;
     }
-    const lock = readServerLock(lockDir);
-    if (!lock || lock.port <= 0) {
+    const upstream = resolveUpstream();
+    if (upstream === null) {
       console.warn(
         JSON.stringify({
           event: 'ok-ui-upgrade-no-collab-lock',
@@ -434,16 +490,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
       clientSocket.destroy();
       return;
     }
-    // Dial the data server on the same numeric IPv4 loopback it binds — see
-    // DEFAULT_SERVER_HOST's JSDoc for why not `localhost`.
-    proxyUpgrade(
-      req,
-      clientSocket,
-      head,
-      DEFAULT_SERVER_HOST,
-      lock.port,
-      upgradeSocketsForShutdown,
-    );
+    proxyUpgrade(req, clientSocket, head, upstream.host, upstream.port, upgradeSocketsForShutdown);
   };
   const drainUpgradeSockets = (): void => {
     for (const sock of upgradeSocketsForShutdown) {
@@ -788,9 +835,174 @@ export async function resolveUiLockCollision(
   return { mode: 'proxy', handle, upstreamPort };
 }
 
+export interface RunUiCommandOptions {
+  port?: string;
+  host?: string;
+  /** Explicit upstream (`ok start --only ui --server-url`) — see `StartUiServerOptions.upstreamUrl`. */
+  upstreamUrl?: string;
+}
+
+/**
+ * Body of the `ui` command — exported so `ok start --only ui` (the split-mode
+ * replacement) can run the same server without going through Commander or the
+ * deprecation notice.
+ */
+export async function runUiCommand(config: Config, opts: RunUiCommandOptions): Promise<void> {
+  const { dim } = await import('../ui/colors.ts');
+  const { UiLockCollisionError } = await import('@inkeep/open-knowledge-server');
+  const { resolveLockDir } = await import('@inkeep/open-knowledge-server');
+  // Undefined `host` triggers the default two-socket loopback mode in
+  // startUiServer. Callers who pass `-H` get single-socket bind as-is.
+  const host = opts.host;
+
+  // Validate `--server-url` up front for a clean argument-error exit rather
+  // than a stack trace out of startUiServer.
+  if (opts.upstreamUrl !== undefined) {
+    try {
+      parseUpstreamUrl(opts.upstreamUrl);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(2);
+    }
+  }
+
+  let resolved: ResolvedRequestedPort;
+  try {
+    resolved = resolveRequestedPort(opts.port, process.env.PORT);
+  } catch (err) {
+    // Exit 2 (usage error) to match the `--server-url` validation above and
+    // `ok start`'s argument-error convention — uniform now that `ok start
+    // --only ui` routes its `--port` through this same path.
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(2);
+  }
+  const requestedPort = resolved.port;
+
+  try {
+    const handle = await startUiServer({
+      config,
+      cwd: process.cwd(),
+      port: requestedPort,
+      fallbackToKernel: resolved.fallbackToKernel,
+      host,
+      ...(opts.upstreamUrl !== undefined ? { upstreamUrl: opts.upstreamUrl } : {}),
+    });
+    // Display a clickable URL in the log. Two-socket loopback mode
+    // (host === undefined) and wildcard binds don't have a single
+    // canonical host string, so default to `localhost` — it resolves
+    // to whichever loopback family the browser prefers and both are
+    // bound.
+    const displayHost =
+      host === undefined || host === '::' || host === '0.0.0.0' ? 'localhost' : host;
+    console.log(`${dim('[ui]')} listening on http://${displayHost}:${handle.port}`);
+
+    let shuttingDown = false;
+    const shutdown = (signal: NodeJS.Signals) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(dim(`\n[ui] Shutting down (${signal})`));
+      // Release the lock LAST, inside a finally, so a
+      // mid-shutdown throw still removes the lockfile. Inverting this
+      // (lock first, socket close second) re-introduces the stale-lock
+      // + EADDRINUSE race the zero-ceremony design set out to eliminate.
+      // Matches the shutdown pattern in `packages/server/src/server-factory.ts`.
+      handle.detachSafetyNet();
+      const finish = () => {
+        try {
+          handle.release();
+        } finally {
+          process.exit(process.exitCode ?? 0);
+        }
+      };
+      // Drain upgrade-detached WebSocket sockets first — closeHttpServers
+      // awaits `httpServer.close()` which does NOT track upgrade-detached
+      // sockets, so a long-lived `/collab` WS would otherwise stall the
+      // shutdown right up to the 2s hard-deadline.
+      handle.drainUpgradeSockets();
+      // Close every bound server (two in the default two-socket mode)
+      // before releasing the lock. If any .close() throws synchronously
+      // we still fall through to finish() via the catch.
+      closeHttpServers(handle.httpServers).then(finish, finish);
+      // Hard-deadline fallback — if close() hangs on an in-flight request,
+      // we still release the lock and exit rather than stranding a stale
+      // lockfile forever.
+      setTimeout(finish, 2000).unref();
+    };
+    process.once('SIGINT', () => shutdown('SIGINT'));
+    process.once('SIGTERM', () => shutdown('SIGTERM'));
+    return;
+  } catch (err) {
+    if (!(err instanceof UiLockCollisionError)) throw err;
+
+    // Lock anchor is the project root (cwd), not contentDir — see
+    // server-factory.ts. The collision-recovery path must read the
+    // lock from the same place the running UI server wrote it.
+    const lockDir = resolveLockDir(process.cwd());
+    // The proxy + collision code paths expect a concrete host string.
+    // When the caller didn't pass `-H`, fall back to `localhost` — the
+    // proxy only matters when a SECOND `ok ui` races against a live
+    // lock, and that proxy's single-socket
+    // loopback is acceptable (unlike the primary server, which does
+    // two-socket for collision-fail-loud).
+    const proxyHost = host ?? 'localhost';
+    let result: UiCollisionResult;
+    try {
+      result = await resolveUiLockCollision({
+        requestedPort,
+        host: proxyHost,
+        lockDir,
+      });
+    } catch (collisionErr) {
+      console.error(collisionErr instanceof Error ? collisionErr.message : String(collisionErr));
+      process.exit(1);
+    }
+
+    if (result.mode === 'already-running') {
+      console.log(`UI already running at http://${proxyHost}:${result.port}`);
+      // Non-interactive callers (no TTY, or PORT env set) get a keepalive
+      // instead of exit(0): Claude Code Desktop's preview pane spawns
+      // `ok ui` as a subprocess with PORT set, treats subprocess exit
+      // as "preview crashed", and tears down the pane. The keepalive
+      // makes the subprocess stay attached to the already-running UI
+      // until the pane sends SIGTERM. Interactive TTY users still get
+      // a clean exit so they're not stuck staring at a hung command.
+      if (isNonInteractiveContext(process)) {
+        const idleResolve = new Promise<void>((resolve) => {
+          const shutdown = (signal: NodeJS.Signals): void => {
+            console.log(dim(`\n[ui-keepalive] Shutting down (${signal})`));
+            resolve();
+          };
+          process.once('SIGINT', () => shutdown('SIGINT'));
+          process.once('SIGTERM', () => shutdown('SIGTERM'));
+        });
+        await idleResolve;
+        return;
+      }
+      process.exit(0);
+    }
+
+    console.log(
+      `UI running at http://${proxyHost}:${result.upstreamPort}; acting as HTTP proxy on port ${result.handle.port}`,
+    );
+
+    let shuttingDown = false;
+    const shutdown = (signal: NodeJS.Signals) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(dim(`\n[ui-proxy] Shutting down (${signal})`));
+      result.handle.close().finally(() => process.exit(process.exitCode ?? 0));
+      setTimeout(() => process.exit(process.exitCode ?? 0), 2000).unref();
+    };
+    process.once('SIGINT', () => shutdown('SIGINT'));
+    process.once('SIGTERM', () => shutdown('SIGTERM'));
+  }
+}
+
 export function uiCommand(getConfig: () => Config): Command {
   return new Command('ui')
-    .description('Serve the OpenKnowledge React editor UI')
+    .description(
+      'Deprecated: serve the React editor UI as a sibling process (plain `ok start` now serves the UI itself)',
+    )
     .option(
       '-p, --port <port>',
       `UI port (default: $PORT env or ${DEFAULT_UI_PORT}, kernel-allocated fallback if busy)`,
@@ -800,143 +1012,17 @@ export function uiCommand(getConfig: () => Config): Command {
       'UI host. Default: two-socket loopback bind (`[::1]` + `127.0.0.1`) so cross-family collisions fail loud. Pass an explicit host (e.g. `127.0.0.1`, `0.0.0.0`) to bind a single socket on that host.',
     )
     .action(async (opts: { port?: string; host?: string }) => {
-      const { dim } = await import('../ui/colors.ts');
-      const { UiLockCollisionError } = await import('@inkeep/open-knowledge-server');
-      const { resolveLockDir } = await import('@inkeep/open-knowledge-server');
-      const config = getConfig();
-      // Undefined `host` triggers the default two-socket loopback mode in
-      // startUiServer. Callers who pass `-H` get single-socket bind as-is.
-      const host = opts.host;
-
-      let resolved: ResolvedRequestedPort;
-      try {
-        resolved = resolveRequestedPort(opts.port, process.env.PORT);
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exitCode = 1;
-        return;
-      }
-      const requestedPort = resolved.port;
-
-      try {
-        const handle = await startUiServer({
-          config,
-          cwd: process.cwd(),
-          port: requestedPort,
-          fallbackToKernel: resolved.fallbackToKernel,
-          host,
-        });
-        // Display a clickable URL in the log. Two-socket loopback mode
-        // (host === undefined) and wildcard binds don't have a single
-        // canonical host string, so default to `localhost` — it resolves
-        // to whichever loopback family the browser prefers and both are
-        // bound.
-        const displayHost =
-          host === undefined || host === '::' || host === '0.0.0.0' ? 'localhost' : host;
-        console.log(`${dim('[ui]')} listening on http://${displayHost}:${handle.port}`);
-
-        let shuttingDown = false;
-        const shutdown = (signal: NodeJS.Signals) => {
-          if (shuttingDown) return;
-          shuttingDown = true;
-          console.log(dim(`\n[ui] Shutting down (${signal})`));
-          // Release the lock LAST, inside a finally, so a
-          // mid-shutdown throw still removes the lockfile. Inverting this
-          // (lock first, socket close second) re-introduces the stale-lock
-          // + EADDRINUSE race the zero-ceremony design set out to eliminate.
-          // Matches the shutdown pattern in `packages/server/src/server-factory.ts`.
-          handle.detachSafetyNet();
-          const finish = () => {
-            try {
-              handle.release();
-            } finally {
-              process.exit(process.exitCode ?? 0);
-            }
-          };
-          // Drain upgrade-detached WebSocket sockets first — closeHttpServers
-          // awaits `httpServer.close()` which does NOT track upgrade-detached
-          // sockets, so a long-lived `/collab` WS would otherwise stall the
-          // shutdown right up to the 2s hard-deadline.
-          handle.drainUpgradeSockets();
-          // Close every bound server (two in the default two-socket mode)
-          // before releasing the lock. If any .close() throws synchronously
-          // we still fall through to finish() via the catch.
-          closeHttpServers(handle.httpServers).then(finish, finish);
-          // Hard-deadline fallback — if close() hangs on an in-flight request,
-          // we still release the lock and exit rather than stranding a stale
-          // lockfile forever.
-          setTimeout(finish, 2000).unref();
-        };
-        process.once('SIGINT', () => shutdown('SIGINT'));
-        process.once('SIGTERM', () => shutdown('SIGTERM'));
-        return;
-      } catch (err) {
-        if (!(err instanceof UiLockCollisionError)) throw err;
-
-        // Lock anchor is the project root (cwd), not contentDir — see
-        // server-factory.ts. The collision-recovery path must read the
-        // lock from the same place the running UI server wrote it.
-        const lockDir = resolveLockDir(process.cwd());
-        // The proxy + collision code paths expect a concrete host string.
-        // When the caller didn't pass `-H`, fall back to `localhost` — the
-        // proxy only matters when a SECOND `ok ui` races against a live
-        // lock, and that proxy's single-socket
-        // loopback is acceptable (unlike the primary server, which does
-        // two-socket for collision-fail-loud).
-        const proxyHost = host ?? 'localhost';
-        let result: UiCollisionResult;
-        try {
-          result = await resolveUiLockCollision({
-            requestedPort,
-            host: proxyHost,
-            lockDir,
-          });
-        } catch (collisionErr) {
-          console.error(
-            collisionErr instanceof Error ? collisionErr.message : String(collisionErr),
-          );
-          process.exit(1);
-        }
-
-        if (result.mode === 'already-running') {
-          console.log(`UI already running at http://${proxyHost}:${result.port}`);
-          // Non-interactive callers (no TTY, or PORT env set) get a keepalive
-          // instead of exit(0): Claude Code Desktop's preview pane spawns
-          // `ok ui` as a subprocess with PORT set, treats subprocess exit
-          // as "preview crashed", and tears down the pane. The keepalive
-          // makes the subprocess stay attached to the already-running UI
-          // until the pane sends SIGTERM. Interactive TTY users still get
-          // a clean exit so they're not stuck staring at a hung command.
-          if (isNonInteractiveContext(process)) {
-            const idleResolve = new Promise<void>((resolve) => {
-              const shutdown = (signal: NodeJS.Signals): void => {
-                console.log(dim(`\n[ui-keepalive] Shutting down (${signal})`));
-                resolve();
-              };
-              process.once('SIGINT', () => shutdown('SIGINT'));
-              process.once('SIGTERM', () => shutdown('SIGTERM'));
-            });
-            await idleResolve;
-            return;
-          }
-          process.exit(0);
-        }
-
-        console.log(
-          `UI running at http://${proxyHost}:${result.upstreamPort}; acting as HTTP proxy on port ${result.handle.port}`,
-        );
-
-        let shuttingDown = false;
-        const shutdown = (signal: NodeJS.Signals) => {
-          if (shuttingDown) return;
-          shuttingDown = true;
-          console.log(dim(`\n[ui-proxy] Shutting down (${signal})`));
-          result.handle.close().finally(() => process.exit(process.exitCode ?? 0));
-          setTimeout(() => process.exit(process.exitCode ?? 0), 2000).unref();
-        };
-        process.once('SIGINT', () => shutdown('SIGINT'));
-        process.once('SIGTERM', () => shutdown('SIGTERM'));
-      }
+      // Deprecation notice on stderr — stdout stays parseable for callers
+      // that scrape the "listening on" line, and Desktop preview panes that
+      // spawn `ok ui` keep working untouched (removal is a later release,
+      // after the Desktop attach re-point ships).
+      const { warning } = await import('../ui/colors.ts');
+      console.error(
+        warning(
+          '[ui] Deprecated: use `ok start` instead — it now serves the editor UI on one port. `ok ui` remains for older desktop builds and will be removed in a future release.',
+        ),
+      );
+      await runUiCommand(getConfig(), opts);
     });
 }
 

@@ -308,6 +308,36 @@ describe('preview_url tool — no UI running', () => {
     expect(result.content[0]?.text).toContain('`ok ui`');
     expect(result.content[0]?.text).not.toContain('`ok start`');
   });
+
+  test('--only server (capabilities omit ui): permanent hint, no "Retry" (UI never binds on its own)', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    // A live server advertising http+ws but NOT ui — the `--only server` shape.
+    bindTestServerLock(cwd, 4321, ['http', 'ws']);
+    const handler = captureRegistration(cwd);
+    const result = await handler({ document: 'specs/foo/SPEC' });
+    expect(result.structuredContent?.running).toBe(false);
+    expect(result.content[0]?.text).toContain('no preview UI is mounted');
+    expect(result.content[0]?.text).toContain('--only server');
+    // Steer to the non-deprecated Wave 3 split-mode command, not `ok ui`.
+    expect(result.content[0]?.text).toContain('--only ui --server-url');
+    expect(result.content[0]?.text).not.toContain('`ok ui`');
+    // The whole point: "retry" would loop forever against a UI-less server.
+    expect(result.content[0]?.text).not.toContain('Retry');
+  });
+
+  test('ui-capable server.lock resolves directly (single-listener): running, own origin, no ui.lock needed', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    // The default flip: a server advertising `ui` IS the preview surface at its
+    // own origin — resolveUiInfo returns it without any separate ui.lock. This
+    // is why the permanent "no UI mounted" hint keys on the ABSENCE of the ui
+    // capability, not merely on a missing ui.lock.
+    bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
+    const handler = captureRegistration(cwd);
+    const result = await handler({ document: 'specs/foo/SPEC' });
+    expect(result.structuredContent?.running).toBe(true);
+    expect(result.structuredContent?.url).toBe('http://localhost:4321/#/specs/foo/SPEC');
+    expect(result.content[0]?.text).not.toContain('no preview UI is mounted');
+  });
 });
 
 describe('preview_url tool — backend demand-ensure', () => {

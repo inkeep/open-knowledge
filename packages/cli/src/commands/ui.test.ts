@@ -29,6 +29,7 @@ import {
   DEFAULT_UI_PORT,
   DEFAULT_UI_SAFETY_NET_MS,
   isNonInteractiveContext,
+  parseUpstreamUrl,
   resolveRequestedPort,
   resolveUiLockCollision,
   startUiServer,
@@ -397,6 +398,43 @@ describe('startUiServer', () => {
     handle = await startUiServer({ config: config(), cwd: tmpDir, port: 0, host: '127.0.0.1' });
     const { headers } = await get(handle.port, '/api/config');
     expect(headers.get('cache-control')).toBe('no-store');
+  });
+
+  test('explicit upstreamUrl (split mode) proxies /api to that upstream with NO server.lock', async () => {
+    // `ok start --only ui --server-url <url>`: the operator owns the wiring, so
+    // /api routes to the explicit upstream via `resolveUpstream`, not server.lock
+    // discovery. No server.lock is acquired here — discovery would find nothing,
+    // so a proxied 200 proves the explicit upstream path is the one taken.
+    let sawApi = false;
+    const upstream = await startDualLoopbackUpstream((req, res) => {
+      if (req.url?.startsWith('/api/')) {
+        sawApi = true;
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ via: 'explicit-upstream' }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    try {
+      handle = await startUiServer({
+        config: config(),
+        cwd: tmpDir,
+        port: 0,
+        host: '127.0.0.1',
+        upstreamUrl: `http://127.0.0.1:${upstream.port}`,
+      });
+      const { status, body } = await get(handle.port, '/api/pages');
+      expect(status).toBe(200);
+      expect(JSON.parse(body).via).toBe('explicit-upstream');
+      expect(sawApi).toBe(true);
+      // /api/config advertises a collabUrl because an upstream is resolvable,
+      // even though no server.lock exists.
+      const cfg = JSON.parse((await get(handle.port, '/api/config')).body);
+      expect(cfg.collabUrl).toBe(`ws://127.0.0.1:${handle.port}/collab`);
+    } finally {
+      await upstream.close();
+    }
   });
 
   test('HEAD /api/config returns 200 with no body', async () => {
@@ -1290,5 +1328,44 @@ describe('isNonInteractiveContext — PRD-6704 keepalive gate', () => {
 
   test('TTY + empty PORT env string is treated as no PORT (defense-in-depth)', () => {
     expect(isNonInteractiveContext(makeProc({ isTTY: true, port: '' }))).toBe(false);
+  });
+});
+
+describe('parseUpstreamUrl (--server-url for the split-mode UI)', () => {
+  test('parses host and explicit port', () => {
+    expect(parseUpstreamUrl('http://127.0.0.1:24550')).toEqual({ host: '127.0.0.1', port: 24550 });
+  });
+
+  test('defaults the port to 80 when absent', () => {
+    expect(parseUpstreamUrl('http://ok-server.internal')).toEqual({
+      host: 'ok-server.internal',
+      port: 80,
+    });
+  });
+
+  test('strips IPv6 brackets from hostname (url.hostname, not url.host)', () => {
+    // WHATWG `url.hostname` de-brackets IPv6 (`::1`), which is what
+    // node:http.request expects; `url.host` would retain `[::1]` and fail to
+    // dial. Pins the hostname-vs-host choice against a future refactor.
+    expect(parseUpstreamUrl('http://[::1]:24550')).toEqual({ host: '::1', port: 24550 });
+  });
+
+  test('drops any path component — the proxy dials host:port only', () => {
+    // Documents the behavior: `--server-url http://host:port/api` proxies to
+    // the bare root, NOT the /api subpath. If path-prefixed upstreams ever
+    // need support, this is the test that must change with the parser.
+    expect(parseUpstreamUrl('http://127.0.0.1:24550/api')).toEqual({
+      host: '127.0.0.1',
+      port: 24550,
+    });
+  });
+
+  test('rejects non-http schemes — the proxy speaks plain HTTP', () => {
+    expect(() => parseUpstreamUrl('https://kb.example.com')).toThrow(/must be http:/);
+    expect(() => parseUpstreamUrl('ws://127.0.0.1:1')).toThrow(/must be http:/);
+  });
+
+  test('rejects unparseable input with the fix in the message', () => {
+    expect(() => parseUpstreamUrl('not a url')).toThrow(/expected e\.g\./);
   });
 });

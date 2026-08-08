@@ -203,14 +203,29 @@ const OutputSchema = outputSchemaWithText({
 });
 
 /**
- * Recovery hints for the two distinguishable no-UI states. The server-running
- * variant advises `ok ui` (the server exists; only the UI is missing — bare
- * `ok start` would exit with an already-running collision there). The
- * no-server variant advises `ok start`, which brings up server + UI sibling
- * together; `ok ui` alone in that state produces a backend-less UI shell.
+ * Recovery hints for the three distinguishable no-UI states.
+ *
+ * `NO_UI_SERVER_RUNNING_MESSAGE` is the TRANSIENT case: a live pre-v2 / legacy
+ * sibling-topology server whose `ok ui` sibling hasn't bound its `ui.lock`
+ * yet. "Retry" is the right first move (it's binding), and `ok ui` is the tool
+ * that topology uses — advising `ok start` here would be wrong, since under
+ * spawn-or-reuse a second `ok start` just reports the running server's URL and
+ * exits 0 without adding a UI. (Post-flip note: bare `ok start` no longer
+ * collides — it reuses — but that doesn't make it a way to attach a UI.)
+ *
+ * `NO_SERVER_MESSAGE` advises `ok start`, which brings up the server serving
+ * the UI on one port.
  */
 const NO_UI_SERVER_RUNNING_MESSAGE =
   'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or start one: `ok ui` (terminal) or open the project in OK Electron.';
+// Permanent-state sibling of the message above: the live server advertises NO
+// `ui` capability (started `--only server`, or a degraded API-only boot), so a
+// UI will never bind on its own — "retry" would loop forever. Steer to the
+// Wave 3 way to attach a UI to a running server: `ok start --only ui
+// --server-url` (NOT deprecated `ok ui`; NOT bare `ok start`, which would just
+// reuse the headless server without adding a UI).
+const NO_UI_NONE_MOUNTED_MESSAGE =
+  'The OK server is running but no preview UI is mounted (e.g. it was started with `--only server`). Add one against it: `ok start --only ui --server-url <server-url>`, or open the project in OK Electron.';
 const NO_SERVER_MESSAGE =
   'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), or open the project in OK Electron.';
 const AUTOSTART_DISABLED_NOTE = ' Auto-start is disabled (OK_MCP_AUTOSTART=0).';
@@ -242,6 +257,28 @@ function readUserAutoOpen(): boolean {
 /** No running session serves the requested out-of-project `file`. */
 function noSingleFileSessionMessage(file: string): string {
   return `No Open Knowledge session is serving ${file} yet. On a host with a terminal, \`ok open ${file}\` starts one; otherwise open ${file} in the OK Desktop app. Then retry.`;
+}
+
+/**
+ * True only when a live lock EXPLICITLY advertises capabilities that omit
+ * `ui` — the `--only server` (and degraded API-only) state, where no UI will
+ * ever bind on its own. A ui-capable lock whose `ui.lock` is still binding, and
+ * a pre-v2 lock with no `capabilities` field at all, both return false so they
+ * keep the transient "retry" hint (an extra poll is harmless; wrongly sending a
+ * user to `ok ui` seconds before the UI binds is not). Mirrors `isServerLive`'s
+ * fail-observable error handling.
+ */
+function serverExplicitlyLacksUi(lockDir: string): boolean {
+  try {
+    const lock = readServerLock(lockDir);
+    if (lock === null || lock.port <= 0 || !isProcessAlive(lock.pid)) return false;
+    return Array.isArray(lock.capabilities) && !lock.capabilities.includes('ui');
+  } catch (err) {
+    process.stderr.write(
+      `[preview-url] readServerLock failed at ${lockDir} while checking ui capability: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return false;
+  }
 }
 
 /** Live server check — same lock+liveness criteria the MCP shim uses. */
@@ -451,9 +488,14 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       }
 
       if (baseUrl === null) {
-        const hint = isServerLive(lockDir)
-          ? NO_UI_SERVER_RUNNING_MESSAGE
-          : `${NO_SERVER_MESSAGE}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`;
+        // Three-way: no server at all → NO_SERVER; a live server that will
+        // never mount a UI (`--only server`) → the permanent message; a live
+        // ui-capable server whose UI hasn't bound yet → the transient "retry".
+        const hint = !isServerLive(lockDir)
+          ? `${NO_SERVER_MESSAGE}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`
+          : serverExplicitlyLacksUi(lockDir)
+            ? NO_UI_NONE_MOUNTED_MESSAGE
+            : NO_UI_SERVER_RUNNING_MESSAGE;
         return textPlusStructured(`${hostedAgentSteer}${hint}`, {
           url: null,
           baseUrl: null,

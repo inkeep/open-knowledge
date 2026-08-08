@@ -13,9 +13,7 @@
  *     a tab, and removes the temp projectDir on teardown.
  */
 
-import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import {
   encodeDocName,
   prepareSingleFileOpen,
@@ -121,21 +119,6 @@ export async function runSingleFileOpen(
 }
 
 /**
- * Resolve the bundled React shell `dist` directory — published `dist/public`
- * first, then the monorepo `app/dist`. Mirrors `ok ui`'s resolution so dev and
- * published builds agree.
- */
-function resolveReactShellDistDir(): string | undefined {
-  const cliDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-  const candidates = [
-    resolve(cliDir, 'public'), // npm install: dist/public/
-    resolve(cliDir, '../../app/dist'), // monorepo dev from src/
-    resolve(cliDir, '../../../app/dist'), // monorepo dev from dist/
-  ];
-  return candidates.find((p) => existsSync(p));
-}
-
-/**
  * Browser fallback: boot an ephemeral single-file server in this process
  * (serving the React shell single-origin via `--react-shell-dist-dir`, so there
  * is exactly ONE process + one temp dir to reap), open a tab at the doc, and
@@ -149,10 +132,10 @@ async function runSingleFileBrowserOpen(
 ): Promise<void> {
   const { createEphemeralProjectDir } = await import('@inkeep/open-knowledge-server');
   const { loadConfig } = await import('../index.ts');
-  const { bootStartServer, resolveHost } = await import('./start.ts');
+  const { bootStartServer, resolveBundledReactShellDir, resolveHost } = await import('./start.ts');
   const { openBrowser } = await import('../utils/open-browser.ts');
 
-  const reactShellDistDir = resolveReactShellDistDir();
+  const reactShellDistDir = resolveBundledReactShellDir();
   if (!reactShellDistDir) {
     process.stderr.write(
       'OpenKnowledge UI assets were not found. Reinstall @inkeep/open-knowledge, or build the app (`bun run build`) in a monorepo checkout.\n',

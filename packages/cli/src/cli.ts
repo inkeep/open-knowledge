@@ -256,7 +256,8 @@ program.addCommand(lintCommand(() => resolvedConfig));
 // the running project server; CLI sibling of the `audit` MCP tool
 program.addCommand(auditCommand(() => resolvedConfig));
 
-// ui command — serves the React editor (sibling of `start`).
+// ui command — deprecated sibling UI server; kept functional for the Desktop
+// version-skew window (plain `ok start` now serves the UI itself).
 const ui = uiCommand(() => resolvedConfig);
 program.addCommand(ui);
 

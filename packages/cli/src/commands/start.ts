@@ -1,14 +1,22 @@
 /**
- * `open-knowledge start` — collab server only (Hocuspocus + /api/*).
+ * `open-knowledge start` — the OpenKnowledge project server.
  *
- * Lifecycle split:
- * - `ok start` owns the WebSocket (/collab) + HTTP API (/api/*) and advertises
- *   its port via `server.lock`. Static React assets are served by `ok ui`.
- * - On startup we auto-spawn `ok ui` as a detached sibling when `ui.lock` is
- *   absent or stale. A pre-existing live UI is left alone.
- * - Idle-shutdown counts WebSocket upgrades at `/collab` only; it is blind
- *   to DirectConnections by design. When the threshold fires we SIGTERM the
- *   UI sibling before releasing our own lock.
+ * One listener, one origin: by default the server serves the React shell on
+ * `/` alongside `/api/*`, `/mcp`, `/collab`, and content assets, and
+ * advertises the one URL via `server.lock` (`url` + `capabilities: ["ui"]` —
+ * the Desktop attach contract). A second `ok start` against a live server
+ * reports that URL and exits 0 (spawn-or-reuse) instead of colliding.
+ *
+ * The legacy two-process model (`ok ui` sibling serving the shell and
+ * proxying `/api` + `/collab`, advertised via `ui.lock`) survives on two
+ * paths only, for the Desktop version-skew window:
+ * - `--ui-port` (the worktree-preview recipe) keeps the sibling model.
+ * - `ok ui` remains functional as a deprecated fallback.
+ * Idle-shutdown SIGTERMs a spawned sibling before releasing our own lock.
+ *
+ * `--only server` suppresses the UI module entirely; `--only ui` (with
+ * `--server-url`) runs just the shell-serving proxy — explicit operator
+ * module selection against the same composition, never a separate topology.
  *
  * The Commander action is a thin wrapper around `bootStartServer` — that
  * boot function returns a `BootedStartServer` handle (`{httpServer, destroy,
@@ -39,11 +47,11 @@ import {
   type PinoLogger,
   prepareSingleFileOpen,
 } from '@inkeep/open-knowledge-server';
-import { Command, InvalidArgumentError } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
 import { detectGh } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
-import { OK_DIR, PACKAGE_VERSION } from '../constants.ts';
+import { PACKAGE_VERSION } from '../constants.ts';
 import { probeOwnManagedEditorMcpEntry } from './acp-harness-probe.ts';
 import {
   createRealDetectDeps,
@@ -57,15 +65,139 @@ import { resolveSelfSpawn } from './self-spawn.ts';
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 
 /**
- * Resolve server bind host with `--host` flag > `HOST` env > application
- * default precedence. Pure helper — no side effects, no `process.env` access
- * inside (env passed in) so tests can pin all three branches.
+ * Resolve server bind host with `--bind` flag > deprecated `--host` alias >
+ * `HOST` env > application default precedence. Pure helper — no side effects,
+ * no `process.env` access inside (env passed in) so tests can pin all
+ * branches. `--bind` is declared repeatable (the config surface reserves a
+ * bind LIST); the action layer rejects >1 value until multi-bind lands, so
+ * only the first element is consulted here.
  */
 export function resolveHost(
-  opts: { host?: string },
+  opts: { host?: string; bind?: string[] },
   env: { HOST?: string | undefined; [key: string]: string | undefined },
 ): string {
-  return opts.host ?? env.HOST ?? DEFAULT_SERVER_HOST;
+  return opts.bind?.[0] ?? opts.host ?? env.HOST ?? DEFAULT_SERVER_HOST;
+}
+
+/** Modules selectable via `--only` — explicit operator module selection. */
+export type OnlyModule = 'ui' | 'server';
+
+/**
+ * Validator for Commander's `--only` parser. Throws `InvalidArgumentError`
+ * for anything outside the documented enum, which Commander converts into a
+ * non-zero exit + usage.
+ */
+export function parseOnlyModule(value: string): OnlyModule {
+  if (value === 'ui' || value === 'server') return value;
+  throw new InvalidArgumentError("--only must be 'ui' or 'server'");
+}
+
+/**
+ * Resolve the bundled React shell `dist` directory — published `dist/public`
+ * first, then the monorepo `app/dist`. One resolver shared by plain
+ * `ok start`, remote mode, and the ephemeral single-file browser fallback so
+ * dev and published builds can never disagree on where the shell lives.
+ */
+export function resolveBundledReactShellDir(
+  existsFn: (path: string) => boolean = fsExistsSync,
+): string | undefined {
+  const cliDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
+  return [
+    pathResolve(cliDir, 'public'), // npm install: dist/public/ (bundled)
+    pathResolve(cliDir, '../../app/dist'), // monorepo dev from src/
+    pathResolve(cliDir, '../../../app/dist'), // monorepo dev from dist/
+  ].find((p) => existsFn(p));
+}
+
+/**
+ * Decide which React-shell directory the composed server serves — the Wave 3
+ * default-flip decision, pure so every branch is unit-tested:
+ *
+ * - an explicit `--react-shell-dist-dir` always wins;
+ * - `--only server` opts out of the UI module entirely;
+ * - `--ui-port` (the worktree-preview recipe) keeps the legacy sibling model
+ *   until its retirement — EXCEPT under `--remote`, which always serves the
+ *   shell on the tunneled port;
+ * - otherwise the bundled shell is resolved and served by default. A missing
+ *   bundle (source checkout without an app build) degrades to API/MCP-only —
+ *   the `ok ui` sibling would be serving the same missing bundle, so falling
+ *   back to it could never help.
+ */
+export function resolveStartShellDir(input: {
+  explicitDir: string | undefined;
+  only: OnlyModule | undefined;
+  uiPortSet: boolean;
+  remoteEnabled: boolean;
+  findBundledDir: () => string | undefined;
+}): { dir: string | undefined; missingBundle: boolean } {
+  if (input.explicitDir !== undefined) return { dir: input.explicitDir, missingBundle: false };
+  if (input.only === 'server') return { dir: undefined, missingBundle: false };
+  if (input.uiPortSet && !input.remoteEnabled) return { dir: undefined, missingBundle: false };
+  const dir = input.findBundledDir();
+  return { dir, missingBundle: dir === undefined };
+}
+
+/**
+ * Validator for `--idle-shutdown <dur|off>`: `off`, or a strict `<n>(s|m|h)`
+ * duration. Returns milliseconds, or `null` for `off` (idle shutdown
+ * disabled). The grammar mirrors the forthcoming `server.idleShutdown` config
+ * leaf so the flag and the key resolve durations identically.
+ */
+export function parseIdleShutdownFlag(value: string): number | null {
+  if (value === 'off') return null;
+  const match = /^([1-9]\d*)(s|m|h)$/.exec(value);
+  if (match === null) {
+    throw new InvalidArgumentError("--idle-shutdown must be 'off' or a duration like 90s, 30m, 2h");
+  }
+  const amount = Number(match[1]);
+  switch (match[2]) {
+    case 's':
+      return amount * 1000;
+    case 'm':
+      return amount * 60_000;
+    default:
+      return amount * 3_600_000;
+  }
+}
+
+/** Loopback-shaped bind hosts — the family the browser-open default keys on. */
+export function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '::1' || host === '[::1]' || host.startsWith('127.');
+}
+
+/**
+ * Should this start open the browser? Interactive loopback starts open by
+ * default (suppress with `--no-open-browser`); everything non-interactive or
+ * non-local stays quiet. Pure so the whole decision table is unit-tested:
+ *
+ * Guard order matters. The "nothing to open" and "explicit no" checks run
+ * BEFORE the deprecated `--open` force-open, so `--open` can override the TTY
+ * and loopback gates (its pre-flip contract) but can never pop a dead tab at
+ * a shell-less server or fight an explicit `--no-open-browser`:
+ *
+ * - `--no-open-browser` always suppresses, even against `--open`;
+ * - remote mode, ephemeral single-file (owns its own open flow), `--only
+ *   server`, and a start that ended up serving no shell never open;
+ * - `--open` (deprecated) then forces open, preserving its pre-flip contract
+ *   for scripts that relied on it in non-TTY contexts;
+ * - otherwise: open iff the bind is loopback AND stdout is a TTY (a spawned
+ *   or CI invocation must not pop a browser).
+ */
+export function shouldOpenBrowser(input: {
+  openBrowser: boolean;
+  legacyOpen: boolean;
+  host: string;
+  isTTY: boolean;
+  remoteEnabled: boolean;
+  ephemeral: boolean;
+  only: OnlyModule | undefined;
+  servesUi: boolean;
+}): boolean {
+  if (!input.openBrowser) return false;
+  if (input.remoteEnabled || input.ephemeral || input.only === 'server') return false;
+  if (!input.servesUi) return false;
+  if (input.legacyOpen) return true;
+  return isLoopbackHost(input.host) && input.isTTY;
 }
 
 /**
@@ -691,8 +823,9 @@ interface BootStartServerOptions {
   skipUiAutoSpawn?: boolean;
   /** Override for `spawnOkUi`'s underlying spawn — passed through to it. */
   spawn?: typeof NativeSpawn;
-  /** Override idle-shutdown threshold; default 30 min. Tests use small values. */
-  idleThresholdMs?: number;
+  /** Override idle-shutdown threshold; default 30 min. `null` disables idle
+   *  shutdown entirely (`--idle-shutdown off`). Tests use small values. */
+  idleThresholdMs?: number | null;
   /**
    * Override the process-exit call fired after an idle-shutdown teardown
    * completes (see `withIdleShutdownProcessExit`). Default `process.exit`.
@@ -855,7 +988,10 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
   const { config, cwd, host } = opts;
   const skipAutoInit = opts.skipAutoInit ?? false;
   const skipUiAutoSpawn = opts.skipUiAutoSpawn ?? false;
-  const idleThresholdMs = opts.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
+  // Explicit undefined check (not `??`): `null` means "idle shutdown OFF"
+  // (`--idle-shutdown off`) and must not fall back to the 30-min default.
+  const idleThresholdMs =
+    opts.idleThresholdMs === undefined ? DEFAULT_IDLE_THRESHOLD_MS : opts.idleThresholdMs;
 
   const { existsSync, mkdirSync } = await import('node:fs');
   const { basename, dirname } = await import('node:path');
@@ -1020,10 +1156,11 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     }
   };
 
-  // When --react-shell-dist-dir is set, the server itself serves the React
-  // shell — the `ok ui` sibling is redundant and auto-suppressed. This is
-  // the desktop-spawn-mode shape (single-origin renderer); terminal-launched
-  // `ok start` keeps the historical two-process model.
+  // The server serves the React shell whenever it has a dist dir, which is
+  // the default for plain `ok start` — so the single-origin composition is
+  // the norm and the `ok ui` sibling is auto-suppressed. A sibling is spawned
+  // only on the legacy two-process paths that reach here without a shell dir
+  // (the `--ui-port` worktree-preview recipe).
   const attachUiSibling = opts.reactShellDistDir === undefined;
 
   // Push-permission probe auth wiring — LAZY token store. Keyring init is
@@ -1128,9 +1265,10 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       return withIdleShutdownProcessExit(reaped, { log, exit: opts.idleExit });
     },
     log,
-    // Content assets serve by default (bootServer default-on); the React
-    // shell stays a desktop-spawn opt-in so terminal `ok start` retains the
-    // two-process shell model (`ok ui` sibling).
+    // Content assets serve by default (bootServer default-on). The React
+    // shell dir is passed through when present — the default for plain
+    // `ok start` — so the one-listener composition is the norm; it is absent
+    // only on the legacy `--ui-port` sibling path.
     ...(opts.serveContentAssets !== undefined
       ? { serveContentAssets: opts.serveContentAssets }
       : {}),
@@ -1201,8 +1339,32 @@ interface StartCommandOptions {
    * the main checkout and a fresh worktree. Absent → today's behavior.
    */
   uiPort?: string | number;
+  /** From repeatable `--bind <address>`. First value wins today; >1 rejected at the action layer. */
+  bind?: string[];
+  /** From the deprecated `-H, --host` alias of `--bind`. */
   host?: string;
+  /** From deprecated `--open`: force-open the browser (pre-flip contract, honored even non-TTY). */
   open?: boolean;
+  /**
+   * From `--no-open-browser` (Commander negation: absent → `true`). Interactive
+   * loopback starts open the browser by default; this is the suppression
+   * direction — see `shouldOpenBrowser` for the full decision table.
+   */
+  openBrowser?: boolean;
+  /**
+   * From `--only <ui|server>`: explicit module selection. `'server'` boots the
+   * project server with no UI module (no shell, no sibling); `'ui'` is handled
+   * in the action (delegates to the UI proxy with `--server-url`) and never
+   * reaches `runStartCommand`.
+   */
+  only?: OnlyModule;
+  /** From `--server-url <url>`: where the `--only ui` split-mode UI finds its project server. */
+  serverUrl?: string;
+  /**
+   * From `--idle-shutdown <dur|off>` (already parsed by `parseIdleShutdownFlag`):
+   * idle-shutdown threshold in ms, or `null` for `off`. Absent → 30-min default.
+   */
+  idleShutdown?: number | null;
   /** From `--mode`: undefined (default → browser) | 'browser' | 'app'. */
   mode?: StartMode;
   /**
@@ -1418,25 +1580,27 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     }
   }
 
-  // Remote mode serves the SPA from the same remote port (`/` = UI, `/mcp` =
-  // MCP) so one tunnel covers both. Resolve the bundled shell the way `ok ui`
-  // does; an explicit --react-shell-dist-dir still wins. Missing shell (rare:
-  // source checkout without an app build) degrades to MCP/API-only with a
-  // warning rather than failing the start. Passing reactShellDistDir also
-  // suppresses the `ok ui` sibling spawn — one UI, one port, in remote mode.
-  let reactShellDistDir = opts.reactShellDistDir;
-  if (remoteEnabled && reactShellDistDir === undefined) {
-    const cliDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-    reactShellDistDir = [
-      pathResolve(cliDir, 'public'), // npm install: dist/public/ (bundled)
-      pathResolve(cliDir, '../../app/dist'), // monorepo dev from src/
-      pathResolve(cliDir, '../../../app/dist'), // monorepo dev from dist/
-    ].find((p) => fsExistsSync(p));
-    if (reactShellDistDir === undefined) {
-      console.warn(
-        'remote access: bundled web UI not found — serving /mcp and /api only over the tunnel.',
-      );
-    }
+  // The default composition serves the SPA from the server's own port (`/` =
+  // UI, `/api`, `/mcp`, `/collab` — one listener, one origin), which also
+  // auto-suppresses the `ok ui` sibling. `resolveStartShellDir` holds the
+  // decision table (explicit dir wins; `--only server` and the `--ui-port`
+  // worktree-preview recipe opt out; remote always serves the shell so one
+  // tunnel covers everything). A missing bundle degrades to API/MCP-only with
+  // a warning rather than failing the start.
+  const shell = resolveStartShellDir({
+    explicitDir: opts.reactShellDistDir,
+    only: opts.only,
+    uiPortSet: requestedUiPort !== undefined,
+    remoteEnabled,
+    findBundledDir: resolveBundledReactShellDir,
+  });
+  const reactShellDistDir = shell.dir;
+  if (shell.missingBundle) {
+    console.warn(
+      remoteEnabled
+        ? 'remote access: bundled web UI not found — serving /mcp and /api only over the tunnel.'
+        : 'bundled web UI not found — serving /api and /mcp only. Reinstall @inkeep/open-knowledge, or build packages/app in a source checkout.',
+    );
   }
 
   let booted: BootedStartServer;
@@ -1451,6 +1615,11 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
         ? { serveContentAssets: opts.serveContentAssets }
         : {}),
       ...(reactShellDistDir ? { reactShellDistDir } : {}),
+      // No sibling spawn when the UI module is off (`--only server`) or the
+      // bundle is missing — a spawned `ok ui` would be serving the same
+      // missing bundle, and the warning above already promised API/MCP-only.
+      ...(opts.only === 'server' || shell.missingBundle ? { skipUiAutoSpawn: true } : {}),
+      ...(opts.idleShutdown !== undefined ? { idleThresholdMs: opts.idleShutdown } : {}),
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
       ...(remoteEnabled ? { enableRemote: true } : {}),
@@ -1503,6 +1672,46 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     if (requestedUiPort !== undefined && isServerLockCollision(err, serverModule)) {
       await connectUiSibling({ cwd, uiPort: requestedUiPort });
       return;
+    }
+
+    // Spawn-or-reuse: a plain `ok start` that collided with a live server
+    // reads the holder's advertisement, reports its URL, and exits 0 — a
+    // second start attaches to the running composition instead of failing.
+    // Falls through to the tailored/generic error path (exit 1) only when the
+    // lock can't be resolved to a usable address within the poll window.
+    if (requestedUiPort === undefined && isServerLockCollision(err, serverModule)) {
+      const lockDir = serverModule.resolveLockDir(cwd);
+      // A lock read can throw mid-poll (EMFILE, a JSON rewrite caught in
+      // flight). Contain it so a transient disk error degrades to the tailored
+      // collision message below rather than escaping as a raw stack trace.
+      let reuse: ServerReuseInfo | null = null;
+      try {
+        reuse = await resolveServerReuse({
+          readServerLock: () => serverModule.readServerLock(lockDir),
+          readUiLock: () => serverModule.readUiLock(lockDir),
+          now: Date.now,
+          sleep: (ms) => wait(ms),
+          timeoutMs: 3000,
+          pollIntervalMs: 50,
+        });
+      } catch (reuseErr) {
+        // Fall through to tryDescribeLockCollision / the generic error path —
+        // but leave a trace: a lock read that throws mid-poll (EMFILE burst,
+        // JSON caught mid-rewrite) would otherwise make "already running" or
+        // the collision message appear with the underlying disk fault
+        // invisible. stderr keeps stdout clean for scripts.
+        process.stderr.write(
+          `[start] spawn-or-reuse: lock poll failed (${reuseErr instanceof Error ? reuseErr.message : String(reuseErr)}) — falling back to the collision message\n`,
+        );
+      }
+      if (reuse !== null) {
+        const [headline, ...rest] = formatServerReuseNotice(reuse);
+        console.log(accent(headline));
+        for (const line of rest) {
+          console.log(dim(line));
+        }
+        process.exit(0);
+      }
     }
 
     // On server.lock collision, READ the existing lock to give a
@@ -1581,18 +1790,21 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     void shutdown('SIGTERM');
   });
 
-  const apiUrl = `http://${host}:${booted.port}`;
+  // Bracket a bare IPv6 literal for the authority (`::1` → `[::1]`); an
+  // unbracketed IPv6 host produces a malformed `http://::1:PORT` that the
+  // browser-open default would now actually navigate to (--bind ::1 on a TTY).
+  const urlHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  const apiUrl = `http://${urlHost}:${booted.port}`;
   const networkUrl =
     host === '0.0.0.0' || host === '::' ? `http://0.0.0.0:${booted.port}` : undefined;
 
-  // The user-facing URL is the `ok ui` sibling, not the collab/API port.
-  // Use `resolvedUiPort` — bootStartServer polls `ui.lock` end-to-end so
-  // this reflects the port the child actually bound (kernel-allocated,
-  // not a hardcoded default). When the UI sibling did not bind in time
-  // (or spawn was skipped) we fall back to the API URL so the user still
-  // has an actionable URL.
+  // On the default one-listener path the server serves the shell itself, so
+  // `resolvedUiPort` is null and `localUrl` IS `apiUrl` — the editor URL, not
+  // a degraded fallback. `resolvedUiPort` is non-null only on the legacy
+  // `--ui-port` sibling path, where bootStartServer polls `ui.lock`
+  // end-to-end for the port the sibling actually bound.
   const uiPort = booted.resolvedUiPort;
-  const localUrl = uiPort !== null && uiPort > 0 ? `http://${host}:${uiPort}` : apiUrl;
+  const localUrl = uiPort !== null && uiPort > 0 ? `http://${urlHost}:${uiPort}` : apiUrl;
 
   console.log(
     renderBanner({
@@ -1621,7 +1833,20 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
         console.log();
       }
 
-      if (opts.open) {
+      // Interactive loopback starts open the browser by default now that the
+      // banner URL is the full editor (suppress with --no-open-browser; the
+      // deprecated --open force-opens). Decision table: `shouldOpenBrowser`.
+      const openDecision = shouldOpenBrowser({
+        openBrowser: opts.openBrowser !== false,
+        legacyOpen: opts.open === true,
+        host,
+        isTTY: process.stdout.isTTY === true,
+        remoteEnabled,
+        ephemeral: opts.singleFile !== undefined,
+        only: opts.only,
+        servesUi: reactShellDistDir !== undefined,
+      });
+      if (openDecision) {
         const { openBrowser } = await import('../utils/open-browser.ts');
         openBrowser(localUrl);
       }
@@ -1631,6 +1856,104 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
         `  ${error('Server initialization failed:')} ${err instanceof Error ? err.message : String(err)}`,
       );
     });
+}
+
+/** What a reused (already-running) server advertises — see `resolveServerReuse`. */
+export interface ServerReuseInfo {
+  /** The browser-facing URL of the running composition. */
+  url: string;
+  /** Lock holder's `kind` (`interactive` = any direct boot, terminal or desktop; `mcp-spawned`). */
+  kind?: string | undefined;
+  pid: number;
+  /** True when the running server itself serves the React shell (lock v2 `capabilities` includes `"ui"`). */
+  servesUi: boolean;
+}
+
+interface ResolveServerReuseDeps {
+  readServerLock: () => {
+    pid: number;
+    port: number;
+    url?: string;
+    kind?: string;
+    draining?: boolean;
+    capabilities?: string[];
+  } | null;
+  readUiLock: () => { pid: number; port: number; url?: string } | null;
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  timeoutMs: number;
+  pollIntervalMs: number;
+}
+
+/**
+ * Spawn-or-reuse resolution: a second `ok start` that lost the server.lock
+ * acquisition reads the live holder's advertisement and reports it instead of
+ * failing. Returns the holder's browser-facing URL, or `null` when the lock
+ * can't be resolved to a usable address (caller falls back to the error path).
+ *
+ * Polls through the pre-listen window (`port: 0` sentinel) so racing a
+ * predecessor that is still binding reports its real address rather than
+ * failing on the sentinel. URL preference order:
+ *
+ * 1. lock v2 `url` when the holder advertises the `ui` capability — the
+ *    canonical one-URL contract (the same record Desktop attaches through);
+ * 2. a live `ui.lock` advertisement — the sibling topology (an older server
+ *    or `--only server`), where the browser-facing origin is the UI process;
+ * 3. the server's own `url`/port — API+MCP only, but still the right address.
+ *
+ * All time + IO deps injected (precedent #13b) so tests drive every branch
+ * with a virtual clock and no filesystem.
+ */
+export async function resolveServerReuse(
+  deps: ResolveServerReuseDeps,
+): Promise<ServerReuseInfo | null> {
+  const deadline = deps.now() + deps.timeoutMs;
+  let lock = deps.readServerLock();
+  while (lock !== null && lock.draining !== true && lock.port <= 0 && deps.now() < deadline) {
+    await deps.sleep(deps.pollIntervalMs);
+    lock = deps.readServerLock();
+  }
+  if (lock === null || lock.draining === true || lock.port <= 0) return null;
+  if (lock.capabilities?.includes('ui') === true && lock.url !== undefined) {
+    return { url: lock.url, kind: lock.kind, pid: lock.pid, servesUi: true };
+  }
+  const uiLock = deps.readUiLock();
+  if (uiLock !== null && uiLock.port > 0) {
+    // Prefer the ui.lock's own advertised url (symmetric with the server.lock
+    // branch above) — a UI bound to `::1` on a host where `localhost` resolves
+    // to `127.0.0.1` would otherwise be reported at the wrong address.
+    return {
+      url: uiLock.url ?? `http://localhost:${uiLock.port}`,
+      kind: lock.kind,
+      pid: lock.pid,
+      servesUi: false,
+    };
+  }
+  return {
+    url: lock.url ?? `http://${DEFAULT_SERVER_HOST}:${lock.port}`,
+    kind: lock.kind,
+    pid: lock.pid,
+    servesUi: false,
+  };
+}
+
+/**
+ * The reuse notice a second `ok start` prints before exiting 0. Pure so the
+ * copy (and the holder-kind variants) are unit-tested. `kind: 'interactive'`
+ * covers BOTH terminal `ok start` and desktop-spawned servers (every direct
+ * boot stamps it), so it gets the neutral copy — only `mcp-spawned` is a
+ * genuinely distinguishable holder.
+ */
+export function formatServerReuseNotice(info: ServerReuseInfo): string[] {
+  const holder =
+    info.kind === 'mcp-spawned'
+      ? 'An MCP-spawned OpenKnowledge server is already running on this project'
+      : 'OpenKnowledge is already running on this project';
+  return [
+    `${holder} (pid ${info.pid}).`,
+    `  ${info.url}`,
+    'Leaving it running — run `ok stop` first if you want a fresh server.',
+  ];
 }
 
 /**
@@ -1665,14 +1988,15 @@ export function tryDescribeLockCollision(
   if (lockErr === undefined || !(err instanceof lockErr)) return null;
 
   try {
-    const lockDir = join(cwd, OK_DIR);
-    const meta = serverModule.readServerLock(lockDir);
+    // `.ok/local/` — the same anchor the server writes (join(cwd, OK_DIR)
+    // pointed one level too shallow and always fell back to the generic copy).
+    const meta = serverModule.readServerLock(serverModule.resolveLockDir(cwd));
     if (!meta) {
       return 'OpenKnowledge server is already running on this project — check `ok status` or `ok stop`.';
     }
-    if (meta.kind === 'interactive') {
-      return 'OpenKnowledge desktop is currently running on this project. Quit it or use --cwd to point elsewhere.';
-    }
+    // NOTE: `kind: 'interactive'` covers both terminal and desktop servers,
+    // so it takes the generic fallthrough below — a "desktop is running"
+    // claim here would be wrong for every terminal-started holder.
     if (meta.kind === 'mcp-spawned') {
       return 'An MCP-spawned server holds this lock; it should release on idle-shutdown (~30 min). Or run `ok stop`.';
     }
@@ -1686,15 +2010,43 @@ export function tryDescribeLockCollision(
 
 export function startCommand(getConfig: () => Config): Command {
   const cmd = new Command('start')
-    .description('Start the knowledge base collab server')
+    .description('Start the OpenKnowledge server (UI + API + MCP + collab on one port)')
     .option('-p, --port <port>', 'Server port', undefined)
     .option(
       '--ui-port <port>',
       'Pin the ok ui sibling to <port> and connect (not exit) if a server already runs here — the worktree-preview recipe path',
       parseUiPort,
     )
-    .option('-H, --host <host>', 'Server host', undefined)
-    .option('--open', 'Open browser after start')
+    .option(
+      '--bind <address>',
+      'Bind address (repeatable; default 127.0.0.1 — loopback only)',
+      (value: string, prev: string[] | undefined) => [...(prev ?? []), value],
+    )
+    // Deprecated alias of --bind — kept working for the skew window, hidden
+    // from --help so new scripts reach for the locked name.
+    .addOption(new Option('-H, --host <host>', 'Deprecated alias of --bind').hideHelp())
+    .option(
+      '--no-open-browser',
+      'Do not open the browser after start (interactive loopback starts open it by default)',
+    )
+    // Deprecated: pre-flip opt-in, now the default for interactive loopback
+    // starts. Kept as a force-open for scripts that relied on it (it opens
+    // even without a TTY). Hidden from --help.
+    .addOption(new Option('--open', 'Deprecated: force-open the browser after start').hideHelp())
+    .option(
+      '--only <module>',
+      "Serve one module: 'server' (API + MCP only, no shell or browser) or 'ui' (shell + proxy only; requires --server-url)",
+      parseOnlyModule,
+    )
+    .option(
+      '--server-url <url>',
+      'Project-server URL the --only ui process proxies to (e.g. http://127.0.0.1:24550)',
+    )
+    .option(
+      '--idle-shutdown <duration>',
+      "Shut the server down after this long with no connected clients ('off', or a duration like 90s, 30m, 2h; default 30m)",
+      parseIdleShutdownFlag,
+    )
     .option('--mode <mode>', "Force dispatch mode: 'browser' or 'app'", parseStartMode)
     .option(
       '--serve-content-assets',
@@ -1719,6 +2071,65 @@ export function startCommand(getConfig: () => Config): Command {
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();
 
+      // `--bind` is declared repeatable because the config surface reserves a
+      // bind LIST, but multi-bind isn't implemented yet — reject loudly
+      // rather than silently binding only the first address.
+      if (opts.bind !== undefined && opts.bind.length > 1) {
+        process.stderr.write(
+          'error: multiple --bind addresses are not supported yet — pass a single address\n',
+        );
+        process.exit(2);
+      }
+
+      // `--server-url` only means something to the --only ui proxy.
+      if (opts.serverUrl !== undefined && opts.only !== 'ui') {
+        process.stderr.write("error: option '--server-url' requires '--only ui'\n");
+        process.exit(2);
+      }
+
+      // `--only server` promises "no UI module" — an explicit shell dir
+      // contradicts it. Fail loud rather than pick a winner silently.
+      if (opts.only === 'server' && opts.reactShellDistDir !== undefined) {
+        process.stderr.write(
+          "error: option '--only server' cannot be combined with '--react-shell-dist-dir'\n",
+        );
+        process.exit(2);
+      }
+
+      // `--only ui`: run just the shell-serving proxy against an explicit
+      // upstream — the operator split-mode replacement for bare `ok ui`
+      // (which discovers its upstream via server.lock instead).
+      if (opts.only === 'ui') {
+        if (opts.serverUrl === undefined) {
+          process.stderr.write(
+            "error: '--only ui' requires '--server-url <url>' (where the project server runs)\n",
+          );
+          process.exit(2);
+        }
+        // `--only ui` runs the proxy in-process and returns below, before the
+        // --mode app handoff and before runStartCommand reads --remote — so
+        // either combination would silently drop a flag. Reject loudly.
+        if (opts.mode === 'app') {
+          process.stderr.write("error: option '--only ui' cannot be combined with '--mode app'\n");
+          process.exit(2);
+        }
+        if (opts.remote !== undefined && opts.remote !== false) {
+          process.stderr.write("error: option '--only ui' cannot be combined with '--remote'\n");
+          process.exit(2);
+        }
+        const { runUiCommand } = await import('./ui.ts');
+        await runUiCommand(config, {
+          ...(opts.port !== undefined ? { port: String(opts.port) } : {}),
+          ...(opts.bind?.[0] !== undefined
+            ? { host: opts.bind[0] }
+            : opts.host !== undefined
+              ? { host: opts.host }
+              : {}),
+          upstreamUrl: opts.serverUrl,
+        });
+        return;
+      }
+
       // `--mode=app` shortcuts the server boot and hands off to the
       // desktop app. Mutually exclusive with --open (which opens a
       // browser tab against the local server, which app mode does not
@@ -1742,7 +2153,12 @@ export function startCommand(getConfig: () => Config): Command {
         const ignored: string[] = [];
         if (opts.port !== undefined) ignored.push('--port');
         if (opts.uiPort !== undefined) ignored.push('--ui-port');
+        if (opts.bind !== undefined) ignored.push('--bind');
         if (opts.host !== undefined) ignored.push('--host');
+        if (opts.only !== undefined) ignored.push('--only');
+        if (opts.serverUrl !== undefined) ignored.push('--server-url');
+        if (opts.idleShutdown !== undefined) ignored.push('--idle-shutdown');
+        if (opts.openBrowser === false) ignored.push('--no-open-browser');
         if (ignored.length > 0) {
           // Debug-level surface; reuse the existing program log-level
           // gate (--log-level=debug). Inline check to avoid a logger dep.
