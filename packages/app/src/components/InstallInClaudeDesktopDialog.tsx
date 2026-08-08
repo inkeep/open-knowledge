@@ -1,7 +1,7 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowRight, CheckCircle2, Copy, Download, Loader2, MoveUpRight } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Copy, Download, MoveUpRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';
 
@@ -294,7 +295,7 @@ export function InstallInClaudeDesktopDialog({
             {/* --------- DOWNLOADING (Electron only) --------- */}
             {phase.kind === 'downloading' && (
               <div className="flex items-center gap-2 text-sm">
-                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                <Spinner aria-hidden="true" className="h-4 w-4" />
                 <Trans>
                   Building <InlineCode>openknowledge.skill</InlineCode> and opening the Claude
                   Desktop App
@@ -414,7 +415,7 @@ export function InstallInClaudeDesktopDialog({
           )}
           {phase.kind === 'downloading' && (
             <Button disabled>
-              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              <Spinner aria-hidden="true" className="h-4 w-4" />
               {reinstall ? <Trans>Reinstalling</Trans> : <Trans>Installing</Trans>}
             </Button>
           )}

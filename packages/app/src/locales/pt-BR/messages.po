@@ -6737,6 +6737,7 @@ msgid "Lives in this project (wherever the skill's folder is) and is shared with
 msgstr "Fica neste projeto (onde quer que esteja a pasta da habilidade) e é compartilhada com os colaboradores pelo git."
 
 #: src/components/emoji-picker.tsx
+#: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx

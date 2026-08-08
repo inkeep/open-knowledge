@@ -32,7 +32,7 @@
 
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { CheckCircle2, Copy, ExternalLink, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AuthModal } from '@/components/AuthModal';
@@ -56,6 +56,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { docNameToMarkdownPath } from '@/lib/doc-paths';
@@ -391,8 +392,7 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
                   </Label>
                   {ownersLoading && owners === null ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden />{' '}
-                      <Trans>Loading...</Trans>
+                      <Spinner className="size-3.5" aria-hidden /> <Trans>Loading...</Trans>
                     </div>
                   ) : ownersError ? (
                     <div className="flex items-center justify-between gap-2">
@@ -571,8 +571,7 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
                 >
                   {submitting ? (
                     <>
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden />{' '}
-                      <Trans>Publishing...</Trans>
+                      <Spinner className="size-3.5" aria-hidden /> <Trans>Publishing...</Trans>
                     </>
                   ) : (
                     <Trans>Publish</Trans>
@@ -682,8 +681,7 @@ function PublishSuccessView({
                 data-testid="publish-share-url-loading"
                 className="flex items-center gap-2 text-sm text-muted-foreground"
               >
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />{' '}
-                <Trans>Preparing share URL...</Trans>
+                <Spinner className="size-3.5" aria-hidden /> <Trans>Preparing share URL...</Trans>
               </div>
             )}
           </fieldset>
@@ -710,7 +708,7 @@ function PublishSuccessView({
           >
             {copying ? (
               <>
-                <Loader2 className="size-3.5 animate-spin" aria-hidden /> <Trans>Copying...</Trans>
+                <Spinner className="size-3.5" aria-hidden /> <Trans>Copying...</Trans>
               </>
             ) : (
               <>
@@ -806,7 +804,7 @@ function NameCheckIndicator({ status }: { status: NameCheckStatus }) {
         data-status={status.kind}
         className="flex items-center gap-1 text-muted-foreground"
       >
-        <Loader2 className="size-3.5 animate-spin" aria-hidden /> <Trans>Checking...</Trans>
+        <Spinner className="size-3.5" aria-hidden /> <Trans>Checking...</Trans>
       </span>
     );
   }

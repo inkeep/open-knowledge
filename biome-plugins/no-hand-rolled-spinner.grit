@@ -1,0 +1,36 @@
+// no-hand-rolled-spinner — loading spinners come from the Spinner primitive, so
+// reduced-motion support and the accessible name are inherited rather than
+// remembered per call site.
+//
+// `animate-spin` applied by hand spins through `prefers-reduced-motion` (a
+// vestibular trigger) and carries no role or label unless the author adds them.
+// `Spinner` bakes in `motion-reduce:animate-none`, `role="status"`, and a
+// localized `aria-label`; pass `icon` when the glyph shape carries meaning
+// (RefreshCw for syncing, Undo2 for reverting) and `aria-hidden="true"` when a
+// wrapper or enclosing control already names the loading state.
+//
+// Suppress a legitimately non-Spinner spin (a decorative flourish, a non-loading
+// rotation) with:
+//   // biome-ignore lint/plugin/no-hand-rolled-spinner: <reason>
+// placed on the line above the class attribute (the attribute must be on its own
+// line — Biome has no slot for a comment between attributes on one line).
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+// Matches `className` and every `*ClassName` prop in one predicate. `$value` is
+// the whole initializer clause, so `className={cn('size-4 animate-spin', x)}`
+// and a plain string both land in the same branch.
+//
+// GritQL regex matches the ENTIRE node text, so `.*` brackets a substring and
+// `(?s)` lets `.` cross newlines. Capturing groups silently never match in
+// Biome's dialect, hence `(?:…)` throughout.
+jsx_attribute($name, $value) where {
+    $name <: r"(?s).*lassName",
+    $value <: r"(?s).*\banimate-spin\b.*",
+    register_diagnostic(
+        span = $value,
+        message = "Hand-rolled loading spinner. Use `<Spinner />` from `@/components/ui/spinner` so reduced motion and the accessible name come for free — pass `icon` to keep a meaningful glyph, `aria-hidden` when a wrapper already announces the state. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-hand-rolled-spinnergrit"
+    )
+}

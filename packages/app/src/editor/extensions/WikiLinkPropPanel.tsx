@@ -29,13 +29,13 @@ import {
   FileImage,
   FolderOpen,
   Globe,
-  Loader2,
   Pencil,
   Plus,
   Trash2,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Spinner } from '@/components/ui/spinner';
 import { InteractionPropPanel } from '../../components/InteractionPropPanel';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import { usePageList } from '../../components/PageListContext';
@@ -476,7 +476,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
   let stateLabel: { icon: React.ReactNode; text: string; className: string };
   if (loading) {
     stateLabel = {
-      icon: <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />,
+      icon: <Spinner className="size-3.5 shrink-0" aria-hidden="true" />,
       text: t`Loading`,
       className: 'text-muted-foreground/80',
     };

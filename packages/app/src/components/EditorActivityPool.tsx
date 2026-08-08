@@ -41,7 +41,7 @@ import {
   parseTemplateContentDocName,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import {
   Activity,
   lazy,
@@ -54,6 +54,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { Spinner } from '@/components/ui/spinner';
 import { type PoolEntrySnapshot, useDocumentContext } from '@/editor/DocumentContext';
 import { peekRenameSnapshot, setActivityMountList } from '@/editor/editor-cache';
 import { isSystemDoc } from '@/editor/is-system-doc';
@@ -1100,7 +1101,7 @@ function ServerRestartRecoveryPanel({ view }: { view: ServerRestartRecoveryView 
         {isFailed ? (
           <RefreshCw className="size-5" aria-hidden="true" />
         ) : (
-          <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+          <Spinner className="size-5" aria-hidden="true" />
         )}
       </div>
       <div className="flex flex-col items-center gap-1">

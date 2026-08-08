@@ -6,7 +6,6 @@ import {
   type SkillsListEntry,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Loader2 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { AddSkillTab } from '@/components/ImportSkillDialog';
@@ -15,6 +14,7 @@ import { EMPTY_SCOPE_SENTINEL, SkillsTree } from '@/components/SkillsTree';
 import { useSkillActions } from '@/components/skill-actions';
 import { Button } from '@/components/ui/button';
 import { SidebarGroup, SidebarGroupContent } from '@/components/ui/sidebar';
+import { Spinner } from '@/components/ui/spinner';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { findLocalSkillPreviewTabId } from '@/editor/editor-tabs';
 import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
@@ -551,7 +551,7 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
             role="status"
             aria-live="polite"
           >
-            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            <Spinner className="size-3.5" aria-hidden />
             <Trans>Loading skills</Trans>
           </div>
         ) : null}

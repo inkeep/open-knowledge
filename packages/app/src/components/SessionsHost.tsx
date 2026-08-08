@@ -7,7 +7,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { ThreadInfo, ThreadStatus } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
-import { Loader2, SquareTerminalIcon } from 'lucide-react';
+import { SquareTerminalIcon } from 'lucide-react';
 import {
   lazy,
   type ReactNode,
@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ArchivedThreadChooser, ThreadHistoryMenu } from '@/components/acp/ThreadHistoryMenu';
 import { publishReusableSession } from '@/components/reusable-session-store';
+import { Spinner } from '@/components/ui/spinner';
 import { TabsContent } from '@/components/ui/tabs';
 import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
@@ -1807,7 +1808,7 @@ function ThreadPanel({
             aria-busy="true"
             className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground"
           >
-            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+            <Spinner className="size-5" aria-hidden="true" />
           </div>
         }
       >

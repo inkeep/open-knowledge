@@ -21,13 +21,13 @@ import {
   FileQuestion,
   FileX2,
   FolderOpen,
-  Loader2,
   MapPin,
   RefreshCw,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
   useEnableSyncWithConfirm,
   useSyncEnabledWriter,
@@ -198,7 +198,7 @@ function SyncNowButton({
     <>
       {pending ? (
         <Button disabled aria-busy="true" data-testid="share-receive-miss-sync-now">
-          <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+          <Spinner icon={RefreshCw} className="size-4" aria-hidden="true" />
           <Trans>Syncing</Trans>
         </Button>
       ) : (
@@ -372,7 +372,7 @@ function PullNowButton({ pending, onPull }: { pending: boolean; onPull: () => vo
     <>
       {pending ? (
         <Button disabled aria-busy="true" data-testid="share-receive-miss-pull-now">
-          <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+          <Spinner icon={RefreshCw} className="size-4" aria-hidden="true" />
           <Trans>Pulling</Trans>
         </Button>
       ) : (
@@ -497,7 +497,7 @@ export function ShareReceiveMissContent({
   if (state.phase === 'pending') {
     return (
       <>
-        <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+        <Spinner className="size-5" aria-hidden="true" />
         <Trans>Checking for updates on GitHub</Trans>
       </>
     );

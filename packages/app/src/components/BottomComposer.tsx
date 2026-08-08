@@ -29,7 +29,7 @@
 
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronDown, Loader2, TextQuote, X } from 'lucide-react';
+import { ChevronDown, TextQuote, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -60,6 +60,7 @@ import {
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { getEditorForDoc } from '@/editor/active-editor';
 import {
   ComposerMentionInput,
@@ -1169,7 +1170,7 @@ export function BottomComposer({
                   <Trans>Ask</Trans>
                 )}
               </span>
-              {pending ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
+              {pending ? <Spinner className="size-3.5" aria-hidden /> : null}
             </>
           }
           onPrimary={submit}

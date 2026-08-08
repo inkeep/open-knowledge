@@ -4,10 +4,10 @@ import { ArrowUpRight, RefreshCw, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { SkillUpdateConflictDialog } from '@/components/SkillUpdateConflictDialog';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSkillOrigin } from '@/hooks/use-skill-origin';
-import { cn } from '@/lib/utils';
 
 /**
  * Import provenance for the active skill tab, rendered inline on the LEFT of the
@@ -145,7 +145,11 @@ export function SkillOriginInline({ scope, name }: { scope: SkillScope; name: st
             asChild
           >
             <TooltipTrigger>
-              <Undo2 className={cn('size-3', reverting && 'animate-spin')} aria-hidden />
+              {reverting ? (
+                <Spinner icon={Undo2} className="size-3" aria-hidden />
+              ) : (
+                <Undo2 className="size-3" aria-hidden />
+              )}
               <span className="hidden @xl/toolbar:inline">
                 {reverting ? <Trans>Reverting</Trans> : <Trans>Revert</Trans>}
               </span>
@@ -168,7 +172,11 @@ export function SkillOriginInline({ scope, name }: { scope: SkillScope; name: st
             asChild
           >
             <TooltipTrigger>
-              <RefreshCw className={cn('size-3', reimporting && 'animate-spin')} aria-hidden />
+              {reimporting ? (
+                <Spinner icon={RefreshCw} className="size-3" aria-hidden />
+              ) : (
+                <RefreshCw className="size-3" aria-hidden />
+              )}
               {/* Label collapses to an icon-only button on a narrow pane. */}
               <span className="hidden @xl/toolbar:inline">
                 {reimporting ? <Trans>Updating</Trans> : <Trans>Update</Trans>}

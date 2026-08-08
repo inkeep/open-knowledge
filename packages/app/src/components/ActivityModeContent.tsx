@@ -23,11 +23,12 @@
 
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { withLargeFileOpenGuard } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
+import { Spinner } from '@/components/ui/spinner';
 import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
 import { openAgentDiff, setAgentDiffMax } from '@/lib/agent-diff-store';
 import { closeTimelineDiff } from '@/lib/timeline-diff-store';
@@ -92,7 +93,7 @@ function LoadingState(): React.JSX.Element {
       role="status"
       aria-busy="true"
     >
-      <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+      <Spinner className="mr-2 size-4" aria-hidden="true" />
       <span className="text-sm">
         <Trans>Loading agent activity</Trans>
       </span>

@@ -14,7 +14,7 @@
 
 import type { WorktreeSelectorEntry } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { Check, FileText, Folder, GitBranch, Hash, Loader2, Sparkles } from 'lucide-react';
+import { Check, FileText, Folder, GitBranch, Hash, Sparkles } from 'lucide-react';
 import {
   type Dispatch,
   lazy,
@@ -79,6 +79,7 @@ import {
   CommandShortcut,
 } from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
+import { Spinner } from '@/components/ui/spinner';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
 import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
@@ -1222,7 +1223,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   aria-live="polite"
                   data-testid="command-palette-semantic-indexing"
                 >
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Spinner aria-hidden="true" className="size-3.5" />
                   <Trans>
                     Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready.
                     Results may be incomplete.
@@ -1276,7 +1277,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   aria-live="polite"
                   data-testid="command-palette-semantic-searching"
                 >
-                  <Loader2 className="size-4 animate-spin" />
+                  <Spinner aria-hidden="true" className="size-4" />
                   <Trans>Searching by meaning</Trans>
                 </div>
               ) : null}
@@ -1321,7 +1322,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               aria-live="polite"
               data-testid="command-palette-search-preparing"
             >
-              <Loader2 className="size-4 animate-spin" />
+              <Spinner aria-hidden="true" className="size-4" />
               <Trans>Preparing search</Trans>
             </div>
           ) : null}

@@ -1,6 +1,5 @@
 import { plural, t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
-import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DialogBody,
@@ -10,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 
 /**
  * VSCode-parity fallback modal. When `shell.trashItem` fails for one or more
@@ -176,7 +176,7 @@ export function TrashFailureModal({
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="size-4 animate-spin" /> <Trans>Retrying</Trans>
+              <Spinner aria-hidden="true" className="size-4" /> <Trans>Retrying</Trans>
             </>
           ) : (
             <Trans>Retry</Trans>
@@ -190,7 +190,7 @@ export function TrashFailureModal({
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="size-4 animate-spin" /> <Trans>Deleting</Trans>
+              <Spinner aria-hidden="true" className="size-4" /> <Trans>Deleting</Trans>
             </>
           ) : (
             <Trans>Delete Permanently</Trans>

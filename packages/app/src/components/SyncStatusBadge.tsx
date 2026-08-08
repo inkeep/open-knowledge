@@ -29,6 +29,7 @@ import {
   RefreshCw,
   UserCog,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useBadgeSyncControls } from '@/hooks/use-enable-sync-with-confirm';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
@@ -124,7 +125,9 @@ function BadgeIcon({ status, paused }: BadgeIconProps) {
     case 'fetching':
     case 'pulling':
     case 'pushing':
-      return <RefreshCw className={`${cls} text-muted-foreground animate-spin`} />;
+      return (
+        <Spinner aria-hidden="true" icon={RefreshCw} className={`${cls} text-muted-foreground`} />
+      );
     case 'conflict':
       return <AlertTriangle className={`${cls} text-amber-500`} />;
     case 'offline':

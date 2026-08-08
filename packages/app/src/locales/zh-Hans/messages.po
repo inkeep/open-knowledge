@@ -6741,6 +6741,7 @@ msgid "Lives in this project (wherever the skill's folder is) and is shared with
 msgstr "保存在这个项目里（技能文件夹在哪里都行），并通过 git 与协作者共享。"
 
 #: src/components/emoji-picker.tsx
+#: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx

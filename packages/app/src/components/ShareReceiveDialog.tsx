@@ -25,7 +25,6 @@
 
 import { classifyBranchMatch } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 
@@ -40,6 +39,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import {
   type HeadBranchInfo,
   type OkDesktopBridge,
@@ -588,7 +588,7 @@ function ShareReceiveDialogInner({
             >
               {initializing ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  <Spinner className="mr-2 h-4 w-4" aria-hidden="true" />
                   <Trans>Initialize and open</Trans>
                 </>
               ) : (

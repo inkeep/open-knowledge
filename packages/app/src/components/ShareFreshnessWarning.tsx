@@ -16,6 +16,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, Info, RefreshCw, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
   useEnableSyncWithConfirm,
   useSyncEnabledWriter,
@@ -191,7 +192,7 @@ export function ShareFreshnessWarning({ freshness, status, kind }: ShareFreshnes
               <div>
                 {syncNow === 'pending' ? (
                   <Button variant="outline" size="xs" disabled>
-                    <RefreshCw className="size-3 shrink-0 animate-spin" aria-hidden="true" />
+                    <Spinner icon={RefreshCw} className="size-3 shrink-0" aria-hidden="true" />
                     <Trans>Syncing</Trans>
                   </Button>
                 ) : (

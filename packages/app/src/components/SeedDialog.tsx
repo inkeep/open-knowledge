@@ -2,7 +2,7 @@
 
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Spinner } from '@/components/ui/spinner';
 import type { OkPackId, OkScaffoldPlan, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
 import { seedClient } from '@/lib/seed-client';
 
@@ -370,7 +371,7 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
             </Button>
           ) : step === 'configure' && phase.kind === 'applying' ? (
             <Button disabled>
-              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              <Spinner aria-hidden="true" className="h-4 w-4" />
               <Trans>Setting up</Trans>
             </Button>
           ) : null}

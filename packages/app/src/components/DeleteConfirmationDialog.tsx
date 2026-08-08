@@ -1,5 +1,4 @@
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 
 interface DeleteConfirmationProps {
   itemName?: string;
@@ -88,7 +88,7 @@ export function DeleteConfirmationDialog({
         <Button variant="destructive" onClick={onDelete} disabled={isSubmitting}>
           {isSubmitting ? (
             <>
-              <Loader2 className="size-4 animate-spin" /> {confirmLabelBusy}
+              <Spinner aria-hidden="true" className="size-4" /> {confirmLabelBusy}
             </>
           ) : (
             confirmLabel

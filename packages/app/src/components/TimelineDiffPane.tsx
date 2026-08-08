@@ -13,15 +13,7 @@
 
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import {
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  PanelRightClose,
-  PanelRightOpen,
-  Undo2,
-  X,
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen, Undo2, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { computeRenderedDiff, RenderedDiffView } from '@/components/RenderedDiffView';
@@ -34,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { collectChangeAnchors, countChangeGroups } from '@/lib/diff-change-nav';
@@ -361,7 +354,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
             onClick={() => (laterEdits > 0 ? setDialogOpen(true) : handleRestore())}
           >
             {restoring ? (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+              <Spinner aria-hidden="true" className="mr-1.5 size-3.5" />
             ) : (
               <Undo2 className="mr-1.5 size-3.5" />
             )}
@@ -397,7 +390,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
       <div ref={diffBodyRef} className="min-h-0 flex-1 overflow-auto subtle-scrollbar">
         {result.status === 'loading' && (
           <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
+            <Spinner aria-hidden="true" className="size-3" />
             <Trans>Loading diff</Trans>
           </div>
         )}
@@ -426,7 +419,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
             <Suspense
               fallback={
                 <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" />
+                  <Spinner aria-hidden="true" className="size-3" />
                   <Trans>Loading diff renderer</Trans>
                 </div>
               }
@@ -469,7 +462,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
               disabled={restoring}
               onClick={() => handleRestore()}
             >
-              {restoring ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+              {restoring ? <Spinner aria-hidden="true" className="mr-2 size-4" /> : null}
               <Trans>Restore</Trans>
             </Button>
           </DialogFooter>

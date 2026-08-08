@@ -31,7 +31,6 @@ import {
   AlertCircleIcon,
   ArchiveIcon,
   CheckIcon,
-  Loader2,
   ShieldIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
@@ -51,6 +50,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
@@ -682,12 +682,7 @@ function ReportBugDialog({
                 {crashInvite !== undefined ? <Trans>Not now</Trans> : <Trans>Cancel</Trans>}
               </Button>
               <Button onClick={() => void handleCreate()} disabled={phase.creating}>
-                {phase.creating && (
-                  <Loader2
-                    className="size-4 animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
-                )}
+                {phase.creating && <Spinner className="size-4" aria-hidden="true" />}
                 <Trans>Create report</Trans>
               </Button>
             </DialogFooter>
@@ -755,10 +750,7 @@ function ReportBugDialog({
             </DialogHeader>
             <DialogBody className="flex flex-col gap-3">
               <div role="status" className="flex items-center gap-2.5 text-sm">
-                <Loader2
-                  className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none"
-                  aria-hidden="true"
-                />
+                <Spinner className="size-4 shrink-0 text-primary" aria-hidden="true" />
                 <Trans>Uploading securely</Trans>
                 {/* No byte-level progress crosses the IPC boundary, so the only
                     honest number here is the total size. */}

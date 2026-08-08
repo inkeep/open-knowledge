@@ -18,11 +18,12 @@
 
 import type { OkBugReportListRow } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronDownIcon, FolderOpenIcon, Loader2, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { ChevronDownIcon, FolderOpenIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Spinner } from '@/components/ui/spinner';
 
 type PendingAction = 'retrying' | 'deleting';
 type HistoryStatus = 'loading' | 'ready' | 'error';
@@ -211,7 +212,7 @@ function ReportRow({
         {row.retryable ? (
           <Button variant="outline" size="xs" disabled={busy} onClick={() => onRetry(row)}>
             {pending === 'retrying' ? (
-              <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <Spinner aria-hidden="true" />
             ) : (
               <RotateCwIcon aria-hidden="true" />
             )}
@@ -237,7 +238,7 @@ function ReportRow({
           onClick={() => onDelete(row)}
         >
           {pending === 'deleting' ? (
-            <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            <Spinner aria-hidden="true" />
           ) : (
             <Trash2Icon aria-hidden="true" />
           )}
@@ -281,7 +282,7 @@ export function BugReportHistoryList({ onReportABug }: { onReportABug?: () => vo
   if (history.status === 'loading') {
     return (
       <div role="status" className="flex items-center gap-2.5 py-6 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        <Spinner className="size-4" aria-hidden="true" />
         <Trans>Loading your reports</Trans>
       </div>
     );

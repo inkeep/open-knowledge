@@ -15,10 +15,11 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Loader2, PanelRightClose, PanelRightOpen, X } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { computeRenderedDiff, RenderedDiffView } from '@/components/RenderedDiffView';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { type AgentDiffView, closeAgentDiff, setAgentDiffKept } from '@/lib/agent-diff-store';
@@ -312,7 +313,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
       <div ref={diffBodyRef} className="min-h-0 flex-1 overflow-auto subtle-scrollbar">
         {result.status === 'loading' && (
           <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
+            <Spinner aria-hidden="true" className="size-3" />
             <Trans>Loading diff</Trans>
           </div>
         )}
@@ -346,7 +347,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
             <Suspense
               fallback={
                 <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" />
+                  <Spinner aria-hidden="true" className="size-3" />
                   <Trans>Loading diff renderer</Trans>
                 </div>
               }

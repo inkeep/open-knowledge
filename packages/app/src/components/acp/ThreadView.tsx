@@ -31,7 +31,6 @@ import {
   History,
   Link2,
   ListPlus,
-  Loader2,
   MousePointer2,
   RotateCcw,
   Search,
@@ -100,6 +99,7 @@ import {
   useMessageScroller,
 } from '@/components/ui/message-scroller';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -758,10 +758,7 @@ export function ThreadView({
                     className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
                     data-testid="agent-thread-starting"
                   >
-                    <Loader2
-                      className="size-3.5 animate-spin motion-reduce:animate-none"
-                      aria-hidden="true"
-                    />
+                    <Spinner className="size-3.5" aria-hidden="true" />
                     {/* `shimmer` sets `color: transparent`, which a container
                         would inherit into the spinner's currentColor stroke —
                         keep it scoped to the text. */}
@@ -779,7 +776,7 @@ export function ThreadView({
           className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
           data-testid="agent-thread-steer-pending"
         >
-          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
           <span className="min-w-0 flex-1 truncate text-foreground/80">{info.steer.content}</span>
         </div>
@@ -1783,7 +1780,7 @@ function ThreadNotice({
                   data-auth-method-id={method.id}
                 >
                   {authPending === method.id ? (
-                    <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                    <Spinner className="size-3" aria-hidden="true" />
                   ) : null}
                   {/* One method is the whole choice, so the button says what it
                       does; several are a menu, and the names are the choice. */}
@@ -1805,7 +1802,7 @@ function ThreadNotice({
               >
                 {retryPending ? (
                   <>
-                    <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                    <Spinner className="size-3" aria-hidden="true" />
                     {t`Retrying…`}
                   </>
                 ) : (
@@ -2148,8 +2145,8 @@ function ToolStatusIndicator({
         // `pending` (accepted, not yet started) and `in_progress` both read as
         // "this call is in flight" — the distinction is the agent's bookkeeping,
         // not something worth two different marks on the row.
-        <Loader2
-          className="size-3.5 animate-spin text-muted-foreground"
+        <Spinner
+          className="size-3.5 text-muted-foreground"
           aria-hidden="true"
           data-testid="agent-thread-tool-spinner"
         />
@@ -2236,7 +2233,7 @@ function TerminalBlock({ terminal }: { terminal: RenderedTerminal }): ReactNode 
         <span className="ml-auto shrink-0">
           {exit === null ? (
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground shimmer">
-              <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+              <Spinner className="size-3" aria-hidden="true" />
               {t`running`}
             </span>
           ) : (
@@ -2578,7 +2575,7 @@ function RuntimeConsentPrompt({
         data-testid="agent-thread-runtime-consent"
       >
         <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
           <span>{t`Downloading ${item.displayName} ${item.version}…`}</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -2967,7 +2964,7 @@ function ThreadComposer({
                     data-testid="agent-thread-cancel"
                   >
                     {cancelPending ? (
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                      <Spinner className="size-3.5" aria-hidden="true" />
                     ) : (
                       <Square className="size-3 fill-current" aria-hidden="true" />
                     )}

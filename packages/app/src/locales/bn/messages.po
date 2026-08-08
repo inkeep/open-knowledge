@@ -6737,6 +6737,7 @@ msgid "Lives in this project (wherever the skill's folder is) and is shared with
 msgstr "এই প্রকল্পেই থাকে (স্কিলের ফোল্ডার যেখানেই হোক) এবং git-এর মাধ্যমে সহযোগীদের সঙ্গে ভাগ করা হয়।"
 
 #: src/components/emoji-picker.tsx
+#: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx

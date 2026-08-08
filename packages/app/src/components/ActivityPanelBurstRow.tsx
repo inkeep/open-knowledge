@@ -14,7 +14,7 @@
 
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { Loader2, Undo2 } from 'lucide-react';
+import { Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAgentDiffView } from '@/lib/agent-diff-store';
 import type { BurstData } from '@/lib/use-activity-panel';
@@ -131,7 +132,7 @@ export function ActivityPanelBurstRow({
               onClick={() => setDialogOpen(true)}
             >
               {inFlight ? (
-                <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                <Spinner className="size-3" aria-hidden="true" />
               ) : (
                 <Undo2 className="size-3" aria-hidden="true" />
               )}
@@ -179,9 +180,7 @@ export function ActivityPanelBurstRow({
               disabled={inFlight}
               onClick={commitRestore}
             >
-              {inFlight ? (
-                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
-              ) : null}
+              {inFlight ? <Spinner className="mr-2 size-4" aria-hidden="true" /> : null}
               <Trans>Undo</Trans>
             </Button>
           </DialogFooter>

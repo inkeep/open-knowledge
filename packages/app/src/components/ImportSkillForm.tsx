@@ -2,7 +2,7 @@
 
 import type { SkillDiscover, SkillScope } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { FileArchive, Folder, GitBranch, Loader2Icon } from 'lucide-react';
+import { FileArchive, Folder, GitBranch } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { announceSkillImport } from '@/lib/skill-import-toast';
 import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { discoverSkillsInSource, importSkill, uploadSkill } from '@/lib/skills-api';
@@ -445,7 +446,7 @@ export function ImportSkillForm({
         >
           {busy ? (
             <>
-              <Loader2Icon className="size-4 animate-spin" />
+              <Spinner aria-hidden="true" className="size-4" />
               {isUpload ? <Trans>Uploading</Trans> : <Trans>Importing</Trans>}
             </>
           ) : isUpload ? (

@@ -50,7 +50,6 @@ import {
   GitBranch,
   HardDrive,
   History,
-  Loader2,
   RotateCcw,
   Sparkles,
   Undo2,
@@ -71,6 +70,7 @@ import {
 } from '@/components/ui/dialog';
 import { PanelHeader, PanelTitle } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { closeAgentDiff } from '@/lib/agent-diff-store';
 import { createSelfSchedulingPoll, type PollOutcome } from '@/lib/self-scheduling-poll';
@@ -654,7 +654,7 @@ function EntryRow({
                     }}
                   >
                     {restoring ? (
-                      <Loader2 className="size-3 animate-spin" />
+                      <Spinner aria-hidden="true" className="size-3" />
                     ) : (
                       <Undo2 className="size-3" />
                     )}
@@ -709,7 +709,7 @@ function EntryRow({
               disabled={restoring}
               onClick={() => handleRestore()}
             >
-              {restoring ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+              {restoring ? <Spinner aria-hidden="true" className="mr-2 size-4" /> : null}
               <Trans>Restore</Trans>
             </Button>
           </DialogFooter>

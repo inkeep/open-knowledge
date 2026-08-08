@@ -19,18 +19,11 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-  FileText,
-  Folder,
-  FolderOpenIcon,
-  GitBranch,
-  Loader2Icon,
-  PlusIcon,
-  XIcon,
-} from 'lucide-react';
+import { FileText, Folder, FolderOpenIcon, GitBranch, PlusIcon, XIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
+import { Spinner } from '@/components/ui/spinner';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import type {
   OkDesktopBridge,
@@ -418,7 +411,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
           role="status"
           aria-live="polite"
         >
-          <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+          <Spinner aria-hidden="true" className="size-6 text-muted-foreground" />
           <p className="text-muted-foreground text-sm">{t`Opening ${openingLabel}…`}</p>
         </div>
       ) : null}
@@ -507,7 +500,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
 
           {loading ? (
             <section className="flex shrink-0 flex-col items-center">
-              <Loader2Icon className="size-4 animate-spin text-muted-foreground/60" />
+              <Spinner className="size-4 text-muted-foreground/60" />
             </section>
           ) : recents.length > 0 ? (
             <section className="flex min-h-0 flex-col">

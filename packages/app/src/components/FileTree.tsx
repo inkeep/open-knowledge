@@ -182,6 +182,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { asDirectoryHandle, useSelectionMirror } from '@/components/use-selection-mirror';
 import { getEditorForDoc } from '@/editor/active-editor';
 import { type OpenTargetOptions, useDocumentContext } from '@/editor/DocumentContext';
@@ -3815,7 +3816,8 @@ function FileTreeHeaderNotice({
   kind: 'error' | 'info' | 'reconnecting';
   children: ReactNode;
 }) {
-  const Icon = kind === 'error' ? TriangleAlert : kind === 'reconnecting' ? RefreshCw : Info;
+  const Icon = kind === 'error' ? TriangleAlert : Info;
+  const iconClassName = 'mt-0.5 size-3.5 shrink-0';
   return (
     <span
       role={kind === 'error' ? 'alert' : 'status'}
@@ -3824,13 +3826,11 @@ function FileTreeHeaderNotice({
         kind === 'error' ? 'text-destructive' : 'text-muted-foreground',
       )}
     >
-      <Icon
-        aria-hidden="true"
-        className={cn(
-          'mt-0.5 size-3.5 shrink-0',
-          kind === 'reconnecting' && 'animate-spin motion-reduce:animate-none',
-        )}
-      />
+      {kind === 'reconnecting' ? (
+        <Spinner aria-hidden="true" icon={RefreshCw} className={iconClassName} />
+      ) : (
+        <Icon aria-hidden="true" className={iconClassName} />
+      )}
       <span className="min-w-0">{children}</span>
     </span>
   );

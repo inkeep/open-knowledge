@@ -25,7 +25,7 @@
 
 import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { AppWindow, GitBranch, Loader2, MapPin } from 'lucide-react';
+import { AppWindow, GitBranch, MapPin } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 
@@ -40,6 +40,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { authPromptStore } from '@/lib/auth-prompt-store';
 import {
   type OkDesktopBridge,
@@ -713,7 +714,7 @@ export function ShareBranchSwitchDialog({
               role="status"
               aria-live="polite"
             >
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <Spinner className="h-4 w-4" aria-hidden="true" />
               <Trans>Checking for updates on GitHub</Trans>
             </p>
           ) : branchSwitchState.phase === 'verdict' ? (
@@ -769,7 +770,7 @@ export function ShareBranchSwitchDialog({
                 role="status"
                 aria-live="polite"
               >
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <Spinner className="h-4 w-4" aria-hidden="true" />
                 <Trans>Checking for updates on GitHub</Trans>
               </p>
             )
@@ -780,7 +781,7 @@ export function ShareBranchSwitchDialog({
               role="status"
               aria-live="polite"
             >
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <Spinner className="h-4 w-4" aria-hidden="true" />
               <Trans>Loading branch state</Trans>
             </p>
           ) : isError ? (
@@ -857,7 +858,7 @@ export function ShareBranchSwitchDialog({
               role="status"
               aria-live="polite"
             >
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <Spinner className="h-4 w-4" aria-hidden="true" />
               <Trans>Switching branches</Trans>
             </p>
           ) : null}
@@ -868,7 +869,7 @@ export function ShareBranchSwitchDialog({
               role="status"
               aria-live="polite"
             >
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <Spinner className="h-4 w-4" aria-hidden="true" />
               <Trans>Opening worktree</Trans>
             </p>
           ) : null}
@@ -940,7 +941,7 @@ export function ShareBranchSwitchDialog({
               >
                 {switching ? (
                   <>
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    <Spinner className="size-3.5" aria-hidden="true" />
                     {switchLabel}
                   </>
                 ) : (
@@ -957,7 +958,7 @@ export function ShareBranchSwitchDialog({
               >
                 {creating ? (
                   <>
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    <Spinner className="size-3.5" aria-hidden="true" />
                     {worktreeLabel}
                   </>
                 ) : (

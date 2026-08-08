@@ -6,7 +6,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Loader2Icon } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
 import { INSTALL_EDITORS } from '@/components/SkillInstallMenu';
@@ -29,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { useSkillTargets } from '@/hooks/use-skill-targets';
 import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { discoverSkillsInSource, importSkillsBulk, installSkill } from '@/lib/skills-api';
@@ -329,7 +329,7 @@ export function SkillPluginBundleDialog({
           >
             {busy ? (
               <>
-                <Loader2Icon className="size-4 animate-spin" />
+                <Spinner aria-hidden="true" className="size-4" />
                 <Trans>Installing</Trans>
               </>
             ) : (

@@ -20,7 +20,7 @@
 import { TERMINAL_CLI_IDS, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Search, WifiOff } from 'lucide-react';
+import { Search, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useState } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
@@ -30,6 +30,7 @@ import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import {
   isDesktopTargetEnabled,
@@ -255,7 +256,7 @@ export function ConfigureAgentsSection(): ReactNode {
         >
           {catalog.isLoading ? (
             <div className="flex items-center justify-center gap-2 px-3 py-6 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner className="size-4" aria-hidden="true" />
               {t`Loading agents…`}
             </div>
           ) : catalog.isError ? (

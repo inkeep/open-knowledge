@@ -14,13 +14,14 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowRight, Check, Loader2, Mail, X } from 'lucide-react';
+import { ArrowRight, Check, Mail, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Spinner } from '@/components/ui/spinner';
 import { type SubscribeSource, submitSubscribe } from '@/lib/subscribe';
 import { cn } from '@/lib/utils';
 
@@ -190,7 +191,7 @@ export function SubscribeForm({
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                      <Spinner className="size-3.5" aria-hidden />
                       <span className="sr-only">
                         <Trans>Subscribing...</Trans>
                       </span>

@@ -8,7 +8,6 @@ import {
   FileCheck,
   GitBranch,
   Library,
-  Loader2,
   Network,
   PenLine,
   StickyNote,
@@ -16,6 +15,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Spinner } from '@/components/ui/spinner';
 import type { OkPackId, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
 import { seedClient } from '@/lib/seed-client';
 import { cn } from '@/lib/utils';
@@ -280,7 +280,7 @@ function PackCardSkeleton() {
   return (
     <div className="flex h-full min-h-[200px] flex-col items-start gap-4 rounded-xl border border-border/60 bg-card p-6">
       <span className="size-10 animate-pulse rounded-lg bg-muted" aria-hidden="true">
-        <Loader2 className="size-5 animate-spin text-muted-foreground opacity-0" />
+        <Spinner aria-hidden="true" className="size-5 text-muted-foreground opacity-0" />
       </span>
       <div className="flex w-full flex-col gap-2">
         <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
