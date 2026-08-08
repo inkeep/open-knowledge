@@ -147,6 +147,9 @@ export {
   type ReportBundleResult,
   type ReportBundleSummary,
 } from './report-bundle.ts';
+// The value type of `collectReportBundle`'s `readLanguage` seam, so the desktop
+// app can inject the language it is actually rendering in.
+export type { LanguageMetadata } from './report-language.ts';
 export {
   addOkPathsToGitExclude,
   type ExcludeWriteResult,

@@ -17,10 +17,12 @@
  * a function so the whole chain is unit-testable without an Electron runtime.
  */
 
+import type { LanguageMetadata } from '@inkeep/open-knowledge';
 import {
   AUTO_DETECTABLE_LOCALES,
   asBcp47Tag,
   type LanguagePreference,
+  type LocaleResolution,
   resolveLocale,
   SUPPORTED_LOCALES,
   type SupportedLocale,
@@ -114,8 +116,13 @@ interface DesktopLocaleInputs {
  * The pure half — the same four-tier policy every runtime shares, with
  * Electron's preferred-language list as the platform signal. Split out so the
  * IPC path can re-resolve a pushed preference without re-reading disk.
+ *
+ * Returns the whole resolution rather than the locale alone. The applied
+ * callers below take `.locale` and ignore the rest; the reporting caller needs
+ * the tier that decided. Handing back both is what keeps the reported language
+ * and the rendered one the same derivation rather than two copies of it.
  */
-export function resolveDesktopLocaleFrom(inputs: DesktopLocaleInputs): SupportedLocale {
+function resolveDesktopLocaleResolution(inputs: DesktopLocaleInputs): LocaleResolution {
   return resolveLocale({
     override: (inputs.override === undefined ? null : asBcp47Tag(inputs.override)) ?? undefined,
     storedPreference: inputs.storedPreference,
@@ -124,5 +131,53 @@ export function resolveDesktopLocaleFrom(inputs: DesktopLocaleInputs): Supported
     // The OS list is a guess, and the menu bar sits above the same unfinished
     // chrome layout the renderer does, so it declines the same guesses.
     autoDetectableLocales: AUTO_DETECTABLE_LOCALES,
-  }).locale;
+  });
+}
+
+export function resolveDesktopLocaleFrom(inputs: DesktopLocaleInputs): SupportedLocale {
+  return resolveDesktopLocaleResolution(inputs).locale;
+}
+
+/**
+ * The same resolution the menu bar runs, reported rather than applied: the
+ * preference, what it resolved to, which tier decided, and the platform list
+ * that tier read.
+ *
+ * Exists for the bug-report bundle, which needs the whole derivation and not
+ * just its answer — `'system'` resolving to English is either correct or the
+ * bug, and only the tier plus its input separates the two.
+ *
+ * `pushedPreference` is the value the renderer last pushed, or `null` to read
+ * disk. It is preferred when present for the reason the menu prefers it: the
+ * renderer pushes on change but the config write is debounced, so between the
+ * two the file still holds the language the user just left. A report filed in
+ * that window would otherwise name the previous language — precisely the window
+ * where someone reports that changing the language did not take.
+ */
+export function describeDesktopLanguage(
+  deps: DesktopLocaleDeps & { readonly pushedPreference: LanguagePreference | null },
+): LanguageMetadata {
+  const storedPreference =
+    deps.pushedPreference ??
+    readStoredLanguagePreference(deps.homedir, (message) =>
+      getLogger('boot-locale').warn(
+        { message },
+        'user config unreadable; bug report records the system fallback',
+      ),
+    );
+  const preferredSystemLanguages = deps.preferredSystemLanguages();
+  // Through the shared resolver, not a second copy of its arguments: the doc
+  // above promises this is the resolution the menu bar runs, and going through
+  // the same function is what keeps that true when a tier is added or changed.
+  const { locale, source } = resolveDesktopLocaleResolution({
+    storedPreference,
+    override: deps.env[LOCALE_OVERRIDE_ENV_VAR],
+    preferredSystemLanguages,
+  });
+  return {
+    preference: storedPreference,
+    locale,
+    source,
+    systemLanguages: preferredSystemLanguages,
+  };
 }

@@ -27,6 +27,7 @@ import {
   defaultReadDesktopEnv,
   writeBundle,
 } from './diagnose/bundle.ts';
+import { defaultReadLanguage, type LanguageMetadata } from './report-language.ts';
 import { isObject } from './utils/is-object.ts';
 
 // The level + summary types live in core so the desktop bridge contract's
@@ -71,6 +72,14 @@ export interface CollectReportBundleOptions {
    * Electron host" and is recorded as such at both levels.
    */
   readDesktopEnv?: () => DesktopMetadata | null;
+  /**
+   * Interface-language source for the bundle's language block, recorded at both
+   * levels. Defaults to the POSIX-environment reader, which is right for `ok
+   * bug-report` from a shell; the desktop app injects its own, because a macOS
+   * GUI process has no `LANG` to resolve against and would otherwise report the
+   * fallback for every report filed from the app.
+   */
+  readLanguage?: () => LanguageMetadata;
 }
 
 export interface ReportBundleResult {
@@ -111,6 +120,7 @@ async function collectFullBundle(
   opts: CollectReportBundleOptions,
   projectDir: string,
   readDesktopEnv: () => DesktopMetadata | null,
+  readLanguage: () => LanguageMetadata,
 ): Promise<ReportBundleResult> {
   const projectSlug = resolveProjectSlug(projectDir, opts.logger);
   const collected = await collectBundle({
@@ -130,7 +140,7 @@ async function collectFullBundle(
       // app bundle, and it is the only record of why a post-exit install failed.
       ...collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     ],
-    deps: { readDesktopEnv, logger: opts.logger },
+    deps: { readDesktopEnv, readLanguage, logger: opts.logger },
   });
   try {
     mkdirSync(dirname(opts.outputPath), { recursive: true });
@@ -178,8 +188,9 @@ export async function collectReportBundle(
 ): Promise<ReportBundleResult> {
   const { projectDir } = opts;
   const readDesktopEnv = opts.readDesktopEnv ?? defaultReadDesktopEnv;
+  const readLanguage = opts.readLanguage ?? defaultReadLanguage;
   if (opts.level === 'full' && projectDir !== undefined) {
-    return collectFullBundle(opts, projectDir, readDesktopEnv);
+    return collectFullBundle(opts, projectDir, readDesktopEnv, readLanguage);
   }
   const { zipPath, summary } = await collectStandardBundle({
     projectDir,
@@ -191,6 +202,7 @@ export async function collectReportBundle(
     note: opts.note,
     extraFiles: opts.extraFiles,
     desktop: readDesktopEnv(),
+    language: readLanguage(),
   });
   return {
     zipPath,

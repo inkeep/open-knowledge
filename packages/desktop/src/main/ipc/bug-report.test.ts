@@ -260,6 +260,45 @@ describe('handleBugReportCreate — project bundle', () => {
     });
   });
 
+  /**
+   * The seam this feature exists for. A macOS app launched from Finder has no
+   * `LANG`, so if the collector ever fell through to its POSIX default the
+   * bundle would report the fallback locale for every in-app report no matter
+   * what the user was reading. The env below is set to a DIFFERENT language
+   * than the injected reader returns, so a fall-through cannot pass this.
+   */
+  test('the injected desktop language reaches the bundle, not the POSIX default', async () => {
+    const projectDir = makeProjectDir();
+    const desktopLanguage = {
+      preference: 'zh-Hant',
+      locale: 'zh-Hant',
+      source: 'explicit',
+      systemLanguages: ['zh-TW', 'en-US'],
+    } as const;
+    const deps = makeDeps({ projectDir, readLanguage: () => desktopLanguage });
+    const priorLang = process.env.LANG;
+    process.env.LANG = 'fr_FR.UTF-8';
+
+    try {
+      const full = await handleBugReportCreate(deps, { kind: 'create', level: 'full' });
+      if (!full.ok) throw new Error(`expected ok, got: ${full.error}`);
+      const runtime = JSON.parse(readZipEntry(full.zipPath, 'state/runtime.json'));
+      expect(runtime.host.language).toEqual(desktopLanguage);
+
+      const standard = await handleBugReportCreate(
+        makeDeps({ projectDir, readLanguage: () => desktopLanguage }),
+        { kind: 'create', level: 'standard' },
+      );
+      if (!standard.ok) throw new Error(`expected ok, got: ${standard.error}`);
+      expect(JSON.parse(readZipEntry(standard.zipPath, 'sysinfo.json')).language).toEqual(
+        desktopLanguage,
+      );
+    } finally {
+      if (priorLang === undefined) delete process.env.LANG;
+      else process.env.LANG = priorLang;
+    }
+  });
+
   test('standard level records the desktop host metadata in sysinfo and the manifest', async () => {
     const projectDir = makeProjectDir();
     const deps = makeDeps({ projectDir });

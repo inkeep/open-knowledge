@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ZipFile } from 'yazl';
+import type { LanguageMetadata } from '../report-language.ts';
 import {
   CHECKPOINT_REF_GIT_FORMAT,
   type CollectBundleDeps,
@@ -46,6 +47,13 @@ afterEach(() => {
   tmpDirs.length = 0;
 });
 
+const DETERMINISTIC_LANGUAGE = {
+  preference: 'system',
+  locale: 'en',
+  source: 'fallback',
+  systemLanguages: [],
+} as const satisfies LanguageMetadata;
+
 function makeDeterministicDeps(over: Partial<CollectBundleDeps> = {}): CollectBundleDeps {
   return {
     fetchAgentPresence: async () => null,
@@ -56,6 +64,10 @@ function makeDeterministicDeps(over: Partial<CollectBundleDeps> = {}): CollectBu
     now: () => new Date('2026-05-28T14:22:01.000Z'),
     okVersion: () => '0.7.99',
     readDesktopEnv: () => null,
+    // Pinned like every sibling seam here: the real reader resolves against the
+    // running machine's user config and `LANG`, which would make these
+    // assertions read differently on a developer box than in CI.
+    readLanguage: () => DETERMINISTIC_LANGUAGE,
     readRuntime: () => ({
       nodeVersion: 'v22.18.0',
       platform: 'darwin',
@@ -89,7 +101,10 @@ describe('collectBundle — smoke', () => {
       platform: 'darwin',
       arch: 'arm64',
     });
-    expect(collected.manifest.host).toEqual({ desktop: null });
+    expect(collected.manifest.host).toEqual({
+      desktop: null,
+      language: DETERMINISTIC_LANGUAGE,
+    });
     expect(collected.manifest.serverStatus).toBe('not-running');
     expect(collected.manifest.redaction).toEqual({ applied: false });
 
@@ -571,7 +586,7 @@ describe('collectBundle — state files', () => {
       platform: 'darwin',
       arch: 'arm64',
     });
-    expect(runtime.host).toEqual({ desktop: null });
+    expect(runtime.host).toEqual({ desktop: null, language: DETERMINISTIC_LANGUAGE });
     collected.cleanup();
   });
 

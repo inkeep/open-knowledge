@@ -49,8 +49,10 @@ import {
   resolveModePreference,
 } from '@/lib/color-themes';
 import { useConfigContextOptional } from '@/lib/config-context';
+import { recordLanguagePreferenceChanged } from '@/lib/language-telemetry';
 import { recordSavedThemeAssignment } from '@/lib/saved-themes-telemetry';
 import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
+import { narrowLanguagePreference } from '@/lib/use-apply-config-language';
 import { cn } from '@/lib/utils';
 import { LanguageSelect } from './LanguageSelect';
 import { SavedThemesTiles } from './SavedThemesTiles';
@@ -360,6 +362,19 @@ function FieldControlBody({
         ref={ctl.ref}
         onBlur={ctl.onBlur}
         onValueChange={(next) => {
+          // Recorded HERE rather than where the language is applied, because
+          // only this site knows the user did it. `useApplyConfigLanguage` also
+          // runs for an external edit to `global.yml` and for another window's
+          // change arriving over the CRDT, which would inflate the count and
+          // attribute someone else's pick to this session.
+          //
+          // Guarded on an actual difference so the count means changes rather
+          // than interactions, without resting on whether the underlying Select
+          // chooses to fire for a re-pick of the value already in force.
+          const previous = narrowLanguagePreference(ctl.value) ?? 'system';
+          if (previous !== next) {
+            recordLanguagePreferenceChanged({ from: previous, to: next });
+          }
           ctl.onChange(next);
           onCommit();
         }}

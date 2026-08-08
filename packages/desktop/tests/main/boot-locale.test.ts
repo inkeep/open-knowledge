@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
+  describeDesktopLanguage,
   readStoredLanguagePreference,
   resolveDesktopLocale,
   resolveDesktopLocaleForPushed,
@@ -266,5 +267,88 @@ describe('resolveDesktopLocaleForPushed', () => {
         env: { OK_LANG: 'fr' } as NodeJS.ProcessEnv,
       }),
     ).toBe('fr');
+  });
+});
+
+describe('describeDesktopLanguage', () => {
+  const OS_LIST = ['en-US'];
+  const deps = {
+    preferredSystemLanguages: () => OS_LIST,
+    env: {} as NodeJS.ProcessEnv,
+  };
+
+  test('reports the stored choice unresolved, beside what it resolved to', () => {
+    writeUserConfig('appearance:\n  language: zh-Hant\n');
+
+    expect(describeDesktopLanguage({ homedir: home, pushedPreference: null, ...deps })).toEqual({
+      preference: 'zh-Hant',
+      locale: 'zh-Hant',
+      source: 'explicit',
+      systemLanguages: OS_LIST,
+    });
+  });
+
+  /**
+   * `'system'` is the default and the most common stored value, so a bundle
+   * carrying only the preference would say nothing about most reports. The
+   * resolved locale plus the tier that decided is what makes it diagnosable.
+   */
+  test('a system preference carries the resolved locale and the list it matched', () => {
+    const language = describeDesktopLanguage({
+      homedir: home,
+      pushedPreference: null,
+      preferredSystemLanguages: () => ['es-ES', 'en-US'],
+      env: {} as NodeJS.ProcessEnv,
+    });
+
+    expect(language.preference).toBe('system');
+    expect(language.locale).toBe('es');
+    expect(language.source).toBe('system');
+    expect(language.systemLanguages).toEqual(['es-ES', 'en-US']);
+  });
+
+  /**
+   * The same debounced-persistence window `resolveDesktopLocaleForPushed`
+   * exists for. A report filed inside it is exactly the report claiming that
+   * changing the language did not take — recording the stale on-disk value
+   * would corroborate a bug that is not there and hide the one that is.
+   */
+  test('prefers the pushed preference over the value still on disk', () => {
+    writeUserConfig('appearance:\n  language: zh-Hans\n');
+
+    const language = describeDesktopLanguage({
+      homedir: home,
+      pushedPreference: 'fr',
+      ...deps,
+    });
+
+    expect(language.preference).toBe('fr');
+    expect(language.locale).toBe('fr');
+  });
+
+  test('an override is named as the tier that decided, keeping the stored choice visible', () => {
+    writeUserConfig('appearance:\n  language: es\n');
+
+    const language = describeDesktopLanguage({
+      homedir: home,
+      pushedPreference: null,
+      preferredSystemLanguages: () => OS_LIST,
+      env: { OK_LANG: 'fr' } as NodeJS.ProcessEnv,
+    });
+
+    expect(language.locale).toBe('fr');
+    expect(language.source).toBe('override');
+    expect(language.preference).toBe('es');
+  });
+
+  test('a corrupt user config degrades to system rather than throwing', () => {
+    writeUserConfig('appearance: [not\n  valid: yaml\n');
+
+    expect(() =>
+      describeDesktopLanguage({ homedir: home, pushedPreference: null, ...deps }),
+    ).not.toThrow();
+    expect(
+      describeDesktopLanguage({ homedir: home, pushedPreference: null, ...deps }).preference,
+    ).toBe('system');
   });
 });

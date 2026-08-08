@@ -13,6 +13,7 @@ import { SERVER_CRASH_LOG } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { collectReportBundle as collectReportBundleFromIndex } from './index.ts';
 import { collectReportBundle } from './report-bundle.ts';
+import type { LanguageMetadata } from './report-language.ts';
 
 const tmpDirs: string[] = [];
 
@@ -718,6 +719,98 @@ describe('collectReportBundle — desktop metadata seam', () => {
     });
 
     expect(JSON.parse(readZipEntry(zipPath, 'sysinfo.json')).desktop).toBeNull();
+  });
+});
+
+describe('collectReportBundle — interface-language seam', () => {
+  const LANGUAGE = {
+    preference: 'system',
+    locale: 'es',
+    source: 'system',
+    systemLanguages: ['es-ES', 'en-US'],
+  } as const satisfies LanguageMetadata;
+
+  test('injected language lands in the standard sysinfo and manifest', async () => {
+    const projectDir = makeStandardProjectDir();
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'standard',
+      projectDir,
+      redact: true,
+      outputPath,
+      readLanguage: () => LANGUAGE,
+    });
+
+    expect(JSON.parse(readZipEntry(zipPath, 'sysinfo.json')).language).toEqual(LANGUAGE);
+    expect(JSON.parse(readZipEntry(zipPath, 'MANIFEST.json')).sysinfo.language).toEqual(LANGUAGE);
+  });
+
+  test('injected language lands in the full runtime block and manifest host', async () => {
+    const projectDir = makeFullProjectDir();
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir,
+      redact: false,
+      outputPath,
+      readLanguage: () => LANGUAGE,
+    });
+
+    expect(JSON.parse(readZipEntry(zipPath, 'state/runtime.json')).host.language).toEqual(LANGUAGE);
+    expect(JSON.parse(readZipEntry(zipPath, 'manifest.json')).host.language).toEqual(LANGUAGE);
+  });
+
+  // The preference is the field a triager reads to tell a deliberate choice
+  // from an inherited one, so it has to survive the round trip unresolved —
+  // a bundle recording `'es'` where the user chose `'system'` reads as a
+  // decision they never made.
+  test('an explicit choice is recorded unresolved beside what it resolved to', async () => {
+    const projectDir = makeStandardProjectDir();
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'standard',
+      projectDir,
+      redact: true,
+      outputPath,
+      readLanguage: () => ({
+        preference: 'ar',
+        locale: 'ar',
+        source: 'explicit',
+        systemLanguages: ['en-US'],
+      }),
+    });
+
+    const { language } = JSON.parse(readZipEntry(zipPath, 'sysinfo.json'));
+    expect(language.preference).toBe('ar');
+    expect(language.source).toBe('explicit');
+  });
+
+  // Every bundle carries the key, so an absent language is legible as "this
+  // build could not tell" rather than as a bundle predating the field.
+  test('the default seam still records a language block at both levels', async () => {
+    const standardOut = join(makeTmpDir(), 'standard.zip');
+    const fullOut = join(makeTmpDir(), 'full.zip');
+
+    const standard = await collectReportBundle({
+      level: 'standard',
+      projectDir: makeStandardProjectDir(),
+      redact: true,
+      outputPath: standardOut,
+    });
+    const full = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: false,
+      outputPath: fullOut,
+    });
+
+    const standardLanguage = JSON.parse(readZipEntry(standard.zipPath, 'sysinfo.json')).language;
+    expect(typeof standardLanguage.locale).toBe('string');
+    expect(typeof standardLanguage.preference).toBe('string');
+    expect(JSON.parse(readZipEntry(full.zipPath, 'manifest.json')).host).toHaveProperty('language');
   });
 });
 

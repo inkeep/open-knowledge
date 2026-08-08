@@ -10,11 +10,12 @@ import {
   PICKER_LOCALES,
   SavedThemesListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
+import { type Attributes, type Tracer, trace } from '@opentelemetry/api';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from 'next-themes';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, type Mock, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
@@ -389,6 +390,105 @@ describe('SettingsDialogBody language picker', () => {
 
     await waitFor(() => {
       expect(patches).toEqual([{ appearance: { language: 'system' } }]);
+    });
+  });
+
+  /**
+   * The signal behind locale promotion. Recorded at the picker rather than
+   * where the language is applied, because only the picker knows the user did
+   * it — the apply path also runs for an external edit to `global.yml` and for
+   * another window's change arriving over the CRDT.
+   *
+   * The OTel boundary is faked with `spyOn(trace, 'getTracer')` rather than a
+   * module mock, which would persist in the shared unit-test module registry
+   * and clobber the real provider other files register.
+   */
+  describe('change telemetry', () => {
+    const spans: { name: string; attributes: Attributes | undefined }[] = [];
+    let getTracerSpy: Mock<typeof trace.getTracer>;
+
+    function installTracerSpy(): void {
+      spans.length = 0;
+      getTracerSpy = vi.spyOn(trace, 'getTracer').mockImplementation(
+        () =>
+          ({
+            startSpan: (name: string, options?: { attributes?: Attributes }) => {
+              spans.push({ name, attributes: options?.attributes });
+              return { end: () => undefined };
+            },
+          }) as unknown as Tracer,
+      );
+    }
+
+    afterEach(() => {
+      getTracerSpy?.mockRestore();
+    });
+
+    test('picking a language records the change with both preferences', async () => {
+      installTracerSpy();
+      const user = userEvent.setup();
+      const { binding } = makeBinding();
+      renderPreferences(binding);
+
+      await openLanguagePicker(user);
+      await user.click(screen.getByRole('option', { name: 'español' }));
+
+      await waitFor(() => {
+        expect(spans).toEqual([
+          {
+            name: 'ok.language.preferenceChanged',
+            attributes: { 'ok.language.from': 'system', 'ok.language.to': 'es' },
+          },
+        ]);
+      });
+    });
+
+    // Unresolved on the way out: a user who deliberately picked English and one
+    // following an English OS are the same resolved locale and opposite signals
+    // for promotion.
+    test('switching back to System is recorded as the sentinel', async () => {
+      installTracerSpy();
+      const user = userEvent.setup();
+      const { binding } = makeBinding(ConfigSchema.parse({ appearance: { language: 'fr' } }));
+      renderPreferences(binding);
+
+      await openLanguagePicker(user);
+      await user.click(screen.getByRole('option', { name: 'System' }));
+
+      await waitFor(() => {
+        expect(spans[0]?.attributes).toEqual({
+          'ok.language.from': 'fr',
+          'ok.language.to': 'system',
+        });
+      });
+    });
+
+    // Re-selecting the language already in force is not a change, and counting
+    // it would inflate exactly the number promotion decisions read.
+    //
+    // The absence is asserted only AFTER a real emission has been observed on
+    // this same mount. A bare "nothing was recorded" cannot tell a working
+    // guard from a telemetry path that never fires at all, so the first half
+    // establishes that spans do arrive here before the second half claims one
+    // did not.
+    test('re-picking the current language records nothing', async () => {
+      installTracerSpy();
+      const user = userEvent.setup();
+      const { binding } = makeBinding(ConfigSchema.parse({ appearance: { language: 'es' } }));
+      renderPreferences(binding);
+
+      await openLanguagePicker(user);
+      await user.click(screen.getByRole('option', { name: 'System' }));
+      await waitFor(() => {
+        expect(spans).toHaveLength(1);
+      });
+
+      await openLanguagePicker(user);
+      await user.click(screen.getByRole('option', { name: 'System' }));
+
+      await waitFor(() => {
+        expect(spans).toHaveLength(1);
+      });
     });
   });
 

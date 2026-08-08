@@ -41,6 +41,7 @@ import { ZipFile } from 'yazl';
 import type { BundleExtraFile, BundleLogger } from '../commands/bug-report-bundle.ts';
 import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
+import { defaultReadLanguage, type LanguageMetadata } from '../report-language.ts';
 import { isRotatedLogPath, redactStagedBundle } from './bundle-redact.ts';
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,12 @@ interface BundleManifest {
   };
   host: {
     desktop: DesktopMetadata | null;
+    /**
+     * The interface language the report was filed in. `null` when the caller
+     * supplied no reader — distinguishable from a manifest predating the field,
+     * which has no key at all.
+     */
+    language: LanguageMetadata | null;
   };
   contentDir: {
     /** SHA-256 of the absolute content-dir path. 64 lowercase hex chars. */
@@ -240,6 +247,15 @@ export interface CollectBundleDeps {
   okVersion?: () => string;
   /** Returns the `OK_DESKTOP_*` env block, or `null` when no desktop host is present. */
   readDesktopEnv?: () => DesktopMetadata | null;
+  /**
+   * Returns the interface language the report is being filed in. Defaults to
+   * the POSIX-environment reader, which is right for every caller that reaches
+   * this collector directly — they are all shell commands. The Electron host
+   * arrives through `collectReportBundle` instead and injects its own, because
+   * a GUI process has no `LANG` to resolve against and this default would
+   * report the fallback locale no matter what the user was looking at.
+   */
+  readLanguage?: () => LanguageMetadata;
   /** Returns runtime introspection — Node version, platform, arch. */
   readRuntime?: () => { nodeVersion: string; platform: string; arch: string };
   /**
@@ -709,6 +725,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
   const now = deps.now ?? (() => new Date());
   const okVersion = deps.okVersion ?? (() => PACKAGE_VERSION);
   const readDesktopEnv = deps.readDesktopEnv ?? defaultReadDesktopEnv;
+  const readLanguage = deps.readLanguage ?? defaultReadLanguage;
   const readRuntime = deps.readRuntime ?? defaultReadRuntime;
   const isOtlpPushEnabled = deps.isOtlpPushEnabled ?? defaultIsOtlpPushEnabled;
 
@@ -827,6 +844,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     // Runtime + desktop block.
     const runtime = readRuntime();
     const desktop = readDesktopEnv();
+    const language = readLanguage();
     const runtimeJson = {
       ok: {
         version: okVersion(),
@@ -834,7 +852,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
         platform: runtime.platform,
         arch: runtime.arch,
       },
-      host: { desktop },
+      host: { desktop, language },
     };
     writeFileSync(
       join(stagingDir, 'state', 'runtime.json'),
@@ -919,7 +937,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
         platform: runtime.platform,
         arch: runtime.arch,
       },
-      host: { desktop },
+      host: { desktop, language },
       contentDir: {
         // pathSha256 stays as the SHA-256 of the original absolute path — it's
         // a stable correlation identifier for the recipient. The absolutePath

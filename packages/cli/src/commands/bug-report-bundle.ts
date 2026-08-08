@@ -25,6 +25,7 @@ import type { ZipFile } from 'yazl';
 // Keep this import type-only: `diagnose/bundle.ts` imports from this module
 // too, so a value import in either direction would form a runtime cycle.
 import type { DesktopMetadata } from '../diagnose/bundle.ts';
+import type { LanguageMetadata } from '../report-language.ts';
 import { redactContent, SECRET_PATTERN_NAMES } from './bug-report-redact.ts';
 import { DESKTOP_BUNDLE_ID } from './desktop-dispatch.ts';
 
@@ -97,6 +98,12 @@ export interface CollectStandardBundleOptions {
    * full-level bundle's `host.desktop: null` convention.
    */
   desktop?: DesktopMetadata | null;
+  /**
+   * Interface-language metadata recorded in `sysinfo.json` (and, through it,
+   * the manifest). Omitted reads as "the caller supplied no reader", which is
+   * distinguishable from a bundle predating the field.
+   */
+  language?: LanguageMetadata | null;
   logger?: BundleLogger;
 }
 
@@ -398,6 +405,9 @@ export async function collectStandardBundle(
   // Always present so a recipient can distinguish "not an Electron host"
   // (null) from a bundle predating the field (absent).
   sysinfo.desktop = opts.desktop ?? null;
+  // The interface language the report was filed in. Always present for the same
+  // reason, and `null` only for a caller that supplied no reader at all.
+  sysinfo.language = opts.language ?? null;
   const { files: logFiles, excludedByProjectSlug: logFilesExcludedByProjectSlug } = collectLogs(
     projectSlug,
     userLogsDir,

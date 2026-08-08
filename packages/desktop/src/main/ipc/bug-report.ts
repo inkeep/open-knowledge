@@ -24,6 +24,7 @@ import {
   type BundleLogger,
   collectReportBundle,
   defaultBugReportZipPath,
+  type LanguageMetadata,
   redactContent,
 } from '@inkeep/open-knowledge';
 import {
@@ -118,6 +119,20 @@ export interface BugReportCreateDeps {
   /** Sender window's project root; `null` (Navigator, no project) degrades to a system-wide bundle. */
   projectDir: string | null;
   desktopMeta: BugReportDesktopMeta;
+  /**
+   * The interface language this report is being filed in, handed to the bundle
+   * collector through its `readLanguage` seam.
+   *
+   * Injected rather than left to the collector's default for the same reason
+   * `desktopMeta` is: that default resolves `'system'` against `LANG` /
+   * `LC_ALL`, and a macOS app launched from Finder has neither — every report
+   * from the packaged app would claim the fallback locale no matter what the
+   * user was looking at. Main resolves against the platform language list
+   * instead, and against the preference the renderer last pushed, so the
+   * recorded language is the one on screen rather than the one on disk (the
+   * config write is debounced and lands later).
+   */
+  readLanguage?: () => LanguageMetadata;
   /** Zip destination override; defaults to `~/.ok/bug-reports/<timestamp>-bugreport.zip`. */
   outputPath?: string;
   /** User-level logs directory override (standard-level test seam). */
@@ -406,6 +421,7 @@ export async function handleBugReportCreate(
         packaged: deps.desktopMeta.packaged,
         channel: deps.desktopMeta.channel,
       }),
+      readLanguage: deps.readLanguage,
     });
     const { size: zipSizeBytes } = await stat(zipPath);
     // Persist the durable `generated` record next to the zip. A failure here

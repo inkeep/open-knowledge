@@ -174,6 +174,7 @@ import {
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
 import {
+  describeDesktopLanguage,
   readStoredLanguagePreference,
   resolveDesktopLocale,
   resolveDesktopLocaleForPushed,
@@ -5434,6 +5435,15 @@ function registerIpcHandlers() {
           packaged: app.isPackaged,
           channel: channelFromVersion(app.getVersion()),
         },
+        // The language on screen right now, not the one the debounced config
+        // write has reached disk with — see `describeDesktopLanguage`.
+        readLanguage: () =>
+          describeDesktopLanguage({
+            homedir: osHomedir(),
+            preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
+            env: process.env,
+            pushedPreference: pushedLanguagePreference,
+          }),
         newestMinidumpForReport: () =>
           crashDetection?.newestMinidumpForReport() ?? {
             path: null,
