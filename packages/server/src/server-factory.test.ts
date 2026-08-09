@@ -2259,6 +2259,154 @@ describe("createServer() — onAuthenticate rejects 'branch-mismatch'", () => {
 });
 
 // ---------------------------------------------------------------------------
+// A rejection thrown out of onAuthenticate refuses a document's WebSocket
+// connection. Without a structured record it surfaces only as untimestamped
+// Hocuspocus stderr, which cannot be bound to the session it wedged — so the
+// warn line is the diagnostic surface, not a nicety.
+// ---------------------------------------------------------------------------
+describe('createServer() — onAuthenticate rejections reach the structured log', () => {
+  let tmpDir: string;
+  let logCapture: ReturnType<typeof captureAllLoggers>;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'ok-auth-log-'));
+    // Must precede createServer(): the factory resolves its logger once, at
+    // construction time.
+    logCapture = captureAllLoggers();
+  });
+  afterEach(async () => {
+    loggerFactory.reset();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function getAuthExtension(server: Awaited<ReturnType<typeof createServer>>): {
+    onAuthenticate: (payload: unknown) => Promise<void>;
+  } {
+    const ext = server.hocuspocus.configuration.extensions.find(
+      (e) => (e as { __kind?: string }).__kind === 'principal-auth',
+    ) as { onAuthenticate: (payload: unknown) => Promise<void> } | undefined;
+    if (!ext) throw new Error('expected principalAuthExtension on hocuspocus.configuration');
+    return ext;
+  }
+
+  test('branch-mismatch rejection emits a warn carrying claimed and current branch', async () => {
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      await server.ready;
+      const authExt = getAuthExtension(server);
+
+      await expect(
+        authExt.onAuthenticate({
+          token: JSON.stringify({ principalId: 'p-1', expectedBranch: 'feature' }),
+          context: {},
+          documentName: 'notes/alpha',
+        }),
+      ).rejects.toMatchObject({ reason: 'branch-mismatch' });
+
+      const warns = logCapture.getCalls('warn', '[auth-rejection]');
+      expect(warns).toHaveLength(1);
+      expect(warns[0]?.msg).toBe('[auth-rejection] branch-mismatch');
+      expect(warns[0]?.payload).toMatchObject({
+        reason: 'branch-mismatch',
+        docName: 'notes/alpha',
+        claimedBranch: 'feature',
+        currentBranch: 'main',
+      });
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  test('server-instance-mismatch rejection emits a warn carrying both instance ids', async () => {
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      await server.ready;
+      const authExt = getAuthExtension(server);
+
+      await expect(
+        authExt.onAuthenticate({
+          token: JSON.stringify({
+            principalId: 'p-1',
+            expectedServerInstanceId: 'stale-instance-from-prior-process',
+          }),
+          context: {},
+          documentName: 'notes/beta',
+        }),
+      ).rejects.toMatchObject({ reason: 'server-instance-mismatch' });
+
+      const warns = logCapture.getCalls('warn', '[auth-rejection]');
+      expect(warns).toHaveLength(1);
+      expect(warns[0]?.msg).toBe('[auth-rejection] server-instance-mismatch');
+      expect(warns[0]?.payload).toMatchObject({
+        reason: 'server-instance-mismatch',
+        docName: 'notes/beta',
+        claimedServerInstanceId: 'stale-instance-from-prior-process',
+        currentServerInstanceId: server.serverInstanceId,
+      });
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  test('an accepted connection emits no rejection warn', async () => {
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      await server.ready;
+      const authExt = getAuthExtension(server);
+
+      await authExt.onAuthenticate({
+        token: JSON.stringify({
+          principalId: 'p-1',
+          tabSessionId: 's-1',
+          expectedBranch: 'main',
+          expectedServerInstanceId: server.serverInstanceId,
+        }),
+        context: {},
+        documentName: 'notes/gamma',
+      });
+
+      expect(logCapture.getCalls('warn', '[auth-rejection]')).toHaveLength(0);
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  test('config-doc admission denial emits a warn naming which gate fired', async () => {
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      await server.ready;
+      const guard = server.hocuspocus.configuration.extensions.find(
+        (e) => (e as { __kind?: string }).__kind === 'config-doc-admission-guard',
+      ) as { onAuthenticate: (payload: unknown) => Promise<void> } | undefined;
+      if (!guard) throw new Error('expected configDocAdmissionGuard on hocuspocus.configuration');
+
+      await expect(
+        guard.onAuthenticate({
+          token: undefined,
+          context: {},
+          documentName: '__config__/project',
+          request: { socket: { remoteAddress: '203.0.113.7' }, headers: { host: 'evil.test' } },
+        }),
+      ).rejects.toThrow(/config-doc admission requires loopback peer/);
+
+      const warns = logCapture.getCalls('warn', '[auth-rejection]');
+      expect(warns).toHaveLength(1);
+      expect(warns[0]?.payload).toMatchObject({
+        reason: 'config-doc-admission-denied',
+        docName: '__config__/project',
+        check: 'peer',
+      });
+      // The offending peer address stays out of the structured fields — the
+      // thrown message already carries it, and the log record is the
+      // low-cardinality surface.
+      expect(warns[0]?.payload).not.toHaveProperty('peer');
+    } finally {
+      await server.destroy();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Config-doc admission guard. The synthetic `__config__/project` and
 // `__user__/config.yml` Y.Docs are pre-materialized at boot and remain
 // resident; any client reaching `/collab` could otherwise open them by

@@ -61,7 +61,11 @@ import { AgentSessionManager } from './agent-sessions.ts';
 import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
-import { HocuspocusAuthRejection, parseHocuspocusAuthToken } from './auth-token-schema.ts';
+import {
+  HocuspocusAuthRejection,
+  type HocuspocusAuthRejectionReason,
+  parseHocuspocusAuthToken,
+} from './auth-token-schema.ts';
 import { shellEscape } from './bash/shell-escape.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
 import {
@@ -1619,6 +1623,27 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
     hocuspocus.configuration.extensions.push(liveDerivedIndexExtension);
 
+    // A throw out of `onAuthenticate` refuses one document's WebSocket
+    // connection, but Hocuspocus surfaces it only as untimestamped stderr —
+    // nothing lands in the structured log, so a rejection that wedges a
+    // workspace cannot afterwards be bound to the session it wedged. Emit the
+    // record ourselves, immediately before each throw. Purely observational:
+    // no rejection decision reads this path.
+    //
+    // Cardinality: `reason` is the bounded rejection vocabulary and `docName`
+    // is pre-normalized. The claimed-vs-current pairs are client-supplied but
+    // ride only on the rejection path, which is rare by construction and is
+    // exactly the evidence a diagnosis needs. Raw peer addresses and Host
+    // headers stay out — the thrown message already carries them.
+    type AuthRejectionLogReason = HocuspocusAuthRejectionReason | 'config-doc-admission-denied';
+    function logAuthRejection(
+      reason: AuthRejectionLogReason,
+      documentName: string | undefined,
+      detail: Record<string, unknown> = {},
+    ): void {
+      log.warn({ reason, docName: documentName, ...detail }, `[auth-rejection] ${reason}`);
+    }
+
     // Browser tabs supply { principalId, tabSessionId } via the auth token.
     // onAuthenticate parses the JSON token and hoists identity into connection
     // context so persistence.resolveWriterFromOrigin sees source:'connection'
@@ -1659,6 +1684,10 @@ export function createServer(options: ServerOptions): ServerInstance {
         // are accepted unconditionally for backward compat.
         const claimed = parsed?.expectedServerInstanceId;
         if (typeof claimed === 'string' && claimed.length > 0 && claimed !== serverInstanceId) {
+          logAuthRejection('server-instance-mismatch', payload.documentName, {
+            claimedServerInstanceId: claimed,
+            currentServerInstanceId: serverInstanceId,
+          });
           throw new HocuspocusAuthRejection(
             'server-instance-mismatch',
             `server instance mismatch: client claimed ${claimed}, this server is ${serverInstanceId}`,
@@ -1682,6 +1711,10 @@ export function createServer(options: ServerOptions): ServerInstance {
           claimedBranch.length > 0 &&
           claimedBranch !== currentBranch
         ) {
+          logAuthRejection('branch-mismatch', payload.documentName, {
+            claimedBranch,
+            currentBranch,
+          });
           throw new HocuspocusAuthRejection(
             'branch-mismatch',
             `branch mismatch: client claimed ${claimedBranch}, server is on ${currentBranch}`,
@@ -1774,6 +1807,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         };
         const peer = req.socket?.remoteAddress;
         if (peer !== undefined && !isLoopbackAddress(peer)) {
+          logAuthRejection('config-doc-admission-denied', payload.documentName, { check: 'peer' });
           throw new Error(
             `config-doc admission requires loopback peer (peer=${peer}, doc=${payload.documentName})`,
           );
@@ -1793,6 +1827,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           options.remotePublicHost !== undefined &&
           hostHeaderMatchesPublicHost(host, options.remotePublicHost);
         if (!isAllowedWorkspaceHostHeader(host) && !remoteHostOk) {
+          logAuthRejection('config-doc-admission-denied', payload.documentName, { check: 'host' });
           throw new Error(
             `config-doc admission requires a loopback or remote Host header (host=${host ?? '<absent>'}, doc=${payload.documentName})`,
           );
