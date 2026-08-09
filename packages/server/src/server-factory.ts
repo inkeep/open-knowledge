@@ -1145,6 +1145,69 @@ export function createServer(options: ServerOptions): ServerInstance {
     rejectReady = rej;
   });
 
+  // Narrow sibling of `ready` covering ONE value: has `durabilityState` been
+  // aligned with the project's real HEAD branch yet? `DocumentDurabilityState`
+  // starts on a `'main'` default and the WebSocket listener accepts from the
+  // moment this factory returns, so anything comparing `getActiveBranch()`
+  // against a client claim has to park until this settles or it compares
+  // against a placeholder. It settles early in `initAsync`, long before `ready`
+  // does — parking on `ready` instead would put the whole O(n) boot tail (index
+  // rebuild, seed walk, tag reconcile, sync engine) in front of WebSocket
+  // admission on every branch, which the client's sync budget would outlive on
+  // a large workspace. Never rejects: a boot that fails before the alignment
+  // resolves this too, so admission degrades to "skip the branch check" rather
+  // than hanging forever.
+  let resolveBranchScopeAligned!: () => void;
+  const branchScopeAligned = new Promise<void>((res) => {
+    resolveBranchScopeAligned = res;
+  });
+
+  // Ceiling on how long a WebSocket connection waits for the alignment above.
+  // The client arms a 30s sync budget when its provider attaches, and the work
+  // ahead of the alignment (shadow-repo init, the 10s-capped boot GC, a
+  // HEAD-drift upstream import over the whole content root) can be slow on a
+  // large workspace. Expiring well inside the client budget keeps a stalled
+  // boot from turning into a document that never loads.
+  const BRANCH_SCOPE_GATE_TIMEOUT_MS = 10_000;
+
+  /**
+   * The branch to compare a client's claim against, or `null` when the server
+   * cannot answer in time and the claim should not be judged at all.
+   *
+   * Fast path: the alignment already ran, so `getActiveBranch()` is the live
+   * authority (including after a mid-session branch switch, where HEAD on disk
+   * can be ahead of the scope the server is actually serving).
+   *
+   * Slow path: boot is still ahead of the alignment. Waiting is correct until
+   * the ceiling, after which we read HEAD off disk — the same value the
+   * alignment itself uses — rather than compare against the `'main'` default
+   * the durability state is still holding.
+   */
+  async function resolveBranchForClaimCheck(): Promise<string | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = Symbol('branch-scope-gate-timeout');
+    const timeout = new Promise<typeof expired>((res) => {
+      timer = setTimeout(() => res(expired), BRANCH_SCOPE_GATE_TIMEOUT_MS);
+      // Never hold the process (or a test run) open on this timer.
+      timer.unref?.();
+    });
+    try {
+      const outcome = await Promise.race([branchScopeAligned, timeout]);
+      if (outcome !== expired) return getActiveBranch();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    try {
+      return readProjectHeadState(projectDir).branch ?? null;
+    } catch (err) {
+      log.warn(
+        { err },
+        '[auth] branch scope gate expired and HEAD is unreadable — skipping the branch claim check',
+      );
+      return null;
+    }
+  }
+
   function signalChannel(
     channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'comments' | 'lint-config',
   ): void {
@@ -1705,20 +1768,26 @@ export function createServer(options: ServerOptions): ServerInstance {
         // union-merge stale-branch state. Empty / absent claim = legacy
         // path (accepted unconditionally).
         const claimedBranch = parsed?.expectedBranch;
-        const currentBranch = getActiveBranch();
-        if (
-          typeof claimedBranch === 'string' &&
-          claimedBranch.length > 0 &&
-          claimedBranch !== currentBranch
-        ) {
-          logAuthRejection('branch-mismatch', payload.documentName, {
-            claimedBranch,
-            currentBranch,
-          });
-          throw new HocuspocusAuthRejection(
-            'branch-mismatch',
-            `branch mismatch: client claimed ${claimedBranch}, server is on ${currentBranch}`,
-          );
+        if (typeof claimedBranch === 'string' && claimedBranch.length > 0) {
+          // Park until the server knows its own branch. `DocumentDurabilityState`
+          // starts on a `'main'` default while the WebSocket listener is already
+          // accepting, so an ungated comparison rejects every cold-boot client of
+          // a workspace that isn't on `main` — the client recycles, re-arms its
+          // sync budget against a server still in the same window, and the
+          // document never loads. `null` means the server could not establish a
+          // branch to judge against, in which case admitting is the only answer
+          // that cannot wedge the client.
+          const currentBranch = await resolveBranchForClaimCheck();
+          if (currentBranch !== null && claimedBranch !== currentBranch) {
+            logAuthRejection('branch-mismatch', payload.documentName, {
+              claimedBranch,
+              currentBranch,
+            });
+            throw new HocuspocusAuthRejection(
+              'branch-mismatch',
+              `branch mismatch: client claimed ${claimedBranch}, server is on ${currentBranch}`,
+            );
+          }
         }
 
         if (!parsed) return;
@@ -3764,6 +3833,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     // current HEAD before either is read or written.
     const startupBranch = readProjectHeadState(projectDir).branch ?? 'main';
     switchReconciledBaseScope(startupBranch);
+    // `getActiveBranch()` is authoritative from here — release anything parked
+    // on the branch value (the WebSocket branch-claim gate) without making it
+    // wait for the rest of the boot pipeline.
+    resolveBranchScopeAligned();
     const derivedIndexStartup = derivedDocumentIndex.beginStartup(startupBranch);
     let derivedIndexStartupSettled = false;
 
@@ -4619,6 +4692,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     // behind unresolved admission/readiness barriers. Failed server startup
     // has no recovery path, so close releases every waiter with a rejection.
     void derivedDocumentIndex.close();
+    // A failure BEFORE the branch scope was aligned leaves this deferred
+    // pending, which would park WebSocket admission forever. Release it (no-op
+    // when the alignment already ran) so the branch gate falls through instead.
+    resolveBranchScopeAligned();
     rejectReady(err);
   });
 

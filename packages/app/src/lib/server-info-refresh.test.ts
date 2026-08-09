@@ -17,8 +17,20 @@
  * directly.
  */
 
-import { describe, expect, test } from 'vitest';
-import { createSyncedReconnectGate } from './server-info-refresh';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { ProviderPool } from '../editor/provider-pool';
+import { createSyncedReconnectGate, refreshServerInfo } from './server-info-refresh';
+
+vi.mock('../editor/branch-invalidation', () => ({
+  handleBranchSwitched: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('./documents-events', () => ({
+  emitBranchChanged: vi.fn(),
+  subscribeToBranchChanged: vi.fn(() => () => {}),
+}));
+vi.mock('./server-instance-store', () => ({
+  setServerInstanceId: vi.fn(),
+}));
 
 describe('createSyncedReconnectGate', () => {
   test('does NOT fire on the first invocation (cold boot)', () => {
@@ -100,5 +112,69 @@ describe('createSyncedReconnectGate', () => {
     expect(calls).toBe(0); // first call is the cold-boot skip
     for (let i = 0; i < 10; i++) gate();
     expect(calls).toBe(10); // every subsequent call fires
+  });
+});
+
+/**
+ * `refreshServerInfo` is what the pool runs when the server rejects a connect
+ * with `branch-mismatch`. It is the ONLY thing that stops the pool re-claiming
+ * a branch the server has already disagreed with: the claim is read from
+ * `localStorage` on every auth token, so without adoption the client would
+ * re-offer the same rejected value on every reconnect forever.
+ */
+describe('refreshServerInfo — branch adoption', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.clearAllMocks();
+  });
+
+  function stubServerInfo(body: Record<string, unknown>) {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(body),
+      } as Response),
+    ) as unknown as typeof globalThis.fetch;
+  }
+
+  function createPoolStub() {
+    const observed: string[] = [];
+    const pool = {
+      setExpectedServerInstanceId: vi.fn(),
+      compareAndUpdateObservedBranch: vi.fn((branch: string) => {
+        observed.push(branch);
+        return true;
+      }),
+      observeDiskAckBatch: vi.fn(),
+    };
+    return { pool: pool as unknown as ProviderPool, observed, spies: pool };
+  }
+
+  test('adopts the branch the server reports', async () => {
+    stubServerInfo({ serverInstanceId: 'srv-1', currentBranch: 'master' });
+    const { pool, observed, spies } = createPoolStub();
+
+    await refreshServerInfo(pool);
+
+    expect(observed).toEqual(['master']);
+    expect(spies.setExpectedServerInstanceId).toHaveBeenCalledWith('srv-1');
+  });
+
+  test('adopts nothing when the endpoint is unreachable', async () => {
+    // The claim stays as-is and the next reconnect retries — silently
+    // overwriting it with a guess would be worse than re-offering it.
+    globalThis.fetch = vi.fn(() =>
+      Promise.reject(new Error('network down')),
+    ) as unknown as typeof globalThis.fetch;
+    const { pool, observed } = createPoolStub();
+
+    await refreshServerInfo(pool);
+
+    expect(observed).toEqual([]);
   });
 });

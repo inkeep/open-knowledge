@@ -2258,6 +2258,156 @@ describe("createServer() — onAuthenticate rejects 'branch-mismatch'", () => {
   });
 });
 
+// The branch gate compares a client claim against `getActiveBranch()`, which
+// starts life as the DocumentDurabilityState `'main'` default and only becomes
+// the workspace's real HEAD branch once `initAsync` runs
+// `switchReconciledBaseScope(startupBranch)`. WebSocket connections are
+// accepted from the moment `createServer()` returns, so without a readiness
+// gate every cold-boot connect from a workspace on a non-`main` branch is
+// rejected against a placeholder the server has no business comparing against.
+// The rejection recycles the client pool, which re-arms the same 30s sync
+// budget, which surfaces as a document that never loads.
+describe('createServer() — onAuthenticate branch gate parks on readiness', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'ok-auth-branch-boot-'));
+  });
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function getAuthExtension(server: Awaited<ReturnType<typeof createServer>>): {
+    onAuthenticate: (payload: unknown) => Promise<void>;
+  } {
+    const ext = server.hocuspocus.configuration.extensions.find(
+      (e) => (e as { __kind?: string }).__kind === 'principal-auth',
+    ) as { onAuthenticate: (payload: unknown) => Promise<void> } | undefined;
+    if (!ext) throw new Error('expected principalAuthExtension on hocuspocus.configuration');
+    return ext;
+  }
+
+  test('a claim matching the real HEAD branch survives the boot window', async () => {
+    const git = simpleGit(tmpDir);
+    await git.init(['--initial-branch=master']);
+    await git.addConfig('user.email', 'test@example.com');
+    await git.addConfig('user.name', 'Test');
+    writeFileSync(join(tmpDir, 'seed.md'), '# Seed\n');
+    await git.add('.');
+    await git.commit('seed');
+
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      // Deliberately NOT awaiting `server.ready` — this is the cold-boot
+      // window the reporter hit, where the durability state still holds the
+      // `'main'` placeholder because `initAsync` has not resolved HEAD yet.
+      const authExt = getAuthExtension(server);
+      const token = JSON.stringify({
+        principalId: 'p-1',
+        tabSessionId: 's-1',
+        expectedBranch: 'master',
+      });
+      const context: Record<string, unknown> = {};
+
+      let thrown: unknown = null;
+      try {
+        await authExt.onAuthenticate({ token, context, documentName: 'boot-window-doc' });
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeNull();
+      expect(context.kind).toBe('human');
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  test('a genuinely stale claim is still rejected after the branch resolves', async () => {
+    const git = simpleGit(tmpDir);
+    await git.init(['--initial-branch=master']);
+    await git.addConfig('user.email', 'test@example.com');
+    await git.addConfig('user.name', 'Test');
+    writeFileSync(join(tmpDir, 'seed.md'), '# Seed\n');
+    await git.add('.');
+    await git.commit('seed');
+
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      const authExt = getAuthExtension(server);
+      const token = JSON.stringify({
+        principalId: 'p-1',
+        tabSessionId: 's-1',
+        expectedBranch: 'some-other-branch',
+      });
+      const context: Record<string, unknown> = {};
+
+      let thrown: unknown = null;
+      try {
+        await authExt.onAuthenticate({ token, context, documentName: 'boot-window-doc' });
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect((thrown as { reason?: string } | null)?.reason).toBe('branch-mismatch');
+      // The message must name the resolved branch, not the placeholder — the
+      // client adopts this value to correct its own claim.
+      expect((thrown as { message?: string } | null)?.message).toContain('master');
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  // The gate must wait for the branch value and nothing else. Parking it on the
+  // full boot promise instead would put the index rebuild, the O(n) seed walk,
+  // the tag reconcile and the sync engine in front of WebSocket admission on
+  // every branch — a tail the client's 30s sync budget outlives on a large
+  // workspace, which is the same never-loading document from the other end.
+  test('admission settles before the rest of boot does', async () => {
+    const git = simpleGit(tmpDir);
+    await git.init(['--initial-branch=master']);
+    await git.addConfig('user.email', 'test@example.com');
+    await git.addConfig('user.name', 'Test');
+    // Enough files that the post-branch-resolution boot work (backlink rebuild,
+    // seed walk, tag reconcile) is measurably slower than an auth handshake
+    // that no longer waits for any of it. Kept modest on purpose: a bigger
+    // vault widens the margin but its I/O spills onto the sibling workers
+    // vitest runs in parallel and destabilizes timing tests elsewhere.
+    const noteCount = 120;
+    for (let i = 0; i < noteCount; i++) {
+      writeFileSync(
+        join(tmpDir, `note-${i}.md`),
+        `# Note ${i}\n\nSee [[note-${(i + 1) % noteCount}]].\n`,
+      );
+    }
+    await git.add('.');
+    await git.commit('seed');
+
+    const server = createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true });
+    try {
+      const order: string[] = [];
+      const readySettled = server.ready.then(
+        () => order.push('ready'),
+        () => order.push('ready'),
+      );
+
+      const authExt = getAuthExtension(server);
+      const token = JSON.stringify({
+        principalId: 'p-1',
+        tabSessionId: 's-1',
+        expectedBranch: 'master',
+      });
+      await authExt.onAuthenticate({ token, context: {}, documentName: 'boot-window-doc' });
+      order.push('auth');
+
+      await readySettled;
+      expect(order[0]).toBe('auth');
+    } finally {
+      await server.destroy();
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // A rejection thrown out of onAuthenticate refuses a document's WebSocket
 // connection. Without a structured record it surfaces only as untimestamped
