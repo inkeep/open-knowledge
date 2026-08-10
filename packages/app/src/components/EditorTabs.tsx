@@ -792,8 +792,9 @@ export function EditorTabs({
     };
   }, []);
 
-  // Pane-local strips live below the global window chrome. Keep the entire
-  // strip interactive in Electron so blank strip space can accept tab drops.
+  // Make the tab canvas draggable, then carve out the scroll viewport and New
+  // tab button below. EditorHeader paints its foreground controls after this
+  // canvas so their no-drag regions remain clickable.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const newTabIdSet = new Set(newTabIds);
 
@@ -968,20 +969,22 @@ export function EditorTabs({
   return (
     <div
       data-editor-pane-tabs={resolvedPaneId}
+      data-electron-drag={isElectronHost ? '' : undefined}
       className={cn(
         'flex h-12 w-full min-w-0 touch-manipulation items-end overflow-hidden',
         reserveLeadingChrome
           ? 'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]'
           : 'pl-2',
         reserveTrailingChrome && 'pr-[var(--editor-header-trailing-width,0px)]',
-        isElectronHost && '[-webkit-app-region:no-drag]',
+        isElectronHost && '[-webkit-app-region:drag]',
       )}
     >
       <div
         data-editor-tab-overflow-root=""
+        data-electron-drag={isElectronHost ? '' : undefined}
         className={cn(
-          'group/tab-overflow relative flex min-w-0 flex-1 items-end gap-px overflow-hidden',
-          isElectronHost && '[-webkit-app-region:no-drag]',
+          'group/tab-overflow relative flex min-w-0 flex-1 self-stretch items-end gap-px overflow-hidden',
+          isElectronHost && '[-webkit-app-region:drag]',
         )}
       >
         <span
@@ -993,7 +996,12 @@ export function EditorTabs({
           <span key={splitAnnouncement.id}>{splitAnnouncement.text}</span>
         </span>
         <SortableContext items={[...visibleTabIds]} strategy={horizontalListSortingStrategy}>
-          <div className="relative h-10 w-fit max-w-[calc(100%-1.75rem)] min-w-0 flex-none self-end">
+          <div
+            className={cn(
+              'relative h-10 w-fit max-w-[calc(100%-1.75rem)] min-w-0 flex-none self-end',
+              isElectronHost && '[-webkit-app-region:no-drag]',
+            )}
+          >
             <div
               ref={tabScrollRef}
               data-editor-tab-scroll=""
@@ -1380,7 +1388,10 @@ export function EditorTabs({
               variant="ghost"
               aria-label={t`New tab`}
               data-testid="editor-new-tab-button"
-              className="first:mb-3 mb-1.5 shrink-0"
+              className={cn(
+                'first:mb-3 mb-1.5 shrink-0',
+                isElectronHost && '[-webkit-app-region:no-drag]',
+              )}
               onClick={openNewTab}
             >
               <PlusIcon aria-hidden="true" />

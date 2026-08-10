@@ -179,3 +179,108 @@ test.describe('Windows/Linux window chrome smoke', () => {
     }
   });
 });
+
+test.describe('Editor header drag-region smoke', () => {
+  test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
+  test.skip(!TARGET.exists, TARGET.missingReason);
+
+  test('keeps the full header canvas draggable and its controls clickable', async ({
+    captureStderrFor,
+  }) => {
+    const { tmpHome, projectDir } = seedHomeWithLastOpenedProject();
+    const app = await launchApp(tmpHome);
+    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+
+    const editor = await findEditorWindow(app);
+    const filesToggle = editor
+      .locator('[data-editor-header-leading-actions]')
+      .locator('[data-sidebar="trigger"]');
+    await expect(filesToggle).toBeVisible();
+    await filesToggle.click();
+    await expect
+      .poll(() =>
+        editor.evaluate(() =>
+          document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'),
+        ),
+      )
+      .toBe('collapsed');
+
+    const appRegions = await editor.evaluate(() => {
+      const requireElement = (selector: string): HTMLElement => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) throw new Error(`Missing drag-region fixture: ${selector}`);
+        return element;
+      };
+      const appRegion = (element: HTMLElement) =>
+        getComputedStyle(element).getPropertyValue('-webkit-app-region');
+      const appRegionFor = (selector: string) => appRegion(requireElement(selector));
+      const precedes = (element: HTMLElement, sibling: HTMLElement) =>
+        Boolean(element.compareDocumentPosition(sibling) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+      const tabsHost = requireElement('[data-editor-header-tabs]');
+      const paneTabs = requireElement('[data-editor-pane-tabs]');
+      const overflowRoot = requireElement('[data-editor-tab-overflow-root]');
+      const scrollStrip = requireElement('[data-editor-tab-scroll]');
+      const scrollViewport = scrollStrip.parentElement;
+      if (!scrollViewport) throw new Error('Missing editor tab scroll viewport');
+
+      const leadingActions = requireElement('[data-editor-header-leading-actions]');
+      const shareButton = requireElement('[data-testid="share-button"]');
+      const trailingActions = requireElement('[data-editor-header-actions]');
+      const leadingActionsRect = leadingActions.getBoundingClientRect();
+      const overflowRootRect = overflowRoot.getBoundingClientRect();
+      const shareButtonRect = shareButton.getBoundingClientRect();
+      const trailingActionsRect = trailingActions.getBoundingClientRect();
+
+      return {
+        filesButton: appRegionFor('[data-editor-header-leading-actions] [data-sidebar="trigger"]'),
+        headerCanvas: appRegionFor('header[data-electron-drag]'),
+        leadingGapIsDraggable:
+          overflowRootRect.left > leadingActionsRect.right && appRegion(paneTabs) === 'drag',
+        leadingActions: appRegion(leadingActions),
+        newTabButton: appRegionFor('[data-testid="editor-new-tab-button"]'),
+        overflowRoot: appRegion(overflowRoot),
+        paneTabs: appRegion(paneTabs),
+        resourcesButton: appRegionFor('[data-editor-header-actions] button:last-of-type'),
+        scrollViewport: appRegion(scrollViewport),
+        shareButton: appRegion(shareButton),
+        shareHasDraggableVerticalGutter:
+          shareButtonRect.top > trailingActionsRect.top &&
+          shareButtonRect.bottom < trailingActionsRect.bottom &&
+          appRegion(trailingActions) === 'drag',
+        tabsHost: appRegion(tabsHost),
+        tabsPaintBeforeControls:
+          precedes(tabsHost, leadingActions) && precedes(tabsHost, trailingActions),
+        trailingActions: appRegion(trailingActions),
+      };
+    });
+
+    expect(appRegions).toEqual({
+      filesButton: 'no-drag',
+      headerCanvas: 'drag',
+      leadingGapIsDraggable: true,
+      leadingActions: 'drag',
+      newTabButton: 'no-drag',
+      overflowRoot: 'drag',
+      paneTabs: 'drag',
+      resourcesButton: 'no-drag',
+      scrollViewport: 'no-drag',
+      shareButton: 'no-drag',
+      shareHasDraggableVerticalGutter: true,
+      tabsHost: 'drag',
+      tabsPaintBeforeControls: true,
+      trailingActions: 'drag',
+    });
+
+    const newTabButton = editor.getByTestId('editor-new-tab-button');
+    const newTabPlaceholders = editor.getByTestId('editor-new-tab-placeholder-button');
+    const placeholderCountBefore = await newTabPlaceholders.count();
+    await newTabButton.click();
+    await expect(newTabPlaceholders).toHaveCount(placeholderCountBefore + 1);
+
+    const resourcesButton = editor.getByRole('button', { name: 'Resources' });
+    await resourcesButton.click();
+    await expect(editor.getByRole('link', { name: 'Docs' })).toBeVisible();
+  });
+});

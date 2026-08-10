@@ -210,6 +210,12 @@ describe('EditorHeader runtime behavior', () => {
 
     expect(header.getAttribute('data-electron-drag')).toBe('');
     expectVisualClassTokens(header.className, ['[-webkit-app-region:drag]']);
+    const tabHost = header.querySelector('[data-editor-header-tabs]') as HTMLElement;
+    expect(tabHost.getAttribute('data-electron-drag')).toBe('');
+    expectVisualClassTokens(tabHost.className, ['[-webkit-app-region:drag]']);
+    expectVisualClassTokensAbsent(tabHost.className, ['[-webkit-app-region:no-drag]']);
+    expect(leadingZone.getAttribute('data-electron-drag')).toBe('');
+    expectVisualClassTokens(leadingZone.className, ['[-webkit-app-region:drag]']);
     expectVisualClassTokens(leadingZone.className, ['left-[var(--ok-titlebar-reserve-left,1rem)]']);
     expectVisualClassTokensAbsent(leadingZone.className, ['motion-safe:transition-[left]']);
     expectVisualClassTokens(screen.getByTestId('sidebar-trigger').className, [
@@ -231,9 +237,21 @@ describe('EditorHeader runtime behavior', () => {
     expect(
       navigation.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expectVisualClassTokens(navigation.className, ['[-webkit-app-region:no-drag]']);
+    expectVisualClassTokensAbsent(navigation.className, ['[-webkit-app-region:no-drag]']);
     const rightZone = header.querySelector('[data-editor-header-actions]') as HTMLElement;
-    expectVisualClassTokens(rightZone.className, ['*:[-webkit-app-region:no-drag]']);
+    expect(rightZone.getAttribute('data-electron-drag')).toBe('');
+    expectVisualClassTokens(rightZone.className, [
+      '[-webkit-app-region:drag]',
+      '[&_button]:[-webkit-app-region:no-drag]',
+      '[&_a]:[-webkit-app-region:no-drag]',
+    ]);
+    expectVisualClassTokensAbsent(rightZone.className, ['*:[-webkit-app-region:no-drag]']);
+    expect(
+      tabHost.compareDocumentPosition(leadingZone) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      tabHost.compareDocumentPosition(rightZone) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   test('Electron expanded sidebar keeps drag region but does not reserve traffic-light space', async () => {

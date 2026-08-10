@@ -189,13 +189,32 @@ export function EditorHeader({
         isElectronHost && '[-webkit-app-region:drag]',
       )}
     >
+      {/* Paint the full-width tab canvas before the foreground controls.
+          Chromium folds app regions in DOM order, so the later button
+          opt-outs carve precise holes without erasing the draggable header
+          background around them. */}
+      <div
+        ref={tabsHostRef}
+        data-electron-drag={isElectronHost ? '' : undefined}
+        data-editor-header-tabs=""
+        className={cn(
+          'absolute inset-y-0 left-0 z-10 flex min-w-0 w-[var(--editor-header-tabs-width,100%)] overflow-hidden',
+          !chromeMeasured && 'invisible',
+          isElectronHost && '[-webkit-app-region:drag]',
+        )}
+      >
+        {children}
+      </div>
+
       {/* The left zone (files toggle and search) is project chrome —
           empty in single-file mode. */}
       <div
         ref={leadingActionsRef}
+        data-electron-drag={isElectronHost ? '' : undefined}
         data-editor-header-leading-actions=""
         className={cn(
           'absolute inset-y-0 left-0 z-20 flex items-center gap-1 px-3',
+          isElectronHost && '[-webkit-app-region:drag]',
           isElectronHost && isCollapsed && 'left-[var(--ok-titlebar-reserve-left,1rem)]',
         )}
       >
@@ -207,10 +226,7 @@ export function EditorHeader({
           <>
             <ButtonGroup
               aria-label={t`Workspace navigation`}
-              className={cn(
-                '-ml-1 shrink-0 has-[>[data-slot=button-group]]:gap-0',
-                isElectronHost && '[-webkit-app-region:no-drag]',
-              )}
+              className="-ml-1 shrink-0 has-[>[data-slot=button-group]]:gap-0"
             >
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -263,29 +279,17 @@ export function EditorHeader({
       </div>
 
       <div
-        ref={tabsHostRef}
-        data-editor-header-tabs=""
-        className={cn(
-          'absolute inset-y-0 left-0 z-10 flex min-w-0 w-[var(--editor-header-tabs-width,100%)] overflow-hidden',
-          !chromeMeasured && 'invisible',
-          isElectronHost && '[-webkit-app-region:no-drag]',
-        )}
-      >
-        {children}
-      </div>
-
-      <div
         ref={trailingActionsRef}
+        data-electron-drag={isElectronHost ? '' : undefined}
         data-editor-header-actions=""
         className={cn(
           'absolute inset-y-0 right-0 z-20 flex items-center justify-end gap-2 px-3',
-          // Child-combinator opt-out: every direct DOM child of the right zone
-          // gets `app-region: no-drag` so clicks on Save / OpenInAgentMenu /
-          // SyncStatusBadge / PresenceBar / BetaBadge / SettingsButton /
-          // HelpPopover (and the visual Separator) fire their handlers instead
-          // of initiating a window drag. Each consumer uses Radix asChild so
-          // the rendered DOM root is a single direct child of this zone.
-          isElectronHost && '*:[-webkit-app-region:no-drag]',
+          // Keep the whole rail draggable and subtract only real controls.
+          // Descendant selectors cover Radix asChild triggers and interactive
+          // presence avatars without turning their surrounding flex space
+          // into a dead strip.
+          isElectronHost &&
+            '[-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag] [&_a]:[-webkit-app-region:no-drag]',
           // Windows/Linux: the OS window controls float over the top-right
           // of this row (titleBarOverlay). --ok-titlebar-reserve-right is
           // non-zero only under electron-platform-win32/linux (see

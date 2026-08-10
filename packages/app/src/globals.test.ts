@@ -7,9 +7,9 @@
  * DOM never sees pointerdown there. Radix Popover / DropdownMenu /
  * ContextMenu rely on document-level pointerdown for outside-click dismissal
  * (they render no overlay, unlike Dialog with its `DialogOverlay`). The rule
- * targets a stable `data-electron-drag` attribute applied at five drag-region
- * sites (`App.tsx`, `EditorHeader.tsx`, `EditorTabs.tsx`, `FileSidebar.tsx`,
- * `NavigatorApp.tsx`).
+ * targets a stable `data-electron-drag` attribute applied to every drag-region
+ * element in `App.tsx`, `EditorHeader.tsx`, `EditorTabs.tsx`, `FileSidebar.tsx`,
+ * `NavigatorApp.tsx`, `GraphPanel.tsx`, and `TerminalTabStrip.tsx`.
  *
  * CSS behavior cannot be exercised in jsdom (no `:has()` evaluation against
  * `-webkit-app-region` cascade), so a source-grep guard is the available

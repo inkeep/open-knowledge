@@ -94,7 +94,7 @@ describe('NavigationHistoryControls', () => {
     );
   });
 
-  test('emits navigation actions and keeps the controls out of the drag region', async () => {
+  test('emits navigation actions and keeps only the buttons out of the drag region', async () => {
     const actions: string[] = [];
     const unsubscribe = subscribeLocalMenuAction((action) => actions.push(action));
     await renderControls();
@@ -102,8 +102,9 @@ describe('NavigationHistoryControls', () => {
     const root = screen.getByTestId('navigation-history-controls');
     const back = screen.getByRole('button', { name: 'Back' });
     const forward = screen.getByRole('button', { name: 'Forward' });
-    expectVisualClassTokens(root.className, ['[-webkit-app-region:no-drag]']);
-    expectVisualClassTokensAbsent(root.className, ['[-webkit-app-region:drag]']);
+    expectVisualClassTokensAbsent(root.className, ['[-webkit-app-region:no-drag]']);
+    expectVisualClassTokens(back.className, ['[-webkit-app-region:no-drag]']);
+    expectVisualClassTokens(forward.className, ['[-webkit-app-region:no-drag]']);
 
     fireEvent.click(back);
     fireEvent.click(forward);

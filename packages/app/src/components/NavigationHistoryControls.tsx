@@ -52,13 +52,14 @@ export function NavigationHistoryControls() {
   return (
     <ButtonGroup
       aria-label={t`Navigation history`}
-      className="shrink-0 [-webkit-app-region:no-drag]"
+      className="shrink-0"
       data-testid="navigation-history-controls"
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             aria-label={t`Back`}
+            className="[-webkit-app-region:no-drag]"
             disabled={!canGoBack}
             onClick={() => emitLocalMenuAction('navigate-back')}
             size="icon-sm"
@@ -75,6 +76,7 @@ export function NavigationHistoryControls() {
         <TooltipTrigger asChild>
           <Button
             aria-label={t`Forward`}
+            className="[-webkit-app-region:no-drag]"
             disabled={!canGoForward}
             onClick={() => emitLocalMenuAction('navigate-forward')}
             size="icon-sm"

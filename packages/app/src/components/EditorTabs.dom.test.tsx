@@ -723,7 +723,7 @@ describe('EditorTabs runtime behavior', () => {
     expect(screen.queryByRole('menuitem', { name: `Rename skill file ${filePath}` })).toBeNull();
   });
 
-  test('Electron host keeps the pane-local strip and controls interactive', async () => {
+  test('Electron host makes tab-strip backgrounds draggable while controls opt out', async () => {
     Object.defineProperty(window, 'okDesktop', {
       configurable: true,
       value: {},
@@ -731,18 +731,30 @@ describe('EditorTabs runtime behavior', () => {
 
     const { container } = await renderEditorTabs();
     const root = container.firstElementChild as HTMLElement;
-    const wrapper = root.firstElementChild as HTMLElement;
+    const overflowRoot = root.firstElementChild as HTMLElement;
+    const scrollViewport = container.querySelector<HTMLElement>(
+      '[data-editor-tab-scroll]',
+    )?.parentElement;
+    const newTabButton = screen.getByTestId('editor-new-tab-button');
 
     expect(root.getAttribute('data-editor-pane-tabs')).toBe('pane-a');
-    expect(root.getAttribute('data-electron-drag')).toBeNull();
-    expectVisualClassTokens(root.className, ['[-webkit-app-region:no-drag]']);
-    expectVisualClassTokens(wrapper.className, [
-      '[-webkit-app-region:no-drag]',
+    expect(root.getAttribute('data-electron-drag')).toBe('');
+    expectVisualClassTokens(root.className, ['[-webkit-app-region:drag]']);
+    expectVisualClassTokensAbsent(root.className, ['[-webkit-app-region:no-drag]']);
+    expect(overflowRoot.getAttribute('data-electron-drag')).toBe('');
+    expectVisualClassTokens(overflowRoot.className, [
       'flex',
       'items-end',
       'gap-px',
+      'min-w-0',
+      'flex-1',
+      'self-stretch',
+      '[-webkit-app-region:drag]',
     ]);
-    expectVisualClassTokens(wrapper.className, ['min-w-0', 'flex-1']);
+    expectVisualClassTokensAbsent(overflowRoot.className, ['[-webkit-app-region:no-drag]']);
+    expect(scrollViewport).toBeTruthy();
+    expectVisualClassTokens(scrollViewport?.className, ['[-webkit-app-region:no-drag]']);
+    expectVisualClassTokens(newTabButton.className, ['[-webkit-app-region:no-drag]']);
   });
 
   test('keeps restored-tab chrome alignment immediate', async () => {
@@ -768,6 +780,7 @@ describe('EditorTabs runtime behavior', () => {
     const sortableTabs = [...container.querySelectorAll<HTMLElement>('[data-editor-tab-sortable]')];
 
     expect(root.getAttribute('data-editor-pane-tabs')).toBe('pane-a');
+    expect(container.querySelector('[data-electron-drag]')).toBeNull();
     expectVisualClassTokens(root.className, ['overflow-hidden']);
     expect(scrollStrip).toBeTruthy();
     expectVisualClassTokens(scrollStrip?.className, [
