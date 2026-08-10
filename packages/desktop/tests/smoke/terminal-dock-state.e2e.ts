@@ -59,14 +59,23 @@ test.describe('terminal dock-state IPC', () => {
     const editorPage = page;
     if (editorPage == null) throw new Error('editor window vanished after readiness poll');
 
-    const agents = await editorPage.evaluate(() =>
-      window.okDesktop?.terminal.setDockState({
-        surface: 'agents',
-        order: ['thread-a', 'thread-b'],
-        activeKey: 'thread-a',
-      }),
-    );
-    expect(agents).toEqual({ ok: true });
+    // Main keeps this record per window and clears it when a window closes, so a
+    // write issued while startup is still swapping windows is accepted against a
+    // window that is about to go away and is silently gone by the read below.
+    // `{ ok: true }` does not prove it survived — it only proves some window took
+    // it — so re-issue until the value reads back.
+    await expect
+      .poll(async () => {
+        await editorPage.evaluate(() =>
+          window.okDesktop?.terminal.setDockState({
+            surface: 'agents',
+            order: ['thread-a', 'thread-b'],
+            activeKey: 'thread-a',
+          }),
+        );
+        return editorPage.evaluate(() => window.okDesktop?.terminal.getDockState());
+      })
+      .toMatchObject({ agents: { order: ['thread-a', 'thread-b'], activeKey: 'thread-a' } });
     await expect
       .poll(() =>
         editorPage.evaluate(() =>

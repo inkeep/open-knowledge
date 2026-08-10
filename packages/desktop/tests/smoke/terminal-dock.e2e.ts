@@ -28,6 +28,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
+import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 
@@ -282,6 +283,9 @@ async function waitForStatus(page: Page, status: string, timeoutMs = 20_000): Pr
   await expect(terminalStatus(page)).toHaveAttribute('data-terminal-status', status, {
     timeout: timeoutMs,
   });
+  // `running` means the PTY spawned, not that the shell has reached its read
+  // loop. Typing before it does swallows the keystrokes.
+  if (status === 'running') await waitForShellReady(() => readTerminalText(page));
 }
 
 /** Wait for the bottom terminal panel. The terminal owns the bottom edge outright

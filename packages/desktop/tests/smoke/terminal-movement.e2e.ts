@@ -6,6 +6,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
+import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
@@ -151,6 +152,9 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
     'running',
     { timeout: 25_000 },
   );
+  // `running` means the PTY spawned, not that the shell has reached its read
+  // loop. Typing before it does swallows the keystrokes.
+  await waitForShellReady(() => readActiveTerminal(page));
 }
 
 async function openBareTab(page: Page): Promise<void> {
@@ -161,6 +165,9 @@ async function openBareTab(page: Page): Promise<void> {
     'running',
     { timeout: 25_000 },
   );
+  // `running` means the PTY spawned, not that the shell has reached its read
+  // loop. Typing before it does swallows the keystrokes.
+  await waitForShellReady(() => readActiveTerminal(page));
 }
 
 async function typeInActiveTerminal(page: Page, text: string): Promise<void> {
