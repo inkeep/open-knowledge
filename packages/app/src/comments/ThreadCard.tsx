@@ -146,6 +146,21 @@ export function ThreadCard({
     scrollAnchorIntoView(editor, range);
   }
 
+  function cancelEdit() {
+    setDraft(thread.body);
+    setEditing(false);
+  }
+
+  function saveEdit() {
+    const next = draft.trim();
+    if (next.length === 0 || next === thread.body) {
+      setEditing(false);
+      return;
+    }
+    editComment(thread.id, next);
+    setEditing(false);
+  }
+
   function rePlaceOnSelection() {
     const editor = getEditorForDoc(thread.docName);
     if (!editor) return;
@@ -319,32 +334,40 @@ export function ThreadCard({
               for an action taken on few of them. Enter saves, Shift+Enter is a
               newline, Escape discards the revision. */}
           {editing && (
-            <Textarea
-              ref={editFieldRef}
-              rows={1}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setDraft(thread.body);
-                  setEditing(false);
-                  return;
-                }
-                if (e.key !== 'Enter' || e.shiftKey) return;
-                // Mid-composition Enter belongs to the IME, not to saving.
-                if (e.nativeEvent.isComposing) return;
-                e.preventDefault();
-                const next = draft.trim();
-                if (next.length === 0 || next === thread.body) {
-                  setEditing(false);
-                  return;
-                }
-                editComment(thread.id, next);
-                setEditing(false);
-              }}
-              placeholder={t`Edit this comment`}
-              className="min-h-0 resize-none px-2 py-1 text-sm leading-5"
-            />
+            <div className="flex flex-col gap-1.5">
+              <Textarea
+                ref={editFieldRef}
+                rows={1}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    cancelEdit();
+                    return;
+                  }
+                  if (e.key !== 'Enter' || e.shiftKey) return;
+                  // Mid-composition Enter belongs to the IME, not to saving.
+                  if (e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  saveEdit();
+                }}
+                placeholder={t`Edit this comment`}
+                className="min-h-0 resize-none px-2 py-1 text-sm leading-5"
+              />
+              <div className="flex items-center justify-end gap-1.5">
+                <Button size="sm" variant="ghost" onClick={cancelEdit}>
+                  <Trans>Cancel</Trans>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={saveEdit}
+                  disabled={draft.trim().length === 0}
+                  aria-label={t`Save this comment (Enter)`}
+                >
+                  <Trans>Save</Trans>
+                </Button>
+              </div>
+            </div>
           )}
           {/* Only a resolved thread still needs a row down here. Resolving is
               something a SEND does, not something you declare, so there is no

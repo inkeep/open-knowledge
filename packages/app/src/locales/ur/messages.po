@@ -2063,6 +2063,7 @@ msgid "Can't share this path."
 msgstr "یہ راستہ شیئر نہیں کیا جا سکتا۔"
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10158,6 +10159,7 @@ msgstr "نمونہ تصویر"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "سینڈ باکسڈ HTML ایمبیڈ — HTML لکھیں، رینڈر شدہ پیش منظر براہِ راست دیکھیں۔"
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10183,6 +10185,10 @@ msgstr "قطار میں موجود پیغام محفوظ کریں"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "حل محفوظ کریں"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "یہ تبصرہ محفوظ کریں (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

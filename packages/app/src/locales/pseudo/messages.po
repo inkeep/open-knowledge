@@ -2059,6 +2059,7 @@ msgid "Can't share this path."
 msgstr ""
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10154,6 +10155,7 @@ msgstr ""
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr ""
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10178,6 +10180,10 @@ msgstr ""
 
 #: src/components/DiffView.tsx
 msgid "Save resolution"
+msgstr ""
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
 msgstr ""
 
 #: src/components/settings/field-controls.tsx

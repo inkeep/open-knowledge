@@ -2059,6 +2059,7 @@ msgid "Can't share this path."
 msgstr "यह पथ साझा नहीं किया जा सकता।"
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10154,6 +10155,7 @@ msgstr "नमूना छवि"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "सैंडबॉक्स किया गया HTML एम्बेड — HTML लिखें, रेंडर किया गया पूर्वावलोकन तुरंत देखें।"
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10179,6 +10181,10 @@ msgstr "कतार में लगा संदेश सहेजें"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "समाधान सहेजें"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "यह टिप्पणी सहेजें (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

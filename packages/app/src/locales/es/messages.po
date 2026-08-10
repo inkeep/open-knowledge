@@ -2063,6 +2063,7 @@ msgid "Can't share this path."
 msgstr "No se puede compartir esta ruta."
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10158,6 +10159,7 @@ msgstr "Imagen de ejemplo"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "Incrustación de HTML aislada: escribe HTML y ve la vista previa renderizada en vivo."
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10183,6 +10185,10 @@ msgstr "Guardar el mensaje en cola"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "Guardar la resolución"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "Guardar este comentario (Intro)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

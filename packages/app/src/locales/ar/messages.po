@@ -2063,6 +2063,7 @@ msgid "Can't share this path."
 msgstr "تعذّرت مشاركة هذا المسار."
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10158,6 +10159,7 @@ msgstr "صورة نموذجية"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "تضمين HTML معزول — اكتب HTML وشاهد المعاينة المعروضة مباشرةً."
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10183,6 +10185,10 @@ msgstr "حفظ الرسالة المنتظرة"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "حفظ الحل"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "حفظ هذا التعليق (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

@@ -2063,6 +2063,7 @@ msgid "Can't share this path."
 msgstr "Can't share this path."
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10158,6 +10159,7 @@ msgstr "Sample image"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "Sandboxed HTML embed — write HTML, see the rendered preview live."
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10183,6 +10185,10 @@ msgstr "Save queued message"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "Save resolution"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "Save this comment (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

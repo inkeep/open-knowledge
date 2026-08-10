@@ -2063,6 +2063,7 @@ msgid "Can't share this path."
 msgstr "无法共享此路径。"
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10158,6 +10159,7 @@ msgstr "示例图片"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "沙箱化的 HTML 嵌入——写下 HTML，实时查看渲染效果。"
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10183,6 +10185,10 @@ msgstr "保存排队中的消息"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "保存解决结果"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "保存这条评论（Enter）"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

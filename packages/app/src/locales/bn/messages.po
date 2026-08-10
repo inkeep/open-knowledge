@@ -2059,6 +2059,7 @@ msgid "Can't share this path."
 msgstr "এই পাথ শেয়ার করা যাচ্ছে না।"
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10154,6 +10155,7 @@ msgstr "নমুনা ছবি"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "স্যান্ডবক্স করা HTML এমবেড — HTML লিখুন, রেন্ডার করা প্রাকদর্শন সঙ্গে সঙ্গে দেখুন।"
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10179,6 +10181,10 @@ msgstr "সারিতে থাকা বার্তা সংরক্ষণ
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "মীমাংসা সংরক্ষণ করুন"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "এই মন্তব্যটি সংরক্ষণ করুন (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

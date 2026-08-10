@@ -2059,6 +2059,7 @@ msgid "Can't share this path."
 msgstr "Tidak dapat membagikan jalur ini."
 
 #: src/comments/PropertyCommentButton.tsx
+#: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -10154,6 +10155,7 @@ msgstr "Contoh gambar"
 msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."
 
+#: src/comments/ThreadCard.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -10179,6 +10181,10 @@ msgstr "Simpan pesan dalam antrean"
 #: src/components/DiffView.tsx
 msgid "Save resolution"
 msgstr "Simpan penyelesaian"
+
+#: src/comments/ThreadCard.tsx
+msgid "Save this comment (Enter)"
+msgstr "Simpan komentar ini (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx

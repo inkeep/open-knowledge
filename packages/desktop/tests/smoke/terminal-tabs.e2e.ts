@@ -30,6 +30,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
+import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 
@@ -149,8 +150,16 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
       { timeout: 8_000 },
     );
   }).toPass({ timeout: 40_000, intervals: [2_000] });
+  await waitForShellReady(() => readActiveText(page));
 }
 
+/**
+ * `running` means the PTY spawned, not that the shell behind it has reached its
+ * read loop — so the shell-ready wait is part of the contract here, not an
+ * optional extra. Without it, keystrokes typed while the shell is still sourcing
+ * profile scripts (macOS runners print the bash-to-zsh banner) are swallowed,
+ * and the caller times out on a marker whose command never ran.
+ */
 async function waitActiveRunning(page: Page, timeoutMs = 25_000): Promise<void> {
   await expect(visibleSection(page)).toBeVisible({ timeout: 15_000 });
   await expect(visibleSection(page).locator('[data-terminal-status]')).toHaveAttribute(
@@ -158,6 +167,7 @@ async function waitActiveRunning(page: Page, timeoutMs = 25_000): Promise<void> 
     'running',
     { timeout: timeoutMs },
   );
+  await waitForShellReady(() => readActiveText(page));
 }
 
 /** Open a second (or further) tab running a BARE shell via the New-chat carat →
