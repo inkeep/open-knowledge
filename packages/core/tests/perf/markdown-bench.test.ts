@@ -16,15 +16,21 @@
  *
  * METHODOLOGY (pinned; changes require a baseline re-measurement):
  *   - 10 warm-up iterations per (op, blockCount)
- *   - `globalThis.gc?.()` between every measured run (a full GC when the
- *     runner is started with Node's `--expose-gc`; a no-op otherwise)
+ *   - `globalThis.gc?.()` between every measured run. Under Node this is a
+ *     full GC ONLY when the runner is started with `--expose-gc`, and a
+ *     silent no-op otherwise, so `methodology.gcBetweenRuns` in the output
+ *     records what the run actually did rather than what it intended. A
+ *     forced-GC baseline and a no-GC fresh run are not comparable — the
+ *     regression gate warns when they are mixed.
  *   - performance.now() deltas, collected into a run array, reduced to
  *     {p50, p95, p99, min, max, mean}
- *   - Runner metadata (Node version, git sha, hostname, cpu, ram) embedded
- *     in the output so future runs are comparable even across machines.
+ *   - Runner metadata (runtime versions, git sha, hostname, cpu, ram)
+ *     embedded in the output so future runs are comparable across machines.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { cpus, hostname, totalmem } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,21 +98,48 @@ function stats(samples: number[]): Stats {
 
 // ───────────────────────── Runner metadata ────────────────────────────────
 
+const HARNESS_DIR = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Ask git for the measured commit rather than reading refs by hand.
+ *
+ * The obvious hand-rolled version is wrong in the environment this repo is
+ * usually developed in: a linked worktree's gitdir holds only `HEAD`, while
+ * `refs/heads/*` and `packed-refs` live in the common directory reached via
+ * `commondir`. Resolving `HEAD` there and then reading the branch ref beside it
+ * misses, so every result captured from a worktree recorded `gitSha: "unknown"`
+ * and was stranded from the commit it measured. `git rev-parse` already handles
+ * commondir, packed refs, detached HEAD and symbolic refs. It runs once during
+ * metadata collection, well outside the measured loop.
+ */
 function readGitSha(): string {
   try {
-    const head = readFileSync(resolve(process.cwd(), '.git/HEAD'), 'utf8').trim();
-    if (head.startsWith('ref: ')) {
-      const refPath = head.slice(5);
-      return readFileSync(resolve(process.cwd(), '.git', refPath), 'utf8').trim();
-    }
-    return head;
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: HARNESS_DIR,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch {
+    return 'unknown';
+  }
+}
+
+/** Vitest is the measurement substrate; a major/minor bump invalidates the baseline. */
+function readVitestVersion(): string {
+  try {
+    return createRequire(import.meta.url)('vitest/package.json').version ?? 'unknown';
+  } catch (err) {
+    // Not fatal, but `vitestVersion` is not covered by the gate's mismatch
+    // warnings, so a silent "unknown" would quietly weaken the provenance a
+    // re-baseline is attributed by.
+    console.warn(`[bench] could not resolve the vitest version: ${String(err)}`);
     return 'unknown';
   }
 }
 
 interface RunnerInfo {
   nodeVersion: string;
+  vitestVersion: string;
   gitSha: string;
   hostname: string;
   cpuModel: string;
@@ -120,6 +153,7 @@ function runnerInfo(): RunnerInfo {
   const cpuList = cpus();
   return {
     nodeVersion: process.versions.node,
+    vitestVersion: readVitestVersion(),
     gitSha: readGitSha(),
     hostname: hostname(),
     cpuModel: cpuList[0]?.model ?? 'unknown',
@@ -132,7 +166,17 @@ function runnerInfo(): RunnerInfo {
 
 // ───────────────────────── Measurement ────────────────────────────────────
 
-/** Run `op` `n` times, forcing GC between runs, return per-run ms deltas. */
+/**
+ * Whether a forced GC is actually available this run. `globalThis.gc` only
+ * exists under `--expose-gc`; without it the GC call below is a no-op and the
+ * run is not comparable to a forced-GC baseline.
+ */
+const GC_FORCED = typeof (globalThis as { gc?: () => void }).gc === 'function';
+
+/**
+ * Run `op` `n` times, calling `gc?.()` between runs — a forced collection only
+ * under `--expose-gc`, a no-op otherwise. Returns per-run ms deltas.
+ */
 function measure(op: () => void, n: number): number[] {
   const samples: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -183,8 +227,6 @@ function benchmarkBlockCount(mm: MarkdownManager, blockCount: PerfBlockCount): B
 
 // ───────────────────────── Test ───────────────────────────────────────────
 
-const HARNESS_DIR = dirname(fileURLToPath(import.meta.url));
-
 describeBench('markdown pipeline benchmark harness (R1)', () => {
   test(
     'parse/serialize/round-trip at pinned block counts',
@@ -215,7 +257,7 @@ describeBench('markdown pipeline benchmark harness (R1)', () => {
         methodology: {
           warmupIters: WARMUP_ITERS,
           measuredIters: MEASURED_ITERS,
-          gcBetweenRuns: true,
+          gcBetweenRuns: GC_FORCED,
         },
         runner: runnerInfo(),
         results,

@@ -16,6 +16,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  checkMethodologyMismatches,
   evaluateRegression,
   formatReport,
   loadBaseline,
@@ -72,6 +73,14 @@ async function main(): Promise<void> {
       `[r4-gate] runner class mismatch: baseline="${baseline.runnerClass}" ` +
         `fresh="${freshRunnerClass}". p99 deltas may reflect hardware, not code.`,
     );
+  }
+
+  // Methodology mismatch is the silent-invalidation case: `globalThis.gc()`
+  // only forces a collection under `--expose-gc`, so a run launched without it
+  // measures a different allocation regime than a forced-GC baseline while
+  // still producing a comparable-looking number.
+  for (const warning of checkMethodologyMismatches(baseline, fresh)) {
+    console.warn(`[r4-gate] ${warning}`);
   }
 
   const report = evaluateRegression(baseline, fresh);

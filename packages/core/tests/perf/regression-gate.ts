@@ -23,14 +23,21 @@
  * GATE LOCATION. This file runs in tier-2 CI only (see `turbo.json`
  * `test:perf:regression` task). The synthetic-regression unit tests next
  * to it (`regression-gate.test.ts`) are fast and pure — they CAN run in
- * tier-1 if wired, but we keep them out of `bun test src/` to honor the
- * existing tier-1 budget under `bun run check`.
+ * tier-1 if wired, but we keep them out of `pnpm test` to honor the
+ * existing tier-1 budget under `pnpm check`.
  */
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // ───────────────────────── Types ──────────────────────────────────────────
+
+/** Measurement conditions a run was captured under. */
+interface Methodology {
+  warmupIters: number;
+  measuredIters: number;
+  gcBetweenRuns: boolean;
+}
 
 /** Single-op latency stats as emitted by the bench harness. */
 interface OpStats {
@@ -51,15 +58,18 @@ interface FreshBlockResult {
   roundTripMs: OpStats;
 }
 
-interface FreshResults {
+export interface FreshResults {
   schemaVersion: number;
   startedAt: string;
   finishedAt: string;
-  methodology: {
-    warmupIters: number;
-    measuredIters: number;
-    gcBetweenRuns: boolean;
-  };
+  /**
+   * Optional as a whole: a results file written before these fields existed
+   * still loads, and the comparison treats "absent" as "unknown" rather than
+   * as "matches". The members are required, because the harness has always
+   * written all three together — a partial object would read as present to a
+   * human while behaving as absent to the mismatch check.
+   */
+  methodology?: Methodology;
   runner: Record<string, unknown>;
   results: FreshBlockResult[];
 }
@@ -77,12 +87,24 @@ interface BaselineBlockEntry {
   roundTripMs: { p99: number; p99StdevMs: number };
 }
 
-interface Baseline {
+export interface Baseline {
   schemaVersion: 1;
   /** ISO timestamp at which the baseline was captured. */
   capturedAt: string;
   /** Human-readable class the calibration runs landed on ("local-m-series", "gh-ubuntu-latest", etc.). */
   runnerClass: string;
+  /**
+   * Measurement conditions the committed numbers were captured under.
+   * Optional so a baseline predating the field still loads; when present the
+   * comparison warns if a fresh run does not match, because p99 deltas across
+   * differing GC or iteration policy reflect methodology, not code.
+   */
+  methodology?: Methodology;
+  /** Runtime + test-runner the committed numbers were captured under. */
+  toolchain?: {
+    runtime?: string;
+    testRunner?: string;
+  };
   /** Number of independent benchmark runs aggregated into this baseline. */
   calibrationRuns: number;
   /** Threshold knobs pinned. */
@@ -195,6 +217,38 @@ export function formatReport(report: RegressionReport): string {
   return lines.join('\n');
 }
 
+/**
+ * Conditions under which a fresh run is not comparable to the baseline, as
+ * human-readable warnings. Returns an empty array when the two agree or when
+ * either side predates the recorded fields — absent means unknown, not equal.
+ *
+ * Kept here rather than in the orchestrator so the contract is testable: these
+ * warnings are the only thing standing between a methodology change and a
+ * silently meaningless comparison.
+ */
+export function checkMethodologyMismatches(baseline: Baseline, fresh: FreshResults): string[] {
+  const warnings: string[] = [];
+  const b = baseline.methodology;
+  const f = fresh.methodology;
+  if (!b || !f) return warnings;
+  if (b.gcBetweenRuns !== f.gcBetweenRuns) {
+    warnings.push(
+      `methodology mismatch: baseline gcBetweenRuns=${b.gcBetweenRuns} ` +
+        `fresh gcBetweenRuns=${f.gcBetweenRuns}. Re-run with ` +
+        `NODE_OPTIONS=--expose-gc to force GC, or re-baseline; the numbers ` +
+        `below compare different allocation regimes.`,
+    );
+  }
+  if (b.measuredIters !== f.measuredIters) {
+    warnings.push(
+      `iteration-count mismatch: baseline measuredIters=${b.measuredIters} ` +
+        `fresh measuredIters=${f.measuredIters}; p99 is a worst-of-N observation, ` +
+        `so changing N changes what the number means.`,
+    );
+  }
+  return warnings;
+}
+
 // ───────────────────────── IO helpers ─────────────────────────────────────
 
 /**
@@ -270,7 +324,7 @@ export function loadFreshResults(path: string): FreshResults {
 
 /**
  * CLI entry. Usage:
- *   bun run packages/core/tests/perf/regression-gate.ts <baseline> <fresh>
+ *   tsx packages/core/tests/perf/regression-gate.ts <baseline> <fresh>
  *
  * Exits 0 on PASS, 1 on FAIL. Prints a human-readable report to stdout.
  */

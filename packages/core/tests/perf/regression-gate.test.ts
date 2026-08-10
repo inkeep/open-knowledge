@@ -16,6 +16,8 @@
  *   4. missing block count in fresh ⇒ FAIL in `missingFresh`
  *   5. extra block count in fresh ⇒ reported but not fatal
  *   6. variance-term dominance on noisy baselines
+ *   7. methodology-mismatch warnings, including that an unrecorded
+ *      methodology on either side stays silent rather than claiming a match
  */
 
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -24,6 +26,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   type Baseline,
+  checkMethodologyMismatches,
   evaluateRegression,
   type FreshResults,
   formatReport,
@@ -84,6 +87,63 @@ function makeFresh(overrides: Partial<FreshResults> = {}): FreshResults {
     ...overrides,
   };
 }
+
+describe('checkMethodologyMismatches', () => {
+  const METHODOLOGY = { warmupIters: 10, measuredIters: 10, gcBetweenRuns: true };
+
+  test('matching methodology produces no warnings', () => {
+    const warnings = checkMethodologyMismatches(
+      makeBaseline({ methodology: METHODOLOGY }),
+      makeFresh({ methodology: METHODOLOGY }),
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test('a fresh run with GC disabled warns, and names the flag that re-enables it', () => {
+    const warnings = checkMethodologyMismatches(
+      makeBaseline({ methodology: METHODOLOGY }),
+      makeFresh({ methodology: { ...METHODOLOGY, gcBetweenRuns: false } }),
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('gcBetweenRuns');
+    expect(warnings[0]).toContain('--expose-gc');
+  });
+
+  test('a different measured-iteration count warns', () => {
+    const warnings = checkMethodologyMismatches(
+      makeBaseline({ methodology: METHODOLOGY }),
+      makeFresh({ methodology: { ...METHODOLOGY, measuredIters: 100 } }),
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('measuredIters');
+  });
+
+  test('both differing produces both warnings', () => {
+    const warnings = checkMethodologyMismatches(
+      makeBaseline({ methodology: METHODOLOGY }),
+      makeFresh({ methodology: { warmupIters: 10, measuredIters: 20, gcBetweenRuns: false } }),
+    );
+    expect(warnings).toHaveLength(2);
+  });
+
+  // Absent means unknown, not equal: a pre-field artefact must not be reported
+  // as matching, and must not produce a spurious warning either.
+  test('a baseline without recorded methodology produces no warnings', () => {
+    const warnings = checkMethodologyMismatches(
+      makeBaseline(),
+      makeFresh({ methodology: { ...METHODOLOGY, gcBetweenRuns: false } }),
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test('a fresh run without recorded methodology produces no warnings', () => {
+    const warnings = checkMethodologyMismatches(
+      makeBaseline({ methodology: METHODOLOGY }),
+      makeFresh({ methodology: undefined }),
+    );
+    expect(warnings).toEqual([]);
+  });
+});
 
 describe('evaluateRegression (R4 synthetic gate)', () => {
   test('identity fresh run matches baseline ⇒ PASS', () => {

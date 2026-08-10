@@ -2,6 +2,15 @@
   "schemaVersion": 1,
   "capturedAt": "2026-04-16T08:28:01.616Z",
   "runnerClass": "local-m-series-calibration",
+  "methodology": {
+    "warmupIters": 10,
+    "measuredIters": 10,
+    "gcBetweenRuns": true
+  },
+  "toolchain": {
+    "runtime": "bun@1.3.11",
+    "testRunner": "bun test"
+  },
   "calibrationRuns": 4,
   "threshold": {
     "floorPct": 0.1,
