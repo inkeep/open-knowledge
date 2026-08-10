@@ -121,17 +121,22 @@ describe('GET /api/config (desktop / worktree collab server)', () => {
     }
   });
 
-  test('returns collabUrl null when the Host header is absent (deliberate divergence from ok ui)', async () => {
+  test('an absent Host header is refused at the read gate (flipped pin)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-config-'));
     try {
-      // No Host header at all. Unlike `ok ui` (which falls back to
-      // `localhost:${resolvedPort}`), this handler advertises null and lets
-      // the client fall back to a same-origin WS URL. Pin it so a future
-      // change that silently adds a fallback is loud.
+      // Flipped pin (read-posture hardening): the universal /api read gate
+      // refuses a request carrying no Host header before the handler runs,
+      // so the handler's null-collabUrl advertisement branch (the former
+      // deliberate divergence from `ok ui`'s localhost fallback) is no
+      // longer reachable over the wire. This is NOT lost coverage: the
+      // null-on-absent-Host logic lives in the extracted
+      // `collabUrlFromRequestHeaders` and is pinned directly at the unit tier
+      // by `collab-bootstrap-url.test.ts` ("missing Host yields null"). There
+      // is no dead branch in the handler to delete — it just calls that fn.
       const result = await call(buildExtension(dir), 'GET', '/api/config', {});
-      expect(result.status).toBe(200);
-      const body = JSON.parse(result.body) as { collabUrl: string | null };
-      expect(body.collabUrl).toBeNull();
+      expect(result.status).toBe(403);
+      const body = JSON.parse(result.body) as { type: string };
+      expect(body.type).toBe('urn:ok:error:host-not-allowed');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

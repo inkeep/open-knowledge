@@ -97,9 +97,12 @@ export function admitRequestSurface(
   // `/mcp`, `/api/*`, the static shell, and project-mode content assets. The
   // predicate is the consolidated one (loopback + bind literals + publicUrl),
   // identical to the `/api` pipeline gate, so direct-IP access to the shell/
-  // content matches what the API admits. Pure-local (no exposure) keeps its
-  // historical origin-only read posture here; the general loopback+Host-on-
-  // all-reads flip is a separate PR.
+  // content matches what the API admits. Pure-local (no exposure) skips this
+  // SURFACE-wide gate on purpose — the read-sensitive legs behind it carry
+  // their own always-on Host gates (the `/api` pipeline read gate, the
+  // content-serve gate in `asset-serve-middleware.ts`, the unconditional
+  // `/mcp` gate), while the SPA shell stays deliberately ungated: it is
+  // public bundle code, and a rebound attacker serves their own page anyway.
   if (policy.legacyRemote !== undefined || policy.allowExternal) {
     const host = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
     if (!isPeerAdmitted(req.socket.remoteAddress, policy) || !isHostAdmitted(host, policy)) {

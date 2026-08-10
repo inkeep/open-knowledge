@@ -23,6 +23,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import {
   AcpThreadManager,
+  buildIngressPolicy,
   buildOkMcpStdioCommand,
   createAssetServeMiddleware,
   createCollaborationHost,
@@ -312,6 +313,15 @@ export function hocuspocusPlugin(): Plugin {
         inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
         assetExtensions: ASSET_EXTENSIONS,
         blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+        // Dev serves on the Vite loopback port with no resolved server
+        // runtime — the loopback-only default admits the localhost Hosts
+        // the browser actually sends. Known dev-mode limitation: under
+        // `vite --host` (LAN testing from a phone/second machine) content
+        // assets 403 while the shell still loads, so images render broken —
+        // there is no dev-side publicUrl to admit the LAN Host. For LAN/tailnet
+        // testing use `ok start --bind <ip>` + `OK_PUBLIC_URL`, which builds a
+        // real policy that admits the declared Host.
+        ingressPolicy: buildIngressPolicy({}),
       });
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '';

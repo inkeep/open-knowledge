@@ -191,14 +191,15 @@ describe('document/pages group over the composed listener — served natively', 
     expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
   });
 
-  test('read posture parity: a ported route ANSWERS under a rebound Host in normal mode', async () => {
-    // Same deliberate pin as the earlier groups' suites: read-shaped routes
-    // are Origin-gated but NOT Host/loopback-gated. When the hosted-auth work
-    // flips that posture, this assertion flips in the same PR.
+  test('read posture parity: a ported route under a rebound Host is refused in normal mode', async () => {
+    // Flipped pin (read-posture hardening): reads share the mutating gate's
+    // Host predicate in every mode, so a rebound Host is refused on ported
+    // reads too.
     const res = await rawRequest(server.port, '/api/pages', {
       headers: { Host: 'evil.example' },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(parseProblem(res.body).type).toBe('urn:ok:error:host-not-allowed');
   });
 
   test('ephemeral mode Host-gates the ported reads too', async () => {

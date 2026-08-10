@@ -41,6 +41,17 @@ import {
   type ResolvedRemoteAccess,
 } from './remote-access.ts';
 
+/**
+ * Remediation detail for a `host-not-allowed` refusal. The read gate now fires
+ * in normal mode, so a legitimate operator can trip it (a reverse proxy that
+ * preserves the client Host, a `.local`/hosts-file alias pointing at a loopback
+ * bind). The bare title names no fix; this detail tells them which config key
+ * admits the host without reading source. Shared across every gate that emits
+ * `host-not-allowed` so the guidance never drifts between sites.
+ */
+export const HOST_NOT_ADMITTED_REMEDIATION =
+  'Add this host to server.bind or set server.publicUrl to it, then restart. Loopback (localhost/127.0.0.1/[::1]) is always admitted.';
+
 export interface IngressPolicy {
   /**
    * Exposure consent (`server.allowExternal`, scope-correctly resolved).

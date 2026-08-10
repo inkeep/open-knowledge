@@ -471,6 +471,7 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
     const hocuspocus = new Hocuspocus({ quiet: true });
     const sessionManager = new AgentSessionManager(hocuspocus);
 
+    const { buildIngressPolicy } = await import('./ingress-policy.ts');
     const ext = createApiExtension({
       hocuspocus,
       sessionManager,
@@ -481,6 +482,22 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
         // Deterministic mock response: claude + cursor installed, codex not.
         return scheme === 'claude' || scheme === 'cursor';
       },
+      // Declared remote deployment: the /api read gate admits only loopback +
+      // bind literals + the publicUrl host, so the remote-web capability-tier
+      // Hosts below must be declared names to reach the handler at all (an
+      // undeclared foreign Host is refused at the gate; see the gate test).
+      ingressPolicy: buildIngressPolicy({
+        serverRuntime: {
+          port: undefined,
+          bind: ['127.0.0.1', '192.168.1.100'],
+          publicUrl: 'http://example.com:5173',
+          publicUrlSource: 'server',
+          allowExternal: true,
+          openBrowser: false,
+          idleShutdown: 'off',
+          loopbackOnly: false,
+        },
+      }),
     });
 
     const { createServer } = await import('node:http');
@@ -570,7 +587,10 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   // (remote-web — return all-installed and let the OS protocol-dispatch
   // dialog be the truth signal). The remote-web case is normally reached via
   // SSH tunnels / reverse proxies where the connection still terminates on
-  // loopback; these tests simulate it directly with a forged Host header.
+  // loopback. Since the read-posture hardening, a non-loopback Host reaches
+  // the handler only when the deployment DECLARES it (`server.publicUrl` /
+  // `server.bind`) — the rig's policy above declares both test Hosts, and an
+  // undeclared one is pinned as refused at the gate below.
 
   test('remote-web (Host: example.com) → all-true and probe NOT called', async () => {
     // Cross-origin Origin is rejected by checkLocalOpSecurity, so only the Host
@@ -598,6 +618,17 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ claude: true, codex: false, cursor: true });
     expect(probeCalls).toEqual({ claude: 1, codex: 1, cursor: 1 });
+  });
+
+  test('an UNDECLARED foreign Host is refused at the read gate before the handler', async () => {
+    // Read-posture hardening boundary: without a declaration the server
+    // cannot distinguish an SSH-tunnel user from a DNS-rebound page, so the
+    // gate refuses before any capability-tier logic (or probe) runs.
+    const res = await getWithHostHeader(port, '/api/installed-agents', 'evil.example:5173');
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { type?: string };
+    expect(body.type).toBe('urn:ok:error:host-not-allowed');
+    expect(probeCalls).toEqual({});
   });
 
   test('remote-web requests are NOT cached against later local-web requests', async () => {

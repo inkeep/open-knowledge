@@ -335,10 +335,11 @@ describe('single-file mode — /api host gate (DNS-rebinding defense)', () => {
     }
   });
 
-  test('non-ephemeral (project mode): a rebound Host on a read is NOT ephemeral-gated', async () => {
-    // The ephemeral gate must not touch project/desktop read serving — the user
-    // chose that root. A rebound-Host read there keeps its prior origin-only
-    // posture (here: served, since a server-to-server fetch sends no Origin).
+  test('non-ephemeral (project mode): a rebound Host on a read is refused too', async () => {
+    // Flipped pin (read-posture hardening): the pipeline Host-gates every
+    // /api read in normal mode as well, so project/desktop reads refuse a
+    // rebound Host with the same wire shape the ephemeral gate uses. A
+    // loopback Host keeps serving (covered by the test above).
     const contentDir = ephemeralContentDir({ 'notes.md': '# Notes\n' });
     const server = await createTestServer({ contentDir, keepContentDir: true });
     try {
@@ -346,7 +347,8 @@ describe('single-file mode — /api host gate (DNS-rebinding defense)', () => {
         `http://127.0.0.1:${server.port}/api/document?docName=notes`,
         REBIND_HOST,
       );
-      expect(res.status).not.toBe(403);
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:host-not-allowed');
     } finally {
       await server.cleanup();
     }

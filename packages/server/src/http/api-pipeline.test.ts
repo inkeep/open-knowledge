@@ -256,7 +256,7 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
     }
   });
 
-  test('a mutating native route under a rebound Host is refused; a read route answers', async () => {
+  test('native routes under a rebound Host are refused — mutating AND read', async () => {
     const rig = await bootNativeRig();
     try {
       const refused = await rawRequest(rig.port, '/api/native-mutating', {
@@ -265,11 +265,13 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       expect(refused.status).toBe(403);
       expect(parseProblem(refused.body).type).toBe('urn:ok:error:host-not-allowed');
 
-      // Read posture parity: Origin-gated but NOT Host-gated in normal mode.
+      // Flipped pin (read-posture hardening): reads share the mutating
+      // gate's Host predicate in normal mode too.
       const read = await rawRequest(rig.port, '/api/native-ping', {
         headers: { Host: 'evil.example' },
       });
-      expect(read.status).toBe(200);
+      expect(read.status).toBe(403);
+      expect(parseProblem(read.body).type).toBe('urn:ok:error:host-not-allowed');
 
       const allowed = await rawRequest(rig.port, '/api/native-mutating', {
         headers: { Host: 'localhost' },

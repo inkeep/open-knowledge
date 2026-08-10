@@ -974,20 +974,52 @@ describe('startUiServer', () => {
     }
   });
 
-  test('non-/api/* paths are NOT subject to the gate (Host check would harm SPA)', async () => {
-    // The gate is scoped to /api/* — static asset / SPA paths must continue to
-    // serve regardless of Host (a browser navigating via different loopback
-    // hostnames legitimately sends different Host values; the asset path is
-    // not state-mutating). Sanity-check that an asset-extension URL with an
-    // attacker Host reaches the asset middleware, which 404s for a missing
-    // file rather than 403ing on the Host.
+  test('content-asset paths are Host-gated; SPA paths stay ungated', async () => {
+    // Flipped pin (read-posture hardening): an asset-extension URL is a
+    // content-serve attempt, so the in-middleware gate refuses a rebound
+    // Host BEFORE the disk lookup (403 host-not-allowed, not the miss 404).
+    // Extension-less SPA paths still serve regardless of Host — the shell is
+    // public bundle code, and a browser navigating via different loopback
+    // hostnames legitimately varies its Host.
     handle = await startUiServer({ config: config(), cwd: tmpDir, port: 0, host: '127.0.0.1' });
-    const res = await rawRequest({
+    const gated = await rawRequest({
       port: handle.port,
       path: '/missing.png',
       host: 'attacker.com:1234',
     });
-    expect(res.status).not.toBe(403);
+    expect(gated.status).toBe(403);
+    expect((JSON.parse(gated.body) as { type: string }).type).toBe('urn:ok:error:host-not-allowed');
+
+    const spa = await rawRequest({
+      port: handle.port,
+      path: '/some/deep-link',
+      host: 'attacker.com:1234',
+    });
+    expect(spa.status).not.toBe(403);
+  });
+
+  test('shell root (GET / -> /index.html) is gated under a rebound Host; serves over loopback', async () => {
+    // `ok ui` rewrites `GET /` (and `/index.html`) to an html-extension
+    // content-serve attempt BEFORE this middleware, and `.html` is an
+    // ASSET_EXTENSIONS member — so the shell root goes through the
+    // content-serve gate here (asset-serve-middleware policy item 0). `ok ui`
+    // is loopback-only (its `/api` gate is loopback-only too), so a rebound
+    // Host at the root is refused; a loopback Host serves the SPA shell.
+    handle = await startUiServer({ config: config(), cwd: tmpDir, port: 0, host: '127.0.0.1' });
+    for (const path of ['/', '/index.html']) {
+      const gated = await rawRequest({ port: handle.port, path, host: 'attacker.com:1234' });
+      expect(gated.status, path).toBe(403);
+      expect((JSON.parse(gated.body) as { type: string }).type).toBe(
+        'urn:ok:error:host-not-allowed',
+      );
+    }
+    const loopback = await rawRequest({
+      port: handle.port,
+      path: '/',
+      host: `127.0.0.1:${handle.port}`,
+    });
+    expect(loopback.status).toBe(200);
+    expect(loopback.body).toContain('<!doctype html>');
   });
 
   test('asset serve: non-inline admitted asset gets Content-Disposition: attachment', async () => {

@@ -24,7 +24,7 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import { createServer, request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -36,6 +36,7 @@ import sirv from 'sirv';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { createContentFilter } from './content-filter.ts';
+import { buildIngressPolicy } from './ingress-policy.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
 interface Harness {
@@ -59,6 +60,7 @@ async function startHarness(contentDir: string): Promise<Harness> {
     inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
     assetExtensions: ASSET_EXTENSIONS,
     blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+    ingressPolicy: buildIngressPolicy({}),
   });
 
   const server: Server = createServer((req, res) => {
@@ -355,6 +357,56 @@ describe('asset-serve middleware (narrow integration)', () => {
       expect(body).toContain('spa fallback sentinel');
       // It never set the asset-serve headers.
       expect(res.headers.get('content-disposition')).toBeNull();
+    });
+  });
+
+  describe('Content-serve ingress gate (DNS-rebinding defense)', () => {
+    // Forged Host must go over node:http — undici's fetch silently drops a
+    // caller-set Host header. Same mechanism the workspace host-gate tests use.
+    function getWithHost(path: string, host: string): Promise<{ status: number; body: string }> {
+      return new Promise((resolve, reject) => {
+        const url = new URL(path, harness.baseURL);
+        const req = httpRequest(
+          { host: url.hostname, port: url.port, path: url.pathname, headers: { Host: host } },
+          (res) => {
+            let body = '';
+            res.on('data', (chunk) => {
+              body += chunk;
+            });
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+          },
+        );
+        req.on('error', reject);
+        req.end();
+      });
+    }
+
+    test('a rebound Host on an existing asset is refused BEFORE the disk read', async () => {
+      const res = await getWithHost('/docs/photo.png', 'evil.example.com');
+      expect(res.status).toBe(403);
+      expect((JSON.parse(res.body) as { type?: string }).type).toBe(
+        'urn:ok:error:host-not-allowed',
+      );
+    });
+
+    test('a rebound Host on a markdown doc path is refused the same way', async () => {
+      const res = await getWithHost('/docs/guide.md', 'evil.example.com');
+      expect(res.status).toBe(403);
+      expect((JSON.parse(res.body) as { type?: string }).type).toBe(
+        'urn:ok:error:host-not-allowed',
+      );
+    });
+
+    test('a rebound Host on a NON-content path still falls through (SPA shell stays ungated)', async () => {
+      const res = await getWithHost('/some/deep-link', 'evil.example.com');
+      expect(res.status).toBe(200);
+      expect(res.body).toContain('spa fallback sentinel');
+    });
+
+    test('a loopback Host keeps serving the asset (legit traffic unaffected)', async () => {
+      const url = new URL('/docs/photo.png', harness.baseURL);
+      const res = await getWithHost('/docs/photo.png', `127.0.0.1:${url.port}`);
+      expect(res.status).toBe(200);
     });
   });
 

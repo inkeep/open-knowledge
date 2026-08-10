@@ -331,11 +331,14 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     //
     // (2) Peer + Host admission (`admitted()`) — only when EXPOSED (legacy
     //     `--remote` OR `allowExternal`). Pure-local keeps its historical
-    //     ungated posture on this axis; the general loopback+Host-on-everything
-    //     read-posture flip is a separate PR. Under consent the loopback bind no
-    //     longer implies a loopback peer, so `admitted()` (loopback + bind
-    //     literals + publicUrl, identical to the HTTP API gate) keeps direct-IP
-    //     access matching what `/api` accepts.
+    //     ungated posture on this axis — a deliberate carve-out from the
+    //     read-posture hardening that Host-gates `/api` reads and content-
+    //     asset serving in every mode: WS upgrades are not reachable from a
+    //     rebound page without an Origin header, and axis (1) refuses the
+    //     foreign-Origin shape unconditionally. Under consent the loopback
+    //     bind no longer implies a loopback peer, so `admitted()` (loopback +
+    //     bind literals + publicUrl, identical to the HTTP API gate) keeps
+    //     direct-IP access matching what `/api` accepts.
     const foreignOrigin =
       req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy);
     const exposed = ingressPolicy.legacyRemote !== undefined || ingressPolicy.allowExternal;

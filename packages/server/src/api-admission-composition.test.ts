@@ -13,9 +13,9 @@ import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.
  * invokes `onRequest` directly), but before this suite no test drove them
  * through the actual listener + mcp-mount dispatch + api-extension chain —
  * the exact layering the server refactor rewires. Assertions pin CURRENT
- * behavior, including behavior that is a known pre-auth exposure (read
- * routes answering under a rebound Host): if one of these starts failing,
- * the admission surface changed and the change must be intentional.
+ * behavior — including the read-posture hardening (reads are Host-gated in
+ * every mode, the no-auth compensating control): if one of these starts
+ * failing, the admission surface changed and the change must be intentional.
  */
 
 let tmpRoot: string;
@@ -64,15 +64,16 @@ describe('/api admission over the composed listener — normal mode', () => {
     expect(res.headers.get('vary')).toContain('Origin');
   });
 
-  test('read route ANSWERS under a rebound Host (current pre-auth exposure)', async () => {
-    // Deliberate pin of today's posture: read-shaped /api routes are Origin-
-    // gated but NOT Host/loopback-gated, so a DNS-rebound page's no-Origin
-    // fetch can read them. The hosted-auth work changes this on purpose;
-    // when it does, this assertion must be flipped in the same PR.
+  test('read route under a rebound Host is refused (read-posture hardening)', async () => {
+    // Flipped pin: reads are Host-gated in every mode now, same predicate the
+    // mutating gate uses (loopback names + bind literals + publicUrl host).
+    // A DNS-rebound page's no-Origin fetch can no longer read /api bodies —
+    // the no-auth compensating control.
     const res = await rawRequest(normal.port, '/api/server-info', {
       headers: { Host: 'evil.example' },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(parseProblem(res.body).type).toBe('urn:ok:error:host-not-allowed');
   });
 
   test('mutating route under a rebound Host is refused', async () => {
@@ -127,6 +128,21 @@ describe('/api admission over the composed listener — normal mode', () => {
     });
     expect(res.status).toBe(204);
     expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
+  });
+
+  test('OPTIONS under a rebound Host still answers 204 — safe by CORS, not by the read gate', async () => {
+    // Documents the intentional gate ORDER: the OPTIONS short-circuit (step 3)
+    // returns 204 before the read gate (step 5), so a rebound-Host preflight is
+    // NOT 403'd. This is not a hole: no Origin was sent, so no
+    // Access-Control-Allow-Origin is reflected, and the rebound page's browser
+    // gets no CORS grant to read any follow-up response. (A present-but-foreign
+    // Origin is rejected by the Origin gate at step 3 instead.)
+    const res = await rawRequest(normal.port, '/api/server-info', {
+      method: 'OPTIONS',
+      headers: { Host: 'evil.example' },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 });
 

@@ -38,6 +38,7 @@ import {
 } from './http/http-app.ts';
 import {
   buildIngressPolicy,
+  HOST_NOT_ADMITTED_REMEDIATION,
   type IngressPolicy,
   isHostAdmitted,
   isOriginAdmitted,
@@ -239,7 +240,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
         // The policy's peer + Host gate pair. (With legacy remote armed the
         // shared admit gate above already enforced the superset.)
         if (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy)) {
-          errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback access required.', {
+          errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
             handler: 'mcp',
           });
           return;
@@ -247,6 +248,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
         if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
           errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
             handler: 'mcp',
+            detail: HOST_NOT_ADMITTED_REMEDIATION,
           });
           return;
         }
@@ -359,18 +361,30 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
       // non-admitted caller can't read that user-data dir. Origin is
       // intentionally NOT checked: no-cors `<img>` / CSS asset loads omit
       // it, and the Host-header check already rejects the rebinding
-      // content-exfil vector without that dependency. Project / desktop modes
-      // (`ephemeral` falsy) are unchanged — the user chose the served root.
-      if (
-        ephemeral === true &&
-        contentAssetMiddleware !== undefined &&
-        (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy) ||
-          !isHostAdmitted(req.headers.host, ingressPolicy))
-      ) {
-        errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback access required.', {
-          handler: 'content-asset',
-        });
-        return;
+      // content-exfil vector without that dependency. This surface gate
+      // refuses EVERY path in ephemeral mode (even ones that would miss and
+      // fall to the shell); project / desktop modes rely on the in-middleware
+      // content-serve gate (`asset-serve-middleware.ts` policy item 0), which
+      // fires only on actual content-serve attempts so the SPA shell stays
+      // reachable.
+      if (ephemeral === true && contentAssetMiddleware !== undefined) {
+        // Two sequential checks (peer, then Host) so the error TYPE reflects
+        // which one failed — matching the /api pipeline + content-asset gate.
+        // A combined OR emitting a single type mislabels a rebound-Host
+        // refusal as `loopback-required`.
+        if (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy)) {
+          errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
+            handler: 'content-asset-gate',
+          });
+          return;
+        }
+        if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
+          errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+            handler: 'content-asset-gate',
+            detail: HOST_NOT_ADMITTED_REMEDIATION,
+          });
+          return;
+        }
       }
       runMiddleware(contentAssetMiddleware, 'content-asset', onMiss);
     };

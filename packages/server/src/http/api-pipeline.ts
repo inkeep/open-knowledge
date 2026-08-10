@@ -24,7 +24,9 @@
  *      so even gate-rejected responses carry the `x-request-id` echo
  *   3. origin-allowlist CORS with verbatim ACAO reflection + OPTIONS 204
  *   4. mutating-route loopback + workspace-Host gate (DNS-rebinding defense)
- *   5. ephemeral-mode loopback + workspace-Host gate on every `/api/*` read
+ *   5. loopback + workspace-Host gate on EVERY `/api/*` request — the read
+ *      half of the DNS-rebinding defense, in all modes (the no-auth
+ *      compensating control; ephemeral mode pioneered it)
  *   6. OTel server span wrapping dispatch, the unmatched-route 404, and the
  *      duration histogram
  *
@@ -48,6 +50,7 @@ import {
 import { recordEmbedProbe } from '../embed-probe.ts';
 import {
   buildIngressPolicy,
+  HOST_NOT_ADMITTED_REMEDIATION,
   type IngressPolicy,
   isHostAdmitted,
   isOriginAdmitted,
@@ -98,7 +101,11 @@ export interface ApiPipelineOptions {
    * (test rigs) ⇒ the loopback-only default policy.
    */
   policy?: IngressPolicy;
-  /** No-project ephemeral single-file mode — gates EVERY `/api/*` request. */
+  /**
+   * No-project ephemeral single-file mode. The peer + Host gate now covers
+   * every `/api/*` request in all modes; this flag only selects the
+   * historical `api-ephemeral-gate` telemetry tag over `api-read-gate`.
+   */
   ephemeral?: boolean;
   table: ApiRouteTable;
 }
@@ -312,36 +319,41 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
       if (!isAllowedWorkspaceHostHeader(request.headers.host)) {
         errorResponse(response, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
           handler: 'api-mutating-gate',
+          detail: HOST_NOT_ADMITTED_REMEDIATION,
         });
         return true;
       }
     }
 
-    // No-project ephemeral single-file mode (`ok <file>`) sets contentDir to
-    // the opened file's PARENT — often a user-data dir (~/Downloads,
-    // ~/Documents). Several read routes (`/api/asset`, `/api/asset-text`,
-    // `/api/document`) return bytes under contentDir bounded only by
-    // `isWithinContentDir`, NOT by the single-file content scope (which is
-    // enforced at the indexing/listing layer, not the byte-read path). So
-    // without a host gate a DNS-rebound page could exfiltrate sibling files.
-    // Apply the same loopback + workspace-host check the mutating gate uses to
-    // EVERY `/api/*` request in ephemeral mode — one choke point, so future
-    // read routes inherit it rather than each needing its own gate. Project /
-    // desktop modes (`ephemeral` falsy) keep their prior origin-only posture
-    // for reads (the user chose the served root there); this mirrors the
-    // ephemeral-scoped content-asset gate in `mcp-mount.ts`, which covers the
-    // non-`/api/` static-serve path.
-    if (ephemeral && url.startsWith('/api/')) {
+    // Read half of the DNS-rebinding defense — the no-auth compensating
+    // control. Reads used to be Origin-gated only outside ephemeral mode, but
+    // a rebound page's GET carries no Origin (a simple same-origin fetch) and
+    // presents the attacker's Host, so without a Host gate the response bytes
+    // (document content, sibling files) are readable cross-origin. Apply the
+    // same loopback + workspace-Host check the mutating gate uses to EVERY
+    // `/api/*` request — one choke point, so future read routes inherit it
+    // rather than each needing its own gate. Ephemeral single-file mode
+    // (`ok <file>` — contentDir is the opened file's PARENT, often a
+    // user-data dir like ~/Downloads) has gated all of `/api` this way since
+    // the mode shipped; it keeps its historical `api-ephemeral-gate` handler
+    // tag so its counters stay continuous, while normal-mode refusals tag
+    // `api-read-gate` so the universalized posture's fire rate is observable
+    // in isolation. Native clients (curl, MCP) are unaffected: they dial an
+    // admitted name (loopback, bind literal, or publicUrl host), and Origin
+    // logic is untouched.
+    if (url.startsWith('/api/')) {
+      const gateHandler = ephemeral ? 'api-ephemeral-gate' : 'api-read-gate';
       const peerAddress = request.socket?.remoteAddress;
       if (peerAddress !== undefined && !isPeerAdmitted(peerAddress, policy)) {
         errorResponse(response, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-          handler: 'api-ephemeral-gate',
+          handler: gateHandler,
         });
         return true;
       }
       if (!isAllowedWorkspaceHostHeader(request.headers.host)) {
         errorResponse(response, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-          handler: 'api-ephemeral-gate',
+          handler: gateHandler,
+          detail: HOST_NOT_ADMITTED_REMEDIATION,
         });
         return true;
       }

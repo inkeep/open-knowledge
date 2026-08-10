@@ -204,6 +204,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
   const { resolve } = await import('node:path');
   const {
     acquireUiLock,
+    buildIngressPolicy,
     createAssetServeMiddleware,
     createContentFilter,
     readServerLock,
@@ -280,6 +281,15 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
         inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
         assetExtensions: ASSET_EXTENSIONS,
         blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+        // Loopback-only, matching this surface's `/api` gate. `ok ui`'s API
+        // gate is `rejectIfNotLoopbackApi` (loopback-shaped Host only, never
+        // policy-aware), so the content-serve gate must admit no wider a set —
+        // otherwise a config-declared `publicUrl` would serve content assets
+        // to a Host that every `/api` call on the same surface 403s, a
+        // half-broken app. `ok ui` is a loopback sidecar; the data server
+        // (`ok start`) is the exposable surface and builds the real policy.
+        // Mirrors the Vite dev plugin's loopback-only default.
+        ingressPolicy: buildIngressPolicy({}),
       })
     : null;
 

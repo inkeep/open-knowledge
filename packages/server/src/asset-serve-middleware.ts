@@ -13,6 +13,25 @@
  * against a tmpdir (narrow-integration tier).
  *
  * Policy:
+ *   0. Once a request is known to be a content-serve attempt (it survives
+ *      the fall-through checks in item 1), it must pass the shared ingress
+ *      peer + Host predicates — the read half of the DNS-rebinding defense
+ *      for the static surface, mirroring the `/api` pipeline's read gate. A
+ *      rebound page (loopback TCP peer, attacker-controlled Host) is
+ *      refused BEFORE any disk read. What is gated is exactly the
+ *      content-serve set: `.md`/`.mdx` and every `ASSET_EXTENSIONS` member —
+ *      which INCLUDES `.html`/`.htm` (author HTML is servable content). The
+ *      extension-LESS SPA-shell path (`GET /`, deep-links) and Vite-owned
+ *      URLs fall through UNGATED (item 1's not-a-servable-extension bail):
+ *      the shell is public bundle code and a rebound attacker serves their
+ *      own page anyway, so gating it risks breaking legitimate loads for
+ *      zero security gain. One caveat: `ok ui` rewrites `GET /` to
+ *      `/index.html` BEFORE this middleware, so its shell root IS gated
+ *      here — acceptable because `ok ui` is a loopback-only sidecar (its
+ *      `/api` gate admits loopback Hosts only); the exposable surface is
+ *      `ok start`, where `GET /` stays extension-less and ungated. Origin is
+ *      intentionally NOT checked — no-cors `<img>` / CSS loads omit it, and
+ *      the Host check alone closes the rebinding content-exfil vector.
  *   1. Fall through to `next()` (so the next middleware — Vite's static
  *      serve, then SPA fallback — can handle the URL) when EITHER:
  *      (a) the content filter marks the path ignored (`isPathIgnored` —
@@ -57,6 +76,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname } from 'node:path';
 import { SANDBOXED_HTML_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import { errorResponse } from './http/error-response.ts';
+import {
+  HOST_NOT_ADMITTED_REMEDIATION,
+  type IngressPolicy,
+  isHostAdmitted,
+  isPeerAdmitted,
+} from './ingress-policy.ts';
 import { classifyAssetDisposition } from './services/asset-classification.ts';
 
 /**
@@ -103,13 +129,27 @@ interface AssetServeMiddlewareDeps {
    * so the serve surface refuses what the click surface refuses.
    */
   blocklistExtensions: ReadonlySet<string>;
+  /**
+   * The boot-built ingress policy driving the content-serve peer + Host
+   * gate (policy item 0). Required — every consumer supplies the one
+   * policy its surface runs under, so a new serve surface cannot silently
+   * skip the gate. Surfaces without a resolved runtime (the Vite dev
+   * plugin) pass the loopback-only default (`buildIngressPolicy({})`).
+   */
+  ingressPolicy: IngressPolicy;
 }
 
 export function createAssetServeMiddleware(
   deps: AssetServeMiddlewareDeps,
 ): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
-  const { contentFilter, contentSirv, inlineExtensions, assetExtensions, blocklistExtensions } =
-    deps;
+  const {
+    contentFilter,
+    contentSirv,
+    inlineExtensions,
+    assetExtensions,
+    blocklistExtensions,
+    ingressPolicy,
+  } = deps;
 
   return (req, res, next) => {
     // Malformed percent-encoding (`/%`, `/%E0%A4`) throws URIError; treat
@@ -140,6 +180,25 @@ export function createAssetServeMiddleware(
     // hence the CSP sandbox below, matching `handleAsset`.
     if (!rel || contentFilter.isPathIgnored(rel) || (!isDocExt && !assetExtensions.has(ext)))
       return next();
+    // Content-serve gate (policy item 0). Fires before any header or disk
+    // work so a refused request observes nothing — including whether the
+    // file exists. A missing socket only occurs on synthetic test requests
+    // (matches the `/api` pipeline's convention); the Host check still runs
+    // there, so the rebinding defense stays meaningful on every path.
+    const peerAddress = req.socket?.remoteAddress;
+    if (peerAddress !== undefined && !isPeerAdmitted(peerAddress, ingressPolicy)) {
+      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
+        handler: 'content-asset-gate',
+      });
+      return;
+    }
+    if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
+      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+        handler: 'content-asset-gate',
+        detail: HOST_NOT_ADMITTED_REMEDIATION,
+      });
+      return;
+    }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     // Shared with `/api/asset`: one extension → disposition/CSP policy for
     // both serve surfaces (rationale lives with the classifier).

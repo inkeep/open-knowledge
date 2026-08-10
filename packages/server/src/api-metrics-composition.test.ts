@@ -144,14 +144,15 @@ describe('metrics group over the composed listener — served natively', () => {
     expect(body.detail ?? body.title).toContain('Proxied request refused');
   });
 
-  test('read posture parity: an UNGATED read ANSWERS under a rebound Host in normal mode', async () => {
-    // Same deliberate pin as the link-graph suite: reads without an inline
-    // gate are Origin-gated but NOT Host/loopback-gated. When the hosted-auth
-    // work flips that posture, this assertion flips in the same PR.
+  test('read posture parity: a read WITHOUT an inline gate is refused under a rebound Host', async () => {
+    // Flipped pin (read-posture hardening): the pipeline Host-gates every
+    // /api read in normal mode too, so routes without an inline gate are
+    // covered by the shared choke point.
     const res = await rawRequest(server.port, '/api/metrics/reconciliation', {
       headers: { Host: 'evil.example' },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(parseProblem(res.body).type).toBe('urn:ok:error:host-not-allowed');
   });
 
   test('ephemeral mode Host-gates the ported reads too', async () => {

@@ -928,6 +928,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
           inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
           assetExtensions: ASSET_EXTENSIONS,
           blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+          ingressPolicy,
         })
       : undefined;
 

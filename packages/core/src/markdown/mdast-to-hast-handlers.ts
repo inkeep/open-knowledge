@@ -1,3 +1,4 @@
+
 import type { Comment, Element, ElementContent, Properties } from 'hast';
 import type { FootnoteDefinition, FootnoteReference } from 'mdast';
 import type { MdxJsxFlowElement, MdxJsxTextElement } from 'mdast-util-mdx';

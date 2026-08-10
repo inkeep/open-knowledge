@@ -102,8 +102,11 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('a pure-local policy (no exposure) does NOT Host-gate the surface here', () => {
-    // Gate 2 only runs under exposure; pure-local keeps its historical
-    // origin-only read posture (the general read-posture flip is a separate PR).
+    // Gate 2 only runs under exposure. Pure-local rebinding defense lives
+    // with the legs behind this prelude instead: the `/api` pipeline read
+    // gate, the content-serve gate in `asset-serve-middleware.ts`, and the
+    // unconditional `/mcp` gate. The SPA shell (the remaining surface) is
+    // deliberately ungated — public bundle code.
     const local = buildIngressPolicy({});
     const { res, status } = fakeRes();
     expect(admitRequestSurface(req('evil.example'), res, local, 'test')).toBe(true);

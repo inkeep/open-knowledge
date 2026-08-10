@@ -13,6 +13,7 @@ import sirv from 'sirv';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
+import { buildIngressPolicy } from './ingress-policy.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
 import {
@@ -509,7 +510,9 @@ describe('mountMcpAndApi content-asset middleware', () => {
 // file's parent — often a user-data dir. The content-asset surface must carry
 // the same loopback + workspace-host gate the `/mcp` leg uses so a DNS-rebound
 // or non-loopback caller can't read that dir. Project / desktop modes
-// (`ephemeral` unset) keep serving assets unchanged.
+// (`ephemeral` unset) are covered by the in-middleware content-serve gate
+// (read-posture hardening) — same Host predicate, fired only on actual
+// content-serve attempts.
 describe('mountMcpAndApi ephemeral content-asset gate', () => {
   const tmpDirs: string[] = [];
 
@@ -534,6 +537,7 @@ describe('mountMcpAndApi ephemeral content-asset gate', () => {
         inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
         assetExtensions: ASSET_EXTENSIONS,
         blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+        ingressPolicy: buildIngressPolicy({}),
       }),
     });
     const port = await getFreeLoopbackPort();
@@ -548,21 +552,25 @@ describe('mountMcpAndApi ephemeral content-asset gate', () => {
     expect(res.status).toBe(200);
   });
 
-  test('ephemeral: a rebound Host header is rejected with 403 loopback-required', async () => {
+  test('ephemeral: a rebound Host header is rejected with 403 host-not-allowed', async () => {
     const { port } = await startAssets(true);
     // Loopback TCP peer (127.0.0.1) but an attacker-controlled Host — the
-    // DNS-rebinding shape. The Host gate rejects it before sirv reads the file.
+    // DNS-rebinding shape. The peer check passes (loopback), the Host check
+    // fails, so the split gate reports `host-not-allowed` (not the misleading
+    // `loopback-required` the old combined OR emitted).
     const res = await getWithHost(port, '/secret.png', 'evil.example.com');
     expect(res.status).toBe(403);
-    expect((JSON.parse(res.body) as { type?: string }).type).toBe('urn:ok:error:loopback-required');
+    expect((JSON.parse(res.body) as { type?: string }).type).toBe('urn:ok:error:host-not-allowed');
   });
 
-  test('non-ephemeral (project mode): the same rebound Host header still serves', async () => {
-    // Proves the gate is ephemeral-scoped — project / desktop asset serving is
-    // untouched, so this is not a regression to the existing flow.
+  test('non-ephemeral (project mode): a rebound Host is refused by the content-serve gate', async () => {
+    // Flipped pin (read-posture hardening): project / desktop asset serving
+    // now refuses a rebound Host via the in-middleware content-serve gate —
+    // same predicate as the ephemeral surface gate, host-not-allowed shape.
     const { port } = await startAssets(false);
     const res = await getWithHost(port, '/secret.png', 'evil.example.com');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect((JSON.parse(res.body) as { type?: string }).type).toBe('urn:ok:error:host-not-allowed');
   });
 
   afterEach(() => {

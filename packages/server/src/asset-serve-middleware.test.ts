@@ -18,12 +18,13 @@ import {
   createAssetServeMiddleware,
   type SirvLikeMiddleware,
 } from './asset-serve-middleware.ts';
+import { buildIngressPolicy } from './ingress-policy.ts';
 
-function makeReq(url: string): IncomingMessage {
+function makeReq(url: string, host = 'localhost'): IncomingMessage {
   const readable = Readable.from(Buffer.alloc(0)) as unknown as IncomingMessage;
   readable.method = 'GET';
   readable.url = url;
-  readable.headers = { host: 'localhost' };
+  readable.headers = { host };
   return readable;
 }
 
@@ -32,10 +33,17 @@ interface CapturedResponse {
   headers: Record<string, string>;
   headersSent: boolean;
   ended: boolean;
+  body: string;
 }
 
 function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
-  const captured: CapturedResponse = { status: 0, headers: {}, headersSent: false, ended: false };
+  const captured: CapturedResponse = {
+    status: 0,
+    headers: {},
+    headersSent: false,
+    ended: false,
+    body: '',
+  };
   const res = {
     setHeader(name: string, value: string) {
       captured.headers[name] = value;
@@ -48,8 +56,9 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
       captured.headersSent = true;
       if (headers) Object.assign(captured.headers, headers);
     },
-    end(_body?: string) {
+    end(body?: string) {
       captured.ended = true;
+      if (typeof body === 'string') captured.body = body;
     },
     get headersSent() {
       return captured.headersSent;
@@ -94,6 +103,7 @@ function buildMiddleware(sirv: SirvLikeMiddleware, filter: AssetServeFilter = ad
     inlineExtensions: INLINE,
     assetExtensions: ASSETS,
     blocklistExtensions: BLOCKLIST,
+    ingressPolicy: buildIngressPolicy({}),
   });
 }
 
@@ -119,6 +129,86 @@ describe('createAssetServeMiddleware', () => {
         nextCalled = true;
       });
       expect(nextCalled).toBe(true);
+    });
+  });
+
+  describe('content-serve ingress gate (policy item 0)', () => {
+    test('a rebound Host on a servable path is refused without touching sirv', () => {
+      let sirvInvoked = false;
+      const sirvSpy: SirvLikeMiddleware = (_req, _res, fallback) => {
+        sirvInvoked = true;
+        fallback();
+      };
+      const middleware = buildMiddleware(sirvSpy);
+      const { res, captured } = makeRes();
+      middleware(makeReq('/photo.png', 'evil.example'), res, () => {});
+      expect(captured.status).toBe(403);
+      // Assert the error-type URN, not just the status — a swap between the
+      // host and peer branches would otherwise pass at the unit tier.
+      expect(JSON.parse(captured.body).type).toBe('urn:ok:error:host-not-allowed');
+      expect(sirvInvoked).toBe(false);
+      // Refused before any serve-side header work — nosniff/disposition are
+      // the serve path's headers, not the refusal's.
+      expect(captured.headers['Content-Disposition']).toBeUndefined();
+    });
+
+    test('a rebound Host on a doc path (.md) is refused the same way', () => {
+      const middleware = buildMiddleware(sirvServes);
+      const { res, captured } = makeRes();
+      middleware(makeReq('/notes.md', 'evil.example'), res, () => {});
+      expect(captured.status).toBe(403);
+      expect(JSON.parse(captured.body).type).toBe('urn:ok:error:host-not-allowed');
+    });
+
+    test('a non-loopback TCP peer on a servable path is refused with loopback-required', () => {
+      // Peer branch (distinct from the Host branch): a production socket
+      // whose remoteAddress is non-loopback fails `isPeerAdmitted` under the
+      // loopback-only default policy. `makeReq`'s Readable carries no socket
+      // (peer check skipped), so attach one to exercise the branch.
+      let sirvInvoked = false;
+      const sirvSpy: SirvLikeMiddleware = (_req, _res, fallback) => {
+        sirvInvoked = true;
+        fallback();
+      };
+      const middleware = buildMiddleware(sirvSpy);
+      const { res, captured } = makeRes();
+      const req = makeReq('/photo.png', 'localhost');
+      (req as unknown as { socket: { remoteAddress: string } }).socket = {
+        remoteAddress: '203.0.113.7',
+      };
+      middleware(req, res, () => {});
+      expect(captured.status).toBe(403);
+      // Peer branch → loopback-required (distinct URN from the Host branch).
+      expect(JSON.parse(captured.body).type).toBe('urn:ok:error:loopback-required');
+      expect(sirvInvoked).toBe(false);
+    });
+
+    test('a rebound Host on a NON-servable path still falls through ungated (SPA shell)', () => {
+      let nextCalled = false;
+      const middleware = buildMiddleware(sirvServes);
+      const { res } = makeRes();
+      middleware(makeReq('/deep-link', 'evil.example'), res, () => {
+        nextCalled = true;
+      });
+      expect(nextCalled).toBe(true);
+    });
+
+    test('a rebound Host on an ignored path falls through ungated too', () => {
+      let nextCalled = false;
+      const middleware = buildMiddleware(sirvServes, excludeAll);
+      const { res } = makeRes();
+      middleware(makeReq('/photo.png', 'evil.example'), res, () => {
+        nextCalled = true;
+      });
+      expect(nextCalled).toBe(true);
+    });
+
+    test('a loopback Host serves normally through the gate', () => {
+      const middleware = buildMiddleware(sirvServes);
+      const { res, captured } = makeRes();
+      middleware(makeReq('/photo.png', '127.0.0.1:5173'), res, () => {});
+      expect(captured.status).toBe(200);
+      expect(captured.headers['Content-Disposition']).toBe('inline');
     });
   });
 
