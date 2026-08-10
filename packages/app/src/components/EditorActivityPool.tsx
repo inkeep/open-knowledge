@@ -39,6 +39,7 @@ import {
   isManagedArtifactDocName,
   isMermaidDocFile,
   parseTemplateContentDocName,
+  randomUUID,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { RefreshCw } from 'lucide-react';
@@ -524,7 +525,7 @@ function EditorActivityPoolInner({
     for (const docName of newlyMounted) {
       const entry = poolEntriesRef.current.find((e) => e.docName === docName);
       const adopted = entry?.poolEventId;
-      const mountId = adopted && adopted.length > 0 ? adopted : crypto.randomUUID();
+      const mountId = adopted && adopted.length > 0 ? adopted : randomUUID();
       setMountId(docName, mountId);
     }
     mark('ok/activity/mount-list-change', {

@@ -619,6 +619,12 @@ import {
   scanInPlaceSkills,
   standardSkillRoots,
 } from './in-place-skills.ts';
+import {
+  buildIngressPolicy,
+  type IngressPolicy,
+  isHostAdmitted,
+  isPeerAdmitted,
+} from './ingress-policy.ts';
 import { initContent } from './init-project.ts';
 import { guardedFetch } from './link-preview/guarded-fetch.ts';
 import { buildLinkPreviewMetadata, type GuardedFetch } from './link-preview/metadata.ts';
@@ -642,10 +648,6 @@ import {
 } from './local-ops/index.ts';
 import { getLogger } from './logger.ts';
 import {
-  isAllowedWorkspaceHostHeader as isAllowedWorkspaceHostHeaderBase,
-  isLoopbackAddress,
-} from './loopback.ts';
-import {
   managedArtifactAbsPath,
   managedArtifactTimelinePaths,
 } from './managed-artifact-persistence.ts';
@@ -663,7 +665,6 @@ import {
 } from './metrics.ts';
 import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
-import { hostHeaderMatchesPublicHost } from './remote-access.ts';
 import {
   appendRenameLogEntry,
   createAncestorShaSetCache,
@@ -2316,13 +2317,12 @@ async function renameTrackedPathInGit(
 
 export interface ApiExtensionOptions {
   /**
-   * The tunnel's public host (from `ResolvedRemoteAccess.publicHost`) when the
-   * server was started with remote access enabled. Widens the browser-Origin
-   * allowlists (the `/api/*` CORS gate + the local-op checks) to admit the
-   * remote SPA's origin. Undefined in local mode — allowlists stay
-   * loopback-only.
+   * The boot-built ingress policy. Drives the browser-Origin allowlists (the
+   * `/api/*` CORS gate + the local-op checks), the route-level Host gates,
+   * and the route-level peer gates through one object — the same one the WS
+   * upgrade path consults. Omitted (test rigs) ⇒ loopback-only defaults.
    */
-  remotePublicHost?: string;
+  ingressPolicy?: IngressPolicy;
   hocuspocus: Hocuspocus;
   durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
@@ -2733,20 +2733,25 @@ export interface CommentDocHooks {
 export function createApiExtension(
   options: ApiExtensionOptions,
 ): Extension & { nativeApi: NativeApiHandle; localApi: LocalApiDispatch } {
-  const { durabilityState, remotePublicHost } = options;
-  // Every local-op call site in this factory inherits the remote-origin
-  // widening through this shadow — one choke point, zero per-site churn.
+  const { durabilityState } = options;
+  const ingressPolicy = options.ingressPolicy ?? buildIngressPolicy({});
+  // Every local-op call site in this factory inherits the policy's admitted
+  // set through this shadow — one choke point, zero per-site churn.
   const checkLocalOpSecurity = (
     req: IncomingMessage,
     res: ServerResponse,
     opts: { handler: string },
-  ): boolean => checkLocalOpSecurityBase(req, res, { ...opts, remotePublicHost });
+  ): boolean => checkLocalOpSecurityBase(req, res, { ...opts, policy: ingressPolicy });
   // Same shadow for the route-level Host gates (principal, workspace, metrics,
-  // the write-path gates): in remote mode the tunnel's public Host is as
-  // legitimate as a loopback name — the mount's admit gate already vetted it.
+  // the write-path gates): every admitted public name (bind literals,
+  // declared publicUrl, legacy tunnel host) is as legitimate as a loopback
+  // name — the mount's admit gate already vetted the surface.
   const isAllowedWorkspaceHostHeader = (host: string | undefined): boolean =>
-    isAllowedWorkspaceHostHeaderBase(host) ||
-    (remotePublicHost !== undefined && hostHeaderMatchesPublicHost(host, remotePublicHost));
+    isHostAdmitted(host, ingressPolicy);
+  // Route-level peer gates ride the policy too: loopback always passes;
+  // `server.allowExternal` is the sanctioned relaxation.
+  const isRoutePeerAdmitted = (remoteAddress: string | undefined): boolean =>
+    isPeerAdmitted(remoteAddress, ingressPolicy);
   const {
     hocuspocus,
     sessionManager,
@@ -8362,7 +8367,7 @@ export function createApiExtension(
     // `handleMetricsAgentPresence` and `handleWorkspace` apply.
     // Authorization runs BEFORE method dispatch so a bad Host never leaks
     // "verb the endpoint expects" via the 405 response (OWASP ASVS V4.1.1).
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    if (!isRoutePeerAdmitted(req.socket.remoteAddress)) {
       errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
         handler: 'principal',
       });
@@ -8398,7 +8403,7 @@ export function createApiExtension(
     // entry's UA. Loopback + Host-header gated — same pattern as
     // `handlePrincipal` / `handleMetricsAgentPresence`. Disclosed fields
     // (full request headers, remote address) are local-editing-only signals.
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    if (!isRoutePeerAdmitted(req.socket.remoteAddress)) {
       errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
         handler: 'embed-detect',
       });
@@ -8452,7 +8457,7 @@ export function createApiExtension(
     // to us via `localhost` / `127.0.0.1` / `[::1]`, matching the mitigation
     // in the Ethereum/geth JSON-RPC lineage. Same-origin fetches from the
     // editor app pass; cross-origin rebinding attempts are refused.
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    if (!isRoutePeerAdmitted(req.socket.remoteAddress)) {
       errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
         handler: 'workspace',
       });
@@ -21727,7 +21732,7 @@ export function createApiExtension(
 
   const runApiPipeline = createApiRequestPipeline({
     log,
-    remotePublicHost,
+    policy: ingressPolicy,
     ephemeral,
     table: apiRouteTable,
   });
@@ -21768,7 +21773,7 @@ export function createApiExtension(
   const groupDispatches = nativeGroups.map((group) =>
     createApiRequestPipeline({
       log,
-      remotePublicHost,
+      policy: ingressPolicy,
       ephemeral,
       table: group.table,
     }),

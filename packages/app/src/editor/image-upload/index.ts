@@ -7,6 +7,7 @@ import {
   formatFileSize,
   IMAGE_EXTENSIONS,
   ProblemDetailsSchema,
+  randomUUID,
   type UploadAssetSuccess,
   UploadAssetSuccessSchema,
   VIDEO_EXTENSIONS,
@@ -290,7 +291,7 @@ export async function uploadAndInsert(
     toast.error(t`Cannot upload: no document is open`);
     return;
   }
-  const uploadId = crypto.randomUUID();
+  const uploadId = randomUUID();
   // Sampled before any await: `File.size` re-stats the backing store, so once
   // that store is gone it reads 0 and the original size is unrecoverable.
   const sizeAtDrop = file.size;

@@ -40,6 +40,16 @@ export interface ServerRuntimeConfig {
    * `http://localhost:<port>` for a loopback server.
    */
   publicUrl: string | undefined;
+  /**
+   * Where `publicUrl` came from: the successor key (`'server'`) or the
+   * superseded `remote.url` alias (`'remote-alias'`); `undefined` when unset.
+   * Load-bearing distinction: a `remote.url` left in config does NOT arm
+   * anything by itself (`ok start --remote` is the explicit opt-in), so
+   * consumers that treat a declared public origin as an exposure signal —
+   * the consent interlock, issued-URL preference — must key off `'server'`
+   * only and leave the alias to the legacy remote flow.
+   */
+  publicUrlSource: 'server' | 'remote-alias' | undefined;
   /** Exposure consent interlock (see `requiresExternalConsent`). */
   allowExternal: boolean;
   /** Open the UI in a browser at start. Derived when not set explicitly. */
@@ -75,23 +85,28 @@ export function isLoopbackOnlyBind(bind: readonly string[]): boolean {
 
 /**
  * The single predicate behind the exposure interlock: consent is required
- * when the server is reachable beyond this machine — a non-loopback bind
- * address, or a declared external origin (`publicUrl`, including one
- * alias-read from `remote.url`).
+ * when THE SERVER'S OWN BIND reaches beyond this machine — i.e. a non-loopback
+ * `server.bind`. `server.publicUrl` deliberately does NOT trip it on its own:
+ * publicUrl is a project-scoped, committed, SHARED key (a team deploying to a
+ * VPS legitimately commits `https://notes.example.com`), so refusing to boot
+ * whenever it is set would lock out every teammate who clones that repo and
+ * opens it locally (loopback bind) — especially in desktop, where
+ * config-derived consent is forced off. Under a loopback bind a committed
+ * publicUrl is inert metadata: nothing external reaches the server directly,
+ * and a same-box reverse proxy's forwarded requests are still gated at request
+ * time (the forwarded-header tripwire refuses them without consent). Only the
+ * actual bind exposing the port is a boot-time consent question; publicUrl's
+ * consent need surfaces at request time where a proxy actually appears.
  *
- * Wave 4 wiring requirement: the boot path that enforces this MUST resolve
- * `allowExternal` scope-correctly — through `mergeLayered` over all three
- * layers (which fills the project-local default so a committed project-file
- * value can't win), or by reading the leaf from the project-local layer
- * directly. The CLI's `loader.ts` currently merges only user + project with a
- * scope-blind deep merge, so consuming its `Config` here would let a
- * hand-edited committed `server.allowExternal: true` arm exposure on a
- * cloner's machine — the exact leak the project-local scope exists to prevent.
+ * The boot path that enforces this MUST resolve `allowExternal`
+ * scope-correctly — through `mergeLayered` over all three layers (which skips
+ * the committed project layer for the project-local consent leaf), or by
+ * reading the leaf from the project-local layer directly.
  */
 export function requiresExternalConsent(
-  resolved: Pick<ServerRuntimeConfig, 'loopbackOnly' | 'publicUrl'>,
+  resolved: Pick<ServerRuntimeConfig, 'loopbackOnly'>,
 ): boolean {
-  return !resolved.loopbackOnly || resolved.publicUrl !== undefined;
+  return !resolved.loopbackOnly;
 }
 
 /**
@@ -132,11 +147,18 @@ export function resolveServerRuntimeConfig(config: Config | undefined): ServerRu
   const port = server?.port ?? remote?.port;
   const legacyUrl = remote?.url === '' ? undefined : remote?.url;
   const publicUrl = server?.publicUrl ?? legacyUrl;
+  const publicUrlSource =
+    server?.publicUrl !== undefined
+      ? ('server' as const)
+      : legacyUrl !== undefined
+        ? ('remote-alias' as const)
+        : undefined;
 
   return {
     port,
     bind,
     publicUrl,
+    publicUrlSource,
     allowExternal: server?.allowExternal ?? false,
     openBrowser: server?.openBrowser ?? loopbackOnly,
     idleShutdown: server?.idleShutdown ?? (loopbackOnly ? DEFAULT_LOOPBACK_IDLE_SHUTDOWN : 'off'),

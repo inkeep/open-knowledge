@@ -163,17 +163,17 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.autoSync?.enabled).toBe(false);
   });
 
-  test("scope: 'project-local' falls back to project when project-local is null (backward compat)", () => {
+  test("scope: 'project-local' with null local no longer inherits the committed project value", () => {
+    // POSTURE FLIP (project-local skips the committed layer): a project-local
+    // leaf cleared to `null` on this machine falls through to USER, then the
+    // schema default (autoSync.enabled → null) — NEVER the committed project
+    // value. A per-machine key must not inherit a cloned value, null or absent.
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: { enabled: null } });
 
-    // `??` treats null + undefined alike — null in project-local falls through
-    // to project, mirroring the existing scope: 'project' (project ?? user)
-    // contract. This matches the server's readProjectAutoSyncMode which
-    // checks `!== null && !== undefined` before short-circuiting.
     const merged = mergeLayered(user, project, projectLocal);
-    expect(merged.autoSync?.enabled).toBe(true);
+    expect(merged.autoSync?.enabled).toBeNull();
   });
 
   test("scope: 'project-local' returns null when every layer is null (no fallback below user)", () => {
@@ -185,13 +185,15 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.autoSync?.enabled).toBeNull();
   });
 
-  test("scope: 'project-local' falls through to project when project-local has no key", () => {
+  test("scope: 'project-local' unset locally ignores the committed project value", () => {
+    // POSTURE FLIP: an unset project-local leaf skips the committed project
+    // layer and resolves to the schema default (null), not the committed value.
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: {} });
 
     const merged = mergeLayered(user, project, projectLocal);
-    expect(merged.autoSync?.enabled).toBe(true);
+    expect(merged.autoSync?.enabled).toBeNull();
   });
 
   test("scope: 'project-local' falls through to user when project + project-local both omit it", () => {
@@ -237,10 +239,11 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   test("scope: 'project-local' (server.allowExternal) ignores a committed project value", () => {
     // Exposure consent has the terminal.enabled posture: a committed
     // `allowExternal: true` must never grant consent on a cloner's machine —
-    // only this machine's gitignored project-local layer can. A fresh clone's
-    // project-local layer parses to schema defaults, so `allowExternal` is a
-    // DEFINED false there and the project-local short-circuit never falls
-    // through to the committed value.
+    // only this machine's gitignored project-local layer can. The project-local
+    // scope rule skips the committed project layer structurally, so the leaf
+    // resolves through user to the schema default `false` (here the parsed
+    // layers make user's default a defined `false`; on the loader's raw path an
+    // unset leaf reaches the same default at the final parse).
     const user = makeConfig({});
     const project = makeConfig({ server: { allowExternal: true } });
     const projectLocal = makeConfig({});
@@ -271,30 +274,52 @@ describe('mergeLayered — backward compat for two-layer call sites', () => {
     expect(merged.appearance?.theme).toBe('dark');
   });
 
-  test('mergeLayered(user, project) with project-local-scope field falls through to project', () => {
+  test('mergeLayered(user, project) ignores a committed project-local-scope value', () => {
+    // POSTURE FLIP: the two-layer path also skips the committed project layer
+    // for project-local leaves, so a committed value never wins — it falls to
+    // user, then the schema default (null).
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
 
     const merged = mergeLayered(user, project);
-    expect(merged.autoSync?.enabled).toBe(true);
+    expect(merged.autoSync?.enabled).toBeNull();
   });
 
-  test('two-layer merge passes a committed allowExternal:true through — Wave 4 enforcement MUST use the three-layer merge', () => {
-    // Tripwire, not endorsement. With no project-local layer, layers[2] is
-    // undefined, so the project-local short-circuit falls through to the
-    // committed project value — the UNSAFE result for exposure consent (a
-    // committed `true` would arm a cloner's machine). The three-layer path is
-    // safe because a parsed project-local layer supplies a DEFINED `false`
-    // default that wins (see the project-local scope test above). The Wave 4
-    // boot interlock must therefore resolve `allowExternal` over all three
-    // layers, per the requiresExternalConsent doc comment — this test exists so
-    // that requirement surfaces mechanically if someone reaches for the
-    // two-layer path.
+  test('a committed allowExternal:true never passes through, even via the two-layer merge', () => {
+    // POSTURE FLIP of the former "two-layer is unsafe" tripwire. The
+    // project-local scope rule now skips the committed project layer
+    // unconditionally, so a committed `server.allowExternal: true` can never
+    // arm consent — with or without a project-local layer. The old safety
+    // depended on a parsed project-local layer supplying a DEFINED `false`;
+    // the structural skip replaces it and also holds on the RAW-layer path the
+    // loader uses (an unset local leaf is `undefined` → falls to the user
+    // layer's default `false`).
     const user = makeConfig({});
     const project = makeConfig({ server: { allowExternal: true } });
 
     const merged = mergeLayered(user, project);
-    expect(merged.server?.allowExternal).toBe(true);
+    expect(merged.server?.allowExternal).toBe(false);
+  });
+
+  test('RAW-layer path: a committed allowExternal is skipped, an unset local leaf falls to the schema default', () => {
+    // The loader's actual inputs are RAW (un-parsed) partials, not
+    // ConfigSchema.parse output. Pin that on that path a committed project
+    // `allowExternal: true` with an empty project-local layer surfaces no
+    // `allowExternal` from the merge (→ the final parse fills the default
+    // false), while a user-global value is still honored as a personal default.
+    const committedLeak = mergeLayered({}, { server: { allowExternal: true } }, {});
+    expect(
+      (committedLeak.server as { allowExternal?: boolean } | undefined)?.allowExternal,
+    ).toBeUndefined();
+
+    const userGlobalDefault = mergeLayered(
+      { server: { allowExternal: true } },
+      { server: { allowExternal: false } },
+      {},
+    );
+    expect(
+      (userGlobalDefault.server as { allowExternal?: boolean } | undefined)?.allowExternal,
+    ).toBe(true);
   });
 });
 

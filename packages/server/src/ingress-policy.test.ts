@@ -1,0 +1,277 @@
+import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
+import {
+  buildIngressPolicy,
+  getIngressContext,
+  isHostAdmitted,
+  isOriginAdmitted,
+  isPeerAdmitted,
+  stampIngressContext,
+  tripsForwardedHeaderTripwire,
+} from './ingress-policy.ts';
+
+function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeConfig {
+  return {
+    port: undefined,
+    bind: ['127.0.0.1'],
+    publicUrl: undefined,
+    publicUrlSource: undefined,
+    allowExternal: false,
+    openBrowser: true,
+    idleShutdown: '30m',
+    loopbackOnly: true,
+    ...overrides,
+  };
+}
+
+const LEGACY_REMOTE = {
+  url: 'https://myproject.ngrok.app',
+  publicHost: 'myproject.ngrok.app',
+  port: 24_550,
+};
+
+describe('buildIngressPolicy', () => {
+  test('empty input yields the loopback-only default policy', () => {
+    const policy = buildIngressPolicy({});
+    expect(policy.allowExternal).toBe(false);
+    expect(policy.bindLiterals).toEqual([]);
+    expect(policy.publicOrigin).toBeUndefined();
+    expect(policy.legacyRemote).toBeUndefined();
+    expect(policy.tolerateForwardedHeaders).toBe(false);
+  });
+
+  test('non-loopback bind literals are collected; loopback and wildcards are not', () => {
+    const policy = buildIngressPolicy({
+      serverRuntime: runtime({
+        bind: ['127.0.0.1', '100.64.0.7', '0.0.0.0', '::', 'localhost', '[::1]', '2001:DB8::1'],
+        loopbackOnly: false,
+      }),
+    });
+    expect(policy.bindLiterals).toEqual(['100.64.0.7', '2001:db8::1']);
+  });
+
+  test('publicOrigin comes from the successor key only, never the remote alias', () => {
+    const explicit = buildIngressPolicy({
+      serverRuntime: runtime({
+        publicUrl: 'http://laptop.tail:55222',
+        publicUrlSource: 'server',
+      }),
+    });
+    expect(explicit.publicOrigin).toEqual({ host: 'laptop.tail:55222', protocol: 'http:' });
+    const aliased = buildIngressPolicy({
+      serverRuntime: runtime({
+        publicUrl: 'https://kb.example.com',
+        publicUrlSource: 'remote-alias',
+      }),
+    });
+    expect(aliased.publicOrigin).toBeUndefined();
+  });
+
+  test('forwarded headers are tolerated only under legacy remote, or consent + declared publicUrl', () => {
+    expect(buildIngressPolicy({ remoteAccess: LEGACY_REMOTE }).tolerateForwardedHeaders).toBe(true);
+    expect(
+      buildIngressPolicy({
+        serverRuntime: runtime({
+          allowExternal: true,
+          publicUrl: 'https://kb.example.com',
+          publicUrlSource: 'server',
+        }),
+      }).tolerateForwardedHeaders,
+    ).toBe(true);
+    // Consent without a declared public origin does NOT relax the tripwire —
+    // a proxy in front of a bind-exposed server still needs publicUrl.
+    expect(
+      buildIngressPolicy({
+        serverRuntime: runtime({ allowExternal: true, loopbackOnly: false }),
+      }).tolerateForwardedHeaders,
+    ).toBe(false);
+    // A declared publicUrl without consent never tolerates them either
+    // (that combination is a boot refusal once the interlock enforces).
+    expect(
+      buildIngressPolicy({
+        serverRuntime: runtime({
+          publicUrl: 'https://kb.example.com',
+          publicUrlSource: 'server',
+        }),
+      }).tolerateForwardedHeaders,
+    ).toBe(false);
+  });
+});
+
+describe('isPeerAdmitted — consent relaxes the peer gate ONLY', () => {
+  test('loopback always passes; external requires allowExternal', () => {
+    const local = buildIngressPolicy({});
+    expect(isPeerAdmitted('127.0.0.1', local)).toBe(true);
+    expect(isPeerAdmitted('::1', local)).toBe(true);
+    expect(isPeerAdmitted('100.64.0.9', local)).toBe(false);
+    const consented = buildIngressPolicy({
+      serverRuntime: runtime({ allowExternal: true, loopbackOnly: false }),
+    });
+    expect(isPeerAdmitted('100.64.0.9', consented)).toBe(true);
+    expect(isPeerAdmitted('203.0.113.7', consented)).toBe(true);
+  });
+
+  test('a vanished socket stays refused even with consent', () => {
+    const consented = buildIngressPolicy({
+      serverRuntime: runtime({ allowExternal: true, loopbackOnly: false }),
+    });
+    expect(isPeerAdmitted(undefined, consented)).toBe(false);
+  });
+});
+
+describe('isHostAdmitted — names validate in every mode, never widened by consent', () => {
+  const case2 = buildIngressPolicy({
+    // Deck Case 2: tailnet bind + consent, publicUrl per the corrected deck.
+    serverRuntime: runtime({
+      bind: ['127.0.0.1', '100.64.0.7'],
+      loopbackOnly: false,
+      allowExternal: true,
+      publicUrl: 'http://laptop.tail:55222',
+      publicUrlSource: 'server',
+    }),
+  });
+
+  test('loopback names and bind literals (any port) are admitted', () => {
+    expect(isHostAdmitted('localhost:5173', case2)).toBe(true);
+    expect(isHostAdmitted('100.64.0.7:55222', case2)).toBe(true);
+    expect(isHostAdmitted('100.64.0.7', case2)).toBe(true);
+  });
+
+  test('the declared publicUrl host is admitted exactly (host:port)', () => {
+    expect(isHostAdmitted('laptop.tail:55222', case2)).toBe(true);
+    // A different port is a different name — refused.
+    expect(isHostAdmitted('laptop.tail:9999', case2)).toBe(false);
+  });
+
+  test('unconfigured names stay refused even under consent (rebinding defense)', () => {
+    expect(isHostAdmitted('evil.example', case2)).toBe(false);
+    expect(isHostAdmitted('evil.example:55222', case2)).toBe(false);
+    expect(isHostAdmitted(undefined, case2)).toBe(false);
+  });
+
+  test('an IPv6 bind literal matches its bracketed Host form', () => {
+    const v6 = buildIngressPolicy({
+      serverRuntime: runtime({ bind: ['2001:db8::1'], loopbackOnly: false, allowExternal: true }),
+    });
+    expect(isHostAdmitted('[2001:db8::1]:8080', v6)).toBe(true);
+    expect(isHostAdmitted('[2001:db8::2]:8080', v6)).toBe(false);
+  });
+
+  test('a malformed bracketed-IPv6 Host is refused (fail-closed parse)', () => {
+    // An opening `[` without a closing `]` fails to parse — it must refuse, not
+    // fall through to a loose comparison that could admit an attacker-shaped
+    // Host under consent.
+    const v6 = buildIngressPolicy({
+      serverRuntime: runtime({ bind: ['2001:db8::1'], loopbackOnly: false, allowExternal: true }),
+    });
+    expect(isHostAdmitted('[2001:db8::1', v6)).toBe(false);
+    expect(isHostAdmitted('[2001:db8::1:8080', v6)).toBe(false);
+  });
+});
+
+describe('isOriginAdmitted — if present, must match; scheme-matched for publicUrl', () => {
+  const case3 = buildIngressPolicy({
+    // Deck Case 3: loopback bind behind a proxy, https publicUrl + consent.
+    serverRuntime: runtime({
+      allowExternal: true,
+      publicUrl: 'https://notes.example.com',
+      publicUrlSource: 'server',
+    }),
+  });
+
+  test('the declared public origin is admitted; wrong scheme refused', () => {
+    expect(isOriginAdmitted('https://notes.example.com', case3)).toBe(true);
+    expect(isOriginAdmitted('http://notes.example.com', case3)).toBe(false);
+    expect(isOriginAdmitted('https://evil.example.com', case3)).toBe(false);
+  });
+
+  test('an http publicUrl admits its http origin (tailnet/LAN posture)', () => {
+    const httpPublic = buildIngressPolicy({
+      serverRuntime: runtime({
+        allowExternal: true,
+        publicUrl: 'http://laptop.tail:55222',
+        publicUrlSource: 'server',
+      }),
+    });
+    expect(isOriginAdmitted('http://laptop.tail:55222', httpPublic)).toBe(true);
+    expect(isOriginAdmitted('https://laptop.tail:55222', httpPublic)).toBe(false);
+  });
+
+  test('bind-literal origins are admitted over http or https', () => {
+    const bound = buildIngressPolicy({
+      serverRuntime: runtime({
+        bind: ['100.64.0.7'],
+        loopbackOnly: false,
+        allowExternal: true,
+      }),
+    });
+    expect(isOriginAdmitted('http://100.64.0.7:55222', bound)).toBe(true);
+    expect(isOriginAdmitted('https://100.64.0.7', bound)).toBe(true);
+    expect(isOriginAdmitted('ftp://100.64.0.7', bound)).toBe(false);
+  });
+
+  test('loopback and the Electron null/file shapes always pass', () => {
+    const local = buildIngressPolicy({});
+    expect(isOriginAdmitted('http://localhost:5173', local)).toBe(true);
+    expect(isOriginAdmitted('null', local)).toBe(true);
+    expect(isOriginAdmitted('file://', local)).toBe(true);
+    expect(isOriginAdmitted('https://evil.example.com', local)).toBe(false);
+  });
+
+  test('a malformed / unparseable Origin fails closed under consent', () => {
+    // A garbage Origin must not fall through to admission — even under consent
+    // with a declared publicUrl, an Origin that `new URL()` cannot parse is
+    // refused rather than loosely compared.
+    expect(isOriginAdmitted('http://[not-closed', case3)).toBe(false);
+    expect(isOriginAdmitted('://missing-scheme', case3)).toBe(false);
+    expect(isOriginAdmitted('not a url', case3)).toBe(false);
+    expect(isOriginAdmitted('https://', case3)).toBe(false);
+  });
+});
+
+describe('tripsForwardedHeaderTripwire', () => {
+  test('fires on forwarding headers unless the policy tolerates them', () => {
+    const local = buildIngressPolicy({});
+    const req = { headers: { 'x-forwarded-for': '203.0.113.7' } };
+    expect(tripsForwardedHeaderTripwire(req, local)).toBe(true);
+    const consented = buildIngressPolicy({
+      serverRuntime: runtime({
+        allowExternal: true,
+        publicUrl: 'https://notes.example.com',
+        publicUrlSource: 'server',
+      }),
+    });
+    expect(tripsForwardedHeaderTripwire(req, consented)).toBe(false);
+    expect(tripsForwardedHeaderTripwire({ headers: {} }, local)).toBe(false);
+  });
+
+  // Pin EVERY vendor header the tripwire watches, so a refactor that drops one
+  // (a Cloudflare / Fastly / RFC 7239 proxy) can't silently stop tripping.
+  test.each([
+    'x-forwarded-for',
+    'x-forwarded-proto',
+    'x-forwarded-host',
+    'forwarded',
+    'x-real-ip',
+    'x-client-ip',
+    'x-cluster-client-ip',
+    'cf-connecting-ip',
+    'fastly-client-ip',
+    'true-client-ip',
+  ])('fires on the %s forwarding header (non-consented)', (header) => {
+    const local = buildIngressPolicy({});
+    expect(tripsForwardedHeaderTripwire({ headers: { [header]: 'v' } }, local)).toBe(true);
+  });
+});
+
+describe('ingress request context', () => {
+  test('stamps peer class and the empty actor slot, retrievable by request', () => {
+    const req = {
+      socket: { remoteAddress: '100.64.0.9' },
+      headers: {},
+    } as unknown as import('node:http').IncomingMessage;
+    const context = stampIngressContext(req, { requestId: 'r-1' });
+    expect(context).toEqual({ requestId: 'r-1', peerClass: 'external', actor: undefined });
+    expect(getIngressContext(req)).toBe(context);
+  });
+});

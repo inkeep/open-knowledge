@@ -34,8 +34,16 @@ import type { Server as HttpServer } from 'node:http';
 import { basename, join, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
+  applyConfigOverlay,
   DEFAULT_REMOTE_PORT,
   DEFAULT_SERVER_HOST,
+  type EnvConfigLayer,
+  EnvVarError,
+  IDLE_SHUTDOWN_DURATION_RE,
+  idleShutdownToMs,
+  resolveEnvConfigLayer,
+  resolveServerRuntimeConfig,
+  type ServerRuntimeConfig,
   DEFAULT_SIGTERM_GRACE_MS as SHARED_DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS as SHARED_DEFAULT_SIGTERM_POLL_MS,
   SPAWN_ERROR_LOG,
@@ -65,12 +73,11 @@ import { resolveSelfSpawn } from './self-spawn.ts';
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 
 /**
- * Resolve server bind host with `--bind` flag > deprecated `--host` alias >
+ * Resolve a single bind host with `--bind` flag > deprecated `--host` alias >
  * `HOST` env > application default precedence. Pure helper — no side effects,
  * no `process.env` access inside (env passed in) so tests can pin all
- * branches. `--bind` is declared repeatable (the config surface reserves a
- * bind LIST); the action layer rejects >1 value until multi-bind lands, so
- * only the first element is consulted here.
+ * branches. Used by the ephemeral single-file path; `ok start` proper
+ * resolves the full bind LIST (config/env layers included) inline.
  */
 export function resolveHost(
   opts: { host?: string; bind?: string[] },
@@ -139,30 +146,45 @@ export function resolveStartShellDir(input: {
 
 /**
  * Validator for `--idle-shutdown <dur|off>`: `off`, or a strict `<n>(s|m|h)`
- * duration. Returns milliseconds, or `null` for `off` (idle shutdown
- * disabled). The grammar mirrors the forthcoming `server.idleShutdown` config
- * leaf so the flag and the key resolve durations identically.
+ * duration. Returns the validated string unchanged — conversion to ms (or
+ * `null` for `off`) happens at the boot boundary via {@link idleShutdownToMs},
+ * exactly as the env/file/derived `server.idleShutdown` value does, so the flag
+ * and the key resolve identically. The grammar mirrors the `server.idleShutdown`
+ * leaf via `IDLE_SHUTDOWN_DURATION_RE`.
+ *
+ * Returning the string (not the ms number / `null`) is load-bearing: Commander
+ * silently coerces a `null`/`undefined` option-parser result to `''`, which the
+ * downstream `?? DEFAULT` misses and the idle timer reads as `0` ms — firing
+ * idle-shutdown on boot. A non-empty string survives Commander intact.
  */
-export function parseIdleShutdownFlag(value: string): number | null {
-  if (value === 'off') return null;
-  const match = /^([1-9]\d*)(s|m|h)$/.exec(value);
-  if (match === null) {
+export function parseIdleShutdownFlag(value: string): string {
+  if (value === 'off') return 'off';
+  if (!IDLE_SHUTDOWN_DURATION_RE.test(value)) {
     throw new InvalidArgumentError("--idle-shutdown must be 'off' or a duration like 90s, 30m, 2h");
   }
-  const amount = Number(match[1]);
-  switch (match[2]) {
-    case 's':
-      return amount * 1000;
-    case 'm':
-      return amount * 60_000;
-    default:
-      return amount * 3_600_000;
-  }
+  return value;
 }
 
 /** Loopback-shaped bind hosts — the family the browser-open default keys on. */
 export function isLoopbackHost(host: string): boolean {
   return host === 'localhost' || host === '::1' || host === '[::1]' || host.startsWith('127.');
+}
+
+/**
+ * Should a `HOST`-driven bind warn that it is silently dropping a multi-element
+ * `server.bind`? `HOST` is a single-address platform-injection variable
+ * (Heroku/Railway); when it — and neither `--bind`/`--host` nor `OK_BIND` —
+ * drives the bind, it REPLACES the whole file-layer list, halving a dual-stack
+ * config with no record the way `OK_BIND` overrides carry. Pure so the boundary
+ * (`> 1`, not `>= 1`) is unit-tested independent of the boot path.
+ */
+export function shouldWarnHostOverridesMultiBind(input: {
+  flagBindSet: boolean;
+  okBindSet: boolean;
+  hostEnvSet: boolean;
+  fileBindCount: number;
+}): boolean {
+  return !input.flagBindSet && !input.okBindSet && input.hostEnvSet && input.fileBindCount > 1;
 }
 
 /**
@@ -181,10 +203,14 @@ export function isLoopbackHost(host: string): boolean {
  * - `--open` (deprecated) then forces open, preserving its pre-flip contract
  *   for scripts that relied on it in non-TTY contexts;
  * - otherwise: open iff the bind is loopback AND stdout is a TTY (a spawned
- *   or CI invocation must not pop a browser).
+ *   or CI invocation must not pop a browser). An EXPLICIT
+ *   `server.openBrowser: true` / `OK_OPEN_BROWSER=1` (`explicitOn`) lifts
+ *   the loopback-bind condition — the operator asked by name — but keeps
+ *   the TTY gate so a container or spawned start still never pops one.
  */
 export function shouldOpenBrowser(input: {
   openBrowser: boolean;
+  explicitOn: boolean;
   legacyOpen: boolean;
   host: string;
   isTTY: boolean;
@@ -197,7 +223,7 @@ export function shouldOpenBrowser(input: {
   if (input.remoteEnabled || input.ephemeral || input.only === 'server') return false;
   if (!input.servesUi) return false;
   if (input.legacyOpen) return true;
-  return isLoopbackHost(input.host) && input.isTTY;
+  return (input.explicitOn || isLoopbackHost(input.host)) && input.isTTY;
 }
 
 /**
@@ -827,6 +853,18 @@ interface BootStartServerOptions {
    *  shutdown entirely (`--idle-shutdown off`). Tests use small values. */
   idleThresholdMs?: number | null;
   /**
+   * The fully-layered `server.*` resolution (flags > env > project-local >
+   * project > user), threaded to `bootServer` so issued URLs and the
+   * exposure interlock consume the same values the CLI resolved. Omitted by
+   * legacy callers — `bootServer` then resolves files-only from its config.
+   */
+  serverRuntime?: ServerRuntimeConfig;
+  /**
+   * Full bind-address list for multi-listener bind (first entry decides the
+   * port; the rest share it). Omitted ⇒ single listener on `host`.
+   */
+  bind?: readonly string[];
+  /**
    * Override the process-exit call fired after an idle-shutdown teardown
    * completes (see `withIdleShutdownProcessExit`). Default `process.exit`.
    * Tests that drive idle-shutdown through `bootStartServer` MUST inject
@@ -1246,6 +1284,8 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     // CLI-specific opt-ins
     attachUiSibling,
     idleShutdownMs: idleThresholdMs,
+    ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),
+    ...(opts.bind !== undefined ? { bind: opts.bind } : {}),
     skipAutoInit: true, // Guard already ran above; no scaffold fn to pass
     ...(attachUiSibling ? { spawnUiSiblingFn } : {}),
     idleShutdownHandler: (destroyServer) => {
@@ -1361,10 +1401,12 @@ interface StartCommandOptions {
   /** From `--server-url <url>`: where the `--only ui` split-mode UI finds its project server. */
   serverUrl?: string;
   /**
-   * From `--idle-shutdown <dur|off>` (already parsed by `parseIdleShutdownFlag`):
-   * idle-shutdown threshold in ms, or `null` for `off`. Absent → 30-min default.
+   * From `--idle-shutdown <dur|off>`, validated by `parseIdleShutdownFlag`: the
+   * duration string (`'off'` | `'90s'` | `'30m'` | …), or absent when the flag
+   * is not passed. Converted to ms (null for `'off'`) at the boot boundary via
+   * `idleShutdownToMs`, alongside the env/file/derived value.
    */
-  idleShutdown?: number | null;
+  idleShutdown?: string;
   /** From `--mode`: undefined (default → browser) | 'browser' | 'app'. */
   mode?: StartMode;
   /**
@@ -1528,11 +1570,64 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     );
   }
 
-  // Source-of-truth host + port resolution: CLI flag > env > application
-  // default. Host lives as a runtime knob only; the port additionally falls
-  // back to `remote.port` when remote access is enabled (a stable tunnel
-  // target is part of the remote contract — see coerceRemoteBindHost).
-  const resolvedHost = resolveHost(opts, process.env as { HOST?: string | undefined });
+  // The env config layer (the mechanical OK_* surface + platform PORT):
+  // parsed once, leaf-validated, fail-loud on a malformed value with the
+  // variable named. Did-you-mean observations surface as warnings.
+  let envLayer: EnvConfigLayer;
+  try {
+    envLayer = resolveEnvConfigLayer(process.env);
+  } catch (err) {
+    if (err instanceof EnvVarError) {
+      console.error(error(err.message));
+      process.exit(78);
+    }
+    throw err;
+  }
+  for (const diag of envLayer.diagnostics) {
+    console.warn(warning(`[config] ${diag.message}`));
+  }
+  const envConfig = applyConfigOverlay(activeConfig, envLayer.layer) as Config;
+
+  // Bind precedence: --bind / deprecated --host flags > ratified OK_BIND >
+  // legacy HOST env > server.bind file layer > loopback default. The resolved
+  // LIST is what the derived defaults key off (openBrowser/idleShutdown
+  // derive from loopback-only-ness); the listener binds every entry in the
+  // list (multi-address bind), each on the same port.
+  const okBindSet = envLayer.overrides.some((o) => o.envVar === 'OK_BIND');
+  const flagBind =
+    opts.bind !== undefined && opts.bind.length > 0
+      ? opts.bind
+      : opts.host !== undefined
+        ? [opts.host]
+        : undefined;
+  // Empty/whitespace `HOST` reads as unset, matching the env layer's
+  // `PORT=''` handling — a platform that exports an empty `HOST` must not
+  // produce a `['']` bind list (`''` is non-loopback, so it would trip the
+  // exposure interlock with a nonsense "bind includes ()" message).
+  const hostEnvRaw = process.env.HOST;
+  const hostEnv = hostEnvRaw !== undefined && hostEnvRaw.trim() !== '' ? hostEnvRaw : undefined;
+  const envFileRuntime = resolveServerRuntimeConfig(envConfig);
+  const requestedBind =
+    flagBind ?? (okBindSet || hostEnv === undefined ? [...envFileRuntime.bind] : [hostEnv]);
+
+  // Warn when a `HOST`-driven bind silently drops a multi-element `server.bind`
+  // (decision extracted + unit-tested; see shouldWarnHostOverridesMultiBind).
+  if (
+    shouldWarnHostOverridesMultiBind({
+      flagBindSet: flagBind !== undefined,
+      okBindSet,
+      hostEnvSet: hostEnv !== undefined,
+      fileBindCount: envFileRuntime.bind.length,
+    })
+  ) {
+    console.warn(
+      warning(
+        `[config] HOST=${hostEnv} overrides server.bind — dropping the file-configured addresses (${envFileRuntime.bind.join(', ')}). Use OK_BIND with a space-separated list to keep multiple binds.`,
+      ),
+    );
+  }
+
+  const resolvedHost = requestedBind[0] ?? DEFAULT_SERVER_HOST;
   const hostCoercion = coerceRemoteBindHost(resolvedHost, remoteEnabled);
   if (hostCoercion.coerced) {
     console.warn(
@@ -1540,8 +1635,46 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     );
   }
   const host = hostCoercion.host;
+  // The EFFECTIVE bind list — remote mode collapses to the coerced loopback
+  // host (the tunnel is the only ingress there), so the interlock and the
+  // ingress policy see what the server actually binds, not the pre-coercion
+  // request. Without this, `HOST=0.0.0.0 ok start --remote` coerces to
+  // loopback yet still trips ExposureConsentError off the uncoerced list.
+  const bindList = remoteEnabled ? [host] : requestedBind;
+  const runtime: ServerRuntimeConfig = resolveServerRuntimeConfig(
+    applyConfigOverlay(envConfig, { server: { bind: bindList } }) as Config,
+  );
+
+  // The consent warning, sibling to the --remote banner above. `allowExternal`
+  // is the sanctioned relaxation, but its blast radius is easy to under-read:
+  // it exposes not just the editor/collab/API surface but the local-op owner
+  // surface (clone, GitHub sign-in, PAT storage, repo spawn) to every external
+  // peer, with NO server-side auth. Fire whenever consent is armed AND there is
+  // a real exposure vector — a non-loopback bind (direct) or a declared
+  // publicUrl (a same-host reverse proxy forwards to a loopback bind). The
+  // --remote flow prints its own warning, so skip the duplicate there.
+  if (!remoteEnabled && runtime.allowExternal && (!runtime.loopbackOnly || runtime.publicUrl)) {
+    const reach = runtime.publicUrl ?? runtime.bind.join(', ');
+    console.warn(
+      warning(
+        [
+          '',
+          '⚠  EXTERNAL ACCESS ENABLED (server.allowExternal) — no server-side authentication.',
+          `   This server is reachable beyond this machine (${reach}). Anyone who can`,
+          '   reach it has FULL control of this knowledge base — sync, publishing, GitHub',
+          '   credentials, and local operations (clone, sign-in, repo spawn).',
+          '   Restrict who can reach it at the edge: a Tailscale ACL, a reverse proxy with',
+          '   auth (Cloudflare Access, oauth2-proxy), or a firewall.',
+          '',
+        ].join('\n'),
+      ),
+    );
+  }
+
   const portFromCli = opts.port !== undefined ? Number(opts.port) : undefined;
-  const portFromEnv = process.env.PORT ? Number(process.env.PORT) : undefined;
+  const portFromEnv = envLayer.overrides.find((o) => o.envVar === 'PORT')?.value as
+    | number
+    | undefined;
   const requestedUiPort = opts.uiPort !== undefined ? Number(opts.uiPort) : undefined;
   // When `--ui-port` is set, the preview pane's `PORT` env is the UI sibling's
   // intended port, NOT the collab server's — honoring it for the collab port
@@ -1554,14 +1687,23 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // A stable port matters in remote mode because the tailscale serve/funnel
   // mapping names a fixed target port — a kernel-assigned ephemeral port would
   // break the tunnel on every restart.
+  // File-layer ports, split by consumer:
+  //  - `remotePort` follows the resolver's `server.port ?? remote.port` alias
+  //    — remote mode wants the stable tunnel-target port from either key.
+  //  - `localPort` is the SUCCESSOR key ONLY. A plain local start must not
+  //    inherit a dormant `remote.port` (set long ago for tunnel use); doing so
+  //    pins every local boot to that fixed port instead of a free dynamic one,
+  //    and two projects both carrying `remote.port` could never run at once.
+  const remotePort = resolveServerRuntimeConfig(activeConfig).port;
+  const localPort = activeConfig.server?.port;
   if (remoteEnabled && portFromCli === undefined && portFromEnv !== undefined) {
     console.warn(
-      `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${activeConfig.remote?.port ?? DEFAULT_REMOTE_PORT}). Pass --port to override deliberately.`,
+      `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${remotePort ?? DEFAULT_REMOTE_PORT}). Pass --port to override deliberately.`,
     );
   }
   const port =
     resolveCollabPort(portFromCli, portFromEnv, requestedUiPort, remoteEnabled) ??
-    (remoteEnabled ? (activeConfig.remote?.port ?? DEFAULT_REMOTE_PORT) : undefined);
+    (remoteEnabled ? (remotePort ?? DEFAULT_REMOTE_PORT) : localPort);
 
   // Fast path: when `--ui-port` is set (the worktree-preview recipe), a
   // live collab server already in this folder means we must NOT boot a second
@@ -1610,6 +1752,9 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       cwd,
       host,
       port,
+      // Full bind list for the multi-listener bind — already collapsed to the
+      // coerced loopback host in remote mode (see `bindList` above).
+      bind: bindList,
       ...(requestedUiPort !== undefined ? { uiPort: requestedUiPort } : {}),
       ...(opts.serveContentAssets !== undefined
         ? { serveContentAssets: opts.serveContentAssets }
@@ -1619,7 +1764,14 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       // bundle is missing — a spawned `ok ui` would be serving the same
       // missing bundle, and the warning above already promised API/MCP-only.
       ...(opts.only === 'server' || shell.missingBundle ? { skipUiAutoSpawn: true } : {}),
-      ...(opts.idleShutdown !== undefined ? { idleThresholdMs: opts.idleShutdown } : {}),
+      // Flag > env/file/derived, resolved uniformly: both the flag value and
+      // the resolver's idleShutdown are duration strings ('off' | '90s' | …) —
+      // the resolver's covers OK_IDLE_SHUTDOWN, the config leaf, and the
+      // bind-derived default ('30m' loopback-only, 'off' exposed). Converted to
+      // ms (null for 'off') at this single boundary. The flag stays a string
+      // through Commander on purpose — see parseIdleShutdownFlag.
+      idleThresholdMs: idleShutdownToMs(opts.idleShutdown ?? runtime.idleShutdown),
+      serverRuntime: runtime,
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
       ...(remoteEnabled ? { enableRemote: true } : {}),
@@ -1646,6 +1798,14 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     // Unusable `remote:` config block (--remote without a url, a plain-http
     // url, …) — the error message is the fix instruction. EX_CONFIG.
     if (err instanceof serverModule.RemoteConfigError) {
+      console.error(error(err.message));
+      process.exit(78);
+    }
+
+    // Exposure without consent (non-loopback bind or publicUrl set while
+    // server.allowExternal is off) — the interlock's message IS the one-line
+    // fix. EX_CONFIG, same contract as RemoteConfigError.
+    if (err instanceof serverModule.ExposureConsentError) {
       console.error(error(err.message));
       process.exit(78);
     }
@@ -1837,7 +1997,10 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       // banner URL is the full editor (suppress with --no-open-browser; the
       // deprecated --open force-opens). Decision table: `shouldOpenBrowser`.
       const openDecision = shouldOpenBrowser({
-        openBrowser: opts.openBrowser !== false,
+        // Flag suppression wins; otherwise the resolver's openBrowser covers
+        // OK_OPEN_BROWSER, the config leaf, and the bind-derived default.
+        openBrowser: opts.openBrowser !== false && runtime.openBrowser,
+        explicitOn: opts.openBrowser !== false && envConfig.server?.openBrowser === true,
         legacyOpen: opts.open === true,
         host,
         isTTY: process.stdout.isTTY === true,
@@ -2070,16 +2233,6 @@ export function startCommand(getConfig: () => Config): Command {
     )
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();
-
-      // `--bind` is declared repeatable because the config surface reserves a
-      // bind LIST, but multi-bind isn't implemented yet — reject loudly
-      // rather than silently binding only the first address.
-      if (opts.bind !== undefined && opts.bind.length > 1) {
-        process.stderr.write(
-          'error: multiple --bind addresses are not supported yet — pass a single address\n',
-        );
-        process.exit(2);
-      }
 
       // `--server-url` only means something to the --only ui proxy.
       if (opts.serverUrl !== undefined && opts.only !== 'ui') {

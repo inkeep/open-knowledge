@@ -29,6 +29,7 @@ import type {
   ProbeTokenStore,
   PushPermission,
 } from './github-permissions.ts';
+import { buildIngressPolicy } from './ingress-policy.ts';
 import { loggerFactory, type PinoLogger } from './logger.ts';
 import {
   createManagedRenameRecoveryJournal,
@@ -2725,7 +2726,13 @@ describe('createServer() — config-doc admission guard', () => {
       contentDir: tmpDir,
       projectDir: tmpDir,
       quiet: true,
-      remotePublicHost: 'myproject.ngrok.app',
+      ingressPolicy: buildIngressPolicy({
+        remoteAccess: {
+          url: 'https://myproject.ngrok.app',
+          publicHost: 'myproject.ngrok.app',
+          port: 24_550,
+        },
+      }),
     });
     try {
       await server.ready;

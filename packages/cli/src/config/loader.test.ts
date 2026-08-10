@@ -47,6 +47,13 @@ function writeWorkspaceConfig(yaml: string) {
   writeFileSync(resolve(configDir, 'config.yml'), yaml, 'utf-8');
 }
 
+/** Helper: write a project-local .ok/local/config.yml inside testDir */
+function writeLocalConfig(yaml: string) {
+  const localDir = resolve(testDir, OK_DIR, 'local');
+  mkdirSync(localDir, { recursive: true });
+  writeFileSync(resolve(localDir, 'config.yml'), yaml, 'utf-8');
+}
+
 function writeWorkspaceConfigAt(dir: string, yaml: string) {
   const configDir = resolve(dir, OK_DIR);
   mkdirSync(configDir, { recursive: true });
@@ -184,7 +191,11 @@ appearance:
     const { config } = loadConfig(testDir);
 
     expect(config.content.dir).toBe('docs');
-    expect(config.appearance.theme).toBe('dark');
+    // Posture flip (scope-aware loader): appearance.theme is a USER-scoped
+    // leaf, so a project-file value no longer reaches the merged view — a
+    // committed theme must not force one collaborator's preference on
+    // everyone. Previously the scope-blind deep merge let it win.
+    expect(config.appearance.theme).toBeUndefined();
   });
 
   test('content.include in project config is stripped with .okignore redirect; content.dir survives', () => {
@@ -262,12 +273,14 @@ folders:
     expect(folders?.redirect).toContain('edit({ folder');
   });
 
-  test('appearance.editorModeDefault in project config is stripped; appearance.theme survives', () => {
+  test('appearance.editorModeDefault in project config is stripped; sibling parses', () => {
     // Also previously silent — never read by the engine.
     writeWorkspaceConfig('appearance:\n  theme: dark\n  editorModeDefault: source\n');
     const { config, diagnostics } = loadConfig(testDir);
-    // Sibling under the same parent keeps its on-disk value.
-    expect(config.appearance.theme).toBe('dark');
+    // Posture flip (scope-aware loader): the live sibling still PARSES (the
+    // strip must not take it down), but appearance.theme is a USER-scoped
+    // leaf, so the project-file value no longer reaches the merged view.
+    expect(config.appearance.theme).toBeUndefined();
     const mode = removedKeys(diagnostics).find((r) => r.dotted === 'appearance.editorModeDefault');
     expect(mode).toBeDefined();
     expect(mode?.redirect).toContain('WYSIWYG');
@@ -308,9 +321,23 @@ folders:
 
   // ── Validation ──────────────────────────────────────────────────────
 
-  test('appearance.theme outside the enum throws', () => {
-    writeWorkspaceConfig('appearance:\n  theme: midnight\n');
+  test('an invalid project-scoped value throws', () => {
+    // server.port is project-scoped and range-checked (1–65535); an
+    // out-of-range value survives the scope-aware merge and fails the single
+    // merged parse.
+    writeWorkspaceConfig('server:\n  port: 99999999\n');
     expect(() => loadConfig(testDir)).toThrow('Invalid configuration');
+  });
+
+  test('a mis-scoped user-scoped value in the project file is ignored, not thrown', () => {
+    // Raw-merge-then-parse-once trade: the scope-aware merge drops a
+    // user-scoped leaf (appearance.theme) set in the project file BEFORE the
+    // single merged parse, so an invalid value there is silently ignored
+    // rather than reported — errors surface only for values that reach the
+    // merged view. (A project cannot set a user-scoped key anyway.)
+    writeWorkspaceConfig('appearance:\n  theme: midnight\n');
+    expect(() => loadConfig(testDir)).not.toThrow();
+    expect(loadConfig(testDir).config.appearance.theme).toBeUndefined();
   });
 
   // ── Edge cases ──────────────────────────────────────────────────────
@@ -340,11 +367,11 @@ folders:
   // ── Source-located errors ────────────────────────────
 
   test('schema-invalid project config emits file:line:col in error message', () => {
-    // appearance.theme is a string enum — typing it as a non-member value
-    // fails Zod validation. The loader uses parseDocument + locateIssue to
-    // map the issue back to source position.
-    const yaml = `appearance:
-  theme: midnight
+    // server.port is project-scoped, so an out-of-range value survives the
+    // scope-aware merge and fails the single merged parse; the loader uses
+    // parseDocument + locateIssue to map the issue back to source position.
+    const yaml = `server:
+  port: 99999999
 `;
     writeWorkspaceConfig(yaml);
     let caught: Error | undefined;
@@ -356,14 +383,14 @@ folders:
     expect(caught).toBeDefined();
     const expectedPath = resolve(testDir, OK_DIR, 'config.yml');
     // The expected literal: <abs-path>:<line>:<col> — must be `2:` because
-    // `theme: midnight` lives on line 2 of the fixture above.
+    // `port: 99999999` lives on line 2 of the fixture above.
     expect(caught?.message).toContain(`${expectedPath}:2:`);
     // Error message also includes the path-message line and a snippet.
-    expect(caught?.message).toContain('appearance.theme');
+    expect(caught?.message).toContain('server.port');
   });
 
   test('source-located error renders code snippet with caret marker', () => {
-    writeWorkspaceConfig('appearance:\n  theme: midnight\n');
+    writeWorkspaceConfig('server:\n  port: 99999999\n');
     let caught: Error | undefined;
     try {
       loadConfig(testDir);
@@ -535,5 +562,82 @@ describe('createProjectConfigResolver', () => {
       content: { dir: 'docs-c' },
     });
     expect(loadCalls).toBe(2);
+  });
+});
+
+describe('loadConfig — scope-aware layering (project-local)', () => {
+  test('project-local layer is read and lands in sources', () => {
+    writeLocalConfig('server:\n  allowExternal: true\n');
+    const { config, sources } = loadConfig(testDir);
+    expect(config.server.allowExternal).toBe(true);
+    expect(sources).toContain(resolve(testDir, OK_DIR, 'local', 'config.yml'));
+  });
+
+  test('a committed server.allowExternal: true never arms exposure (clone-leak guarantee)', () => {
+    // allowExternal is a PROJECT-LOCAL leaf: consent never travels via git,
+    // clone, or share. mergeLayered's project-local scope rule skips the
+    // committed project layer, so a committed value resolves to the schema
+    // default (false) — the leak the scope-blind deep merge used to allow.
+    writeWorkspaceConfig('server:\n  allowExternal: true\n');
+    const { config } = loadConfig(testDir);
+    expect(config.server.allowExternal).toBe(false);
+  });
+
+  test('committed openBrowser / idleShutdown (project-local, no schema default) are also inert', () => {
+    // These project-local leaves have NO Zod default (they derive at resolve
+    // time), so the old "parsed local default wins" guard didn't protect them
+    // — a committed value used to travel via clone. The scope-skip closes that
+    // regardless of whether the leaf has a default: committed values are
+    // dropped, leaving the leaf undefined for the resolver to derive.
+    writeWorkspaceConfig('server:\n  openBrowser: true\n  idleShutdown: off\n');
+    const { config } = loadConfig(testDir);
+    expect(config.server.openBrowser).toBeUndefined();
+    expect(config.server.idleShutdown).toBeUndefined();
+  });
+
+  test('an explicit user-global value survives an empty project file (precedence, not clobber)', () => {
+    // Regression pin for the precedence bug: telemetry.localSink.enabled is
+    // project-scoped with a schema default of true. A user who disables it in
+    // ~/.ok/global.yml, in a project that never mentions the key, must keep
+    // false — the old per-layer parse filled the project layer's default true
+    // and clobbered the user value. Raw layers leave the project leaf
+    // undefined, so the project-scope rule falls back to the user's false.
+    const okDir = resolve(fakeHome, OK_DIR);
+    mkdirSync(okDir, { recursive: true });
+    writeFileSync(
+      resolve(okDir, 'global.yml'),
+      'telemetry:\n  localSink:\n    enabled: false\n',
+      'utf-8',
+    );
+    const { config } = loadConfig(testDir);
+    expect(config.telemetry.localSink.enabled).toBe(false);
+  });
+
+  test('project-local wins over project for a project-local leaf it sets', () => {
+    writeWorkspaceConfig('server:\n  port: 8080\n');
+    writeLocalConfig('server:\n  openBrowser: false\n');
+    const { config } = loadConfig(testDir);
+    // Project-scoped leaf from the project layer…
+    expect(config.server.port).toBe(8080);
+    // …and the project-local leaf from the local layer, in one merged view.
+    expect(config.server.openBrowser).toBe(false);
+  });
+
+  test('project layer still owns project-scoped server keys', () => {
+    writeWorkspaceConfig('server:\n  bind:\n    - 127.0.0.1\n    - 100.64.0.7\n');
+    const { config } = loadConfig(testDir);
+    expect(config.server.bind).toEqual(['127.0.0.1', '100.64.0.7']);
+  });
+
+  test('schema-invalid project-local file throws loud with the file named', () => {
+    writeLocalConfig('server:\n  openBrowser: "sometimes"\n');
+    expect(() => loadConfig(testDir)).toThrow(/openBrowser/);
+  });
+
+  test('removed keys in the project-local file strip-and-continue', () => {
+    writeLocalConfig('server:\n  host: 0.0.0.0\n  openBrowser: false\n');
+    const { config, diagnostics } = loadConfig(testDir);
+    expect(config.server.openBrowser).toBe(false);
+    expect(removedKeys(diagnostics).some((k) => k.dotted === 'server.host')).toBe(true);
   });
 });

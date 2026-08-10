@@ -247,7 +247,11 @@ describe('runValidate', () => {
     const project = makeTempProject();
     try {
       const wsPath = projectConfigPath(project.cwd);
-      writeConfigYaml(wsPath, `appearance:\n  theme: midnight\n`);
+      // A project-scoped invalid value (server.port out of range) survives the
+      // scope-aware merge and fails the single merged parse — user-scoped keys
+      // like appearance.theme are dropped before validation now, so they can't
+      // exercise the source-location path from the project file.
+      writeConfigYaml(wsPath, `server:\n  port: 99999999\n`);
       const stderr: string[] = [];
       const outcome = runValidate({
         cwd: project.cwd,

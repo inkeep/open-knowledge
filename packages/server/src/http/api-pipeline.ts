@@ -45,14 +45,16 @@ import {
   ATTR_URL_SCHEME,
   ATTR_USER_AGENT_ORIGINAL,
 } from '@opentelemetry/semantic-conventions';
-import { isAllowedApiOrigin } from '../api-origin.ts';
 import { recordEmbedProbe } from '../embed-probe.ts';
-import type { PinoLogger } from '../logger.ts';
 import {
-  isAllowedWorkspaceHostHeader as isAllowedWorkspaceHostHeaderBase,
-  isLoopbackAddress,
-} from '../loopback.ts';
-import { hostHeaderMatchesPublicHost } from '../remote-access.ts';
+  buildIngressPolicy,
+  type IngressPolicy,
+  isHostAdmitted,
+  isOriginAdmitted,
+  isPeerAdmitted,
+  stampIngressContext,
+} from '../ingress-policy.ts';
+import type { PinoLogger } from '../logger.ts';
 import { getMeter, getTracer, onTelemetryShutdown } from '../telemetry.ts';
 import { errorResponse } from './error-response.ts';
 import { REQUEST_ID_HEADER, rememberRequestId, resolveRequestId } from './request-id.ts';
@@ -90,11 +92,12 @@ export interface ApiRouteTable {
 export interface ApiPipelineOptions {
   log: PinoLogger;
   /**
-   * The tunnel's public host when the server was started with remote access
-   * enabled. Widens the browser-Origin allowlist and the workspace-Host
-   * predicate the same way the api-extension's local shadows do.
+   * The boot-built ingress policy — one object drives the Origin allowlist,
+   * the workspace-Host predicate, and the peer gate, exactly as it does for
+   * the WS upgrade path and the api-extension's local shadows. Omitted
+   * (test rigs) ⇒ the loopback-only default policy.
    */
-  remotePublicHost?: string;
+  policy?: IngressPolicy;
   /** No-project ephemeral single-file mode — gates EVERY `/api/*` request. */
   ephemeral?: boolean;
   table: ApiRouteTable;
@@ -129,13 +132,13 @@ function httpDurationHist(): ReturnType<ReturnType<typeof getMeter>['createHisto
 }
 
 export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPipeline {
-  const { log, remotePublicHost, ephemeral, table } = opts;
-  // In remote mode the tunnel's public Host is as legitimate as a loopback
-  // name — the mount's admit gate already vetted it. Same widening the
-  // api-extension applies to its route-level Host gates.
+  const { log, ephemeral, table } = opts;
+  const policy = opts.policy ?? buildIngressPolicy({});
+  // The policy's Host predicate: loopback names plus every admitted public
+  // name (bind literals, declared publicUrl, legacy tunnel host) — the same
+  // widening the api-extension applies to its route-level Host gates.
   const isAllowedWorkspaceHostHeader = (host: string | undefined): boolean =>
-    isAllowedWorkspaceHostHeaderBase(host) ||
-    (remotePublicHost !== undefined && hostHeaderMatchesPublicHost(host, remotePublicHost));
+    isHostAdmitted(host, policy);
 
   return async (request, response) => {
     const url = request.url?.split('?')[0];
@@ -184,6 +187,10 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     // access-log line. The `typeof` guards mirror the CORS block below —
     // unit-test doubles stub only `writeHead` + `end`.
     const requestId = url.startsWith('/api/') ? resolveRequestId(request) : undefined;
+    // The actor-carrying request context — one per admitted request, shared
+    // shape with the WS upgrade path. The actor slot stays undefined until
+    // auth is un-deferred; this is its drop-in point.
+    stampIngressContext(request, { requestId });
     if (requestId !== undefined) {
       rememberRequestId(request, requestId);
       if (typeof response.setHeader === 'function') {
@@ -238,7 +245,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     // unit tests that stub only `writeHead` + `end`.
     if (url.startsWith('/api/')) {
       const origin = request.headers.origin;
-      if (origin !== undefined && !isAllowedApiOrigin(origin, remotePublicHost)) {
+      if (origin !== undefined && !isOriginAdmitted(origin, policy)) {
         // RFC 9457 problem+json. Tag the handler as `api-origin-gate` so
         // the `ok.api.error.count` counter distinguishes onRequest-level
         // CSRF rejections from per-handler emits. The cross-origin browser
@@ -296,7 +303,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     // so the protection remains meaningful for any production path.
     if (table.isMutating(url)) {
       const peerAddress = request.socket?.remoteAddress;
-      if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
+      if (peerAddress !== undefined && !isPeerAdmitted(peerAddress, policy)) {
         errorResponse(response, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
           handler: 'api-mutating-gate',
         });
@@ -326,7 +333,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     // non-`/api/` static-serve path.
     if (ephemeral && url.startsWith('/api/')) {
       const peerAddress = request.socket?.remoteAddress;
-      if (peerAddress !== undefined && !isLoopbackAddress(peerAddress)) {
+      if (peerAddress !== undefined && !isPeerAdmitted(peerAddress, policy)) {
         errorResponse(response, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
           handler: 'api-ephemeral-gate',
         });

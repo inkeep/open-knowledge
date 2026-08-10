@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { createCollaborationHost } from './collaboration-host.ts';
+import { buildIngressPolicy } from './ingress-policy.ts';
 
 function createLog() {
   return {
@@ -167,9 +168,12 @@ describe('createCollaborationHost', () => {
     expect(host.handleUpgrade(forwardedRequest as never, raw as never, Buffer.alloc(0))).toBe(true);
     expect(raw.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
+    // Posture flip: the tripwire hint names the consent surface
+    // (OK_ALLOW_EXTERNAL + OK_PUBLIC_URL) now that it exists, with the
+    // legacy --remote flow as the alternative.
     expect(log.warn).toHaveBeenCalledWith(
       { url: '/collab', host: 'localhost' },
-      '[remote] refused proxied WS upgrade; start the server with `ok start --remote <url>`',
+      '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_PUBLIC_URL, or start with `ok start --remote <url>`',
     );
   });
 
@@ -179,11 +183,13 @@ describe('createCollaborationHost', () => {
     const host = createCollaborationHost({
       hocuspocus,
       log,
-      remoteAccess: {
-        url: 'https://myproject.ngrok.app',
-        publicHost: 'myproject.ngrok.app',
-        port: 24_550,
-      },
+      ingressPolicy: buildIngressPolicy({
+        remoteAccess: {
+          url: 'https://myproject.ngrok.app',
+          publicHost: 'myproject.ngrok.app',
+          port: 24_550,
+        },
+      }),
     });
     const admittedWs = new EventEmitter();
     callbackUpgrade(host, admittedWs);
@@ -203,6 +209,275 @@ describe('createCollaborationHost', () => {
     expect(hocuspocus.handleConnection).toHaveBeenCalledOnce();
     expect(admitted.destroy).not.toHaveBeenCalled();
     expect(refused.destroy).toHaveBeenCalledOnce();
+  });
+
+  test('under allowExternal consent, plain /collab validates Host (foreign refused, admitted names pass)', () => {
+    // The #5 gap: before, plain /collab was gated only under legacy --remote,
+    // so consented exposure (allowExternal, no --remote) left it ungated and
+    // any Host reached full CRDT read/write. It now runs the consolidated
+    // admit gate — loopback + bind literals + publicUrl — under consent too.
+    const log = createLog();
+    const hocuspocus = createHocuspocus();
+    const host = createCollaborationHost({
+      hocuspocus,
+      log,
+      ingressPolicy: buildIngressPolicy({
+        serverRuntime: {
+          port: undefined,
+          bind: ['127.0.0.1', '100.64.0.7'],
+          publicUrl: undefined,
+          publicUrlSource: undefined,
+          allowExternal: true,
+          openBrowser: false,
+          idleShutdown: 'off',
+          loopbackOnly: false,
+        },
+      }),
+    });
+
+    // Foreign Host (DNS-rebinding shape) is refused even under consent.
+    const foreign = createSocket();
+    expect(
+      host.handleUpgrade(request('/collab', 'evil.example'), foreign as never, Buffer.alloc(0)),
+    ).toBe(true);
+    expect(foreign.destroy).toHaveBeenCalledOnce();
+    expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
+
+    // The bind-address literal is an admitted Host (direct-IP access).
+    const bindLiteralWs = new EventEmitter();
+    callbackUpgrade(host, bindLiteralWs);
+    const bindLiteral = createSocket();
+    expect(
+      host.handleUpgrade(
+        request('/collab', '100.64.0.7:55222'),
+        bindLiteral as never,
+        Buffer.alloc(0),
+      ),
+    ).toBe(true);
+    expect(bindLiteral.destroy).not.toHaveBeenCalled();
+
+    // Loopback still works alongside the exposure.
+    const loopbackWs = new EventEmitter();
+    callbackUpgrade(host, loopbackWs);
+    const loopback = createSocket();
+    expect(
+      host.handleUpgrade(request('/collab', 'localhost'), loopback as never, Buffer.alloc(0)),
+    ).toBe(true);
+    expect(loopback.destroy).not.toHaveBeenCalled();
+    expect(hocuspocus.handleConnection).toHaveBeenCalledTimes(2);
+  });
+
+  test('under allowExternal consent, plain /collab refuses a foreign Origin (CSWSH defense)', () => {
+    // CWE-1275: WS upgrades bypass CORS, so a page on a foreign origin can open
+    // wss://<publicUrl>/collab — the Host passes (publicUrl) and, under consent,
+    // so does the relaxed peer gate. A present-but-foreign Origin is the only
+    // signal separating that cross-site hijack from a first-party client, so it
+    // MUST be refused here exactly as /collab/thread refuses it. A missing
+    // Origin (native / server-to-server client) is admitted.
+    const log = createLog();
+    const hocuspocus = createHocuspocus();
+    const host = createCollaborationHost({
+      hocuspocus,
+      log,
+      ingressPolicy: buildIngressPolicy({
+        serverRuntime: {
+          port: undefined,
+          bind: ['127.0.0.1', '100.64.0.7'],
+          publicUrl: 'https://kb.example.com',
+          publicUrlSource: 'server',
+          allowExternal: true,
+          openBrowser: false,
+          idleShutdown: 'off',
+          loopbackOnly: false,
+        },
+      }),
+    });
+
+    // Attack: the publicUrl Host is admitted, but the foreign Origin is not.
+    const attacker = createSocket();
+    expect(
+      host.handleUpgrade(
+        request('/collab', 'kb.example.com', 'https://evil.example'),
+        attacker as never,
+        Buffer.alloc(0),
+      ),
+    ).toBe(true);
+    expect(attacker.destroy).toHaveBeenCalledOnce();
+    expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
+
+    // A first-party page on the publicUrl origin is admitted.
+    const firstPartyWs = new EventEmitter();
+    callbackUpgrade(host, firstPartyWs);
+    const sameOrigin = createSocket();
+    expect(
+      host.handleUpgrade(
+        request('/collab', 'kb.example.com', 'https://kb.example.com'),
+        sameOrigin as never,
+        Buffer.alloc(0),
+      ),
+    ).toBe(true);
+    expect(sameOrigin.destroy).not.toHaveBeenCalled();
+
+    // A native / server-to-server client carrying no Origin is admitted.
+    const nativeWs = new EventEmitter();
+    callbackUpgrade(host, nativeWs);
+    const noOrigin = createSocket();
+    expect(
+      host.handleUpgrade(request('/collab', 'kb.example.com'), noOrigin as never, Buffer.alloc(0)),
+    ).toBe(true);
+    expect(noOrigin.destroy).not.toHaveBeenCalled();
+    expect(hocuspocus.handleConnection).toHaveBeenCalledTimes(2);
+  });
+
+  test('a PURE-LOCAL /collab (no consent) still refuses a foreign Origin (localhost CSWSH)', () => {
+    // Localhost is reachable from any origin and WS bypasses CORS, so a foreign
+    // page can open ws://127.0.0.1:<port>/collab against a loopback-only server
+    // (peer + Host both loopback). The Origin check is UNCONDITIONAL — it fires
+    // even with no consent — so this cross-site hijack is refused. The peer+Host
+    // admit gate stays exposure-only (pure-local keeps its historical posture on
+    // that axis); only the Origin/CSWSH axis is always on.
+    const log = createLog();
+    const hocuspocus = createHocuspocus();
+    const host = createCollaborationHost({
+      hocuspocus,
+      log,
+      ingressPolicy: buildIngressPolicy({}),
+    });
+
+    const attacker = createSocket();
+    expect(
+      host.handleUpgrade(
+        request('/collab', 'localhost', 'https://evil.example'),
+        attacker as never,
+        Buffer.alloc(0),
+      ),
+    ).toBe(true);
+    expect(attacker.destroy).toHaveBeenCalledOnce();
+    expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
+
+    // The first-party app (a loopback Origin) is admitted.
+    const appWs = new EventEmitter();
+    callbackUpgrade(host, appWs);
+    const app = createSocket();
+    expect(
+      host.handleUpgrade(
+        request('/collab', 'localhost', 'http://localhost:5173'),
+        app as never,
+        Buffer.alloc(0),
+      ),
+    ).toBe(true);
+    expect(app.destroy).not.toHaveBeenCalled();
+
+    // A no-Origin client stays admitted on a pure-local server.
+    const nativeWs = new EventEmitter();
+    callbackUpgrade(host, nativeWs);
+    const native = createSocket();
+    expect(
+      host.handleUpgrade(request('/collab', 'localhost'), native as never, Buffer.alloc(0)),
+    ).toBe(true);
+    expect(native.destroy).not.toHaveBeenCalled();
+    expect(hocuspocus.handleConnection).toHaveBeenCalledTimes(2);
+  });
+
+  test('under allowExternal consent, /collab/keepalive refuses a foreign Origin (CSWSH)', () => {
+    // The keepalive channel gates on admitted() in every mode but historically
+    // skipped Origin — the same hole as plain /collab, lower value (agent
+    // presence + keepalive sockets, no CRDT). Under consent a foreign-origin
+    // page passes peer + Host, so the Origin check is the CSWSH defense here too.
+    const log = createLog();
+    const hocuspocus = createHocuspocus();
+    const host = createCollaborationHost({
+      hocuspocus,
+      log,
+      agentPresenceBroadcaster: { setPresence: vi.fn() } as never,
+      ingressPolicy: buildIngressPolicy({
+        serverRuntime: {
+          port: undefined,
+          bind: ['127.0.0.1', '100.64.0.7'],
+          publicUrl: 'https://kb.example.com',
+          publicUrlSource: 'server',
+          allowExternal: true,
+          openBrowser: false,
+          idleShutdown: 'off',
+          loopbackOnly: false,
+        },
+      }),
+    });
+
+    // Attack: publicUrl Host is admitted, but the foreign Origin is refused.
+    const attacker = createSocket();
+    host.handleUpgrade(
+      request(
+        '/collab/keepalive?connectionId=agent_1&displayName=A&clientName=Claude&colorSeed=s',
+        'kb.example.com',
+        'https://evil.example',
+      ),
+      attacker as never,
+      Buffer.alloc(0),
+    );
+    expect(attacker.destroy).toHaveBeenCalledOnce();
+
+    // A native MCP client carrying no Origin is admitted.
+    const nativeWs = new EventEmitter();
+    callbackUpgrade(host, nativeWs);
+    const native = createSocket();
+    host.handleUpgrade(
+      request(
+        '/collab/keepalive?connectionId=agent_2&displayName=A&clientName=Claude&colorSeed=s',
+        'kb.example.com',
+      ),
+      native as never,
+      Buffer.alloc(0),
+    );
+    expect(native.destroy).not.toHaveBeenCalled();
+  });
+
+  test('under allowExternal consent, /collab/thread refuses a foreign Origin (CSWSH)', () => {
+    // Completes the CSWSH matrix: /collab and /collab/keepalive have consent-mode
+    // foreign-Origin tests; thread management is lower value but the same class.
+    const log = createLog();
+    const hocuspocus = createHocuspocus();
+    const host = createCollaborationHost({
+      hocuspocus,
+      log,
+      acpThreadManager: {} as never,
+      ingressPolicy: buildIngressPolicy({
+        serverRuntime: {
+          port: undefined,
+          bind: ['127.0.0.1', '100.64.0.7'],
+          publicUrl: 'https://kb.example.com',
+          publicUrlSource: 'server',
+          allowExternal: true,
+          openBrowser: false,
+          idleShutdown: 'off',
+          loopbackOnly: false,
+        },
+      }),
+    });
+
+    // Attack: the publicUrl Host is admitted, but the foreign Origin is refused.
+    const attacker = createSocket();
+    host.handleUpgrade(
+      request('/collab/thread', 'kb.example.com', 'https://evil.example'),
+      attacker as never,
+      Buffer.alloc(0),
+    );
+    expect(attacker.destroy).toHaveBeenCalledOnce();
+    expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
+
+    // A first-party thread on the publicUrl origin is admitted (message wired).
+    const threadWs = new EventEmitter() as EventEmitter & { close: () => void; send: () => void };
+    threadWs.close = () => {};
+    threadWs.send = () => {};
+    callbackUpgrade(host, threadWs);
+    const firstParty = createSocket();
+    host.handleUpgrade(
+      request('/collab/thread', 'kb.example.com', 'https://kb.example.com'),
+      firstParty as never,
+      Buffer.alloc(0),
+    );
+    expect(firstParty.destroy).not.toHaveBeenCalled();
+    expect(threadWs.listenerCount('message')).toBe(1);
   });
 
   test('bootstraps presence only for a complete valid keepalive identity', () => {

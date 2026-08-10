@@ -5,7 +5,7 @@ import { request as httpRequest } from 'node:http';
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { idleShutdownToMs, LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
@@ -33,6 +33,7 @@ import {
   resolveStartShellDir,
   shouldConnectToExistingServer,
   shouldOpenBrowser,
+  shouldWarnHostOverridesMultiBind,
   spawnOkUi,
   startCommand,
   teardownUiSibling,
@@ -2391,6 +2392,7 @@ describe('isLoopbackHost', () => {
 describe('shouldOpenBrowser (interactive-loopback default open)', () => {
   const base = {
     openBrowser: true,
+    explicitOn: false,
     legacyOpen: false,
     host: '127.0.0.1',
     isTTY: true,
@@ -2402,6 +2404,14 @@ describe('shouldOpenBrowser (interactive-loopback default open)', () => {
 
   test('interactive loopback start serving the UI opens by default', () => {
     expect(shouldOpenBrowser({ ...base })).toBe(true);
+  });
+
+  test('explicit openBrowser=true (config/env) lifts the loopback-bind condition', () => {
+    expect(shouldOpenBrowser({ ...base, host: '100.64.0.7', explicitOn: true })).toBe(true);
+  });
+
+  test('explicit openBrowser=true still never opens without a TTY (container safety)', () => {
+    expect(shouldOpenBrowser({ ...base, explicitOn: true, isTTY: false })).toBe(false);
   });
 
   test('--no-open-browser suppresses', () => {
@@ -2593,21 +2603,83 @@ describe('formatServerReuseNotice', () => {
   });
 });
 
+describe('shouldWarnHostOverridesMultiBind', () => {
+  const base = { flagBindSet: false, okBindSet: false, hostEnvSet: true, fileBindCount: 2 };
+  test('warns when HOST alone drives the bind over a multi-element file list', () => {
+    expect(shouldWarnHostOverridesMultiBind(base)).toBe(true);
+  });
+  test('boundary: a single-element (or empty) file bind does NOT warn (> 1, not >= 1)', () => {
+    expect(shouldWarnHostOverridesMultiBind({ ...base, fileBindCount: 1 })).toBe(false);
+    expect(shouldWarnHostOverridesMultiBind({ ...base, fileBindCount: 0 })).toBe(false);
+  });
+  test('does not warn when a flag or OK_BIND is the bind source (HOST is not)', () => {
+    expect(shouldWarnHostOverridesMultiBind({ ...base, flagBindSet: true })).toBe(false);
+    expect(shouldWarnHostOverridesMultiBind({ ...base, okBindSet: true })).toBe(false);
+  });
+  test('does not warn when HOST is unset', () => {
+    expect(shouldWarnHostOverridesMultiBind({ ...base, hostEnvSet: false })).toBe(false);
+  });
+});
+
 describe('parseIdleShutdownFlag (--idle-shutdown, Table 3 semantics)', () => {
-  test("'off' disables idle shutdown (null)", () => {
-    expect(parseIdleShutdownFlag('off')).toBeNull();
+  test("'off' is preserved as a string (idleShutdownToMs maps it to null)", () => {
+    // The flag deliberately stays a string through Commander — returning `null`
+    // here would be silently coerced to `''` by Commander and read downstream
+    // as a 0 ms threshold (idle-shutdown fires on boot).
+    expect(parseIdleShutdownFlag('off')).toBe('off');
+    expect(idleShutdownToMs(parseIdleShutdownFlag('off'))).toBeNull();
   });
 
-  test('parses s/m/h durations to ms', () => {
-    expect(parseIdleShutdownFlag('90s')).toBe(90_000);
-    expect(parseIdleShutdownFlag('30m')).toBe(1_800_000);
-    expect(parseIdleShutdownFlag('2h')).toBe(7_200_000);
+  test('valid durations pass through as strings (converted to ms at the boundary)', () => {
+    expect(parseIdleShutdownFlag('90s')).toBe('90s');
+    expect(parseIdleShutdownFlag('30m')).toBe('30m');
+    expect(parseIdleShutdownFlag('2h')).toBe('2h');
+    expect(idleShutdownToMs(parseIdleShutdownFlag('90s'))).toBe(90_000);
+    expect(idleShutdownToMs(parseIdleShutdownFlag('2h'))).toBe(7_200_000);
   });
 
   test('rejects unitless, zero-led, and unknown-unit values', () => {
     for (const bad of ['30', '0s', '05m', '1d', 'forever', '']) {
       expect(() => parseIdleShutdownFlag(bad)).toThrow(/--idle-shutdown/);
     }
+  });
+});
+
+describe('--idle-shutdown threading through Commander (regression)', () => {
+  // Exercises the REAL option registration end-to-end. Before the fix,
+  // parseIdleShutdownFlag returned `null` for 'off'; Commander coerced that to
+  // `''`, which `bootStartServer` read as a 0 ms idle threshold and the server
+  // self-terminated on boot. A parseIdleShutdownFlag unit test cannot catch
+  // this — the mangling happens inside Commander, not the parser.
+  async function captureParsedOpts(argv: string[]): Promise<Record<string, unknown>> {
+    const cmd = startCommand(() => makeTestConfig());
+    cmd.exitOverride();
+    cmd.configureOutput({ writeOut: () => {}, writeErr: () => {} });
+    // Replace the boot action with a capture (last .action wins in Commander)
+    // so parsing does not stand up a server.
+    let captured: Record<string, unknown> = {};
+    cmd.action((opts: Record<string, unknown>) => {
+      captured = opts;
+    });
+    await cmd.parseAsync(argv, { from: 'user' });
+    return captured;
+  }
+
+  test('--idle-shutdown off survives Commander and resolves to null (no idle shutdown)', async () => {
+    const opts = await captureParsedOpts(['--idle-shutdown', 'off']);
+    expect(opts.idleShutdown).toBe('off');
+    expect(idleShutdownToMs(opts.idleShutdown as string)).toBeNull();
+  });
+
+  test('--idle-shutdown 90s survives Commander and resolves to 90000 ms', async () => {
+    const opts = await captureParsedOpts(['--idle-shutdown', '90s']);
+    expect(opts.idleShutdown).toBe('90s');
+    expect(idleShutdownToMs(opts.idleShutdown as string)).toBe(90_000);
+  });
+
+  test('no --idle-shutdown flag leaves the value undefined (derived default applies)', async () => {
+    const opts = await captureParsedOpts([]);
+    expect(opts.idleShutdown).toBeUndefined();
   });
 });
 
@@ -2651,11 +2723,9 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
     return { code, stderr };
   }
 
-  test('multiple --bind addresses exit 2', async () => {
-    const { code, stderr } = await captureGuard(['--bind', '127.0.0.1', '--bind', '10.0.0.1']);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--bind');
-  });
+  // The wave3 "multiple --bind exit 2" guard test was removed here —
+  // multi-address bind is now real (guard dropped in start.ts; behavior
+  // covered by the multi-bind boot tests in boot.test.ts).
 
   test('--server-url without --only ui exits 2', async () => {
     const { code, stderr } = await captureGuard(['--server-url', 'http://127.0.0.1:24550']);

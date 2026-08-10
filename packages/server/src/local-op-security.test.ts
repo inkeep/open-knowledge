@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 const realpathSyncMock = vi.fn();
 const lstatSyncMock = vi.fn();
 let realFs: typeof import('node:fs');
+let buildIngressPolicy: typeof import('./ingress-policy.ts').buildIngressPolicy;
 let checkLocalOpSecurity: typeof import('./local-op-security.ts').checkLocalOpSecurity;
 let createConcurrencyGuard: typeof import('./local-op-security.ts').createConcurrencyGuard;
 let hasValidLocalOpOrigin: typeof import('./local-op-security.ts').hasValidLocalOpOrigin;
@@ -40,6 +41,7 @@ beforeAll(async () => {
     isPathWithinHome,
     isSafeLocalPath,
   } = await import('./local-op-security.ts'));
+  ({ buildIngressPolicy } = await import('./ingress-policy.ts'));
 });
 
 function overrideRealpathSync(impl: typeof fs.realpathSync): { mockRestore: () => void } {
@@ -717,22 +719,51 @@ describe('hasValidLocalOpOrigin with a remote public host', () => {
   const reqWithOrigin = (origin: string) =>
     ({ headers: { origin }, socket: { remoteAddress: '127.0.0.1' } }) as never;
 
-  test('admits the https tunnel origin only when the host is supplied', () => {
+  const tunnelPolicy = () =>
+    buildIngressPolicy({
+      remoteAccess: {
+        url: 'https://myproject.ngrok.app',
+        publicHost: 'myproject.ngrok.app',
+        port: 24_550,
+      },
+    });
+
+  test('admits the https tunnel origin only when the policy carries it', () => {
     expect(
-      hasValidLocalOpOrigin(reqWithOrigin('https://myproject.ngrok.app'), 'myproject.ngrok.app'),
+      hasValidLocalOpOrigin(reqWithOrigin('https://myproject.ngrok.app'), tunnelPolicy()),
     ).toBe(true);
     expect(hasValidLocalOpOrigin(reqWithOrigin('https://myproject.ngrok.app'))).toBe(false);
   });
 
-  test('still refuses foreign origins with the host supplied', () => {
-    expect(
-      hasValidLocalOpOrigin(reqWithOrigin('https://evil.example.com'), 'myproject.ngrok.app'),
-    ).toBe(false);
+  test('still refuses foreign origins with the tunnel policy supplied', () => {
+    expect(hasValidLocalOpOrigin(reqWithOrigin('https://evil.example.com'), tunnelPolicy())).toBe(
+      false,
+    );
   });
 
   test('loopback origins keep working alongside the remote host', () => {
-    expect(
-      hasValidLocalOpOrigin(reqWithOrigin('http://localhost:5173'), 'myproject.ngrok.app'),
-    ).toBe(true);
+    expect(hasValidLocalOpOrigin(reqWithOrigin('http://localhost:5173'), tunnelPolicy())).toBe(
+      true,
+    );
+  });
+
+  test('a bind-literal origin admits over http/https only — parity with isOriginAdmitted', () => {
+    const bound = buildIngressPolicy({
+      serverRuntime: {
+        port: undefined,
+        bind: ['100.64.0.7'],
+        publicUrl: undefined,
+        publicUrlSource: undefined,
+        allowExternal: true,
+        openBrowser: false,
+        idleShutdown: 'off',
+        loopbackOnly: false,
+      },
+    });
+    expect(hasValidLocalOpOrigin(reqWithOrigin('http://100.64.0.7:55222'), bound)).toBe(true);
+    expect(hasValidLocalOpOrigin(reqWithOrigin('https://100.64.0.7'), bound)).toBe(true);
+    // A non-http(s) scheme on the same bind literal must be refused, exactly
+    // as isOriginAdmitted refuses it — the two gates share one admitted set.
+    expect(hasValidLocalOpOrigin(reqWithOrigin('ftp://100.64.0.7'), bound)).toBe(false);
   });
 });

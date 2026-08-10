@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getRequestListener, type HttpBindings } from '@hono/node-server';
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
 import { Hono } from 'hono';
-import type { PinoLogger } from '../logger.ts';
 import {
-  hasForwardingHeaders,
-  isRemoteAdmitted,
-  type ResolvedRemoteAccess,
-} from '../remote-access.ts';
+  buildIngressPolicy,
+  type IngressPolicy,
+  isHostAdmitted,
+  isPeerAdmitted,
+  tripsForwardedHeaderTripwire,
+} from '../ingress-policy.ts';
+import type { PinoLogger } from '../logger.ts';
 import { errorResponse } from './error-response.ts';
 
 /**
@@ -55,17 +57,19 @@ export interface NativeApiHandle {
  * shared verbatim between the legacy `mcp-mount` dispatch and natively-mounted
  * `/api/*` routes (which sit above the strangler catch-all and would otherwise
  * bypass it). Returns `false` after writing the 403 when the request is
- * refused.
+ * refused. Both gates consult the ONE boot-built `IngressPolicy` — the same
+ * object the WS upgrade path and per-route gates consume.
  *
- * Gate 1 — tripwire: proxy-forwarding headers on a server that never opted
- * into remote access mean a tunnel is pointed at us. Refuse with the fix
- * instruction — the alternative is silently serving a public tunnel with full
- * local trust, decided by whether the tunnel rewrites Host.
+ * Gate 1 — tripwire: proxy-forwarding headers the policy does not tolerate
+ * mean a tunnel is pointed at a server that never opted into exposure.
+ * Refuse with the fix instruction — the alternative is silently serving a
+ * public tunnel with full local trust, decided by whether the tunnel
+ * rewrites Host.
  *
- * Gate 2 — with remote access enabled, ONE admit decision covers every
- * surface (trust-the-tunnel — see remote-access.ts): loopback socket + Host on
- * the allowlist (loopback names or the tunnel's public host). Refusals are
- * wrong-Host callers (DNS-rebound pages), not auth failures.
+ * Gate 2 — with the legacy `--remote` flow armed, ONE admit decision covers
+ * every surface (trust-the-tunnel — see remote-access.ts): loopback socket +
+ * Host on the allowlist. Refusals are wrong-Host callers (DNS-rebound
+ * pages), not auth failures.
  *
  * `handler` is the caller's tag on the `ok.api.error.count` counter for
  * rejections ('mcp-mount' for the legacy dispatch, 'native-api-surface' for
@@ -75,24 +79,35 @@ export interface NativeApiHandle {
 export function admitRequestSurface(
   req: IncomingMessage,
   res: ServerResponse,
-  remoteAccess: ResolvedRemoteAccess | undefined,
+  policy: IngressPolicy,
   handler: string,
 ): boolean {
-  if (remoteAccess === undefined && hasForwardingHeaders(req)) {
+  if (tripsForwardedHeaderTripwire(req, policy)) {
     errorResponse(
       res,
       403,
       'urn:ok:error:host-not-allowed',
-      'Proxied request refused: this server was not started for remote access. Restart with `ok start --remote` to serve through a tunnel.',
+      'Proxied request refused: this server has not consented to external exposure. Set OK_PUBLIC_URL to the public origin and OK_ALLOW_EXTERNAL=1 (or server.publicUrl + server.allowExternal in config), or restart with `ok start --remote <url>`.',
       { handler },
     );
     return false;
   }
-  if (remoteAccess !== undefined && !isRemoteAdmitted(req, remoteAccess)) {
-    errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-      handler,
-    });
-    return false;
+  // Gate 2 runs whenever the surface is EXPOSED — legacy `--remote` OR
+  // `allowExternal` consent. This covers every surface the prelude fronts:
+  // `/mcp`, `/api/*`, the static shell, and project-mode content assets. The
+  // predicate is the consolidated one (loopback + bind literals + publicUrl),
+  // identical to the `/api` pipeline gate, so direct-IP access to the shell/
+  // content matches what the API admits. Pure-local (no exposure) keeps its
+  // historical origin-only read posture here; the general loopback+Host-on-
+  // all-reads flip is a separate PR.
+  if (policy.legacyRemote !== undefined || policy.allowExternal) {
+    const host = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
+    if (!isPeerAdmitted(req.socket.remoteAddress, policy) || !isHostAdmitted(host, policy)) {
+      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+        handler,
+      });
+      return false;
+    }
   }
   return true;
 }
@@ -163,11 +178,11 @@ export interface CreateHttpAppOptions {
    */
   nativeApi?: NativeApiHandle;
   /**
-   * Resolved `remote:` config for the surface admission gates on native
-   * routes (same value the mount applies to the legacy dispatch). Undefined
-   * ⇒ remote access disabled (the tripwire refuses proxied requests).
+   * The boot-built ingress policy for the surface admission gates on native
+   * routes (same object the mount applies to the legacy dispatch). Omitted
+   * (test rigs) ⇒ the loopback-only default policy.
    */
-  remoteAccess?: ResolvedRemoteAccess | undefined;
+  ingressPolicy?: IngressPolicy;
   /** Structured logger for handler errors the router catches. */
   log: PinoLogger;
 }
@@ -249,13 +264,14 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
   // the surface admission gates first (the tripwire + remote-admit pair the
   // legacy dispatch applies in mcp-mount's onRequest), then the shared
   // /api/* pipeline — request-id, CORS, DNS-rebinding gates, dispatch span.
+  const ingressPolicy = opts.ingressPolicy ?? buildIngressPolicy({});
   const nativeApi = opts.nativeApi;
   if (nativeApi !== undefined) {
     for (const path of nativeApi.paths) {
       app.all(path, async (c) => {
         const req = c.env.incoming;
         const res = c.env.outgoing;
-        if (!admitRequestSurface(req, res, opts.remoteAccess, 'native-api-surface')) {
+        if (!admitRequestSurface(req, res, ingressPolicy, 'native-api-surface')) {
           return RESPONSE_ALREADY_SENT;
         }
         try {

@@ -1,4 +1,5 @@
 import type { Identity } from '../types/identity';
+import { randomUUID } from './random-uuid.ts';
 
 // --- Constants ---
 
@@ -312,7 +313,7 @@ function safeLocalStorageSet(key: string, value: string): void {
 export function getIdentity(): Identity {
   const params = new URLSearchParams(window.location.search);
   const coeditor = params.get('coeditor') || 'standalone';
-  const tabId = crypto.randomUUID();
+  const tabId = randomUUID();
 
   let name = safeLocalStorageGet(LS_NAME_KEY);
   let color = safeLocalStorageGet(LS_COLOR_KEY);

@@ -134,17 +134,33 @@ describe('requiresExternalConsent', () => {
     expect(requiresExternalConsent(resolved)).toBe(true);
   });
 
-  test('true for a declared public URL, including one alias-read from remote.url', () => {
-    expect(
-      requiresExternalConsent(
-        resolveServerRuntimeConfig(parse({ server: { publicUrl: 'https://kb.example.com' } })),
-      ),
-    ).toBe(true);
-    expect(
-      requiresExternalConsent(
-        resolveServerRuntimeConfig(parse({ remote: { url: 'https://kb.example.com' } })),
-      ),
-    ).toBe(true);
+  test('a committed publicUrl under a loopback bind is inert — does NOT trip the interlock', () => {
+    // publicUrl is project-scoped (committed, shared): a team deploying to a
+    // VPS commits it. Under a loopback bind it is inert metadata — nothing
+    // external reaches the server directly, and a same-box proxy's forwarded
+    // requests are still gated at request time. Tripping the boot interlock on
+    // publicUrl alone would lock out every teammate who clones the repo and
+    // opens it locally (loopback), especially in desktop where config-derived
+    // consent is forced off. Only a non-loopback bind is a boot-time question.
+    const explicit = resolveServerRuntimeConfig(
+      parse({ server: { publicUrl: 'https://kb.example.com' } }),
+    );
+    expect(explicit.publicUrlSource).toBe('server');
+    expect(explicit.loopbackOnly).toBe(true);
+    expect(requiresExternalConsent(explicit)).toBe(false);
+
+    // A non-loopback bind WITH a publicUrl still trips it (the bind exposes).
+    const exposedWithUrl = resolveServerRuntimeConfig(
+      parse({ server: { bind: ['0.0.0.0'], publicUrl: 'https://kb.example.com' } }),
+    );
+    expect(requiresExternalConsent(exposedWithUrl)).toBe(true);
+
+    // A remote.url alias-read likewise never trips it (loopback bind).
+    const aliased = resolveServerRuntimeConfig(
+      parse({ remote: { url: 'https://kb.example.com' } }),
+    );
+    expect(aliased.publicUrlSource).toBe('remote-alias');
+    expect(requiresExternalConsent(aliased)).toBe(false);
   });
 
   test('consent state itself does not change whether consent is required', () => {

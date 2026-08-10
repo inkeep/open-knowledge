@@ -5,6 +5,7 @@ import {
   LINEAGE_EPOCH_KEY,
   MarkdownManager,
   normalizeBridge,
+  randomUUID,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import type { HocuspocusAuthRejectionReason } from '@inkeep/open-knowledge-server';
@@ -1894,7 +1895,7 @@ export class ProviderPool {
       }
     }
 
-    const poolEventId = crypto.randomUUID();
+    const poolEventId = randomUUID();
     const entry: ActivePoolEntry = {
       kind: 'active',
       provider,

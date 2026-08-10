@@ -9,16 +9,18 @@ import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import { toBroadcasterKey, validateAgentId } from './agent-id.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
-import { isAllowedApiOrigin } from './api-origin.ts';
+import {
+  buildIngressPolicy,
+  type IngressPolicy,
+  isHostAdmitted,
+  isOriginAdmitted,
+  isPeerAdmitted,
+  stampIngressContext,
+  tripsForwardedHeaderTripwire,
+} from './ingress-policy.ts';
 import type { PinoLogger } from './logger.ts';
-import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
 import { handleCollabSocketError, incrementCollabMessageTooLarge } from './metrics.ts';
-import {
-  hasForwardingHeaders,
-  isRemoteAdmitted,
-  type ResolvedRemoteAccess,
-} from './remote-access.ts';
 
 const DEFAULT_KEEPALIVE_GRACE_MS = 10_000;
 const MAX_COLLAB_MESSAGE_BYTES = 1024 * 1024;
@@ -33,7 +35,12 @@ export interface CollaborationHostOptions {
   maintenanceCoordinator?: MaintenanceCoordinator;
   keepaliveGraceMs?: number;
   acpThreadManager?: AcpThreadManager | null;
-  remoteAccess?: ResolvedRemoteAccess | null;
+  /**
+   * The boot-built ingress policy — the same object gating the HTTP surface,
+   * so upgrades and requests can never disagree. Omitted (test rigs) ⇒ the
+   * loopback-only default policy.
+   */
+  ingressPolicy?: IngressPolicy;
 }
 
 export interface CollaborationHost {
@@ -88,7 +95,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     maintenanceCoordinator,
     acpThreadManager,
   } = options;
-  const remoteAccess = options.remoteAccess ?? undefined;
+  const ingressPolicy = options.ingressPolicy ?? buildIngressPolicy({});
   const keepaliveGraceMs = options.keepaliveGraceMs ?? DEFAULT_KEEPALIVE_GRACE_MS;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_COLLAB_MESSAGE_BYTES });
   const keepaliveGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -99,11 +106,16 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
 
   wss.on('error', (err) => log.error({ err }, 'WebSocketServer error'));
 
+  // One admit shape for HTTP and WS: policy peer gate (loopback, or consent)
+  // AND policy Host gate (loopback names + admitted public names). Covers the
+  // legacy remote flow too — its tunnel host is in the policy's Host set and
+  // its peers are loopback (the tunnel connects from loopback).
   const admitted = (req: IncomingMessage): boolean =>
-    remoteAccess !== undefined
-      ? isRemoteAdmitted(req, remoteAccess)
-      : isLoopbackAddress(req.socket.remoteAddress) &&
-        isAllowedWorkspaceHostHeader(req.headers.host);
+    isPeerAdmitted(req.socket.remoteAddress, ingressPolicy) &&
+    isHostAdmitted(
+      Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host,
+      ingressPolicy,
+    );
 
   const trackSocket = (socket: Duplex, label: string): void => {
     socket.on('error', (err: NodeJS.ErrnoException) => {
@@ -133,9 +145,20 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
   };
 
   const handleKeepalive = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-    if (!admitted(req)) {
+    // Same CSWSH defense as `/collab/thread` and plain `/collab` (CWE-1275):
+    // a present-but-foreign Origin is refused. Lower-value channel (agent
+    // presence + session keepalive, no CRDT read/write), but the same class —
+    // under consent a foreign-origin page passes peer + Host, so Origin is the
+    // only signal that separates it from a first-party client. Unlike plain
+    // `/collab`, keepalive runs `admitted()` in every mode, so the Origin check
+    // rides along in every mode too; a missing Origin (native MCP clients)
+    // stays admitted.
+    if (
+      !admitted(req) ||
+      (req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy))
+    ) {
       log.debug(
-        { url: req.url, host: req.headers.host },
+        { url: req.url, host: req.headers.host, origin: req.headers.origin },
         '[collab] /collab/keepalive upgrade refused',
       );
       socket.destroy();
@@ -258,10 +281,13 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
       },
       '[collab] upgrade received',
     );
-    if (remoteAccess === undefined && hasForwardingHeaders(req)) {
+    // WS upgrades join the same ingress path as HTTP: stamp the shared
+    // actor-carrying context, then run the same policy tripwire + predicates.
+    stampIngressContext(req, {});
+    if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
       log.warn(
         { url: req.url, host: req.headers.host },
-        '[remote] refused proxied WS upgrade; start the server with `ok start --remote <url>`',
+        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_PUBLIC_URL, or start with `ok start --remote <url>`',
       );
       socket.destroy();
       return true;
@@ -271,8 +297,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
         acpThreadManager === undefined ||
         acpThreadManager === null ||
         !admitted(req) ||
-        (req.headers.origin !== undefined &&
-          !isAllowedApiOrigin(req.headers.origin, remoteAccess?.publicHost))
+        (req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy))
       ) {
         log.debug(
           { url: req.url, host: req.headers.host, origin: req.headers.origin },
@@ -291,8 +316,34 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
       handleKeepalive(req, socket, head);
       return true;
     }
-    if (remoteAccess !== undefined && !isRemoteAdmitted(req, remoteAccess)) {
-      log.debug({ url: req.url, host: req.headers.host }, '[collab] /collab upgrade refused');
+    // Two independent axes gate plain `/collab`:
+    //
+    // (1) CSWSH defense (CWE-1275) — UNCONDITIONAL, in every mode, exactly as
+    //     `/collab/thread` and `/collab/keepalive` do it. WebSocket upgrades
+    //     bypass CORS, and localhost is reachable from any origin, so even a
+    //     pure-local server is exposed: a page on a foreign origin can open
+    //     `ws://127.0.0.1:<port>/collab` (loopback peer + loopback Host both
+    //     pass) and, without an Origin check, gain full CRDT read/write. A
+    //     present-but-foreign Origin is the only browser-side signal that
+    //     separates that attack from a first-party client, so refuse it in ALL
+    //     modes. A missing Origin (native / server-to-server clients) is
+    //     admitted — those are not CSWSH vectors and legitimately carry none.
+    //
+    // (2) Peer + Host admission (`admitted()`) — only when EXPOSED (legacy
+    //     `--remote` OR `allowExternal`). Pure-local keeps its historical
+    //     ungated posture on this axis; the general loopback+Host-on-everything
+    //     read-posture flip is a separate PR. Under consent the loopback bind no
+    //     longer implies a loopback peer, so `admitted()` (loopback + bind
+    //     literals + publicUrl, identical to the HTTP API gate) keeps direct-IP
+    //     access matching what `/api` accepts.
+    const foreignOrigin =
+      req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy);
+    const exposed = ingressPolicy.legacyRemote !== undefined || ingressPolicy.allowExternal;
+    if (foreignOrigin || (exposed && !admitted(req))) {
+      log.debug(
+        { url: req.url, host: req.headers.host, origin: req.headers.origin },
+        '[collab] /collab upgrade refused',
+      );
       socket.destroy();
       return true;
     }

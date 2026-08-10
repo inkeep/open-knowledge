@@ -166,6 +166,17 @@ export {
   type OkignoreUnsubscribe,
 } from './config/bind-okignore-doc.ts';
 export {
+  applyConfigOverlay,
+  type EnvConfigLayer,
+  type EnvDiagnostic,
+  type EnvOverride,
+  EnvVarError,
+  mechanicalEnvName,
+  mechanicalEnvNameTable,
+  RECOGNIZED_ENV_VARS,
+  resolveEnvConfigLayer,
+} from './config/env-layer.ts';
+export {
   type ConfigDiagnostic,
   ConfigDiagnosticSchema,
   type ConfigDiagnosticsReport,
@@ -1836,6 +1847,7 @@ export {
   resolveAssetProjectPath,
 } from './utils/link-targets.ts';
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
+export { randomUUID } from './utils/random-uuid.ts';
 export { type ResolvedInternalHref, resolveInternalHref } from './utils/resolve-internal-href.ts';
 export { sanitizeFolderName } from './utils/sanitize-folder-name.ts';
 export { sleep } from './utils/sleep.ts';

@@ -138,9 +138,14 @@ import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
 import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkillDirs } from './in-place-skills.ts';
+import {
+  buildIngressPolicy,
+  type IngressPolicy,
+  isHostAdmitted,
+  isPeerAdmitted,
+} from './ingress-policy.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
-import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import { LossCaptureRing } from './loss-capture.ts';
 import {
   createMaintenanceCoordinator,
@@ -177,7 +182,6 @@ import {
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { reconcile } from './reconciliation.ts';
-import { hostHeaderMatchesPublicHost } from './remote-access.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 import { loadRemovedDocsJournal, saveRemovedDocsJournal } from './removed-docs-journal.ts';
 import {
@@ -221,11 +225,12 @@ import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
 
 export interface ServerOptions {
   /**
-   * The tunnel's public host when remote access is enabled — threaded into
-   * the API extension so the browser-Origin allowlists admit the remote
-   * SPA's origin. See `ApiExtensionOptions.remotePublicHost`.
+   * The boot-built ingress policy — threaded into the API extension and the
+   * config-doc admission guard so every peer/Host/Origin decision consults
+   * the one policy object. Omitted (test rigs, dev-server plugin) ⇒ the
+   * loopback-only default policy.
    */
-  remotePublicHost?: string;
+  ingressPolicy?: IngressPolicy;
   port?: number;
   host?: string;
   contentDir: string;
@@ -657,6 +662,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   // cert. Idempotent — covers every server-launch path (utility fork, detached,
   // in-process) from one place; the CLI and desktop-main processes call it too.
   trustSystemCertificates();
+  const ingressPolicy = options.ingressPolicy ?? buildIngressPolicy({});
   const {
     contentDir,
     projectDir = contentDir,
@@ -1875,7 +1881,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           headers?: { host?: string };
         };
         const peer = req.socket?.remoteAddress;
-        if (peer !== undefined && !isLoopbackAddress(peer)) {
+        if (peer !== undefined && !isPeerAdmitted(peer, ingressPolicy)) {
           logAuthRejection('config-doc-admission-denied', payload.documentName, { check: 'peer' });
           throw new Error(
             `config-doc admission requires loopback peer (peer=${peer}, doc=${payload.documentName})`,
@@ -1892,10 +1898,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           (headersBag && typeof headersBag.get === 'function' ? headersBag.get('host') : null) ??
           req.headers?.host ??
           undefined;
-        const remoteHostOk =
-          options.remotePublicHost !== undefined &&
-          hostHeaderMatchesPublicHost(host, options.remotePublicHost);
-        if (!isAllowedWorkspaceHostHeader(host) && !remoteHostOk) {
+        if (!isHostAdmitted(host, ingressPolicy)) {
           logAuthRejection('config-doc-admission-denied', payload.documentName, { check: 'host' });
           throw new Error(
             `config-doc admission requires a loopback or remote Host header (host=${host ?? '<absent>'}, doc=${payload.documentName})`,
@@ -2008,7 +2011,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     const apiExtension = createApiExtension({
       hocuspocus,
       durabilityState,
-      remotePublicHost: options.remotePublicHost,
+      ingressPolicy,
       sessionManager,
       commentDocHooksRef,
       contentDir,

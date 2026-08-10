@@ -4,13 +4,23 @@ import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } fro
 // Tests run normally locally; follow-up will narrow the leak surface.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
+// Runs even on CI. The exposure-consent interlock and multi-address bind are
+// 7879's core exposure-safety behavior — shipping them with zero CI regression
+// protection is a real gap, and the skip's stale Bun-reaping rationale does not
+// apply under Node/vitest (these boot in-process; they only git-init in setup).
+// Guardrail: GHA is a different env and these boot tests are load-flaky locally
+// — treat the first CI run as the verdict. If they flake on GHA, move them back
+// under `describe` and cover them in a focused follow-up rather than let flake
+// block the security PR.
+const describeEvenOnCI = _bunDescribe;
+
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { emitToleranceFire, OK_DIR } from '@inkeep/open-knowledge-core';
+import { emitToleranceFire, OK_DIR, resolveServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { context, metrics, propagation, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
@@ -1131,5 +1141,175 @@ describe('parseKeepaliveConnectionId', () => {
     expect(() => parseKeepaliveConnectionId('not a url at all')).not.toThrow();
     // '/collab' path with no query → no connectionId
     expect(parseKeepaliveConnectionId('/collab/keepalive')).toBeNull();
+  });
+});
+
+describeEvenOnCI('bootServer — exposure consent interlock', () => {
+  // `passServerRuntime` mirrors the CLI path (an explicit, scope-correctly
+  // resolved runtime). When false (the desktop / embedder path), only the
+  // committed `config` is passed and bootServer's fallback forces consent off.
+  async function tryBoot(
+    server: Record<string, unknown>,
+    passServerRuntime = false,
+  ): Promise<unknown> {
+    const contentDir = mkdtempSync(resolve(tmpDir, 'interlock-'));
+    await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    seedOkScaffold(contentDir);
+    const config = ConfigSchema.parse({ server });
+    try {
+      const booted = await bootServer({
+        host: '127.0.0.1',
+        config,
+        ...(passServerRuntime ? { serverRuntime: resolveServerRuntimeConfig(config) } : {}),
+        contentDir,
+        port: 0,
+        quiet: true,
+        gitEnabled: false,
+        idleShutdownMs: null,
+        attachUiSibling: false,
+      });
+      await booted.destroy();
+    } catch (err) {
+      return err;
+    }
+    return null;
+  }
+
+  test('non-loopback bind without consent refuses to boot with the one-line fix', async () => {
+    const err = await tryBoot({ bind: ['127.0.0.1', '100.64.0.7'] });
+    expect(err).toBeInstanceOf(Error);
+    const e = err as Error;
+    expect(e.constructor.name).toBe('ExposureConsentError');
+    expect(e.message).toContain('would bind a non-loopback address');
+    expect(e.message).toContain('OK_ALLOW_EXTERNAL=1');
+    expect(e.message).toContain('.ok/local/config.yml');
+  });
+
+  test('a committed publicUrl under a loopback bind is inert — boots, no lockout (CLI path)', async () => {
+    // publicUrl is project-scoped (committed, shared); a team commits their VPS
+    // origin. Under a loopback bind it must NOT trip the interlock, or every
+    // teammate cloning that repo and opening it locally would be locked out.
+    const err = await tryBoot({ publicUrl: 'https://notes.example.com' }, true);
+    expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
+  });
+
+  test('a committed publicUrl under a loopback bind is inert — boots on the desktop / embedder path too', async () => {
+    // Same, with NO explicit serverRuntime (the desktop utility path). A repo
+    // committing publicUrl for its VPS deploy opens fine in desktop.
+    const err = await tryBoot({ publicUrl: 'https://notes.example.com' });
+    expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
+  });
+
+  test('a loopback-only server with no publicUrl never trips the interlock', async () => {
+    // Reaches past the interlock and boots; success is the absence of an
+    // ExposureConsentError (any later failure would be a different class).
+    const err = await tryBoot({});
+    expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
+  });
+
+  test('an explicit (scope-correct) serverRuntime with consent admits a non-loopback bind', async () => {
+    // The CLI path: consent resolved over all three layers and passed as an
+    // explicit serverRuntime. Only this path can arm exposure for a
+    // non-loopback bind.
+    const err = await tryBoot({ bind: ['127.0.0.1', '100.64.0.7'], allowExternal: true }, true);
+    expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
+  });
+
+  test('config-derived allowExternal does NOT satisfy the interlock (desktop / embedder path)', async () => {
+    // The clone-leak guard at the boot chokepoint: an embedder that passes
+    // only a committed `config` (no explicit serverRuntime) — e.g. the desktop
+    // utility building Config from the project .ok/config.yml alone — must not
+    // arm consent from a committed `allowExternal: true`. bootServer forces
+    // config-derived consent off, so a committed non-loopback bind trips the
+    // interlock and refuses rather than exposing a cloner's machine.
+    const err = await tryBoot({ bind: ['0.0.0.0'], allowExternal: true });
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).constructor.name).toBe('ExposureConsentError');
+  });
+
+  test('a non-loopback host with no bind/serverRuntime still trips the interlock (single-file shape)', async () => {
+    // `HOST=0.0.0.0 ok note.md` boots ephemeral single-file mode with only
+    // `host` set — no bind, no serverRuntime — so serverRuntime.bind resolves to
+    // the loopback default. The interlock must validate the EFFECTIVE bind
+    // (opts.host, what the listener actually binds), not just serverRuntime.bind,
+    // or the server binds every interface with no consent recorded.
+    const contentDir = mkdtempSync(resolve(tmpDir, 'interlock-host-'));
+    await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    seedOkScaffold(contentDir);
+    let err: unknown = null;
+    try {
+      const booted = await bootServer({
+        host: '0.0.0.0',
+        config: ConfigSchema.parse({}),
+        contentDir,
+        port: 0,
+        quiet: true,
+        gitEnabled: false,
+        idleShutdownMs: null,
+        attachUiSibling: false,
+      });
+      await booted.destroy();
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).constructor.name).toBe('ExposureConsentError');
+    expect((err as Error).message).toContain('0.0.0.0');
+  });
+});
+
+describeEvenOnCI('bootServer — multi-address bind', () => {
+  test('every bind address answers on the same port; teardown closes all listeners', async () => {
+    const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-'));
+    await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    seedOkScaffold(contentDir);
+    // IPv4 + IPv6 loopback: both bindable on any CI runner, and loopback-only
+    // so the consent interlock stays out of this test's way.
+    const booted = await bootServer({
+      host: '127.0.0.1',
+      bind: ['127.0.0.1', '::1'],
+      config: TEST_CONFIG,
+      contentDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: null,
+      attachUiSibling: false,
+    });
+    try {
+      expect(booted.port).toBeGreaterThan(0);
+      const v4 = await fetch(`http://127.0.0.1:${booted.port}/healthz`);
+      expect(v4.status).toBe(200);
+      const v6 = await fetch(`http://[::1]:${booted.port}/healthz`);
+      expect(v6.status).toBe(200);
+    } finally {
+      await booted.destroy();
+    }
+    // Both listeners are gone after destroy.
+    await expect(fetch(`http://[::1]:${booted.port}/healthz`)).rejects.toThrow();
+    await expect(fetch(`http://127.0.0.1:${booted.port}/healthz`)).rejects.toThrow();
+  });
+
+  test('duplicate bind entries collapse instead of failing with EADDRINUSE', async () => {
+    const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-dup-'));
+    await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    seedOkScaffold(contentDir);
+    const booted = await bootServer({
+      host: '127.0.0.1',
+      bind: ['127.0.0.1', '127.0.0.1'],
+      config: TEST_CONFIG,
+      contentDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: null,
+      attachUiSibling: false,
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${booted.port}/healthz`);
+      expect(res.status).toBe(200);
+    } finally {
+      await booted.destroy();
+    }
   });
 });

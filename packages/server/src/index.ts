@@ -236,6 +236,16 @@ export {
   type IdleShutdownHandle,
 } from './idle-shutdown.ts';
 export {
+  buildIngressPolicy,
+  ExposureConsentError,
+  getIngressContext,
+  type IngressPolicy,
+  type IngressRequestContext,
+  isHostAdmitted,
+  isOriginAdmitted,
+  isPeerAdmitted,
+} from './ingress-policy.ts';
+export {
   type BuildConfigYmlOptions,
   buildConfigYmlContent,
   CONFIG_FILENAME,

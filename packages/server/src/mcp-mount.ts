@@ -28,7 +28,6 @@ import type { AcpThreadManager } from './acp/thread-manager.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
-import { isAllowedApiOrigin } from './api-origin.ts';
 import { createCollaborationHost } from './collaboration-host.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
@@ -37,11 +36,17 @@ import {
   type HealthProvider,
   type NativeApiHandle,
 } from './http/http-app.ts';
+import {
+  buildIngressPolicy,
+  type IngressPolicy,
+  isHostAdmitted,
+  isOriginAdmitted,
+  isPeerAdmitted,
+  tripsForwardedHeaderTripwire,
+} from './ingress-policy.ts';
 import type { PinoLogger } from './logger.ts';
-import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
-import { hasForwardingHeaders, type ResolvedRemoteAccess } from './remote-access.ts';
 
 export type { ReadinessState } from './http/http-app.ts';
 
@@ -151,19 +156,13 @@ export interface MountMcpAndApiOptions {
    */
   nativeApi: NativeApiHandle | undefined;
   /**
-   * Resolved `remote:` config (null/undefined ⇒ remote access disabled).
-   * When set, EVERY surface (`/mcp`, `/api/*`, `/collab`, content assets,
-   * the SPA) admits requests whose Host is either a loopback name or the
-   * tunnel's public host — the trust-the-tunnel model: OK does not
-   * authenticate remote callers, the tunnel's edge does (see
-   * `remote-access.ts`). Wrong-Host requests (DNS-rebound pages) are refused.
-   * Local loopback behavior is byte-for-byte unchanged.
-   *
-   * When null/undefined, requests carrying proxy-forwarding headers are
-   * refused with a hint — a tunnel pointed at a server that never opted in
-   * must fail loud, not silently inherit full local trust.
+   * The boot-built ingress policy — ONE admission shape for every surface
+   * (`/mcp`, `/api/*`, `/collab` upgrades, content assets, the SPA): peer,
+   * Host, and Origin predicates plus the proxied-request tripwire (see
+   * `ingress-policy.ts`). Omitted (test rigs, dev-server plugin) ⇒ the
+   * loopback-only default policy, byte-for-byte today's local behavior.
    */
-  remoteAccess?: ResolvedRemoteAccess | null;
+  ingressPolicy?: IngressPolicy;
 }
 
 export interface MountMcpAndApiHandle {
@@ -210,7 +209,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     reactShellMiddleware,
     ephemeral,
   } = opts;
-  const remoteAccess = opts.remoteAccess ?? undefined;
+  const ingressPolicy = opts.ingressPolicy ?? buildIngressPolicy({});
 
   const collaborationHost = createCollaborationHost({
     hocuspocus,
@@ -221,7 +220,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     maintenanceCoordinator,
     keepaliveGraceMs: opts.keepaliveGraceMs,
     acpThreadManager: opts.acpThreadManager,
-    remoteAccess,
+    ingressPolicy,
   });
 
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
@@ -230,30 +229,29 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     // remote-access admit decision. Shared with the natively-mounted /api/*
     // routes (`admitRequestSurface` in http-app.ts), which sit above the
     // strangler catch-all and would otherwise bypass it.
-    if (!admitRequestSurface(req, res, remoteAccess, 'mcp-mount')) return;
+    if (!admitRequestSurface(req, res, ingressPolicy, 'mcp-mount')) return;
     if (mcpHttpHandler !== undefined && url === '/mcp') {
       const origin = req.headers.origin;
       const sessionId = Array.isArray(req.headers['mcp-session-id'])
         ? req.headers['mcp-session-id'][0]
         : req.headers['mcp-session-id'];
-      if (remoteAccess === undefined) {
-        // The pre-remote gate pair, unchanged: loopback socket + loopback
-        // Host. (With remote enabled the shared admit gate above already
-        // enforced the superset.)
-        if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      if (ingressPolicy.legacyRemote === undefined) {
+        // The policy's peer + Host gate pair. (With legacy remote armed the
+        // shared admit gate above already enforced the superset.)
+        if (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy)) {
           errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback access required.', {
             handler: 'mcp',
           });
           return;
         }
-        if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
+        if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
           errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
             handler: 'mcp',
           });
           return;
         }
       }
-      if (origin !== undefined && !isAllowedApiOrigin(origin, remoteAccess?.publicHost)) {
+      if (origin !== undefined && !isOriginAdmitted(origin, ingressPolicy)) {
         errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
           handler: 'mcp',
         });
@@ -357,17 +355,17 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     };
     const runContent = (onMiss: () => void): void => {
       // Ephemeral single-file mode serves assets out of the opened file's
-      // parent dir; mirror the `/mcp` loopback + workspace-host gate so a
-      // DNS-rebound or non-loopback caller can't read that user-data dir.
-      // Origin is intentionally NOT checked: no-cors `<img>` / CSS asset loads
-      // omit it, and the Host-header check already rejects the rebinding
+      // parent dir; mirror the `/mcp` peer + Host gate so a DNS-rebound or
+      // non-admitted caller can't read that user-data dir. Origin is
+      // intentionally NOT checked: no-cors `<img>` / CSS asset loads omit
+      // it, and the Host-header check already rejects the rebinding
       // content-exfil vector without that dependency. Project / desktop modes
       // (`ephemeral` falsy) are unchanged — the user chose the served root.
       if (
         ephemeral === true &&
         contentAssetMiddleware !== undefined &&
-        (!isLoopbackAddress(req.socket.remoteAddress) ||
-          !isAllowedWorkspaceHostHeader(req.headers.host))
+        (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy) ||
+          !isHostAdmitted(req.headers.host, ingressPolicy))
       ) {
         errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback access required.', {
           handler: 'content-asset',
@@ -428,10 +426,10 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     if (collaborationHost.handleUpgrade(req, socket, head)) return;
-    if (remoteAccess === undefined && hasForwardingHeaders(req)) {
+    if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
       log.warn(
         { url: req.url, host: req.headers.host },
-        '[remote] refused proxied WS upgrade; start the server with `ok start --remote <url>`',
+        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_PUBLIC_URL, or start with `ok start --remote <url>`',
       );
     }
     socket.destroy();
@@ -444,7 +442,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
   const { requestListener } = createHttpApp({
     health: opts.health,
     nativeApi: opts.nativeApi,
-    remoteAccess,
+    ingressPolicy,
     legacyDispatch: onRequest,
     log,
   });

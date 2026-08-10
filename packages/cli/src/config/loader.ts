@@ -2,11 +2,16 @@
  * Hierarchical YAML config loader.
  *
  * Priority (lowest → highest):
- *   Zod defaults → ~/.ok/global.yml → ./.ok/config.yml
+ *   Zod defaults → ~/.ok/global.yml → ./.ok/config.yml → ./.ok/local/config.yml
  *
  * ENV and CLI flag overrides are applied in cli.ts after loading.
  *
- * Deep merge: project leaf values override user leaf values.
+ * The three file layers combine through the scope-aware `mergeLayered` (each
+ * layer schema-parsed on its own first): a leaf's registered scope decides
+ * which layer may set it, so a committed project-file value for a
+ * project-local leaf — the load-bearing case is `server.allowExternal: true`
+ * arriving via clone — can never win over the local layer's parsed default.
+ * A scope-blind deep merge here previously let any layer set any leaf.
  * Arrays are replaced, not concatenated.
  *
  * Errors are emitted with source positions via yaml@2's `parseDocument` —
@@ -16,14 +21,14 @@
  * `.ok/config.yml` so the ancestor-walk that detects an OK project can't
  * treat the user's home directory as a project root.
  *
- * Both layers strip removed keys and continue: a key the engine no longer
+ * Every layer strips removed keys and continues: a key the engine no longer
  * reads is deleted from the parsed value and reported on
  * `LoadConfigResult.diagnostics`, never blocking startup. Genuine corruption
  * still fails the way it did before: the user-global file is sidelined to
  * `<path>.invalid-<ISO-timestamp>` and replaced with schema defaults (via
- * `readConfigSafely`) so OK can still boot, and a schema-invalid project file
- * throws loud — a project error is user-fixable in place and failing fast
- * helps the user notice.
+ * `readConfigSafely`) so OK can still boot, and a schema-invalid project or
+ * project-local file throws loud — both are user-fixable in place and
+ * failing fast helps the user notice.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -34,6 +39,7 @@ import {
   detectRemovedKeys,
   humanFormat,
   locateIssue,
+  mergeLayered,
   stripRemovedKeys,
 } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
@@ -63,27 +69,6 @@ export interface LoadConfigResult {
 
 /** Short TTL for per-cwd config resolution in long-lived MCP sessions. */
 const DEFAULT_CONFIG_CACHE_MS = 1000;
-
-/**
- * Deep merge two objects. Leaf values in `override` replace `base`.
- * Arrays are replaced, not concatenated.
- */
-function deepMerge(
-  base: Record<string, unknown>,
-  override: Record<string, unknown>,
-): Record<string, unknown> {
-  const result = { ...base };
-  for (const key of Object.keys(override)) {
-    const baseVal = base[key];
-    const overrideVal = override[key];
-    if (isObject(overrideVal) && isObject(baseVal)) {
-      result[key] = deepMerge(baseVal, overrideVal);
-    } else if (overrideVal !== undefined) {
-      result[key] = overrideVal;
-    }
-  }
-  return result;
-}
 
 interface LoadedYamlFile {
   /** Parsed JS object (or null if the file is empty / comments-only / missing). */
@@ -197,58 +182,66 @@ export function loadConfig(cwd?: string): LoadConfigResult {
 
   // Layer 1: user-global config — go through readConfigSafely so removed keys
   // are stripped-and-reported and a genuinely broken file is sidelined; either
-  // way we boot instead of hanging the user.
+  // way we boot instead of hanging the user. Its return value is already a
+  // schema-parsed Config (defaults applied) — the per-layer shape
+  // mergeLayered's scope rules operate on.
   const userConfigPath = resolveConfigPath('user', workingDir);
   const userResult = readConfigSafely({ absPath: userConfigPath });
   diagnostics.push(...userResult.diagnostics);
   if (!userResult.valid && userResult.sidelinedTo !== undefined) {
     sidelined.push({ from: userConfigPath, to: userResult.sidelinedTo });
   }
-  let merged: Record<string, unknown> = {};
   if (userResult.valid && userResult.source !== undefined) {
-    // Re-emit through the JSON projection so deepMerge stays uniform.
-    merged = deepMerge(merged, userResult.value as unknown as Record<string, unknown>);
     sources.push(userConfigPath);
-  } else if (!userResult.valid) {
-    // readConfigSafely already logged + sidelined; we treat this as "user
-    // contributed nothing" and proceed with defaults at this layer.
   }
 
-  // Layer 2: project config. Strip removed keys and continue — a dead key must
-  // not brick startup — but a schema violation still throws loud, because a
-  // project schema error is user-fixable in place.
-  const projectConfigPath = resolve(workingDir, OK_DIR, CONFIG_FILENAME);
-  const projectFile = loadYamlFile(projectConfigPath);
-  // A project file that could not be read or parsed degrades to defaults, same
-  // as before — but it now says so. Without this the whole merged config falls
-  // back to defaults, which always validate, so every reporting surface built
-  // on `diagnostics` would call a broken file clean.
-  if (projectFile.diagnostic !== undefined) {
-    diagnostics.push(projectFile.diagnostic);
-  }
-  if (projectFile.value !== null) {
+  // Layers 2 + 3: project (committed) and project-local (gitignored,
+  // per-machine). Read RAW — removed keys stripped and reported, but NOT
+  // schema-parsed. Leaving an unset leaf `undefined` (rather than filling its
+  // schema default per layer) is load-bearing two ways:
+  //   1. an empty/missing project file no longer clobbers an explicit
+  //      user-global value with a filled default (the precedence bug);
+  //   2. `mergeLayered`'s project-local scope rule skips the committed project
+  //      layer, so a committed `server.allowExternal` (or any project-local
+  //      key) resolves to its schema default — never the cloned value.
+  // A file that could not be read/parsed degrades to `{}` but says so via
+  // `diagnostics`.
+  const loadRawLayer = (filePath: string): Record<string, unknown> => {
+    const file = loadYamlFile(filePath);
+    if (file.diagnostic !== undefined) {
+      diagnostics.push(file.diagnostic);
+    }
+    if (file.value === null) return {};
     const removedKeyDiagnostics = detectRemovedKeys({
-      value: projectFile.value,
-      file: projectFile.path,
-      source: projectFile.source,
-      doc: projectFile.doc,
+      value: file.value,
+      file: file.path,
+      source: file.source,
+      doc: file.doc,
     });
     diagnostics.push(...removedKeyDiagnostics);
-    const cleaned =
-      removedKeyDiagnostics.length > 0 ? stripRemovedKeys(projectFile.value) : projectFile.value;
-    merged = deepMerge(merged, cleaned);
-    sources.push(projectConfigPath);
-  }
+    sources.push(filePath);
+    return removedKeyDiagnostics.length > 0 ? stripRemovedKeys(file.value) : file.value;
+  };
 
-  // Validate the merged result with Zod. Removed keys were already stripped, so
-  // a failure here is a genuine schema violation — throw source-located.
+  const projectPath = resolve(workingDir, OK_DIR, CONFIG_FILENAME);
+  const projectRaw = loadRawLayer(projectPath);
+  const localRaw = loadRawLayer(resolveConfigPath('project-local', workingDir));
+
+  // Scope-aware merge over the raw layers, then ONE parse fills defaults for
+  // genuinely-unset leaves. DELIBERATE TRADE (do not "fix" back to per-layer
+  // parsing — that reintroduces the precedence + project-local-leak bugs): a
+  // schema violation now surfaces at this merged parse, so a bad value in the
+  // project or project-local file reports at the merged level rather than
+  // `file:line`. Source location is best-effort attributed to the project
+  // file when the offending path resolves there.
+  const merged = mergeLayered(userResult.value as Record<string, unknown>, projectRaw, localRaw);
   const result = ConfigSchema.safeParse(merged);
   if (!result.success) {
+    const projectFile = loadYamlFile(projectPath);
     const issues = annotateIssuesWithSource(result.error.issues, projectFile);
     const error: ConfigValidationError = { code: 'SCHEMA_INVALID', issues };
     throw new Error(humanFormat(error));
   }
-
   return { config: result.data, sources, diagnostics, sidelined };
 }
 

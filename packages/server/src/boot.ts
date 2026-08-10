@@ -26,10 +26,15 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
   ASSET_EXTENSIONS,
+  DEFAULT_SERVER_HOST,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
+  isLoopbackOnlyBind,
   LOCAL_DIR,
   OK_DIR,
+  requiresExternalConsent,
+  resolveServerRuntimeConfig,
+  type ServerRuntimeConfig,
 } from '@inkeep/open-knowledge-core';
 import {
   resolveGitDir,
@@ -60,6 +65,7 @@ import {
 import { emitPreflightFailureSpan } from './git-preflight-telemetry.ts';
 import { attachIdleShutdown, type IdleShutdownHandle } from './idle-shutdown.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkills } from './in-place-skills.ts';
+import { buildIngressPolicy, ExposureConsentError } from './ingress-policy.ts';
 import { resolveLocalSinkConfig } from './local-sink-resolver.ts';
 import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import { createMcpHttpHandler } from './mcp-http.ts';
@@ -248,6 +254,23 @@ export interface BootServerOptions
    * paths never do. Default false.
    */
   enableRemote?: boolean;
+  /**
+   * The resolved `server.*` runtime (bind list, publicUrl, consent, derived
+   * defaults). The CLI passes the fully-layered resolution (flags > env >
+   * project-local > project > user); callers that omit it get a files-only
+   * resolution from `opts.config`. One resolution feeds every consumer —
+   * issued URLs, and the exposure interlock — so the CLI and a direct
+   * embedder can never disagree about what the server thinks its shape is.
+   */
+  serverRuntime?: ServerRuntimeConfig;
+  /**
+   * Full bind-address LIST. The first entry is the primary listener (it
+   * decides the port); every further entry gets its own listener on the same
+   * port sharing the primary's handlers. Omitted ⇒ single listener on
+   * `host`. The caller passes the already-precedence-resolved list; the
+   * exposure interlock has vetted it via `serverRuntime`.
+   */
+  bind?: readonly string[];
   /**
    * Forwarded to the ACP thread manager — see
    * `AcpThreadManagerOptions.probeHarnessManagedMcpEntry`. `ok start` and the
@@ -574,6 +597,105 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // live remote client. Keep it up in remote mode.
   const idleMsOption = remoteAccess !== null ? null : opts.idleShutdownMs;
 
+  // The resolved server.* runtime. The CLI passes its fully-layered
+  // resolution (flags > env > project-local > project > user). Direct
+  // embedders (desktop utility, dev-server plugin, tests) fall back to a
+  // files-only resolution — but that Config is NOT scope-resolved: it carries
+  // the committed `.ok/config.yml` alone, so a committed `server.allowExternal`
+  // would arm consent from a cloned repo (the exact clone-leak the scope-
+  // correct load exists to prevent). Config-derived consent is therefore
+  // untrusted here: force `allowExternal` off so only a caller that resolved
+  // it scope-correctly (the CLI's explicit `serverRuntime`) can consent. A
+  // committed non-loopback bind or `publicUrl` then trips the interlock below
+  // — the correct refusal, not a silent exposure. Desktop's own consent path
+  // (the network pane writes project-local, and this boot reads all three
+  // layers) is a follow-up; until then desktop is loopback-only by construction.
+  const serverRuntime = opts.serverRuntime ?? {
+    ...resolveServerRuntimeConfig(opts.config),
+    allowExternal: false,
+  };
+
+  // The addresses the listener will ACTUALLY bind — the single source of truth
+  // for BOTH the exposure interlock below and the multi-listener bind later, so
+  // the check and the bind can never diverge. This mirrors the `listenAddresses`
+  // rule exactly: an explicit `bind` list wins, else the single `host`, else the
+  // loopback default. Load-bearing: a caller can pass a non-loopback `host` /
+  // `bind` that diverges from the resolved `serverRuntime.bind` (ephemeral
+  // single-file mode boots with `HOST=0.0.0.0` and NO bind/serverRuntime), which
+  // would otherwise bind wide open while the interlock — reading only
+  // serverRuntime.bind — saw loopback and let it through.
+  const effectiveBindAddresses =
+    opts.bind !== undefined && opts.bind.length > 0
+      ? opts.bind
+      : [opts.host ?? DEFAULT_SERVER_HOST];
+
+  // The exposure consent interlock: a NON-LOOPBACK bind reaches beyond this
+  // machine, and the server refuses to boot without recorded consent. Checked
+  // against the EFFECTIVE bind (above) AND the resolved serverRuntime — either
+  // being non-loopback trips it. A committed server.publicUrl under a loopback
+  // bind is inert metadata and does NOT trip this (see requiresExternalConsent)
+  // — that would lock out a teammate who clones a VPS-deploy repo and opens it
+  // locally. Enforced here — the single boot chokepoint every launcher goes
+  // through — BEFORE locks, auto-init, or the listener, so refusal is fast and
+  // side-effect-free. Consent is only ever honored from an explicit
+  // `serverRuntime` (scope-correctly resolved by the CLI); config-derived
+  // consent was forced off above, so a committed project-file `allowExternal`
+  // can never arm this.
+  const bindExposes =
+    requiresExternalConsent(serverRuntime) || !isLoopbackOnlyBind(effectiveBindAddresses);
+  if (bindExposes && !serverRuntime.allowExternal) {
+    const exposingAddresses = isLoopbackOnlyBind(effectiveBindAddresses)
+      ? serverRuntime.bind
+      : effectiveBindAddresses;
+    throw new ExposureConsentError(
+      `refusing to start: the server would bind a non-loopback address (${exposingAddresses.join(', ')}), which exposes this server beyond this machine. Consent with OK_ALLOW_EXTERNAL=1, or server.allowExternal: true in .ok/local/config.yml.`,
+    );
+  }
+
+  // ONE ingress policy for the whole listener — HTTP gates, WS upgrade
+  // admission, config-doc admission, and the local-op checks all consult this
+  // object. Built from the resolved server.* runtime (consent, declared bind
+  // literals, publicUrl) plus the legacy remote shape.
+  //
+  // The policy's admitted Host names come from `serverRuntime.bind` — the
+  // DECLARED bind (which Host headers to accept) — NOT the physical
+  // `effectiveBindAddresses`. These legitimately differ: a tailnet / VPS deploy
+  // declares `server.bind: […, 100.64.0.7]` so the tailnet IP is an admitted
+  // Host, even when the process physically binds loopback behind the tailnet's
+  // NAT (composition-rig Case 2 pins exactly this — declared `100.64.0.7`,
+  // physical `127.0.0.1`). The EXPOSURE interlock above asks the opposite
+  // question — "what does the process actually bind?" — so it keys off
+  // `effectiveBindAddresses`. Different questions, deliberately different
+  // sources; do NOT unify them (doing so drops declared-but-not-physically-
+  // bound Hosts from the allowlist → spurious 403s).
+  const ingressPolicy = buildIngressPolicy({ serverRuntime, remoteAccess });
+  if (
+    serverRuntime.allowExternal &&
+    !serverRuntime.loopbackOnly &&
+    serverRuntime.publicUrlSource !== 'server'
+  ) {
+    if (ingressPolicy.bindLiterals.length === 0) {
+      // Wildcard bind (0.0.0.0 / ::) contributes NO admissible Host name, and
+      // with no server.publicUrl the Host allowlist is loopback-only — so
+      // every external request 403s and the server is externally unusable
+      // despite consent. This is a misconfiguration, not a refusal (a
+      // container behind a platform edge that rewrites Host is legitimate),
+      // so warn loudly and name the fix.
+      log.warn(
+        { bind: serverRuntime.bind },
+        '[ingress] server.allowExternal is set on a wildcard bind (0.0.0.0/::) with no server.publicUrl — external requests will be REFUSED (403 host-not-allowed) because no external Host name is admitted. Set server.publicUrl to the public origin clients dial (e.g. behind a reverse proxy or platform edge), or bind a specific address instead of a wildcard.',
+      );
+    } else {
+      // A specific non-loopback bind (e.g. a tailnet IP) IS admissible as a
+      // Host literal, so direct-IP access works; only friendly names need
+      // server.publicUrl.
+      log.info(
+        { bind: serverRuntime.bind },
+        '[ingress] server.allowExternal is set with no server.publicUrl — the bind-address literals are admitted as Host names (direct IP access). Set server.publicUrl to admit a hostname.',
+      );
+    }
+  }
+
   // Lock-kind resolution. Explicit option wins over env. `OK_LOCK_KIND` is
   // the contract used by the MCP detach-spawn path in
   // `packages/cli/src/mcp/shim.ts` — direct callers (CLI `ok start`,
@@ -702,7 +824,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const serverInstance = createServer({
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
-    remotePublicHost: remoteAccess?.publicHost,
+    ingressPolicy,
     contentRoot: opts.contentRoot,
     port: opts.port,
     host: opts.host,
@@ -749,6 +871,17 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
   })();
   let boundPort = opts.port ?? 0;
+  // Issued URLs (MCP serverUrl → preview_url, ACP thread bootstrap) name the
+  // declared public origin when one is configured via the successor key —
+  // that is the name clients actually type, and a loopback URL handed to a
+  // remote agent is unreachable. The remote-alias source stays with the
+  // legacy --remote flow (which never rewrote issued URLs), and the
+  // server.lock URL stays loopback below: the lock is same-machine discovery
+  // by contract.
+  const issuedBaseUrl = (): string =>
+    serverRuntime.publicUrlSource === 'server' && serverRuntime.publicUrl !== undefined
+      ? serverRuntime.publicUrl.replace(/\/+$/, '')
+      : `http://${mcpHost}:${boundPort}`;
   // No-project ephemeral single-file mode mounts NO MCP endpoint:
   // there are no agent capabilities. `mountMcpAndApi` leaves `/mcp`
   // unmounted when `mcpHttpHandler` is undefined, so an undefined handler is
@@ -759,7 +892,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         contentDir: opts.contentDir,
         projectDir: opts.projectDir ?? opts.contentDir,
         config: opts.config,
-        getServerUrl: () => `http://${mcpHost}:${boundPort}`,
+        getServerUrl: () => issuedBaseUrl(),
         localApi: serverInstance.localApi,
         log,
       });
@@ -912,7 +1045,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         isIgnoredPath: (rel) => serverInstance.contentFilter.isPathIgnored(rel),
         getLoadedDocText: (docName) =>
           hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
-        getServerUrl: () => `http://${mcpHost}:${boundPort}`,
+        getServerUrl: () => issuedBaseUrl(),
         getMcpStdioCommand: () => buildOkMcpStdioCommand(opts.localOpCliArgs, boundPort),
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
         log,
@@ -943,7 +1076,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     hocuspocus,
     nativeApi: serverInstance.nativeApi,
     mcpHttpHandler,
-    remoteAccess,
+    ingressPolicy,
     health: {
       readiness: () => readinessState,
       degraded: () => degraded,
@@ -1016,16 +1149,22 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
 
   // Listen — resolves only after the kernel has bound the port so callers
   // can probe `port` immediately.
-  try {
-    await new Promise<void>((resolveListen, reject) => {
-      const onError = (err: Error) => reject(err);
-      httpServer.once('error', onError);
-      httpServer.listen(opts.port, opts.host, () => {
-        httpServer.removeListener('error', onError);
-        resolveListen();
-      });
-    });
-  } catch (err) {
+  //
+  // Multi-address bind: `server.bind` is a real LIST. The first address is
+  // the primary listener (it decides the port — explicit, or
+  // kernel-allocated); every further address gets its own `http.Server` on
+  // the SAME port, sharing the primary's `request` + `upgrade` listeners by
+  // reference. The copy happens after `mountMcpAndApi` and
+  // `attachIdleShutdown` have both attached, so routing, WS admission, and
+  // idle tracking behave identically on every listener — one composition, N
+  // sockets. Duplicate addresses collapse so a repeated entry can't
+  // EADDRINUSE against ourselves.
+  // Same source as the exposure interlock's `effectiveBindAddresses` (they must
+  // agree — see there), with duplicate addresses collapsed so a repeated entry
+  // can't EADDRINUSE against ourselves.
+  const listenAddresses = [...new Set(effectiveBindAddresses)];
+  const primaryAddress = listenAddresses[0];
+  const cleanupAfterListenFailure = async (): Promise<void> => {
     // Listen failed after locks were acquired. Release ui.lock only if we
     // own it (we yielded to a live holder, that holder keeps advertising);
     // destroyHocuspocus releases server.lock either way.
@@ -1036,14 +1175,79 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         log.warn({ err: releaseErr }, 'releaseUiLock failed during listen-error cleanup');
       }
     }
-    await destroyHocuspocus().catch(() => {
-      /* best-effort — surface the original listen error */
+    await destroyHocuspocus().catch((teardownErr) => {
+      // Best-effort — the original listen error is what we ultimately throw,
+      // but a teardown failure here can strand resources, so record it rather
+      // than swallow it silently (mirrors the releaseUiLock warn above).
+      log.warn({ err: teardownErr }, 'destroyHocuspocus failed during listen-error cleanup');
     });
-    // Same rationale as the ui.lock error path above: the process may keep
-    // living after a failed boot, so the deferred-to-exit unlink would strand
-    // a live-pid draining lock. Release immediately on this error path.
+    // The process may keep living after a failed boot, so the
+    // deferred-to-exit unlink would strand a live-pid draining lock.
+    // Release immediately on this error path.
     releaseServerLock(lockDir);
+  };
+  const listenOn = (server: HttpServer, port: number, address: string): Promise<void> =>
+    new Promise<void>((resolveListen, reject) => {
+      const onError = (err: Error) => reject(err);
+      server.once('error', onError);
+      server.listen(port, address, () => {
+        server.removeListener('error', onError);
+        resolveListen();
+      });
+    });
+  try {
+    await listenOn(httpServer, opts.port ?? 0, primaryAddress ?? DEFAULT_SERVER_HOST);
+  } catch (err) {
+    await cleanupAfterListenFailure();
     throw err;
+  }
+  const primaryAddr = httpServer.address();
+  const primaryPort =
+    typeof primaryAddr === 'object' && primaryAddr !== null ? primaryAddr.port : (opts.port ?? 0);
+  const secondaryServers: HttpServer[] = [];
+  for (const address of listenAddresses.slice(1)) {
+    const secondary = createHttpServer();
+    secondary.headersTimeout = httpServer.headersTimeout;
+    secondary.requestTimeout = httpServer.requestTimeout;
+    for (const listener of httpServer.listeners('request')) {
+      secondary.on('request', listener as (...args: unknown[]) => void);
+    }
+    for (const listener of httpServer.listeners('upgrade')) {
+      secondary.on('upgrade', listener as (...args: unknown[]) => void);
+    }
+    try {
+      await listenOn(secondary, primaryPort, address);
+    } catch (err) {
+      // A secondary bind failure fails the whole boot — a server that
+      // silently serves a subset of its configured addresses is a
+      // misconfiguration trap. Name the address that failed and how many were
+      // already bound (incl. the primary) so the raw EADDRINUSE/EACCES is
+      // actionable, then unwind everything already bound.
+      log.error(
+        {
+          err,
+          failedAddress: address,
+          port: primaryPort,
+          alreadyBound: secondaryServers.length + 1,
+        },
+        '[boot] secondary address bind failed — unwinding all listeners',
+      );
+      for (const bound of [...secondaryServers, httpServer]) {
+        bound.closeAllConnections?.();
+        await new Promise<void>((resolveClose) => {
+          bound.close((closeErr) => {
+            // Best-effort teardown — we still throw the original bind error
+            // below — but a close failure here can strand a listener, so record
+            // it rather than swallow it.
+            if (closeErr) log.warn({ err: closeErr }, '[boot] listener close failed during unwind');
+            resolveClose();
+          });
+        });
+      }
+      await cleanupAfterListenFailure();
+      throw err;
+    }
+    secondaryServers.push(secondary);
   }
 
   // Boot is usable for HTTP from here; record the listen latency. The
@@ -1134,6 +1338,27 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     if (acpThreadManager !== null) {
       await runStep('acpThreads.destroy', () => acpThreadManager.destroy());
     }
+    // Secondary bind listeners close BEFORE the primary's mount/wss teardown.
+    // They share the primary's request + upgrade listeners BY REFERENCE, so if
+    // they kept accepting after `mount.shutdown()` / `mount.wss.close()` removed
+    // or closed those handlers on the primary, an upgrade arriving on a
+    // secondary in that window would run against an already-torn-down
+    // composition. Closing them first shuts the window; the primary teardown
+    // below then covers the rest. A close() failure is logged, not swallowed,
+    // so a stranded listener leaves a trace.
+    await runStep('secondaryListeners.close', async () => {
+      for (const secondary of secondaryServers) {
+        secondary.closeAllConnections?.();
+        await new Promise<void>((resolveClose) => {
+          secondary.close((closeErr) => {
+            if (closeErr) {
+              log.warn({ err: closeErr }, '[boot] secondary listener close failed during teardown');
+            }
+            resolveClose();
+          });
+        });
+      }
+    });
     await runStep('mount.shutdown', () => mount.shutdown());
     if (mcpHttpHandler !== undefined) {
       await runStep('mcpHttpHandler.close', () => mcpHttpHandler.close());

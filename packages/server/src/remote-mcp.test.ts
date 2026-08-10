@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ConfigSchema } from './config/schema.ts';
+import { buildIngressPolicy } from './ingress-policy.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
 import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';
 import { type MountMcpAndApiHandle, mountMcpAndApi } from './mcp-mount.ts';
@@ -104,7 +105,7 @@ async function bootRemoteRig(
     nativeApi: undefined,
     hocuspocus,
     mcpHttpHandler: handler,
-    remoteAccess,
+    ingressPolicy: buildIngressPolicy({ remoteAccess }),
     ...(extras.reactShellMiddleware ? { reactShellMiddleware: extras.reactShellMiddleware } : {}),
     ...(extras.acpThreadManager !== undefined
       ? { acpThreadManager: extras.acpThreadManager as never }

@@ -9,4 +9,10 @@
  * a single `refs/wip/<branch>/<principalId>` ref.
  */
 
-export const tabSessionId: string = crypto.randomUUID();
+import { randomUUID } from '@inkeep/open-knowledge-core';
+
+// `randomUUID` (not `crypto.randomUUID`) is load-bearing here: this runs at
+// module load, and `crypto.randomUUID` is undefined on a plain-HTTP
+// non-localhost origin (an exposed server over a tailnet/LAN IP), which would
+// throw before React mounts. See randomUUID's contract.
+export const tabSessionId: string = randomUUID();

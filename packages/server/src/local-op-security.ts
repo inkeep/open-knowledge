@@ -18,6 +18,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ALLOWED_GIT_TRANSPORTS } from '@inkeep/open-knowledge-core/skills-catalog';
 import { errorResponse } from './http/error-response.ts';
 import { errnoCode } from './http/handler-utils.ts';
+import { buildIngressPolicy, type IngressPolicy, isPeerAdmitted } from './ingress-policy.ts';
 import { getLogger } from './logger.ts';
 import { originMatchesPublicHost } from './remote-access.ts';
 
@@ -224,41 +225,71 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
 }
 
 /**
- * Returns true if the Origin header (when present) is a loopback origin.
- * Absent Origin header is allowed (same-origin browser requests / CLI tools).
+ * Returns true if the Origin header (when present) is admitted. Absent Origin
+ * header is allowed (same-origin browser requests / CLI tools).
+ *
+ * The admitted set beyond loopback comes from the ingress policy: the legacy
+ * tunnel origin, the declared `publicUrl` origin (scheme-matched), and the
+ * bind literals — an empty policy keeps the historical loopback-only set.
  *
  * Parses the URL and compares hostname exactly; a raw `startsWith` would
  * accept crafted origins like `http://127.0.0.1.evil.com` if DNS rebinding
  * ever lined up with the loopback socket check.
  */
-export function hasValidLocalOpOrigin(req: IncomingMessage, remotePublicHost?: string): boolean {
+export function hasValidLocalOpOrigin(req: IncomingMessage, policy?: IngressPolicy): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
-  // Remote mode: the SPA served through the tunnel fetches from its public
-  // origin — admitted alongside the loopback set. Absent (local mode), the
-  // allowlist stays loopback-only.
-  if (remotePublicHost !== undefined && originMatchesPublicHost(origin, remotePublicHost)) {
+  const legacyHost = policy?.legacyRemote?.publicHost;
+  if (legacyHost !== undefined && originMatchesPublicHost(origin, legacyHost)) {
     return true;
   }
   try {
     // WHATWG URL preserves the IPv6 brackets in `hostname` (e.g. `[::1]`), so
     // the comparison set includes the bracketed form alongside the literal.
-    const { hostname } = new URL(origin);
-    return (
+    const url = new URL(origin);
+    const { hostname } = url;
+    if (
       hostname === '127.0.0.1' ||
       hostname === 'localhost' ||
       hostname === '[::1]' ||
       hostname === '::1'
-    );
+    ) {
+      return true;
+    }
+    if (policy === undefined) return false;
+    if (
+      policy.publicOrigin !== undefined &&
+      url.protocol === policy.publicOrigin.protocol &&
+      normalizeOriginHost(url.host) === policy.publicOrigin.host
+    ) {
+      return true;
+    }
+    // Bind-literal origins admit over http/https only — parity with
+    // `isOriginAdmitted`, so the two halves of the one policy agree on the
+    // admitted set. Without the scheme guard a non-browser client's
+    // `ftp://<bind-ip>` (or any custom scheme) would pass here while the same
+    // origin is refused on /api and /mcp.
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    const bare = hostname.startsWith('[') ? hostname.slice(1, -1) : hostname;
+    return policy.bindLiterals.includes(bare.toLowerCase());
   } catch {
     return false;
   }
 }
 
+/** Strip a default-port suffix — mirrors `normalizeHostHeader` in remote-access.ts. */
+function normalizeOriginHost(host: string): string {
+  return host.replace(/:(443|80)$/, '').toLowerCase();
+}
+
 /**
- * Convenience wrapper: runs loopback + origin checks, emits an RFC 9457 403
+ * Convenience wrapper: runs peer + origin checks, emits an RFC 9457 403
  * problem+json response if either fails, and returns false. Returns
  * true when the request is allowed.
+ *
+ * The peer arm is the policy's: loopback always passes, and
+ * `server.allowExternal` is the sanctioned relaxation — local-op endpoints
+ * are part of the owner surface the deployer's edge admits.
  *
  * The two failure modes use distinct URN tokens so operators can route on
  * the typed `problem.type`: `urn:ok:error:loopback-required` (network-level)
@@ -268,9 +299,10 @@ export function hasValidLocalOpOrigin(req: IncomingMessage, remotePublicHost?: s
 export function checkLocalOpSecurity(
   req: IncomingMessage,
   res: ServerResponse,
-  options: { handler: string; remotePublicHost?: string },
+  options: { handler: string; policy?: IngressPolicy },
 ): boolean {
-  if (!isLoopbackRequest(req)) {
+  const policy = options.policy ?? buildIngressPolicy({});
+  if (!isLoopbackRequest(req) && !isPeerAdmitted(req.socket.remoteAddress, policy)) {
     errorResponse(
       res,
       403,
@@ -280,7 +312,7 @@ export function checkLocalOpSecurity(
     );
     return false;
   }
-  if (!hasValidLocalOpOrigin(req, options.remotePublicHost)) {
+  if (!hasValidLocalOpOrigin(req, policy)) {
     errorResponse(
       res,
       403,

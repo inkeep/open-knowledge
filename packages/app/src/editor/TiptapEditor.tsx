@@ -8,6 +8,7 @@ import {
   FLASH_DURATION_MS,
   hasNewEntries,
   MarkdownManager,
+  randomUUID,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension } from '@tiptap/core';
@@ -726,7 +727,7 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
   // hasn't run yet (rare race during first-render of a doc that bypasses
   // the pool's mount-list — e.g. direct navigation before the pool's
   // promote effect lands).
-  const mountId = getMountId(docName) ?? crypto.randomUUID();
+  const mountId = getMountId(docName) ?? randomUUID();
   const entry = use(mountTiptapEditorPromise({ docName, mountId, construct, sizeStats }));
   const editor = entry.editor;
 

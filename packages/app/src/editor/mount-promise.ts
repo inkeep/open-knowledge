@@ -129,7 +129,7 @@ interface MountTiptapEditorPromiseParams {
    * sync, cold, and typing namespaces join deterministically by mountId
    * equality (no timestamp-window joins).
    *
-   * Caller derives via `getMountId(docName) ?? crypto.randomUUID()` —
+   * Caller derives via `getMountId(docName) ?? randomUUID()` —
    * adopting an existing pool-derived id when present so prewarm-then-click
    * flows correlate across the pool→mount boundary. See mount-id-registry.ts
    * for the adoption invariant.

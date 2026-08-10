@@ -64,7 +64,7 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 }
 
 /** Strip a default-port suffix so `host:443`/`host:80` compare equal to `host`. */
-function normalizeHostHeader(host: string): string {
+export function normalizeHostHeader(host: string): string {
   return host.replace(/:(443|80)$/, '').toLowerCase();
 }
 
@@ -106,9 +106,13 @@ export function isRemoteAdmitted(
 const FORWARDING_HEADERS = [
   'x-forwarded-for',
   'x-forwarded-proto',
+  'x-forwarded-host',
   'forwarded',
   'x-real-ip',
+  'x-client-ip',
+  'x-cluster-client-ip',
   'cf-connecting-ip',
+  'fastly-client-ip',
   'true-client-ip',
 ] as const;
 
