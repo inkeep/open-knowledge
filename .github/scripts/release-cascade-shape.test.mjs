@@ -554,7 +554,14 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
       bugLane.indexOf('- name: Page on a refusal'),
       bugLane.indexOf('- name: Record that this refusal was paged'),
     );
-    expect(page).toContain('Further identical refusals stay silent');
+    // The sentence lives in the payload builder the step shells out to, so the
+    // contract is "the step composes a body that carries it" rather than "the
+    // YAML contains the literal". Assert both halves: the step reaches the
+    // builder, and the builder still emits the sentence.
+    expect(page).toContain('bug-lane-refusal-payload.mjs');
+    expect(
+      readFileSync(join(WORKFLOWS, '..', 'scripts', 'bug-lane-refusal-payload.mjs'), 'utf8'),
+    ).toContain('Further identical refusals stay silent');
   });
 
   test('a suppressed refusal still leaves a trace in the run', () => {

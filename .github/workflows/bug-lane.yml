@@ -141,15 +141,42 @@ jobs:
           IFS=',' read -ra REFS <<< "$FIX_REFS"
           SURVIVORS=()
           DROPPED=()
+          # Which paths collided, per dropped ref, as JSON for the refusal page.
+          # "conflict" alone cannot distinguish a fix that genuinely depends on
+          # later work from one blocked by an unrelated rewrite of a line of CI
+          # config, and that is the whole question a reader has.
+          CONFLICT_JSON='[]'
           for ref in "${REFS[@]}"; do
             if git cherry-pick "$ref"; then
               SURVIVORS+=("$ref")
             else
+              # BEFORE the abort: --abort clears the index, and with it the
+              # unmerged-path list this reads. Capturing after yields nothing.
+              # A plain read loop rather than `mapfile` so the shell does not
+              # depend on a bash 4 builtin.
+              CONFLICTED=()
+              while IFS= read -r f; do
+                [[ -n "$f" ]] && CONFLICTED+=("$f")
+              done < <(git diff --name-only --diff-filter=U || true)
+              TOTAL_FILES=$(git show --pretty=format: --name-only "$ref" | grep -c . || true)
+              # `${a[@]+"${a[@]}"}` so an empty array is not an unbound-variable
+              # error under `set -u`: a pick can fail without conflicting (an
+              # empty commit), and that must still mint a report.
+              CONFLICT_JSON=$(jq -c \
+                --arg ref "$ref" \
+                --argjson total "${TOTAL_FILES:-0}" \
+                --args '. + [{ref: $ref, totalFiles: $total, conflicts: $ARGS.positional}]' \
+                <<< "$CONFLICT_JSON" ${CONFLICTED[@]+"${CONFLICTED[@]}"})
               git cherry-pick --abort || true
               DROPPED+=("$ref")
-              echo "::notice::bug-lane: ${ref} does not apply cleanly onto ${STABLE}; dropped from this batch — it will ship with its cycle's stable instead."
+              echo "::notice::bug-lane: ${ref} does not apply cleanly onto ${STABLE} (conflicted in: ${CONFLICTED[*]:-none}); dropped from this batch — it will ship with its cycle's stable instead."
             fi
           done
+          {
+            echo "conflicts<<CONFLICTS_EOF"
+            echo "$CONFLICT_JSON"
+            echo "CONFLICTS_EOF"
+          } >> "$GITHUB_OUTPUT"
           if [[ ${#DROPPED[@]} -gt 0 ]]; then
             echo "dropped_refs=$(IFS=','; echo "${DROPPED[*]}")" >> "$GITHUB_OUTPUT"
           fi
@@ -337,8 +364,11 @@ jobs:
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          FIX_TICKETS: ${{ steps.evaluate.outputs.fix_tickets }}
           SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
           DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
+          CONFLICTS: ${{ steps.verify.outputs.conflicts }}
+          STABLE: ${{ steps.evaluate.outputs.stable }}
           VERDICT: ${{ steps.verify.outputs.verdict }}
         run: |
           set -uo pipefail
@@ -353,23 +383,45 @@ jobs:
             echo "::notice::No Slack webhook secret set — refusal page skipped."
           else
             RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            # Name only the refs each verdict is actually about: on conflict the
-            # whole qualifying set conflicted; on fail only the survivors reached
-            # the verification stage.
-            if [[ "$VERDICT" == "conflict" ]]; then
-              TEXT="⛔ Bug lane: no qualifying fix is self-contained over the stable — all of ${FIX_REFS} conflict. They ride their cycle's 24h path; investigate whether any needs a manual point release. ${RUN_URL}"
-            else
-              TEXT="⛔ Bug lane: verification failed on the synthetic tree for ${SURVIVING_REFS} — the fast tiers went red on BOTH attempts, or the install failed. Either way this is past flake-class: treat it as a real conflict with the stable, not a retryable blip."
-              if [[ -n "${DROPPED_REFS}" ]]; then
-                TEXT="${TEXT} Also dropped for conflict: ${DROPPED_REFS}."
-              fi
-              TEXT="${TEXT} The fixes ride their cycle's 24h path. ${RUN_URL}"
+            # The verify step left the workspace detached at the stable tag,
+            # which predates this tooling — every step shares one workspace, so
+            # the builder below is simply absent from disk. Restore the lane's
+            # own scripts from the ref the workflow is running from. Restored
+            # per path, never as one pathspec: `git checkout <ref> -- a b` is
+            # atomic, so a path missing at that ref would silently take the
+            # other one down with it and leave the page permanently degraded.
+            # The synthetic tree has already served its purpose here — verify
+            # is done, and dispatch (which reads no repo file) is mutually
+            # exclusive with this step.
+            for p in .github/scripts scripts; do
+              git checkout "$GITHUB_SHA" -- "$p" 2>/dev/null \
+                || echo "::warning::bug-lane: could not restore ${p}; the page may fall back."
+            done
+            # Defaults go through intermediate variables, NOT `${V:-{\}}`: a
+            # brace in a parameter-expansion default is taken literally
+            # (backslash and all), so jq --argjson would reject it and every
+            # page would silently degrade to the fallback below.
+            TICKETS_JSON="${FIX_TICKETS:-}"
+            [[ -z "$TICKETS_JSON" ]] && TICKETS_JSON='{}'
+            CONFLICTS_JSON="${CONFLICTS:-}"
+            [[ -z "$CONFLICTS_JSON" ]] && CONFLICTS_JSON='[]'
+            # Join each dropped ref to the tickets that qualified it, so the
+            # page names the bug rather than only a SHA.
+            INPUT="$(jq -nc \
+              --arg verdict "$VERDICT" \
+              --arg stable "$STABLE" \
+              --arg runUrl "$RUN_URL" \
+              --argjson conflicts "$CONFLICTS_JSON" \
+              --argjson tickets "$TICKETS_JSON" \
+              '{verdict: $verdict, stable: $stable, runUrl: $runUrl,
+                refs: [$conflicts[] | . + {tickets: ($tickets[.ref] // [])}]}')"
+            # A page that cannot be composed must not become silence: fall back
+            # to the bare facts rather than skipping the POST, and leave the
+            # marker unwritten so the next tick tries again.
+            if ! payload="$(node .github/scripts/bug-lane-refusal-payload.mjs --input "$INPUT")"; then
+              echo "::warning::bug-lane: could not compose the refusal page; falling back to a plain message."
+              payload="$(jq -nc --arg t "⛔ Bug lane refused ${FIX_REFS} (${VERDICT}) over ${STABLE}. ${RUN_URL}" '{text: $t}')"
             fi
-            # Say that the silence which follows is deliberate. Without this a
-            # reader cannot tell "paged once, still refusing every tick" from
-            # "resolved", and would read the quiet channel as good news.
-            TEXT="${TEXT} Further identical refusals stay silent; the lane pages again only if the refusal changes."
-            payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
             if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
               delivered=true
             else

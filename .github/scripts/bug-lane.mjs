@@ -179,6 +179,19 @@ export async function evaluateBugLane({
   };
 }
 
+/**
+ * Qualifying sha -> the Bug tickets that qualified it. Only qualifying commits
+ * are included: a rejected commit's links describe why it was NOT picked, and
+ * surfacing them downstream would invite a reader to think it shipped.
+ */
+export function ticketsByRef(result) {
+  const out = {};
+  for (const c of result.perCommit) {
+    if (c.qualifies && c.linkedIssues.length > 0) out[c.sha] = [...c.linkedIssues];
+  }
+  return out;
+}
+
 // --- workflow-runtime wiring (real git boundary) ---
 
 function runGit(args) {
@@ -271,7 +284,15 @@ async function main() {
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      [`fix_refs=${result.fixRefs.join(',')}`, `stable=${stable}`, ''].join('\n'),
+      [
+        `fix_refs=${result.fixRefs.join(',')}`,
+        `stable=${stable}`,
+        // sha -> the Bug tickets that qualified it, so a refusal page can name
+        // the bug a reader recognises instead of only a SHA. One line: the map
+        // is bounded by the qualifying set, which is single digits.
+        `fix_tickets=${JSON.stringify(ticketsByRef(result))}`,
+        '',
+      ].join('\n'),
     );
   }
 }
