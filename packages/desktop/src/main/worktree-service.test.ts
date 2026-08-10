@@ -202,6 +202,77 @@ describe('worktree-service', () => {
     expect(res.reason).toBe('invalid-branch');
   });
 
+  test('createWorktree reports empty-repo (not the generic arm) on a repo with no commits', async () => {
+    // A repo that never got a root commit: `main` is not a resolvable ref, so
+    // `git worktree add ... -- main` fails with `fatal: invalid reference: main`
+    // — stderr indistinguishable from a genuinely missing branch. Reporting the
+    // generic arm here is what produced "Try a different name" for a condition
+    // no branch name can fix.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'wt-svc-empty-')));
+    try {
+      await git(root, 'init', '--initial-branch=main', '.');
+      const res = await createWorktree({
+        anchorPath: root,
+        branch: 'wt-1',
+        createBranch: true,
+        baseBranch: 'main',
+      });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.reason).toBe('empty-repo');
+      // git's own words survive to the renderer rather than being swallowed.
+      expect(res.message).toContain('invalid reference');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('createWorktree still reports the generic arm when the repo HAS commits', async () => {
+    // Guards the empty-repo probe against over-claiming: a repo with history
+    // whose add fails for some other reason must not be relabelled empty-repo.
+    handle = await makeRepo();
+    const res = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'wt-1',
+      createBranch: true,
+      baseBranch: 'no-such-base',
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).not.toBe('empty-repo');
+  });
+
+  test('a repo with history on another branch is not called empty when the base is unborn', async () => {
+    // `rev-parse --verify HEAD` answers only for the CURRENT branch, so it
+    // reports "no commits" for a repo whose history sits on another branch
+    // while the requested base is unborn — telling the user "this project has
+    // no commits yet" about a repo full of them.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'wt-svc-other-branch-')));
+    try {
+      await git(root, 'init', '--initial-branch=other', '.');
+      await git(root, 'config', 'user.email', 'test@example.com');
+      await git(root, 'config', 'user.name', 'Test');
+      await git(root, 'commit', '--allow-empty', '-m', 'real history');
+      // Leave the history on `other` and point HEAD at an unborn `main`.
+      await git(root, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+
+      const res = await createWorktree({
+        anchorPath: root,
+        branch: 'wt-1',
+        createBranch: true,
+        baseBranch: 'main',
+      });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.reason).not.toBe('empty-repo');
+      // The generic arm still carries git's own words.
+      expect(res.message).toContain('invalid reference');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('listWorktreeSelector on a non-git dir returns no-git', async () => {
     const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'wt-svc-nogit-')));
     try {

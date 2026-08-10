@@ -12357,6 +12357,11 @@ msgstr "Ceci retire définitivement {path}. Les agents qui référencent ce mod�
 msgid "This project"
 msgstr "Ce projet"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "Ce projet n'a encore aucun commit, il n'y a donc aucune branche sur laquelle baser un worktree. Faites un premier commit, puis réessayez."
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "Ce projet n'a pas de dépôt git — le mode de partage ne s'applique pas. Initialisez un dépôt pour activer le commutateur."

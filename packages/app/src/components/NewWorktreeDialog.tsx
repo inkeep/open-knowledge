@@ -135,11 +135,26 @@ function createErrorCopy(reason: string): MessageDescriptor {
       return msg`Enter a valid branch name (no spaces, no leading dot, no "..").`;
     case 'no-git':
       return msg`This project isn't a git repository, so worktrees aren't available.`;
+    case 'empty-repo':
+      return msg`This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again.`;
     case 'helper-not-found':
       return msg`Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again.`;
     default:
       return msg`Couldn't create the worktree. Try a different name.`;
   }
+}
+
+/**
+ * An inline create failure: translated copy plus git's own words.
+ *
+ * `detail` carries the raw stderr the main process captured. It is diagnostic
+ * data, not copy — deliberately not translated, and shown verbatim so a failure
+ * the reason taxonomy doesn't model (a lock file, a permissions error) is
+ * legible instead of being flattened into the generic retry message.
+ */
+interface CreateFailure {
+  readonly copy: MessageDescriptor;
+  readonly detail?: string;
 }
 
 export function NewWorktreeDialog({
@@ -167,7 +182,7 @@ export function NewWorktreeDialog({
   const [baseOpen, setBaseOpen] = useState(false);
   const [baseQuery, setBaseQuery] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<MessageDescriptor | null>(null);
+  const [error, setError] = useState<CreateFailure | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseSearchRef = useRef<HTMLInputElement | null>(null);
 
@@ -282,7 +297,7 @@ export function NewWorktreeDialog({
             };
       const result = await bridge.worktree.create(request);
       if (!result.ok) {
-        setError(createErrorCopy(result.reason));
+        setError({ copy: createErrorCopy(result.reason), detail: result.message });
         setBusy(false);
         return;
       }
@@ -632,14 +647,19 @@ export function NewWorktreeDialog({
               </div>
             ) : null}
             {error !== null ? (
-              <p
-                id={errorId}
-                role="alert"
-                className="text-1sm text-destructive"
-                data-testid="new-worktree-error"
-              >
-                {t(error)}
-              </p>
+              <div id={errorId} role="alert">
+                <p className="text-1sm text-destructive" data-testid="new-worktree-error">
+                  {t(error.copy)}
+                </p>
+                {error.detail !== undefined && error.detail.length > 0 ? (
+                  <p
+                    className="mt-1 break-words font-mono text-xs text-muted-foreground"
+                    data-testid="new-worktree-error-detail"
+                  >
+                    {error.detail}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </form>
         </DialogBody>

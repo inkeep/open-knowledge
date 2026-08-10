@@ -12353,6 +12353,11 @@ msgstr "এটি {path}-কে স্থায়ীভাবে সরিয�
 msgid "This project"
 msgstr "এই প্রকল্প"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "এই প্রকল্পে এখনও কোনো কমিট নেই, তাই worktree-এর ভিত্তি হিসেবে কোনো ব্রাঞ্চ নেই। প্রথমে একটি কমিট করুন, তারপর আবার চেষ্টা করুন।"
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "এই প্রকল্পে কোনো git রিপোজিটরি নেই — ভাগাভাগির মোড প্রযোজ্য নয়। টগলটি চালু করতে একটি রিপোজিটরি চালু করুন।"

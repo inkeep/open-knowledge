@@ -201,7 +201,16 @@ export async function createWorktree(args: CreateWorktreeArgs): Promise<Worktree
   try {
     await execFileAsync('git', addArgs, { cwd: args.anchorPath, env: gitSpawnEnv() });
   } catch (err) {
-    return { ok: false, ...classifyAddError(err) };
+    const classified = classifyAddError(err);
+    // A repo with no commits has no resolvable base ref, so git rejects the add
+    // with `fatal: invalid reference: <base>` — indistinguishable by stderr from
+    // a genuinely missing branch. Probing the repo tells them apart. Only on the
+    // generic arm, so the happy path and every classified failure spawn nothing
+    // extra.
+    if (classified.reason === 'error' && !(await repoHasAnyRef(args.anchorPath))) {
+      return { ok: false, reason: 'empty-repo', message: classified.message };
+    }
+    return { ok: false, ...classified };
   }
 
   // The worktree now exists on disk — capture success before any post-create
@@ -537,6 +546,31 @@ function ensureWorktreesExcluded(anchorPath: string): void {
     appendFileSync(excludePath, `${prefix}${line}\n`);
   } catch {
     // Best-effort; cosmetic only.
+  }
+}
+
+/**
+ * True when the repo at `cwd` holds any ref at all.
+ *
+ * Deliberately NOT `rev-parse --verify HEAD`, which answers only for the
+ * CURRENT branch: a repo whose history sits on another branch while the
+ * requested base is unborn does have commits, and reporting `empty-repo`
+ * there would tell the user "this project has no commits yet" about a repo
+ * full of them. Those fall to the generic arm instead, which now surfaces
+ * git's own `invalid reference` text. Same question, same answer, as
+ * `hasAnyRef` in `project-git.ts`.
+ */
+async function repoHasAnyRef(cwd: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('git', ['for-each-ref', '--count=1', 'refs/'], {
+      cwd,
+      env: gitSpawnEnv(),
+    });
+    return stdout.trim().length > 0;
+  } catch {
+    // Unreadable refs — prefer the generic arm (which carries git's stderr)
+    // over asserting the repo is empty.
+    return true;
   }
 }
 

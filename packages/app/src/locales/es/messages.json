@@ -437,6 +437,9 @@
     "5GKMSz": ["Aumenta o reduce la sangría del elemento de lista actual."],
     "5GRxoA": ["Busca archivos, carpetas y comandos del espacio de trabajo actual."],
     "5HJpFY": ["Se pone en cola detrás del turno en curso"],
+    "5IgYAM": [
+      "Este proyecto aún no tiene commits, así que no hay ninguna rama en la que basar un worktree. Haz un primer commit y vuelve a intentarlo."
+    ],
     "5LXwX8": [
       "Esto elimina definitivamente ",
       ["path"],

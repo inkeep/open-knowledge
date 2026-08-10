@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -193,6 +194,38 @@ describe('runCreateNew — happy paths', () => {
     expect(existsSync(join(result.projectDir, '.git'))).toBe(true);
     expect(result.gitRootPromoted).toBe(false);
     expect(result.variant).toBe('create-new-default');
+  });
+
+  test('leaves a project whose default branch can base a worktree', async () => {
+    // The reported symptom, pinned at the entry point that reported it: the
+    // repo used to be left with an unborn HEAD, so the New-worktree dialog's
+    // `git worktree add -b <name> <path> -- main` died with
+    // `fatal: invalid reference: main`. `ensureProjectGit` is the shared fix
+    // site; this guards the create-new path against ever short-circuiting it.
+    const result = await runCreateNew({
+      parent: tmpRoot,
+      name: 'Worktree Base',
+      editors: [...ALL_EDITOR_IDS],
+    });
+
+    expect(() =>
+      execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: result.projectDir }),
+    ).not.toThrow();
+    expect(() =>
+      execFileSync(
+        'git',
+        [
+          'worktree',
+          'add',
+          '-b',
+          'wt-1',
+          join(result.projectDir, '.ok/worktrees/wt-1'),
+          '--',
+          'main',
+        ],
+        { cwd: result.projectDir },
+      ),
+    ).not.toThrow();
   });
 
   test('records customized variant when a subset of editors is supplied', async () => {

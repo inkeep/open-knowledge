@@ -141,6 +141,70 @@ describe('NewWorktreeDialog', () => {
     expect(bridge.project.open).not.toHaveBeenCalled();
   });
 
+  test('explains an empty repo instead of blaming the branch name', async () => {
+    const bridge = createBridge({
+      ok: false,
+      reason: 'empty-repo',
+      message: 'fatal: invalid reference: main',
+    });
+    render(
+      <NewWorktreeDialog
+        open={true}
+        onOpenChange={noop}
+        bridge={bridge as never}
+        currentBranch="main"
+      />,
+    );
+    fireEvent.change(await screen.findByTestId('new-worktree-branch'), {
+      target: { value: 'dev' },
+    });
+    fireEvent.click(screen.getByTestId('new-worktree-create'));
+    const err = await screen.findByTestId('new-worktree-error');
+    expect(err.textContent).toContain('no commits yet');
+    // The condition no branch name can fix must stop suggesting a new name.
+    expect(err.textContent).not.toContain('different name');
+  });
+
+  test('surfaces the underlying git error alongside the copy', async () => {
+    const bridge = createBridge({
+      ok: false,
+      reason: 'error',
+      message: 'fatal: could not lock ref: Unable to create lock file',
+    });
+    render(
+      <NewWorktreeDialog
+        open={true}
+        onOpenChange={noop}
+        bridge={bridge as never}
+        currentBranch="main"
+      />,
+    );
+    fireEvent.change(await screen.findByTestId('new-worktree-branch'), {
+      target: { value: 'dev' },
+    });
+    fireEvent.click(screen.getByTestId('new-worktree-create'));
+    const detail = await screen.findByTestId('new-worktree-error-detail');
+    expect(detail.textContent).toContain('could not lock ref');
+  });
+
+  test('omits the detail line when the failure carries no git message', async () => {
+    const bridge = createBridge({ ok: false, reason: 'branch-exists' });
+    render(
+      <NewWorktreeDialog
+        open={true}
+        onOpenChange={noop}
+        bridge={bridge as never}
+        currentBranch="main"
+      />,
+    );
+    fireEvent.change(await screen.findByTestId('new-worktree-branch'), {
+      target: { value: 'dev' },
+    });
+    fireEvent.click(screen.getByTestId('new-worktree-create'));
+    await screen.findByTestId('new-worktree-error');
+    expect(screen.queryByTestId('new-worktree-error-detail')).toBeNull();
+  });
+
   test('checks out an existing branch (createBranch false, no base) and refreshes the cache', async () => {
     const bridge = createBridge({
       ok: true,

@@ -12353,6 +12353,11 @@ msgstr ""
 msgid "This project"
 msgstr ""
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr ""

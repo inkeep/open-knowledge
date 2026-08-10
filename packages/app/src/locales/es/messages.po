@@ -12357,6 +12357,11 @@ msgstr "Esto elimina definitivamente {path}. Los agentes que hagan referencia a 
 msgid "This project"
 msgstr "Este proyecto"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "Este proyecto aún no tiene commits, así que no hay ninguna rama en la que basar un worktree. Haz un primer commit y vuelve a intentarlo."
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "Este proyecto no tiene repositorio de git, así que el modo de compartición no aplica. Inicializa un repositorio para habilitar el interruptor."

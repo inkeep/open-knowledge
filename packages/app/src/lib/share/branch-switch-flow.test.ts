@@ -712,6 +712,7 @@ describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
       'already-checked-out',
       'path-exists',
       'no-git',
+      'empty-repo',
       'error',
     ] as const;
     for (const reason of reasons) {

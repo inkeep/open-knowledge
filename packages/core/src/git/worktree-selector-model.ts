@@ -164,6 +164,14 @@ export type WorktreeCreateResult =
         | 'path-exists'
         | 'no-git'
         | 'branch-not-found'
+        /**
+         * The repository exists but has no commits, so no branch is a
+         * resolvable ref and `git worktree add` fails with
+         * `fatal: invalid reference: <base>`. Distinct from `no-git` (not a
+         * repository at all) and from `branch-not-found` (a repository with
+         * history where that particular branch is missing).
+         */
+        | 'empty-repo'
         | 'error';
       readonly message?: string;
       readonly helper?: never;

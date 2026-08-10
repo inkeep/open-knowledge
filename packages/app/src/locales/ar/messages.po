@@ -12357,6 +12357,11 @@ msgstr "يزيل هذا {path} نهائيًا. ستفشل الوكلاء الت�
 msgid "This project"
 msgstr "هذا المشروع"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "لا يحتوي هذا المشروع على أي إيداعات بعد، لذا لا يوجد فرع لبناء worktree عليه. أنشئ أول إيداع ثم أعد المحاولة."
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "هذا المشروع بلا مستودع git — لا ينطبق وضع المشاركة. هيّئ مستودعًا لتفعيل المبدّل."

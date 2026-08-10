@@ -12353,6 +12353,11 @@ msgstr "Ini menghapus {path} secara permanen. Agen yang merujuk templat ini berd
 msgid "This project"
 msgstr "Proyek ini"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "Proyek ini belum memiliki commit, jadi tidak ada cabang untuk dijadikan dasar worktree. Buat commit pertama, lalu coba lagi."
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "Proyek ini tidak punya repositori git — mode berbagi tidak berlaku. Inisialisasi sebuah repo untuk mengaktifkan sakelarnya."

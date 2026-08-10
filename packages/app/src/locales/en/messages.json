@@ -370,6 +370,9 @@
     "5GKMSz": ["Indent or outdent the current list item."],
     "5GRxoA": ["Search files, folders, and commands for the current workspace."],
     "5HJpFY": ["Queues behind the running turn"],
+    "5IgYAM": [
+      "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+    ],
     "5LXwX8": [
       "This permanently removes ",
       ["path"],

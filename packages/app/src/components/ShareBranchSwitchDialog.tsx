@@ -486,6 +486,13 @@ export function ShareBranchSwitchDialog({
       case 'no-git':
         toast.error(t`This project isn't a git repository, so worktrees aren't available.`);
         return;
+      case 'empty-repo':
+        // Same wording as the New-worktree dialog, so the two surfaces share one
+        // catalog entry rather than drifting apart per-locale.
+        toast.error(
+          t`This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again.`,
+        );
+        return;
       case 'invalid-branch':
         toast.error(t`${shareBranch} isn't a valid branch name.`);
         return;

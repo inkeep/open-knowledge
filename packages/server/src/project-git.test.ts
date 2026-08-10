@@ -167,3 +167,165 @@ describe('ensureProjectGit', () => {
     }
   });
 });
+
+describe('ensureProjectGit — initial commit', () => {
+  /** True when `git rev-parse --verify HEAD` resolves (the repo has >=1 commit). */
+  async function headResolves(cwd: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['rev-parse', '--verify', 'HEAD'], { cwd });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  test('leaves a repo whose HEAD resolves after a fresh init', async () => {
+    const projectRoot = resolve(tmpDir, 'fresh');
+    mkdirSync(projectRoot, { recursive: true });
+
+    const result = await ensureProjectGit(projectRoot);
+
+    expect(result.didInit).toBe(true);
+    await expect(headResolves(projectRoot)).resolves.toBe(true);
+  });
+
+  test('leaves `main` resolvable, so `git worktree add ... -- main` succeeds', async () => {
+    // The user-visible symptom: the New-worktree dialog runs
+    // `git worktree add -b <branch> <path> -- main`, and git rejects an unborn
+    // `main` with `fatal: invalid reference: main`.
+    const projectRoot = resolve(tmpDir, 'worktree-base');
+    mkdirSync(projectRoot, { recursive: true });
+
+    await ensureProjectGit(projectRoot);
+
+    const worktreePath = resolve(projectRoot, '.ok/worktrees/wt-1');
+    await expect(
+      execFileAsync('git', ['worktree', 'add', '-b', 'wt-1', worktreePath, '--', 'main'], {
+        cwd: projectRoot,
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  test('backfills a root commit on a repo already stranded with an unborn HEAD', async () => {
+    // Every project shipped OK created before this fix is in this state, and
+    // nothing else backfills it. They are the population that reported the bug,
+    // so a forward-only fix would leave them broken forever.
+    const projectRoot = resolve(tmpDir, 'stranded');
+    mkdirSync(projectRoot, { recursive: true });
+    await execFileAsync('git', ['init', '--initial-branch=main', projectRoot]);
+    await expect(headResolves(projectRoot)).resolves.toBe(false);
+
+    const result = await ensureProjectGit(projectRoot);
+
+    // No `git init` ran — the repo already existed; only its root commit was
+    // missing.
+    expect(result.didInit).toBe(false);
+    await expect(headResolves(projectRoot)).resolves.toBe(true);
+  });
+
+  test('never grafts a root commit onto a repo that holds any history', async () => {
+    // The safety bound. A repo whose history sits on some other branch has an
+    // unborn `main`, and committing there would create a root disjoint from
+    // everything already in it.
+    const projectRoot = resolve(tmpDir, 'history-elsewhere');
+    mkdirSync(projectRoot, { recursive: true });
+    await execFileAsync('git', ['init', '--initial-branch=other', projectRoot]);
+    await execFileAsync(
+      'git',
+      ['-c', 'user.name=T', '-c', 'user.email=t@e.co', 'commit', '--allow-empty', '-m', 'existing'],
+      { cwd: projectRoot },
+    );
+    const before = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot });
+    // Point HEAD at an unborn branch, leaving the real history on `other`.
+    await execFileAsync('git', ['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: projectRoot });
+    await expect(headResolves(projectRoot)).resolves.toBe(false);
+
+    await ensureProjectGit(projectRoot);
+
+    // `main` stays unborn and `other` is untouched — no disjoint root appeared.
+    await expect(headResolves(projectRoot)).resolves.toBe(false);
+    const after = await execFileAsync('git', ['rev-parse', 'other'], { cwd: projectRoot });
+    expect(after.stdout.trim()).toBe(before.stdout.trim());
+  });
+
+  test('commits after repairing a partial .git/ (shell-`.git/` regression class)', async () => {
+    const projectRoot = resolve(tmpDir, 'shell-git-commit');
+    mkdirSync(resolve(projectRoot, '.git/ok'), { recursive: true });
+
+    const result = await ensureProjectGit(projectRoot);
+
+    expect(result.repaired).toBe(true);
+    await expect(headResolves(projectRoot)).resolves.toBe(true);
+  });
+
+  test('commits even when git can resolve no identity at all', async () => {
+    // OK Desktop targets note-takers, not only developers — git installed with
+    // `user.email` unset is a realistic first-run state, and project creation
+    // must not depend on the user having configured one.
+    //
+    // `useConfigOnly` is what makes this test real: without it git happily
+    // auto-derives `user@host`, the commit succeeds on its own, and the test
+    // would pass on machines that never exercise the fallback at all.
+    const projectRoot = resolve(tmpDir, 'no-identity');
+    mkdirSync(projectRoot, { recursive: true });
+    const emptyConfig = resolve(tmpDir, 'gitconfig-no-identity');
+    writeFileSync(emptyConfig, '[user]\n\tuseConfigOnly = true\n');
+
+    const saved = { ...process.env };
+    process.env.GIT_CONFIG_GLOBAL = emptyConfig;
+    process.env.GIT_CONFIG_SYSTEM = '/dev/null';
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('GIT_AUTHOR_') || key.startsWith('GIT_COMMITTER_')) {
+        delete process.env[key];
+      }
+    }
+    try {
+      // Guard the guard: prove git really cannot commit unaided here, so a
+      // future change to identity resolution can't quietly hollow this out.
+      await expect(
+        execFileAsync('git', ['var', 'GIT_COMMITTER_IDENT'], { cwd: projectRoot }),
+      ).rejects.toBeDefined();
+
+      await ensureProjectGit(projectRoot);
+      await expect(headResolves(projectRoot)).resolves.toBe(true);
+
+      const author = await execFileAsync('git', ['log', '-1', '--format=%an <%ae>'], {
+        cwd: projectRoot,
+      });
+      expect(author.stdout.trim()).toBe('Open Knowledge <noreply@openknowledge.local>');
+    } finally {
+      for (const key of Object.keys(process.env)) {
+        if (!(key in saved)) delete process.env[key];
+      }
+      Object.assign(process.env, saved);
+    }
+  });
+
+  test('uses the configured identity when there is one, never the fallback', async () => {
+    const projectRoot = resolve(tmpDir, 'real-identity');
+    mkdirSync(projectRoot, { recursive: true });
+    const realConfig = resolve(tmpDir, 'gitconfig-real');
+    writeFileSync(realConfig, '[user]\n\tname = Real Person\n\temail = real@example.com\n');
+
+    const saved = { ...process.env };
+    process.env.GIT_CONFIG_GLOBAL = realConfig;
+    process.env.GIT_CONFIG_SYSTEM = '/dev/null';
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('GIT_AUTHOR_') || key.startsWith('GIT_COMMITTER_')) {
+        delete process.env[key];
+      }
+    }
+    try {
+      await ensureProjectGit(projectRoot);
+      const author = await execFileAsync('git', ['log', '-1', '--format=%an <%ae>'], {
+        cwd: projectRoot,
+      });
+      expect(author.stdout.trim()).toBe('Real Person <real@example.com>');
+    } finally {
+      for (const key of Object.keys(process.env)) {
+        if (!(key in saved)) delete process.env[key];
+      }
+      Object.assign(process.env, saved);
+    }
+  });
+});

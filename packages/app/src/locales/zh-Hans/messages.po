@@ -12357,6 +12357,11 @@ msgstr "这会永久移除 {path}。在重新创建它，或者由上级文件�
 msgid "This project"
 msgstr "本项目"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "此项目还没有任何提交，因此没有可作为 worktree 基础的分支。请先创建第一个提交，然后重试。"
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "这个项目没有 git 仓库，因此共享模式不适用。初始化一个仓库即可启用该开关。"

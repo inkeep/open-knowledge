@@ -20,7 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AgentWriteBatchSuccessSchema } from '@inkeep/open-knowledge-core';
-import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { parseWriterId, resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { afterEach, describe, expect, test } from 'vitest';
 import { createTestServer, getServerState, type TestServer } from './test-harness';
 
@@ -65,13 +65,32 @@ async function postBatch(
   });
 }
 
+/**
+ * WIP refs belonging to SESSION writers (agent / principal) only.
+ *
+ * `refs/wip/` also carries classified service writers, notably `git-upstream`,
+ * which exists as soon as the project repo has history to import. Counting
+ * those conflates "these writes produced a shadow commit" with "the repo has
+ * commits at all", which is not what the assertions below mean. Mirrors the
+ * production filter in `shadow-repo-stats.ts`, including its ref parsing.
+ */
 function listWipRefs(contentDir: string): string[] {
   const shadowDir = resolveShadowDir(contentDir);
   const raw = execFileSync('git', ['for-each-ref', '--format=%(refname)', 'refs/wip/'], {
     env: { ...process.env, GIT_DIR: shadowDir },
     encoding: 'utf-8',
   });
-  return raw.trim().split('\n').filter(Boolean);
+  return raw
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .filter((refname) => {
+      // refs/wip/<branch>/<writerId> — writerId may itself contain slashes.
+      const writerId = refname.split('/').slice(3).join('/');
+      if (!writerId) return false;
+      const { classification } = parseWriterId(writerId);
+      return classification === 'agent' || classification === 'principal';
+    });
 }
 
 function countCommits(contentDir: string, ref: string): number {

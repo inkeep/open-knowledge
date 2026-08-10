@@ -12353,6 +12353,11 @@ msgstr "यह {path} को स्थायी रूप से हटा द�
 msgid "This project"
 msgstr "यह प्रोजेक्ट"
 
+#: src/components/NewWorktreeDialog.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
+msgstr "इस प्रोजेक्ट में अभी तक कोई कमिट नहीं है, इसलिए worktree को आधार देने के लिए कोई ब्रांच नहीं है। पहला कमिट करें, फिर दोबारा कोशिश करें।"
+
 #: src/components/settings/SharingSection.tsx
 msgid "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
 msgstr "इस प्रोजेक्ट में कोई git रिपॉज़िटरी नहीं है — साझाकरण मोड लागू नहीं होता। टॉगल सक्षम करने के लिए एक रिपॉज़िटरी आरंभ करें।"

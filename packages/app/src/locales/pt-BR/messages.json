@@ -435,6 +435,9 @@
     "5GKMSz": ["Aumenta ou diminui o recuo do item de lista atual."],
     "5GRxoA": ["Busca arquivos, pastas e comandos do espaço de trabalho atual."],
     "5HJpFY": ["Entra na fila atrás do turno em andamento"],
+    "5IgYAM": [
+      "Este projeto ainda não tem commits, portanto não há nenhum ramo no qual basear um worktree. Faça um primeiro commit e tente novamente."
+    ],
     "5LXwX8": [
       "Isto remove definitivamente ",
       ["path"],

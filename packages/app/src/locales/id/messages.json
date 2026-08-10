@@ -371,6 +371,9 @@
     "5GKMSz": ["Menambah atau mengurangi indentasi item daftar saat ini."],
     "5GRxoA": ["Mencari berkas, folder, dan perintah untuk ruang kerja saat ini."],
     "5HJpFY": ["Mengantre di belakang giliran yang sedang berjalan"],
+    "5IgYAM": [
+      "Proyek ini belum memiliki commit, jadi tidak ada cabang untuk dijadikan dasar worktree. Buat commit pertama, lalu coba lagi."
+    ],
     "5LXwX8": [
       "Ini menghapus ",
       ["path"],

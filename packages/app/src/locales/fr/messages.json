@@ -457,6 +457,9 @@
       "Recherchez des fichiers, des dossiers et des commandes dans l'espace de travail actuel."
     ],
     "5HJpFY": ["Se met en file derrière le tour en cours"],
+    "5IgYAM": [
+      "Ce projet n'a encore aucun commit, il n'y a donc aucune branche sur laquelle baser un worktree. Faites un premier commit, puis réessayez."
+    ],
     "5LXwX8": [
       "Ceci retire définitivement ",
       ["path"],
