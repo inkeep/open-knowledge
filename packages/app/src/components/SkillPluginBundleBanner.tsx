@@ -6,6 +6,7 @@ import {
   type SkillBundleDisclosure,
   SkillPluginBundleDialog,
 } from '@/components/SkillPluginBundleDialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -54,55 +55,58 @@ export function SkillPluginBundleBanner({
 
   return (
     <div className="editor-content-aligned">
-      <div className="my-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
-        <div className="flex items-start gap-3">
-          <PackageIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm">
-              {plugin ? (
-                <Trans>Part of the {plugin} plugin</Trans>
-              ) : (
-                // No manifest to name — the source itself is the grouping.
-                <Trans>{count} skills at this source</Trans>
-              )}
-            </p>
-            <p className="text-muted-foreground text-sm">
-              {caps.length > 0 ? (
-                <Trans>
-                  This repo bundles {count} skills, plus {caps.join(', ')}. Install any of them from
-                  the plugin.
-                </Trans>
-              ) : plugin ? (
-                <Trans>
-                  This repo bundles {count} skills. Install any of them from the plugin.
-                </Trans>
-              ) : (
-                <Trans>
-                  {source} publishes {count} skills. Install any of them together.
-                </Trans>
-              )}
-            </p>
-            <div className="mt-2.5 flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                data-testid="plugin-bundle-pick"
-                onClick={() => setPicking(true)}
-              >
-                <Trans>Install skills</Trans>
-              </Button>
-              {bundle.repositoryUrl ? (
-                <Button variant="ghost" size="sm" asChild>
-                  <a href={bundle.repositoryUrl} target="_blank" rel="noreferrer">
-                    <Trans>View plugin</Trans>
-                    <ArrowUpRightIcon className="size-3.5" />
-                  </a>
-                </Button>
-              ) : null}
-            </div>
-          </div>
+      {/* Not the live region Alert defaults to: this arrives when the preview
+          finishes resolving its source, so announcing it assertively would cut
+          across whatever the reader is on for something purely informational. */}
+      <Alert role="note" className="my-3 bg-muted/40 px-4 py-3">
+        {/* No tint of its own: Alert paints direct svg children `text-current`
+            at a specificity a utility class on the icon cannot beat. */}
+        <PackageIcon className="size-4" aria-hidden />
+        <AlertTitle>
+          {plugin ? (
+            <Trans>Part of the {plugin} plugin</Trans>
+          ) : (
+            // No manifest to name — the source itself is the grouping.
+            <Trans>{count} skills at this source</Trans>
+          )}
+        </AlertTitle>
+        {/* `source` can be a long unbroken URL; the grid track would otherwise
+            size to it and stretch the whole box. */}
+        <AlertDescription className="min-w-0">
+          {caps.length > 0 ? (
+            <Trans>
+              This repo bundles {count} skills, plus {caps.join(', ')}. Install any of them from the
+              plugin.
+            </Trans>
+          ) : plugin ? (
+            <Trans>This repo bundles {count} skills. Install any of them from the plugin.</Trans>
+          ) : (
+            <Trans>
+              {source} publishes {count} skills. Install any of them together.
+            </Trans>
+          )}
+        </AlertDescription>
+        {/* Third content row, so it needs the same column the title claims —
+            auto-placement would otherwise drop it under the icon. */}
+        <div className="mt-2.5 flex items-center gap-2 group-has-[>svg]/alert:col-start-2">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="plugin-bundle-pick"
+            onClick={() => setPicking(true)}
+          >
+            <Trans>Install skills</Trans>
+          </Button>
+          {bundle.repositoryUrl ? (
+            <Button variant="ghost" size="sm" asChild>
+              <a href={bundle.repositoryUrl} target="_blank" rel="noreferrer">
+                <Trans>View plugin</Trans>
+                <ArrowUpRightIcon className="size-3.5" />
+              </a>
+            </Button>
+          ) : null}
         </div>
-      </div>
+      </Alert>
       <SkillPluginBundleDialog
         bundle={picking ? bundle : null}
         source={source}
