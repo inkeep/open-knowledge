@@ -44,7 +44,7 @@ UI primitives discipline. Forbids raw JSX `<button>`, `<input>`, `<textarea>`, `
 
 - `!packages/app/src/editor/**` — ProseMirror NodeViews + editor chrome legitimately render raw HTML for measurement / PM-managed DOM. The exemption matches the existing `a11y/useSemanticElements` suppressions scattered through the editor subtree.
 - `!packages/app/src/components/ui/**` — these files ARE the shadcn primitive wrappers; they MUST render raw HTML by definition.
-- `!**/*.test.tsx` + `!**/*.dom.test.tsx` — test fixtures aren't user-facing UI.
+- `!**/*.test.tsx` + `!**/*.dom.test.tsx` + `!**/*.test-helper.tsx` — test fixtures and shared test doubles aren't user-facing UI.
 
 **Pre-rule backlog (ratchet pattern).** Files that pre-date the rule and use raw `<button>` / `<input>` / `<textarea>` carry a file-level `// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — ...` comment at the top of the file. The comment list across the codebase IS the visible migration backlog — review treats each `biome-ignore-all` header as a backlog marker, not a free pass. Drain by migrating the file to shadcn primitives, then deleting the suppression header (the rule starts firing again immediately, so a partial migration that misses a raw `<button>` fails the gate). Reference migration: `packages/app/src/components/NavigatorApp.tsx` (three raw `<button>` → shadcn `<Button variant="ghost|outline|link">`).
 

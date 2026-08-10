@@ -187,7 +187,8 @@
       //    a11y/useSemanticElements suppressions in editor/*).
       //  - packages/app/src/components/ui/** — these ARE the shadcn primitive
       //    wrappers; they must render raw HTML by definition.
-      //  - *.test.tsx / *.dom.test.tsx — test fixtures aren't user-facing UI.
+      //  - *.test.tsx / *.dom.test.tsx / *.test-helper.tsx — test fixtures and
+      //    shared test doubles aren't user-facing UI.
       // Pre-rule backlog (files outside the exemptions that pre-date the rule)
       // is annotated via `// biome-ignore-all lint/plugin/no-raw-html-interactive-element:`
       // at the top of each offender file — the comment list is the visible
@@ -201,6 +202,7 @@
         "!packages/app/src/components/ui/**",
         "!**/*.test.tsx",
         "!**/*.dom.test.tsx",
+        "!**/*.test-helper.tsx",
         "biome-plugins/__fixtures__/no-raw-html-interactive-element.fixture.tsx"
       ],
       "plugins": ["./biome-plugins/no-raw-html-interactive-element.grit"]

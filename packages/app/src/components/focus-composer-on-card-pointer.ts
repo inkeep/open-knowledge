@@ -1,15 +1,14 @@
 /**
  * Shared "click the card, focus the field" affordance for the composer cards:
- * the two Ask AI composers (ProseMirror `ComposerMentionInput` contentEditable)
- * and the agent-thread composer (native `<textarea>`).
+ * the two Ask AI composers and the agent-thread composer (all ProseMirror
+ * `ComposerMentionInput` contentEditables).
  *
  * A contentEditable focuses on click only within its OWN box, and — unlike a
  * labelable form control — a wrapping `<label>` cannot forward a click into it,
  * so the standard chat-composer affordance (ChatGPT / Claude / Cursor: click
- * anywhere in the field's card to focus the input) needs this pointer handler.
- * The agent-thread composer's chrome (wrapper padding, the whitespace in the
- * action bar between the settings menu and the send button) isn't wrapped in a
- * label either, so it reuses the same handler against its textarea ref.
+ * anywhere in the field's card to focus the input) needs this pointer handler
+ * for the card's chrome (wrapper padding, the whitespace in an action bar
+ * between the settings menu and the send button).
  *
  * a11y: this is a pointer-only progressive enhancement. The card keeps passive
  * semantics (no `role`/`tabindex`) — the real control is the inner textbox,
@@ -40,9 +39,9 @@ export function focusComposerInputOnCardPointer(
     currentTarget: EventTarget | null;
     preventDefault: () => void;
   },
-  // Any focusable input handle — the ProseMirror `ComposerMentionInputHandle`
-  // (Ask AI composers) or a native `HTMLTextAreaElement` (the agent-thread
-  // composer). Both expose `focus()`.
+  // Any focusable input handle — in practice the ProseMirror
+  // `ComposerMentionInputHandle`; typed structurally so any `focus()`-bearing
+  // handle works.
   inputRef: RefObject<{ focus: () => void } | null>,
 ): void {
   if (!(event.target instanceof HTMLElement)) return;

@@ -243,8 +243,19 @@ export function composerMentionExtensions(options?: { placeholder?: string }) {
     ComposerMention,
     // Seeds the mount-time value only. Extensions are built once, so the host
     // re-points `options.placeholder` on this instance when the interface
-    // language changes — see `ComposerMentionInput`.
-    ...(options?.placeholder ? [Placeholder.configure({ placeholder: options.placeholder })] : []),
+    // language changes — see `ComposerMentionInput`. `showOnlyWhenEditable:
+    // false` because a disabled composer keeps its placeholder (the agent-thread
+    // composer disables while an archived thread resumes, and the placeholder is
+    // what says "Resuming the chat" — matching a native textarea, which shows its
+    // placeholder while disabled).
+    ...(options?.placeholder
+      ? [
+          Placeholder.configure({
+            placeholder: options.placeholder,
+            showOnlyWhenEditable: false,
+          }),
+        ]
+      : []),
   ];
 }
 

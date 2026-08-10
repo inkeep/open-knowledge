@@ -24,6 +24,7 @@ import type {
   RenderedTerminal,
   ThreadRenderModel,
 } from '@/lib/acp/thread-event-model';
+import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
 // ThreadView renders Radix Tooltips (the context-usage ring, the follow
 // toggle). The app installs the single TooltipProvider at its root (main.tsx),
@@ -102,6 +103,12 @@ vi.doMock('@/lib/use-workspace', () => ({
 // suite off the streamdown pipeline.
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
+}));
+
+// The composer's rich input, doubled as a textarea (jsdom can't type into a
+// ProseMirror contentEditable) — see the helper's header for contract parity.
+vi.doMock('@/editor/ComposerMentionInput', () => ({
+  ComposerMentionInput: MockComposerMentionInput,
 }));
 
 const { ThreadView } = await import('./ThreadView');

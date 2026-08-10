@@ -39,6 +39,12 @@ function mentionNode(path: string, label = path): Content {
   return { type: 'composerMention', attrs: { path, label } };
 }
 
+/** Reach the live editor from the rendered textbox — TipTap's EditorContent
+ *  tags the contenteditable host node with the instance. */
+function getComposerEditor(box: HTMLElement): Editor {
+  return (box as unknown as { editor: Editor }).editor;
+}
+
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -152,6 +158,105 @@ describe('ComposerMentionInput (component)', () => {
     );
     ref.current?.setText('a research wiki');
     expect(ref.current?.getContent()).toEqual({ instruction: 'a research wiki', mentions: [] });
+  });
+
+  test('appendText fills an empty field, mapping newlines to paragraphs', () => {
+    const ref = createRef<ComposerMentionInputHandle>();
+    const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
+    render(
+      <ComposerMentionInput
+        ref={ref}
+        ariaLabel="Message Claude"
+        onEmptyChange={onEmptyChange}
+        onSubmit={() => {}}
+      />,
+    );
+    ref.current?.appendText('line one\nline two');
+    expect(ref.current?.getContent().instruction).toBe('line one\nline two');
+    // The send-enabled state must flip — `setContent` alone won't announce it.
+    expect(onEmptyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  test('appendText joins after existing content with a blank line, chips intact', () => {
+    const ref = createRef<ComposerMentionInputHandle>();
+    render(
+      <ComposerMentionInput
+        ref={ref}
+        ariaLabel="Message Claude"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+        initialDoc={
+          paragraph(
+            { type: 'text', text: 'look at ' },
+            mentionNode('notes.md', 'Notes'),
+          ) as JSONContent
+        }
+      />,
+    );
+    ref.current?.appendText('rescued queue text');
+    const { instruction, mentions } = ref.current?.getContent() ?? {
+      instruction: '',
+      mentions: [],
+    };
+    // The chip survives as a chip (still on the mentions list), not flattened
+    // prose — the property that makes append safe mid-draft.
+    expect(instruction).toBe('look at @notes.md\n\nrescued queue text');
+    expect(mentions).toEqual(['notes.md']);
+  });
+
+  test('disabled turns off editing but keeps content, placeholder, and the handle', () => {
+    const ref = createRef<ComposerMentionInputHandle>();
+    const { rerender } = render(
+      <ComposerMentionInput
+        ref={ref}
+        ariaLabel="Message Claude"
+        placeholder="Resuming the chat"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+        disabled
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Message Claude' });
+    expect(box.getAttribute('contenteditable')).toBe('false');
+    // `contenteditable=false` is invisible to AT on a role="textbox" element —
+    // the disabled state must be announced, as the native `<textarea disabled>`
+    // this replaces did natively.
+    expect(box.getAttribute('aria-disabled')).toBe('true');
+    // A disabled native textarea still shows its placeholder; so must this.
+    expect(box.querySelector('[data-placeholder="Resuming the chat"]')).not.toBeNull();
+    // The handle still writes (the host seeds drafts regardless of state).
+    ref.current?.appendText('kept');
+    expect(ref.current?.getContent().instruction).toBe('kept');
+
+    rerender(
+      <ComposerMentionInput
+        ref={ref}
+        ariaLabel="Message Claude"
+        placeholder="Resuming the chat"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(box.getAttribute('contenteditable')).toBe('true');
+    expect(box.getAttribute('aria-disabled')).toBeNull();
+    expect(ref.current?.getContent().instruction).toBe('kept');
+  });
+
+  test('mounting emits no onContentChange — only an edit mirrors into the draft', () => {
+    // The editable-sync effect must not push a synthetic update on mount:
+    // every composer runs it, and the Ask AI hosts mirror onContentChange into
+    // the persisted draft store — a mount-time emission is a redundant write on
+    // every doc navigation.
+    const onContentChange = vi.fn(() => {});
+    render(
+      <ComposerMentionInput
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onContentChange={onContentChange}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(onContentChange).not.toHaveBeenCalled();
   });
 
   test('a placeholder adds the data-placeholder hint while the field is empty', () => {
@@ -334,12 +439,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     fetchSpy.mockRestore();
   });
 
-  function getComposerEditor(box: HTMLElement): Editor {
-    // TipTap's EditorContent tags the contenteditable host node with the live
-    // editor instance; the textbox role resolves to that same node.
-    return (box as unknown as { editor: Editor }).editor;
-  }
-
   function isSuggestionActive(editor: Editor): boolean {
     const state = composerMentionSuggestionKey.getState(editor.state) as
       | { active: boolean }
@@ -392,6 +491,71 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     // Clearing the field tears the trigger down; Enter submits again.
     editor.commands.clearContent(true);
     expect(isSuggestionActive(editor)).toBe(false);
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  test('Escape defers to the open @-popup and does not fire onEscape', () => {
+    // Load-bearing since the agent-thread composer wired onEscape to
+    // turn-cancellation: while the popup is open, Escape closes IT (the
+    // suggestion plugin owns the key) — the host must not hear the press, or
+    // dismissing the picker would stop a running agent turn.
+    const onEscape = vi.fn(() => {});
+    render(
+      <ComposerMentionInput
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+        onEscape={onEscape}
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Ask AI' });
+    const editor = getComposerEditor(box);
+
+    editor.commands.insertContent('@foo');
+    expect(isSuggestionActive(editor)).toBe(true);
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(0);
+
+    // Popup gone → Escape is the host's again.
+    editor.commands.clearContent(true);
+    expect(isSuggestionActive(editor)).toBe(false);
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The IME-composition guard, against the real editor: Enter mid-composition is
+ * the input method committing characters, never a send. Both halves of the
+ * guard are exercised — the event's own `isComposing` flag and ProseMirror's
+ * `view.composing` (they can disagree; the keydown that ends a composition
+ * clears the event flag while the view still reports composing). The
+ * ThreadView suites' textarea double reimplements only the event half, so this
+ * is the coverage that pins production.
+ */
+describe('ComposerMentionInput — Enter during IME composition', () => {
+  test('neither guard half lets a composition Enter submit; a plain Enter does', () => {
+    const onSubmit = vi.fn(() => {});
+    render(
+      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Ask AI' });
+    const editor = getComposerEditor(box);
+
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(onSubmit).toHaveBeenCalledTimes(0);
+
+    // Same public-getter override the gfm-autolink suite uses — the view's
+    // `composing` is a getter, so define over it rather than assign.
+    Object.defineProperty(editor.view, 'composing', { get: () => true, configurable: true });
+    try {
+      fireEvent.keyDown(box, { key: 'Enter' });
+      expect(onSubmit).toHaveBeenCalledTimes(0);
+    } finally {
+      Reflect.deleteProperty(editor.view, 'composing');
+    }
+
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });

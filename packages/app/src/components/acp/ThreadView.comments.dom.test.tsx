@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CommentThread } from '@/comments/types';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ThreadRenderModel } from '@/lib/acp/thread-event-model';
+import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
 
@@ -61,6 +62,12 @@ vi.doMock('@/lib/use-workspace', () => ({ useWorkspace: () => null }));
 
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
+}));
+
+// The composer's rich input, doubled as a textarea (jsdom can't type into a
+// ProseMirror contentEditable) — see the helper's header for contract parity.
+vi.doMock('@/editor/ComposerMentionInput', () => ({
+  ComposerMentionInput: MockComposerMentionInput,
 }));
 
 /**

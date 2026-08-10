@@ -104,6 +104,10 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkingAvatar } from '@/components/WorkingAvatar';
+import {
+  ComposerMentionInput,
+  type ComposerMentionInputHandle,
+} from '@/editor/ComposerMentionInput';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import {
   agentSettingsKey,
@@ -227,7 +231,13 @@ export function ThreadView({
   const state = useAgentThread(info.threadId);
   const client = getAgentThreadClient();
   const workspace = useWorkspace();
-  const [draft, setDraft] = useState('');
+  // The composer input (the shared rich `@`-mention field) owns the draft; this
+  // component reads it at each send via the imperative handle and seeds it via
+  // `appendText` — there is no draft string in React state anymore.
+  const composerRef = useRef<ComposerMentionInputHandle>(null);
+  // The current serialized draft: typed prose with chips inline as `@path`.
+  // Called from event handlers only (a render must not read the ref).
+  const composerText = (): string => composerRef.current?.getContent().instruction.trim() ?? '';
   const [followFile, setFollowFile] = useState(loadFollowFilePref);
   // Captured by ScrollToEndBridge (a child of the scroller Provider) so send/
   // resume can imperatively jump to the live edge; null until the bridge mounts.
@@ -245,10 +255,12 @@ export function ThreadView({
   // seeds the composer instead of auto-sending, so the user reviews and extends
   // the passage before spending a turn — the same stage-don't-submit contract the
   // terminal CLI path honors. Appends rather than overwrites so a staged value
-  // arriving after the user started typing can't eat their words.
+  // arriving after the user started typing can't eat their words. The handle is
+  // populated before this subscribes: the composer child's ref commits before
+  // the parent's effects run, so a value staged before mount is not dropped.
   useEffect(() => {
     return subscribeStagedThreadDraft(info.threadId, (text) => {
-      setDraft((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')}\n\n${text}`));
+      composerRef.current?.appendText(text);
     });
   }, [info.threadId]);
 
@@ -349,8 +361,7 @@ export function ThreadView({
       ...(info.queue ?? []).map((message) => message.content),
     ];
     if (rescued.length > 0) {
-      const text = rescued.join('\n\n');
-      setDraft((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')}\n\n${text}`));
+      composerRef.current?.appendText(rescued.join('\n\n'));
     }
     client.cancel(info.threadId);
     setCancelPending(true);
@@ -362,10 +373,10 @@ export function ThreadView({
    * interrupting a run is not something a habit keystroke should do.
    */
   const requestSteer = (): void => {
-    const text = draft.trim();
+    const text = composerText();
     if (text === '') return;
     client.steer(info.threadId, text);
-    setDraft('');
+    composerRef.current?.clear();
     scrollApiRef.current?.scrollToEnd();
   };
 
@@ -504,7 +515,7 @@ export function ThreadView({
   };
 
   const submit = (): void => {
-    const text = draft.trim();
+    const text = composerText();
     // `canQueue` rides alongside `canPrompt`: a busy thread accepts a queued
     // message rather than refusing the send.
     if (!(canPrompt || canQueue)) return;
@@ -523,7 +534,7 @@ export function ThreadView({
     }
     if (text === '') return;
     void sendText(text);
-    setDraft('');
+    composerRef.current?.clear();
   };
 
   /**
@@ -573,7 +584,7 @@ export function ThreadView({
         t`Your comments are waiting behind the running turn — they stay queued until the agent picks the message up.`,
       );
     }
-    setDraft('');
+    composerRef.current?.clear();
     // The batch detaches with the rest of the draft. Left on, the next message
     // would silently carry whatever had been queued since.
     setCommentsAttached(false);
@@ -597,7 +608,7 @@ export function ThreadView({
     // The composer's own guard: a busy thread accepts a queued message, a dead
     // one accepts nothing.
     if (!(canPrompt || canQueue)) return;
-    submitQueuedComments(draft.trim(), threadIds).catch((err) => {
+    submitQueuedComments(composerText(), threadIds).catch((err) => {
       console.warn('[acp] panel comment send rejected unexpectedly', err);
     });
   });
@@ -629,7 +640,8 @@ export function ThreadView({
   };
 
   const startFreshThread = (): void => {
-    const prompt = failedPrompt ?? (draft.trim() === '' ? undefined : draft.trim());
+    const draftText = composerText();
+    const prompt = failedPrompt ?? (draftText === '' ? undefined : draftText);
     setResumeError(null);
     setFailedPrompt(null);
     void client
@@ -825,8 +837,7 @@ export function ThreadView({
       ) : null}
       <ThreadComposer
         info={info}
-        draft={draft}
-        onDraftChange={setDraft}
+        composerRef={composerRef}
         onSubmit={submit}
         canPrompt={canPrompt}
         canQueue={canQueue}
@@ -2732,8 +2743,7 @@ function ContextUsageRing({
 
 function ThreadComposer({
   info,
-  draft,
-  onDraftChange,
+  composerRef,
   onSubmit,
   canPrompt,
   canQueue,
@@ -2754,8 +2764,10 @@ function ThreadComposer({
   onDismissComments,
 }: {
   info: ThreadInfo;
-  draft: string;
-  onDraftChange: (value: string) => void;
+  /** The parent's handle to the shared composer input — ThreadView reads the
+   *  draft through it at send time and seeds it (staged passages, a cancelled
+   *  turn's rescued queue) via `appendText`. */
+  composerRef: RefObject<ComposerMentionInputHandle | null>;
   onSubmit: () => void;
   canPrompt: boolean;
   /** A turn is running — sends queue behind it instead of dispatching. */
@@ -2790,21 +2802,22 @@ function ThreadComposer({
   onDismissComments: () => void;
 }): ReactNode {
   const { t } = useLingui();
-  const ref = useRef<HTMLTextAreaElement>(null);
   // Naming the agent in the placeholder ("Message Claude") beats a generic
   // "Message the agent"; strip the "Agent" suffix so it reads as the brand.
   const agentName = agentDisplayName(info.agent.name);
 
-  // Grow with content up to a cap. `draft` is the trigger, not read in the
-  // body (the element's own scrollHeight is), so the analyzer sees it as
-  // redundant — but it is exactly what should re-run the resize.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: draft is the resize trigger, not a body dependency
-  useEffect(() => {
-    const el = ref.current;
-    if (el === null) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [draft]);
+  // The input owns the draft; this host tracks only emptiness (pushed up via
+  // `onEmptyChange`) to drive the send-enabled state and the Stop/Send/Steer
+  // action slot. Content is read at send time through `composerRef`.
+  const [isEmpty, setIsEmpty] = useState(true);
+
+  // Typable in every live state, including the ones that are only waiting on
+  // something: signing in takes a detour through a browser (and flips the
+  // status to `installing` while it does), a failed start is a Retry away from
+  // running, and a draft written across any of that must survive. Only a
+  // thread whose agent is gone for good has nothing left to say. Sending is
+  // still gated by canPrompt / canQueue.
+  const composerDisabled = archived ? resumePending : status === 'exited';
 
   const usagePercent =
     usage !== null && usage.used !== undefined && usage.size !== undefined && usage.size > 0
@@ -2818,7 +2831,7 @@ function ThreadComposer({
   // What the action slot keys off. Both the Stop/Send choice and Send's disabled
   // state read this, or the two disagree. An attached batch counts as content:
   // the comments are the ask, so a send with nothing typed is a real send.
-  const hasSendableContent = draft.trim() !== '' || hasQueuedComments;
+  const hasSendableContent = !isEmpty || hasQueuedComments;
 
   // Mid-turn the same control queues rather than sends, so it stops wearing the
   // send arrow — an aria-label the sighted user never reads was the only thing
@@ -2846,15 +2859,15 @@ function ThreadComposer({
       {queue.length > 0 && !archived ? (
         <QueuedMessageList threadId={info.threadId} queue={queue} />
       ) : null}
-      {/* Two-row field: the textarea fills the full width on top; a bottom bar
+      {/* Two-row field: the input fills the full width on top; a bottom bar
           holds the model/agent settings (left) and the context ring + send/stop
           (right). The wrapper owns the border + focus ring so the whole box lights
           up on focus. Every control is a real in-flow sibling (natural Tab order,
           own focus ring) and the send button lives on its own row, so there's no
           reserved text gutter narrowing the input on multi-line drafts. */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the textarea; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
       <div
-        onMouseDown={(event) => focusComposerInputOnCardPointer(event, ref)}
+        onMouseDown={(event) => focusComposerInputOnCardPointer(event, composerRef)}
         className="cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
       >
         {/* Queued comments as a context chip above the field, the same control
@@ -2883,30 +2896,27 @@ function ThreadComposer({
             ) : null}
           </ComposerContextChips>
         ) : null}
-        <Textarea
-          ref={ref}
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              onSubmit();
-            } else if (event.key === 'Escape' && turnActive && !cancelPending) {
-              // Deliberately field-scoped, not panel-wide. Sendable content hides
-              // Stop, so Escape is the cancel path while composing — but Escape
-              // is a dismiss-shaped key, and binding it panel-wide would let a
-              // stray press kill a running turn with no undo. The accepted cost:
-              // leave content in the composer, click away, and neither Stop nor
-              // Escape is reachable until you click back or clear it. Judged rare
-              // enough to accept over a broader binding or a second Stop.
-              event.preventDefault();
-              onCancel();
-            }
-          }}
-          rows={1}
+        <ComposerMentionInput
+          ref={composerRef}
           // Stable accessible name — the placeholder is situational (and a
           // placeholder alone isn't a reliable label for screen readers).
-          aria-label={t`Message ${agentName}`}
+          ariaLabel={t`Message ${agentName}`}
+          onEmptyChange={setIsEmpty}
+          // Enter with the `@`-popup closed (IME-composition guarded inside the
+          // shared input, so a CJK commit-Enter never sends).
+          onSubmit={onSubmit}
+          onEscape={() => {
+            // Deliberately field-scoped, not panel-wide. Sendable content hides
+            // Stop, so Escape is the cancel path while composing — but Escape
+            // is a dismiss-shaped key, and binding it panel-wide would let a
+            // stray press kill a running turn with no undo. The accepted cost:
+            // leave content in the composer, click away, and neither Stop nor
+            // Escape is reachable until you click back or clear it. Judged rare
+            // enough to accept over a broader binding or a second Stop. With no
+            // turn running Escape is a no-op (never a blur), matching the
+            // textarea this field replaced.
+            if (turnActive && !cancelPending) onCancel();
+          }}
           placeholder={
             archived
               ? resumePending
@@ -2916,23 +2926,17 @@ function ThreadComposer({
                 ? t`Sign in to ${agentName} first`
                 : t`Message ${agentName}`
           }
-          disabled={
-            archived
-              ? resumePending
-              : // Typable in every live state, including the ones that are only
-                // waiting on something: signing in takes a detour through a
-                // browser (and flips the status to `installing` while it does),
-                // a failed start is a Retry away from running, and a draft
-                // written across any of that must survive. Only a thread whose
-                // agent is gone for good has nothing left to say. Sending is
-                // still gated by canPrompt / canQueue.
-                status === 'exited'
-          }
-          // Borderless + transparent so the wrapper alone renders the field chrome
-          // and focus ring (no doubled border/ring). Full width — the action bar
-          // sits on its own row below, so no right-padding gutter is reserved.
-          className="max-h-40 min-h-9 resize-none border-0 bg-transparent pb-0 shadow-none focus-visible:border-0 focus-visible:ring-0 disabled:bg-transparent dark:bg-transparent dark:disabled:bg-transparent placeholder:text-muted-foreground/60"
-          data-testid="agent-thread-composer"
+          disabled={composerDisabled}
+          // The wrapper alone renders the field chrome and focus ring; this is a
+          // bare scrolling text region sized to the old textarea (single slim
+          // line at rest, capped growth). Full width — the action bar sits on
+          // its own row below, so no right-padding gutter is reserved. Disabled
+          // dims like the native textarea it replaced.
+          className={cn(
+            'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
+            composerDisabled && 'opacity-50',
+          )}
+          testId="agent-thread-composer"
         />
         {/* Action bar: model/agent settings on the left, context ring + send/stop
             on the right. The send cluster uses `ml-auto` (not the row's
@@ -2980,7 +2984,7 @@ function ThreadComposer({
                     are some — an attached comment batch has its own delivery
                     rules (it stays queued until a turn actually runs it) and
                     must not be interrupted onto a run being cancelled. */}
-                {draft.trim() !== '' ? (
+                {!isEmpty ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button

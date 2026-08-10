@@ -10,6 +10,7 @@ import { act, cleanup, render as rtlRender } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { RenderedItem, ThreadRenderModel } from '@/lib/acp/thread-event-model';
+import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
 
@@ -50,6 +51,12 @@ vi.doMock('@/editor/DocumentContext', () => ({
 vi.doMock('@/lib/use-workspace', () => ({ useWorkspace: () => null }));
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
+}));
+// The composer's rich input, doubled as a textarea — a real TipTap instance in
+// jsdom schedules deferred scroll work that can crash the run after the suite
+// passes, and this suite only needs the composer to mount.
+vi.doMock('@/editor/ComposerMentionInput', () => ({
+  ComposerMentionInput: MockComposerMentionInput,
 }));
 // The comments store is deliberately NOT mocked here. It is the one dependency
 // in this component with a documented history of the runaway-update failure
