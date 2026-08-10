@@ -31,6 +31,7 @@ import {
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
   isReportIdShape,
   type OkBugReportCrashAckResult,
+  type OkBugReportCrashDumpAvailability,
   type OkBugReportCreateResult,
   type OkBugReportScreenshot,
   type OkBugReportSendMetadata,
@@ -91,12 +92,26 @@ export interface OkBugReportCrashAckRequest {
   eventId: string;
 }
 
+/**
+ * Ask main whether it is holding a crash dump this report could carry.
+ *
+ * A crash-detected invitation already answers this on its own event, so only a
+ * report the user opened themselves needs to ask. Without it that report can
+ * never offer the dump — which is precisely the report filed moments after a
+ * crash the user was never prompted about, and so the one where the dump
+ * matters most.
+ */
+interface OkBugReportCrashDumpAvailabilityRequest {
+  kind: 'crash-dump-availability';
+}
+
 /** Every operation the `ok:bug-report:dispatch` channel carries. */
 export type OkBugReportRequest =
   | OkBugReportCreateRequest
   | OkBugReportSendRequest
   | OkBugReportCrashAckRequest
   | OkBugReportCaptureScreenshotRequest
+  | OkBugReportCrashDumpAvailabilityRequest
   | OkBugReportListRequest
   | OkBugReportDeleteRequest;
 
@@ -301,14 +316,14 @@ export function resolveMinidumpAttachment(
  * swallowed here — the same fail-soft posture as the sidecar write.
  */
 function recordMinidumpDecision(
-  deps: BugReportCreateDeps,
+  logger: BundleLogger | undefined,
   level: 'info' | 'warn',
   payload: Record<string, unknown>,
   message: string,
 ): void {
   try {
-    if (level === 'warn') deps.logger?.warn(payload, message);
-    else deps.logger?.info(payload, message);
+    if (level === 'warn') logger?.warn(payload, message);
+    else logger?.info(payload, message);
   } catch {
     // The logger is the thing that failed; there is nowhere left to report it.
   }
@@ -385,7 +400,7 @@ export async function handleBugReportCreate(
   // bundle carrying only this line still explains itself; `staging` is the one
   // reason left open, and then the bundle's own `extra/` is the answer.
   recordMinidumpDecision(
-    deps,
+    deps.logger,
     'info',
     { ...decisionFacts, phase: 'intent', reason: intent.reason },
     'bug-report: crash-dump decision recorded before collection',
@@ -451,7 +466,7 @@ export async function handleBugReportCreate(
     if (intent.reason === 'staging') {
       const { attached, reason } = resolveMinidumpAttachment(intent, summary.files);
       recordMinidumpDecision(
-        deps,
+        deps.logger,
         attached ? 'info' : 'warn',
         { ...decisionFacts, phase: 'outcome', attached, reason },
         attached
@@ -1331,4 +1346,34 @@ export function handleBugReportCrashAck(
   }
   deps.ackCrashEvent(request.eventId);
   return { ok: true };
+}
+
+/**
+ * Answer the `crash-dump-availability` probe for a manually-opened report.
+ *
+ * Runs the same ownership walk `create` would, so a "yes" here means the very
+ * dump a later opt-in will attach — the checkbox cannot appear over a dump
+ * that turns out to be foreign or unreadable. A lookup that is absent (no
+ * crash detection wired) answers "no" rather than throwing: the probe governs
+ * whether an option is offered, and a failure to answer must lose the option,
+ * never the report.
+ */
+export function handleBugReportCrashDumpAvailability(deps: {
+  newestMinidumpForReport?: () => MinidumpReportLookup;
+  logger?: BundleLogger;
+}): OkBugReportCrashDumpAvailability {
+  try {
+    return { available: (deps.newestMinidumpForReport?.() ?? NO_MINIDUMP_LOOKUP).path !== null };
+  } catch (err) {
+    // A walk that keeps throwing presents to the reporter as "no dump on
+    // disk", which is the exact symptom the probe exists to end, so the
+    // failure has to be distinguishable from a genuinely empty crash database.
+    recordMinidumpDecision(
+      deps.logger,
+      'warn',
+      { event: 'bug-report.crash-dump-availability-failed', err },
+      'crash-dump availability lookup failed; offering no dump',
+    );
+    return { available: false };
+  }
 }

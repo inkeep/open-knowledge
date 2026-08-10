@@ -22,6 +22,7 @@ import type { LanguagePreference } from './i18n/locales.ts';
 import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
+  OkBugReportCrashDumpAvailability,
   OkBugReportCreateResult,
   OkBugReportDeleteResult,
   OkBugReportListResult,
@@ -1579,6 +1580,12 @@ export interface OkDesktopBridge {
       includeScreenshot?: boolean;
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
+    /**
+     * Whether main is holding a crash dump this report could carry. Only a
+     * report the user opened themselves needs to ask — a crash invitation
+     * already carries the answer on its event.
+     */
+    crashDumpAvailability(): Promise<OkBugReportCrashDumpAvailability>;
     send(request: OkBugReportSendInput): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
     list(): Promise<OkBugReportListResult>;

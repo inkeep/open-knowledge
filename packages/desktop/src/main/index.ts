@@ -265,6 +265,7 @@ import {
   type BugReportScreenshotEntry,
   handleBugReportCaptureScreenshot,
   handleBugReportCrashAck,
+  handleBugReportCrashDumpAvailability,
   handleBugReportCreate,
   handleBugReportSend,
   resolveBugReportIntakeUrl,
@@ -5404,6 +5405,17 @@ function registerIpcHandlers() {
         },
         request,
       );
+    }
+    if (request.kind === 'crash-dump-availability') {
+      return handleBugReportCrashDumpAvailability({
+        newestMinidumpForReport: () =>
+          crashDetection?.newestMinidumpForReport() ?? {
+            path: null,
+            foreignSkipped: 0,
+            unknownSkipped: 0,
+          },
+        logger: getLogger('bug-report'),
+      });
     }
     if (request.kind === 'capture-screenshot') {
       // Captured before the report dialog paints (the gate awaits this reply

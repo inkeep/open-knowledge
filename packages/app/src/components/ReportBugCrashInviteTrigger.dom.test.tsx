@@ -136,6 +136,50 @@ describe('ReportBugCrashInviteTrigger', () => {
     );
   });
 
+  test('a superseding crash restarts the dialog instead of reusing the previous crash state', async () => {
+    // Main supersedes an invitation the user left unanswered, so a second
+    // event can land while this dialog is still on screen. Reconciling in
+    // place would carry the first crash's mount-time state onto the second and
+    // ship one crash's account stamped with the other's id.
+    const stub = makeCrashBridge();
+    uninstall = crashInviteStore.install({ bridge: stub.bridge });
+    render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
+
+    stub.fire(INVITE);
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('dialog')).not.toBeNull();
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
+    // The first crash left no dump, so it offers no opt-in.
+    expect(screen.queryByRole('checkbox', { name: 'Crash dump' })).toBeNull();
+    const noteBox = screen.getByRole('textbox', { name: /what were you doing/i });
+    await userEvent.type(noteBox, 'I was editing a spec when the window blinked');
+
+    stub.fire({
+      eventId: 'crash:render:1751871900000:0',
+      kind: 'render-process-gone',
+      context: { reason: 'crashed', exitCode: 5 },
+      minidumpAvailable: true,
+    });
+
+    // Re-defaulted for the new crash: the note is gone rather than being
+    // re-attributed, and the dump opt-in reflects THIS event, checked per the
+    // invite contract rather than stuck on the dump-less predecessor.
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole('checkbox', { name: 'Crash dump' }).getAttribute('data-state'),
+        ).toBe('checked');
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
+    expect(
+      (screen.getByRole('textbox', { name: /what were you doing/i }) as HTMLTextAreaElement).value,
+    ).toBe('');
+  });
+
   test('Not now acks the crash event and closes the invitation', async () => {
     const stub = makeCrashBridge();
     uninstall = crashInviteStore.install({ bridge: stub.bridge });

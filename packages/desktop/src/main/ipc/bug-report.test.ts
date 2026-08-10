@@ -48,6 +48,7 @@ import {
   DEFAULT_BUG_REPORT_INTAKE_URL,
   handleBugReportCaptureScreenshot,
   handleBugReportCrashAck,
+  handleBugReportCrashDumpAvailability,
   handleBugReportCreate,
   handleBugReportSend,
   MAX_UPLOAD_ZIP_BYTES,
@@ -2258,6 +2259,70 @@ describe('handleBugReportCrashAck', () => {
 
     // The handler's contract: malformed renderer input never mutates the store.
     expect(acked).toEqual([]);
+  });
+});
+
+describe('handleBugReportCrashDumpAvailability', () => {
+  test('reports available when the ownership walk found a dump this app owns', () => {
+    const result = handleBugReportCrashDumpAvailability({
+      newestMinidumpForReport: () => ({
+        path: '/crash-dumps/pending/a44001a4.dmp',
+        foreignSkipped: 0,
+        unknownSkipped: 0,
+      }),
+    });
+
+    expect(result).toEqual({ available: true });
+  });
+
+  test('reports unavailable when the walk rejected everything it found', () => {
+    // Foreign and unreadable dumps are not ours to offer, and the lookup has
+    // already excluded them — a nonzero skip count is not availability.
+    const result = handleBugReportCrashDumpAvailability({
+      newestMinidumpForReport: () => ({ path: null, foreignSkipped: 3, unknownSkipped: 1 }),
+    });
+
+    expect(result).toEqual({ available: false });
+  });
+
+  test('reports unavailable rather than throwing when no lookup is wired', () => {
+    expect(handleBugReportCrashDumpAvailability({})).toEqual({ available: false });
+  });
+
+  test('a lookup that throws loses the option, not the report, and says so', () => {
+    // A walk that keeps throwing is indistinguishable from an empty crash
+    // database at the checkbox, so the failure has to leave a record.
+    const warnings: Record<string, unknown>[] = [];
+    const result = handleBugReportCrashDumpAvailability({
+      newestMinidumpForReport: () => {
+        throw new Error('crash-dumps dir is unreadable');
+      },
+      logger: {
+        info: () => {},
+        warn: (payload: Record<string, unknown>) => {
+          warnings.push(payload);
+        },
+      } as unknown as Parameters<typeof handleBugReportCrashDumpAvailability>[0]['logger'],
+    });
+
+    expect(result).toEqual({ available: false });
+    expect(warnings[0]?.event).toBe('bug-report.crash-dump-availability-failed');
+  });
+
+  test('a logger that throws cannot fail the probe', () => {
+    const result = handleBugReportCrashDumpAvailability({
+      newestMinidumpForReport: () => {
+        throw new Error('crash-dumps dir is unreadable');
+      },
+      logger: {
+        info: () => {},
+        warn: () => {
+          throw new Error('logger is down too');
+        },
+      } as unknown as Parameters<typeof handleBugReportCrashDumpAvailability>[0]['logger'],
+    });
+
+    expect(result).toEqual({ available: false });
   });
 });
 

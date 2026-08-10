@@ -57,6 +57,11 @@ export function createCrashInviteStore(): CrashInviteStore {
       attached = true;
       unsubscribeFromBridge = onCrashDetected((event) => {
         // Main arms at most one invitation at a time, so last-wins is exact.
+        // It does NOT mean the previous invitation was answered: main
+        // supersedes one the user left unanswered, so this can replace an
+        // event whose dialog is still open. The trigger keys the dialog on
+        // `eventId` so that swap remounts rather than reconciling stale
+        // mount-time state onto the new crash.
         current = event;
         notify();
       });

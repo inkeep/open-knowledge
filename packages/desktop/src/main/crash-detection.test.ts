@@ -268,6 +268,53 @@ describe('runtime process-gone invitations', () => {
     detection.notifyRendererReady();
     expect(rig.emitted).toHaveLength(1);
   });
+
+  test('a crash an hour after an unanswered invitation supersedes it instead of staying silent', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    expect(rig.emitted).toHaveLength(1);
+    const first = rig.emitted[0];
+    if (!first) throw new Error('expected a first invitation');
+
+    // Nobody answers the first prompt. An hour later an independent crash
+    // fires — the user has to hear about that one, or the app recovers in
+    // silence and the only evidence is a window that blinked.
+    rig.advance(60 * 60_000);
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(2);
+    expect(rig.emitted[1]?.eventId).not.toBe(first.eventId);
+  });
+
+  test('a crash inside the relatedness window still dedupes against the pending invitation', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    // A crashloop's repeats belong to the incident the user was already asked
+    // about; stacking a second prompt on them is the noise the guard prevents.
+    rig.advance(30_000);
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(1);
+  });
+
+  test('a superseded invitation is logged so the silence is legible after the fact', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const first = rig.emitted[0];
+    if (!first) throw new Error('expected a first invitation');
+    rig.advance(60 * 60_000);
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    const superseded = rig.warnings.find((w) => w.event === 'crash-detection.superseded');
+    expect(superseded).toBeDefined();
+    expect(superseded?.supersededEventId).toBe(first.eventId);
+  });
 });
 
 /**

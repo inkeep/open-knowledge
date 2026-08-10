@@ -43,6 +43,7 @@ export type {
   LogPayload,
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
+  OkBugReportCrashDumpAvailability,
   OkBugReportCreateResult,
   OkBugReportDeleteResult,
   OkBugReportListResult,

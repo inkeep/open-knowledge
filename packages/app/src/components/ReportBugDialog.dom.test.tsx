@@ -91,6 +91,7 @@ interface BridgeLog {
   opened: string[];
   clipboard: string[];
   screenshotCalls: number;
+  crashDumpAvailabilityCalls: number;
 }
 
 function installBridge(
@@ -99,6 +100,8 @@ function installBridge(
     send?: (request: SendRequest) => Promise<OkBugReportSendResult>;
     /** Omit to model a build without capture (the gate reveals with no screenshot). */
     captureScreenshot?: () => Promise<OkBugReportScreenshot | null>;
+    /** Omit to model a build predating the probe, which offers no dump row. */
+    crashDumpAvailability?: () => Promise<{ available: boolean }>;
   } = {},
 ): BridgeLog {
   const log: BridgeLog = {
@@ -108,6 +111,7 @@ function installBridge(
     opened: [],
     clipboard: [],
     screenshotCalls: 0,
+    crashDumpAvailabilityCalls: 0,
   };
   const bridge = {
     bugReport: {
@@ -128,6 +132,14 @@ function installBridge(
             captureScreenshot: () => {
               log.screenshotCalls += 1;
               return handlers.captureScreenshot?.() ?? Promise.resolve(null);
+            },
+          }
+        : {}),
+      ...(handlers.crashDumpAvailability
+        ? {
+            crashDumpAvailability: () => {
+              log.crashDumpAvailabilityCalls += 1;
+              return handlers.crashDumpAvailability?.() ?? Promise.resolve({ available: false });
             },
           }
         : {}),
@@ -685,7 +697,7 @@ describe('ReportBugDialog', () => {
     expect(log.createCalls[0]?.note).not.toContain('Crashed app version');
   });
 
-  test('the plain compose never renders the crash-dump opt-in and never sends the flag', async () => {
+  test('a plain compose with no dump on hand renders no crash-dump opt-in and sends no flag', async () => {
     const log = installBridge();
     await renderDialog();
 
@@ -693,6 +705,85 @@ describe('ReportBugDialog', () => {
 
     await createReport();
     expect(log.createCalls).toEqual([{ level: 'standard' }]);
+  });
+
+  test('a manually-opened report offers the dump main is holding, default unchecked', async () => {
+    // The report a user files right after a crash they were never prompted
+    // about is the one most likely to carry the decisive artifact — and it is
+    // exactly the report that used to withhold it.
+    const log = installBridge({
+      crashDumpAvailability: () => Promise.resolve({ available: true }),
+    });
+    await renderDialog();
+
+    const dumpBox = screen.getByRole('checkbox', { name: 'Crash dump' });
+    // Unchecked: nothing about this open says the user is reporting that crash,
+    // so unredactable process memory rides along only on an explicit choice.
+    expect(dumpBox.getAttribute('data-state')).toBe('unchecked');
+
+    await userEvent.click(dumpBox);
+    await createReport();
+    expect(log.createCalls[0]?.includeCrashDump).toBe(true);
+  });
+
+  test('a manually-opened report left untouched declines the dump rather than omitting the flag', async () => {
+    const log = installBridge({
+      crashDumpAvailability: () => Promise.resolve({ available: true }),
+    });
+    await renderDialog();
+
+    await screen.findByRole('checkbox', { name: 'Crash dump' });
+    await createReport();
+
+    // `false`, not absent: the row was shown and the user left it off, which is
+    // a decision main records as `declined` — absent would read as never-offered.
+    expect(log.createCalls[0]?.includeCrashDump).toBe(false);
+  });
+
+  test('a manually-opened report offers nothing when main holds no dump', async () => {
+    const log = installBridge({
+      crashDumpAvailability: () => Promise.resolve({ available: false }),
+    });
+    await renderDialog();
+
+    expect(screen.queryByRole('checkbox', { name: 'Crash dump' })).toBeNull();
+
+    await createReport();
+    expect(log.createCalls[0]).not.toHaveProperty('includeCrashDump');
+  });
+
+  test('offering a dump drops the blanket redaction reassurance', async () => {
+    // "Secrets are redacted automatically" directly above a row whose own hint
+    // says the dump cannot be redacted is a contradiction the reader has to
+    // resolve; the reassurance is suppressed wherever a dump is on offer.
+    installBridge({ crashDumpAvailability: () => Promise.resolve({ available: true }) });
+    await renderDialog();
+
+    await screen.findByRole('checkbox', { name: 'Crash dump' });
+    expect(
+      screen.queryByText('Secrets like API keys and tokens are redacted automatically.'),
+    ).toBeNull();
+  });
+
+  test('with no dump on offer the plain compose keeps its redaction reassurance', async () => {
+    installBridge({ crashDumpAvailability: () => Promise.resolve({ available: false }) });
+    await renderDialog();
+
+    expect(
+      screen.getByText('Secrets like API keys and tokens are redacted automatically.'),
+    ).not.toBeNull();
+  });
+
+  test('a crash invite reads availability off its own event, not the probe', async () => {
+    // The event already carries main's answer for the dump that crash left, and
+    // the invite opens unprompted — a second round-trip would only delay it.
+    const log = installBridge({
+      crashDumpAvailability: () => Promise.resolve({ available: false }),
+    });
+    await renderDialog({ crashInvite: BOOT_INVITE });
+
+    expect(screen.getByRole('checkbox', { name: 'Crash dump' })).not.toBeNull();
+    expect(log.crashDumpAvailabilityCalls).toBe(0);
   });
 
   test('the review card qualifies the redaction claim when a raw crash dump is bundled', async () => {

@@ -220,6 +220,17 @@ export type OkBugReportCrashDetectedEvent =
 export type OkBugReportCrashAckResult = { ok: true } | { ok: false; error: string };
 
 /**
+ * Whether main is holding a crash dump a report opened right now could carry.
+ *
+ * Deliberately a bare boolean: which dump, when it was written, and how big it
+ * is are all per-crash identifiers, and the renderer only needs to decide
+ * whether to render the opt-in.
+ */
+export interface OkBugReportCrashDumpAvailability {
+  available: boolean;
+}
+
+/**
  * One row in the persisted bug-report history, projected from a report sidecar
  * plus main-derived facts. `state` is the OPEN sidecar state (`'unknown'` for a
  * degraded/legacy/corrupt row). `zipPath` is main-derived (never renderer

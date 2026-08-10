@@ -57,6 +57,10 @@ export function ReportBugDialog(props: ReportBugDialogProps) {
   // dialog paints over the app; `screenshot` is the captured preview (or null).
   const [ready, setReady] = useState(false);
   const [screenshot, setScreenshot] = useState<OkBugReportScreenshot | null>(null);
+  // Whether main is holding a crash dump this report could carry. Only asked
+  // for a report the user opened themselves — a crash invite already carries
+  // main's answer for its own crash on the event.
+  const [crashDumpAvailable, setCrashDumpAvailable] = useState(false);
   // Bumped on every open transition (and on close/unmount cleanup) so a capture
   // that resolves after its open cycle ended drops its result.
   const openCycleRef = useRef(0);
@@ -71,6 +75,25 @@ export function ReportBugDialog(props: ReportBugDialogProps) {
       return;
     }
     const cycle = ++openCycleRef.current;
+    setCrashDumpAvailable(false);
+    // Probed alongside the capture rather than gating the reveal on it: the
+    // lookup walks the crash-dumps dir and parses dump headers, and a slow or
+    // stuck disk must cost the row, never the dialog. The row defaults
+    // unchecked, so arriving a beat late only adds an option.
+    const availability = window.okDesktop?.bugReport?.crashDumpAvailability;
+    if (props.crashInvite === undefined && typeof availability === 'function') {
+      availability()
+        .then((result) => {
+          if (openCycleRef.current !== cycle) return;
+          setCrashDumpAvailable(result.available);
+        })
+        .catch((err: unknown) => {
+          // Nothing to offer if main could not answer, but leave a breadcrumb:
+          // a probe that keeps failing presents as "no dump on disk", which is
+          // the exact symptom this row exists to end.
+          console.warn('[bug-report] crash-dump availability probe failed:', err);
+        });
+    }
     const capture = window.okDesktop?.bugReport?.captureScreenshot;
     // Skip the capture-before-show for the crash invite: it opens itself,
     // unprompted, the moment main pushes a crash-detected event, so holding it
@@ -129,7 +152,12 @@ export function ReportBugDialog(props: ReportBugDialogProps) {
   }
   return (
     <Suspense fallback={null}>
-      <ReportBugDialogBody {...props} open={props.open && ready} screenshot={screenshot} />
+      <ReportBugDialogBody
+        {...props}
+        open={props.open && ready}
+        screenshot={screenshot}
+        crashDumpAvailable={crashDumpAvailable}
+      />
     </Suspense>
   );
 }

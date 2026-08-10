@@ -92,6 +92,7 @@ import type {
   LanguagePreference,
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
+  OkBugReportCrashDumpAvailability,
   OkBugReportCreateResult,
   OkBugReportDeleteResult,
   OkBugReportListResult,
@@ -887,6 +888,9 @@ export interface RequestChannels {
    *   - `{kind: 'capture-screenshot'}` → capture the sender window before the
    *     dialog paints; returns a downscaled preview (or `null`) and holds the
    *     full-res bytes in main for a later `create` to stage.
+   *   - `{kind: 'crash-dump-availability'}` → whether main is holding a crash
+   *     dump this report could carry, for a report the user opened themselves.
+   *     A crash invitation already carries the answer on its event.
    *   - `{kind: 'list'}` → the persisted report history (newest first), read
    *     from the per-report sidecars in `~/.ok/bug-reports/`.
    *   - `{kind: 'delete', id}` → remove a persisted report's zip + sidecar by
@@ -901,6 +905,7 @@ export interface RequestChannels {
       | OkBugReportCreateResult
       | OkBugReportSendResult
       | OkBugReportCrashAckResult
+      | OkBugReportCrashDumpAvailability
       | OkBugReportScreenshot
       | OkBugReportListResult
       | OkBugReportDeleteResult

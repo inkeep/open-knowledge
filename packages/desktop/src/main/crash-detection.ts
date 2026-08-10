@@ -102,6 +102,16 @@ const GPU_CRASH_INVITE_THRESHOLD = 3;
 const GPU_CRASH_WINDOW_MS = 5 * 60_000;
 
 /**
+ * How long a pending invitation keeps a later crash silent. The single-slot
+ * guard exists to stop one incident stacking prompts, so its reach has to end
+ * where the incident does — the same relatedness horizon `GPU_CRASH_WINDOW_MS`
+ * draws, for the same reason. Beyond it an unanswered invitation is not
+ * "the prompt already on screen" but a prompt the user walked away from, and
+ * letting it mute an independent crash means the app recovers in silence.
+ */
+const INVITE_SUPERSEDE_AFTER_MS = 5 * 60_000;
+
+/**
  * Acked ids older than the store's minidump baseline can never fire again,
  * so the list only needs to outlive a plausible burst of distinct events.
  */
@@ -347,8 +357,15 @@ function collectMinidumpEntries(dir: string, depth: number, out: MinidumpEntry[]
 }
 
 export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
-  /** The one invitation in flight; a new signal while this is unacked stays silent. */
-  let active: { event: OkBugReportCrashDetectedEvent; delivered: boolean } | null = null;
+  /**
+   * The one invitation in flight; a new signal while this is unacked and still
+   * recent stays silent. `armedAtMs` is what bounds "still recent".
+   */
+  let active: {
+    event: OkBugReportCrashDetectedEvent;
+    delivered: boolean;
+    armedAtMs: number;
+  } | null = null;
   let runtimeSeq = 0;
 
   /**
@@ -437,22 +454,41 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
   /**
    * Arm an invitation without delivering — boot events wait for the first
    * renderer-ready signal, runtime events follow up with `tryDeliver`.
-   * Returns false when a prior invitation is still unanswered (new signals
-   * stay silent rather than stacking prompts).
+   * Returns false when a recent invitation is still unanswered (new signals
+   * stay silent rather than stacking prompts); a pending one that has gone
+   * stale is superseded instead, so the newer crash is the one the user is
+   * asked about rather than being dropped behind a prompt nobody answered.
    */
   function armInvite(event: OkBugReportCrashDetectedEvent): boolean {
+    const nowMs = deps.now().getTime();
     if (active !== null) {
-      deps.logger.info(
+      const pendingAgeMs = nowMs - active.armedAtMs;
+      if (pendingAgeMs < INVITE_SUPERSEDE_AFTER_MS) {
+        deps.logger.info(
+          {
+            event: 'crash-detection.suppressed',
+            eventId: event.eventId,
+            pendingEventId: active.event.eventId,
+            pendingAgeMs,
+          },
+          'crash invitation already pending — new signal stays silent',
+        );
+        return false;
+      }
+      // Warn, not info: the superseded invitation is one the user never
+      // answered, so this line is the only record that a crash they were
+      // offered a prompt for went unaddressed before the next one arrived.
+      deps.logger.warn(
         {
-          event: 'crash-detection.suppressed',
+          event: 'crash-detection.superseded',
           eventId: event.eventId,
-          pendingEventId: active.event.eventId,
+          supersededEventId: active.event.eventId,
+          supersededAgeMs: pendingAgeMs,
         },
-        'crash invitation already pending — new signal stays silent',
+        'stale crash invitation superseded by a newer crash',
       );
-      return false;
     }
-    active = { event, delivered: false };
+    active = { event, delivered: false, armedAtMs: nowMs };
     return true;
   }
 

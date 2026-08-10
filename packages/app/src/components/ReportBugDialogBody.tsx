@@ -255,6 +255,12 @@ export interface ReportBugDialogProps {
    * threading it through each mount site.
    */
   screenshot?: OkBugReportScreenshot | null;
+  /**
+   * Whether main is holding a crash dump this report could carry, as probed by
+   * the gate for a report the user opened themselves. Ignored under
+   * `crashInvite`, which carries main's answer for its own crash on the event.
+   */
+  crashDumpAvailable?: boolean;
 }
 
 function ReportBugDialog({
@@ -264,21 +270,26 @@ function ReportBugDialog({
   crashContext,
   crashInvite,
   screenshot = null,
+  crashDumpAvailable: probedCrashDumpAvailable = false,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
   const [phase, setPhase] = useState<Phase>(COMPOSE_IDLE);
   const [note, setNote] = useState('');
   const [detailed, setDetailed] = useState(crashContext !== undefined || crashInvite !== undefined);
   // The crash-dump opt-in only exists when main confirmed a minidump is on
-  // disk for this event; a dump-less invite (e.g. a dirty shutdown that left
-  // no native crash) offers no dead checkbox.
-  const crashDumpAvailable = crashInvite?.minidumpAvailable === true;
-  // Default ON when a dump is available: the crash is the whole reason for the
-  // report, and its minidump is the artifact triage most needs. Consent is
-  // preserved without a silent send — the row stays visible and uncheckable,
-  // its hint states the memory is unredactable, and the review step flags
-  // "crash dump not redacted" before the user sends.
-  const [includeDump, setIncludeDump] = useState(crashDumpAvailable);
+  // disk; a dump-less invite (e.g. a dirty shutdown that left no native crash)
+  // offers no dead checkbox. An invite answers for its own crash off the event;
+  // a report the user opened themselves takes the gate's probe, so a crash that
+  // never prompted still gets its dump into the report filed about it.
+  const crashDumpAvailable =
+    crashInvite !== undefined ? crashInvite.minidumpAvailable === true : probedCrashDumpAvailable;
+  // Default ON only for an invite: the crash is the whole reason for that
+  // report, and its minidump is the artifact triage most needs. A manual report
+  // is about whatever the user came to say, so unredactable process memory
+  // rides along only on an explicit check. Either way consent is preserved
+  // without a silent send — the row states the memory is unredactable and the
+  // review step flags "crash dump not redacted" before the user sends.
+  const [includeDump, setIncludeDump] = useState(crashInvite?.minidumpAvailable === true);
   // Default-on per the spec: when a screenshot was captured it rides along
   // unless the user unchecks it. Only ever sent to `create` when one exists.
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
@@ -333,7 +344,7 @@ function ReportBugDialog({
       if (phase.step === 'success' || phase.step === 'email' || phase.step === 'failure') {
         setNote('');
         setDetailed(crashContext !== undefined || crashInvite !== undefined);
-        setIncludeDump(crashDumpAvailable);
+        setIncludeDump(crashInvite?.minidumpAvailable === true);
         // Re-default the screenshot to on so the next open (which captures a
         // fresh screenshot) starts checked, matching the compose default.
         setIncludeScreenshot(true);
@@ -527,13 +538,16 @@ function ReportBugDialog({
                   <p id={whatToIncludeId} className="text-sm font-medium">
                     <Trans>What to include</Trans>
                   </p>
-                  {/* The crash-invite variant offers a non-redactable crash
-                      dump, so the blanket "secrets are redacted" reassurance
-                      would read oddly here — its banner already carries the
-                      "nothing is sent until you review it" line. crashContext
+                  {/* Suppressed on two independent grounds. An invite's banner
+                      already carries the "nothing is sent until you review it"
+                      line; and wherever a crash dump is on offer the blanket
+                      "secrets are redacted" claim would sit directly above a
+                      row whose own hint says that dump cannot be redacted. The
+                      second test is what covers a manual or crashContext report
+                      that the availability probe found a dump for. crashContext
                       and crashInvite never co-occur, so this also gates the
                       error-details note. */}
-                  {crashInvite === undefined && (
+                  {crashInvite === undefined && !crashDumpAvailable && (
                     <p className="text-1sm text-muted-foreground">
                       {crashContext !== undefined ? (
                         <Trans>

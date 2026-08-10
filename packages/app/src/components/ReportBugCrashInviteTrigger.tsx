@@ -27,6 +27,17 @@ export function ReportBugCrashInviteTrigger({ bridge }: { bridge: OkDesktopBridg
 
   return (
     <ReportBugDialog
+      // Remount per crash. Main supersedes an invitation the user left
+      // unanswered, so a second event can now replace this one while the
+      // dialog is still on screen. Reconciling in place would keep the
+      // mount-time state of the previous crash (the dump opt-in, the note the
+      // user typed, the phase) while the note's context lines recompute from
+      // the new event, shipping one crash's account stamped with the other's
+      // id. A report that misattributes its own crash is the failure this
+      // whole change exists to end, so the dialog restarts for the new event.
+      // A bundle already created for the previous crash is not lost: it is
+      // persisted to the report history by `onReportGenerated`.
+      key={invite.eventId}
       open
       onOpenChange={(open) => {
         if (open) return;

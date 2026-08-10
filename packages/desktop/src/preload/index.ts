@@ -23,6 +23,7 @@ import type {
   LanguagePreference,
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
+  OkBugReportCrashDumpAvailability,
   OkBugReportCreateResult,
   OkBugReportDeleteResult,
   OkBugReportListResult,
@@ -554,6 +555,10 @@ const bridge: OkDesktopBridge = {
       invoke('ok:bug-report:dispatch', {
         kind: 'capture-screenshot',
       }) as Promise<OkBugReportScreenshot | null>,
+    crashDumpAvailability: () =>
+      invoke('ok:bug-report:dispatch', {
+        kind: 'crash-dump-availability',
+      }) as Promise<OkBugReportCrashDumpAvailability>,
     // Param type derived from the contract, payload spread whole — a hand-copy
     // of this shape drops fields with no type error on either half. A param
     // type listing fewer fields is a SUPERTYPE of the contract's, so it is
