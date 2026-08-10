@@ -142,6 +142,13 @@ interface AllowlistEntry {
  */
 const ALLOWLIST: readonly AllowlistEntry[] = [
   {
+    file: 'components/ui/alert-dialog.tsx',
+    pattern: 'P1-fixed-inset-0',
+    // Stronger than the sibling Dialog/Sheet case: an alert dialog is
+    // undismissable, so the backdrop carries no click behavior either.
+    rationale: 'Radix AlertDialog.Overlay backdrop — no interactive content',
+  },
+  {
     file: 'components/ui/dialog.tsx',
     pattern: 'P1-fixed-inset-0',
     rationale: 'Radix Dialog.Overlay backdrop — no interactive content',

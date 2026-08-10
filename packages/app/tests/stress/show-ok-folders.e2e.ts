@@ -237,9 +237,9 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   await controlRow.focus();
   await expect(controlRow).toBeFocused();
   await page.keyboard.press('Delete');
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('alertdialog')).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
   // The same key on the selected-and-focused `.ok` row: no dialog opens, and
   // the folder (with its probe file) stays on disk.
@@ -254,7 +254,7 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   await okRow.focus();
   await expect(okRow).toBeFocused();
   await page.keyboard.press('Delete');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(okRow).toBeVisible();
   expect(existsSync(join(okDir, `${probeDocBase}.md`))).toBe(true);
 

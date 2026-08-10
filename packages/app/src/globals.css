@@ -374,7 +374,8 @@
    `!important` (same cascade discipline as the reduced-motion block above). */
 @media (prefers-reduced-transparency: reduce) {
   [data-slot="dialog-overlay"],
-  [data-slot="sheet-overlay"] {
+  [data-slot="sheet-overlay"],
+  [data-slot="alert-dialog-overlay"] {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

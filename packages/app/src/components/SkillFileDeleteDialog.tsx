@@ -3,7 +3,7 @@ import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
-import { Dialog } from '@/components/ui/dialog';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { tabIdsForSkillFile } from '@/hooks/use-reconcile-skill-tabs';
 import { skillDir } from '@/lib/skill-scope';
@@ -62,7 +62,7 @@ export function SkillFileDeleteDialog({
   }
 
   return (
-    <Dialog
+    <AlertDialog
       open={target !== null}
       onOpenChange={(open) => {
         if (!open && !deleting) onOpenChange(false);
@@ -76,6 +76,6 @@ export function SkillFileDeleteDialog({
           customDescription={t`This permanently removes ${skillDir(target.skill.path)}/${target.filePath} from the "${target.skill.name}" skill. Anything in SKILL.md that points at it will break until it's recreated.`}
         />
       ) : null}
-    </Dialog>
+    </AlertDialog>
   );
 }

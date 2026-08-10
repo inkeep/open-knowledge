@@ -2,7 +2,7 @@ import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
-import { Dialog } from '@/components/ui/dialog';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import type { TemplateMenuEntry } from '@/hooks/use-folder-config';
 import { deleteTemplate } from '@/lib/folder-config-api';
 
@@ -40,7 +40,7 @@ export function TemplateDeleteDialog({ template, onOpenChange, onDeleted }: Prop
   }
 
   return (
-    <Dialog
+    <AlertDialog
       open={template !== null}
       onOpenChange={(open) => {
         if (!open && !deleting) onOpenChange(false);
@@ -63,6 +63,6 @@ export function TemplateDeleteDialog({ template, onOpenChange, onDeleted }: Prop
             );
           })()
         : null}
-    </Dialog>
+    </AlertDialog>
   );
 }

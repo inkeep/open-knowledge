@@ -54,7 +54,11 @@ describe('globals.css — prefers-reduced-transparency revert', () => {
     );
   });
 
-  test('strips backdrop-filter from dialog and sheet overlays', () => {
+  // Every overlay slot that opts into a backdrop blur has to be listed here by
+  // its exact selector. A new overlay primitive inherits the blur but not the
+  // suppression, and the omission is invisible: the blur is `backdrop-blur-xs`,
+  // subtle enough to pass a sighted spot-check by someone who has the setting on.
+  test('strips backdrop-filter from dialog, sheet, and alert-dialog overlays', () => {
     const block = CSS.match(
       /@media \(prefers-reduced-transparency: reduce\) \{[^}]*\[data-slot="dialog-overlay"\][\s\S]*?\}\s*\}/,
     );
@@ -62,6 +66,7 @@ describe('globals.css — prefers-reduced-transparency revert', () => {
     const blockText = block?.[0] ?? '';
     expect(blockText).toContain('[data-slot="dialog-overlay"]');
     expect(blockText).toContain('[data-slot="sheet-overlay"]');
+    expect(blockText).toContain('[data-slot="alert-dialog-overlay"]');
     expect(blockText).toContain('backdrop-filter: none');
     expect(blockText).toContain('-webkit-backdrop-filter: none');
   });

@@ -25,8 +25,8 @@ import { ArrowUpRight, Plus, SquarePen, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -758,7 +758,7 @@ export function FrontmatterPluginSection() {
           ))}
         </div>
       )}
-      <Dialog
+      <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !deleting) setDeleteTarget(null);
@@ -772,7 +772,7 @@ export function FrontmatterPluginSection() {
             customDescription={t`This permanently deletes ${deleteTarget} from the project and removes its mapping from config.yml.`}
           />
         ) : null}
-      </Dialog>
+      </AlertDialog>
     </section>
   );
 }

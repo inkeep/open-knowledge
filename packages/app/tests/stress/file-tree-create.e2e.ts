@@ -447,7 +447,7 @@ test.describe('FileTree sidebar create', () => {
 
       await firstItem.click({ button: 'right' });
       await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('dialog', { name: /Delete selected items/i })).toBeVisible({
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
         timeout: 5_000,
       });
       await page.getByRole('button', { name: /^Delete$/ }).click();
@@ -510,7 +510,7 @@ test.describe('FileTree sidebar create', () => {
 
       await sidebarTreeItem(page, `${docNames[0]}.md`).click({ button: 'right' });
       await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('dialog', { name: /Delete selected items/i })).toBeVisible({
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
         timeout: 5_000,
       });
       await page.getByRole('button', { name: /^Delete$/ }).click();
@@ -591,7 +591,7 @@ test.describe('FileTree sidebar create', () => {
 
       await sidebarTreeItem(page, `${firstDoc}.md`).click({ button: 'right' });
       await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('dialog', { name: /Delete selected items/i })).toBeVisible({
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
         timeout: 5_000,
       });
       await page.getByRole('button', { name: /^Delete$/ }).click();
@@ -656,7 +656,7 @@ test.describe('FileTree sidebar create', () => {
       await selectAllSidebarItems(page, `${fileNames[0]}.md`);
       await sidebarTreeItem(page, `${fileNames[0]}.md`).click({ button: 'right' });
       await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('dialog', { name: /Delete selected items/i })).toBeVisible({
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
         timeout: 5_000,
       });
       await page.getByRole('button', { name: /^Delete$/ }).click();
@@ -720,7 +720,7 @@ test.describe('FileTree sidebar create', () => {
 
       await sidebarTreeItem(page, 'New Folder').click({ button: 'right' });
       await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('dialog', { name: /Delete selected items/i })).toBeVisible({
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
         timeout: 5_000,
       });
       await page.getByRole('button', { name: /^Delete$/ }).click();
@@ -784,7 +784,7 @@ test.describe('FileTree sidebar create', () => {
       await selectAllSidebarItems(page, `${fileNames[0]}.md`);
       await sidebarTreeItem(page, `${fileNames[0]}.md`).click({ button: 'right' });
       await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('dialog', { name: /Delete selected items/i })).toBeVisible({
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
         timeout: 5_000,
       });
       await page.getByRole('button', { name: /^Delete$/ }).click();
@@ -997,7 +997,7 @@ test.describe('FileTree sidebar create', () => {
 
     await sidebarTreeItem(page, 'New Folder').click({ button: 'right' });
     await page.getByRole('menuitem', { name: /^Delete$/ }).click({ timeout: 5_000 });
-    await expect(page.getByRole('dialog', { name: /Delete New Folder\// })).toBeVisible({
+    await expect(page.getByRole('alertdialog', { name: /Delete New Folder\// })).toBeVisible({
       timeout: 5_000,
     });
     await page.getByRole('button', { name: /^Delete$/ }).click();

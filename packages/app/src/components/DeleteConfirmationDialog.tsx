@@ -1,15 +1,15 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 import {
-  DialogBody,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  AlertDialogBody,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
 interface DeleteConfirmationProps {
@@ -62,29 +62,31 @@ export function DeleteConfirmationDialog({
   const confirmLabel = customConfirmLabel ?? t`Delete`;
   const confirmLabelBusy = customConfirmLabelBusy ?? customConfirmLabel ?? t`Deleting`;
   return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{customTitle ?? t`Delete ${itemName}`}</DialogTitle>
-        <DialogDescription
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>{customTitle ?? t`Delete ${itemName}`}</AlertDialogTitle>
+        <AlertDialogDescription
           // respect \n in message
           className="whitespace-pre-wrap"
         >
           {customDescription ??
             t`Are you sure you want to delete ${itemName}? This action cannot be undone.`}
-        </DialogDescription>
+        </AlertDialogDescription>
         {customDetail ? (
           <p className="text-muted-foreground text-sm" data-testid="delete-confirmation-detail">
             {customDetail}
           </p>
         ) : null}
-      </DialogHeader>
-      {children ? <DialogBody>{children}</DialogBody> : null}
-      <DialogFooter>
-        <DialogClose asChild>
-          <Button variant="outline" disabled={isSubmitting}>
-            <Trans>Cancel</Trans>
-          </Button>
-        </DialogClose>
+      </AlertDialogHeader>
+      {children ? <AlertDialogBody>{children}</AlertDialogBody> : null}
+      <AlertDialogFooter>
+        <AlertDialogCancel disabled={isSubmitting}>
+          <Trans>Cancel</Trans>
+        </AlertDialogCancel>
+        {/* Deliberately a plain Button rather than AlertDialogAction: the action
+            is awaited and reports its in-flight state in this button's own
+            label, and AlertDialogAction closes the dialog the moment it is
+            activated. The owner closes the dialog once the work settles. */}
         <Button variant="destructive" onClick={onDelete} disabled={isSubmitting}>
           {isSubmitting ? (
             <>
@@ -94,7 +96,7 @@ export function DeleteConfirmationDialog({
             confirmLabel
           )}
         </Button>
-      </DialogFooter>
-    </DialogContent>
+      </AlertDialogFooter>
+    </AlertDialogContent>
   );
 }

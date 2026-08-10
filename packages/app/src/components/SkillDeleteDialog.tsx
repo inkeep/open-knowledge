@@ -3,7 +3,7 @@ import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
-import { Dialog } from '@/components/ui/dialog';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { tabIdsForSkill } from '@/hooks/use-reconcile-skill-tabs';
 import { deleteSkill } from '@/lib/skills-api';
@@ -52,7 +52,7 @@ export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
   }
 
   return (
-    <Dialog
+    <AlertDialog
       open={skill !== null}
       onOpenChange={(open) => {
         if (!open && !deleting) onOpenChange(false);
@@ -73,6 +73,6 @@ export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
           }
         />
       ) : null}
-    </Dialog>
+    </AlertDialog>
   );
 }

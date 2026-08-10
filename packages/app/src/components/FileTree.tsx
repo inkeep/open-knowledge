@@ -169,8 +169,8 @@ import {
   TrashFailureModal,
 } from '@/components/TrashFailureModal';
 import { TemplateMenuRows } from '@/components/template-menu-rows';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Dialog } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -3601,7 +3601,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
           )}
         />
       </div>
-      <Dialog
+      <AlertDialog
         open={!!deleteRequest}
         onOpenChange={(open) => {
           if (!open && !busyPath) setDeleteRequest(null);
@@ -3662,8 +3662,8 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
             onDelete={() => handleDeleteTargets(deleteRequest.targets)}
           />
         )}
-      </Dialog>
-      <Dialog
+      </AlertDialog>
+      <AlertDialog
         open={!!templateConvertRequest}
         onOpenChange={(open) => {
           if (!open && !busyPath) setTemplateConvertRequest(null);
@@ -3685,8 +3685,8 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
             onDelete={() => executeImportTemplate(templateConvertRequest, true)}
           />
         )}
-      </Dialog>
-      <Dialog
+      </AlertDialog>
+      <AlertDialog
         open={!!trashFailure}
         onOpenChange={(open) => {
           if (!open && !busyPath) setTrashFailure(null);
@@ -3701,7 +3701,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
             onCancel={() => setTrashFailure(null)}
           />
         )}
-      </Dialog>
+      </AlertDialog>
       <NewItemDialog
         open={newItemRequest !== null}
         onOpenChange={(open) => {

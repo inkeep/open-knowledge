@@ -1,14 +1,15 @@
 import { plural, t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
-import { Button } from '@/components/ui/button';
 import {
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  AlertDialogBody,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { trashNounLabel } from '@/lib/platform-labels';
 
@@ -18,9 +19,9 @@ import { trashNounLabel } from '@/lib/platform-labels';
  * a hard delete via `POST /api/delete-path` (which bypasses the OS Trash and
  * uses `unlinkSync`/`rmSync`), to retry the IPC call, or to cancel.
  *
- * Copy is VSCode-parity (split into DialogTitle + DialogDescription so the
- * `text-base leading-none` title primitive doesn't wrap a 2-sentence string
- * to 3 lines with zero leading; semantics preserved):
+ * Copy is VSCode-parity (split into AlertDialogTitle + AlertDialogDescription
+ * so the `text-base leading-none` title primitive doesn't wrap a 2-sentence
+ * string to 3 lines with zero leading; semantics preserved):
  *   Title:       "Couldn't move to Trash"
  *   Description: "<target context> Do you want to permanently delete instead?"
  *                (per-target detail appended for single-target failures)
@@ -141,13 +142,15 @@ export function TrashFailureModal({
       ? `${t`Could not move "${targetName}" to the ${trashNoun}. Do you want to permanently delete instead?`}\n${formatTrashFailureDetail(only)}`
       : t`Do you want to permanently delete instead?`;
   return (
-    <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>{t`Couldn't move to ${trashNoun}`}</DialogTitle>
-        <DialogDescription className="whitespace-pre-wrap">{headerDescription}</DialogDescription>
-      </DialogHeader>
+    <AlertDialogContent className="sm:max-w-md">
+      <AlertDialogHeader>
+        <AlertDialogTitle>{t`Couldn't move to ${trashNoun}`}</AlertDialogTitle>
+        <AlertDialogDescription className="whitespace-pre-wrap">
+          {headerDescription}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
       {isMulti ? (
-        <DialogBody>
+        <AlertDialogBody>
           <ul className="flex flex-col gap-2 text-xs">
             {failedTargets.map((target) => (
               <li key={target.path} data-testid="trash-failure-modal-target">
@@ -156,18 +159,20 @@ export function TrashFailureModal({
               </li>
             ))}
           </ul>
-        </DialogBody>
+        </AlertDialogBody>
       ) : null}
-      <DialogFooter>
-        <Button
-          variant="outline"
-          className="font-mono uppercase"
+      <AlertDialogFooter>
+        <AlertDialogCancel
           onClick={onCancel}
           disabled={isSubmitting}
           data-testid="trash-failure-modal-cancel"
         >
           <Trans>Cancel</Trans>
-        </Button>
+        </AlertDialogCancel>
+        {/* Retry and Delete Permanently stay plain Buttons: both await IPC and
+            report progress in their own labels, and an AlertDialogAction would
+            close the dialog on activation. Retry in particular must keep the
+            dialog mounted so a second failure can repopulate the same list. */}
         <Button
           variant="outline"
           className="font-mono uppercase"
@@ -197,7 +202,7 @@ export function TrashFailureModal({
             <Trans>Delete Permanently</Trans>
           )}
         </Button>
-      </DialogFooter>
-    </DialogContent>
+      </AlertDialogFooter>
+    </AlertDialogContent>
   );
 }

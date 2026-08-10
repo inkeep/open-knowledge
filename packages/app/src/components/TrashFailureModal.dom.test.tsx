@@ -47,8 +47,8 @@ async function renderTrashFailureModal({
   failedTargets?: ReadonlyArray<TrashFailedTarget>;
   isSubmitting?: boolean;
 } = {}) {
-  const [{ Dialog }, { TrashFailureModal }] = await Promise.all([
-    import('@/components/ui/dialog'),
+  const [{ AlertDialog }, { TrashFailureModal }] = await Promise.all([
+    import('@/components/ui/alert-dialog'),
     import('./TrashFailureModal'),
   ]);
   const onCancel = vi.fn(() => {});
@@ -56,7 +56,7 @@ async function renderTrashFailureModal({
   const onDeletePermanently = vi.fn(() => {});
 
   render(
-    <Dialog open={true}>
+    <AlertDialog open={true}>
       <TrashFailureModal
         failedTargets={failedTargets}
         isSubmitting={isSubmitting}
@@ -64,7 +64,7 @@ async function renderTrashFailureModal({
         onDeletePermanently={onDeletePermanently}
         onRetry={onRetry}
       />
-    </Dialog>,
+    </AlertDialog>,
   );
 
   return { onCancel, onDeletePermanently, onRetry };
@@ -83,7 +83,7 @@ describe('TrashFailureModal runtime behavior', () => {
   test('renders the single-target VSCode-parity copy and routes each action', async () => {
     const { onCancel, onDeletePermanently, onRetry } = await renderTrashFailureModal();
 
-    const dialog = screen.getByRole('dialog', { name: "Couldn't move to Trash" });
+    const dialog = screen.getByRole('alertdialog', { name: "Couldn't move to Trash" });
     expect(dialog.textContent).toContain('Could not move "foo.md" to the Trash.');
     expect(dialog.textContent).toContain('Do you want to permanently delete instead?');
     expect(dialog.textContent).toContain('Reason: Permission denied (Operation not permitted)');
@@ -147,7 +147,7 @@ describe('TrashFailureModal runtime behavior', () => {
       failedTargets: [fileTarget, folderTarget],
     });
 
-    const dialog = screen.getByRole('dialog', { name: "Couldn't move to Trash" });
+    const dialog = screen.getByRole('alertdialog', { name: "Couldn't move to Trash" });
     expect(dialog.textContent).toContain(
       '2 items could not be moved to the Trash. Do you want to permanently delete instead?',
     );
