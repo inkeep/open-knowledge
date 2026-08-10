@@ -1,0 +1,36 @@
+---
+title: Themes
+icon: LuPalette
+description: Recolor the editor with built-in palettes or your own base16 schemes, one palette per light mode and one per dark, saved as portable YAML files.
+---
+
+Themes recolors the whole OpenKnowledge interface with a [base16](https://github.com/tinted-theming/schemes) palette. It's a user plugin: on by default, personal to your device, never committed.
+
+Open **Settings → Plugins → Themes**. The page is a gallery of tiles: **Default**, the built-ins (Dracula, Catppuccin Frappé, Catppuccin Latte, Monokai, Gruvbox, Solarized), and any themes you've created, plus a **Create new theme** tile.
+
+## One palette per mode
+
+Every tile carries a sun and a moon: the sun assigns that palette to light mode, the moon to dark mode. Clicking the tile itself assigns it to whichever mode is currently active. The light/dark switch in **Settings → Preferences** decides which of the two slots is live. On **System**, your OS does, so the palette follows the OS appearance.
+
+A palette forces its own light or dark variant wherever it sits. Put Dracula in the light slot and switching to light mode shows Dracula's dark colors: the slot decides *when* a palette applies, and the palette decides how it looks. **Default** means no palette: the base stylesheet shows through.
+
+Selections are saved to your user config as `appearance.colorThemeLight` / `appearance.colorThemeDark`. See the [configuration reference](/docs/reference/configuration).
+
+## Create your own
+
+Click **Create new theme**, name it, and the editor opens. Two ways to fill it in:
+
+- **Paste a scheme.** The paste box accepts any [Tinted Theming](https://github.com/tinted-theming/schemes) base16 scheme (hundreds are published), in either the current layout (`palette:` nested) or the original chriskempson one, YAML or JSON.
+- **Edit the sixteen slots by hand.** Each `base00`–`base0F` slot names its role. Edits apply live and save automatically.
+
+**Copy as YAML** exports the scheme in the standard layout, so a theme you tuned here is pasteable anywhere else in the base16 ecosystem.
+
+## Theme files
+
+Saved themes are plain Tinted Theming YAML files in `~/.ok/themes/`, one file per theme, filename as identity. Drop a downloaded scheme file there (`.yaml` or `.yml` only) and it appears in the gallery, since the folder is re-scanned when the Themes page opens. A file that doesn't parse is listed with the reason rather than silently dropped, so it can always be fixed.
+
+Deleting a theme from its tile deletes the file, with an undo window before it's gone for good.
+
+## Turn it off
+
+Themes ships enabled. Switch it off in **Settings → User ▸ Plugins**: the palette drops back to the default stylesheet and the page leaves the sidebar. Your selections stay in config, so switching it back on restores them.

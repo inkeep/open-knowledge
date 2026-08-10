@@ -1,10 +1,10 @@
 ---
 title: Overview
 icon: LuBookOpen
-description: Optional capabilities that ship with OpenKnowledge but stay off until you turn them on — linters, themes, and the Slidev presentation renderer.
+description: Optional capabilities that ship with OpenKnowledge, most of them off until you turn them on. Linters, themes, and the Slidev presentation renderer.
 ---
 
-A plugin is an optional capability that ships with OpenKnowledge and stays off until you turn it on. Each one belongs to a scope, and the scope decides who else gets it:
+A plugin is an optional capability that ships with OpenKnowledge. Most stay off until you turn them on (Themes is the exception: it ships enabled). Each one belongs to a scope, and the scope decides who else gets it:
 
 - **Project plugins** are saved to the project's `config.yml`. Commit it and every collaborator gets the same setting.
 - **User plugins** are personal to your device. They live in your user config and are never committed.
@@ -27,6 +27,6 @@ Flip the switch. Open editors react live; there is no restart and no Save button
 | [markdownlint](/docs/advanced/content-rules/markdownlint) | Project | Flags markdown style problems as you write — hard tabs, heading increments, list markers, and the rest of the standard rule set. |
 | [Frontmatter schemas](/docs/advanced/content-rules/frontmatter) | Project | Validates document frontmatter against standard JSON Schema files. Beta. |
 | [Slidev](/docs/plugins/slidev) | User | Presents a document as a slide deck in its own window. Desktop only; needs the Slidev CLI installed separately. Beta. |
-| Themes | User | A personal color-theme picker. See the [configuration reference](/docs/reference/configuration) for the keys it writes. |
+| [Themes](/docs/plugins/themes) | User | A personal color-theme picker: one palette per light mode and one per dark, built-in or your own base16 schemes. |
 
 markdownlint and Frontmatter schemas are both **content rules**, a shared non-blocking linting layer. What they have in common — where problems appear, the Problems panel, `ok lint`, agent advisories — is on the [content rules overview](/docs/advanced/content-rules/overview).
