@@ -533,6 +533,9 @@ describe('command identity registry (Phase 2b)', () => {
     // have nothing to emit. The known override ids are the dialog / bridge /
     // renderer commands.
     const OVERRIDES = new Set<string>([
+      // Renderer-only: opens a client-side tab, so there is no menu action to
+      // emit and deliberately no native-menu placement.
+      'open-blob-run',
       'new-file',
       'new-folder',
       'open-graph',

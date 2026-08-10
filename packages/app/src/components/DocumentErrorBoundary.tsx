@@ -38,7 +38,7 @@ import { Trans } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { toast } from 'sonner';
-import { OkBlob } from '@/components/OkBlob';
+import { OkBlobRunnerEasterEgg } from '@/components/OkBlobRunnerEasterEgg';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { Button } from '@/components/ui/button';
 import { MountAbortError } from '@/editor/mount-promise';
@@ -202,7 +202,12 @@ function DocumentErrorFallback({
       data-slot="document-error-boundary"
       className="flex h-full flex-col items-center justify-center gap-8 p-8 text-center"
     >
-      <OkBlob size={80} variant="sleeping" />
+      {/* Reach failures are the one class the user can only wait out: nothing to
+        report, nothing to fix, the remedy is a retry that may not be ready yet.
+        Those get the key bindings. Every other class wants the copy read and a
+        button pressed, so there the mascot is reachable by click alone and
+        never competes for a key the buttons might want. */}
+      <OkBlobRunnerEasterEgg keyboard={isServerReachError(error)} />
       <div className="flex flex-col items-center gap-1">
         <h2 id="document-error-title" className="text-2xl font-light tracking-tighter text-balance">
           {title}

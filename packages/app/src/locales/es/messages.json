@@ -395,6 +395,7 @@
       "Incrustación de HTML aislada: escribe HTML y ve la vista previa renderizada en vivo."
     ],
     "4nj6n8": ["/api/config devolvió HTTP ", ["code"]],
+    "4o57um": ["Fin del juego · pulsa espacio para jugar de nuevo"],
     "4pDZ2N": [
       "Se quitó \"",
       ["0"],
@@ -696,6 +697,7 @@
     "8PifYj": ["Diagrama de Mermaid"],
     "8PmoQF": ["Abre el menú de inserción en una posición de texto vacía o activa."],
     "8RtNI0": ["No se pudieron cargar los documentos"],
+    "8SrrDi": ["Nuevo récord · pulsa espacio para jugar de nuevo"],
     "8TvlHF": ["Volcado de fallo"],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Cambiar de worktree"],
@@ -746,6 +748,7 @@
     "99eR72": ["Selección de tabla del editor visual"],
     "9Bd18D": ["No se pudieron cargar las páginas índice"],
     "9EykGQ": ["Insertar columna a la derecha"],
+    "9GbR5F": ["MÁX"],
     "9HKBNN": ["comandos"],
     "9Ii3uK": ["un panel nuevo a la izquierda de ", ["0"]],
     "9J8xNg": ["Se importó ", ["importedLabel"]],
@@ -853,6 +856,7 @@
     "ASqqsQ": ["Máximo ", ["MAX_ATTACHMENTS"], " adjuntos"],
     "AT0e50": ["Conservar ambos"],
     "ATGYL1": ["Dirección de correo"],
+    "AUMPjj": ["Espacio para saltar, flecha abajo para agacharse. Ese es todo el juego."],
     "AUV-TY": ["Pensando"],
     "AVW-K9": ["No se pudieron cargar las páginas huérfanas"],
     "AWOSPo": ["Acercar"],
@@ -1814,6 +1818,7 @@
     "MqsbfN": ["¿Activar la vista previa de enlaces externos?"],
     "MrUmCD": ["fallo de compilación desconocido"],
     "MrwYIK": ["Activa o desactiva un comentario en el código con CodeMirror."],
+    "MsARMw": ["Jugar a Blob Run"],
     "MuxcRB": [["0"], " permite que ", ["1"], " actúe sin preguntar"],
     "Mv2lM4": [
       "No se instaló la skill «",
@@ -2071,6 +2076,7 @@
     "QQghPu": ["Instalar en Claude Desktop"],
     "QR5SP1": ["plantilla creada"],
     "QTsvh1": ["Este agente necesita que inicies sesión primero; mira el aviso de abajo."],
+    "QUhYEG": ["Espacio para saltar · flecha abajo para agacharse"],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Puedes cambiarlo más adelante en <0>Ajustes → Sincronización</0>."],
     "QYfQdv": ["CLI de ", ["displayName"]],
@@ -3452,6 +3458,7 @@
     "habOU_": ["No se pudo actualizar el ajuste de aprobación automática — ", ["detail"]],
     "he3ygx": ["Copiar"],
     "hgF0al": ["Usar ", ["0"], " para el modo claro activo"],
+    "hgf5io": ["Blob Run"],
     "hgtsat": ["No se pudo eliminar ", ["file"]],
     "hh4mVC": ["Pedir a la IA que arregle ", ["flatId"]],
     "hhI__i": ["¿Seguro que quieres eliminar «", ["name"], "» y su contenido?"],
@@ -4652,6 +4659,7 @@
       ". ¿Eliges otra carpeta?"
     ],
     "wGSHzy": ["Activa una de las ocho primeras pestañas del editor."],
+    "wIM7ul": ["Pulsa espacio o toca el blob para empezar"],
     "wJijgU": ["Ubicación"],
     "wJo9oS": ["Cerrar búsqueda"],
     "wQp1V3": ["Espejo de <0>", ["src"], "</0>"],

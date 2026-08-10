@@ -16,7 +16,7 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
-import { OkBlob } from '@/components/OkBlob';
+import { OkBlobRunnerEasterEgg } from '@/components/OkBlobRunnerEasterEgg';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { Button } from '@/components/ui/button';
 import { recallComponentStack, rememberComponentStack } from '@/lib/component-stack-registry';
@@ -43,7 +43,9 @@ function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
       data-slot="app-error-boundary"
       className="flex h-screen flex-col items-center justify-center gap-8 p-8 text-center"
     >
-      <OkBlob size={80} variant="sleeping" />
+      {/* The report is the point here, so the mascot is click-only: it never
+        takes a key the Try again or Report button might want. */}
+      <OkBlobRunnerEasterEgg keyboard={false} />
       <div className="flex flex-col items-center gap-1">
         <h1 id="app-error-title" className="text-2xl font-light tracking-tighter text-balance">
           <Trans>Something went wrong</Trans>

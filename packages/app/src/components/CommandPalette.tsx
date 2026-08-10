@@ -80,7 +80,7 @@ import {
 } from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
-import { useDocumentContext } from '@/editor/DocumentContext';
+import { useDocumentContext, useOpenBlobRunner } from '@/editor/DocumentContext';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
 import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
@@ -368,6 +368,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [historyEverOpened, setHistoryEverOpened] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { createBlank: createBlankSkill } = useCreateBlankSkill();
+  // Non-throwing: the palette must still render where no DocumentProvider is
+  // mounted, and the row simply becomes a no-op there.
+  const openBlobRunner = useOpenBlobRunner();
   // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
   // the lifetime of the palette session (cleared on close in the open-
   // toggle effect). Loading flag drives the `tag-list` placeholder UI;
@@ -928,6 +931,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     },
     openFeedbackDialog: () => setFeedbackOpen(true),
     createBlankSkill: () => void createBlankSkill('project'),
+    openBlobRun: () => openBlobRunner?.(),
   };
   const visibleFixedCommands = inExclusiveMode
     ? []

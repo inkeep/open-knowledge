@@ -22,6 +22,7 @@ import {
   FolderOpen,
   FolderPlus,
   FoldVertical,
+  Gamepad2,
   GitBranch,
   History,
   LayoutGrid,
@@ -129,6 +130,8 @@ export interface PaletteCommandContext {
   openFeedbackDialog(): void;
   /** Create a blank project-scope skill and open it in the editor. */
   createBlankSkill(): void;
+  /** Focus the Blob Run tab, opening one if it is not already around. */
+  openBlobRun(): void;
 }
 
 /** Render-order buckets; the palette renders each group under its own heading. */
@@ -172,6 +175,7 @@ export interface PaletteCommand {
  * palette in lockstep with the native menu's `MENU_LABELS` source.
  */
 const PALETTE_COMMAND_LABELS = {
+  blobRun: msg`Blob Run`,
   back: msg`Back`,
   forward: msg`Forward`,
   newFile: msg`New file`,
@@ -232,6 +236,7 @@ export { PALETTE_COMMAND_LABELS };
  *  `toPaletteCommand` throws at module load if an id is missing, rather than
  *  silently substituting a wrong default. */
 const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  'open-blob-run': Gamepad2,
   'navigate-back': ChevronLeft,
   'navigate-forward': ChevronRight,
   'new-file': FilePlus2,
@@ -284,6 +289,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
  * through to {@link busDispatch}, which emits their `menuActionId`.
  */
 const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
+  'open-blob-run': (ctx) => ctx.openBlobRun(),
   'new-file': (ctx) => {
     ctx.closePalette();
     ctx.openNewItemDialog('file');

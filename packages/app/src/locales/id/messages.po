@@ -1857,6 +1857,13 @@ msgstr "Wiki burung"
 msgid "Blank note"
 msgstr "Catatan kosong"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+#: src/components/HelpPopover.tsx
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Blob Run"
+msgstr "Blob Run"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "Persamaan matematika blok yang dirender dengan KaTeX dari sumber LaTeX."
@@ -5604,6 +5611,10 @@ msgstr "Sinkronisasi penuh — commit Anda dikirim dan perubahan remote ditarik 
 msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr "Sinkronisasi penuh — suntingan Anda di-commit dan dikirim ke remote Anda secara otomatis."
 
+#: src/components/OkBlobRunner.tsx
+msgid "Game over · press space to play again"
+msgstr "Permainan berakhir · tekan spasi untuk main lagi"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "General"
 msgstr "Umum"
@@ -5832,6 +5843,10 @@ msgstr "Bantuan"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
 msgstr "Membantu agen pemrograman Anda mengenali proyek OpenKnowledge dan mengarahkan baca-tulis melaluinya."
+
+#: src/components/OkBlobRunner.tsx
+msgid "HI"
+msgstr "MAKS"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7398,6 +7413,10 @@ msgstr "Baru"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Obrolan {0} baru"
+
+#: src/components/OkBlobRunner.tsx
+msgid "New best · press space to play again"
+msgstr "Rekor baru · tekan spasi untuk main lagi"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "New branch <0>{trimmed}</0> will be created from <1>{currentBaseLabel}</1>, in its own worktree under <2>.ok/worktrees/</2>."
@@ -8986,6 +9005,10 @@ msgstr "Teks biasa"
 msgid "Plan ({done}/{0})"
 msgstr "Rencana ({done}/{0})"
 
+#: src/components/ConnectingBanner.tsx
+msgid "Play Blob Run"
+msgstr "Mainkan Blob Run"
+
 #: src/components/FeedbackForm.tsx
 msgid "Please choose Good or Not great."
 msgstr "Silakan pilih Bagus atau Kurang bagus."
@@ -9043,6 +9066,10 @@ msgstr "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Tambahkan <0>
 #: src/components/settings/LintingSection.tsx
 msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
 msgstr "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Hanya berfungsi di aplikasi desktop OpenKnowledge dan memerlukan CLI Slidev yang dipasang terpisah. Saat aktif, muncul di Plugins pada bilah sisi."
+
+#: src/components/OkBlobRunner.tsx
+msgid "Press space or tap the blob to start"
+msgstr "Tekan spasi atau ketuk blob untuk mulai"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -11199,6 +11226,14 @@ msgstr "Pencarian di sumber"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
 msgstr "Batalkan atau ulangi di sumber"
+
+#: src/components/OkBlobRunner.tsx
+msgid "Space to jump · down arrow to duck"
+msgstr "Spasi untuk melompat · panah bawah untuk menunduk"
+
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Space to jump, down arrow to duck. That is the whole game."
+msgstr "Spasi untuk melompat, panah bawah untuk menunduk. Hanya itu permainannya."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"

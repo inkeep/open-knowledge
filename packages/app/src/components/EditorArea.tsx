@@ -35,6 +35,7 @@ import { EmptyEditorState } from '@/components/EmptyEditorState';
 import { FolderOverview } from '@/components/FolderOverview';
 import { LargeFileEditorState } from '@/components/LargeFileEditorState';
 import { MountStalledAffordance } from '@/components/MountStalledAffordance';
+import { OkBlobRunnerPage } from '@/components/OkBlobRunnerPage';
 import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { ShareReceiveMissPanel } from '@/components/ShareReceiveMissPanel';
 import { SkillFileViewer } from '@/components/SkillFileViewer';
@@ -43,6 +44,7 @@ import { SkillsBasePage } from '@/components/SkillsBasePage';
 import { SettingsDialogShell } from '@/components/settings/SettingsDialogShell';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import {
+  isBlobRunnerNewTabId,
   isSkillsNewTabId,
   useDocumentContext,
   useDocumentTransition,
@@ -80,6 +82,7 @@ import { applyToggle, readPins, resolveEffectiveState } from '@/lib/sidebar-pin-
 import { closeTimelineDiff, useTimelineDiffView } from '@/lib/timeline-diff-store';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
+import { withViewTransition } from '@/lib/view-transition';
 import { useSyncStatus } from '@/presence/use-sync-status';
 import { BottomComposer } from './BottomComposer';
 import { shouldShowBottomComposer, shouldShowFolderComposer } from './bottom-composer-gate';
@@ -1272,6 +1275,17 @@ function EditorAreaInner({
   // field collapses and the footer shows a reopen badge; persists across doc
   // switches within this editor shell's lifetime.
   const [composerDismissed, setComposerDismissed] = useState(false);
+  /**
+   * The new tab the mascot's double-rage revealed the game in. Keyed by tab id
+   * so the reveal belongs to THAT tab: switching away and back keeps it, and a
+   * different new tab still shows the empty state.
+   *
+   * Deliberately not a second tab. `remapWorkspaceTabs` only walks `openTabs`,
+   * so an ephemeral placeholder cannot be re-identified in place; rendering a
+   * different surface under the same tab id is what makes this a transition
+   * rather than a new tab appearing next to the one you were looking at.
+   */
+  const [blobRunRevealedTabId, setBlobRunRevealedTabId] = useState<string | null>(null);
   const activeDocumentHistoryName =
     activeTarget?.kind === 'large-file' ? activeTarget.docName : activeDocName;
   useEffect(() => {
@@ -1511,6 +1525,11 @@ function EditorAreaInner({
         // panels' doc-panel pixel-width sticky restore.
         return <EditorSkeleton />;
       }
+    } else if (isBlobRunnerNewTabId(activeNewTabId)) {
+      // Checked before the Skills arm: a blob-runner tab must win even when the
+      // Skills sidebar is pinned, or opening the game from the Resources menu
+      // while in Skills mode would silently render the Skills home instead.
+      viewContent = <OkBlobRunnerPage />;
     } else if (isSkillsNewTabId(activeNewTabId) || skillsSidebar) {
       // In Skills mode the empty/base state IS the Skills base page ("Create a
       // skill") — the sidebar toggle keeps the current doc open and only swaps
@@ -1525,7 +1544,22 @@ function EditorAreaInner({
       // panel is open — an open panel is its own AI entry point, so the composer
       // bubble + starter packs would compete with it. Which panel picks the
       // header pose (bottom-anchored above the dock; centered beside the column).
-      viewContent = <EmptyEditorState terminalOpen={terminalVisible} agentsOpen={agentsVisible} />;
+      viewContent =
+        blobRunRevealedTabId !== null && blobRunRevealedTabId === activeNewTabId ? (
+          // Revealed by the double-sparkle: the user just made a deliberate
+          // gesture, so run on rather than greeting them with "press space".
+          <OkBlobRunnerPage autoStart />
+        ) : (
+          <EmptyEditorState
+            terminalOpen={terminalVisible}
+            agentsOpen={agentsVisible}
+            onRageStreak={
+              activeNewTabId
+                ? () => withViewTransition(() => setBlobRunRevealedTabId(activeNewTabId))
+                : undefined
+            }
+          />
+        );
     }
   } else {
     // Visibility for the open doc's "Ask AI" composer — the pure gate in

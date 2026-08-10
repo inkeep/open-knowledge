@@ -45,7 +45,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { Kbd } from '@/components/ui/kbd';
-import { useDocumentContext } from '@/editor/DocumentContext';
+import { isBlobRunnerNewTabId, useDocumentContext } from '@/editor/DocumentContext';
 import {
   filterClosableTabIds,
   isSkillBundleShapedPath,
@@ -1079,7 +1079,11 @@ export function EditorTabs({
                             data-editor-tab-title-overflow="ellipsis"
                             className="min-w-0 truncate"
                           >
-                            <Trans>New tab</Trans>
+                            {isBlobRunnerNewTabId(tabId) ? (
+                              <Trans>Blob Run</Trans>
+                            ) : (
+                              <Trans>New tab</Trans>
+                            )}
                           </span>
                         </button>
                         {shortcutHint ? (

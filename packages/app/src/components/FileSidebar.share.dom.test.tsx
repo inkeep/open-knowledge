@@ -182,6 +182,7 @@ vi.doMock('@/editor/DocumentContext', () => ({
   // FileSidebar imports isSkillsNewTabId; the partial mock must keep that
   // export or the module link fails (activeNewTabId is unset here → false).
   isSkillsNewTabId: () => false,
+  isBlobRunnerNewTabId: () => false,
 }));
 
 vi.doMock('@/hooks/use-folder-config', () => ({

@@ -391,6 +391,7 @@
       "HTML incorporado em modo isolado — escreva HTML e veja a pré-visualização renderizada ao vivo."
     ],
     "4nj6n8": ["/api/config devolveu HTTP ", ["code"]],
+    "4o57um": ["Fim de jogo · pressione espaço para jogar de novo"],
     "4pDZ2N": [
       "\"",
       ["0"],
@@ -692,6 +693,7 @@
     "8PifYj": ["Diagrama do Mermaid"],
     "8PmoQF": ["Abre o menu de inserção em uma posição de texto vazia ou ativa."],
     "8RtNI0": ["Falha ao carregar os documentos"],
+    "8SrrDi": ["Novo recorde · pressione espaço para jogar de novo"],
     "8TvlHF": ["Despejo de falha"],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Trocar de worktree"],
@@ -742,6 +744,7 @@
     "99eR72": ["Seleção de tabela do editor visual"],
     "9Bd18D": ["Falha ao carregar as páginas de índice"],
     "9EykGQ": ["Inserir coluna à direita"],
+    "9GbR5F": ["MÁX"],
     "9HKBNN": ["comandos"],
     "9Ii3uK": ["um novo painel à esquerda de ", ["0"]],
     "9J8xNg": [["importedLabel"], " importado"],
@@ -847,6 +850,7 @@
     "ASqqsQ": ["No máximo ", ["MAX_ATTACHMENTS"], " anexos"],
     "AT0e50": ["Manter os dois"],
     "ATGYL1": ["Endereço de e-mail"],
+    "AUMPjj": ["Espaço para pular, seta para baixo para agachar. É esse o jogo inteiro."],
     "AUV-TY": ["Pensando"],
     "AVW-K9": ["Falha ao carregar as páginas órfãs"],
     "AWOSPo": ["Aproximar"],
@@ -1792,6 +1796,7 @@
     "MqsbfN": ["Ligar a pré-visualização de links externos?"],
     "MrUmCD": ["falha de compilação desconhecida"],
     "MrwYIK": ["Liga ou desliga um comentário no código pelo CodeMirror."],
+    "MsARMw": ["Jogar Blob Run"],
     "MuxcRB": [["0"], " permite que ", ["1"], " aja sem perguntar"],
     "Mv2lM4": [
       "A skill “",
@@ -2047,6 +2052,7 @@
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
     "QTsvh1": ["Este agente precisa que você entre primeiro — veja o aviso abaixo."],
+    "QUhYEG": ["Espaço para pular · seta para baixo para agachar"],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
@@ -3380,6 +3386,7 @@
     "habOU_": ["Falha ao atualizar a configuração de aprovação automática — ", ["detail"]],
     "he3ygx": ["Copiar"],
     "hgF0al": ["Usar ", ["0"], " no modo claro ativo"],
+    "hgf5io": ["Blob Run"],
     "hgtsat": ["Falha ao excluir ", ["file"]],
     "hh4mVC": ["Pedir à IA para corrigir ", ["flatId"]],
     "hhI__i": ["Tem certeza de que deseja excluir \"", ["name"], "\" e seu conteúdo?"],
@@ -4551,6 +4558,7 @@
       ". Escolher outra pasta?"
     ],
     "wGSHzy": ["Ativa uma das oito primeiras abas do editor."],
+    "wIM7ul": ["Pressione espaço ou toque no blob para começar"],
     "wJijgU": ["Local"],
     "wJo9oS": ["Fechar busca"],
     "wQp1V3": ["Espelho de <0>", ["src"], "</0>"],

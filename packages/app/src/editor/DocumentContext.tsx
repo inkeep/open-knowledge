@@ -262,6 +262,8 @@ interface DocumentContextValue {
   skillFocused: boolean;
   /** Open an empty tab placeholder that the next sidebar document click can fill. */
   openNewTab: () => void;
+  /** Focus the blob-runner tab, opening one if it is not already around. */
+  openBlobRunner: () => void;
   /** Activate an existing empty tab placeholder. */
   activateNewTab: (tabId: string) => void;
   /** Close the empty tab placeholder and return to the nearest document tab. */
@@ -520,6 +522,35 @@ const NEW_TAB_PREFIX = 'new-tab:';
 const SKILLS_NEW_TAB_PREFIX = 'new-tab:skills:';
 export function isSkillsNewTabId(id: string | null | undefined): boolean {
   return id?.startsWith(SKILLS_NEW_TAB_PREFIX) ?? false;
+}
+
+// The blob runner is a full-pane surface with no document behind it, so it
+// rides the same ephemeral new-tab placeholder the Skills home uses rather
+// than a standing tab id. Deliberately NOT a persisted tab kind: a game has no
+// state worth restoring across reloads, and the standing-singleton pattern was
+// retired from this codebase (see SKILLS_HUB_TAB_ID in editor-tabs.ts).
+const BLOB_RUNNER_NEW_TAB_PREFIX = 'new-tab:blob-runner:';
+
+/**
+ * Which full-pane surface a new-tab placeholder stands for. `NEW_TAB_PREFIX` is
+ * a literal prefix of the other two, so classification MUST test the specific
+ * surfaces first — a plain `startsWith(NEW_TAB_PREFIX)` matches all three.
+ */
+export type NewTabSurface = 'files' | 'skills' | 'blob-runner';
+
+const NEW_TAB_PREFIX_BY_SURFACE: Record<NewTabSurface, string> = {
+  files: NEW_TAB_PREFIX,
+  skills: SKILLS_NEW_TAB_PREFIX,
+  'blob-runner': BLOB_RUNNER_NEW_TAB_PREFIX,
+};
+
+function newTabSurfaceOf(tabId: string): NewTabSurface {
+  if (isBlobRunnerNewTabId(tabId)) return 'blob-runner';
+  if (isSkillsNewTabId(tabId)) return 'skills';
+  return 'files';
+}
+export function isBlobRunnerNewTabId(id: string | null | undefined): boolean {
+  return id?.startsWith(BLOB_RUNNER_NEW_TAB_PREFIX) ?? false;
 }
 
 /**
@@ -1608,7 +1639,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openDocument(docName);
   };
 
-  function activateOrOpenSurfaceNewTab(paneId: EditorPaneId, skills: boolean) {
+  function activateOrOpenSurfaceNewTab(paneId: EditorPaneId, surface: NewTabSurface) {
     const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
     if (!pane) return;
     // A pane can hold several new tabs per surface, and a surface hub route
@@ -1617,11 +1648,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     // the first. Without this the nav effect, which re-fires on the unchanged
     // hub hash, steals activation from every other new tab on that surface.
     const activeOnSurface =
-      pane.activeNewTabId !== null && isSkillsNewTabId(pane.activeNewTabId) === skills
+      pane.activeNewTabId !== null && newTabSurfaceOf(pane.activeNewTabId) === surface
         ? pane.activeNewTabId
         : null;
     const existingTabId =
-      activeOnSurface ?? pane.newTabIds.find((tabId) => isSkillsNewTabId(tabId) === skills);
+      activeOnSurface ?? pane.newTabIds.find((tabId) => newTabSurfaceOf(tabId) === surface);
     setSkillsSidebarState(null);
     if (existingTabId) {
       updatePaneState(
@@ -1637,8 +1668,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const prefix = skills ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
-    const nextNewTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
+    const nextNewTabId = `${NEW_TAB_PREFIX_BY_SURFACE[surface]}${nextNewTabOrdinalRef.current}`;
     nextNewTabOrdinalRef.current += 1;
     commitWorkspace(
       transitionEditorWorkspace(workspaceRef.current, {
@@ -1660,7 +1690,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const paneId = requestedPaneId ?? workspaceRef.current.focusedPaneId;
     const p = getPool(collabUrl);
     if (target.kind === 'skills') {
-      activateOrOpenSurfaceNewTab(paneId, true);
+      activateOrOpenSurfaceNewTab(paneId, 'skills');
       return;
     }
     const docName = docNameForNavigationTarget(target);
@@ -1705,6 +1735,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const activateTabById = (tabId: string) =>
     activateTabInPaneById(workspaceRef.current.focusedPaneId, tabId);
 
+  const openBlobRunner = () => {
+    activateOrOpenSurfaceNewTab(workspaceRef.current.focusedPaneId, 'blob-runner');
+  };
+
   const openNewTabInPaneById = (paneId: EditorPaneId) => {
     const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
     if (!pane) return;
@@ -1742,7 +1776,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const closedSkillsTab = isSkillsNewTabId(tabId);
     const remainsOnClosedSurface =
       nextActiveTabId !== null && tabIdIsSkillSurface(nextActiveTabId) === closedSkillsTab;
-    if (wasActive && !remainsOnClosedSurface) setSkillsSidebarState(closedSkillsTab);
+    // A blob-runner tab belongs to no sidebar surface, so closing one should
+    // leave the sidebar wherever it was. Without this guard it reads as a Files
+    // tab and pins the sidebar to Files even when the next active tab is Skills.
+    if (wasActive && !remainsOnClosedSurface && !isBlobRunnerNewTabId(tabId)) {
+      setSkillsSidebarState(closedSkillsTab);
+    }
     commitWorkspace(
       nextWorkspace,
       workspaceRef.current.focusedPaneId === paneId && wasActive && remainsOnClosedSurface,
@@ -1775,7 +1814,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
 
     const pane = focusedPane(workspaceRef.current);
-    activateOrOpenSurfaceNewTab(pane.id, next);
+    activateOrOpenSurfaceNewTab(pane.id, next ? 'skills' : 'files');
   };
 
   const closeActiveTabOrWindow = (): boolean => {
@@ -2084,7 +2123,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     clearTarget: () => {
       const pane = focusedPane(workspaceRef.current);
       if (pane.activeNewTabId !== null && !isSkillsNewTabId(pane.activeNewTabId)) return;
-      activateOrOpenSurfaceNewTab(pane.id, false);
+      activateOrOpenSurfaceNewTab(pane.id, 'files');
     },
     closeDocument: (docName: string) => {
       markTabSessionClosedDuringRestore();
@@ -2108,6 +2147,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     activeNewTabId: surfacePane.activeNewTabId,
     isNewTabActive: surfacePane.activeNewTabId !== null,
     openNewTab: openNewTabById,
+    openBlobRunner,
     activateNewTab: (tabId: string) =>
       activateNewTabInPaneById(workspaceRef.current.focusedPaneId, tabId),
     closeNewTab: closeNewTabById,
@@ -2277,6 +2317,18 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   };
 
   return <DocumentContext value={value}>{children}</DocumentContext>;
+}
+
+/**
+ * The blob-runner opener, or null outside a `DocumentProvider`.
+ *
+ * `HelpPopover` is a generic resources menu, not an editor-only surface: the
+ * Navigator window mounts no provider and the menu's own tests render it
+ * standalone. Hard-requiring the document context there would trade a menu
+ * entry for a crash, so callers hide the row when this is null.
+ */
+export function useOpenBlobRunner(): (() => void) | null {
+  return use(DocumentContext)?.openBlobRunner ?? null;
 }
 
 export function useDocumentContext(): DocumentContextValue {

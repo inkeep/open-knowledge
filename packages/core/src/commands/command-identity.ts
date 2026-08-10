@@ -250,6 +250,16 @@ export interface CommandIdentity {
  * Menu-only commands are interleaved near their menu neighbors.
  */
 export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
+  // Palette-only, and search-only: findable by someone who goes looking,
+  // invisible to someone who just opened the palette. Deliberately declares no
+  // `menu` placement — a hidden game does not belong in the native menu bar.
+  {
+    id: 'open-blob-run',
+    labelKey: 'blobRun',
+    keywords: ['game', 'blob', 'runner', 'play', 'easter egg', 'dino'],
+    availability: {},
+    palette: { group: 'app', visibility: 'search-only' },
+  },
   // ── Commands group (palette) / View-history (menu) ─────────────────────────
   {
     id: 'navigate-back',

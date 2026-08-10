@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   expectVisualClassTokens,
@@ -6,11 +6,24 @@ import {
 } from '@/test-utils/visual-contract';
 
 vi.doMock('@/components/OkBlob', () => ({
-  OkBlob: ({ celebrateSignal, size }: { celebrateSignal: number; size: number }) => (
-    <div
+  // `onRage` is exposed as a click so the reveal gate can be driven from a test;
+  // the real OkBlob fires it after three rapid clicks inside its rage window.
+  OkBlob: ({
+    celebrateSignal,
+    size,
+    onRage,
+  }: {
+    celebrateSignal: number;
+    size: number;
+    onRage?: () => void;
+  }) => (
+    <button
+      type="button"
       data-testid="ok-blob-probe"
       data-celebrate-signal={String(celebrateSignal)}
       data-size={String(size)}
+      data-has-rage={String(onRage !== undefined)}
+      onClick={() => onRage?.()}
     />
   ),
 }));
@@ -43,5 +56,71 @@ describe('EmptyStateHeader runtime behavior', () => {
 
     expect(screen.queryByText('Pick one')).toBeNull();
     expect(screen.getByTestId('ok-blob-probe').getAttribute('data-celebrate-signal')).toBe('4');
+  });
+});
+
+describe('EmptyStateHeader rage-streak reveal gate', () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  async function mount(onRageStreak?: () => void) {
+    const { EmptyStateHeader } = await import('./EmptyStateHeader');
+    render(<EmptyStateHeader title="t" celebrateSignal={0} onRageStreak={onRageStreak} />);
+    return screen.getByTestId('ok-blob-probe');
+  }
+
+  test('one burst never reveals — the first sparkle is just a sparkle', async () => {
+    const onRageStreak = vi.fn();
+    const blob = await mount(onRageStreak);
+    fireEvent.click(blob);
+    expect(onRageStreak).not.toHaveBeenCalled();
+  });
+
+  test('a second burst inside the window reveals, exactly once', async () => {
+    const onRageStreak = vi.fn();
+    const now = vi.spyOn(performance, 'now');
+    const blob = await mount(onRageStreak);
+
+    now.mockReturnValue(0);
+    fireEvent.click(blob);
+    now.mockReturnValue(1_000);
+    fireEvent.click(blob);
+    expect(onRageStreak).toHaveBeenCalledTimes(1);
+  });
+
+  test('a second burst after the window restarts the streak', async () => {
+    const onRageStreak = vi.fn();
+    const now = vi.spyOn(performance, 'now');
+    const blob = await mount(onRageStreak);
+
+    now.mockReturnValue(0);
+    fireEvent.click(blob);
+    now.mockReturnValue(60_000);
+    fireEvent.click(blob);
+    expect(onRageStreak).not.toHaveBeenCalled();
+  });
+
+  test('the streak resets after a reveal, so a third burst does not re-fire', async () => {
+    const onRageStreak = vi.fn();
+    const now = vi.spyOn(performance, 'now');
+    const blob = await mount(onRageStreak);
+
+    now.mockReturnValue(0);
+    fireEvent.click(blob);
+    now.mockReturnValue(500);
+    fireEvent.click(blob);
+    expect(onRageStreak).toHaveBeenCalledTimes(1);
+
+    now.mockReturnValue(900);
+    fireEvent.click(blob);
+    expect(onRageStreak).toHaveBeenCalledTimes(1);
+  });
+
+  test('no handler is wired where the surface cannot reveal', async () => {
+    const blob = await mount(undefined);
+    expect(blob.dataset.hasRage).toBe('false');
+    fireEvent.click(blob);
   });
 });

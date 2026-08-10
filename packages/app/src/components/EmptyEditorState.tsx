@@ -21,11 +21,14 @@ import { cn } from '@/lib/utils';
 export function EmptyEditorState({
   terminalOpen = false,
   agentsOpen = false,
+  onRageStreak,
 }: {
   /** Whether the bottom terminal dock is open. */
   terminalOpen?: boolean;
   /** Whether the right agents panel is open. */
   agentsOpen?: boolean;
+  /** Forwarded to the mascot: fired on a second rage-click in a row. */
+  onRageStreak?: () => void;
 }) {
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [seedDialogInitialPackId, setSeedDialogInitialPackId] = useState<OkPackId | undefined>(
@@ -132,7 +135,11 @@ export function EmptyEditorState({
       >
         <div className="flex w-full flex-col items-center px-4 @md/emptystate:px-10 @2xl/emptystate:px-16">
           {messageReady ? (
-            <TerminalEmptyHeader isOnboarding={isOnboarding} celebrateSignal={celebrateSignal} />
+            <TerminalEmptyHeader
+              isOnboarding={isOnboarding}
+              celebrateSignal={celebrateSignal}
+              onRageStreak={onRageStreak}
+            />
           ) : null}
         </div>
       </div>
@@ -147,6 +154,7 @@ export function EmptyEditorState({
         {messageReady ? (
           isOnboarding ? (
             <OnboardingView
+              onRageStreak={onRageStreak}
               celebrateSignal={celebrateSignal}
               onPackSelect={(packId) => {
                 setSeedDialogInitialPackId(packId);
@@ -155,6 +163,7 @@ export function EmptyEditorState({
             />
           ) : (
             <CreateView
+              onRageStreak={onRageStreak}
               celebrateSignal={celebrateSignal}
               onAddStarterPack={() => {
                 // No `initialPackId` — lands at step 1 (PackCardGrid) so the
@@ -208,16 +217,23 @@ export function countEntries(
 function TerminalEmptyHeader({
   isOnboarding,
   celebrateSignal,
+  onRageStreak,
 }: {
   isOnboarding: boolean;
   celebrateSignal: number;
+  onRageStreak?: () => void;
 }) {
   const { t } = useLingui();
   const isEmbedded = useIsEmbedded();
   const { title, subtitle } = getEmptyStateCopy({ isOnboarding, isEmbedded });
   return (
     <div className="w-full max-w-5xl">
-      <EmptyStateHeader title={t(title)} subtitle={t(subtitle)} celebrateSignal={celebrateSignal} />
+      <EmptyStateHeader
+        title={t(title)}
+        subtitle={t(subtitle)}
+        celebrateSignal={celebrateSignal}
+        onRageStreak={onRageStreak}
+      />
     </div>
   );
 }
@@ -225,16 +241,23 @@ function TerminalEmptyHeader({
 function OnboardingView({
   celebrateSignal,
   onPackSelect,
+  onRageStreak,
 }: {
   celebrateSignal: number;
   onPackSelect: (packId: OkPackId) => void;
+  onRageStreak?: () => void;
 }) {
   const { t } = useLingui();
   const isEmbedded = useIsEmbedded();
   const { title, subtitle } = getEmptyStateCopy({ isOnboarding: true, isEmbedded });
   return (
     <div className="flex w-full flex-col gap-10 py-12 max-w-5xl my-auto">
-      <EmptyStateHeader title={t(title)} subtitle={t(subtitle)} celebrateSignal={celebrateSignal} />
+      <EmptyStateHeader
+        title={t(title)}
+        subtitle={t(subtitle)}
+        celebrateSignal={celebrateSignal}
+        onRageStreak={onRageStreak}
+      />
       {/* AI surface up top — the primary path. Non-embedded: compose a brief and
           hand off to a coding agent. Embedded (OK inside Cursor/Codex/Claude):
           show the same starter prompts as copy-to-paste rows, since the launch

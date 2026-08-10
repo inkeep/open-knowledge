@@ -26,7 +26,8 @@
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
-import { useDocumentContext } from '@/editor/DocumentContext';
+import { OkBlob } from '@/components/OkBlob';
+import { useDocumentContext, useOpenBlobRunner } from '@/editor/DocumentContext';
 import { restartCollabServer } from '@/lib/restart-collab-server';
 
 /**
@@ -89,6 +90,10 @@ export function describeError(err: CollabError): string {
 }
 
 export function ConnectingBanner() {
+  // Thirty seconds of a server that is not coming back is the one moment in
+  // this app where waiting IS the whole remedy. Opening the game needs no
+  // server: the tab is client-side workspace state.
+  const openBlobRunner = useOpenBlobRunner();
   const { collabUrl, collabTerminal, collabLastError, retryCollab } = useDocumentContext();
   const [graceElapsed, setGraceElapsed] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -191,6 +196,17 @@ export function ConnectingBanner() {
             className="bg-red-950 text-red-50 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-900 disabled:opacity-60"
           >
             {restarting ? <Trans>Restarting</Trans> : <Trans>Restart server</Trans>}
+          </button>
+        ) : null}
+        {openBlobRunner ? (
+          <button
+            type="button"
+            onClick={openBlobRunner}
+            aria-label={t`Play Blob Run`}
+            title={t`Play Blob Run`}
+            className="ml-1 flex items-center rounded bg-red-100/60 px-1.5 py-1 transition-colors hover:bg-red-100/90"
+          >
+            <OkBlob size={22} trackMouse={false} variant="sleeping" />
           </button>
         ) : null}
         {restartError !== null ? (

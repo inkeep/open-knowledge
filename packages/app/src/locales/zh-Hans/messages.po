@@ -1861,6 +1861,13 @@ msgstr "鸟类维基"
 msgid "Blank note"
 msgstr "空白笔记"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+#: src/components/HelpPopover.tsx
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Blob Run"
+msgstr "Blob Run"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "由 LaTeX 源码经 KaTeX 渲染的独立数学公式。"
@@ -5608,6 +5615,10 @@ msgstr "完全同步——你的提交会自动推送，远程改动会自动拉
 msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr "完全同步——你的编辑会自动提交并推送到你的远程仓库。"
 
+#: src/components/OkBlobRunner.tsx
+msgid "Game over · press space to play again"
+msgstr "游戏结束 · 按空格再玩一次"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "General"
 msgstr "通用"
@@ -5836,6 +5847,10 @@ msgstr "帮助"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
 msgstr "帮助你的编程智能体识别 OpenKnowledge 项目，并把读写都经由它进行。"
+
+#: src/components/OkBlobRunner.tsx
+msgid "HI"
+msgstr "最高"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7402,6 +7417,10 @@ msgstr "新建"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "新建 {0} 对话"
+
+#: src/components/OkBlobRunner.tsx
+msgid "New best · press space to play again"
+msgstr "新纪录 · 按空格再玩一次"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "New branch <0>{trimmed}</0> will be created from <1>{currentBaseLabel}</1>, in its own worktree under <2>.ok/worktrees/</2>."
@@ -8990,6 +9009,10 @@ msgstr "纯文本"
 msgid "Plan ({done}/{0})"
 msgstr "计划（{done}/{0}）"
 
+#: src/components/ConnectingBanner.tsx
+msgid "Play Blob Run"
+msgstr "玩 Blob Run"
+
 #: src/components/FeedbackForm.tsx
 msgid "Please choose Good or Not great."
 msgstr "请选择「良好」或「不太好」。"
@@ -9047,6 +9070,10 @@ msgstr "在独立窗口中将文档演示为幻灯片。在文档的 frontmatter
 #: src/components/settings/LintingSection.tsx
 msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
 msgstr "在独立窗口中将文档演示为幻灯片。仅在 OpenKnowledge 桌面应用中可用，并需要单独安装 Slidev CLI。启用后会显示在侧边栏的 Plugins 下。"
+
+#: src/components/OkBlobRunner.tsx
+msgid "Press space or tap the blob to start"
+msgstr "按空格或点击 blob 开始"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -11203,6 +11230,14 @@ msgstr "源码搜索"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
 msgstr "源码撤销或重做"
+
+#: src/components/OkBlobRunner.tsx
+msgid "Space to jump · down arrow to duck"
+msgstr "空格跳跃 · 下方向键下蹲"
+
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Space to jump, down arrow to duck. That is the whole game."
+msgstr "空格跳跃，下方向键下蹲。整个游戏就这么简单。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"

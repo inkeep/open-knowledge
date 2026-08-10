@@ -1857,6 +1857,13 @@ msgstr "पक्षी विकी"
 msgid "Blank note"
 msgstr "खाली नोट"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+#: src/components/HelpPopover.tsx
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Blob Run"
+msgstr "Blob Run"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "एक LaTeX स्रोत स्ट्रिंग से KaTeX द्वारा रेंडर किया गया ब्लॉक गणित समीकरण।"
@@ -5604,6 +5611,10 @@ msgstr "पूर्ण सिंक — आपके कमिट भेजे 
 msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr "पूर्ण सिंक — आपके संपादन अपने आप कमिट होकर आपके रिमोट पर भेज दिए जाते हैं।"
 
+#: src/components/OkBlobRunner.tsx
+msgid "Game over · press space to play again"
+msgstr "खेल समाप्त · फिर से खेलने के लिए स्पेस दबाएँ"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "General"
 msgstr "सामान्य"
@@ -5832,6 +5843,10 @@ msgstr "सहायता"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
 msgstr "आपके कोडिंग एजेंट को OpenKnowledge प्रोजेक्ट पहचानने और पढ़ने-लिखने का काम उसी के ज़रिए करने में मदद करता है।"
+
+#: src/components/OkBlobRunner.tsx
+msgid "HI"
+msgstr "उच्च"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7398,6 +7413,10 @@ msgstr "नया"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "नई {0} चैट"
+
+#: src/components/OkBlobRunner.tsx
+msgid "New best · press space to play again"
+msgstr "नया रिकॉर्ड · फिर से खेलने के लिए स्पेस दबाएँ"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "New branch <0>{trimmed}</0> will be created from <1>{currentBaseLabel}</1>, in its own worktree under <2>.ok/worktrees/</2>."
@@ -8986,6 +9005,10 @@ msgstr "सादा टेक्स्ट"
 msgid "Plan ({done}/{0})"
 msgstr "योजना ({done}/{0})"
 
+#: src/components/ConnectingBanner.tsx
+msgid "Play Blob Run"
+msgstr "Blob Run खेलें"
+
 #: src/components/FeedbackForm.tsx
 msgid "Please choose Good or Not great."
 msgstr "कृपया अच्छा या बहुत अच्छा नहीं चुनें।"
@@ -9043,6 +9066,10 @@ msgstr "किसी दस्तावेज़ को अलग विंड�
 #: src/components/settings/LintingSection.tsx
 msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
 msgstr "किसी दस्तावेज़ को अलग विंडो में स्लाइड डेक के रूप में प्रस्तुत करें। यह केवल OpenKnowledge डेस्कटॉप ऐप में काम करता है और इसके लिए Slidev CLI चाहिए, जिसे आप अलग से इंस्टॉल करते हैं। चालू होने पर यह साइडबार में Plugins के अंतर्गत दिखता है।"
+
+#: src/components/OkBlobRunner.tsx
+msgid "Press space or tap the blob to start"
+msgstr "शुरू करने के लिए स्पेस दबाएँ या blob पर टैप करें"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -11199,6 +11226,14 @@ msgstr "स्रोत खोज"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
 msgstr "स्रोत में पूर्ववत या फिर से करें"
+
+#: src/components/OkBlobRunner.tsx
+msgid "Space to jump · down arrow to duck"
+msgstr "कूदने के लिए स्पेस · झुकने के लिए नीचे तीर"
+
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Space to jump, down arrow to duck. That is the whole game."
+msgstr "कूदने के लिए स्पेस, झुकने के लिए नीचे तीर। बस इतना ही खेल है।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"

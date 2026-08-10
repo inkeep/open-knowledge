@@ -88,6 +88,7 @@ export const MENU_LABELS = {
   // Palette-only commands (no native-menu leaf); shared here so the label-parity
   // test guards them and the registry keeps a single label source.
   openGraph: 'Open graph',
+  blobRun: 'Blob Run',
   initializeStarterPack: 'Initialize starter pack',
   newSkill: 'New skill',
   // State-aware Show/Hide toggles — both surfaces render both variants; the

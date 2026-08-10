@@ -187,6 +187,9 @@ vi.doMock('@/components/PageListContext', () => ({
 }));
 
 vi.doMock('@/editor/DocumentContext', () => ({
+  // Whole-module replacement: CommandPalette imports useOpenBlobRunner for the
+  // Blob Run row, so the export must exist here or the link detonates.
+  useOpenBlobRunner: () => null,
   useDocumentContext: () => ({
     activeDocName,
     activeTarget,

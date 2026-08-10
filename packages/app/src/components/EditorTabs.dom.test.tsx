@@ -247,6 +247,10 @@ vi.doMock('@/components/skill-actions', () => ({
 }));
 
 vi.doMock('@/editor/DocumentContext', () => ({
+  // EditorTabs imports isBlobRunnerNewTabId to name the runner's tab; this is
+  // a whole-module replacement, so the export must exist here or the link
+  // detonates on load.
+  isBlobRunnerNewTabId: () => false,
   useDocumentContext: () => ({
     activeDocName,
     activeNewTabId,

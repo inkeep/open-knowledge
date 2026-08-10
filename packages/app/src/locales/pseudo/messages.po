@@ -1857,6 +1857,13 @@ msgstr ""
 msgid "Blank note"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+#: src/components/HelpPopover.tsx
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Blob Run"
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr ""
@@ -5604,6 +5611,10 @@ msgstr ""
 msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr ""
 
+#: src/components/OkBlobRunner.tsx
+msgid "Game over · press space to play again"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "General"
 msgstr ""
@@ -5831,6 +5842,10 @@ msgstr ""
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
+msgstr ""
+
+#: src/components/OkBlobRunner.tsx
+msgid "HI"
 msgstr ""
 
 #: src/components/EditorTabTargetMenuItems.tsx
@@ -7397,6 +7412,10 @@ msgstr ""
 #. placeholder {0}: selected.agent.name
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
+msgstr ""
+
+#: src/components/OkBlobRunner.tsx
+msgid "New best · press space to play again"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -8986,6 +9005,10 @@ msgstr ""
 msgid "Plan ({done}/{0})"
 msgstr ""
 
+#: src/components/ConnectingBanner.tsx
+msgid "Play Blob Run"
+msgstr ""
+
 #: src/components/FeedbackForm.tsx
 msgid "Please choose Good or Not great."
 msgstr ""
@@ -9042,6 +9065,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
+msgstr ""
+
+#: src/components/OkBlobRunner.tsx
+msgid "Press space or tap the blob to start"
 msgstr ""
 
 #: src/components/EditorWorkspace.tsx
@@ -11198,6 +11225,14 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
+msgstr ""
+
+#: src/components/OkBlobRunner.tsx
+msgid "Space to jump · down arrow to duck"
+msgstr ""
+
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

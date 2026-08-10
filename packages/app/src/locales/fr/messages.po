@@ -1861,6 +1861,13 @@ msgstr "Wiki des oiseaux"
 msgid "Blank note"
 msgstr "Note vierge"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+#: src/components/HelpPopover.tsx
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Blob Run"
+msgstr "Blob Run"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "Équation mathématique en bloc rendue avec KaTeX à partir d'une source LaTeX."
@@ -5608,6 +5615,10 @@ msgstr "Synchronisation complète — vos commits sont poussés et les modificat
 msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr "Synchronisation complète — vos modifications sont validées et poussées automatiquement vers votre dépôt distant."
 
+#: src/components/OkBlobRunner.tsx
+msgid "Game over · press space to play again"
+msgstr "Partie terminée · appuyez sur espace pour rejouer"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "General"
 msgstr "Général"
@@ -5836,6 +5847,10 @@ msgstr "Aide"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
 msgstr "Aide votre agent de code à reconnaître les projets OpenKnowledge et à y faire transiter les lectures et les écritures."
+
+#: src/components/OkBlobRunner.tsx
+msgid "HI"
+msgstr "MAX"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7402,6 +7417,10 @@ msgstr "Nouveau"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Nouvelle discussion {0}"
+
+#: src/components/OkBlobRunner.tsx
+msgid "New best · press space to play again"
+msgstr "Nouveau record · appuyez sur espace pour rejouer"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "New branch <0>{trimmed}</0> will be created from <1>{currentBaseLabel}</1>, in its own worktree under <2>.ok/worktrees/</2>."
@@ -8990,6 +9009,10 @@ msgstr "Texte brut"
 msgid "Plan ({done}/{0})"
 msgstr "Plan ({done}/{0})"
 
+#: src/components/ConnectingBanner.tsx
+msgid "Play Blob Run"
+msgstr "Jouer à Blob Run"
+
 #: src/components/FeedbackForm.tsx
 msgid "Please choose Good or Not great."
 msgstr "Choisissez Bien ou Pas terrible."
@@ -9047,6 +9070,10 @@ msgstr "Présentez un document sous forme de diaporama dans sa propre fenêtre. 
 #: src/components/settings/LintingSection.tsx
 msgid "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
 msgstr "Présentez un document sous forme de diaporama dans sa propre fenêtre. Fonctionne uniquement dans l'application de bureau OpenKnowledge et nécessite la CLI Slidev, à installer séparément. Une fois activé, il apparaît sous Plugins dans la barre latérale."
+
+#: src/components/OkBlobRunner.tsx
+msgid "Press space or tap the blob to start"
+msgstr "Appuyez sur espace ou touchez le blob pour commencer"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -11203,6 +11230,14 @@ msgstr "Recherche dans la source"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
 msgstr "Annuler ou rétablir dans la source"
+
+#: src/components/OkBlobRunner.tsx
+msgid "Space to jump · down arrow to duck"
+msgstr "Espace pour sauter · flèche bas pour s'accroupir"
+
+#: src/components/OkBlobRunnerPage.tsx
+msgid "Space to jump, down arrow to duck. That is the whole game."
+msgstr "Espace pour sauter, flèche bas pour s'accroupir. C'est tout le jeu."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"

@@ -14,6 +14,12 @@ interface OkBlobProps {
   /** Rendered width/height in px (default 48) */
   size?: number;
   className?: string;
+  /**
+   * Inline style for the wrapper. Exists so a caller can set
+   * `viewTransitionName` without wrapping the mascot in another element, which
+   * would change the layout contract the empty-state visual tests pin.
+   */
+  style?: CSSProperties;
   /** Track mouse position with eyes (default true, disabled under prefers-reduced-motion) */
   trackMouse?: boolean;
   /**
@@ -25,6 +31,12 @@ interface OkBlobProps {
   variant?: 'default' | 'sleeping';
   /** Increment to fire a level-3 burst imperatively; 0→0 mount is a no-op. */
   celebrateSignal?: number;
+  /**
+   * Fired when the USER rage-clicks (three rapid clicks inside the rage
+   * window). Deliberately not fired by `celebrateSignal`, which is programmatic
+   * and would otherwise let a seed celebration trigger a user gesture.
+   */
+  onRage?: () => void;
 }
 
 /** Maximum eye offset from resting position, in SVG viewBox units (viewBox 0 0 30 30). */
@@ -114,9 +126,11 @@ function particleStyle(p: FireworkParticle): CSSProperties {
 export function OkBlob({
   size = 48,
   className,
+  style,
   trackMouse = true,
   variant = 'default',
   celebrateSignal = 0,
+  onRage,
 }: OkBlobProps) {
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -144,6 +158,7 @@ export function OkBlob({
       lastClickTimeRef.current === 0 ? Number.POSITIVE_INFINITY : now - lastClickTimeRef.current;
     lastClickTimeRef.current = now;
     const level = nextClickLevel(clickLevel, dt);
+    if (level === 3) onRage?.();
     setClickLevel(level);
     setClickSeq((prev) => prev + 1);
     setParticles(generateFireworkParticles(level));
@@ -300,7 +315,7 @@ export function OkBlob({
   const bounceClass = isClicked ? `ok-blob-clicked-${clickLevel}` : null;
 
   return (
-    <span ref={wrapperRef} className={cn('ok-blob-3d-wrapper', className)}>
+    <span ref={wrapperRef} className={cn('ok-blob-3d-wrapper', className)} style={style}>
       <svg
         ref={svgRef}
         width={size}
