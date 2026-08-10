@@ -59,11 +59,20 @@ test.describe('terminal dock-state IPC', () => {
     const editorPage = page;
     if (editorPage == null) throw new Error('editor window vanished after readiness poll');
 
-    // Main keeps this record per window and clears it when a window closes, so a
-    // write issued while startup is still swapping windows is accepted against a
-    // window that is about to go away and is silently gone by the read below.
-    // `{ ok: true }` does not prove it survived — it only proves some window took
-    // it — so re-issue until the value reads back.
+    // The agents panel persists its own order, and on load with no threads that
+    // push is `{ order: [], activeKey: null }` — the very value this test asserts
+    // after the reload below. So the synthetic order here is racing the panel:
+    // write it first and the panel's push overwrites it moments later, which is
+    // the empty `agents` seen in CI.
+    //
+    // Wait for that push to land before writing. With no threads to change, the
+    // panel does not push again, so the write then stands. Verifying the read
+    // rather than the `{ ok: true }` is still worth it — the ack says main
+    // accepted the write, not that it survived.
+    await expect
+      .poll(() => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()))
+      .toMatchObject({ agents: { order: [], activeKey: null } });
+
     await expect
       .poll(async () => {
         await editorPage.evaluate(() =>
