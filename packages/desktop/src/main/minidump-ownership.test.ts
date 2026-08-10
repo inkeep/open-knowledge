@@ -18,7 +18,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { buildMinidump, type MinidumpPatch } from './minidump.test-helper.ts';
-import { classifyMinidumpOwnership, readMinidumpAppVersion } from './minidump-ownership.ts';
+import {
+  classifyMinidumpCrashKind,
+  classifyMinidumpOwnership,
+  readMinidumpAppVersion,
+} from './minidump-ownership.ts';
 
 const tmpDirs: string[] = [];
 
@@ -497,5 +501,127 @@ describe('crashpad app-version annotations', () => {
       vi.doUnmock('node:fs');
       vi.resetModules();
     }
+  });
+});
+
+/**
+ * Did the process actually fault?
+ *
+ * The failure this guards is one-directional and silent: classify a real crash
+ * as "not a crash" and the user is never asked about it, the dump is never
+ * offered, and nothing anywhere says so. Every case below is therefore written
+ * from the direction of "can a genuine crash be swallowed", not "is the happy
+ * path happy".
+ *
+ * `platform` is passed explicitly rather than read from the process because CI
+ * runs Linux, where the predicate is deliberately inert. Left implicit, every
+ * assertion here would pass vacuously on CI while proving nothing.
+ */
+describe('classifyMinidumpCrashKind', () => {
+  /** `'CPsx'` — Crashpad's "dump captured, process did not fault" sentinel. */
+  const SIMULATED = 0x4350_7378;
+  /**
+   * `'CPnx'` — `kMachExceptionFromNSException`. ONE hex digit from the
+   * sentinel, same `CP` tag, and a genuine fatal crash.
+   */
+  const FROM_NS_EXCEPTION = 0x4350_6e78;
+
+  function writeDump(patch: MinidumpPatch): string {
+    const dir = makeDir();
+    const dumpPath = join(dir, 'dump.dmp');
+    writeFileSync(dumpPath, buildMinidump([join(dir, 'App.app', 'MacOS', 'App')], patch));
+    return dumpPath;
+  }
+
+  const kindOf = (patch: MinidumpPatch, platform: NodeJS.Platform = 'darwin') =>
+    classifyMinidumpCrashKind(writeDump(patch), platform);
+
+  test('the simulated-exception sentinel reads as a non-crash', () => {
+    expect(kindOf({ exceptionCode: SIMULATED })).toBe('non-crash');
+  });
+
+  test('kMachExceptionFromNSException is a CRASH despite sharing the CP tag', () => {
+    // The whole reason the comparison is exact equality. A range or prefix
+    // match over the `CP` family would swallow this, and it is a real fatal
+    // crash a user would never then be asked to report.
+    expect(kindOf({ exceptionCode: FROM_NS_EXCEPTION })).toBe('crash');
+  });
+
+  test.each([
+    ['EXC_BREAKPOINT', 0x6],
+    ['EXC_BAD_ACCESS', 0x1],
+    ['SIGSEGV-shaped', 0xb],
+    ['zero', 0x0],
+    ['one below the sentinel', SIMULATED - 1],
+    ['one above the sentinel', SIMULATED + 1],
+  ])('%s reads as a crash', (_label, exceptionCode) => {
+    expect(kindOf({ exceptionCode })).toBe('crash');
+  });
+
+  test('no exception stream alone is indeterminate, never a non-crash', () => {
+    // A dump truncated by the very fault that produced it also has no
+    // exception stream. Concluding "no crash" from absence would swallow it.
+    expect(kindOf({})).toBe('indeterminate');
+  });
+
+  test('no exception stream plus the positive marker reads as a non-crash', () => {
+    expect(kindOf({ annotations: { 'is-dump-process-without-crashing': 'true' } })).toBe(
+      'non-crash',
+    );
+  });
+
+  test('the marker must actually say true', () => {
+    expect(kindOf({ annotations: { 'is-dump-process-without-crashing': 'false' } })).toBe(
+      'indeterminate',
+    );
+  });
+
+  test('an unrelated annotation does not stand in for the marker', () => {
+    expect(kindOf({ annotations: { _version: '1.2.3' } })).toBe('indeterminate');
+  });
+
+  test('a truncated dump carrying the sentinel is indeterminate, not a non-crash', () => {
+    // Truncation must not be readable as absence-of-crash even when the bytes
+    // that survived would have said so.
+    expect(kindOf({ exceptionCode: SIMULATED, truncateTo: 40 })).toBe('indeterminate');
+  });
+
+  test.each([
+    ['a bad signature', { signature: 'XXXX', exceptionCode: SIMULATED }],
+    ['an unreachable stream directory', { streamDirectoryRva: 0xffff, exceptionCode: SIMULATED }],
+    ['an absurd stream count', { streamCount: 0xffff_ffff, exceptionCode: SIMULATED }],
+  ])('%s is indeterminate', (_label, patch) => {
+    expect(kindOf(patch as MinidumpPatch)).toBe('indeterminate');
+  });
+
+  test('a missing file is indeterminate rather than a throw', () => {
+    // This runs inside the boot scan; a throw here takes out crash detection.
+    expect(classifyMinidumpCrashKind(join(makeDir(), 'absent.dmp'), 'darwin')).toBe(
+      'indeterminate',
+    );
+  });
+
+  test.each<NodeJS.Platform>([
+    'linux',
+    'win32',
+  ])('stays inert on %s even when the dump carries the macOS sentinel', (platform) => {
+    // Those platforms' sentinels are known from Crashpad source but have not
+    // been measured against a real dump there, so the predicate must not
+    // fire. Indeterminate preserves today's behavior exactly.
+    expect(kindOf({ exceptionCode: SIMULATED }, platform)).toBe('indeterminate');
+  });
+
+  test('reading the crash kind leaves the ownership verdict untouched', () => {
+    // Ownership decides whether raw process memory may leave the machine. The
+    // two answers are separate exports on separate file handles, and adding an
+    // exception stream must not perturb the one that gates attachment.
+    const dir = makeDir();
+    const bundleRoot = join(dir, 'App.app');
+    const dumpPath = join(dir, 'dump.dmp');
+    const modulePath = join(bundleRoot, 'Contents', 'MacOS', 'App');
+    mkdirSync(join(bundleRoot, 'Contents', 'MacOS'), { recursive: true });
+    writeFileSync(dumpPath, buildMinidump([modulePath], { exceptionCode: SIMULATED }));
+    expect(classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('ours');
+    expect(classifyMinidumpCrashKind(dumpPath, 'darwin')).toBe('non-crash');
   });
 });

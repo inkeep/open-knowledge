@@ -83,6 +83,48 @@ const DIRECTORY_ENTRY_RVA_OFFSET = 8;
 const MODULE_LIST_STREAM_TYPE = 4;
 const MODULE_RECORD_BYTES = 108;
 const MODULE_NAME_RVA_OFFSET = 20;
+/** `ExceptionStream` in the minidump stream-type enum. */
+const EXCEPTION_STREAM_TYPE = 6;
+/**
+ * `MINIDUMP_EXCEPTION_STREAM` is `ThreadId u32`, `__alignment u32`, then the
+ * `MINIDUMP_EXCEPTION` record whose first field is the code.
+ */
+const EXCEPTION_CODE_OFFSET = 8;
+const EXCEPTION_CODE_BYTES = 4;
+
+/**
+ * `kMachExceptionSimulated` — `'CPsx'`, raised by `CRASHPAD_SIMULATE_CRASH()`
+ * to mean "a dump was captured and the process did NOT fault". Chromium's GPU
+ * watchdog takes exactly this path when a GPU thread looks stalled, and may
+ * then let the process keep running.
+ *
+ * Compared for EXACT equality, never as a range, prefix, or family. `'CPnx'`
+ * (`0x43506e78`, `kMachExceptionFromNSException`) is one hex digit away, shares
+ * the same `CP` tag, and marks a GENUINE fatal crash — so a family match would
+ * silently stop reporting real crashes, which is the one failure this predicate
+ * exists to avoid.
+ *
+ * Windows (`0x517a7ed`) and Linux (`kSimulatedSigno`) have their own values.
+ * They are deliberately absent from the table below: both are known from
+ * Crashpad source but unverified against a real dump on those platforms, where
+ * `NumberParameters` and the dump directory's own name both differ. Until one
+ * is measured there, those platforms resolve to `null` and the predicate stays
+ * inert for them.
+ */
+const SIMULATED_EXCEPTION_CODE_BY_PLATFORM: Partial<Record<NodeJS.Platform, number>> = {
+  darwin: 0x4350_7378,
+};
+
+/**
+ * Crashpad's flat annotation marking the OTHER non-crash flavor:
+ * `DumpProcessWithoutCrashing(task_t)` writes a dump carrying no exception
+ * stream at all.
+ *
+ * Requiring this POSITIVE marker is what keeps that branch honest. A missing
+ * exception stream is also what a dump truncated by its own crash looks like,
+ * and those must stay reportable — so absence alone can never mean "no crash".
+ */
+const DUMP_WITHOUT_CRASHING_KEY = 'is-dump-process-without-crashing';
 
 /**
  * `MinidumpCrashpadInfo` — Crashpad's own stream, outside the minidump format's
@@ -363,4 +405,136 @@ export interface MinidumpAppVersionRead {
 export function readMinidumpAppVersion(dumpPath: string): MinidumpAppVersionRead {
   const facts = readMinidumpFacts(dumpPath);
   return { version: facts.appVersion, parseFailed: facts.appVersionParseFailed };
+}
+
+/**
+ * Whether the process this dump describes actually faulted.
+ *
+ * `'indeterminate'` is not an error channel — it is the answer whenever the
+ * dump cannot be read well enough to say, and callers are expected to treat it
+ * exactly as they treat a crash. Arming therefore keeps failing OPEN: the cost
+ * of being wrong is one prompt a user dismisses, where the cost of the opposite
+ * default is a real crash nobody ever hears about.
+ */
+export type MinidumpCrashKind = 'crash' | 'non-crash' | 'indeterminate';
+
+/**
+ * Look up one simple annotation by key.
+ *
+ * Deliberately NOT folded into the app-version walk above. That walk is reached
+ * from the same pass as the ownership verdict, and ownership decides whether a
+ * report may carry raw process memory at all; keeping this question on its own
+ * file handle means a change here cannot reach that answer by accident. The
+ * duplication is the point, not an oversight.
+ */
+function findSimpleAnnotation(
+  fd: number,
+  infoRva: number,
+  infoSize: number,
+  key: string,
+): string | null {
+  if (infoSize < CRASHPAD_INFO_PREFIX_BYTES) return null;
+  const info = readExactly(fd, CRASHPAD_INFO_PREFIX_BYTES, infoRva);
+  if (info === null) return null;
+  const dictRva = info.readUInt32LE(CRASHPAD_ANNOTATIONS_RVA_OFFSET);
+  if (dictRva === 0) return null;
+  const count = readExactly(fd, 4, dictRva);
+  if (count === null) return null;
+  const entryCount = count.readUInt32LE(0);
+  if (entryCount === 0 || entryCount > MAX_ANNOTATIONS) return null;
+  const declaredBytes = info.readUInt32LE(CRASHPAD_ANNOTATIONS_SIZE_OFFSET);
+  if (declaredBytes < 4 + entryCount * ANNOTATION_ENTRY_BYTES) return null;
+
+  const entries = readExactly(fd, entryCount * ANNOTATION_ENTRY_BYTES, dictRva + 4);
+  if (entries === null) return null;
+  for (let i = 0; i < entryCount; i += 1) {
+    const at = i * ANNOTATION_ENTRY_BYTES;
+    if (readAnnotationString(fd, entries.readUInt32LE(at)) !== key) continue;
+    return readAnnotationString(fd, entries.readUInt32LE(at + 4));
+  }
+  return null;
+}
+
+/**
+ * Classify `dumpPath` as a real fault, a captured-but-not-crashed snapshot, or
+ * unreadable.
+ *
+ * Four branches, in order:
+ *
+ *   1. Exception stream present, code EXACTLY the platform sentinel → non-crash.
+ *   2. Exception stream present, any other code → crash.
+ *   3. No exception stream, directory parsed, AND the positive
+ *      `is-dump-process-without-crashing` annotation says `true` → non-crash.
+ *   4. Anything else, including any read that fails → indeterminate.
+ *
+ * Branch 3's annotation requirement is load-bearing. Concluding "no crash" from
+ * a MISSING stream would also swallow a dump truncated by the very fault that
+ * produced it, which is a real crash nobody would ever be asked about.
+ *
+ * Returns `'indeterminate'` outright on any platform with no verified sentinel,
+ * which leaves that platform's behavior exactly as it was.
+ */
+export function classifyMinidumpCrashKind(
+  dumpPath: string,
+  platform: NodeJS.Platform = process.platform,
+): MinidumpCrashKind {
+  const simulatedCode = SIMULATED_EXCEPTION_CODE_BY_PLATFORM[platform];
+  if (simulatedCode === undefined) return 'indeterminate';
+
+  let fd: number | null = null;
+  try {
+    fd = openSync(dumpPath, 'r');
+    const header = readExactly(fd, HEADER_BYTES, 0);
+    if (header === null || header.readUInt32LE(0) !== MINIDUMP_SIGNATURE) return 'indeterminate';
+    const streamCount = header.readUInt32LE(NUMBER_OF_STREAMS_OFFSET);
+    if (streamCount === 0 || streamCount > MAX_STREAMS) return 'indeterminate';
+
+    const directory = readExactly(
+      fd,
+      streamCount * DIRECTORY_ENTRY_BYTES,
+      header.readUInt32LE(STREAM_DIRECTORY_RVA_OFFSET),
+    );
+    // The directory itself must parse before an absent stream can mean anything.
+    if (directory === null) return 'indeterminate';
+
+    let exceptionRva: number | null = null;
+    let crashpadInfoRva: number | null = null;
+    let crashpadInfoSize = 0;
+    for (let i = 0; i < streamCount; i += 1) {
+      const at = i * DIRECTORY_ENTRY_BYTES;
+      const streamType = directory.readUInt32LE(at);
+      if (streamType === EXCEPTION_STREAM_TYPE && exceptionRva === null) {
+        exceptionRva = directory.readUInt32LE(at + DIRECTORY_ENTRY_RVA_OFFSET);
+      } else if (streamType === CRASHPAD_INFO_STREAM_TYPE && crashpadInfoRva === null) {
+        crashpadInfoRva = directory.readUInt32LE(at + DIRECTORY_ENTRY_RVA_OFFSET);
+        crashpadInfoSize = directory.readUInt32LE(at + DIRECTORY_ENTRY_SIZE_OFFSET);
+      }
+      if (exceptionRva !== null && crashpadInfoRva !== null) break;
+    }
+
+    if (exceptionRva !== null) {
+      const code = readExactly(fd, EXCEPTION_CODE_BYTES, exceptionRva + EXCEPTION_CODE_OFFSET);
+      if (code === null) return 'indeterminate';
+      return code.readUInt32LE(0) === simulatedCode ? 'non-crash' : 'crash';
+    }
+
+    if (crashpadInfoRva === null) return 'indeterminate';
+    const marker = findSimpleAnnotation(
+      fd,
+      crashpadInfoRva,
+      crashpadInfoSize,
+      DUMP_WITHOUT_CRASHING_KEY,
+    );
+    return marker === 'true' ? 'non-crash' : 'indeterminate';
+  } catch {
+    return 'indeterminate';
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Descriptor already reclaimed; nothing left to release.
+      }
+    }
+  }
 }

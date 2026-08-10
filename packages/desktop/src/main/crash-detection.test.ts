@@ -60,6 +60,12 @@ interface Rig {
   ownDump: Buffer;
   /** The same dump, plus the Crashpad annotations a real one carries. */
   ownDumpStamped(version: string): Buffer;
+  /**
+   * Ours, but captured by `CRASHPAD_SIMULATE_CRASH()` rather than by a fault —
+   * what Chromium's GPU watchdog leaves behind for a process it then lets keep
+   * running.
+   */
+  ownDumpSimulated: Buffer;
   /** Flip to false to simulate "no live renderer window can take the event". */
   setRendererAvailable(available: boolean): void;
   /** Swap the kernel boot-session identity, simulating a reboot between sessions. */
@@ -101,6 +107,9 @@ function makeRig(): Rig {
     emitted,
     warnings,
     ownDump: buildMinidump(ownModules),
+    // 'CPsx' — kMachExceptionSimulated. Written as a literal rather than
+    // imported from the production module so a change there fails here.
+    ownDumpSimulated: buildMinidump(ownModules, { exceptionCode: 0x4350_7378 }),
     ownDumpStamped: (version: string) =>
       buildMinidump(ownModules, {
         annotations: { _productName: 'OpenKnowledge', _version: version, prod: 'Electron' },
@@ -127,6 +136,10 @@ function makeRig(): Rig {
       crashDumpsDir: join(dir, 'crash-dumps'),
       appBundleRoot,
       appVersion: CRASHED_VERSION,
+      // Pinned so the rig behaves identically on a macOS dev box and on Linux
+      // CI. Left to `process.platform`, every crash-kind assertion below would
+      // pass vacuously on CI, where the predicate is deliberately inert.
+      platform: 'darwin',
       emit(event) {
         if (!rendererAvailable) return false;
         emitted.push(event);
@@ -1418,5 +1431,120 @@ describe('the version a boot invitation attributes the crash to', () => {
 
     expect(armed.context.dirtyShutdown).toBe(true);
     expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+});
+
+/**
+ * Dumps that were captured without a fault.
+ *
+ * Chromium's GPU watchdog calls `DumpWithoutCrashing()` on a process that
+ * merely looks stalled and may then let it keep running. The dump it leaves is
+ * genuinely ours, so ownership says `'ours'` and every pre-existing signal
+ * treats it as a crash. These tests pin the two consequences that fixes: the
+ * app must stop asking about failures that never happened, and — the sharper
+ * one — such a dump must never be handed to a report about a real crash.
+ *
+ * Each boot case runs the two-session shape the rest of this file uses: a
+ * first session establishes the minidump baseline and quits cleanly, dumps are
+ * seeded after it, and a second session does the detecting. Seeding before the
+ * baseline exists would leave every dump filtered out, which reads as a pass
+ * for the suppression cases while proving nothing.
+ */
+describe('non-crash minidumps', () => {
+  /** Baseline the store, quit clean, and hand back a rig ready to seed dumps into. */
+  function afterCleanQuit(rig: Rig): void {
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+  }
+
+  test('a clean quit whose only fresh dump is a snapshot arms nothing', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+
+    // Before this change the dump alone armed the prompt, framed as an
+    // unclean shutdown for a session that quit cleanly.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a real crash still arms even when a snapshot sits alongside it', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const crashedAt = rig.tick();
+    seedMinidump(rig, 'pending/real.dmp', crashedAt);
+    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+
+    // The exclusion is per-dump, never per-scan: one snapshot in the set must
+    // not suppress the crash sitting next to it.
+    expect(bootInvite(createCrashDetection(rig.deps).detectBootCrash()).eventId).toBe(
+      `boot:dump:${crashedAt.getTime()}`,
+    );
+  });
+
+  test('an unreadable dump still arms — indeterminate is not a non-crash', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    seedMinidump(rig, 'pending/torn.dmp', rig.tick(), UNPARSEABLE_DUMP);
+
+    // Arming keeps failing open. A dump truncated by the very fault that wrote
+    // it must stay reportable.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).not.toBeNull();
+  });
+
+  test.each<NodeJS.Platform>([
+    'linux',
+    'win32',
+  ])('on %s the snapshot still arms, because the predicate is gated off there', (platform) => {
+    const rig = makeRig();
+    rig.deps.platform = platform;
+    afterCleanQuit(rig);
+    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+
+    // Those platforms' sentinels are known from Crashpad source but have not
+    // been measured against a real dump there, so behavior must stay exactly
+    // what it is today until one is.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).not.toBeNull();
+  });
+
+  test('a snapshot alone offers no dump to attach', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+
+    detection.handleRenderProcessGone({ reason: 'crashed', exitCode: 5 });
+
+    // Otherwise the report dialog offers to ship GPU process memory for a
+    // crash that never occurred, pre-checked.
+    expect(rig.emitted.at(-1)?.minidumpAvailable).toBe(false);
+    expect(detection.newestMinidumpForReport().path).toBeNull();
+  });
+
+  test('a newer snapshot does not shadow the real crash dump being reported', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    const realPath = seedMinidump(rig, 'pending/real.dmp', rig.tick());
+    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+
+    // Resolution walks newest-first, so the snapshot is encountered FIRST.
+    // Stepping over it rather than stopping is what keeps a legitimate crash
+    // report from carrying the wrong process's memory under a consent notice
+    // describing a different failure.
+    expect(detection.newestMinidumpForReport().path).toBe(realPath);
+  });
+
+  test('skipped snapshots are counted apart from foreign and unreadable ones', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+
+    detection.handleRenderProcessGone({ reason: 'crashed', exitCode: 5 });
+
+    // Three counters, three meanings. Folded together, "detection declined on
+    // purpose" would be indistinguishable from "the parser broke".
+    const logged = rig.warnings.at(-1);
+    expect(logged?.nonCrashDumpsSkipped).toBe(1);
+    expect(logged?.foreignDumpsIgnored).toBe(0);
+    expect(logged?.unreadableDumpsSkipped).toBe(0);
   });
 });

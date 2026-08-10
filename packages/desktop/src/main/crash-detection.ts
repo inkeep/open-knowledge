@@ -60,6 +60,7 @@ import { dirname, join } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { asReportableAppVersion } from './crashed-app-version.ts';
 import {
+  classifyMinidumpCrashKind,
   classifyMinidumpOwnership,
   type MinidumpOwnership,
   readMinidumpAppVersion,
@@ -197,6 +198,14 @@ export interface CrashDetectionDeps {
    * detected during this boot — that crash belongs to an earlier session.
    */
   appVersion: string;
+  /**
+   * Which platform's simulated-exception sentinel to recognize in a dump.
+   * Injected like everything else here so the crash-kind behavior is testable
+   * off the host platform — CI runs Linux, where the predicate is deliberately
+   * inert, and reading `process.platform` directly would make every such
+   * assertion pass vacuously there while proving nothing.
+   */
+  platform?: NodeJS.Platform;
   /**
    * Push one crash-detected event to a live renderer. Returns false when no
    * renderer could take it — the event stays armed and is re-offered on the
@@ -511,6 +520,10 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     return classifyMinidumpOwnership(path, deps.appBundleRoot);
   }
 
+  function crashKindOf(path: string) {
+    return classifyMinidumpCrashKind(path, deps.platform ?? process.platform);
+  }
+
   /** Baseline-filtered dumps from one scan of the crash-dumps dir, newest first. */
   function freshMinidumpEntries(): MinidumpEntry[] {
     const entries: MinidumpEntry[] = [];
@@ -539,16 +552,30 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     entry: MinidumpEntry | null;
     foreignSkipped: number;
     unknownSkipped: number;
+    nonCrashSkipped: number;
   } {
     let foreignSkipped = 0;
     let unknownSkipped = 0;
+    let nonCrashSkipped = 0;
     for (const entry of freshMinidumpEntries()) {
       const ownership = classifyDump(entry.path);
-      if (ownership === 'ours') return { entry, foreignSkipped, unknownSkipped };
+      if (ownership === 'ours') {
+        // Skipping rather than stopping is the whole fix. This walk is
+        // newest-first and has no idea which crash is being reported, so a
+        // snapshot of a process that never faulted — a GPU watchdog capture,
+        // say — would otherwise be handed to a report about a genuine crash
+        // that happened earlier, under a consent notice describing that other
+        // failure. Stepping over it reaches the dump that actually belongs.
+        if (crashKindOf(entry.path) === 'non-crash') {
+          nonCrashSkipped += 1;
+          continue;
+        }
+        return { entry, foreignSkipped, unknownSkipped, nonCrashSkipped };
+      }
       if (ownership === 'foreign') foreignSkipped += 1;
       else unknownSkipped += 1;
     }
-    return { entry: null, foreignSkipped, unknownSkipped };
+    return { entry: null, foreignSkipped, unknownSkipped, nonCrashSkipped };
   }
 
   return {
@@ -614,13 +641,26 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // inherited our exception handler, and an unrelated program aborting is
       // not this app crashing. Without this the app prompts "the previous
       // session crashed" after a perfectly clean quit.
-      const freshDumps = freshMinidumpEntries().map((entry) => ({
-        entry,
-        ownership: classifyDump(entry.path),
-      }));
+      const freshDumps = freshMinidumpEntries().map((entry) => {
+        const ownership = classifyDump(entry.path);
+        return {
+          entry,
+          ownership,
+          // Only asked of dumps that are ours. A foreign dump's crash kind is
+          // not this app's business, and asking would cost a second parse of a
+          // file already excluded.
+          crashKind: ownership === 'ours' ? crashKindOf(entry.path) : null,
+        };
+      });
       const foreignDumpCount = freshDumps.filter((d) => d.ownership === 'foreign').length;
       const unreadableDumpCount = freshDumps.filter((d) => d.ownership === 'unknown').length;
-      if (foreignDumpCount > 0 || unreadableDumpCount > 0) {
+      // Ours, but a snapshot of a process that never faulted: Chromium's GPU
+      // watchdog captures one when a thread merely looks stalled, and may then
+      // let that process keep running. Counted apart from the two above
+      // because it means something different to whoever reads the line —
+      // detection worked perfectly and correctly declined to ask.
+      const nonCrashDumpCount = freshDumps.filter((d) => d.crashKind === 'non-crash').length;
+      if (foreignDumpCount > 0 || unreadableDumpCount > 0 || nonCrashDumpCount > 0) {
         // Otherwise a suppressed prompt and a detection pipeline that never
         // ran are indistinguishable in the logs. The unreadable count is the
         // one to watch: a dump we cannot parse at all is either half-flushed
@@ -631,6 +671,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             event: 'crash-detection.foreign-dumps-ignored',
             count: foreignDumpCount,
             unreadable: unreadableDumpCount,
+            nonCrash: nonCrashDumpCount,
           },
           'ignored minidumps that this app could not claim',
         );
@@ -639,10 +680,17 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // crash that wrote it is more likely ours than not, and the cost of being
       // wrong is one prompt the user dismisses once. The attachment side takes
       // the opposite default, so an un-ownable dump can still never be sent.
+      //
+      // A dump we can positively prove was captured without a fault is the one
+      // exception, and it is an exclusion by evidence rather than by default:
+      // only a value a real crash cannot carry gets a dump dropped here.
+      // Anything indeterminate still arms.
       const newDumps = freshDumps
-        .filter((d) => d.ownership !== 'foreign')
+        .filter((d) => d.ownership !== 'foreign' && d.crashKind !== 'non-crash')
         .map((d) => d.entry.mtimeMs);
-      const ownedDumpCount = freshDumps.filter((d) => d.ownership === 'ours').length;
+      const ownedDumpCount = freshDumps.filter(
+        (d) => d.ownership === 'ours' && d.crashKind !== 'non-crash',
+      ).length;
 
       // A boot-session mismatch means the kernel rebooted after the previous
       // session was last alive; an os-shutdown marker means the OS killed the
@@ -865,6 +913,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           // breadcrumb so the counts sit with the crash they explain.
           foreignDumpsIgnored: owned.foreignSkipped,
           unreadableDumpsSkipped: owned.unknownSkipped,
+          nonCrashDumpsSkipped: owned.nonCrashSkipped,
         },
         'renderer process died abnormally',
       );
@@ -901,6 +950,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           exitCode: details.exitCode,
           foreignDumpsIgnored: owned.foreignSkipped,
           unreadableDumpsSkipped: owned.unknownSkipped,
+          nonCrashDumpsSkipped: owned.nonCrashSkipped,
           ...(gpu === null ? {} : { gpuCrashesInWindow: gpu.countInWindow }),
           ...(gpu?.suppressInvite === true ? { invitationSuppressed: 'gpu-recoverable' } : {}),
         },

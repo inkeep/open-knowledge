@@ -24,6 +24,19 @@ const CRASHPAD_INFO_BYTES = 64;
 const CRASHPAD_ANNOTATIONS_SIZE_OFFSET = 36;
 const CRASHPAD_ANNOTATIONS_RVA_OFFSET = 40;
 const ANNOTATION_ENTRY_BYTES = 8;
+const EXCEPTION_STREAM_TYPE = 6;
+/**
+ * `MINIDUMP_EXCEPTION_STREAM`: `ThreadId u32`, `__alignment u32`, the 152-byte
+ * `MINIDUMP_EXCEPTION` record, then a `MINIDUMP_LOCATION_DESCRIPTOR` for the
+ * thread context. Only the code is read here, but the stream is emitted at its
+ * true size so a fixture cannot pass by being conveniently short.
+ *
+ * `ExceptionInformation` is a FIXED 15-entry array, not one sized by
+ * `NumberParameters` — advancing by the latter is a documented way to misparse
+ * this record.
+ */
+const EXCEPTION_STREAM_BYTES = 168;
+const EXCEPTION_CODE_OFFSET = 8;
 
 /**
  * Per-field overrides. Most corrupt a single value the parser reads;
@@ -80,13 +93,22 @@ export interface MinidumpPatch {
   annotationValueRva?: number;
   /** First entry's value block's claimed BYTE length. */
   annotationValueByteLength?: number;
+  /**
+   * Emit an ExceptionStream carrying this code. Omitted entirely when absent,
+   * which is what both a pre-exception-stream dump and the
+   * `DumpProcessWithoutCrashing` flavor look like — so the crash-kind parse has
+   * to distinguish those by annotation rather than by the stream's absence.
+   */
+  exceptionCode?: number;
 }
 
 export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}): Buffer {
   const decoyStreams = patch.streamsBefore ?? 0;
   const annotationEntries =
     patch.annotations === undefined ? null : Object.entries(patch.annotations);
-  const directoryEntries = decoyStreams + 1 + (annotationEntries === null ? 0 : 1);
+  const hasException = patch.exceptionCode !== undefined;
+  const directoryEntries =
+    decoyStreams + 1 + (annotationEntries === null ? 0 : 1) + (hasException ? 1 : 0);
   const directoryRva = HEADER_BYTES;
   const moduleListRva = directoryRva + directoryEntries * DIRECTORY_ENTRY_BYTES;
   const moduleListBytes = 4 + modulePaths.length * MODULE_RECORD_BYTES;
@@ -157,6 +179,18 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
     cursor = stringCursor;
   }
 
+  // Laid out last so adding one cannot shift any offset an existing fixture
+  // already depends on.
+  const exceptionBlocks: Buffer[] = [];
+  const exceptionRva = cursor;
+  if (hasException) {
+    const exception = Buffer.alloc(EXCEPTION_STREAM_BYTES);
+    exception.writeUInt32LE(1, 0); // ThreadId — unread by the crash-kind parse
+    exception.writeUInt32LE(patch.exceptionCode ?? 0, EXCEPTION_CODE_OFFSET);
+    exceptionBlocks.push(exception);
+    cursor += EXCEPTION_STREAM_BYTES;
+  }
+
   const header = Buffer.alloc(HEADER_BYTES);
   header.write(patch.signature ?? 'MDMP', 0, 'ascii');
   header.writeUInt32LE(0xa793, 4); // version — unread by the ownership parse
@@ -174,11 +208,18 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
   directory.writeUInt32LE(patch.streamType ?? MODULE_LIST_STREAM_TYPE, moduleListEntry);
   directory.writeUInt32LE(moduleListBytes, moduleListEntry + 4);
   directory.writeUInt32LE(patch.moduleListRva ?? moduleListRva, moduleListEntry + 8);
+  let nextEntry = moduleListEntry + DIRECTORY_ENTRY_BYTES;
   if (annotationEntries !== null) {
-    const crashpadEntry = moduleListEntry + DIRECTORY_ENTRY_BYTES;
-    directory.writeUInt32LE(patch.crashpadStreamType ?? CRASHPAD_INFO_STREAM_TYPE, crashpadEntry);
-    directory.writeUInt32LE(CRASHPAD_INFO_BYTES, crashpadEntry + 4);
-    directory.writeUInt32LE(crashpadInfoRva, crashpadEntry + 8);
+    directory.writeUInt32LE(patch.crashpadStreamType ?? CRASHPAD_INFO_STREAM_TYPE, nextEntry);
+    directory.writeUInt32LE(CRASHPAD_INFO_BYTES, nextEntry + 4);
+    directory.writeUInt32LE(crashpadInfoRva, nextEntry + 8);
+    nextEntry += DIRECTORY_ENTRY_BYTES;
+  }
+  if (hasException) {
+    directory.writeUInt32LE(EXCEPTION_STREAM_TYPE, nextEntry);
+    directory.writeUInt32LE(EXCEPTION_STREAM_BYTES, nextEntry + 4);
+    directory.writeUInt32LE(exceptionRva, nextEntry + 8);
+    nextEntry += DIRECTORY_ENTRY_BYTES;
   }
 
   const moduleList = Buffer.alloc(moduleListBytes);
@@ -188,6 +229,13 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
     moduleList.writeUInt32LE(index === 0 ? (patch.nameRva ?? rva) : rva, at);
   });
 
-  const dump = Buffer.concat([header, directory, moduleList, ...nameBlocks, ...crashpadBlocks]);
+  const dump = Buffer.concat([
+    header,
+    directory,
+    moduleList,
+    ...nameBlocks,
+    ...crashpadBlocks,
+    ...exceptionBlocks,
+  ]);
   return patch.truncateTo === undefined ? dump : dump.subarray(0, patch.truncateTo);
 }
