@@ -2,6 +2,7 @@ import { humanFormat } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Empty, EmptyContent, EmptyDescription } from '@/components/ui/empty';
 import { useConfigContext } from '@/lib/config-provider';
 
 /**
@@ -45,23 +46,22 @@ export function FileTreeFilteredToZeroNotice() {
   };
 
   return (
-    <div
-      data-testid="file-tree-filtered-to-zero"
-      className="flex flex-1 flex-col items-center justify-center gap-3 py-8"
-    >
-      <span className="select-none text-sidebar-foreground/30 text-sm">
+    <Empty data-testid="file-tree-filtered-to-zero" className="gap-3 p-0 py-8">
+      <EmptyDescription className="select-none text-sidebar-foreground/30">
         {t`All files are hidden by view filters.`}
-      </span>
-      <Button
-        variant="link"
-        size="sm"
-        className="font-mono uppercase"
-        disabled={projectLocalBinding === null}
-        onClick={handleReset}
-        data-testid="reset-view-filters"
-      >
-        {t`Reset view filters`}
-      </Button>
-    </div>
+      </EmptyDescription>
+      <EmptyContent>
+        <Button
+          variant="link"
+          size="sm"
+          className="font-mono uppercase"
+          disabled={projectLocalBinding === null}
+          onClick={handleReset}
+          data-testid="reset-view-filters"
+        >
+          {t`Reset view filters`}
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
