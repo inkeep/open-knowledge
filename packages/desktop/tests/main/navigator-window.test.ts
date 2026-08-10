@@ -1,14 +1,15 @@
 import { describe, expect, test, vi } from 'vitest';
-import { createNavigatorWindow, tryCloseNavigator } from '../../src/main/navigator-window.ts';
+import { beginNavigatorHandoff, createNavigatorWindow } from '../../src/main/navigator-window.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { ShareNavigatorPayload } from '../../src/main/url-scheme.ts';
 import type { BrowserWindowLike } from '../../src/main/window-manager.ts';
 
 /**
- * `tryCloseNavigator` unit tests — exercise the three branches
- * (null / destroyed / alive) and the throw-swallow guarantee in
- * milliseconds, instead of relying solely on the smoke E2E to catch a
- * regression that moves the close call out of the `try` block.
+ * Close-path unit tests — exercise the three branches (null / destroyed /
+ * alive) and the throw-swallow guarantee in milliseconds, instead of relying
+ * solely on the smoke E2E to catch a regression that moves the close call out
+ * of the `try` block. The close itself is module-private, so these drive it
+ * through the handoff that owns it.
  */
 
 interface MockNav extends BrowserWindowLike {
@@ -42,12 +43,12 @@ function makeNav(opts?: { destroyed?: boolean; closeImpl?: () => void }): MockNa
   };
 }
 
-describe('tryCloseNavigator', () => {
+describe('navigator close path', () => {
   test('no-op when navigator is null', () => {
     const log = vi.fn(() => {});
     // null branch — caller never opened the Navigator (cold launch with
     // lastOpenedProject set). Must not throw and must not log.
-    tryCloseNavigator(null, { projectPath: '/p' }, log);
+    beginNavigatorHandoff(null).close({ projectPath: '/p' }, log);
     expect(log).not.toHaveBeenCalled();
   });
 
@@ -59,7 +60,7 @@ describe('tryCloseNavigator', () => {
     // resolving and reaching the close call the variable could still
     // reference a destroyed BrowserWindow. close() throws on destroyed in
     // real Electron — the guard avoids the throw and the spurious log.
-    tryCloseNavigator(nav, { projectPath: '/p' }, log);
+    beginNavigatorHandoff(nav).close({ projectPath: '/p' }, log);
     expect(nav.closeMock).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
   });
@@ -67,7 +68,7 @@ describe('tryCloseNavigator', () => {
   test('calls close() when window is alive', () => {
     const nav = makeNav();
     const log = vi.fn(() => {});
-    tryCloseNavigator(nav, { projectPath: '/p' }, log);
+    beginNavigatorHandoff(nav).close({ projectPath: '/p' }, log);
     expect(nav.closeMock).toHaveBeenCalledTimes(1);
     expect(log).not.toHaveBeenCalled();
   });
@@ -83,7 +84,9 @@ describe('tryCloseNavigator', () => {
     // openProjectOrFallbackToNavigator's catch and surface "Unable to open
     // project" to the user even though the project did open. The log
     // captures the failure for triage.
-    expect(() => tryCloseNavigator(nav, { projectPath: '/path/to/proj' }, log)).not.toThrow();
+    expect(() =>
+      beginNavigatorHandoff(nav).close({ projectPath: '/path/to/proj' }, log),
+    ).not.toThrow();
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
       'failed to close Navigator after project open',
@@ -103,10 +106,95 @@ describe('tryCloseNavigator', () => {
       },
     });
     const log = vi.fn(() => {});
-    tryCloseNavigator(nav, { projectPath: '/p' }, log);
+    beginNavigatorHandoff(nav).close({ projectPath: '/p' }, log);
     expect(log).toHaveBeenCalledWith(
       'failed to close Navigator after project open',
       expect.objectContaining({ err: 'native-string-throw' }),
+    );
+  });
+});
+
+describe('beginNavigatorHandoff', () => {
+  /**
+   * The module-global `navigatorWindow` is mutable and the opens that consult
+   * it are slow, so these tests model the call sites as: snapshot, mutate the
+   * "global" the way a mid-open user action would, then close.
+   */
+  test('closes the Navigator that was up when the open began', () => {
+    const nav = makeNav();
+    const handoff = beginNavigatorHandoff(nav);
+    handoff.close({ projectPath: '/p' });
+    expect(nav.closeMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('leaves a Navigator summoned after the open began alone', () => {
+    // Boot with `lastOpenedProject`: no launcher is up when the open starts,
+    // and the user hits File → Project Navigator while the project window is
+    // still loading. Closing it here is what made the summoned window flash
+    // and vanish, and what rejected its in-flight load with ERR_FAILED.
+    // `navigatorWindow` stands in for main's module-global of the same name:
+    // reassigning it after the handoff begins is the mid-open summon, and the
+    // binding under assertion is the one an end-of-open read would have hit.
+    let navigatorWindow: MockNav | null = null;
+    const handoff = beginNavigatorHandoff(navigatorWindow);
+    navigatorWindow = makeNav();
+    handoff.close({ projectPath: '/p' });
+    expect(navigatorWindow.closeMock).not.toHaveBeenCalled();
+  });
+
+  test('a summoned Navigator survives even when one was already up', () => {
+    // Switch-Project: the launcher that picked the project still closes, but a
+    // second one summoned during the open is the user's and stays.
+    const pickedFrom = makeNav();
+    let navigatorWindow: MockNav | null = pickedFrom;
+    const handoff = beginNavigatorHandoff(navigatorWindow);
+    navigatorWindow = makeNav();
+    handoff.close({ projectPath: '/p' });
+    expect(pickedFrom.closeMock).toHaveBeenCalledTimes(1);
+    expect(navigatorWindow.closeMock).not.toHaveBeenCalled();
+  });
+
+  test('adopt transfers ownership to a Navigator the open put up itself', () => {
+    // The `fresh` discovery branch opens a launcher to host the consent
+    // dialog when none was up; it must not outlive the project it onboarded.
+    const handoff = beginNavigatorHandoff(null);
+    const consentHost = makeNav();
+    handoff.adopt(consentHost);
+    handoff.close({ projectPath: '/p' });
+    expect(consentHost.closeMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('adopt replaces the at-start snapshot rather than closing both', () => {
+    const atStart = makeNav();
+    const adopted = makeNav();
+    const handoff = beginNavigatorHandoff(atStart);
+    handoff.adopt(adopted);
+    handoff.close({ projectPath: '/p' });
+    expect(adopted.closeMock).toHaveBeenCalledTimes(1);
+    expect(atStart.closeMock).not.toHaveBeenCalled();
+  });
+
+  test('a handed-off Navigator the user already closed is a no-op, not a throw', () => {
+    const nav = makeNav();
+    const handoff = beginNavigatorHandoff(nav);
+    nav.setDestroyed(true);
+    const log = vi.fn(() => {});
+    expect(() => handoff.close({ projectPath: '/p' }, log)).not.toThrow();
+    expect(nav.closeMock).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  test('forwards the close-failure log so the diagnostic survives the indirection', () => {
+    const nav = makeNav({
+      closeImpl: () => {
+        throw new Error('Object has been destroyed');
+      },
+    });
+    const log = vi.fn(() => {});
+    beginNavigatorHandoff(nav).close({ projectPath: '/path/to/proj' }, log);
+    expect(log).toHaveBeenCalledWith(
+      'failed to close Navigator after project open',
+      expect.objectContaining({ projectPath: '/path/to/proj' }),
     );
   });
 });

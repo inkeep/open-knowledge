@@ -313,7 +313,7 @@ import {
 } from './mcp-wiring.ts';
 import { installApplicationMenu } from './menu.ts';
 import type { MenuTranslator } from './menu-translator.ts';
-import { createNavigatorWindow, tryCloseNavigator } from './navigator-window.ts';
+import { beginNavigatorHandoff, createNavigatorWindow } from './navigator-window.ts';
 import { runOkInit } from './ok-init.ts';
 import {
   type OnboardingFlowKind,
@@ -1950,6 +1950,9 @@ async function openProject(
     'opening project',
   );
   ensureWindowManager();
+  // Before the first await: everything below is slow enough for the user to
+  // summon a Navigator mid-open, and that one is theirs to keep.
+  const navigatorHandoff = beginNavigatorHandoff(navigatorWindow);
 
   // Admission funnel. Resolve the pick BEFORE any window/utility spawn so we
   // know whether to ancestor-promote, silent-onboard, dialog, or refuse.
@@ -2125,6 +2128,10 @@ async function openProject(
         });
       }
     }
+    // Whichever Navigator ends up hosting the consent dialog is conscripted
+    // into this open, so this open owns retiring it — otherwise a launcher
+    // still showing the just-dismissed dialog outlives the project it created.
+    navigatorHandoff.adopt(navigator);
     const showPayload: OnboardingShowPayload = {
       pickedPath: discovery.pickedPath,
       projectDir: discovery.projectDir,
@@ -2362,7 +2369,7 @@ async function openProject(
     });
   }
 
-  tryCloseNavigator(navigatorWindow, { projectPath });
+  navigatorHandoff.close({ projectPath });
   // Backfill the canonical GitHub remote URL so the share-receive lookup
   // hits on subsequent shares for this repo. Best-effort and silent — a
   // project with no `.git/config`, no `origin`, or a non-GitHub remote
@@ -2560,6 +2567,7 @@ async function openProjectOrFallbackToNavigator(
  */
 async function openEphemeralFile(filePath: string): Promise<void> {
   ensureWindowManager();
+  const navigatorHandoff = beginNavigatorHandoff(navigatorWindow);
 
   let plan: ReturnType<typeof prepareSingleFileOpen>;
   try {
@@ -2602,7 +2610,7 @@ async function openEphemeralFile(filePath: string): Promise<void> {
     // does NOT touch `lastOpenedProject` (a loose file is not a project).
     appState = addRecentFile(appState, plan.canonicalFilePath, basename(plan.canonicalFilePath));
     saveAppState(appState);
-    tryCloseNavigator(navigatorWindow, { projectPath: plan.contentDir });
+    navigatorHandoff.close({ projectPath: plan.contentDir });
     refreshApplicationMenu();
   } catch (err) {
     getLogger('project').error(

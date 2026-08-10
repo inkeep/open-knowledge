@@ -24,14 +24,18 @@ import type { BrowserWindowLike, WindowManagerDeps } from './window-manager.ts';
 
 /**
  * Best-effort close. A thrown `close()` must not propagate out of the
- * caller's success path — `openProject` calls this after `createProjectWindow`
- * resolves, and a propagating exception there would be caught by
- * `openProjectOrFallbackToNavigator`'s catch and shown to the user as
+ * caller's success path — `openProject` closes the Navigator after
+ * `createProjectWindow` resolves, and a propagating exception there would be
+ * caught by `openProjectOrFallbackToNavigator`'s catch and shown to the user as
  * "Unable to open project" even though the project did open. The
  * `isDestroyed` guard avoids the throw on the common destroyed-window race;
  * the try/catch covers any remaining native-layer failure.
+ *
+ * Deliberately module-private: reachable only through
+ * {@link beginNavigatorHandoff}, so a caller cannot pick its victim at the end
+ * of an async open. That choice is the whole bug this indirection exists for.
  */
-export function tryCloseNavigator(
+function tryCloseNavigator(
   nav: BrowserWindowLike | null,
   context: { projectPath: string },
   log: (event: string, fields: Record<string, unknown>) => void = (event, fields) =>
@@ -45,6 +49,51 @@ export function tryCloseNavigator(
       err: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+/** The close half of a handoff — see {@link beginNavigatorHandoff}. */
+export interface NavigatorHandoff {
+  /**
+   * Take ownership of a Navigator this open put up itself. The `fresh`
+   * discovery branch opens one to host the consent dialog when none was up;
+   * without adopting it, that launcher would outlive the project it onboarded.
+   */
+  adopt(nav: BrowserWindowLike | null): void;
+  /** Close the handed-off Navigator, if there is one and it is still alive. */
+  close(context: { projectPath: string }, log?: NavigatorCloseLog): void;
+}
+
+type NavigatorCloseLog = (event: string, fields: Record<string, unknown>) => void;
+
+/**
+ * Bind an in-flight project open to the Navigator it is taking over from.
+ *
+ * A project open is asynchronous and slow — it spawns a server, polls for its
+ * lock, then waits out the renderer load — and the Navigator is reachable
+ * throughout, from the File menu and its accelerator, which are live long
+ * before the editor renderer finishes loading. Closing whatever
+ * `navigatorWindow` happens to hold once the open finally resolves therefore
+ * destroys a launcher the user summoned mid-open. The user sees it flash and
+ * vanish; the destroyed window's in-flight `loadFile` rejects with
+ * `ERR_FAILED (-2)`, which is the only trace left behind.
+ *
+ * So the instance is captured HERE, synchronously, before the first await, and
+ * only that instance (or one the open later adopts) is closed. A Navigator
+ * summoned after the open began belongs to the user, not to the open.
+ *
+ * Every async path that opens something and then retires a Navigator must go
+ * through this rather than reading the module-global at the end.
+ */
+export function beginNavigatorHandoff(navAtStart: BrowserWindowLike | null): NavigatorHandoff {
+  let handedOff = navAtStart;
+  return {
+    adopt(nav) {
+      handedOff = nav;
+    },
+    close(context, log) {
+      tryCloseNavigator(handedOff, context, log);
+    },
+  };
 }
 
 interface NavigatorDeps {
