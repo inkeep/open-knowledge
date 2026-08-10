@@ -1,7 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-Bug reports now carry the evidence needed to diagnose an update that fails to install. On macOS the actual swap of the app bundle is performed by a helper that runs after the app has already exited, so when an install silently fails there is no part of the app still running to notice. The app could tell you afterwards that the update did not install, but a report sent at that point contained nothing about why — the helper keeps its own log, and reports were not collecting it. Two failed-install reports in a row reached the same dead end.
-
-Reports now include that helper's log, so a failed install can be traced to the step it stopped at instead of guessing. Only the app's own log is collected, never those of other applications on the machine that use the same update mechanism. The bundle's privacy notice names the file whenever it is present, says the update helper wrote it rather than the app, and flags it as machine-wide rather than belonging to the project you reported from; the reference page listing everything the app writes to your disk now covers it too. The app also now records how long an update had been waiting when you asked to install it, and reports that number both when you click Relaunch and when a failed install is detected on the next launch — a timing correlation that previously could not be checked across reports at all.
