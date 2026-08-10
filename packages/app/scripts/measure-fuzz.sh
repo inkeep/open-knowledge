@@ -182,9 +182,11 @@ TEST_EXIT=0
   # Explicit exit: errexit is suppressed inside a piped compound, so a bare
   # failed cd would let the test run from the wrong cwd.
   cd "$APP_DIR" || exit 1
-  # --conditions development resolves workspace deps from source exports
-  # instead of an unbuilt dist/ (the fresh-worktree state) — without it the
-  # run dies on missing build artifacts.
+  # No --conditions flag: packages/app/vitest.config.ts spreads
+  # test-support/vitest.base.ts, which pins the `development` export condition
+  # in both resolve and ssr.resolve. That pin is what resolves workspace deps
+  # from source exports instead of an unbuilt dist/ (the fresh-worktree
+  # state) — without it the run dies on missing build artifacts.
   pnpm exec vitest run "$TEST_FILE" 2>&1
 ) | tee "$OUT_FILE" || TEST_EXIT=$?
 
