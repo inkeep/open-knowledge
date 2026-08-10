@@ -207,6 +207,52 @@ function realNewestStableTag() {
 }
 
 /**
+ * Is this commit's change already in the stable?
+ *
+ * Asked by CONTENT, not by lineage. A stable is cut by cherry-picking onto the
+ * previous stable, so the shipped copy of a fix is a DIFFERENT commit than the
+ * one on main and no ancestry test can see it. Asking only the lineage
+ * question re-qualifies a fix the lane itself just released; the pick then
+ * lands empty, which downstream reads as a conflict and pages a refusal saying
+ * the fix depends on later work — the exact opposite of the truth.
+ *
+ * Exported as a factory, like the resolver boundaries beside it, so the git
+ * behavior is exercised against a real repository rather than asserted about.
+ */
+export function makeIsInStable(stable, git = (args) => spawnSync('git', args, { encoding: 'utf8', env: gitCleanEnv() })) {
+  return (sha) => {
+    // Ancestry first: exact, cheap, and the common case for a fix that has not
+    // been released yet. Three-way, matching the sibling selectors: exit 0 is
+    // contained, exit 1 a clean miss, anything else an infrastructure failure
+    // that must not read as "not contained" — the pure core degrades that
+    // commit with a containment-error warning instead.
+    const ancestry = git(['merge-base', '--is-ancestor', sha, stable]);
+    if (ancestry.status === 0) return true;
+    if (ancestry.status !== 1) {
+      throw new Error(
+        `git merge-base --is-ancestor ${sha} ${stable} failed (exit ${ancestry.status}): ${ancestry.error?.message ?? String(ancestry.stderr || '').trim()}`,
+      );
+    }
+    // `git cherry <upstream> <head> <limit>` restricted to this one commit: it
+    // prints "- <sha>" when an equivalent patch is already upstream and
+    // "+ <sha>" when it is not. This is git's own duplicate detection, the
+    // same equivalence rebase uses to drop already-applied commits.
+    //
+    // A failure here is deliberately NOT rethrown. Ancestry has already
+    // answered "no", so falling through returns exactly what this function
+    // returned before patch-equivalence existed — never a regression — and the
+    // verify stage's empty-pick guard still catches whatever slips past.
+    // Throwing would turn a rare git hiccup into a containment-error that
+    // disqualifies a genuinely shippable fix.
+    const equivalent = git(['cherry', stable, sha, `${sha}^`]);
+    if (equivalent.status !== 0) return false;
+    return String(equivalent.stdout || '')
+      .trimStart()
+      .startsWith('-');
+  };
+}
+
+/**
  * The pending pile at HEAD, oldest adding commit first so the cherry-pick
  * batch replays in merge order. `%x1f` keeps subjects with any character out
  * of the field framing.
@@ -249,21 +295,7 @@ async function main() {
 
   const result = await evaluateBugLane({
     pendingChangesets: realPendingChangesets(),
-    // Three-way, matching the sibling selectors: exit 0 is contained, exit 1 a
-    // clean miss, anything else an infrastructure failure that must not read
-    // as "not contained" — the pure core degrades that commit with a
-    // containment-error warning instead.
-    isInStable: (sha) => {
-      const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, stable], {
-        encoding: 'utf8',
-        env: gitCleanEnv(),
-      });
-      if (res.status === 0) return true;
-      if (res.status === 1) return false;
-      throw new Error(
-        `git merge-base --is-ancestor ${sha} ${stable} failed (exit ${res.status}): ${res.error?.message ?? String(res.stderr || '').trim()}`,
-      );
-    },
+    isInStable: makeIsInStable(stable),
     resolveChangesetPrUrl: makeResolveChangesetPrUrl(process.env.LINK_REPO || DEFAULT_LINK_REPO),
     resolveIssuesForUrl: makeResolveIssuesForUrl(process.env.LINEAR_API_KEY),
   });

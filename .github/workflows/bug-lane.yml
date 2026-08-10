@@ -146,6 +146,10 @@ jobs:
           # later work from one blocked by an unrelated rewrite of a line of CI
           # config, and that is the whole question a reader has.
           CONFLICT_JSON='[]'
+          # Refs whose pick landed empty: the stable already contains the
+          # change. Not survivors (committing one would re-release), and
+          # emphatically not conflicts.
+          ALREADY=()
           for ref in "${REFS[@]}"; do
             if git cherry-pick "$ref"; then
               SURVIVORS+=("$ref")
@@ -158,6 +162,26 @@ jobs:
               while IFS= read -r f; do
                 [[ -n "$f" ]] && CONFLICTED+=("$f")
               done < <(git diff --name-only --diff-filter=U || true)
+              # An EMPTY pick, not a conflict. git exits non-zero for both, but
+              # empty means every hunk was already present — the stable already
+              # ships this fix under a different SHA, which is how every point
+              # release lands. Zero unmerged paths AND a tree identical to HEAD
+              # is the signature; a real conflict leaves unmerged paths, and a
+              # partial application leaves a dirty tree.
+              #
+              # Reporting this as a conflict is what made a shipped fix page as
+              # "does not apply to the current stable": the refusal carried no
+              # conflicting path, and the payload builder fails closed to the
+              # severe wording when it has no paths to judge. The containment
+              # pre-filter should have caught this upstream; this is the
+              # backstop that makes the silence a guarantee rather than a
+              # consequence of that filter being right.
+              if [[ ${#CONFLICTED[@]} -eq 0 ]] && git diff --quiet HEAD; then
+                git cherry-pick --abort || true
+                ALREADY+=("$ref")
+                echo "::notice::bug-lane: ${ref} is already contained in ${STABLE} (the pick applies empty); skipped — nothing left to ship, and nothing to report."
+                continue
+              fi
               TOTAL_FILES=$(git show --pretty=format: --name-only "$ref" | grep -c . || true)
               # `${a[@]+"${a[@]}"}` so an empty array is not an unbound-variable
               # error under `set -u`: a pick can fail without conflicting (an
@@ -180,7 +204,27 @@ jobs:
           if [[ ${#DROPPED[@]} -gt 0 ]]; then
             echo "dropped_refs=$(IFS=','; echo "${DROPPED[*]}")" >> "$GITHUB_OUTPUT"
           fi
+          if [[ ${#ALREADY[@]} -gt 0 ]]; then
+            echo "already_refs=$(IFS=','; echo "${ALREADY[*]}")" >> "$GITHUB_OUTPUT"
+          fi
           if [[ ${#SURVIVORS[@]} -eq 0 ]]; then
+            # Nothing survived AND nothing genuinely conflicted: every candidate
+            # was already in the stable. That is a no-op tick, not a refusal —
+            # there is no question for a human and therefore no message. A
+            # distinct verdict rather than reusing "conflict" is the whole
+            # point: the paging steps gate on conflict/fail, so this is silent
+            # by construction instead of by a suppression rule someone could
+            # later relax. Visible in the run summary for anyone who looks.
+            if [[ ${#DROPPED[@]} -eq 0 ]]; then
+              echo "verdict=already-in-stable" >> "$GITHUB_OUTPUT"
+              echo "::notice::bug-lane: every qualifying fix is already contained in ${STABLE}; nothing to ship, nothing to page."
+              {
+                echo "### Bug lane — already in the stable"
+                echo "Every qualifying fix is already contained in \`${STABLE}\`: ${ALREADY[*]}."
+                echo "The picks apply empty, so there is nothing left to release. No page — this is a no-op tick, not a refusal."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
             echo "verdict=conflict" >> "$GITHUB_OUTPUT"
             echo "::notice::bug-lane: no qualifying fix is self-contained over ${STABLE}; nothing ships this tick."
             exit 0

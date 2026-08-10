@@ -157,15 +157,25 @@ describe('classifyRefs', () => {
 });
 
 describe('describeRefusal', () => {
-  const inert = [{ ref: 'a', inert: true, files: [] }];
-  const behavioral = [{ ref: 'a', inert: false, files: [] }];
+  // Production-shaped. `classifyRefs` derives `inert` as
+  // `files.length > 0 && files.every(...)`, so a ref carrying the flag ALWAYS
+  // carries the paths it was derived from; an empty `files` is a distinct
+  // state (the pick failed without conflicting) and gets its own class below.
+  const inert = [
+    { ref: 'a', inert: true, files: [{ path: 'packages/app/package.json', inert: true, detail: 'test:e2e only' }] },
+  ];
+  const behavioral = [
+    { ref: 'a', inert: false, files: [{ path: 'packages/server/src/boot.ts', inert: false, detail: 'carries behavior' }] },
+  ];
+  const noPaths = [{ ref: 'a', inert: false, totalFiles: 37, files: [] }];
 
-  test('the three refusal classes read differently at a glance', () => {
+  test('the four refusal classes read differently at a glance', () => {
     const h = (args) => describeRefusal(args).headline;
     const drift = h({ verdict: 'conflict', refs: inert });
     const real = h({ verdict: 'conflict', refs: behavioral });
     const red = h({ verdict: 'fail', refs: [] });
-    expect(new Set([drift, real, red]).size).toBe(3);
+    const unknown = h({ verdict: 'conflict', refs: noPaths });
+    expect(new Set([drift, real, red, unknown]).size).toBe(4);
     expect(drift).toMatch(/config drift, not by the fix/);
     expect(real).toMatch(/does not apply/);
   });
@@ -175,20 +185,52 @@ describe('describeRefusal', () => {
       /does not apply/,
     );
   });
+
+  // The shape that shipped a false alarm: a pick that applied EMPTY because
+  // the stable already contained the fix exited non-zero with no conflicting
+  // path, and the severe branch asserted a behavior-carrying collision it had
+  // no evidence for — telling the reader the fix depended on later work when
+  // it was already released.
+  test('no recorded conflicting path never claims a behavior-carrying collision', () => {
+    const { headline, meaning } = describeRefusal({ verdict: 'conflict', refs: noPaths });
+    expect(headline).not.toMatch(/does not apply to the current stable/);
+    expect(meaning).not.toMatch(/carries behavior/);
+    expect(meaning).toMatch(/no conflicting file/);
+  });
+
+  // A batch where one ref genuinely collided must still report the severe
+  // case; the no-path class is only for a batch with no evidence at all.
+  test('a mixed batch with real paths keeps the severe headline', () => {
+    expect(describeRefusal({ verdict: 'conflict', refs: [...noPaths, ...behavioral] }).headline).toMatch(
+      /does not apply/,
+    );
+  });
 });
 
 describe('optionsFor', () => {
+  const withPath = (inertFlag) => [
+    { ref: 'x', inert: inertFlag, files: [{ path: 'p/package.json', inert: inertFlag, detail: 'd' }] },
+  ];
+
   test('the inert case never points at resolve_paths, which would refuse', () => {
-    const opts = optionsFor({ verdict: 'conflict', refs: [{ ref: 'a', inert: true, files: [] }] });
+    const opts = optionsFor({ verdict: 'conflict', refs: withPath(true) });
     expect(opts.join('\n')).not.toMatch(/-f resolve_paths=/);
     expect(opts.join('\n')).toMatch(/allowlist is code/);
   });
 
   test('inert and behavioral give different advice', () => {
-    const a = optionsFor({ verdict: 'conflict', refs: [{ ref: 'x', inert: true, files: [] }] });
-    const b = optionsFor({ verdict: 'conflict', refs: [{ ref: 'x', inert: false, files: [] }] });
+    const a = optionsFor({ verdict: 'conflict', refs: withPath(true) });
+    const b = optionsFor({ verdict: 'conflict', refs: withPath(false) });
     expect(a).not.toEqual(b);
     expect(b.join('\n')).toMatch(/smaller self-contained commit/);
+  });
+
+  // Without evidence the advice must not send someone to hand-cut a release:
+  // the likeliest cause of a pathless failure is that the fix already shipped.
+  test('no recorded path sends the reader to the log, not to a hand-cut release', () => {
+    const opts = optionsFor({ verdict: 'conflict', refs: [{ ref: 'x', inert: false, files: [] }] }).join('\n');
+    expect(opts).not.toMatch(/smaller self-contained commit/);
+    expect(opts).toMatch(/run log/);
   });
 });
 
@@ -214,6 +256,25 @@ describe('buildSlackPayload', () => {
     expect(body).toContain('packages/app/package.json');
     expect(body).toContain('v0.48.9');
     expect(body).toContain('27 other files in the commit applied cleanly');
+  });
+
+  // The verbatim shape of the page that went out for PRD-7310 over v0.50.2:
+  // 37 files, none conflicting, because the stable already shipped the fix.
+  // It rendered "conflicted in 0 files:" with nothing under it, immediately
+  // followed by "37 other files applied cleanly" — a stated conflict with no
+  // evidence, contradicted by its own next line.
+  test('a pathless failure renders no empty conflict list and no phantom count', () => {
+    const body = buildSlackPayload({
+      verdict: 'conflict',
+      stable: 'v0.50.2',
+      refs: [{ ref: '4cef9c5a587dc26ea4bcb5fe2ab134a1fa8ec00d', tickets: ['PRD-7310'], totalFiles: 37, inert: false, files: [] }],
+      runUrl: '',
+    }).blocks[1].text.text;
+    expect(body).not.toContain('conflicted in 0 files');
+    expect(body).not.toContain('37 other files');
+    expect(body).toContain('PRD-7310');
+    expect(body).toContain('no conflicting file');
+    expect(body).toContain('all 37 files in the commit applied cleanly');
   });
 
   test('keeps the silence-is-deliberate note', () => {
@@ -291,6 +352,30 @@ describe('workflow wiring', () => {
 
   test('the refusal page builds its body through this script', () => {
     expect(step('Page on a refusal')).toContain('bug-lane-refusal-payload.mjs');
+  });
+
+  // A pick onto a stable that already contains the fix exits non-zero with no
+  // conflicting path. Treated as a conflict it pages a refusal claiming the
+  // fix depends on later work — the opposite of the truth — so it must be
+  // classified BEFORE the conflict bookkeeping runs.
+  test('the verify step separates an empty pick from a conflict', () => {
+    const verify = shellOf('Verify the synthetic tree');
+    const emptyGuard = verify.indexOf('git diff --quiet HEAD');
+    const recordConflict = verify.indexOf('CONFLICT_JSON=$(jq');
+    expect(emptyGuard).toBeGreaterThan(-1);
+    expect(recordConflict).toBeGreaterThan(-1);
+    expect(emptyGuard).toBeLessThan(recordConflict);
+    expect(verify).toContain('already-in-stable');
+  });
+
+  // The guarantee the whole change rests on: an all-already tick is silent
+  // BY CONSTRUCTION, because the paging chain only ever fires on the two
+  // verdicts that represent a real question for a human.
+  test('only conflict and fail can reach the pager', () => {
+    const gate = step('Refusal signature');
+    const verdicts = [...gate.matchAll(/verdict == '([a-z-]+)'/g)].map((m) => m[1]);
+    expect(new Set(verdicts)).toEqual(new Set(['conflict', 'fail']));
+    expect(verdicts).not.toContain('already-in-stable');
   });
 
   // `${V:-{\}}` expands to a LITERAL `{\}` — a brace in a parameter-expansion

@@ -169,6 +169,15 @@ export function classifyRefs(refs, gitShow) {
  * genuinely cannot ship from one that is only blocked by churn, without
  * opening the run.
  */
+/**
+ * The classifier ran on this ref and found NO conflicting path.
+ *
+ * Deliberately `Array.isArray` and not `!r.files?.length`: the question is
+ * whether classification happened and came back empty, which is a real and
+ * reportable state, versus a caller that simply did not supply the field.
+ */
+const classifiedWithNoPaths = (r) => Array.isArray(r.files) && r.files.length === 0;
+
 export function describeRefusal({ verdict, refs }) {
   if (verdict === 'fail') {
     return {
@@ -182,6 +191,20 @@ export function describeRefusal({ verdict, refs }) {
       headline: 'Bug lane: point release blocked by config drift, not by the fix',
       meaning:
         'Every collision is in a path that neither ships nor gates verification. The fix itself applies cleanly to the stable.',
+    };
+  }
+  // No recorded conflicting path anywhere. The severe headline below asserts
+  // "at least one collision carries behavior", and with zero paths there is no
+  // collision to say that about — saying it anyway is how a pick that applied
+  // EMPTY (the stable already had the fix) got reported as a fix that depends
+  // on later work. The verify stage now routes empty picks away from here
+  // entirely, so reaching this branch means the pick failed some third way;
+  // report the uncertainty instead of inventing a cause for it.
+  if (refs.length > 0 && refs.every(classifiedWithNoPaths)) {
+    return {
+      headline: 'Bug lane: the pick failed without a conflicting path',
+      meaning:
+        'The cherry-pick exited non-zero but left no conflicting file, so its cause is not visible from here. Read the run log before concluding anything about the fix.',
     };
   }
   return {
@@ -203,6 +226,12 @@ export function optionsFor({ verdict, refs }) {
     return [
       'Read the failing tier in the run log before anything else — a red synthetic tree is a real incompatibility, not a retry candidate.',
       'The fixes ride their cycle’s stable. Forcing them past a red verification is not an option this lane offers.',
+    ];
+  }
+  if (refs.length > 0 && refs.every(classifiedWithNoPaths)) {
+    return [
+      'Open the run log and read the cherry-pick output — the failure left no conflicting path, so the log is the only place the cause exists.',
+      'Do not hand-cut a point release off this page alone. Confirm what actually failed first; the fix may already be in the stable.',
     ];
   }
   const allInert = refs.length > 0 && refs.every((r) => r.inert);
@@ -227,6 +256,18 @@ function refLines(refs) {
     const tickets = (entry.tickets ?? []).join(', ');
     const label = [`\`${entry.ref.slice(0, 9)}\``, tickets && `(${tickets})`].filter(Boolean).join(' ');
     const shown = entry.files.slice(0, MAX_FILES_SHOWN);
+    // "conflicted in 0 files:" followed by nothing is the shape that made a
+    // page unreadable — it states a conflict and then lists no evidence for
+    // it, while the line below cheerfully reports every file applying cleanly.
+    // Say the actual fact instead.
+    if (entry.files.length === 0) {
+      const total = Number(entry.totalFiles);
+      lines.push(
+        `${label} — the pick failed but git reported no conflicting file` +
+          `${Number.isFinite(total) && total > 0 ? `; all ${total} file${total === 1 ? '' : 's'} in the commit applied cleanly` : ''}.`,
+      );
+      continue;
+    }
     lines.push(
       `${label} — conflicted in ${entry.files.length} file${entry.files.length === 1 ? '' : 's'}:`,
     );
