@@ -1,4 +1,3 @@
-
 import type * as Y from 'yjs';
 import type { Err, Ok, Result } from '../config/result.ts';
 import { type FrontmatterValidationError, toFrontmatterIssue } from '../frontmatter/errors.ts';

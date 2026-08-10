@@ -1,4 +1,3 @@
-
 export interface HandlerShadowWitness {
   input: string;
   expect: 'byte' | 'byte-and-reparse-type';

@@ -29,6 +29,7 @@ import type { ComponentProps, FC } from 'react';
 import { useEffect, useState } from 'react';
 import { SubscribeForm } from '@/components/SubscribeForm';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL, X_PROFILE_URL } from '@/lib/social-links';
 import { type SubscribeCardStore, subscribeCardStore } from '@/lib/subscribe-card-store';
@@ -87,60 +88,63 @@ export function SubscribeCard({
   }, [succeeded, onClose, autoDismissMs]);
 
   return (
-    <section
-      // Named region landmark — the "Stay in the loop" heading is a <p> (from
-      // SubscribeForm), not an <h*>, so aria-labelledby has nothing to point at.
-      aria-label={t`Stay in the loop`}
-      className="mx-1 mb-1 overflow-hidden rounded-lg border bg-card text-card-foreground"
-    >
-      <div className="px-3 py-2.5">
-        <SubscribeForm
-          source="post_update_card"
-          compactSubmit
-          // Shorter than the form's default so the sub-heading stays on one line
-          // in the narrow sidebar footer.
-          description={<Trans>Product updates in your inbox.</Trans>}
-          onSuccess={() => {
-            store.markSubscribed();
-            setSucceeded(true);
-          }}
-          onDismiss={() => {
-            // Close everything AND stop the prompt for good.
-            store.dismiss();
-            onClose();
-          }}
-        />
-        {succeeded ? null : (
-          <nav
-            aria-label={t`Follow us on social media`}
-            className="mt-3 flex items-center gap-1.5 text-muted-foreground text-xs"
+    <Card asChild size="sm" className="mx-1 mb-1">
+      <section
+        // Named region landmark — the "Stay in the loop" heading is a <p> (from
+        // SubscribeForm), not an <h*>, so aria-labelledby has nothing to point at.
+        // `asChild` keeps this a <section>; Card would otherwise render a div and
+        // drop the landmark.
+        aria-label={t`Stay in the loop`}
+      >
+        <CardContent>
+          <SubscribeForm
+            source="post_update_card"
+            compactSubmit
+            // Shorter than the form's default so the sub-heading stays on one line
+            // in the narrow sidebar footer.
+            description={<Trans>Product updates in your inbox.</Trans>}
+            onSuccess={() => {
+              store.markSubscribed();
+              setSucceeded(true);
+            }}
+            onDismiss={() => {
+              // Close everything AND stop the prompt for good.
+              store.dismiss();
+              onClose();
+            }}
+          />
+          {succeeded ? null : (
+            <nav
+              aria-label={t`Follow us on social media`}
+              className="mt-3 flex items-center gap-1.5 text-muted-foreground text-xs"
+            >
+              <span className="mr-0.5">
+                <Trans>Follow us on</Trans>
+              </span>
+              <SocialLink href={X_PROFILE_URL} label={t`Follow us on X`} icon={XTwitterIcon} />
+              <SocialLink href={GITHUB_REPO_URL} label={t`Star us on GitHub`} icon={GithubIcon} />
+              <SocialLink
+                href={DISCORD_INVITE_URL}
+                label={t`Join us on Discord`}
+                icon={DiscordIcon}
+              />
+            </nav>
+          )}
+        </CardContent>
+        <CardFooter className="justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            <Trans>Updated to Version {version}</Trans>
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-muted-foreground text-xs hover:text-foreground"
+            onClick={onOpenReleaseNotes}
           >
-            <span className="mr-0.5">
-              <Trans>Follow us on</Trans>
-            </span>
-            <SocialLink href={X_PROFILE_URL} label={t`Follow us on X`} icon={XTwitterIcon} />
-            <SocialLink href={GITHUB_REPO_URL} label={t`Star us on GitHub`} icon={GithubIcon} />
-            <SocialLink
-              href={DISCORD_INVITE_URL}
-              label={t`Join us on Discord`}
-              icon={DiscordIcon}
-            />
-          </nav>
-        )}
-      </div>
-      <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2.5 space-x-2">
-        <span className="text-xs text-muted-foreground">
-          <Trans>Updated to Version {version}</Trans>
-        </span>
-        <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-muted-foreground text-xs hover:text-foreground"
-          onClick={onOpenReleaseNotes}
-        >
-          <Trans>Release notes</Trans>
-        </Button>
-      </div>
-    </section>
+            <Trans>Release notes</Trans>
+          </Button>
+        </CardFooter>
+      </section>
+    </Card>
   );
 }

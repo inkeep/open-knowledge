@@ -17,6 +17,7 @@
 import { useLingui } from '@lingui/react/macro';
 import { useSyncExternalStore } from 'react';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { Card, CardContent } from '@/components/ui/card';
 import { FEEDBACK_NUDGE_SOURCE, useFeedbackNudgeVisible } from '@/hooks/use-feedback-nudge';
 import { feedbackNudgeStore } from '@/lib/feedback-nudge-store';
 import { onboardingCardStore } from '@/lib/onboarding-card-store';
@@ -26,27 +27,29 @@ import { FeedbackForm } from './FeedbackForm';
 export function FeedbackCard({ onClose }: { onClose: () => void }) {
   const { t } = useLingui();
   return (
-    <section
-      // The heading is a <p> inside FeedbackForm, not an <h*>, so the landmark
-      // carries its own label rather than aria-labelledby.
-      aria-label={t`Share feedback`}
-      className="mx-1 mb-1 overflow-hidden rounded-lg border bg-card text-card-foreground"
-    >
-      <div className="px-3 py-2.5">
-        <FeedbackForm
-          compact
-          source={FEEDBACK_NUDGE_SOURCE}
-          // Deliberately not the dialog's "How do you like OpenKnowledge?".
-          // That title suits a surface the user opened on purpose; this card
-          // arrives uninvited, sits beside "Stay in the loop" and "Get set up"
-          // (both statements), and must not restate the Good / Not great
-          // toggle directly beneath it.
-          title={t`Tell us how it's going`}
-          onDismiss={onClose}
-          onSuccess={onClose}
-        />
-      </div>
-    </section>
+    <Card asChild size="sm" className="mx-1 mb-1">
+      <section
+        // The heading is a <p> inside FeedbackForm, not an <h*>, so the landmark
+        // carries its own label rather than aria-labelledby. `asChild` keeps this
+        // a <section>; Card would otherwise render a div and drop the landmark.
+        aria-label={t`Share feedback`}
+      >
+        <CardContent>
+          <FeedbackForm
+            compact
+            source={FEEDBACK_NUDGE_SOURCE}
+            // Deliberately not the dialog's "How do you like OpenKnowledge?".
+            // That title suits a surface the user opened on purpose; this card
+            // arrives uninvited, sits beside "Stay in the loop" and "Get set up"
+            // (both statements), and must not restate the Good / Not great
+            // toggle directly beneath it.
+            title={t`Tell us how it's going`}
+            onDismiss={onClose}
+            onSuccess={onClose}
+          />
+        </CardContent>
+      </section>
+    </Card>
   );
 }
 

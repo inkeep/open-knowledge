@@ -86,6 +86,20 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
     expect(hrefs).toContain('https://discord.gg/VRKk2EaGHN');
   });
 
+  test('exposes a labelled landmark so the footer card is navigable', async () => {
+    await renderCard();
+
+    const region = screen.getByRole('region', { name: 'Stay in the loop' });
+    expect(region.tagName).toBe('SECTION');
+    // The card root and the landmark must be the same element. Dropping
+    // `asChild` would wrap this section in a div that takes the card slot,
+    // splitting the shell off the landmark and orphaning the flex layout the
+    // content and footer slots rely on.
+    expect(region.getAttribute('data-slot')).toBe('card');
+    // The social row is a second, separately labelled landmark inside it.
+    expect(screen.getByRole('navigation', { name: 'Follow us on social media' })).toBeTruthy();
+  });
+
   test('clicking Release notes opens the release notes', async () => {
     const onOpenReleaseNotes = vi.fn(() => {});
     await renderCard({ onOpenReleaseNotes });
