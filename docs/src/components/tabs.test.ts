@@ -79,9 +79,12 @@ describe('slugifyTabId', () => {
 
 describe('composeTabId (groupId-prefix URL composition)', () => {
   test('groupId + label → prefixed slug (the docs quickstart shape)', () => {
-    // The literal URL the docs quickstart emits today. If this expectation
-    // changes, every Slack-pasted `#ok-install-macos-app` link breaks.
-    expect(composeTabId('macOS app', 'ok-install')).toBe('ok-install-macos-app');
+    // The literal URLs the docs quickstart emits today. If these expectations
+    // change, every Slack-pasted `#ok-install-desktop-app` link breaks.
+    expect(composeTabId('Desktop app', 'ok-install')).toBe('ok-install-desktop-app');
+    expect(composeTabId('Web app', 'ok-install')).toBe('ok-install-web-app');
+    // Parenthetical/comma labels flatten to dashed slugs (the pre-Windows/Linux
+    // quickstart shape — kept as slugging coverage).
     expect(composeTabId('Web app (Linux, Windows, Intel Mac)', 'ok-install')).toBe(
       'ok-install-web-app-linux-windows-intel-mac',
     );

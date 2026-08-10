@@ -46,6 +46,17 @@ export interface InstallMethod {
   instruction: string;
 }
 
+/** Windows removal instruction — the NSIS per-user install unregisters via Apps. */
+const WINDOWS_APP_REMOVAL =
+  'Uninstall from Windows Settings → Apps → Installed apps → OpenKnowledge';
+
+/**
+ * Linux removal instruction — deb and rpm carry different package-name casing
+ * (fpm lowercases the deb name only), so both commands are spelled out.
+ */
+const LINUX_APP_REMOVAL =
+  'Remove with your package manager: sudo apt remove openknowledge (Debian/Ubuntu) or sudo dnf remove OpenKnowledge (Fedora/RHEL)';
+
 /**
  * Detect how OK is installed and return the removal instruction for each method
  * found. Best-effort + informational — the command prints these but never runs
@@ -56,18 +67,49 @@ export function detectInstallMethods(
   argv1: string | undefined,
   runNpmLs: (args: string[]) => string | null = defaultNpmLs,
   exists: (path: string) => boolean = existsSync,
+  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
 ): InstallMethod[] {
   const methods: InstallMethod[] = [];
+  const platform = opts.platform ?? process.platform;
+  const env = opts.env ?? process.env;
 
-  for (const app of [
-    '/Applications/OpenKnowledge.app',
-    join(home, 'Applications', 'OpenKnowledge.app'),
-  ]) {
-    if (exists(app)) {
+  if (platform === 'darwin') {
+    for (const app of [
+      '/Applications/OpenKnowledge.app',
+      join(home, 'Applications', 'OpenKnowledge.app'),
+    ]) {
+      if (exists(app)) {
+        methods.push({
+          method: 'app',
+          label: `OK Desktop (${app})`,
+          instruction: `Move ${app} to the Trash (or: rm -rf "${app}")`,
+        });
+      }
+    }
+  } else if (platform === 'win32') {
+    // The NSIS one-click per-user install roots — same probe set as
+    // desktop-dispatch's resolveWindowsExecutable.
+    const localAppData = env.LOCALAPPDATA;
+    if (localAppData) {
+      for (const dirName of ['@inkeepopen-knowledge-desktop', 'OpenKnowledge']) {
+        const exe = join(localAppData, 'Programs', dirName, 'OpenKnowledge.exe');
+        if (exists(exe)) {
+          methods.push({
+            method: 'app',
+            label: `OK Desktop (${exe})`,
+            instruction: WINDOWS_APP_REMOVAL,
+          });
+          break;
+        }
+      }
+    }
+  } else if (platform === 'linux') {
+    // The deb/rpm install path (see desktop-dispatch's resolveLinuxExecutable).
+    if (exists('/opt/OpenKnowledge/openknowledge')) {
       methods.push({
         method: 'app',
-        label: `OK Desktop (${app})`,
-        instruction: `Move ${app} to the Trash (or: rm -rf "${app}")`,
+        label: 'OK Desktop (/opt/OpenKnowledge)',
+        instruction: LINUX_APP_REMOVAL,
       });
     }
   }
@@ -120,7 +162,10 @@ const CALLOUT_RULE = '━'.repeat(64);
  * deletes its own running binary). Printed LAST by `runUninstall` so it's
  * the final, most-visible thing on screen.
  */
-function formatInstallInstructions(methods: InstallMethod[]): string {
+function formatInstallInstructions(
+  methods: InstallMethod[],
+  platform: NodeJS.Platform = process.platform,
+): string {
   const lines: string[] = [
     warning(CALLOUT_RULE),
     accent('  One more step — remove the OpenKnowledge app itself'),
@@ -128,8 +173,14 @@ function formatInstallInstructions(methods: InstallMethod[]): string {
     '',
   ];
   if (methods.length === 0) {
+    const appFallback =
+      platform === 'win32'
+        ? 'uninstall from Settings → Apps → Installed apps → OpenKnowledge'
+        : platform === 'linux'
+          ? 'remove the openknowledge package with your package manager (apt / dnf)'
+          : 'move /Applications/OpenKnowledge.app to the Trash';
     lines.push(dim('  Install method not detected. If you installed it, remove it via:'));
-    lines.push(`    ${info('OK Desktop')} — move /Applications/OpenKnowledge.app to the Trash`);
+    lines.push(`    ${info('OK Desktop')} — ${appFallback}`);
     lines.push(`    ${info('npm global')} — npm uninstall -g @inkeep/open-knowledge`);
     lines.push(`    ${info('npx')} — nothing to remove (runs from a temporary cache)`);
   } else {
@@ -353,9 +404,14 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
       'To remove OpenKnowledge from one project, run `ok deinit` inside it.',
   );
   // Detection runs `npm ls -g` — compute it only on the paths that render it
-  // (dry-run + a confirmed run), never on a cancel/refuse.
+  // (dry-run + a confirmed run), never on a cancel/refuse. Thread the resolved
+  // platform/env so an injected platform drives detection AND the fallback
+  // text, not just the recent-projects resolution.
   const binaryBlock = (): string =>
-    formatInstallInstructions(detectInstall(home, opts.argv1 ?? process.argv[1]));
+    formatInstallInstructions(
+      detectInstall(home, opts.argv1 ?? process.argv[1], undefined, undefined, { platform, env }),
+      platform,
+    );
 
   if (opts.dryRun) {
     // The app-removal callout goes LAST so it doesn't get buried in the plan.

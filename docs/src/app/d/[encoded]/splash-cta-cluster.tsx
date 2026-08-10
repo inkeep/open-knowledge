@@ -1,12 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { DetectedOs } from '@/lib/download-targets';
 import { cn } from '@/lib/utils';
 import { SplashButtonLabel, splashPrimaryButton } from './splash-buttons';
 import { SplashDownloadSplitButton } from './splash-download-split-button';
 
 interface SplashCtaClusterProps {
+  /** Already carries the detected platform's `?os=&arch=&format=`. */
   downloadUrl: string;
+  /** Same route without a query, so the panel can mint one link per build. */
+  platformBaseUrl: string;
+  detectedOs: DetectedOs;
   customSchemeUrl: string;
   githubUrl: string;
   installCommand: string;
@@ -22,11 +27,11 @@ interface SplashCtaClusterProps {
 const FALLBACK_REVEAL_DELAY_MS = 2500;
 
 /**
- * Primary "Open in macOS app" CTA + a segmented Download button that carries
+ * Primary "Open in desktop app" CTA + a segmented Download button that carries
  * the secondary open-paths (copyable CLI commands, View on GitHub) in its
  * dropdown panel.
  *
- * "Open in macOS app" fires the custom-scheme URL via a plain `<a href>` —
+ * "Open in desktop app" fires the custom-scheme URL via a plain `<a href>` —
  * works regardless of repo visibility (the receiver's local OK auth handles
  * access). Browsers expose no API to ask whether a custom scheme has a
  * registered handler (deliberate anti-fingerprinting), so install detection is
@@ -37,7 +42,7 @@ const FALLBACK_REVEAL_DELAY_MS = 2500;
  *
  * The fallback is a *reveal*, never a navigation: when the app IS installed,
  * Chrome's "Open …app?" confirmation can keep the page visible past the timer,
- * and auto-navigating to the DMG would yank installed users away
+ * and auto-navigating to the installer would yank installed users away
  * mid-confirmation. A stray note is harmless; a stray download is not.
  *
  * The Download segment is server-rendered, so first-time visitors (and no-JS
@@ -46,6 +51,8 @@ const FALLBACK_REVEAL_DELAY_MS = 2500;
  */
 export function SplashCtaCluster({
   downloadUrl,
+  platformBaseUrl,
+  detectedOs,
   customSchemeUrl,
   githubUrl,
   installCommand,
@@ -115,14 +122,17 @@ export function SplashCtaCluster({
           data-testid="splash-open-cta"
           className={cn(splashPrimaryButton, 'touch-manipulation')}
         >
-          <SplashButtonLabel>{attempting ? 'Opening…' : 'Open in macOS app'}</SplashButtonLabel>
+          <SplashButtonLabel>{attempting ? 'Opening…' : 'Open in desktop app'}</SplashButtonLabel>
         </a>
 
-        {/* Download + the secondary open-paths (copyable CLI commands, GitHub)
-            condensed into one segmented control. fallbackCtaRef lands focus on
-            the download segment when the deep-link handoff times out. */}
+        {/* Download + the secondary open-paths (the other builds, copyable CLI
+            commands, GitHub) condensed into one segmented control.
+            fallbackCtaRef lands focus on the download segment when the
+            deep-link handoff times out. */}
         <SplashDownloadSplitButton
           downloadUrl={downloadUrl}
+          platformBaseUrl={platformBaseUrl}
+          detectedOs={detectedOs}
           githubUrl={githubUrl}
           installCommand={installCommand}
           cloneCommand={cloneCommand}
@@ -133,8 +143,8 @@ export function SplashCtaCluster({
       <div aria-live="polite">
         {handoffFailed ? (
           <p className="mt-4 text-sm text-slide-muted" data-testid="splash-handoff-fallback">
-            Looks like the macOS app isn&rsquo;t installed yet — use{' '}
-            <span className="font-medium text-slide-text">Download the app</span> above.
+            Looks like the desktop app isn&rsquo;t installed yet — use the{' '}
+            <span className="font-medium text-slide-text">Download</span> button above.
           </p>
         ) : null}
       </div>

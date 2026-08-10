@@ -13,9 +13,15 @@
  * top-10 clamp or the isMac branch, these tests fail with a precise diff.
  */
 
+import { menuLabelForPlatform } from '@inkeep/open-knowledge-core';
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
 import { buildMenuTemplate, type MenuDeps } from '../../src/main/menu.ts';
+
+// The reveal leaf's label is platform-adaptive (Reveal in Finder / Reveal in
+// File Explorer / Open containing folder), and these tests run on whatever
+// platform CI provides — resolve the label the same way the template does.
+const REVEAL_LABEL = menuLabelForPlatform('revealInFinder', process.platform);
 
 type RecentRow = { path: string; name: string };
 
@@ -643,7 +649,7 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     expect(findByLabel(template, 'New file')?.enabled).toBe(true);
     expect(findByLabel(template, 'New folder')?.enabled).toBe(true);
     expect(findByLabel(template, 'New from template…')?.enabled).toBe(true);
-    expect(findByLabel(template, 'Reveal in Finder')?.enabled).toBe(true);
+    expect(findByLabel(template, REVEAL_LABEL)?.enabled).toBe(true);
     expect(findByLabel(template, 'Open with AI')?.enabled).toBe(true);
     expect(findByLabel(template, 'Copy path')?.enabled).toBe(true);
   });
@@ -654,7 +660,7 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     expect(findByLabel(template, 'New folder')?.enabled).toBe(false);
     expect(findByLabel(template, 'New from template…')?.enabled).toBe(false);
     expect(findByLabel(template, 'Duplicate')?.enabled).toBe(false);
-    expect(findByLabel(template, 'Reveal in Finder')?.enabled).toBe(false);
+    expect(findByLabel(template, REVEAL_LABEL)?.enabled).toBe(false);
     expect(findByLabel(template, 'Open with AI')?.enabled).toBe(false);
     expect(findByLabel(template, 'Copy path')?.enabled).toBe(false);
     if (process.platform === 'darwin') {

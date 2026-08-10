@@ -72,16 +72,16 @@ Links work the way they do in the editors you already know:
 
 ## Right-click menu and spell check
 
-In the desktop app, right-clicking editable text opens a native context menu. Any editable field gets **Cut / Copy / Paste / Select All**; when there's a selection or a flagged word under the cursor, **Look Up** (the macOS dictionary panel) and **Search with Google** join it.
+In the desktop app, right-clicking editable text opens a native context menu. Any editable field gets **Cut / Copy / Paste / Select All**; when there's a selection or a flagged word under the cursor, **Search with Google** joins it — plus, on macOS, **Look Up** (the dictionary panel).
 
 Over the document body, the menu also carries **View in Source `</>`** — the desktop equivalent of `Cmd+Option+E`, opening the Markdown behind the block you right-clicked in the visual editor.
 
-Spell checking uses the native macOS spellchecker (language follows your macOS settings), so misspelled words get the familiar red underline. Right-clicking a flagged word adds the spelling section:
+Spell checking uses the native macOS spellchecker on macOS (language follows your macOS settings) and Chromium's built-in spellchecker on Windows and Linux, so misspelled words get the familiar red underline. Right-clicking a flagged word adds the spelling section:
 
 | Item | Behavior |
 | --- | --- |
 | *Suggestions* | The spellchecker's corrections, one row each; pick one to replace the word. |
-| **Add to Dictionary** | Teaches the macOS system dictionary the word — persistent, and shared with your other Mac apps (Safari, Notes). |
+| **Add to Dictionary** | Teaches your system dictionary the word — persistent and, on macOS, shared with your other Mac apps (Safari, Notes). |
 | **Disable Spell Check** | Turns spell checking off app-wide. The choice persists across relaunches. |
 
 While spell check is off, right-clicking any editable text offers **Enable Spell Check**, and the menu bar carries the same toggle as **Edit ▸ Check Spelling While Typing** (see [Edit menu](#edit-menu)) — flip either to bring the squiggles back.
@@ -106,7 +106,7 @@ Hovering a code block reveals a toolbar above it with its own **Ask AI** button 
 
 ## Terminal
 
-The desktop app has a built-in terminal with real login shells inside the editor window. Toggle it with `Cmd+J` or `` Ctrl+` `` (which also works from inside a focused terminal), or with **View ▸ Show / Hide Terminal**. It opens at the placement saved for this installation (the bottom dock by default). Right-click a bottom-dock tab and choose **Move to right panel**, use the matching command in the command palette or **Terminal** menu, or use the right-panel header button to move it back to the bottom. Moving or hiding the Terminal keeps its live shells, tabs, and scrollback intact.
+The desktop app on macOS has a built-in terminal with real login shells inside the editor window. (Not yet available in the Windows and Linux apps.) Toggle it with `Cmd+J` or `` Ctrl+` `` (which also works from inside a focused terminal), or with **View ▸ Show / Hide Terminal**. It opens at the placement saved for this installation (the bottom dock by default). Right-click a bottom-dock tab and choose **Move to right panel**, use the matching command in the command palette or **Terminal** menu, or use the right-panel header button to move it back to the bottom. Moving or hiding the Terminal keeps its live shells, tabs, and scrollback intact.
 
 The terminal is also the editor's AI-chat surface: opening it starts your default CLI when no session is open, and the tab strip's **New chat** split button opens another CLI tab — its dropdown switches CLI (the pick sticks, shared with the Ask AI composer) or opens a plain shell tab. With text selected in the editor, `Cmd+J` and `` Ctrl+` `` both stage the passage into the active CLI's input (or open a new CLI tab when none is running) instead of toggling — they share one handler — and `Cmd+Shift+J` always stages it into a new CLI tab — the passage sits in the input for you to add to, and nothing is submitted until you press Enter. **Terminal ▸ New Terminal Window** (see [Terminal menu](#terminal-menu)) opens a dedicated window with the same multi-session tabs, `Cmd+<number>` tab switching, and shells starting at the project root.
 
@@ -150,7 +150,7 @@ Right-click anywhere in the sidebar to get a context-aware menu. Three shapes sh
 | Hide folder / Hide this file | no | yes | yes |
 | Delete | no | yes | yes |
 
-Items that depend on the desktop app (Reveal in Finder, Delete via Trash) are hidden in the web build. Asset rows (images, PDFs, other non-markdown files) suppress Open with AI, Share, Duplicate, and Hide; they keep Reveal, Copy Path, Rename, and Delete.
+Items that depend on the desktop app (revealing in your file manager, Delete via the OS trash) are hidden in the web build. Asset rows (images, PDFs, other non-markdown files) suppress Open with AI, Share, Duplicate, and Hide; they keep Reveal, Copy Path, Rename, and Delete.
 
 Expand all and Collapse all only appear when they have work to do: Expand all is hidden when no folder is collapsed; Collapse all is hidden when no folder is expanded. New from template appears only when templates are available for the target folder, and Share only when the project has a GitHub remote.
 
@@ -166,7 +166,7 @@ Right-click on empty space drops the new item at the project root. Right-click o
 
 ### Show Hidden Files
 
-The sidebar always lists every file on disk under the content directory (including files excluded by `.gitignore` / `.okignore`), except synthetic system docs. A single **Show Hidden Files** toggle on the empty-space and folder menus controls whether dot-prefixed entries are shown. It persists per-project per-machine in `.ok/local/config.yml` under `appearance.sidebar`, and also lives in the macOS **View** menu.
+The sidebar always lists every file on disk under the content directory (including files excluded by `.gitignore` / `.okignore`), except synthetic system docs. A single **Show Hidden Files** toggle on the empty-space and folder menus controls whether dot-prefixed entries are shown. It persists per-project per-machine in `.ok/local/config.yml` under `appearance.sidebar`, and also lives in the **View** menu.
 
 | Toggle | Effect |
 | --- | --- |
@@ -196,7 +196,7 @@ To send your own freetext instruction along with the handoff, use the bottom [As
 
 See the [per-integration pages](../integrations/claude-code.mdx) for what each agent receives once dispatched.
 
-The menu is organized into two sections. **Terminal** (desktop app only) leads: a row for each agent CLI — **Claude**, **Codex**, **OpenCode**, **Cursor**, and **Pi** — that runs the corresponding CLI (`claude`, `codex`, `opencode`, `pi`; Cursor's is `cursor-agent`) in OpenKnowledge's [docked terminal](#terminal) with the same scoped prompt. **Desktop** follows, listing the installed agent apps (Claude, Codex, Cursor); selecting one launches it via its deep link. Because both sections can list the same name, a Terminal **Claude** (the CLI) and a Desktop **Claude** (the app) can appear together; screen readers tell them apart by the Terminal row's "Claude CLI" accessible name. Each section renders only when it has something to launch, so on the web build — which has no docked terminal — the Terminal section is absent and a CLI pick falls back to the first installed Desktop app target.
+The menu is organized into two sections. **Terminal** (macOS desktop app) leads: a row for each agent CLI — **Claude**, **Codex**, **OpenCode**, **Cursor**, and **Pi** — that runs the corresponding CLI (`claude`, `codex`, `opencode`, `pi`; Cursor's is `cursor-agent`) in OpenKnowledge's [docked terminal](#terminal) with the same scoped prompt. **Desktop** follows, listing the installed agent apps (Claude, Codex, Cursor); selecting one launches it via its deep link. Because both sections can list the same name, a Terminal **Claude** (the CLI) and a Desktop **Claude** (the app) can appear together; screen readers tell them apart by the Terminal row's "Claude CLI" accessible name. Each section renders only when it has something to launch, so on the web build and in the Windows and Linux apps — which have no docked terminal — the Terminal section is absent and a CLI pick falls back to the first installed Desktop app target.
 
 The empty-state create composer on a fresh project carries the same Desktop / Terminal split: its Desktop rows pick the default agent the **Create** button uses, while its Terminal rows (desktop only, disabled until the workspace resolves) launch any of the five CLIs with the brief you typed.
 
@@ -250,22 +250,22 @@ Keyboard shortcuts (use `Ctrl` on Windows / Linux in place of `Cmd`, unless the 
 | `Cmd+Option+B` | Show / Hide the document panel (right). Matches VS Code's Secondary Side Bar accelerator. |
 | `Cmd+Option+M` | Toggle between the visual and source editors, keeping your place. |
 | `Cmd+Option+E` | **View in source** — jump from the visual editor to the Markdown for the block at the cursor, centered and highlighted (visual editor only). |
-| `Cmd+J` | Show / Hide the Terminal in its current placement (desktop app). With text selected, stages the passage into the AI CLI's input instead — nothing runs until you press Enter. |
-| `` Ctrl+` `` | Show / Hide the Terminal too — the VS Code / Zed chord, literal `Ctrl` on every platform. Works even while a terminal holds focus. With text selected it stages the passage like `Cmd+J` instead of toggling. |
-| `Cmd+Shift+J` | Open an additional terminal tab (desktop app). With text selected, stages the passage into the new tab's AI CLI input. |
+| `Cmd+J` | Show / Hide the Terminal in its current placement (macOS desktop app). With text selected, stages the passage into the AI CLI's input instead — nothing runs until you press Enter. |
+| `` Ctrl+` `` | Show / Hide the Terminal too — the VS Code / Zed chord, literal `Ctrl` (macOS desktop app). Works even while a terminal holds focus. With text selected it stages the passage like `Cmd+J` instead of toggling. |
+| `Cmd+Shift+J` | Open an additional terminal tab (macOS desktop app). With text selected, stages the passage into the new tab's AI CLI input. |
 | `Cmd+P` | Open the [command palette](#command-palette) from anywhere — unlike `Cmd+K`, it opens the palette even while text is selected in the visual editor. |
 | `Cmd+L` | Open and focus the [Ask AI](#ask-ai) composer (desktop app). |
 | `Cmd+F` | Find in the visual editor. |
 | `Cmd+Option+F` | Find and replace (`Ctrl+H` on Windows / Linux). |
 | `Cmd+G` / `Shift+Cmd+G` | Next / previous find match. |
 
-In the desktop app the sidebar and terminal toggles also live in the **View** menu (see below), where each label flips between **Show …** and **Hide …** based on current state, matching Finder.
+In the desktop app the sidebar and terminal toggles also live in the **View** menu (see below), where each label flips between **Show …** and **Hide …** based on current state.
 
 Inside an AI editor's embedded view, the **Open with AI** menus, the bottom Ask AI composer, and the empty-state agent grid are hidden; you're already inside an agent, so the handoff would loop back into the same surface. OpenKnowledge's MCP tools and the document itself stay fully available; only the launchers are gone.
 
-## macOS application menus
+## Application menus
 
-The OpenKnowledge desktop app keeps its menu bar in sync with the active editor target: File menu items enable / disable based on whether a doc, folder, or nothing is currently selected.
+The OpenKnowledge desktop app keeps its menu bar in sync with the active editor target: File menu items enable / disable based on whether a doc, folder, or nothing is currently selected. On macOS this is the system menu bar; on Windows and Linux the same menus live in the app window's title bar, with `Ctrl` in place of `Cmd`.
 
 ### File menu
 
@@ -278,8 +278,8 @@ Alongside the project items (Recent project, New project…, Switch Project… `
 | **New from Template…** | (none) | Opens the template picker. |
 | **Duplicate** | `Cmd+D` | Duplicates the active file or folder. Disabled when nothing is selected. |
 | **Rename** | (none) | Inline-renames the active file or folder. Disabled when nothing is selected. |
-| **Move to Trash** | `Cmd+Delete` | Sends the active file or folder to Trash (with the same confirm modal as the sidebar). Disabled when nothing is selected. |
-| **Reveal in Finder** | (none) | Reveals the active target in Finder. Empty selection reveals the project root. |
+| **Move to Trash** | `Cmd+Delete` | Sends the active file or folder to the OS trash (with the same confirm modal as the sidebar). On Windows the item reads **Move to Recycle Bin**. Disabled when nothing is selected. |
+| **Reveal in Finder** | (none) | Reveals the active target in your file manager. The label adapts per platform — **Reveal in File Explorer** on Windows, **Open containing folder** on Linux. Empty selection reveals the project root. |
 | **Open with AI ▸** | (none) | Same submenu as the sidebar, dispatched at the active scope. |
 | **Copy Path ▸** | (none) | Full / Relative path of the active target. |
 

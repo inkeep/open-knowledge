@@ -197,9 +197,6 @@
       "Impossible de démarrer la synchronisation. Vérifiez votre connexion, puis réessayez."
     ],
     "1vn0CI": ["Réponse du serveur invalide"],
-    "2-CeZn": [
-      "Votre rapport est enregistré sur ce Mac, donc rien n'est perdu. Vous pouvez nous l'envoyer par e-mail à la place."
-    ],
     "2277Tu": ["Réduire le graphe"],
     "237hSL": ["Terminé"],
     "253MN6": ["Impossible d'envoyer vos commentaires — veuillez réessayer."],
@@ -240,6 +237,7 @@
     "2hpdRq": ["Masquer le panneau (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Saisissez une URL valide (par exemple https://api.openai.com/v1)."],
     "2jUGEP": ["Compter publiquement les installations de compétences"],
+    "2l293S": ["Vous pouvez restaurer ce fichier depuis la Corbeille."],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["Nous l'avons transmis à l'équipe avec vos journaux."],
     "2n3oDU": [
@@ -500,29 +498,12 @@
     "5kWklo": ["(certains sont peut-être déjà masqués par d'autres règles)"],
     "5lWFkC": ["Se connecter"],
     "5mksg0": ["Échec de la désactivation de la recherche sémantique — ", ["detail"]],
-    "5qNxOe": [
-      [
-        "count",
-        "plural",
-        {
-          "one": [
-            "#",
-            " élément n'a pas pu être mis à la corbeille. Voulez-vous plutôt le supprimer définitivement ?"
-          ],
-          "many": [
-            "#",
-            " éléments n'ont pas pu être mis à la corbeille. Voulez-vous plutôt les supprimer définitivement ?"
-          ],
-          "other": [
-            "#",
-            " éléments n'ont pas pu être mis à la corbeille. Voulez-vous plutôt les supprimer définitivement ?"
-          ]
-        }
-      ]
-    ],
     "5qQr1u": ["Valeurs autorisées pour ", ["field"]],
     "5rnB76": ["Vos modifications restent sur cet ordinateur"],
     "5soCUZ": ["Modifier le message en file d'attente"],
+    "5ss1kT": [
+      "Rapports que vous avez générés sur cet ordinateur. Relancez un envoi, affichez un fichier ou supprimez celui dont vous n'avez plus besoin."
+    ],
     "5tcmwY": ["Ajouter une valeur"],
     "5vAI6Z": ["Cela ne correspondait pas à mon flux de travail"],
     "5wV2qQ": ["et plus encore"],
@@ -541,6 +522,9 @@
       "Duplication réussie, mais la barre latérale n'est peut-être pas à jour — actualisez pour resynchroniser"
     ],
     "69KLIV": ["Échap"],
+    "6ASTuj": [
+      "Les commandes s'exécutent avec tous les droits de votre compte utilisateur sur cette machine. Désactivez ceci pour désactiver le shell."
+    ],
     "6Aih4U": ["Hors ligne"],
     "6FCixu": ["Rouvrir un chat précédent"],
     "6HCOwA": ["Échec de l'ouverture."],
@@ -875,9 +859,6 @@
     "ANFxWn": ["Impossible de supprimer ce thème. Actualisez la page et réessayez."],
     "APNlbk": ["quitter ", ["0"]],
     "AQ-Lfg": ["Impossible de charger les modèles"],
-    "AQGtjK": [
-      "Les commandes s'exécutent avec tous les droits de votre compte utilisateur macOS sur cette machine. Désactivez ceci pour couper le shell."
-    ],
     "ASqqsQ": [["MAX_ATTACHMENTS"], " pièces jointes maximum"],
     "AT0e50": ["Conserver les deux"],
     "ATGYL1": ["Adresse e-mail"],
@@ -1187,11 +1168,6 @@
     "EWX92Z": ["Réduire Demander à l'IA"],
     "EZVxVz": ["Remplace l'occurrence active par le contenu du champ de remplacement."],
     "E_A2Nq": ["Le lien est prêt, mais n'a pas pu être copié dans le presse-papiers."],
-    "E_BHoD": [
-      "Impossible de mettre « ",
-      ["targetName"],
-      " » à la corbeille. Voulez-vous plutôt le supprimer définitivement ?"
-    ],
     "E_tNGD": ["Connecté en tant que @", ["login"]],
     "EarrCe": ["Rechercher un émoji"],
     "EbMUlU": ["Mode agent"],
@@ -1360,6 +1336,7 @@
     "GMaDTM": ["Échec de l'enregistrement du paramètre Slidev"],
     "GN6L5F": ["Nom de fichier"],
     "GNkUvW": ["En file d’attente : envoi à la fin de cette exécution"],
+    "GQ3O42": ["corbeille"],
     "GQDSBN": ["Options de mise en page"],
     "GSYWCm": ["Masquer le panneau du document"],
     "GUYwCr": ["Ignorer cet avis"],
@@ -1423,7 +1400,6 @@
     "H0WlWQ": ["Grille de lignes et de colonnes avec une ligne d'en-tête."],
     "H1TmTu": ["Correction arrêtée. Les fichiers déjà corrigés le restent."],
     "H3oH0g": ["Rétablir"],
-    "H6nKok": ["Afficher dans le gestionnaire de fichiers"],
     "H86f9p": ["Réduire"],
     "HAkEqR": ["Fichiers récents"],
     "HAvHev": ["Mise à jour automatique désactivée pour « ", ["name"], " »"],
@@ -1458,6 +1434,9 @@
       " par une copie indépendante de la compétence ? Rien d'autre ne bouge."
     ],
     "HdkSiO": ["Nouveau fichier"],
+    "HepFJQ": [
+      "Votre rapport est enregistré sur cet ordinateur, rien n'a donc été perdu. Vous pouvez nous l'envoyer par e-mail à la place."
+    ],
     "HfI1dR": ["Je l'ai déjà en local →"],
     "HjNrT0": [
       [
@@ -1899,6 +1878,7 @@
       "Parcours ce code et rédige une spécification technique pour le module le plus complexe : une synthèse, l'architecture, les fichiers clés et les questions ouvertes, le tout relié depuis une page d'index des spécifications."
     ],
     "Nay2Yr": ["Aucun agent ne correspond à votre recherche."],
+    "NcUznW": [["0"], ", aucun espace de travail"],
     "NcurBF": ["Faire défiler vers le bas"],
     "NeQ_0G": ["Traiter ces commentaires"],
     "NeY1Np": ["Slidev a mis trop de temps à démarrer. Réessayez."],
@@ -2000,6 +1980,9 @@
     "P3NS4G": ["Erreur de syntaxe du motif (ligne ", ["lineNumber"], ") : ", ["message"]],
     "P3S14k": [".ok/skills est revenu à Moi uniquement."],
     "P3hnm0": ["Fichier trop volumineux pour être ouvert"],
+    "P441h8": [
+      "Dites-nous ce qui s'est mal passé et nous rassemblerons les journaux. Rien ne quitte votre ordinateur avant que vous l'ayez examiné."
+    ],
     "P47EWZ": ["Impossible de mettre à jour les paramètres de la barre latérale"],
     "P6gXB-": ["Remplacer ", ["keyName"]],
     "P6lAT3": ["Dossier cible : ", ["linkTitle"], ". Cliquez pour ouvrir la synthèse."],
@@ -2122,6 +2105,9 @@
     "QlAG4m": ["Dites-nous en plus (facultatif)"],
     "QlkiD5": ["Replacer sur le texte sélectionné"],
     "QlxHAH": ["Résultats pour « ", ["semanticResultsLabel"], " »"],
+    "QpSqAP": [
+      "Le vrai shell est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur."
+    ],
     "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Libellé <0>(texte visible du lien)</0>"],
     "Qvls7J": ["Spécifications techniques"],
@@ -2149,9 +2135,6 @@
     "R30SFt": ["Utilisez une extension .yaml ou .yml en minuscules"],
     "R3y75Z": ["Modifier la source"],
     "R4OWFD": ["Sections"],
-    "R65q-K": [
-      "Le shell réel est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur macOS."
-    ],
     "R6ABfU": ["Travailler directement, sans étape de plan"],
     "R9IDFz": [
       "Renomme le dossier sur le disque ainsi que l'id que les agents utilisent pour l'invoquer."
@@ -2370,9 +2353,6 @@
     "URmyfc": ["Détails"],
     "UTNVyS": ["Sélectionne l'intégralité du document source."],
     "UTZ97u": ["La sélection doit se trouver dans le projet"],
-    "UTgWxm": [
-      "Rien n'a été envoyé. Le rapport reste sur ce Mac jusqu'à ce que vous nous l'envoyiez par e-mail."
-    ],
     "UVDasf": [
       "La synchronisation est désactivée — vos modifications restent sur cet ordinateur jusqu'à ce que vous les validiez et poussiez manuellement."
     ],
@@ -2406,6 +2386,9 @@
       "<0>Source du miroir supprimée.</0> Le document <1>",
       ["src"],
       "</1> n'est plus disponible."
+    ],
+    "Udgz4J": [
+      "Rien n'a été envoyé. Le rapport reste sur cet ordinateur jusqu'à ce que vous nous l'envoyiez par e-mail."
     ],
     "UfW9Kr": [
       "Vos requêtes de recherche et le texte intégral des pages correspondantes sont envoyés à votre fournisseur d'embeddings (OpenAI par défaut) pour calculer les embeddings."
@@ -2629,6 +2612,32 @@
     "Xisk4u": ["Modifié ", ["editedAgo"]],
     "Xk0-VC": [
       "Les aperçus des liens vers d'autres documents de ce projet sont toujours actifs et lus depuis l'index local — rien ne quitte votre ordinateur pour ceux-là."
+    ],
+    "Xkhr2Z": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            "#",
+            " élément n'a pas pu être mis à la ",
+            ["trashNoun"],
+            ". Voulez-vous le supprimer définitivement ?"
+          ],
+          "many": [
+            "#",
+            " éléments n'ont pas pu être mis à la ",
+            ["trashNoun"],
+            ". Voulez-vous les supprimer définitivement ?"
+          ],
+          "other": [
+            "#",
+            " éléments n'ont pas pu être mis à la ",
+            ["trashNoun"],
+            ". Voulez-vous les supprimer définitivement ?"
+          ]
+        }
+      ]
     ],
     "Xl-UUg": ["guides/install ou https://example.com"],
     "XmJfZT": ["nom"],
@@ -2909,7 +2918,6 @@
     ],
     "aM23Wr": ["page-name"],
     "aNb3JH": ["Copier au format YAML"],
-    "aOp3hw": ["Impossible de mettre à la corbeille"],
     "aQD_86": ["Échec de la mise à jour du fournisseur d'embeddings — ", ["detail"]],
     "aQyGJc": ["Autre chose"],
     "aR4DgO": [
@@ -3073,6 +3081,7 @@
     "cUt8yN": ["Les modifications sont enregistrées automatiquement."],
     "cV7LOw": ["Wiki d'équipe"],
     "cVKnqL": ["Impossible de lire les commentaires en attente d'envoi : ", ["0"]],
+    "cVp1YI": ["Corbeille"],
     "cZGNlb": ["Ajouter un autre motif"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge a restauré une version antérieure"],
@@ -3734,6 +3743,7 @@
     "kRTXGw": [
       "Dirigez la recherche sémantique vers n'importe quel point de terminaison d'embeddings compatible OpenAI — un serveur auto-hébergé ou un autre fournisseur. La clé API ci-dessus vaut pour le point de terminaison que vous définissez ici."
     ],
+    "kSiB3X": ["Impossible de mettre à la ", ["trashNoun"]],
     "kUn-CN": ["Synchronisation désactivée"],
     "kV2YZv": [
       "Vous ne voyez pas <0>Compétences</0> ? Activez d'abord <1>Paramètres <2/> Fonctionnalités <3/> Exécution de code et création de fichiers</1>."
@@ -3993,9 +4003,6 @@
     "nCzR-G": ["Copier le code ", ["userCode"]],
     "nDT8qt": [["0"], " initialisé mais impossible à ouvrir."],
     "nG-XA9": ["Le texte ancré a disparu. Vous pouvez le replacer sur un texte sélectionné."],
-    "nGAFeH": [
-      "Les rapports que vous avez générés sur ce Mac. Relancez un envoi, affichez un fichier, ou supprimez celui dont vous n'avez plus besoin."
-    ],
     "nL-HHD": ["Échec du chargement de l’image"],
     "nMSYz5": [
       "Ce chemin se trouve sur un volume externe (/Volumes/...). OpenKnowledge perdra la trace des fichiers lorsque le disque sera éjecté."
@@ -4062,10 +4069,10 @@
     "nzHlj8": ["Fermer ", ["0"]],
     "nzaV6Q": ["Miniatures des pages"],
     "o0bHtA": ["Par OpenKnowledge"],
-    "o2yoFu": ["Afficher dans le Finder, sans espace de travail"],
     "o49mDZ": ["Chargement de l'historique de la chronologie"],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Mise à jour automatique depuis la source"],
+    "o9yN4T": ["Mettre à la Corbeille"],
     "oAFVKX": ["Échec de la mise à jour de la synchronisation par défaut du projet — ", ["detail"]],
     "oAGN8p": [
       "La branche distante <0>",
@@ -4314,9 +4321,6 @@
       ["repoName"],
       "</0>."
     ],
-    "rD-woT": [
-      "Dites-nous ce qui n'a pas fonctionné et nous rassemblerons les journaux. Rien ne quitte votre Mac avant que vous ne l'ayez relu."
-    ],
     "rDOuNw": ["Échec de l'importation du modèle"],
     "rENNI6": ["URL de partage non valide."],
     "rFL-yb": ["Modifier une copie"],
@@ -4427,6 +4431,11 @@
     "sgmRY8": ["Téléchargement de ", ["0"], " ignoré."],
     "shNd9t": ["Menu des commandes slash"],
     "skf5Ix": ["Augmente ou réduit le retrait des lignes de l'éditeur de source."],
+    "skvOCc": [
+      "Le fichier est dans votre ",
+      ["trashNoun"],
+      " ; l'observateur de fichiers fera la synchronisation."
+    ],
     "sn5BEU": [
       ["sizeText"],
       " · secrets masqués · ",
@@ -4506,6 +4515,13 @@
     "tqQBwN": ["Les scripts sont affichés pour relecture, jamais exécutés."],
     "tsiTqO": ["Collez votre clé API"],
     "tsyExA": ["Connectez vos outils IA à OpenKnowledge"],
+    "tvMvze": [
+      "Impossible de mettre \\\"",
+      ["targetName"],
+      "\\\" à la ",
+      ["trashNoun"],
+      ". Voulez-vous le supprimer définitivement ?"
+    ],
     "tzGWeg": ["Préparation de la désinstallation d'OpenKnowledge"],
     "tzZ6ha": ["Se connecter à GitHub Enterprise Server"],
     "u-9fWA": ["Voir <0>Architecture</0> pour la vue d'ensemble du système."],
@@ -4618,7 +4634,6 @@
     "vAUpF5": ["Le répertoire du clone d'origine du dépôt"],
     "vAYoCZ": ["Impossible d'ouvrir le worktree. Réessayez."],
     "vDXqVv": ["Insère un saut de ligne forcé markdown."],
-    "vEJDlt": ["Le fichier est dans votre corbeille ; le surveillant de fichiers s'en chargera."],
     "vF68cg": ["Champs"],
     "vGQxBT": [
       "Les mises à jour de la source s'appliquent automatiquement (sauf en cas de modification locale)"

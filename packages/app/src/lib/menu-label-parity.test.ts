@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { COMMAND_IDENTITIES, MENU_LABELS } from '@inkeep/open-knowledge-core';
+import { COMMAND_IDENTITIES, MENU_LABELS, PLATFORM_MENU_LABELS } from '@inkeep/open-knowledge-core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   PALETTE_COMMAND_LABELS,
   type PaletteLabelKey,
+  PLATFORM_PALETTE_COMMAND_LABELS,
 } from '@/components/command-palette-commands';
 import { i18n } from '@/lib/i18n';
 
@@ -97,4 +98,34 @@ describe('every palette descriptor is in the catalog and agrees with MENU_LABELS
     );
     expect(orphans).toEqual([]);
   });
+});
+
+describe('platform label overrides stay in sync between the native menu and the renderer', () => {
+  const platforms = ['win32', 'linux'] as const;
+  for (const platform of platforms) {
+    const paletteOverrides = PLATFORM_PALETTE_COMMAND_LABELS[platform];
+    for (const [key, coreOverrides] of Object.entries(PLATFORM_MENU_LABELS)) {
+      const coreLabel = coreOverrides?.[platform];
+      if (coreLabel === undefined) continue;
+      it(`renderer catalog contains the ${platform} override for ${key} ("${coreLabel}")`, () => {
+        expect(catalogStrings.has(coreLabel)).toBe(true);
+      });
+      it(`palette ${platform} override for ${key} equals the core override`, () => {
+        const descriptor = (
+          paletteOverrides as Partial<
+            Record<string, (typeof paletteOverrides)[keyof typeof paletteOverrides]>
+          >
+        )[key];
+        expect(descriptor).toBeDefined();
+        expect(i18n._(descriptor as NonNullable<typeof descriptor>)).toBe(coreLabel);
+      });
+    }
+    it(`every palette ${platform} override has a core PLATFORM_MENU_LABELS counterpart`, () => {
+      const orphans = Object.keys(paletteOverrides).filter(
+        (key) =>
+          PLATFORM_MENU_LABELS[key as keyof typeof PLATFORM_MENU_LABELS]?.[platform] === undefined,
+      );
+      expect(orphans).toEqual([]);
+    });
+  }
 });

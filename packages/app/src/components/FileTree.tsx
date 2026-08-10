@@ -209,7 +209,7 @@ import {
 import { importTemplate } from '@/lib/folder-config-api';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
-import { revealInFileManagerLabel } from '@/lib/reveal-label';
+import { revealInFileManagerLabel, trashNounLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import {
   buildDocShareInput,
@@ -3044,10 +3044,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     }
     if (failedCleanups.length > 0) {
       const failedCount = failedCleanups.length;
+      const trashNoun = trashNounLabel(
+        typeof window !== 'undefined' ? window.okDesktop?.platform : undefined,
+      );
       toast.error(
         t`Server-side cleanup failed for ${plural(failedCount, { one: '# item', other: '# items' })}`,
         {
-          description: t`The file is in your Trash; the file-watcher will reconcile.`,
+          description: t`The file is in your ${trashNoun}; the file-watcher will reconcile.`,
         },
       );
     }
@@ -3611,7 +3614,11 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
             {...(() => {
               const variant: 'electron' | 'web' =
                 typeof window !== 'undefined' && window.okDesktop != null ? 'electron' : 'web';
-              const copy = selectTrashConfirmCopy(variant, deleteRequest.targets);
+              const copy = selectTrashConfirmCopy(
+                variant,
+                deleteRequest.targets,
+                typeof window !== 'undefined' ? window.okDesktop?.platform : undefined,
+              );
               if (copy) {
                 return {
                   customTitle: copy.title,

@@ -1,6 +1,7 @@
 import { encodeShareUrl, KNOWN_NON_GITHUB_GIT_HOSTS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { STABLE_DMG_URL } from './download-links.ts';
+import { resolveTargetFromParams } from './download-targets.ts';
 import {
   buildCloneCommand,
   buildCustomSchemeUrl,
@@ -10,7 +11,7 @@ import {
   clipboardCopyOutcome,
   SPLASH_DOWNLOAD_URL,
   SPLASH_INSTALL_COMMAND,
-  splashCtaLayout,
+  splashDownloadQuery,
 } from './share-splash.ts';
 import { SITE_NAME } from './site.ts';
 
@@ -569,40 +570,25 @@ describe('classifySplashOs', () => {
   });
 });
 
-describe('splashCtaLayout', () => {
-  test('macOS and unknown render the cluster floor with the CLI in a disclosure', () => {
+describe('splashDownloadQuery', () => {
+  test('macOS and unknown both resolve to the Apple Silicon DMG', () => {
     for (const os of ['macos', 'unknown'] as const) {
-      expect(splashCtaLayout(os)).toEqual({
-        showWindowsNotice: false,
-        showCluster: true,
-        cliInline: false,
-        showStandaloneGithub: false,
-      });
+      expect(splashDownloadQuery(os)).toBe('?os=macos&arch=arm64&format=dmg');
     }
   });
 
-  test('Linux promotes the CLI inline, drops the cluster, and keeps a standalone GitHub link', () => {
-    expect(splashCtaLayout('linux')).toEqual({
-      showWindowsNotice: false,
-      showCluster: false,
-      cliInline: true,
-      showStandaloneGithub: true,
-    });
+  test('Windows guesses the x64 installer', () => {
+    expect(splashDownloadQuery('windows')).toBe('?os=windows&arch=x64&format=exe');
   });
 
-  test('Windows shows the not-supported notice only', () => {
-    expect(splashCtaLayout('windows')).toEqual({
-      showWindowsNotice: true,
-      showCluster: false,
-      cliInline: false,
-      showStandaloneGithub: false,
-    });
+  test('Linux guesses the x64 deb', () => {
+    expect(splashDownloadQuery('linux')).toBe('?os=linux&arch=x64&format=deb');
   });
 
-  test('every OS keeps a path to GitHub (regression guard for the Linux-drop bug)', () => {
-    for (const os of ['macos', 'linux', 'windows', 'unknown'] as const) {
-      const l = splashCtaLayout(os);
-      expect(l.showWindowsNotice || l.showCluster || l.showStandaloneGithub).toBe(true);
+  test('every query names a build the redirect routes can resolve', () => {
+    for (const os of ['macos', 'windows', 'linux', 'unknown'] as const) {
+      const params = new URLSearchParams(splashDownloadQuery(os).slice(1));
+      expect(resolveTargetFromParams(params)).not.toBeNull();
     }
   });
 });

@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Spinner } from '@/components/ui/spinner';
+import { revealInFileManagerLabel } from '@/lib/platform-labels';
 
 type PendingAction = 'retrying' | 'deleting';
 type HistoryStatus = 'loading' | 'ready' | 'error';
@@ -224,7 +225,9 @@ function ReportRow({
             variant="ghost"
             size="icon-xs"
             disabled={busy}
-            aria-label={t`Reveal in Finder`}
+            aria-label={revealInFileManagerLabel(
+              typeof window !== 'undefined' ? window.okDesktop?.platform : undefined,
+            )}
             onClick={() => onReveal(row)}
           >
             <FolderOpenIcon aria-hidden="true" />

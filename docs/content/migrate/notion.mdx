@@ -8,13 +8,13 @@ This guide will cover exporting your Notion workspace to markdown files so that 
 
 ## Install OpenKnowledge
 
-### macOS (Apple Silicon)
+### Desktop app (macOS, Windows, Linux)
 
-Download the latest version of the OpenKnowledge desktop app.
+Download the latest version of the OpenKnowledge desktop app. The button picks your platform automatically; its dropdown carries every other build, and the [downloads page](https://openknowledge.ai/download) lists them all.
 
-<DownloadButton label="Download for macOS" />
+<DownloadButton />
 
-### Linux, Windows, Intel Mac
+### Web app (any platform, including Intel Macs)
 
 Install the [ok CLI](/docs/reference/cli) with npm:
 
@@ -42,10 +42,12 @@ ok migrate notion /path/to/unzipped-export --apply
 ```
 
 <Callout type="info">
-  The desktop app installs the CLI to `$HOME/.ok/bin`; a pre-checked toggle in
-  its first-launch dialog puts `ok` on your `PATH`. If `ok` isn't found, add it
-  from **File → Set up OpenKnowledge integrations…**, then open a new terminal
-  window. If it's still missing, add `$HOME/.ok/bin` to your `PATH` manually.
+  The desktop app ships the `ok` CLI. The Windows installer and the Linux
+  packages put it on your `PATH` on their own. On macOS it installs to
+  `$HOME/.ok/bin`, and a pre-checked toggle in the first-launch dialog puts it
+  on your `PATH` — if `ok` isn't found, add it from **File → Set up
+  OpenKnowledge integrations…**, then open a new terminal window. If it's
+  still missing, add `$HOME/.ok/bin` to your `PATH` manually.
 </Callout>
 
 Every transform is **idempotent**, so re-running is safe. See the tables below for a full list of differences between the Notion export and what OpenKnowledge supports.
@@ -67,11 +69,11 @@ Every transform is **idempotent**, so re-running is safe. See the tables below f
 
 ## Open the export in OpenKnowledge
 
-### macOS Desktop app
+### Desktop app
 
 Open OpenKnowledge, choose **Open folder on disk**, select the unzipped export folder, and proceed through the **Setup** screen with defaults selected.
 
-### Linux, Windows, Intel Mac
+### Web app
 
 `cd` into the unzipped folder and run `ok init && ok start`.
 

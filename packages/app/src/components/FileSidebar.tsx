@@ -98,6 +98,7 @@ import {
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { ProfilerBoundary } from '@/lib/perf';
+import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { buildFolderShareInput, runShareAction } from '@/lib/share/run-share-action';
 import { useWorkspace } from '@/lib/use-workspace';
@@ -1284,12 +1285,14 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
               disabled={!workspace}
               onSelect={handleEmptySpaceReveal}
               data-testid="empty-space-menu-reveal-in-finder"
-              aria-label={workspace ? t`Reveal in Finder` : t`Reveal in Finder, No workspace`}
+              aria-label={
+                workspace
+                  ? revealInFileManagerLabel(bridge.platform)
+                  : t`${revealInFileManagerLabel(bridge.platform)}, No workspace`
+              }
             >
               <FolderOpen aria-hidden="true" />
-              <span className="flex-1">
-                <Trans>Reveal in Finder</Trans>
-              </span>
+              <span className="flex-1">{revealInFileManagerLabel(bridge.platform)}</span>
               {!workspace ? (
                 <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
                   <Trans>No workspace</Trans>

@@ -232,6 +232,39 @@ const PALETTE_COMMAND_LABELS = {
 export type PaletteLabelKey = keyof typeof PALETTE_COMMAND_LABELS;
 export { PALETTE_COMMAND_LABELS };
 
+/**
+ * Per-platform palette label overrides — the renderer mirror of core's
+ * `PLATFORM_MENU_LABELS` (Reveal in Finder / File Explorer / containing
+ * folder; Trash / Recycle Bin). Same literal-macro constraint as the base
+ * map; the label-parity test asserts these agree with the core overrides.
+ */
+const PLATFORM_PALETTE_COMMAND_LABELS = {
+  win32: {
+    revealInFinder: msg`Reveal in File Explorer`,
+    moveToTrash: msg`Move to Recycle Bin`,
+  },
+  linux: {
+    revealInFinder: msg`Open containing folder`,
+  },
+} as const satisfies Record<'win32' | 'linux', Partial<Record<PaletteLabelKey, MessageDescriptor>>>;
+
+export { PLATFORM_PALETTE_COMMAND_LABELS };
+
+function paletteLabelDescriptor(
+  key: PaletteLabelKey,
+  platform: string | null | undefined,
+): MessageDescriptor {
+  if (platform === 'win32' || platform === 'linux') {
+    const override = (
+      PLATFORM_PALETTE_COMMAND_LABELS[platform] as Partial<
+        Record<PaletteLabelKey, MessageDescriptor>
+      >
+    )[key];
+    if (override) return override;
+  }
+  return PALETTE_COMMAND_LABELS[key];
+}
+
 /** Renderer icon per command id. Every palette command must have one:
  *  `toPaletteCommand` throws at module load if an id is missing, rather than
  *  silently substituting a wrong default. */
@@ -393,6 +426,7 @@ function paletteCoreContext(ctx: PaletteCommandContext): CommandContext {
 }
 
 function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): string {
+  const platform = ctx.bridge?.platform;
   if (cmd.stateToggle) {
     const { overrideKey, overrideField } = cmd.stateToggle;
     // Same precedence as the native menu: an override names an action the
@@ -408,16 +442,16 @@ function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): 
     // native menu's default-visible fallback.
     const visible = ctx.viewMenuState[cmd.stateToggle.stateField] === true;
     const key = visible ? cmd.stateToggle.hideKey : cmd.stateToggle.showKey;
-    return i18n._(PALETTE_COMMAND_LABELS[key as PaletteLabelKey]);
+    return i18n._(paletteLabelDescriptor(key as PaletteLabelKey, platform));
   }
   if (cmd.placementToggle) {
     const key =
       ctx.viewMenuState.terminalPlacement === 'right'
         ? cmd.placementToggle.rightKey
         : cmd.placementToggle.bottomKey;
-    return i18n._(PALETTE_COMMAND_LABELS[key as PaletteLabelKey]);
+    return i18n._(paletteLabelDescriptor(key as PaletteLabelKey, platform));
   }
-  return i18n._(PALETTE_COMMAND_LABELS[cmd.labelKey as PaletteLabelKey]);
+  return i18n._(paletteLabelDescriptor(cmd.labelKey as PaletteLabelKey, platform));
 }
 
 function busDispatch(cmd: CommandIdentity): (ctx: PaletteCommandContext) => void {

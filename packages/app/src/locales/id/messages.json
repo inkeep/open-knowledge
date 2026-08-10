@@ -163,9 +163,6 @@
     "1t_NnN": ["Tolak"],
     "1u-mAI": ["Sinkronisasinya tidak bisa dimulai. Periksa koneksi Anda, lalu coba lagi."],
     "1vn0CI": ["Respons server tidak valid"],
-    "2-CeZn": [
-      "Laporan Anda tersimpan di Mac ini, jadi tidak ada yang hilang. Anda bisa mengirimkannya ke kami lewat surel saja."
-    ],
     "2277Tu": ["Ciutkan graf"],
     "237hSL": ["Berakhir"],
     "253MN6": ["Komentar Anda tidak bisa dikirim — silakan coba lagi."],
@@ -204,6 +201,7 @@
     "2hpdRq": ["Sembunyikan panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Masukkan URL yang valid (misalnya https://api.openai.com/v1)."],
     "2jUGEP": ["Hitung pemasangan keterampilan secara publik"],
+    "2l293S": ["Anda dapat memulihkan berkas ini dari Recycle Bin."],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["Kami sudah meneruskannya ke tim dan melampirkan log Anda."],
     "2n3oDU": [
@@ -412,16 +410,12 @@
     "5kWklo": ["(sebagian mungkin sudah disembunyikan oleh aturan lain)"],
     "5lWFkC": ["Masuk"],
     "5mksg0": ["Gagal menonaktifkan pencarian semantik — ", ["detail"]],
-    "5qNxOe": [
-      [
-        "count",
-        "plural",
-        { "other": ["#", " item tidak dapat dipindahkan ke Tempat Sampah. Hapus permanen saja?"] }
-      ]
-    ],
     "5qQr1u": ["Nilai yang diizinkan untuk ", ["field"]],
     "5rnB76": ["Suntingan Anda tetap di komputer ini"],
     "5soCUZ": ["Sunting pesan dalam antrean"],
+    "5ss1kT": [
+      "Laporan yang Anda buat di komputer ini. Coba kirim lagi, tampilkan berkas, atau hapus yang tidak Anda perlukan lagi."
+    ],
     "5tcmwY": ["Tambahkan nilai"],
     "5vAI6Z": ["Tidak cocok dengan alur kerja saya"],
     "5wV2qQ": ["dan lainnya"],
@@ -440,6 +434,9 @@
       "Penggandaan berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
     ],
     "69KLIV": ["Escape"],
+    "6ASTuj": [
+      "Perintah berjalan dengan akses penuh akun pengguna Anda di mesin ini. Matikan ini untuk menonaktifkan shell."
+    ],
     "6Aih4U": ["Luring"],
     "6FCixu": ["Buka kembali obrolan sebelumnya"],
     "6HCOwA": ["Gagal membuka."],
@@ -720,9 +717,6 @@
     "ANFxWn": ["Tema ini tidak dapat dihapus. Muat ulang lalu coba lagi."],
     "APNlbk": ["keluar ", ["0"]],
     "AQ-Lfg": ["Templat tidak bisa dimuat"],
-    "AQGtjK": [
-      "Perintah berjalan dengan seluruh akses akun pengguna macOS Anda di komputer ini. Matikan ini untuk menonaktifkan shell."
-    ],
     "ASqqsQ": ["Maksimal ", ["MAX_ATTACHMENTS"], " lampiran"],
     "AT0e50": ["Simpan keduanya"],
     "ATGYL1": ["Alamat surel"],
@@ -977,11 +971,6 @@
     "EWX92Z": ["Ciutkan Tanya AI"],
     "EZVxVz": ["Mengganti kecocokan yang aktif dengan isi bidang penggantian."],
     "E_A2Nq": ["Tautan siap, tetapi tidak dapat disalin ke papan klip."],
-    "E_BHoD": [
-      "\"",
-      ["targetName"],
-      "\" tidak dapat dipindahkan ke Tempat Sampah. Hapus permanen saja?"
-    ],
     "E_tNGD": ["Terhubung sebagai @", ["login"]],
     "EarrCe": ["Cari emoji"],
     "EbMUlU": ["Mode agen"],
@@ -1139,6 +1128,7 @@
     "GMaDTM": ["Gagal menyimpan pengaturan Slidev"],
     "GN6L5F": ["Nama berkas"],
     "GNkUvW": ["Dalam antrean — dikirim saat proses ini selesai"],
+    "GQ3O42": ["Tempat Sampah"],
     "GQDSBN": ["Opsi tata letak"],
     "GSYWCm": ["Sembunyikan panel dokumen"],
     "GUYwCr": ["Tutup pemberitahuan"],
@@ -1196,7 +1186,6 @@
     "H0WlWQ": ["Kisi baris dan kolom dengan satu baris kepala."],
     "H1TmTu": ["Perbaikan dihentikan. Berkas yang sudah diperbaiki tetap terperbaiki."],
     "H3oH0g": ["Ulangi"],
-    "H6nKok": ["Tampilkan di Pengelola Berkas"],
     "H86f9p": ["Ciutkan"],
     "HAkEqR": ["Berkas terbaru"],
     "HAvHev": ["Pembaruan otomatis mati untuk \"", ["name"], "\""],
@@ -1225,6 +1214,9 @@
       " dengan salinan mandiri keterampilan ini? Tidak ada hal lain yang berpindah."
     ],
     "HdkSiO": ["Berkas baru"],
+    "HepFJQ": [
+      "Laporan Anda tersimpan di komputer ini, jadi tidak ada yang hilang. Anda dapat mengirimkannya kepada kami lewat email."
+    ],
     "HfI1dR": ["Saya sudah punya secara lokal →"],
     "HjNrT0": [["0", "plural", { "other": ["#", " tautan balik"] }]],
     "Hl89Qd": ["Memuat templat"],
@@ -1617,6 +1609,7 @@
       "Baca basis kode ini dan susun spesifikasi teknis untuk modul yang paling rumit: sebuah ikhtisar, arsitekturnya, berkas-berkas utamanya, dan pertanyaan terbuka, semuanya tertaut dari sebuah halaman indeks spesifikasi."
     ],
     "Nay2Yr": ["Tidak ada agen yang cocok dengan pencarian Anda."],
+    "NcUznW": [["0"], ", tidak ada ruang kerja"],
     "NcurBF": ["Geser ke bawah"],
     "NeQ_0G": ["Kerjakan komentar-komentar ini"],
     "NeY1Np": ["Slidev terlalu lama saat memulai. Coba lagi."],
@@ -1716,6 +1709,9 @@
     "P3NS4G": ["Galat sintaks pola (baris ", ["lineNumber"], "): ", ["message"]],
     "P3S14k": [".ok/skills kembali ke Hanya saya."],
     "P3hnm0": ["Berkas terlalu besar untuk dibuka"],
+    "P441h8": [
+      "Beri tahu kami apa yang salah dan kami akan mengumpulkan log. Tidak ada yang meninggalkan komputer Anda sampai Anda meninjaunya."
+    ],
     "P47EWZ": ["Pengaturan bilah sisi tidak dapat diperbarui"],
     "P6gXB-": ["Ganti ", ["keyName"]],
     "P6lAT3": ["Folder tujuan: ", ["linkTitle"], ". Klik untuk membuka ikhtisarnya."],
@@ -1830,6 +1826,9 @@
     "QlAG4m": ["Ceritakan lebih banyak (opsional)"],
     "QlkiD5": ["Tempatkan ulang pada teks terpilih"],
     "QlxHAH": ["Menampilkan hasil untuk \"", ["semanticResultsLabel"], "\""],
+    "QpSqAP": [
+      "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
+    ],
     "Qpfxa1": [["secs"], "dtk"],
     "QqBQu1": ["Label <0>(teks tautan yang terlihat)</0>"],
     "Qvls7J": ["Spesifikasi teknik"],
@@ -1847,9 +1846,6 @@
     "R30SFt": ["Pakai ekstensi .yaml atau .yml dalam huruf kecil"],
     "R3y75Z": ["Sunting sumber"],
     "R4OWFD": ["Bagian"],
-    "R65q-K": [
-      "Shell sungguhan dimatikan untuk proyek ini. Menyalakannya membuat perintah berjalan dengan seluruh akses akun pengguna macOS Anda."
-    ],
     "R6ABfU": ["Bekerja langsung, tanpa tahap perencanaan"],
     "R9IDFz": ["Mengganti nama folder di disk dan id yang dipakai agen untuk memanggilnya."],
     "R9dK63": ["Contoh gambar"],
@@ -2044,9 +2040,6 @@
     "URmyfc": ["Detail"],
     "UTNVyS": ["Memilih seluruh dokumen sumber."],
     "UTZ97u": ["Pilihan harus berada di dalam proyek"],
-    "UTgWxm": [
-      "Tidak ada yang diunggah. Laporannya tetap di Mac ini sampai Anda mengirimkannya ke kami lewat surel."
-    ],
     "UVDasf": [
       "Sinkronisasi mati — suntingan Anda tetap di komputer ini sampai Anda melakukan commit dan push secara manual."
     ],
@@ -2076,6 +2069,9 @@
     ],
     "Uci-Ph": ["Daftar Berurut"],
     "Ud0Pj9": ["<0>Sumber cermin dihapus.</0> Dokumen <1>", ["src"], "</1> sudah tidak tersedia."],
+    "Udgz4J": [
+      "Tidak ada yang diunggah. Laporan tetap di komputer ini sampai Anda mengirimkannya kepada kami lewat email."
+    ],
     "UfW9Kr": [
       "Kueri pencarian Anda dan teks lengkap halaman yang cocok dikirim ke penyedia embedding Anda (OpenAI secara bawaan) untuk menghitung embedding."
     ],
@@ -2271,6 +2267,20 @@
     "Xisk4u": ["Disunting ", ["editedAgo"]],
     "Xk0-VC": [
       "Pratinjau tautan ke dokumen lain di proyek ini selalu aktif dan dibaca dari indeks lokal — untuk yang itu, tidak ada yang keluar dari komputer Anda."
+    ],
+    "Xkhr2Z": [
+      [
+        "count",
+        "plural",
+        {
+          "other": [
+            "#",
+            " item tidak dapat dipindahkan ke ",
+            ["trashNoun"],
+            ". Apakah Anda ingin menghapus permanen saja?"
+          ]
+        }
+      ]
     ],
     "Xl-UUg": ["guides/install atau https://contoh.com"],
     "XmJfZT": ["nama"],
@@ -2514,7 +2524,6 @@
     ],
     "aM23Wr": ["nama-halaman"],
     "aNb3JH": ["Salin sebagai YAML"],
-    "aOp3hw": ["Tidak bisa dipindahkan ke Tempat Sampah"],
     "aQD_86": ["Gagal memperbarui penyedia embedding — ", ["detail"]],
     "aQyGJc": ["Hal lain"],
     "aR4DgO": [
@@ -2658,6 +2667,7 @@
     "cUt8yN": ["Perubahan disimpan otomatis."],
     "cV7LOw": ["Wiki Tim"],
     "cVKnqL": ["Komentar yang menunggu dikirim tidak bisa dibaca: ", ["0"]],
+    "cVp1YI": ["Recycle Bin"],
     "cZGNlb": ["Tambahkan pola lain"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge memulihkan versi sebelumnya"],
@@ -3244,6 +3254,7 @@
     "kRTXGw": [
       "Arahkan pencarian semantik ke endpoint embedding mana pun yang kompatibel dengan OpenAI — server milik sendiri atau penyedia lain. Kunci API di atas berlaku untuk endpoint mana pun yang Anda setel di sini."
     ],
+    "kSiB3X": ["Tidak dapat memindahkan ke ", ["trashNoun"]],
     "kUn-CN": ["Sinkronisasi mati"],
     "kV2YZv": [
       "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
@@ -3472,9 +3483,6 @@
     "nG-XA9": [
       "Teks berjangkarnya sudah hilang. Anda bisa menempatkannya ulang pada teks yang dipilih."
     ],
-    "nGAFeH": [
-      "Laporan yang Anda buat di Mac ini. Coba kirim ulang, tampilkan sebuah berkas, atau hapus yang tidak Anda perlukan lagi."
-    ],
     "nL-HHD": ["Gambar gagal dimuat"],
     "nMSYz5": [
       "Jalur ini berada di volume eksternal (/Volumes/...). OpenKnowledge akan kehilangan jejak berkasnya ketika drive itu dicabut."
@@ -3533,10 +3541,10 @@
     "nzHlj8": ["Tutup ", ["0"]],
     "nzaV6Q": ["Gambar mini halaman"],
     "o0bHtA": ["Oleh OpenKnowledge"],
-    "o2yoFu": ["Tampilkan di Finder, tanpa ruang kerja"],
     "o49mDZ": ["Memuat riwayat lini masa"],
     "o9CrsQ": ["catatan-riset"],
     "o9fPtM": ["Perbarui otomatis dari sumber"],
+    "o9yN4T": ["Pindahkan ke Recycle Bin"],
     "oAFVKX": ["Gagal memperbarui sinkronisasi bawaan proyek — ", ["detail"]],
     "oAGN8p": [
       "Cabang remote <0>",
@@ -3731,9 +3739,6 @@
       ["repoName"],
       "</0>."
     ],
-    "rD-woT": [
-      "Ceritakan apa yang salah dan kami akan mengumpulkan lognya. Tidak ada yang keluar dari Mac Anda sebelum Anda meninjaunya."
-    ],
     "rDOuNw": ["Gagal mengimpor templat"],
     "rENNI6": ["URL berbagi tidak valid."],
     "rFL-yb": ["Sunting salinan"],
@@ -3839,6 +3844,7 @@
     "sgmRY8": ["Unduhan ", ["0"], " dilewati."],
     "shNd9t": ["Menu perintah garis miring"],
     "skf5Ix": ["Menambah atau mengurangi indentasi baris penyunting sumber."],
+    "skvOCc": ["Berkas ada di ", ["trashNoun"], " Anda; pengawas berkas akan menyelaraskannya."],
     "sn5BEU": [
       ["sizeText"],
       " · rahasia disunting · ",
@@ -3912,6 +3918,13 @@
     "tqQBwN": ["Skrip apa pun ditampilkan untuk ditinjau, tidak pernah dijalankan."],
     "tsiTqO": ["Tempelkan kunci API Anda"],
     "tsyExA": ["Hubungkan alat AI Anda ke OpenKnowledge"],
+    "tvMvze": [
+      "Tidak dapat memindahkan \\\"",
+      ["targetName"],
+      "\\\" ke ",
+      ["trashNoun"],
+      ". Apakah Anda ingin menghapus permanen saja?"
+    ],
     "tzGWeg": ["Bersiap mencopot OpenKnowledge"],
     "tzZ6ha": ["Hubungkan ke GitHub Enterprise Server"],
     "u-9fWA": ["Lihat <0>Arsitektur</0> untuk ikhtisar sistemnya."],
@@ -3992,7 +4005,6 @@
     "vAUpF5": ["Direktori klon asli repositori"],
     "vAYoCZ": ["Worktree-nya tidak bisa dibuka. Coba lagi."],
     "vDXqVv": ["Menyisipkan ganti baris paksa markdown."],
-    "vEJDlt": ["Berkasnya ada di Tempat Sampah Anda; pengamat berkas akan menyelaraskannya."],
     "vF68cg": ["Bidang"],
     "vGQxBT": ["Pembaruan dari sumbernya berlaku otomatis (kecuali sudah disunting secara lokal)"],
     "vGeNNQ": ["Salin sebuah prompt dan tempelkan ke agen Anda untuk menyiapkan proyek Anda."],

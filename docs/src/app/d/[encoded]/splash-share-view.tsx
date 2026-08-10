@@ -5,10 +5,8 @@ import { SiteFooter } from '@/components/footer';
 import { GitHubIcon } from '@/components/icons/github';
 import { OkWordmark } from '@/components/ok-wordmark';
 import { buildCloneCommand, SPLASH_INSTALL_COMMAND, type SplashView } from '@/lib/share-splash';
-import { downloadRouteForCta } from '@/lib/site';
-import { SplashButtonLabel, splashPrimaryButton } from './splash-buttons';
-import { SplashCliButton } from './splash-cli-button';
 import { SplashCtaPanel } from './splash-cta-panel';
+import { SplashFallbackCta } from './splash-fallback-cta';
 
 /** The decoded, well-formed share view (blob → doc, tree → folder). */
 type OkSplashView = Extract<SplashView, { kind: 'ok' }>;
@@ -136,8 +134,15 @@ function SplashChrome() {
   );
 }
 
-/** Rendered for the `invalid` and `unsupported-version` decode outcomes. */
-export function SplashFallback({ heading }: { heading: string }) {
+/**
+ * Rendered for the `invalid` and `unsupported-version` decode outcomes.
+ *
+ * Both arrive with no decoded share, but they are not the same problem, so
+ * each passes its own `description`: one visitor has the app and needs a newer
+ * build, the other has a link that never resolved to anything. A single shared
+ * line could only be vague enough to fit both.
+ */
+export function SplashFallback({ heading, description }: { heading: string; description: string }) {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-slide-bg font-[family-name:var(--font-dm-sans)]">
       <SplashChrome />
@@ -148,11 +153,14 @@ export function SplashFallback({ heading }: { heading: string }) {
             {heading}
           </h1>
 
+          <p className="mt-4 max-w-xl text-slide-muted">{description}</p>
+
+          {/* One CTA, not two. The old pairing put a download beside an "Open
+              with CLI" button whose panel had no share to open — it could only
+              offer a bare install, which is a step the caret here already
+              carries alongside every desktop build. */}
           <div className="mt-10 flex flex-wrap items-center gap-4">
-            <a href={downloadRouteForCta('share-splash-fallback')} className={splashPrimaryButton}>
-              <SplashButtonLabel direction="down">DOWNLOAD FOR MAC</SplashButtonLabel>
-            </a>
-            <SplashCliButton installCommand={SPLASH_INSTALL_COMMAND} />
+            <SplashFallbackCta />
           </div>
         </div>
       </section>

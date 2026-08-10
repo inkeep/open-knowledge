@@ -10,8 +10,9 @@
  *   multi folders:  "Are you sure you want to delete the following <N> directories and their contents?"
  *   multi mixed:    "Are you sure you want to delete the following <N> files/directories and their contents?"
  *
- * Detail (macOS):  "You can restore this file from the Trash."
- * Buttons:         [Move to Trash] [Cancel]
+ * Detail (macOS/Linux): "You can restore this file from the Trash."
+ * Detail (Windows):     "You can restore this file from the Recycle Bin."
+ * Buttons:              [Move to Trash] / [Move to Recycle Bin], [Cancel]
  *
  * Web mode uses today's `DeleteConfirmationDialog` copy via the `web` variant
  * of `selectTrashConfirmCopy` — keeps the verbatim copy Electron-scoped.
@@ -28,7 +29,7 @@ import type { FileTreeTarget } from '@/components/file-tree-operations';
 
 interface TrashConfirmCopy {
   title: string;
-  /** Render under the title; macOS Trash-restoration affordance. */
+  /** Render under the title; the OS trash-restoration affordance. */
   detail: string;
   /** When set, render the list of targets under the detail. */
   listedTargets: ReadonlyArray<FileTreeTarget> | null;
@@ -41,20 +42,27 @@ interface TrashConfirmCopy {
 /**
  * VSCode-verbatim Trash detail. macOS uses "this file" wording even for
  * folders + multi-target — matches VSCode (`getMoveToTrashMessage` in
- * `fileActions.ts`).
+ * `fileActions.ts`). Windows swaps the destination noun for "Recycle Bin"
+ * (also VSCode's copy there); Linux shares the macOS strings.
  *
- * A function, not a `const`: the macro at module scope would resolve once at
+ * Functions, not `const`s: the macro at module scope would resolve once at
  * import and then keep whatever language was active then.
  */
 export function trashDetailMacos(): string {
   return t`You can restore this file from the Trash.`;
 }
 
+export function trashDetailWindows(): string {
+  return t`You can restore this file from the Recycle Bin.`;
+}
+
 export function buildTrashConfirmCopyElectron(
   targets: ReadonlyArray<FileTreeTarget>,
+  platform?: string | null,
 ): TrashConfirmCopy {
-  const detail = trashDetailMacos();
-  const confirmLabel = t`Move to Trash`;
+  const isWindows = platform === 'win32';
+  const detail = isWindows ? trashDetailWindows() : trashDetailMacos();
+  const confirmLabel = isWindows ? t`Move to Recycle Bin` : t`Move to Trash`;
   const confirmLabelBusy = t`Moving`;
   if (targets.length === 0) {
     // Defensive — caller should never invoke with an empty target list, but
@@ -147,9 +155,10 @@ export function buildTrashConfirmCopyElectron(
 export function selectTrashConfirmCopy(
   variant: 'electron' | 'web',
   targets: ReadonlyArray<FileTreeTarget>,
+  platform?: string | null,
 ): TrashConfirmCopy | null {
   if (variant === 'web') return null;
-  return buildTrashConfirmCopyElectron(targets);
+  return buildTrashConfirmCopyElectron(targets, platform);
 }
 
 /** Display string for a target: folder shows trailing slash, markdown file shows extension. */

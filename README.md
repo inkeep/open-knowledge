@@ -13,9 +13,9 @@
 <div >
   <a href="https://openknowledge.ai">website</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-  <a href="https://openknowledge.ai/download/stable">macOS app</a>
+  <a href="https://openknowledge.ai/download">desktop app</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-  <a href="https://openknowledge.ai/docs/get-started/quickstart#ok-install-web-app-linux-windows-intel-mac">web UI + cli</a>
+  <a href="https://openknowledge.ai/docs/get-started/quickstart#ok-install-web-app">web UI + cli</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
   <a href="https://x.com/OpenKnowledge">𝕏</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
@@ -35,7 +35,7 @@
 
 Highlights:
 - Full true **WYSIWYG** so that editing markdown files feels like editing a Google Doc or Notion page. 
-- **macOS app** and **web UI** with file navigator, search, tabs, graph wiki link viewer, and more. 
+- **Desktop app** (macOS, Windows, Linux) and **web UI** with file navigator, search, tabs, graph wiki link viewer, and more. 
 - Integrated **side-by-side AI-editing** with **Claude, Codex, OpenCode, Pi and others**. Can be used with any harness/agent via MCP/CLI.
 - Out-of-the-box **MCP**, **skills**, and **agentic search** for LLM Wikis, second brains, and knowledge graphs.
 - No-code **Team sharing** and **Auto-sync** powered by git/GitHub under the hood.
@@ -43,9 +43,13 @@ Highlights:
 
 ## Install
 
-**macOS:** download the desktop app — open the DMG, drag **OpenKnowledge** to **Applications**, and launch it. [Latest release](https://github.com/inkeep/open-knowledge/releases/latest).
+**Desktop app** — download it from [openknowledge.ai/download](https://openknowledge.ai/download) (or grab an installer from the [latest release](https://github.com/inkeep/open-knowledge/releases/latest)):
 
-**Linux, Windows, Intel Mac:** run the same editor as a local web app via the CLI ([Node.js 24+](https://nodejs.org) and git required):
+- **macOS** (Apple Silicon): open the DMG and drag **OpenKnowledge** to **Applications**.
+- **Windows 10+** (x64 / Arm64): run the Setup installer — per-user, no admin prompt.
+- **Linux** (x64 / arm64): install the deb (Debian/Ubuntu) or rpm (Fedora/RHEL) package.
+
+**Web app** — on any platform (including Intel Macs and servers), run the same editor as a local web app via the CLI ([Node.js 24+](https://nodejs.org) and git required):
 
 ```bash
 npm install -g @inkeep/open-knowledge

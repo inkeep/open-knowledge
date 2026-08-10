@@ -357,6 +357,11 @@ msgstr "{0} 已经被删除了。"
 msgid "{0} was not moved."
 msgstr "未移动 {0}。"
 
+#. placeholder {0}: revealInFileManagerLabel(bridge.platform)
+#: src/components/FileSidebar.tsx
+msgid "{0}, No workspace"
+msgstr "{0}，无工作区"
+
 #. placeholder {0}: share.owner
 #. placeholder {1}: share.repo
 #. placeholder {2}: shareTargetPath(share.target)
@@ -481,8 +486,8 @@ msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# 条评论}}"
 
 #: src/components/TrashFailureModal.tsx
-msgid "{count, plural, one {# item could not be moved to the Trash. Do you want to permanently delete instead?} other {# items could not be moved to the Trash. Do you want to permanently delete instead?}}"
-msgstr "{count, plural, other {有 # 个项目无法移到废纸篓。要改为永久删除吗？}}"
+msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
+msgstr "{count, plural, other {# 个项目无法移到{trashNoun}。是否要改为永久删除？}}"
 
 #: src/presence/PresenceBar.tsx
 msgid "{count, plural, one {# more cross-doc participant} other {# more cross-doc participants}}"
@@ -1054,8 +1059,8 @@ msgid "A pull quote stands out from the surrounding text."
 msgstr "引文块会从周围的正文中凸显出来。"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
-msgstr "这个项目关闭了真实 shell。开启后，命令将以你的 macOS 用户账户的全部权限运行。"
+msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
+msgstr "本项目未启用真实 shell。启用后，命令将以你的用户账户的完整权限运行。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -2605,8 +2610,8 @@ msgid "Commands"
 msgstr "命令"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
-msgstr "命令将以你在这台电脑上的 macOS 用户账户的全部权限运行。关闭此项可禁用 shell。"
+msgid "Commands run with the full access of your user account on this machine. Turn this off to disable the shell."
+msgstr "命令将以你在本机用户账户的完整权限运行。关闭此项可禁用 shell。"
 
 #: src/comments/CommentBubbleButton.tsx
 msgid "Comment"
@@ -3144,8 +3149,8 @@ msgid "Could not load templates. Try again later."
 msgstr "无法加载模板。请稍后再试。"
 
 #: src/components/TrashFailureModal.tsx
-msgid "Could not move \"{targetName}\" to the Trash. Do you want to permanently delete instead?"
-msgstr "无法把 \"{targetName}\" 移到废纸篓。要改为永久删除吗？"
+msgid "Could not move \"{targetName}\" to the {trashNoun}. Do you want to permanently delete instead?"
+msgstr "无法将“{targetName}”移到{trashNoun}。是否要改为永久删除？"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Could not open {shareBranch} in a worktree. Try again."
@@ -3387,8 +3392,8 @@ msgid "Couldn't move skill: {0}"
 msgstr "无法移动技能：{0}"
 
 #: src/components/TrashFailureModal.tsx
-msgid "Couldn't move to Trash"
-msgstr "无法移到废纸篓"
+msgid "Couldn't move to {trashNoun}"
+msgstr "无法移到{trashNoun}"
 
 #: src/hooks/use-open-skill.ts
 msgid "Couldn't open \"{name}\" — it isn't in the project's skills yet."
@@ -7240,6 +7245,12 @@ msgstr "移动到左侧新窗格"
 msgid "Move to new pane right"
 msgstr "移动到右侧新窗格"
 
+#: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
+#: src/lib/platform-labels.ts
+msgid "Move to Recycle Bin"
+msgstr "移到回收站"
+
 #: src/components/TerminalTabStrip.tsx
 msgid "Move to right panel"
 msgstr "移到右侧面板"
@@ -7260,9 +7271,9 @@ msgstr "跳到可视化编辑器的下一个查找结果。"
 msgid "Move to the previous visual-editor find result."
 msgstr "跳到可视化编辑器的上一个查找结果。"
 
-#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/file-tree-trash-copy.ts
+#: src/lib/platform-labels.ts
 msgid "Move to Trash"
 msgstr "移到废纸篓"
 
@@ -7990,8 +8001,8 @@ msgid "Nothing set yet."
 msgstr "还没有设置任何内容。"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
-msgstr "什么都没有上传。在你把报告通过邮件发给我们之前，它只保存在这台 Mac 上。"
+msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
+msgstr "未上传任何内容。在你通过电子邮件发送给我们之前，报告会保留在这台电脑上。"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
@@ -8211,7 +8222,8 @@ msgstr "打开评论"
 msgid "Open Comments"
 msgstr "打开评论"
 
-#: src/lib/reveal-label.ts
+#: src/components/command-palette-commands.ts
+#: src/lib/platform-labels.ts
 msgid "Open containing folder"
 msgstr "打开所在文件夹"
 
@@ -9450,6 +9462,10 @@ msgstr "正在重新连接…"
 msgid "Recovered content"
 msgstr "已恢复的内容"
 
+#: src/lib/platform-labels.ts
+msgid "Recycle Bin"
+msgstr "回收站"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
@@ -9815,8 +9831,8 @@ msgid "Report this error"
 msgstr "报告这个错误"
 
 #: src/components/BugReportHistoryDialog.tsx
-msgid "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
-msgstr "你在这台 Mac 上生成的报告。可以重试发送、显示文件，或删除你不再需要的报告。"
+msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgstr "你在这台电脑上生成的报告。可以重新发送、显示文件，或删除不再需要的报告。"
 
 #: src/components/settings/AccountSection.tsx
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -10043,21 +10059,15 @@ msgstr "在侧边栏中连续点击时复用同一个标签页。关闭后，每
 msgid "Reused if it already exists, created if not."
 msgstr "如果已存在就复用，否则就新建。"
 
-#: src/lib/reveal-label.ts
+#: src/components/command-palette-commands.ts
+#: src/lib/platform-labels.ts
 msgid "Reveal in File Explorer"
 msgstr "在文件资源管理器中显示"
 
-#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/ReportBugDialogBody.tsx
-#: src/lib/reveal-label.ts
+#: src/lib/platform-labels.ts
 msgid "Reveal in Finder"
 msgstr "在访达中显示"
-
-#: src/components/FileSidebar.tsx
-msgid "Reveal in Finder, No workspace"
-msgstr "在访达中显示，无工作区"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -10865,14 +10875,9 @@ msgstr "显示隐藏文件"
 msgid "Show HTML preview"
 msgstr "显示 HTML 预览"
 
-#: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Show in Explorer"
 msgstr "在资源管理器中显示"
-
-#: src/components/AppMenubar.tsx
-msgid "Show in File Manager"
-msgstr "在文件管理器中显示"
 
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
@@ -11708,8 +11713,8 @@ msgid "Tell us more (optional)"
 msgstr "再多说一些（可选）"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
-msgstr "告诉我们哪里出了问题，我们会收集日志。在你确认之前，不会有任何内容离开你的 Mac。"
+msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
+msgstr "告诉我们出了什么问题，我们会收集日志。在你查看之前，不会有任何内容离开你的电脑。"
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -11922,8 +11927,8 @@ msgid "The endpoint didn't respond in time."
 msgstr "端点未在规定时间内响应。"
 
 #: src/components/FileTree.tsx
-msgid "The file is in your Trash; the file-watcher will reconcile."
-msgstr "文件在你的废纸篓里；文件监视器会自行处理。"
+msgid "The file is in your {trashNoun}; the file-watcher will reconcile."
+msgstr "文件已在你的{trashNoun}中；文件监视器将进行同步。"
 
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
@@ -12607,6 +12612,10 @@ msgstr "被链接最多的页面"
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "受 git 跟踪——更新通过你的仓库（pull 或 CI）流入，而不是自动更新"
+
+#: src/lib/platform-labels.ts
+msgid "Trash"
+msgstr "废纸篓"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Traverse OpenKnowledge navigation history backward."
@@ -13452,6 +13461,10 @@ msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "之后可以在<0>「设置 → 同步」</0>中更改。"
 
 #: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Recycle Bin."
+msgstr "你可以从回收站中恢复此文件。"
+
+#: src/components/file-tree-trash-copy.ts
 msgid "You can restore this file from the Trash."
 msgstr "你可以从废纸篓中恢复此文件。"
 
@@ -13596,8 +13609,8 @@ msgid "Your report is being sent."
 msgstr "你的报告正在发送。"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
-msgstr "你的报告保存在这台 Mac 上，所以什么都没有丢失。你可以改用邮件发给我们。"
+msgid "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
+msgstr "你的报告已保存在这台电脑上，因此没有丢失任何内容。你可以改为通过电子邮件发送给我们。"
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"

@@ -185,9 +185,6 @@
     "1t_NnN": ["Rechazar"],
     "1u-mAI": ["No se pudo iniciar la sincronización. Revisa tu conexión y vuelve a intentarlo."],
     "1vn0CI": ["Respuesta del servidor no válida"],
-    "2-CeZn": [
-      "Tu informe está guardado en este Mac, así que no se ha perdido nada. Puedes enviárnoslo por correo."
-    ],
     "2277Tu": ["Contraer el grafo"],
     "237hSL": ["Terminado"],
     "253MN6": ["No se pudieron enviar tus comentarios; inténtalo de nuevo."],
@@ -228,6 +225,7 @@
     "2hpdRq": ["Ocultar el panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Escribe una URL válida (por ejemplo https://api.openai.com/v1)."],
     "2jUGEP": ["Contar públicamente las instalaciones de habilidades"],
+    "2l293S": ["Puedes restaurar este archivo desde la Papelera de reciclaje."],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["Lo hemos pasado al equipo y hemos adjuntado tus registros."],
     "2n3oDU": [
@@ -478,32 +476,12 @@
     "5kWklo": ["(puede que otras reglas ya oculten algunos)"],
     "5lWFkC": ["Iniciar sesión"],
     "5mksg0": ["No se pudo desactivar la búsqueda semántica — ", ["detail"]],
-    "5qNxOe": [
-      [
-        "count",
-        "plural",
-        {
-          "one": [
-            "No se pudo mover ",
-            "#",
-            " elemento a la Papelera. ¿Quieres eliminarlo definitivamente?"
-          ],
-          "many": [
-            "No se pudieron mover ",
-            "#",
-            " elementos a la Papelera. ¿Quieres eliminarlos definitivamente?"
-          ],
-          "other": [
-            "No se pudieron mover ",
-            "#",
-            " elementos a la Papelera. ¿Quieres eliminarlos definitivamente?"
-          ]
-        }
-      ]
-    ],
     "5qQr1u": ["Valores permitidos para ", ["field"]],
     "5rnB76": ["Tus ediciones se quedan en este equipo"],
     "5soCUZ": ["Editar el mensaje en cola"],
+    "5ss1kT": [
+      "Informes que has generado en este equipo. Reintenta un envío, muestra un archivo o elimina el que ya no necesites."
+    ],
     "5tcmwY": ["Añadir valor"],
     "5vAI6Z": ["No encajaba en mi forma de trabajar"],
     "5wV2qQ": ["y más"],
@@ -522,6 +500,9 @@
       "Se duplicó correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"
     ],
     "69KLIV": ["Esc"],
+    "6ASTuj": [
+      "Los comandos se ejecutan con todo el acceso de tu cuenta de usuario en este equipo. Desactiva esto para deshabilitar el shell."
+    ],
     "6Aih4U": ["Sin conexión"],
     "6FCixu": ["Reabrir un chat anterior"],
     "6HCOwA": ["No se pudo abrir."],
@@ -850,9 +831,6 @@
     "ANFxWn": ["No se pudo eliminar este tema. Actualiza e inténtalo de nuevo."],
     "APNlbk": ["salida ", ["0"]],
     "AQ-Lfg": ["No se pudieron cargar las plantillas"],
-    "AQGtjK": [
-      "Los comandos se ejecutan con todo el acceso de tu cuenta de usuario de macOS en este equipo. Desactiva esto para deshabilitar el shell."
-    ],
     "ASqqsQ": ["Máximo ", ["MAX_ATTACHMENTS"], " adjuntos"],
     "AT0e50": ["Conservar ambos"],
     "ATGYL1": ["Dirección de correo"],
@@ -1158,11 +1136,6 @@
     "EWX92Z": ["Contraer Preguntar a la IA"],
     "EZVxVz": ["Reemplaza la coincidencia activa con el contenido del campo de reemplazo."],
     "E_A2Nq": ["El enlace está listo, pero no se pudo copiar al portapapeles."],
-    "E_BHoD": [
-      "No se pudo mover \"",
-      ["targetName"],
-      "\" a la Papelera. ¿Quieres eliminarlo definitivamente?"
-    ],
     "E_tNGD": ["Conectado como @", ["login"]],
     "EarrCe": ["Buscar emojis"],
     "EbMUlU": ["Modo agente"],
@@ -1328,6 +1301,7 @@
     "GMaDTM": ["No se pudo guardar la configuración de Slidev"],
     "GN6L5F": ["Nombre del archivo"],
     "GNkUvW": ["En cola: se enviará cuando termine esta ejecución"],
+    "GQ3O42": ["Papelera"],
     "GQDSBN": ["Opciones de diseño"],
     "GSYWCm": ["Ocultar el panel del documento"],
     "GUYwCr": ["Descartar el aviso"],
@@ -1395,7 +1369,6 @@
     "H0WlWQ": ["Cuadrícula de filas y columnas con una fila de encabezado."],
     "H1TmTu": ["Se dejó de arreglar. Los archivos ya arreglados se quedan como están."],
     "H3oH0g": ["Rehacer"],
-    "H6nKok": ["Mostrar en el gestor de archivos"],
     "H86f9p": ["Contraer"],
     "HAkEqR": ["Archivos recientes"],
     "HAvHev": ["Actualización automática desactivada para \"", ["name"], "\""],
@@ -1430,6 +1403,9 @@
       " por una copia independiente de la habilidad? No se mueve nada más."
     ],
     "HdkSiO": ["Archivo nuevo"],
+    "HepFJQ": [
+      "Tu informe está guardado en este equipo, así que no se perdió nada. Puedes enviárnoslo por correo."
+    ],
     "HfI1dR": ["Ya lo tengo en local →"],
     "HjNrT0": [
       [
@@ -1873,6 +1849,7 @@
       "Lee este código y redacta una especificación técnica del módulo más complejo: una visión general, la arquitectura, los archivos clave y las preguntas abiertas, todo enlazado desde una página índice de especificaciones."
     ],
     "Nay2Yr": ["Ningún agente coincide con tu búsqueda."],
+    "NcUznW": [["0"], ", sin espacio de trabajo"],
     "NcurBF": ["Desplazar hacia abajo"],
     "NeQ_0G": ["Trabaja sobre estos comentarios"],
     "NeY1Np": ["Slidev tardó demasiado en iniciarse. Inténtalo de nuevo."],
@@ -1974,6 +1951,9 @@
     "P3NS4G": ["Error de sintaxis en el patrón (línea ", ["lineNumber"], "): ", ["message"]],
     "P3S14k": [".ok/skills vuelve a estar en Solo yo."],
     "P3hnm0": ["El archivo es demasiado grande para abrirlo"],
+    "P441h8": [
+      "Cuéntanos qué salió mal y recopilaremos los registros. Nada sale de tu equipo hasta que lo hayas revisado."
+    ],
     "P47EWZ": ["No se pudieron actualizar los ajustes de la barra lateral"],
     "P6gXB-": ["Reemplazar ", ["keyName"]],
     "P6lAT3": ["Carpeta de destino: ", ["linkTitle"], ". Haz clic para abrir la vista general."],
@@ -2096,6 +2076,9 @@
     "QlAG4m": ["Cuéntanos más (opcional)"],
     "QlkiD5": ["Volver a colocar sobre el texto seleccionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
+    "QpSqAP": [
+      "El shell real está desactivado para este proyecto. Al activarlo, los comandos se ejecutan con todo el acceso de tu cuenta de usuario."
+    ],
     "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Etiqueta <0>(texto visible del enlace)</0>"],
     "Qvls7J": ["Especificaciones de ingeniería"],
@@ -2121,9 +2104,6 @@
     "R30SFt": ["Usa una extensión .yaml o .yml en minúsculas"],
     "R3y75Z": ["Editar el código fuente"],
     "R4OWFD": ["Secciones"],
-    "R65q-K": [
-      "El shell real está desactivado en este proyecto. Al activarlo, los comandos se ejecutan con todo el acceso de tu cuenta de usuario de macOS."
-    ],
     "R6ABfU": ["Trabajar directamente, sin paso de planificación"],
     "R9IDFz": ["Renombra la carpeta en el disco y el id con el que los agentes la invocan."],
     "R9dK63": ["Imagen de ejemplo"],
@@ -2336,9 +2316,6 @@
     "URmyfc": ["Detalles"],
     "UTNVyS": ["Selecciona el documento de código completo."],
     "UTZ97u": ["La selección debe estar dentro del proyecto"],
-    "UTgWxm": [
-      "No se subió nada. El informe se queda en este Mac hasta que nos lo envíes por correo."
-    ],
     "UVDasf": [
       "La sincronización está desactivada: tus ediciones se quedan en este equipo hasta que hagas commit y push a mano."
     ],
@@ -2372,6 +2349,9 @@
       "<0>Se eliminó la fuente del espejo.</0> El documento <1>",
       ["src"],
       "</1> ya no está disponible."
+    ],
+    "Udgz4J": [
+      "No se subió nada. El informe permanece en este equipo hasta que nos lo envíes por correo."
     ],
     "UfW9Kr": [
       "Tus consultas de búsqueda y el texto completo de las páginas que coinciden se envían a tu proveedor de embeddings (OpenAI por defecto) para calcular los embeddings."
@@ -2589,6 +2569,35 @@
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "Xk0-VC": [
       "Las vistas previas de enlaces a otros documentos de este proyecto están siempre activas y se leen del índice local: para esas no sale nada de tu equipo."
+    ],
+    "Xkhr2Z": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            "No se pudo mover ",
+            "#",
+            " elemento a la ",
+            ["trashNoun"],
+            ". ¿Quieres eliminarlo permanentemente?"
+          ],
+          "many": [
+            "No se pudieron mover ",
+            "#",
+            " elementos a la ",
+            ["trashNoun"],
+            ". ¿Quieres eliminarlos permanentemente?"
+          ],
+          "other": [
+            "No se pudieron mover ",
+            "#",
+            " elementos a la ",
+            ["trashNoun"],
+            ". ¿Quieres eliminarlos permanentemente?"
+          ]
+        }
+      ]
     ],
     "Xl-UUg": ["guides/install o https://ejemplo.com"],
     "XmJfZT": ["nombre"],
@@ -2871,7 +2880,6 @@
     ],
     "aM23Wr": ["nombre-de-pagina"],
     "aNb3JH": ["Copiar como YAML"],
-    "aOp3hw": ["No se pudo mover a la Papelera"],
     "aQD_86": ["No se pudo actualizar el proveedor de embeddings — ", ["detail"]],
     "aQyGJc": ["Otra cosa"],
     "aR4DgO": [
@@ -3040,6 +3048,7 @@
     "cUt8yN": ["Los cambios se guardan automáticamente."],
     "cV7LOw": ["Wiki del equipo"],
     "cVKnqL": ["No se pudieron leer los comentarios pendientes de envío: ", ["0"]],
+    "cVp1YI": ["Papelera de reciclaje"],
     "cZGNlb": ["Añadir otro patrón"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge restauró una versión anterior"],
@@ -3695,6 +3704,7 @@
     "kRTXGw": [
       "Apunta la búsqueda semántica a cualquier endpoint de embeddings compatible con OpenAI: un servidor propio u otro proveedor. La clave de API de arriba vale para el endpoint que definas aquí."
     ],
+    "kSiB3X": ["No se pudo mover a la ", ["trashNoun"]],
     "kUn-CN": ["Sincronización desactivada"],
     "kV2YZv": [
       "¿No ves <0>Habilidades</0>? Activa antes <1>Ajustes <2/> Capacidades <3/> Ejecución de código y creación de archivos</1>."
@@ -3954,9 +3964,6 @@
     "nG-XA9": [
       "El texto anclado ha desaparecido. Puedes volver a colocarlo sobre el texto seleccionado."
     ],
-    "nGAFeH": [
-      "Informes que has generado en este Mac. Puedes reintentar un envío, mostrar un archivo o eliminar el que ya no necesites."
-    ],
     "nL-HHD": ["No se pudo cargar la imagen"],
     "nMSYz5": [
       "Esta ruta está en un volumen externo (/Volumes/...). OpenKnowledge perderá la pista de los archivos cuando se expulse la unidad."
@@ -4023,10 +4030,10 @@
     "nzHlj8": ["Cerrar ", ["0"]],
     "nzaV6Q": ["Miniaturas de página"],
     "o0bHtA": ["Por OpenKnowledge"],
-    "o2yoFu": ["Mostrar en el Finder, sin espacio de trabajo"],
     "o49mDZ": ["Cargando el historial de la cronología"],
     "o9CrsQ": ["nota-de-investigacion"],
     "o9fPtM": ["Actualizar automáticamente desde el origen"],
+    "o9yN4T": ["Mover a la Papelera de reciclaje"],
     "oAFVKX": ["No se pudo actualizar la sincronización por defecto del proyecto — ", ["detail"]],
     "oAGN8p": [
       "La rama remota <0>",
@@ -4257,9 +4264,6 @@
       ["repoName"],
       "</0>."
     ],
-    "rD-woT": [
-      "Cuéntanos qué falló y recopilaremos los registros. Nada sale de tu Mac hasta que lo hayas revisado."
-    ],
     "rDOuNw": ["No se pudo importar la plantilla"],
     "rENNI6": ["URL para compartir no válida."],
     "rFL-yb": ["Editar una copia"],
@@ -4370,6 +4374,11 @@
     "sgmRY8": ["Se omitió la descarga de ", ["0"], "."],
     "shNd9t": ["Menú de comandos de barra"],
     "skf5Ix": ["Aumenta o reduce la sangría de las líneas del editor de código."],
+    "skvOCc": [
+      "El archivo está en tu ",
+      ["trashNoun"],
+      "; el observador de archivos lo reconciliará."
+    ],
     "sn5BEU": [
       ["sizeText"],
       " · secretos ocultos · ",
@@ -4448,6 +4457,13 @@
     "tqQBwN": ["Los scripts se muestran para que los revises; nunca se ejecutan."],
     "tsiTqO": ["Pega tu clave de API"],
     "tsyExA": ["Conecta tus herramientas de IA con OpenKnowledge"],
+    "tvMvze": [
+      "No se pudo mover \\\"",
+      ["targetName"],
+      "\\\" a la ",
+      ["trashNoun"],
+      ". ¿Quieres eliminarlo permanentemente?"
+    ],
     "tzGWeg": ["Preparando la desinstalación de OpenKnowledge"],
     "tzZ6ha": ["Conectar con GitHub Enterprise Server"],
     "u-9fWA": ["Consulta <0>Arquitectura</0> para ver una visión general del sistema."],
@@ -4560,7 +4576,6 @@
     "vAUpF5": ["El directorio del clon original del repositorio"],
     "vAYoCZ": ["No se pudo abrir el worktree. Inténtalo de nuevo."],
     "vDXqVv": ["Inserta un salto de línea forzado de markdown."],
-    "vEJDlt": ["El archivo está en tu Papelera; el vigilante de archivos lo reconciliará."],
     "vF68cg": ["Campos"],
     "vGQxBT": [
       "Las actualizaciones del origen se aplican automáticamente (salvo que se haya editado en local)"

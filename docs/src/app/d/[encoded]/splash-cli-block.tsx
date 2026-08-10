@@ -104,22 +104,28 @@ export function SplashCliBlock({
 
   return (
     <div className={cn(wrapperClassName ?? 'mt-12')}>
+      {/* "Open with CLI" only when there is something to open — the clone step
+          is what opens the share. Without it these commands just install the
+          CLI, and the old fixed heading promised an outcome the block did not
+          deliver. */}
       {showHeading ? (
         <p className="mb-2 inline-flex w-fit items-center gap-1.5 font-mono text-sm uppercase tracking-wide text-slide-muted">
-          Open with CLI
+          {cloneCommand ? 'Open with CLI' : 'Install the CLI'}
         </p>
       ) : null}
       {/* Single rounded code surface with a top-right copy icon, mirroring the
           docs code-block treatment rather than a nested inset + bottom text button.
-          Scroll + frame live on the wrapper; padding stays on the <pre> so the
-          trailing `px-4` survives a horizontal scroll (a scroll container drops
-          its own right padding at the scroll end). */}
+
+          The commands wrap rather than scroll: this panel is narrow, and a
+          horizontally-scrolled command reads as truncated — you cannot tell
+          what you are about to paste. `pr-12` keeps the first line clear of the
+          copy button, which used to sit on top of the text it copies. */}
       <div className="not-prose relative" data-testid="splash-cli-body">
-        <div className="subtle-scrollbar overflow-x-auto rounded-lg border bg-slide-bg dark:bg-white/5">
+        <div className="rounded-lg border bg-slide-bg dark:bg-white/5">
           <pre
             ref={codeRef}
             translate="no"
-            className="w-max min-w-full whitespace-pre px-4 pt-3 pb-2 font-mono text-sm leading-relaxed text-slide-text"
+            className="whitespace-pre-wrap break-words py-3 pr-12 pl-4 font-mono text-sm leading-relaxed text-slide-text"
           >
             <code className="block">{installCommand}</code>
             {cloneCommand ? <code className="block">{cloneCommand}</code> : null}

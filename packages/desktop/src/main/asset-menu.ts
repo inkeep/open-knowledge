@@ -4,7 +4,7 @@
  * so the gesture is attested without IPC gesture forwarding.
  *
  * Entries:
- *   - Reveal in Finder / Show in Explorer / Open in file manager
+ *   - Reveal in Finder / Reveal in File Explorer / Open containing folder
  *     (platform-label + `shell.showItemInFolder` via `revealAssetSafely`)
  *   - Open in default app (`shell.openPath` via `openAssetSafely`)
  *   - Copy link (main-process `clipboard.writeText(projectRelPath)`)
@@ -19,14 +19,14 @@
  * shape + callback dispatch without mounting Electron's Menu/Tray.
  */
 
-import { MENU_LABELS, NATIVE_MENU_LABELS } from '@inkeep/open-knowledge-core';
+import { menuLabelForPlatform, NATIVE_MENU_LABELS } from '@inkeep/open-knowledge-core';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
 type AssetMenuKind = 'asset' | 'wiki-link' | 'image';
 
 interface AssetMenuActions {
-  /** Fires on "Reveal in Finder" / "Show in Explorer" / "Open in file manager". */
+  /** Fires on "Reveal in Finder" / "Reveal in File Explorer" / "Open containing folder". */
   readonly reveal: () => void | Promise<void>;
   /** Fires on "Open in default app". */
   readonly openInDefault: () => void | Promise<void>;
@@ -35,16 +35,13 @@ interface AssetMenuActions {
 }
 
 /**
- * Platform-label for the Reveal-in-file-manager entry. macOS users expect
- * "Reveal in Finder" (the canonical OSX phrase used by VSCode, Xcode,
- * Finder itself); Windows expects "Show in Explorer"; Linux's generic
- * "Open in file manager" matches GNOME / KDE convention without pinning
- * a specific desktop.
+ * Platform-label for the Reveal-in-file-manager entry — the shared
+ * `PLATFORM_MENU_LABELS` vocabulary (Reveal in Finder / Reveal in File
+ * Explorer / Open containing folder), so this native menu, the app menu bar,
+ * and the renderer's context menus all name the action identically.
  */
 export function revealMenuLabel(platform: NodeJS.Platform): string {
-  if (platform === 'darwin') return MENU_LABELS.revealInFinder;
-  if (platform === 'win32') return NATIVE_MENU_LABELS.showInExplorer;
-  return NATIVE_MENU_LABELS.openInFileManager;
+  return menuLabelForPlatform('revealInFinder', platform);
 }
 
 interface BuildAssetMenuTemplateParams {

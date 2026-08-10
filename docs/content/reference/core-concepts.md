@@ -79,7 +79,7 @@ The third layer is the content itself. OpenKnowledge has **no database dependenc
 This means:
 
 - **No lock-in.** Your knowledge is portable markdown you can read, grep, diff, and commit with ordinary tools.
-- **Almost nothing to install.** The recommended path is the macOS app; there is no separate database or service to run.
+- **Almost nothing to install.** The recommended path is the desktop app (macOS, Windows, or Linux); there is no separate database or service to run.
 - **The engine is a management layer, not a gatekeeper.** It maintains consistency when you go through it, but editing the raw files yourself is always allowed.
 
 The set of files the engine treats as your knowledge base is the configured content directory. See [Configuration](./configuration.mdx) for where that and other settings live.

@@ -43,6 +43,7 @@ import type {
   OkMenuDispatchRequest,
   OkMenuRendererSnapshot,
 } from '@/lib/desktop-bridge-types';
+import { moveToTrashLabel, revealInFileManagerLabel } from '@/lib/platform-labels';
 
 export function AppMenubar() {
   const { t } = useLingui();
@@ -51,7 +52,6 @@ export function AppMenubar() {
 
   if (bridge == null || bridge.menu == null || bridge.platform === 'darwin') return null;
   const menu: NonNullable<OkDesktopBridge['menu']> = bridge.menu;
-  const isWindows = bridge.platform === 'win32';
 
   const dispatch = (request: OkMenuDispatchRequest): void => {
     void menu.dispatch(request).catch(() => {
@@ -70,7 +70,7 @@ export function AppMenubar() {
 
   const activeKind = snapshot?.activeTarget.kind ?? null;
   const view = snapshot?.viewMenuState;
-  const revealLabel = isWindows ? t`Show in Explorer` : t`Show in File Manager`;
+  const revealLabel = revealInFileManagerLabel(bridge.platform);
 
   return (
     <Menubar
@@ -164,7 +164,7 @@ export function AppMenubar() {
             disabled={activeKind === null}
             onSelect={() => dispatch({ kind: 'menu-action', action: 'move-to-trash' })}
           >
-            {t`Move to Trash`}
+            {moveToTrashLabel(bridge.platform)}
             <MenubarShortcut>Ctrl+Del</MenubarShortcut>
           </MenubarItem>
           <MenubarSeparator />

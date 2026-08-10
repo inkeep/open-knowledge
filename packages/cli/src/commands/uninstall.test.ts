@@ -22,6 +22,9 @@ describe('detectInstallMethods', () => {
         '/Users/x/.npm/_npx/abcd/node_modules/.bin/ok',
         npmStub,
         (p) => p === userApp, // hermetic: only the injected user-app path "exists"
+        // App probes are platform-gated now; pin the platform under test so
+        // the assertion doesn't track whatever OS the suite runs on.
+        { platform: 'darwin' },
       );
       const kinds = methods.map((m) => m.method);
       expect(kinds).toContain('app');
@@ -33,6 +36,43 @@ describe('detectInstallMethods', () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  test('detects the Windows NSIS install and points at Settings → Apps', () => {
+    const localAppData = 'C:\\Users\\Jane\\AppData\\Local';
+    // The probe composes with node:path join, which is host-flavored — build
+    // the expected string the same way so the test is portable.
+    const exe = join(
+      localAppData,
+      'Programs',
+      '@inkeepopen-knowledge-desktop',
+      'OpenKnowledge.exe',
+    );
+    const methods = detectInstallMethods(
+      'C:\\Users\\Jane',
+      undefined,
+      () => null,
+      (p) => p === exe,
+      {
+        platform: 'win32',
+        env: { LOCALAPPDATA: localAppData },
+      },
+    );
+    expect(methods.map((m) => m.method)).toEqual(['app']);
+    expect(methods[0]?.instruction).toContain('Settings');
+  });
+
+  test('detects the Linux deb/rpm install and names both package managers', () => {
+    const methods = detectInstallMethods(
+      '/home/jane',
+      undefined,
+      () => null,
+      (p) => p === '/opt/OpenKnowledge/openknowledge',
+      { platform: 'linux' },
+    );
+    expect(methods.map((m) => m.method)).toEqual(['app']);
+    expect(methods[0]?.instruction).toContain('apt remove openknowledge');
+    expect(methods[0]?.instruction).toContain('dnf remove OpenKnowledge');
   });
 
   test('returns nothing when no install is detected', () => {

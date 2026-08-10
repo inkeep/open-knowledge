@@ -165,9 +165,6 @@
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
     "1vn0CI": ["Invalid server response"],
-    "2-CeZn": [
-      "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
-    ],
     "2277Tu": ["Collapse graph"],
     "237hSL": ["Ended"],
     "253MN6": ["Couldn't send your comments — please try again."],
@@ -204,6 +201,7 @@
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
     "2jUGEP": ["Count skill installs publicly"],
+    "2l293S": ["You can restore this file from the Recycle Bin."],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["We've filed it with the team and attached your logs."],
     "2n3oDU": [
@@ -411,25 +409,12 @@
     "5kWklo": ["(some may already be hidden by other rules)"],
     "5lWFkC": ["Sign in"],
     "5mksg0": ["Failed to disable semantic search — ", ["detail"]],
-    "5qNxOe": [
-      [
-        "count",
-        "plural",
-        {
-          "one": [
-            "#",
-            " item could not be moved to the Trash. Do you want to permanently delete instead?"
-          ],
-          "other": [
-            "#",
-            " items could not be moved to the Trash. Do you want to permanently delete instead?"
-          ]
-        }
-      ]
-    ],
     "5qQr1u": ["Allowed values for ", ["field"]],
     "5rnB76": ["Your edits stay on this computer"],
     "5soCUZ": ["Edit queued message"],
+    "5ss1kT": [
+      "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+    ],
     "5tcmwY": ["Add value"],
     "5vAI6Z": ["It didn't fit into my workflow"],
     "5wV2qQ": ["and more"],
@@ -446,6 +431,9 @@
     ],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
     "69KLIV": ["Escape"],
+    "6ASTuj": [
+      "Commands run with the full access of your user account on this machine. Turn this off to disable the shell."
+    ],
     "6Aih4U": ["Offline"],
     "6FCixu": ["Reopen a past chat"],
     "6HCOwA": ["Failed to open."],
@@ -731,9 +719,6 @@
     "ANFxWn": ["Couldn’t delete this theme. Refresh and try again."],
     "APNlbk": ["exit ", ["0"]],
     "AQ-Lfg": ["Couldn't load templates"],
-    "AQGtjK": [
-      "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
-    ],
     "ASqqsQ": ["Maximum ", ["MAX_ATTACHMENTS"], " attachments"],
     "AT0e50": ["Keep both"],
     "ATGYL1": ["Email address"],
@@ -999,11 +984,6 @@
     "EWX92Z": ["Collapse Ask AI"],
     "EZVxVz": ["Replace the active match from the replace field."],
     "E_A2Nq": ["Link ready but could not copy to clipboard."],
-    "E_BHoD": [
-      "Could not move \"",
-      ["targetName"],
-      "\" to the Trash. Do you want to permanently delete instead?"
-    ],
     "E_tNGD": ["Connected as @", ["login"]],
     "EarrCe": ["Search emoji"],
     "EbMUlU": ["Agent mode"],
@@ -1153,6 +1133,7 @@
     "GMaDTM": ["Failed to save Slidev setting"],
     "GN6L5F": ["Filename"],
     "GNkUvW": ["Queued — sends when this run finishes"],
+    "GQ3O42": ["Trash"],
     "GQDSBN": ["Layout options"],
     "GSYWCm": ["Hide document panel"],
     "GUYwCr": ["Dismiss notice"],
@@ -1208,7 +1189,6 @@
     "H0WlWQ": ["Grid of rows and columns with a header row."],
     "H1TmTu": ["Stopped fixing. Files already fixed stay fixed."],
     "H3oH0g": ["Redo"],
-    "H6nKok": ["Show in File Manager"],
     "H86f9p": ["Collapse"],
     "HAkEqR": ["Recent files"],
     "HAvHev": ["Auto-update off for \"", ["name"], "\""],
@@ -1233,6 +1213,9 @@
       " with an independent copy of the skill? Nothing else moves."
     ],
     "HdkSiO": ["New file"],
+    "HepFJQ": [
+      "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
+    ],
     "HfI1dR": ["I already have it locally →"],
     "HjNrT0": [["0", "plural", { "one": ["#", " backlink"], "other": ["#", " backlinks"] }]],
     "Hl89Qd": ["Loading templates"],
@@ -1621,6 +1604,7 @@
       "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
     ],
     "Nay2Yr": ["No agents match your search."],
+    "NcUznW": [["0"], ", No workspace"],
     "NcurBF": ["Pan down"],
     "NeQ_0G": ["Work through these comments"],
     "NeY1Np": ["Slidev timed out while starting. Try again."],
@@ -1718,6 +1702,9 @@
     "P3NS4G": ["Pattern syntax error (line ", ["lineNumber"], "): ", ["message"]],
     "P3S14k": [".ok/skills is back to Only me."],
     "P3hnm0": ["File too large to open"],
+    "P441h8": [
+      "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
+    ],
     "P47EWZ": ["Could not update sidebar settings"],
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
@@ -1826,6 +1813,9 @@
     "QlAG4m": ["Tell us more (optional)"],
     "QlkiD5": ["Re-place on selected text"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
+    "QpSqAP": [
+      "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
+    ],
     "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
     "Qvls7J": ["Eng specs"],
@@ -1850,9 +1840,6 @@
     "R30SFt": ["Use a lowercase .yaml or .yml extension"],
     "R3y75Z": ["Edit source"],
     "R4OWFD": ["Sections"],
-    "R65q-K": [
-      "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
-    ],
     "R6ABfU": ["Work directly, no plan step"],
     "R9IDFz": ["Renames the folder on disk and the id agents use to invoke it."],
     "R9dK63": ["Sample image"],
@@ -2045,7 +2032,6 @@
     "URmyfc": ["Details"],
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
-    "UTgWxm": ["Nothing was uploaded. The report stays on this Mac until you email it to us."],
     "UVDasf": [
       "Sync is off — your edits stay on this computer until you commit and push manually."
     ],
@@ -2080,6 +2066,7 @@
       ["src"],
       "</1> is no longer available."
     ],
+    "Udgz4J": ["Nothing was uploaded. The report stays on this computer until you email it to us."],
     "UfW9Kr": [
       "Your search queries and the full text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
     ],
@@ -2260,6 +2247,26 @@
     "Xisk4u": ["Edited ", ["editedAgo"]],
     "Xk0-VC": [
       "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
+    ],
+    "Xkhr2Z": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            "#",
+            " item could not be moved to the ",
+            ["trashNoun"],
+            ". Do you want to permanently delete instead?"
+          ],
+          "other": [
+            "#",
+            " items could not be moved to the ",
+            ["trashNoun"],
+            ". Do you want to permanently delete instead?"
+          ]
+        }
+      ]
     ],
     "Xl-UUg": ["guides/install or https://example.com"],
     "XmJfZT": ["name"],
@@ -2501,7 +2508,6 @@
     ],
     "aM23Wr": ["page-name"],
     "aNb3JH": ["Copy as YAML"],
-    "aOp3hw": ["Couldn't move to Trash"],
     "aQD_86": ["Failed to update the embeddings provider — ", ["detail"]],
     "aQyGJc": ["Something else"],
     "aR4DgO": [
@@ -2634,6 +2640,7 @@
     "cUt8yN": ["Changes save automatically."],
     "cV7LOw": ["Team Wiki"],
     "cVKnqL": ["Couldn't read the comments waiting to send: ", ["0"]],
+    "cVp1YI": ["Recycle Bin"],
     "cZGNlb": ["Add another pattern"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge restored an earlier version"],
@@ -3210,6 +3217,7 @@
     "kRTXGw": [
       "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
     ],
+    "kSiB3X": ["Couldn't move to ", ["trashNoun"]],
     "kUn-CN": ["Sync off"],
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
@@ -3437,9 +3445,6 @@
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
     "nG-XA9": ["The anchored text is gone. You can re-place it on selected text."],
-    "nGAFeH": [
-      "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
-    ],
     "nL-HHD": ["Image failed to load"],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
@@ -3503,10 +3508,10 @@
     "nzHlj8": ["Close ", ["0"]],
     "nzaV6Q": ["Page thumbnails"],
     "o0bHtA": ["By OpenKnowledge"],
-    "o2yoFu": ["Reveal in Finder, No workspace"],
     "o49mDZ": ["Loading timeline history"],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Auto-update from source"],
+    "o9yN4T": ["Move to Recycle Bin"],
     "oAFVKX": ["Failed to update the project sync default — ", ["detail"]],
     "oAGN8p": [
       "Remote branch <0>",
@@ -3710,9 +3715,6 @@
       ["repoName"],
       "</0>."
     ],
-    "rD-woT": [
-      "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
-    ],
     "rDOuNw": ["Failed to import template"],
     "rENNI6": ["Invalid share URL."],
     "rFL-yb": ["Edit a copy"],
@@ -3817,6 +3819,7 @@
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
     "shNd9t": ["Slash command menu"],
     "skf5Ix": ["Indent or outdent source editor lines."],
+    "skvOCc": ["The file is in your ", ["trashNoun"], "; the file-watcher will reconcile."],
     "sn5BEU": [
       ["sizeText"],
       " · secrets redacted · ",
@@ -3889,6 +3892,13 @@
     "tqQBwN": ["Any scripts are shown for review, never run."],
     "tsiTqO": ["Paste your API key"],
     "tsyExA": ["Connect your AI tools to OpenKnowledge"],
+    "tvMvze": [
+      "Could not move \"",
+      ["targetName"],
+      "\" to the ",
+      ["trashNoun"],
+      ". Do you want to permanently delete instead?"
+    ],
     "tzGWeg": ["Preparing to uninstall OpenKnowledge"],
     "tzZ6ha": ["Connect to GitHub Enterprise Server"],
     "u-9fWA": ["See <0>Architecture</0> for the system overview."],
@@ -3984,7 +3994,6 @@
     "vAUpF5": ["The repository's original clone directory"],
     "vAYoCZ": ["Couldn't open the worktree. Try again."],
     "vDXqVv": ["Insert a markdown hard break."],
-    "vEJDlt": ["The file is in your Trash; the file-watcher will reconcile."],
     "vF68cg": ["Fields"],
     "vGQxBT": ["Updates from the source apply automatically (unless edited locally)"],
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],

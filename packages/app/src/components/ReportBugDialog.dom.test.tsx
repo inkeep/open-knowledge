@@ -29,6 +29,9 @@ vi.doMock('@lingui/react/macro', () => ({
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
   ),
   useLingui: () => ({ t: renderLinguiTemplate }),
+  // Both macro entrypoints alias to one shim module, so this mock also serves
+  // `@lingui/core/macro` — the bare `t` is what platform-labels.ts imports.
+  t: renderLinguiTemplate,
 }));
 
 // Radix Dialog (focus trap) reaches for DOM globals the jsdom preload does not
@@ -237,7 +240,7 @@ describe('ReportBugDialog', () => {
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
     expect(
       screen.getByText(
-        "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it.",
+        "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it.",
       ),
     ).not.toBeNull();
 
@@ -412,7 +415,7 @@ describe('ReportBugDialog', () => {
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toContain("The report service couldn't be reached.");
     expect(alert.textContent).toContain(
-      'Your report is saved on this Mac, so nothing was lost. You can email it to us instead.',
+      'Your report is saved on this computer, so nothing was lost. You can email it to us instead.',
     );
     expect(screen.getByText('2026-07-10T00-00-00-bugreport.zip')).not.toBeNull();
 
@@ -446,7 +449,7 @@ describe('ReportBugDialog', () => {
     await screen.findByRole('heading', { name: 'Send your report by email' });
     expect(
       screen.getByText(
-        'Nothing was uploaded. The report stays on this Mac until you email it to us.',
+        'Nothing was uploaded. The report stays on this computer until you email it to us.',
       ),
     ).not.toBeNull();
     // An informational state, not an error: no alert, no unreachable-service

@@ -53,6 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 
 const SUPPORT_EMAIL = 'support@inkeep.com';
@@ -453,8 +454,8 @@ function ReportBugDialog({
               {crashInvite === undefined && (
                 <DialogDescription>
                   <Trans>
-                    Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until
-                    you've reviewed it.
+                    Tell us what went wrong and we'll gather the logs. Nothing leaves your computer
+                    until you've reviewed it.
                   </Trans>
                 </DialogDescription>
               )}
@@ -871,7 +872,7 @@ function ReportBugDialog({
                   upload happened, so no alert banner belongs here. */}
               <DialogDescription>
                 <Trans>
-                  Nothing was uploaded. The report stays on this Mac until you email it to us.
+                  Nothing was uploaded. The report stays on this computer until you email it to us.
                 </Trans>
               </DialogDescription>
             </DialogHeader>
@@ -929,8 +930,8 @@ function ReportBugDialog({
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     <Trans>
-                      Your report is saved on this Mac, so nothing was lost. You can email it to us
-                      instead.
+                      Your report is saved on this computer, so nothing was lost. You can email it
+                      to us instead.
                     </Trans>
                   </p>
                 </div>
@@ -1023,7 +1024,9 @@ function ZipCard({ zipPath, zipSizeBytes, fileCount, rawDumpIncluded, onReveal }
         className="h-auto shrink-0 p-0 text-xs"
         onClick={() => onReveal(zipPath)}
       >
-        <Trans>Reveal in Finder</Trans>
+        {revealInFileManagerLabel(
+          typeof window !== 'undefined' ? window.okDesktop?.platform : undefined,
+        )}
       </Button>
     </div>
   );

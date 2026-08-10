@@ -34,7 +34,7 @@ export function mcpCommand(getConfig: () => Config): Command {
     )
     .option(
       '--no-bundle-proxy',
-      'Run the npm-fetched MCP server in-process instead of proxying to the macOS Desktop bundle (equivalent: OK_BUNDLE_PROXY=0)',
+      'Run the npm-fetched MCP server in-process instead of proxying to the Desktop app bundle (macOS-only proxy; no-op elsewhere; equivalent: OK_BUNDLE_PROXY=0)',
     )
     .action(async (opts: { port?: string; bundleProxy?: boolean }) => {
       try {

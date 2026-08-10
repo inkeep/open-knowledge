@@ -55,7 +55,7 @@ import {
   SkillMenuSubTrigger,
 } from '@/components/skill-menu-primitives';
 import { useOpenSkill } from '@/hooks/use-open-skill';
-import { revealInFileManagerLabel } from '@/lib/reveal-label';
+import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { skillDir, useSkillScopeLabels } from '@/lib/skill-scope';
 import { convertSkillLocation, duplicateSkill, installSkill } from '@/lib/skills-api';

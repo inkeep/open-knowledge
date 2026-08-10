@@ -26,6 +26,12 @@
  * file-vs-folder affordance.
  */
 
+import {
+  classifyDownloadOs,
+  type DetectedOs,
+  defaultTargetForOs,
+  targetQuery,
+} from './download-targets';
 import { SITE_NAME } from './site';
 
 const SHARE_URL_VERSION_V1 = 0x01;
@@ -368,83 +374,23 @@ export function buildCloneCommand({
   return `ok clone ${quoteShareArg(owner)}/${quoteShareArg(repo)} -b ${quoteShareArg(branch)}`;
 }
 
-export type SplashOs = 'macos' | 'linux' | 'windows' | 'unknown';
+/**
+ * The splash shares the site-wide OS classifier rather than carrying its own —
+ * a second copy would let the splash and the rest of the site disagree about
+ * what a given browser is.
+ */
+export type SplashOs = DetectedOs;
+export const classifySplashOs = classifyDownloadOs;
 
 /**
- * Classify the recipient's OS from `navigator.userAgentData.platform`
- * (preferred) OR `navigator.userAgent` (fallback). Returns platform only,
- * NEVER architecture — Apple-Silicon vs Intel is undetectable in-browser:
- * Apple freezes the macOS UA to "Intel Mac OS X" on both, and UA Client
- * Hints are Chromium-only and misreport under Rosetta. Mobile (iOS/Android)
- * falls through to 'unknown' so the server-rendered macOS floor is the safe
- * rendering — they can't run the desktop app or the CLI.
+ * Query suffix the client appends to the splash Download CTA once it has
+ * classified the recipient. Always concrete: an unknown OS falls back to the
+ * macOS floor, which is what the route would have served anyway, and naming it
+ * explicitly keeps the analytics slice honest instead of recording every
+ * undetected visitor as a bare default.
  */
-export function classifySplashOs(input: string | null | undefined): SplashOs {
-  if (!input) return 'unknown';
-  const lower = input.toLowerCase();
-  if (
-    lower.includes('iphone') ||
-    lower.includes('ipad') ||
-    lower.includes('android') ||
-    lower === 'ios'
-  ) {
-    return 'unknown';
-  }
-  if (lower.includes('mac') || lower === 'darwin') return 'macos';
-  if (lower.includes('win')) return 'windows';
-  if (
-    lower.includes('linux') ||
-    lower.includes('x11') ||
-    lower.includes('cros') ||
-    lower.includes('chrome os')
-  ) {
-    return 'linux';
-  }
-  return 'unknown';
-}
-
-/**
- * Per-OS CTA layout decision for the splash, extracted as a pure function so the
- * branch logic is unit-testable: a Linux-branch regression (dropping the GitHub
- * fallback) previously reached QA because this rendering decision had no test.
- * Invariant: GitHub stays reachable on every OS — the cluster carries it on
- * macOS/unknown, a standalone link on Linux, the not-supported notice on Windows.
- */
-export interface SplashCtaLayout {
-  /** Windows: replace the CTAs with the not-supported notice (which keeps GitHub). */
-  showWindowsNotice: boolean;
-  /** Render the DMG + deep-link + GitHub cluster (the macOS/unknown floor). */
-  showCluster: boolean;
-  /** Render the CLI inline (Linux) vs. inside the Download dropdown popover (macOS/unknown). */
-  cliInline: boolean;
-  /** Render a standalone GitHub fallback link (Linux, where the cluster is dropped). */
-  showStandaloneGithub: boolean;
-}
-
-export function splashCtaLayout(os: SplashOs): SplashCtaLayout {
-  if (os === 'windows') {
-    return {
-      showWindowsNotice: true,
-      showCluster: false,
-      cliInline: false,
-      showStandaloneGithub: false,
-    };
-  }
-  if (os === 'linux') {
-    return {
-      showWindowsNotice: false,
-      showCluster: false,
-      cliInline: true,
-      showStandaloneGithub: true,
-    };
-  }
-  // macOS / unknown: the server-rendered floor — cluster (with GitHub); the CLI lives in the Download popover.
-  return {
-    showWindowsNotice: false,
-    showCluster: true,
-    cliInline: false,
-    showStandaloneGithub: false,
-  };
+export function splashDownloadQuery(os: SplashOs): string {
+  return `?${targetQuery(defaultTargetForOs(os))}`;
 }
 
 export type ClipboardCopyOutcome = { kind: 'copied' } | { kind: 'fallback-select' };

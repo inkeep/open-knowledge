@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { SplashButtonLabel, splashPrimaryButton } from '@/app/d/[encoded]/splash-buttons';
+import { DownloadTextLink } from '@/components/download-text-link';
 import { SlideEyebrow, SlideHeading, SlideLead, SlidePageShell } from '@/components/slide-page';
 import {
   decideContinue,
@@ -9,7 +10,6 @@ import {
   PENDING_SHARE_COOKIE,
   PORT_PARAM,
 } from '@/lib/deferred-share';
-import { downloadRouteForCta } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,12 +79,10 @@ export default async function ContinuePage({ searchParams }: ContinuePageProps) 
             <span className="font-medium">Open in OpenKnowledge</span> to jump straight to it.
             <br />
             Don&rsquo;t have the app yet?{' '}
-            <a
-              href={downloadRouteForCta('continue-page')}
+            <DownloadTextLink
+              cta="continue-page"
               className="font-medium text-slide-text underline underline-offset-4 transition-colors hover:text-primary"
-            >
-              Download it for macOS
-            </a>
+            />
             .
           </p>
         </div>

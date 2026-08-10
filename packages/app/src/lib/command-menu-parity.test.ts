@@ -90,6 +90,11 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'Rename',
   'Move to Trash',
   'Reveal in Finder',
+  // Platform variants of moveToTrash / revealInFinder (PLATFORM_MENU_LABELS in
+  // core) — the same commands, so the same palette rows cover them.
+  'Move to Recycle Bin',
+  'Reveal in File Explorer',
+  'Open containing folder',
   'Open with AI',
   'Full path',
   'Relative path',
@@ -292,7 +297,12 @@ describe('command-menu parity ratchet', () => {
   });
 
   test('Ratchet B: every actionable menu leaf is classified across both platforms', () => {
-    const leaves = [...collectLeavesForPlatform('darwin'), ...collectLeavesForPlatform('win32')];
+    const leaves = [
+      ...collectLeavesForPlatform('darwin'),
+      ...collectLeavesForPlatform('win32'),
+      // linux shares win32's menu structure but carries its own reveal label.
+      ...collectLeavesForPlatform('linux'),
+    ];
     const untracked = leaves.filter((leaf) => {
       if (leaf.role) return !OS_ROLE_EXEMPT.has(leaf.role);
       const label = normalizeLabel(leaf.label);

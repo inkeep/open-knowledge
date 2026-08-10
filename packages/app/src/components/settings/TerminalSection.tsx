@@ -99,8 +99,8 @@ export function TerminalSection() {
           </label>
           <p className="text-1sm text-muted-foreground" data-testid="settings-terminal-body">
             {isOn
-              ? t`Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell.`
-              : t`A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account.`}
+              ? t`Commands run with the full access of your user account on this machine. Turn this off to disable the shell.`
+              : t`A real shell is off for this project. Turning it on runs commands with the full access of your user account.`}
           </p>
         </div>
         <Switch

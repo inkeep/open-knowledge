@@ -36,7 +36,7 @@ import {
   emitFileTreeMenuActionDuplicate,
   emitFileTreeMenuActionImportTemplate,
 } from '@/lib/file-tree-menu-action-events';
-import { revealInFileManagerLabel } from '@/lib/reveal-label';
+import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import {
   buildDocShareInput,
@@ -149,6 +149,9 @@ export function EditorTabTargetMenuItems({
     });
   }
 
+  // Explicit `?? 'linux'` keeps this call site's historical no-bridge wording
+  // ("Open containing folder"), which the helper's own default would change to
+  // the macOS phrasing.
   const revealLabel = revealInFileManagerLabel(bridge?.platform ?? 'linux');
   const noWorkspaceHint = workspace ? null : t`No workspace`;
   const fullPath = workspace

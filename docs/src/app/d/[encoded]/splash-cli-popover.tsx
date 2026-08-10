@@ -3,6 +3,13 @@
 import { ArrowUpRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  type DetectedOs,
+  orderTargetsForOs,
+  targetQuery,
+  WEB_APP_HREF,
+  WEB_APP_LABEL,
+} from '@/lib/download-targets';
 import { cn } from '@/lib/utils';
 import { SplashCliBlock } from './splash-cli-block';
 
@@ -18,6 +25,15 @@ interface SplashCliPopoverProps {
   cloneCommand?: string;
   /** When set, a "View on GitHub" link-out is appended below the CLI block. */
   githubUrl?: string;
+  /**
+   * Download route the panel appends each build's params to. When set, the
+   * panel leads with one row per published build. On a decoded share this is
+   * the query-less `/d/<encoded>/download` route, so the share-pairing cookie
+   * survives whichever platform the recipient picks; the fallback screens pass
+   * the tracked stable route, which already carries a `utm_content`.
+   */
+  platformBaseUrl?: string;
+  detectedOs?: DetectedOs;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
 }
@@ -30,11 +46,29 @@ interface SplashCliPopoverProps {
  * panels can't drift. Portalled to <body> (never clipped / out-stacked) with
  * Radix focus-trapping + outside-click/Escape dismissal.
  */
+/**
+ * Append a build's params to the download base. The share route arrives
+ * query-less and the tracked stable route arrives carrying `utm_content`, so
+ * the separator can't be hardcoded — the fallback screens would otherwise mint
+ * a second `?` and drop the attribution that follows it.
+ */
+function withTargetQuery(base: string, query: string): string {
+  return `${base}${base.includes('?') ? '&' : '?'}${query}`;
+}
+
+const PLATFORM_ROW = cn(
+  'block rounded px-2 py-1.5 -mx-2 text-sm text-slide-text',
+  'transition-colors hover:bg-slide-text/[0.06]',
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slide-accent',
+);
+
 export function SplashCliPopover({
   trigger,
   installCommand,
   cloneCommand,
   githubUrl,
+  platformBaseUrl,
+  detectedOs = 'unknown',
   align = 'end',
   sideOffset = 12,
 }: SplashCliPopoverProps) {
@@ -46,10 +80,36 @@ export function SplashCliPopover({
       <PopoverContent
         align={align}
         sideOffset={sideOffset}
-        aria-label="Open with CLI"
+        aria-label="More ways to install"
         data-testid="splash-more-options-panel"
         className="w-88 max-w-[calc(100vw-2rem)] text-left"
       >
+        {platformBaseUrl ? (
+          <div className="mb-4" data-testid="splash-platform-list">
+            <p className="mb-1.5 font-mono text-xs uppercase tracking-wide text-slide-muted">
+              Other platforms
+            </p>
+            <ul className="flex flex-col">
+              {orderTargetsForOs(detectedOs).map((target) => (
+                <li key={target.id}>
+                  <a
+                    href={withTargetQuery(platformBaseUrl, targetQuery(target))}
+                    onClick={() => setOpen(false)}
+                    className={PLATFORM_ROW}
+                  >
+                    {target.label}
+                  </a>
+                </li>
+              ))}
+              <li>
+                <a href={WEB_APP_HREF} onClick={() => setOpen(false)} className={PLATFORM_ROW}>
+                  {WEB_APP_LABEL}
+                </a>
+              </li>
+            </ul>
+          </div>
+        ) : null}
+
         <SplashCliBlock
           installCommand={installCommand}
           cloneCommand={cloneCommand}

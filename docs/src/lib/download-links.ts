@@ -43,6 +43,26 @@ export const DMG_ASSET_NAME = 'OpenKnowledge-arm64.dmg';
 export const STABLE_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/latest/download/${DMG_ASSET_NAME}`;
 
 /**
+ * Every non-macOS installer asset, under the same version-less-name contract as
+ * the DMG. Names are pinned by the `artifactName` patterns in
+ * packages/desktop/electron-builder.yml — `nsis.artifactName` →
+ * `OpenKnowledge-Setup-${arch}.exe`, `linux.artifactName` → per-target arch
+ * spellings (deb uses amd64/arm64, rpm x86_64/aarch64). Changing either side
+ * breaks the other.
+ *
+ * No arch is browser-detectable, so nothing here is auto-selected on evidence:
+ * the picker in `download-targets.ts` guesses a default per OS and offers the
+ * rest explicitly.
+ */
+const RELEASE_ASSET_BASE = 'https://github.com/inkeep/open-knowledge/releases/latest/download';
+export const STABLE_WINDOWS_SETUP_X64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-Setup-x64.exe`;
+export const STABLE_WINDOWS_SETUP_ARM64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-Setup-arm64.exe`;
+export const LINUX_DEB_X64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-amd64.deb`;
+export const LINUX_DEB_ARM64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-arm64.deb`;
+export const LINUX_RPM_X64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-x86_64.rpm`;
+export const LINUX_RPM_ARM64_URL = `${RELEASE_ASSET_BASE}/OpenKnowledge-aarch64.rpm`;
+
+/**
  * Degraded-path target: a human clicking a shared link during a GitHub API
  * failure still lands somewhere actionable.
  */

@@ -82,7 +82,7 @@ The negation is an OpenKnowledge behavior; `git` itself only reads `.gitignore`,
 
 ## Temporarily surfacing hidden files
 
-The sidebar always lists every file on disk under the content directory, including files excluded by `.gitignore` / `.okignore` (listings truncate at 50,000 entries, deepest paths first). Dot-prefixed entries are the exception, so the sidebar's right-click menu and the macOS **View** menu carry a project-local **Show Hidden Files** toggle for when you need to see them without permanently editing `.okignore`:
+The sidebar always lists every file on disk under the content directory, including files excluded by `.gitignore` / `.okignore` (listings truncate at 50,000 entries, deepest paths first). Dot-prefixed entries are the exception, so the sidebar's right-click menu and the **View** menu carry a project-local **Show Hidden Files** toggle for when you need to see them without permanently editing `.okignore`:
 
 - **Show Hidden Files** stops the client from hiding paths that start with `.` (recovers allowed dotfiles like `brain/.archived/note.md`). Tooling internals (`.git/`, `.ok/`, `node_modules/`), secret-bearing paths (`.env` files, private keys, credential files, `.ssh/`), and OS junk (`.DS_Store`) stay hidden in every mode.
 

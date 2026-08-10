@@ -193,8 +193,12 @@ export function MarketingButton({
   // pages — render them as a raw <a> so next/link never prefetches them (which
   // would fire the redirect and inflate download counts) or double-fetches on
   // click. Mirrors the raw-<a> pattern in app/d/[encoded]/splash-buttons.tsx.
+  // Bare `/download` is the ok-marketing zone's page (microfrontends.json) —
+  // not served by this app, so it must skip next/link too or the sidebar CTA
+  // viewport-prefetches an RSC payload this app can't answer.
   const isRedirectRoute =
-    typeof href === 'string' && (href.startsWith('/download/') || href.startsWith('/updates/'));
+    typeof href === 'string' &&
+    (href === '/download' || href.startsWith('/download/') || href.startsWith('/updates/'));
   // An explicit `download` only takes effect on a raw <a> — next/link drops the
   // attribute — so force the raw-anchor path (also avoids prefetching the file).
   const useRawAnchor = isFileLink || isRedirectRoute || typeof download !== 'undefined';

@@ -16,11 +16,11 @@ describe('revealMenuLabel — platform-specific Reveal text', () => {
   test('macOS → Reveal in Finder', () => {
     expect(revealMenuLabel('darwin')).toBe('Reveal in Finder');
   });
-  test('Windows → Show in Explorer', () => {
-    expect(revealMenuLabel('win32')).toBe('Show in Explorer');
+  test('Windows → Reveal in File Explorer', () => {
+    expect(revealMenuLabel('win32')).toBe('Reveal in File Explorer');
   });
-  test('Linux → Open in file manager', () => {
-    expect(revealMenuLabel('linux')).toBe('Open in file manager');
+  test('Linux → Open containing folder', () => {
+    expect(revealMenuLabel('linux')).toBe('Open containing folder');
   });
 });
 

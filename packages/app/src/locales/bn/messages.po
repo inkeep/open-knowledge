@@ -357,6 +357,11 @@ msgstr "{0} ইতিমধ্যেই মুছে ফেলা হয়ে�
 msgid "{0} was not moved."
 msgstr "{0} সরানো হয়নি।"
 
+#. placeholder {0}: revealInFileManagerLabel(bridge.platform)
+#: src/components/FileSidebar.tsx
+msgid "{0}, No workspace"
+msgstr "{0}, কোনো ওয়ার্কস্পেস নেই"
+
 #. placeholder {0}: share.owner
 #. placeholder {1}: share.repo
 #. placeholder {2}: shareTargetPath(share.target)
@@ -481,8 +486,8 @@ msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# মন্তব্য} other {# মন্তব্য}}"
 
 #: src/components/TrashFailureModal.tsx
-msgid "{count, plural, one {# item could not be moved to the Trash. Do you want to permanently delete instead?} other {# items could not be moved to the Trash. Do you want to permanently delete instead?}}"
-msgstr "{count, plural, one {# আইটেম ট্র্যাশে পাঠানো যায়নি। আপনি কি বদলে স্থায়ীভাবে মুছে ফেলতে চান?} other {# আইটেম ট্র্যাশে পাঠানো যায়নি। আপনি কি বদলে স্থায়ীভাবে মুছে ফেলতে চান?}}"
+msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
+msgstr "{count, plural, one {# টি আইটেম {trashNoun}-এ পাঠানো যায়নি। এর বদলে কি স্থায়ীভাবে মুছে ফেলতে চান?} other {# টি আইটেম {trashNoun}-এ পাঠানো যায়নি। এর বদলে কি স্থায়ীভাবে মুছে ফেলতে চান?}}"
 
 #: src/presence/PresenceBar.tsx
 msgid "{count, plural, one {# more cross-doc participant} other {# more cross-doc participants}}"
@@ -1050,8 +1055,8 @@ msgid "A pull quote stands out from the surrounding text."
 msgstr "একটি পুল কোট চারপাশের লেখা থেকে আলাদা করে চোখে পড়ে।"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
-msgstr "এই প্রকল্পের জন্য সত্যিকারের শেল বন্ধ। এটি চালু করলে কমান্ডগুলো আপনার macOS ব্যবহারকারী অ্যাকাউন্টের পূর্ণ অধিকার নিয়ে চলে।"
+msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
+msgstr "এই প্রকল্পের জন্য আসল শেল বন্ধ আছে। চালু করলে কমান্ডগুলো আপনার ইউজার অ্যাকাউন্টের পূর্ণ অ্যাক্সেস নিয়ে চলে।"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -2601,8 +2606,8 @@ msgid "Commands"
 msgstr "কমান্ড"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
-msgstr "কমান্ডগুলো এই মেশিনে আপনার macOS ব্যবহারকারী অ্যাকাউন্টের পূর্ণ অধিকার নিয়ে চলে। শেল নিষ্ক্রিয় করতে এটি বন্ধ করুন।"
+msgid "Commands run with the full access of your user account on this machine. Turn this off to disable the shell."
+msgstr "এই মেশিনে কমান্ডগুলো আপনার ইউজার অ্যাকাউন্টের পূর্ণ অ্যাক্সেস নিয়ে চলে। শেল বন্ধ করতে এটি বন্ধ করুন।"
 
 #: src/comments/CommentBubbleButton.tsx
 msgid "Comment"
@@ -3140,8 +3145,8 @@ msgid "Could not load templates. Try again later."
 msgstr "টেমপ্লেট লোড করা যায়নি। পরে আবার চেষ্টা করুন।"
 
 #: src/components/TrashFailureModal.tsx
-msgid "Could not move \"{targetName}\" to the Trash. Do you want to permanently delete instead?"
-msgstr "\"{targetName}\" ট্র্যাশে পাঠানো যায়নি। আপনি কি বদলে স্থায়ীভাবে মুছে ফেলতে চান?"
+msgid "Could not move \"{targetName}\" to the {trashNoun}. Do you want to permanently delete instead?"
+msgstr "\\\"{targetName}\\\" {trashNoun}-এ পাঠানো যায়নি। এর বদলে কি স্থায়ীভাবে মুছে ফেলতে চান?"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Could not open {shareBranch} in a worktree. Try again."
@@ -3383,8 +3388,8 @@ msgid "Couldn't move skill: {0}"
 msgstr "স্কিল সরানো যায়নি: {0}"
 
 #: src/components/TrashFailureModal.tsx
-msgid "Couldn't move to Trash"
-msgstr "ট্র্যাশে পাঠানো যায়নি"
+msgid "Couldn't move to {trashNoun}"
+msgstr "{trashNoun}-এ পাঠানো যায়নি"
 
 #: src/hooks/use-open-skill.ts
 msgid "Couldn't open \"{name}\" — it isn't in the project's skills yet."
@@ -7236,6 +7241,12 @@ msgstr "বাঁ পাশের নতুন প্যানে সরান"
 msgid "Move to new pane right"
 msgstr "ডান পাশের নতুন প্যানে সরান"
 
+#: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
+#: src/lib/platform-labels.ts
+msgid "Move to Recycle Bin"
+msgstr "রিসাইকেল বিনে পাঠান"
+
 #: src/components/TerminalTabStrip.tsx
 msgid "Move to right panel"
 msgstr "ডান প্যানেলে সরান"
@@ -7256,9 +7267,9 @@ msgstr "দৃশ্য-সম্পাদকের পরবর্তী খো
 msgid "Move to the previous visual-editor find result."
 msgstr "দৃশ্য-সম্পাদকের আগের খোঁজার ফলাফলে যান।"
 
-#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/file-tree-trash-copy.ts
+#: src/lib/platform-labels.ts
 msgid "Move to Trash"
 msgstr "ট্র্যাশে পাঠান"
 
@@ -7986,8 +7997,8 @@ msgid "Nothing set yet."
 msgstr "এখনও কিছুই নির্ধারিত হয়নি।"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
-msgstr "কিছুই আপলোড হয়নি। আপনি আমাদের ইমেইল না করা পর্যন্ত রিপোর্টটি এই Mac-এই থাকে।"
+msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
+msgstr "কিছুই আপলোড করা হয়নি। আপনি আমাদের ইমেল না করা পর্যন্ত রিপোর্টটি এই কম্পিউটারেই থাকে।"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
@@ -8207,7 +8218,8 @@ msgstr "মন্তব্য খুলুন"
 msgid "Open Comments"
 msgstr "মন্তব্য খুলুন"
 
-#: src/lib/reveal-label.ts
+#: src/components/command-palette-commands.ts
+#: src/lib/platform-labels.ts
 msgid "Open containing folder"
 msgstr "যে ফোল্ডারে আছে সেটি খুলুন"
 
@@ -9446,6 +9458,10 @@ msgstr "আবার যুক্ত হচ্ছে…"
 msgid "Recovered content"
 msgstr "পুনরুদ্ধার করা বিষয়বস্তু"
 
+#: src/lib/platform-labels.ts
+msgid "Recycle Bin"
+msgstr "রিসাইকেল বিন"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
@@ -9811,8 +9827,8 @@ msgid "Report this error"
 msgstr "এই ত্রুটিটি জানান"
 
 #: src/components/BugReportHistoryDialog.tsx
-msgid "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
-msgstr "আপনি এই Mac-এ যেসব রিপোর্ট তৈরি করেছেন। কোনোটি আবার পাঠান, কোনো ফাইল দেখান, বা যেটি আর দরকার নেই সেটি মুছুন।"
+msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgstr "এই কম্পিউটারে আপনার তৈরি করা রিপোর্ট। পাঠানোর আবার চেষ্টা করুন, কোনো ফাইল দেখান, বা প্রয়োজন নেই এমন রিপোর্ট মুছে ফেলুন।"
 
 #: src/components/settings/AccountSection.tsx
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -10039,21 +10055,15 @@ msgstr "সাইডবার ঘুরে ক্লিক করার সম�
 msgid "Reused if it already exists, created if not."
 msgstr "আগে থেকে থাকলে পুনরায় ব্যবহার করা হয়, না থাকলে তৈরি করা হয়।"
 
-#: src/lib/reveal-label.ts
+#: src/components/command-palette-commands.ts
+#: src/lib/platform-labels.ts
 msgid "Reveal in File Explorer"
 msgstr "File Explorer-এ দেখান"
 
-#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/ReportBugDialogBody.tsx
-#: src/lib/reveal-label.ts
+#: src/lib/platform-labels.ts
 msgid "Reveal in Finder"
 msgstr "Finder-এ দেখান"
-
-#: src/components/FileSidebar.tsx
-msgid "Reveal in Finder, No workspace"
-msgstr "Finder-এ দেখান, কোনো ওয়ার্কস্পেস নেই"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -10861,14 +10871,9 @@ msgstr "লুকানো ফাইল দেখান"
 msgid "Show HTML preview"
 msgstr "HTML প্রাকদর্শন দেখান"
 
-#: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Show in Explorer"
 msgstr "Explorer-এ দেখান"
-
-#: src/components/AppMenubar.tsx
-msgid "Show in File Manager"
-msgstr "File Manager-এ দেখান"
 
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
@@ -11704,8 +11709,8 @@ msgid "Tell us more (optional)"
 msgstr "আরও বলুন (ঐচ্ছিক)"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
-msgstr "কী ভুল হয়েছে আমাদের জানান, আমরা লগ জোগাড় করব। আপনার পর্যালোচনার আগে কিছুই আপনার Mac ছেড়ে যায় না।"
+msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
+msgstr "কী ভুল হয়েছে আমাদের জানান, আমরা লগ সংগ্রহ করব। আপনি পর্যালোচনা না করা পর্যন্ত কিছুই আপনার কম্পিউটার থেকে বাইরে যায় না।"
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -11918,8 +11923,8 @@ msgid "The endpoint didn't respond in time."
 msgstr "এন্ডপয়েন্ট সময়মতো সাড়া দেয়নি।"
 
 #: src/components/FileTree.tsx
-msgid "The file is in your Trash; the file-watcher will reconcile."
-msgstr "ফাইলটি আপনার ট্র্যাশে আছে; ফাইল-পর্যবেক্ষক মিলিয়ে নেবে।"
+msgid "The file is in your {trashNoun}; the file-watcher will reconcile."
+msgstr "ফাইলটি আপনার {trashNoun}-এ আছে; ফাইল-ওয়াচার মিলিয়ে নেবে।"
 
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
@@ -12603,6 +12608,10 @@ msgstr "সবচেয়ে বেশি লিংক করা পাতা"
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "git-এ হিসাবভুক্ত — হালনাগাদ আপনার রিপোজিটরির মাধ্যমে আসে (pull বা CI), স্বয়ংক্রিয় হালনাগাদে নয়"
+
+#: src/lib/platform-labels.ts
+msgid "Trash"
+msgstr "ট্র্যাশ"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Traverse OpenKnowledge navigation history backward."
@@ -13448,6 +13457,10 @@ msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "আপনি এটি পরে <0>Settings → Sync</0>-এ বদলাতে পারেন।"
 
 #: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Recycle Bin."
+msgstr "আপনি এই ফাইলটি রিসাইকেল বিন থেকে পুনরুদ্ধার করতে পারেন।"
+
+#: src/components/file-tree-trash-copy.ts
 msgid "You can restore this file from the Trash."
 msgstr "আপনি এই ফাইলটি ট্র্যাশ থেকে পুনরুদ্ধার করতে পারেন।"
 
@@ -13592,8 +13605,8 @@ msgid "Your report is being sent."
 msgstr "আপনার রিপোর্ট পাঠানো হচ্ছে।"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
-msgstr "আপনার রিপোর্ট এই Mac-এ সংরক্ষিত আছে, তাই কিছুই হারায়নি। আপনি বদলে সেটি আমাদের ইমেইল করতে পারেন।"
+msgid "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
+msgstr "আপনার রিপোর্ট এই কম্পিউটারে সংরক্ষিত আছে, তাই কিছুই হারায়নি। আপনি এর বদলে আমাদের ইমেল করতে পারেন।"
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"

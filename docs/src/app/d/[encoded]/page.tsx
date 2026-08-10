@@ -65,12 +65,26 @@ export default async function SplashPage({ params }: SplashPageProps) {
   const { encoded } = await params;
   const view = buildSplashViewModel(encoded);
 
+  // The two failure states need different advice. An unsupported version means
+  // the app is installed and merely old, so the in-app updater is the fastest
+  // route and gets named first; an invalid link never resolved to anything, so
+  // there is nothing to open and the sender is the only fix.
   if (view.kind === 'unsupported-version') {
-    return <SplashFallback heading="Update OpenKnowledge to open this share." />;
+    return (
+      <SplashFallback
+        heading="Update OpenKnowledge to open this share."
+        description="This link was made by a newer version than the one you have. Open OpenKnowledge and choose Check for updates, or install the current build below."
+      />
+    );
   }
 
   if (view.kind === 'invalid') {
-    return <SplashFallback heading="Invalid share URL." />;
+    return (
+      <SplashFallback
+        heading="Invalid share URL."
+        description="This link is incomplete or was altered in transit, so there is nothing to open. Ask whoever sent it for a fresh link. You can still get the app below."
+      />
+    );
   }
 
   return <SplashShareView encoded={encoded} view={view} />;

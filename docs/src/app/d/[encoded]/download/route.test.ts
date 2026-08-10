@@ -32,8 +32,8 @@ vi.doMock('../../../../lib/deferred-share.ts', () => ({
 
 const { GET } = await import('./route.ts');
 
-function call(encoded: string): Promise<Response> {
-  return GET(new Request(`https://openknowledge.ai/d/${encoded}/download`), {
+function call(encoded: string, query = ''): Promise<Response> {
+  return GET(new Request(`https://openknowledge.ai/d/${encoded}/download${query}`), {
     params: Promise.resolve({ encoded }),
   });
 }
@@ -71,6 +71,59 @@ describe('GET /d/[encoded]/download', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('set-cookie')).toBeNull();
     expect(_lastCapture?.event).toBe('dmg_downloaded');
+  });
+
+  test('the full triple picks that exact build, cookie + count intact', async () => {
+    _viewKind = 'ok';
+    _lastCapture = null;
+    const res = await call('valid-share', '?os=linux&arch=arm64&format=rpm');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://github.com/inkeep/open-knowledge/releases/latest/download/OpenKnowledge-aarch64.rpm',
+    );
+    expect(res.headers.get('set-cookie')).toContain('ok-pending-share=valid-share');
+    expect(_lastCapture?.event).toBe('dmg_downloaded');
+    expect(_lastCapture?.properties).toMatchObject({ os: 'linux', arch: 'arm64', format: 'rpm' });
+  });
+
+  // Links minted before the picker carried `?os=` alone; they must keep working
+  // rather than silently falling back to the mac DMG on a Windows machine.
+  test('a bare ?os= resolves to that OS default build', async () => {
+    _viewKind = 'ok';
+    _lastCapture = null;
+    const windows = await call('valid-share', '?os=windows');
+    expect(windows.headers.get('location')).toBe(
+      'https://github.com/inkeep/open-knowledge/releases/latest/download/OpenKnowledge-Setup-x64.exe',
+    );
+    expect(_lastCapture?.properties).toMatchObject({ os: 'windows', arch: 'x64', format: 'exe' });
+
+    const linux = await call('valid-share', '?os=linux');
+    expect(linux.headers.get('location')).toBe(
+      'https://github.com/inkeep/open-knowledge/releases/latest/download/OpenKnowledge-amd64.deb',
+    );
+    expect(_lastCapture?.properties).toMatchObject({ os: 'linux', arch: 'x64', format: 'deb' });
+  });
+
+  test('an unrecognized ?os= falls back to the DMG', async () => {
+    _viewKind = 'ok';
+    _lastCapture = null;
+    const res = await call('valid-share', '?os=beos');
+    expect(res.headers.get('location')).toBe(SPLASH_URL);
+    expect(_lastCapture?.properties).toMatchObject({ os: 'macos', arch: 'arm64', format: 'dmg' });
+  });
+
+  // The share carry is the whole point of this route: a platform row that
+  // pointed anywhere else would download fine and lose the share.
+  test('every platform row still sets the pairing cookie', async () => {
+    _viewKind = 'ok';
+    for (const query of [
+      '?os=macos&arch=arm64&format=dmg',
+      '?os=windows&arch=arm64&format=exe',
+      '?os=linux&arch=x64&format=rpm',
+    ]) {
+      const res = await call('valid-share', query);
+      expect(res.headers.get('set-cookie')).toContain('ok-pending-share=valid-share');
+    }
   });
 
   test('a prefetch still redirects (with cookie) but is NOT counted', async () => {

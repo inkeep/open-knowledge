@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
+import { trashNounLabel } from '@/lib/platform-labels';
 
 /**
  * VSCode-parity fallback modal. When `shell.trashItem` fails for one or more
@@ -128,21 +129,21 @@ export function TrashFailureModal({
   const only = failedTargets[0];
   const count = failedTargets.length;
   const targetName = only ? displayTargetName(only) : '';
+  const trashNoun = trashNounLabel(
+    typeof window !== 'undefined' ? window.okDesktop?.platform : undefined,
+  );
   const headerDescription = isMulti
     ? plural(count, {
-        one: '# item could not be moved to the Trash. Do you want to permanently delete instead?',
-        other:
-          '# items could not be moved to the Trash. Do you want to permanently delete instead?',
+        one: `# item could not be moved to the ${trashNoun}. Do you want to permanently delete instead?`,
+        other: `# items could not be moved to the ${trashNoun}. Do you want to permanently delete instead?`,
       })
     : only
-      ? `${t`Could not move "${targetName}" to the Trash. Do you want to permanently delete instead?`}\n${formatTrashFailureDetail(only)}`
+      ? `${t`Could not move "${targetName}" to the ${trashNoun}. Do you want to permanently delete instead?`}\n${formatTrashFailureDetail(only)}`
       : t`Do you want to permanently delete instead?`;
   return (
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
-        <DialogTitle>
-          <Trans>Couldn't move to Trash</Trans>
-        </DialogTitle>
+        <DialogTitle>{t`Couldn't move to ${trashNoun}`}</DialogTitle>
         <DialogDescription className="whitespace-pre-wrap">{headerDescription}</DialogDescription>
       </DialogHeader>
       {isMulti ? (

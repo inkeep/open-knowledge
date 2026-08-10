@@ -181,9 +181,6 @@
     "1t_NnN": ["Rejeitar"],
     "1u-mAI": ["Não deu para iniciar a sincronização. Verifique sua conexão e tente de novo."],
     "1vn0CI": ["Resposta do servidor inválida"],
-    "2-CeZn": [
-      "Seu relatório está salvo neste Mac, então nada se perdeu. Você pode mandá-lo para a gente por e-mail."
-    ],
     "2277Tu": ["Recolher o grafo"],
     "237hSL": ["Encerrado"],
     "253MN6": ["Não deu para enviar seus comentários — tente de novo."],
@@ -224,6 +221,7 @@
     "2hpdRq": ["Ocultar o painel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Digite uma URL válida (por exemplo https://api.openai.com/v1)."],
     "2jUGEP": ["Contar publicamente as instalações de habilidades"],
+    "2l293S": ["Você pode restaurar este arquivo da Lixeira."],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["Já registramos com a equipe e anexamos seus logs."],
     "2n3oDU": [
@@ -476,32 +474,12 @@
     "5kWklo": ["(outras regras podem já ocultar alguns)"],
     "5lWFkC": ["Entrar"],
     "5mksg0": ["Falha ao desativar a busca semântica — ", ["detail"]],
-    "5qNxOe": [
-      [
-        "count",
-        "plural",
-        {
-          "one": [
-            "Não foi possível mover ",
-            "#",
-            " item para o Lixo. Quer excluir definitivamente?"
-          ],
-          "many": [
-            "Não foi possível mover ",
-            "#",
-            " itens para o Lixo. Quer excluí-los definitivamente?"
-          ],
-          "other": [
-            "Não foi possível mover ",
-            "#",
-            " itens para o Lixo. Quer excluí-los definitivamente?"
-          ]
-        }
-      ]
-    ],
     "5qQr1u": ["Valores permitidos para ", ["field"]],
     "5rnB76": ["Suas edições ficam neste computador"],
     "5soCUZ": ["Editar a mensagem na fila"],
+    "5ss1kT": [
+      "Relatórios que você gerou neste computador. Tente enviar de novo, mostre um arquivo ou exclua um de que não precisa mais."
+    ],
     "5tcmwY": ["Adicionar valor"],
     "5vAI6Z": ["Não encaixou no meu jeito de trabalhar"],
     "5wV2qQ": ["e mais"],
@@ -520,6 +498,9 @@
       "A duplicação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
     ],
     "69KLIV": ["Esc"],
+    "6ASTuj": [
+      "Os comandos rodam com todo o acesso da sua conta de usuário nesta máquina. Desative isto para desabilitar o shell."
+    ],
     "6Aih4U": ["Offline"],
     "6FCixu": ["Reabrir um chat anterior"],
     "6HCOwA": ["Falha ao abrir."],
@@ -844,9 +825,6 @@
     "ANFxWn": ["Não foi possível excluir este tema. Atualize a página e tente novamente."],
     "APNlbk": ["saída ", ["0"]],
     "AQ-Lfg": ["Não foi possível carregar os modelos"],
-    "AQGtjK": [
-      "Os comandos rodam com todo o acesso da sua conta de usuário do macOS neste computador. Desligue isto para desabilitar o shell."
-    ],
     "ASqqsQ": ["No máximo ", ["MAX_ATTACHMENTS"], " anexos"],
     "AT0e50": ["Manter os dois"],
     "ATGYL1": ["Endereço de e-mail"],
@@ -1146,11 +1124,6 @@
     "EWX92Z": ["Recolher Perguntar à IA"],
     "EZVxVz": ["Substitui a ocorrência ativa pelo conteúdo do campo de substituição."],
     "E_A2Nq": ["O link está pronto, mas não foi possível copiá-lo para a área de transferência."],
-    "E_BHoD": [
-      "Não foi possível mover \"",
-      ["targetName"],
-      "\" para o Lixo. Quer excluir definitivamente?"
-    ],
     "E_tNGD": ["Conectado como @", ["login"]],
     "EarrCe": ["Buscar emoji"],
     "EbMUlU": ["Modo agente"],
@@ -1322,6 +1295,7 @@
     "GMaDTM": ["Falha ao salvar a configuração do Slidev"],
     "GN6L5F": ["Nome do arquivo"],
     "GNkUvW": ["Na fila — será enviado quando esta execução terminar"],
+    "GQ3O42": ["Lixo"],
     "GQDSBN": ["Opções de layout"],
     "GSYWCm": ["Ocultar o painel do documento"],
     "GUYwCr": ["Dispensar o aviso"],
@@ -1387,7 +1361,6 @@
     "H0WlWQ": ["Grade de linhas e colunas com uma linha de cabeçalho."],
     "H1TmTu": ["A correção parou. Os arquivos já corrigidos continuam corrigidos."],
     "H3oH0g": ["Refazer"],
-    "H6nKok": ["Mostrar no gerenciador de arquivos"],
     "H86f9p": ["Recolher"],
     "HAkEqR": ["Arquivos recentes"],
     "HAvHev": ["Atualização automática desligada para \"", ["name"], "\""],
@@ -1422,6 +1395,9 @@
       " por uma cópia independente da habilidade? Nada mais se move."
     ],
     "HdkSiO": ["Novo arquivo"],
+    "HepFJQ": [
+      "Seu relatório está salvo neste computador, então nada foi perdido. Você pode nos enviar por e-mail."
+    ],
     "HfI1dR": ["Já tenho isso localmente →"],
     "HjNrT0": [
       [
@@ -1851,6 +1827,7 @@
       "Leia este código e redija uma especificação técnica do módulo mais complexo: uma visão geral, a arquitetura, os arquivos principais e as questões em aberto, tudo ligado a partir de uma página índice de especificações."
     ],
     "Nay2Yr": ["Nenhum agente corresponde à sua busca."],
+    "NcUznW": [["0"], ", sem espaço de trabalho"],
     "NcurBF": ["Deslocar para baixo"],
     "NeQ_0G": ["Trabalhe sobre estes comentários"],
     "NeY1Np": ["O Slidev demorou demais para iniciar. Tente novamente."],
@@ -1952,6 +1929,9 @@
     "P3NS4G": ["Erro de sintaxe no padrão (linha ", ["lineNumber"], "): ", ["message"]],
     "P3S14k": [".ok/skills voltou para Somente eu."],
     "P3hnm0": ["Arquivo grande demais para abrir"],
+    "P441h8": [
+      "Conte o que deu errado e reuniremos os logs. Nada sai do seu computador até você revisar."
+    ],
     "P47EWZ": ["Não foi possível atualizar as configurações da barra lateral"],
     "P6gXB-": ["Substituir ", ["keyName"]],
     "P6lAT3": ["Pasta de destino: ", ["linkTitle"], ". Clique para abrir a visão geral."],
@@ -2072,6 +2052,9 @@
     "QlAG4m": ["Conte mais (opcional)"],
     "QlkiD5": ["Reposicionar no texto selecionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
+    "QpSqAP": [
+      "O shell real está desativado para este projeto. Ativá-lo faz os comandos rodarem com todo o acesso da sua conta de usuário."
+    ],
     "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Rótulo <0>(texto visível do link)</0>"],
     "Qvls7J": ["Especificações de engenharia"],
@@ -2097,9 +2080,6 @@
     "R30SFt": ["Use uma extensão .yaml ou .yml em letras minúsculas"],
     "R3y75Z": ["Editar o código fonte"],
     "R4OWFD": ["Seções"],
-    "R65q-K": [
-      "O shell real está desligado neste projeto. Ligá-lo executa comandos com todo o acesso da sua conta de usuário do macOS."
-    ],
     "R6ABfU": ["Trabalhar diretamente, sem etapa de planejamento"],
     "R9IDFz": ["Renomeia a pasta no disco e o id que os agentes usam para invocá-la."],
     "R9dK63": ["Imagem de exemplo"],
@@ -2310,9 +2290,6 @@
     "URmyfc": ["Detalhes"],
     "UTNVyS": ["Seleciona o documento de código inteiro."],
     "UTZ97u": ["A seleção precisa estar dentro do projeto"],
-    "UTgWxm": [
-      "Nada foi enviado. O relatório fica neste Mac até você mandá-lo para a gente por e-mail."
-    ],
     "UVDasf": [
       "A sincronização está desligada — suas edições ficam neste computador até você fazer commit e push manualmente."
     ],
@@ -2346,6 +2323,9 @@
       "<0>Fonte do espelho removida.</0> O documento <1>",
       ["src"],
       "</1> não está mais disponível."
+    ],
+    "Udgz4J": [
+      "Nada foi enviado. O relatório fica neste computador até você nos enviar por e-mail."
     ],
     "UfW9Kr": [
       "Suas consultas de busca e o texto completo das páginas correspondentes são enviados ao seu provedor de embeddings (OpenAI por padrão) para calcular os embeddings."
@@ -2553,6 +2533,35 @@
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "Xk0-VC": [
       "As pré-visualizações de links para outros documentos deste projeto estão sempre ligadas e são lidas do índice local — para essas, nada sai do seu computador."
+    ],
+    "Xkhr2Z": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            "Não foi possível mover ",
+            "#",
+            " item para ",
+            ["trashNoun"],
+            ". Deseja excluir permanentemente?"
+          ],
+          "many": [
+            "Não foi possível mover ",
+            "#",
+            " itens para ",
+            ["trashNoun"],
+            ". Deseja excluir permanentemente?"
+          ],
+          "other": [
+            "Não foi possível mover ",
+            "#",
+            " itens para ",
+            ["trashNoun"],
+            ". Deseja excluir permanentemente?"
+          ]
+        }
+      ]
     ],
     "Xl-UUg": ["guides/install ou https://exemplo.com"],
     "XmJfZT": ["nome"],
@@ -2814,7 +2823,6 @@
     ],
     "aM23Wr": ["nome-da-pagina"],
     "aNb3JH": ["Copiar como YAML"],
-    "aOp3hw": ["Não deu para mover para o Lixo"],
     "aQD_86": ["Falha ao atualizar o provedor de embeddings — ", ["detail"]],
     "aQyGJc": ["Outra coisa"],
     "aR4DgO": [
@@ -2968,6 +2976,7 @@
     "cUt8yN": ["As alterações são salvas automaticamente."],
     "cV7LOw": ["Wiki da equipe"],
     "cVKnqL": ["Não deu para ler os comentários que aguardam envio: ", ["0"]],
+    "cVp1YI": ["Lixeira"],
     "cZGNlb": ["Adicionar outro padrão"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge restaurou uma versão anterior"],
@@ -3621,6 +3630,7 @@
     "kRTXGw": [
       "Aponte a busca semântica para qualquer endpoint de embeddings compatível com a OpenAI — um servidor próprio ou outro provedor. A chave de API acima vale para o endpoint que você definir aqui."
     ],
+    "kSiB3X": ["Não foi possível mover para ", ["trashNoun"]],
     "kUn-CN": ["Sincronização desligada"],
     "kV2YZv": [
       "Não vê <0>Habilidades</0>? Ative antes <1>Configurações <2/> Recursos <3/> Execução de código e criação de arquivos</1>."
@@ -3876,9 +3886,6 @@
     "nCzR-G": ["Copiar o código ", ["userCode"]],
     "nDT8qt": [["0"], " inicializado, mas não foi possível abri-lo."],
     "nG-XA9": ["O texto ancorado sumiu. Você pode reposicioná-lo em um texto selecionado."],
-    "nGAFeH": [
-      "Relatórios que você gerou neste Mac. Tente reenviar, mostre um arquivo ou exclua o que não precisar mais."
-    ],
     "nL-HHD": ["Falha ao carregar a imagem"],
     "nMSYz5": [
       "Este caminho está em um volume externo (/Volumes/...). O OpenKnowledge vai perder os arquivos de vista quando a unidade for ejetada."
@@ -3945,10 +3952,10 @@
     "nzHlj8": ["Fechar ", ["0"]],
     "nzaV6Q": ["Miniaturas das páginas"],
     "o0bHtA": ["Pelo OpenKnowledge"],
-    "o2yoFu": ["Mostrar no Finder, sem espaço de trabalho"],
     "o49mDZ": ["Carregando o histórico da linha do tempo"],
     "o9CrsQ": ["nota-de-pesquisa"],
     "o9fPtM": ["Atualizar automaticamente pela fonte"],
+    "o9yN4T": ["Mover para a Lixeira"],
     "oAFVKX": ["Falha ao atualizar a sincronização padrão do projeto — ", ["detail"]],
     "oAGN8p": [
       "O ramo remoto <0>",
@@ -4169,9 +4176,6 @@
       ["repoName"],
       "</0>."
     ],
-    "rD-woT": [
-      "Conte o que deu errado e a gente reúne os logs. Nada sai do seu Mac antes de você revisar."
-    ],
     "rDOuNw": ["Falha ao importar o modelo"],
     "rENNI6": ["URL de compartilhamento inválida."],
     "rFL-yb": ["Editar uma cópia"],
@@ -4284,6 +4288,11 @@
     "sgmRY8": ["O download de ", ["0"], " foi pulado."],
     "shNd9t": ["Menu de comandos de barra"],
     "skf5Ix": ["Aumenta ou diminui o recuo das linhas do editor de código."],
+    "skvOCc": [
+      "O arquivo está no seu ",
+      ["trashNoun"],
+      "; o observador de arquivos vai reconciliar."
+    ],
     "sn5BEU": [
       ["sizeText"],
       " · segredos ocultados · ",
@@ -4361,6 +4370,13 @@
     "tqQBwN": ["Os scripts são exibidos para revisão, nunca executados."],
     "tsiTqO": ["Cole sua chave de API"],
     "tsyExA": ["Conecte suas ferramentas de IA ao OpenKnowledge"],
+    "tvMvze": [
+      "Não foi possível mover \\\"",
+      ["targetName"],
+      "\\\" para ",
+      ["trashNoun"],
+      ". Deseja excluir permanentemente?"
+    ],
     "tzGWeg": ["Preparando a desinstalação do OpenKnowledge"],
     "tzZ6ha": ["Conectar ao GitHub Enterprise Server"],
     "u-9fWA": ["Veja <0>Arquitetura</0> para uma visão geral do sistema."],
@@ -4473,7 +4489,6 @@
     "vAUpF5": ["O diretório do clone original do repositório"],
     "vAYoCZ": ["Não deu para abrir o worktree. Tente de novo."],
     "vDXqVv": ["Insere uma quebra de linha forçada do markdown."],
-    "vEJDlt": ["O arquivo está no seu Lixo; o observador de arquivos vai reconciliar."],
     "vF68cg": ["Campos"],
     "vGQxBT": [
       "As atualizações da fonte se aplicam automaticamente (a menos que tenha sido editado localmente)"

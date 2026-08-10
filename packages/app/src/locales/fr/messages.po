@@ -357,6 +357,11 @@ msgstr "{0} a déjà été supprimé."
 msgid "{0} was not moved."
 msgstr "{0} n’a pas été déplacé."
 
+#. placeholder {0}: revealInFileManagerLabel(bridge.platform)
+#: src/components/FileSidebar.tsx
+msgid "{0}, No workspace"
+msgstr "{0}, aucun espace de travail"
+
 #. placeholder {0}: share.owner
 #. placeholder {1}: share.repo
 #. placeholder {2}: shareTargetPath(share.target)
@@ -481,8 +486,8 @@ msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# commentaire} many {# commentaires} other {# commentaires}}"
 
 #: src/components/TrashFailureModal.tsx
-msgid "{count, plural, one {# item could not be moved to the Trash. Do you want to permanently delete instead?} other {# items could not be moved to the Trash. Do you want to permanently delete instead?}}"
-msgstr "{count, plural, one {# élément n'a pas pu être mis à la corbeille. Voulez-vous plutôt le supprimer définitivement ?} many {# éléments n'ont pas pu être mis à la corbeille. Voulez-vous plutôt les supprimer définitivement ?} other {# éléments n'ont pas pu être mis à la corbeille. Voulez-vous plutôt les supprimer définitivement ?}}"
+msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
+msgstr "{count, plural, one {# élément n'a pas pu être mis à la {trashNoun}. Voulez-vous le supprimer définitivement ?} many {# éléments n'ont pas pu être mis à la {trashNoun}. Voulez-vous les supprimer définitivement ?} other {# éléments n'ont pas pu être mis à la {trashNoun}. Voulez-vous les supprimer définitivement ?}}"
 
 #: src/presence/PresenceBar.tsx
 msgid "{count, plural, one {# more cross-doc participant} other {# more cross-doc participants}}"
@@ -1054,8 +1059,8 @@ msgid "A pull quote stands out from the surrounding text."
 msgstr "Une citation mise en exergue se détache du texte qui l'entoure."
 
 #: src/components/settings/TerminalSection.tsx
-msgid "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
-msgstr "Le shell réel est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur macOS."
+msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
+msgstr "Le vrai shell est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -2605,8 +2610,8 @@ msgid "Commands"
 msgstr "Commandes"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
-msgstr "Les commandes s'exécutent avec tous les droits de votre compte utilisateur macOS sur cette machine. Désactivez ceci pour couper le shell."
+msgid "Commands run with the full access of your user account on this machine. Turn this off to disable the shell."
+msgstr "Les commandes s'exécutent avec tous les droits de votre compte utilisateur sur cette machine. Désactivez ceci pour désactiver le shell."
 
 #: src/comments/CommentBubbleButton.tsx
 msgid "Comment"
@@ -3144,8 +3149,8 @@ msgid "Could not load templates. Try again later."
 msgstr "Impossible de charger les modèles. Réessayez plus tard."
 
 #: src/components/TrashFailureModal.tsx
-msgid "Could not move \"{targetName}\" to the Trash. Do you want to permanently delete instead?"
-msgstr "Impossible de mettre « {targetName} » à la corbeille. Voulez-vous plutôt le supprimer définitivement ?"
+msgid "Could not move \"{targetName}\" to the {trashNoun}. Do you want to permanently delete instead?"
+msgstr "Impossible de mettre \\\"{targetName}\\\" à la {trashNoun}. Voulez-vous le supprimer définitivement ?"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Could not open {shareBranch} in a worktree. Try again."
@@ -3387,8 +3392,8 @@ msgid "Couldn't move skill: {0}"
 msgstr "Impossible de déplacer la compétence : {0}"
 
 #: src/components/TrashFailureModal.tsx
-msgid "Couldn't move to Trash"
-msgstr "Impossible de mettre à la corbeille"
+msgid "Couldn't move to {trashNoun}"
+msgstr "Impossible de mettre à la {trashNoun}"
 
 #: src/hooks/use-open-skill.ts
 msgid "Couldn't open \"{name}\" — it isn't in the project's skills yet."
@@ -7240,6 +7245,12 @@ msgstr "Déplacer vers un nouveau volet à gauche"
 msgid "Move to new pane right"
 msgstr "Déplacer vers un nouveau volet à droite"
 
+#: src/components/command-palette-commands.ts
+#: src/components/file-tree-trash-copy.ts
+#: src/lib/platform-labels.ts
+msgid "Move to Recycle Bin"
+msgstr "Mettre à la Corbeille"
+
 #: src/components/TerminalTabStrip.tsx
 msgid "Move to right panel"
 msgstr "Déplacer vers le panneau de droite"
@@ -7260,9 +7271,9 @@ msgstr "Va au résultat de recherche suivant dans l'éditeur visuel."
 msgid "Move to the previous visual-editor find result."
 msgstr "Va au résultat de recherche précédent dans l'éditeur visuel."
 
-#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/file-tree-trash-copy.ts
+#: src/lib/platform-labels.ts
 msgid "Move to Trash"
 msgstr "Mettre à la corbeille"
 
@@ -7990,8 +8001,8 @@ msgid "Nothing set yet."
 msgstr "Rien de défini pour l'instant."
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
-msgstr "Rien n'a été envoyé. Le rapport reste sur ce Mac jusqu'à ce que vous nous l'envoyiez par e-mail."
+msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
+msgstr "Rien n'a été envoyé. Le rapport reste sur cet ordinateur jusqu'à ce que vous nous l'envoyiez par e-mail."
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Notion-style inline row for a downloadable file. Drag-drop also works."
@@ -8211,7 +8222,8 @@ msgstr "Ouvrir le commentaire"
 msgid "Open Comments"
 msgstr "Ouvrir les commentaires"
 
-#: src/lib/reveal-label.ts
+#: src/components/command-palette-commands.ts
+#: src/lib/platform-labels.ts
 msgid "Open containing folder"
 msgstr "Ouvrir le dossier contenant"
 
@@ -9450,6 +9462,10 @@ msgstr "Reconnexion…"
 msgid "Recovered content"
 msgstr "Contenu récupéré"
 
+#: src/lib/platform-labels.ts
+msgid "Recycle Bin"
+msgstr "Corbeille"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
@@ -9815,8 +9831,8 @@ msgid "Report this error"
 msgstr "Signaler cette erreur"
 
 #: src/components/BugReportHistoryDialog.tsx
-msgid "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
-msgstr "Les rapports que vous avez générés sur ce Mac. Relancez un envoi, affichez un fichier, ou supprimez celui dont vous n'avez plus besoin."
+msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgstr "Rapports que vous avez générés sur cet ordinateur. Relancez un envoi, affichez un fichier ou supprimez celui dont vous n'avez plus besoin."
 
 #: src/components/settings/AccountSection.tsx
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -10043,21 +10059,15 @@ msgstr "Réutiliser un même onglet lors des clics dans les barres latérales. D
 msgid "Reused if it already exists, created if not."
 msgstr "Réutilisé s'il existe déjà, créé sinon."
 
-#: src/lib/reveal-label.ts
+#: src/components/command-palette-commands.ts
+#: src/lib/platform-labels.ts
 msgid "Reveal in File Explorer"
 msgstr "Afficher dans l'Explorateur de fichiers"
 
-#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/ReportBugDialogBody.tsx
-#: src/lib/reveal-label.ts
+#: src/lib/platform-labels.ts
 msgid "Reveal in Finder"
 msgstr "Afficher dans le Finder"
-
-#: src/components/FileSidebar.tsx
-msgid "Reveal in Finder, No workspace"
-msgstr "Afficher dans le Finder, sans espace de travail"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -10865,14 +10875,9 @@ msgstr "Afficher les fichiers masqués"
 msgid "Show HTML preview"
 msgstr "Afficher l'aperçu HTML"
 
-#: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Show in Explorer"
 msgstr "Afficher dans l'Explorateur"
-
-#: src/components/AppMenubar.tsx
-msgid "Show in File Manager"
-msgstr "Afficher dans le gestionnaire de fichiers"
 
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
@@ -11708,8 +11713,8 @@ msgid "Tell us more (optional)"
 msgstr "Dites-nous en plus (facultatif)"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
-msgstr "Dites-nous ce qui n'a pas fonctionné et nous rassemblerons les journaux. Rien ne quitte votre Mac avant que vous ne l'ayez relu."
+msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
+msgstr "Dites-nous ce qui s'est mal passé et nous rassemblerons les journaux. Rien ne quitte votre ordinateur avant que vous l'ayez examiné."
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -11922,8 +11927,8 @@ msgid "The endpoint didn't respond in time."
 msgstr "Le point de terminaison n'a pas répondu à temps."
 
 #: src/components/FileTree.tsx
-msgid "The file is in your Trash; the file-watcher will reconcile."
-msgstr "Le fichier est dans votre corbeille ; le surveillant de fichiers s'en chargera."
+msgid "The file is in your {trashNoun}; the file-watcher will reconcile."
+msgstr "Le fichier est dans votre {trashNoun} ; l'observateur de fichiers fera la synchronisation."
 
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
@@ -12607,6 +12612,10 @@ msgstr "Pages les plus liées"
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "Suivi dans git — les mises à jour arrivent via votre dépôt (pull ou CI), pas par mise à jour automatique"
+
+#: src/lib/platform-labels.ts
+msgid "Trash"
+msgstr "corbeille"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Traverse OpenKnowledge navigation history backward."
@@ -13452,6 +13461,10 @@ msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr "Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."
 
 #: src/components/file-tree-trash-copy.ts
+msgid "You can restore this file from the Recycle Bin."
+msgstr "Vous pouvez restaurer ce fichier depuis la Corbeille."
+
+#: src/components/file-tree-trash-copy.ts
 msgid "You can restore this file from the Trash."
 msgstr "Vous pouvez restaurer ce fichier depuis la corbeille."
 
@@ -13596,8 +13609,8 @@ msgid "Your report is being sent."
 msgstr "Votre rapport est en cours d'envoi."
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
-msgstr "Votre rapport est enregistré sur ce Mac, donc rien n'est perdu. Vous pouvez nous l'envoyer par e-mail à la place."
+msgid "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
+msgstr "Votre rapport est enregistré sur cet ordinateur, rien n'a donc été perdu. Vous pouvez nous l'envoyer par e-mail à la place."
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"

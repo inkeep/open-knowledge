@@ -371,7 +371,9 @@ export {
 export {
   MENU_LABELS,
   type MenuLabelKey,
+  menuLabelForPlatform,
   OPEN_KNOWLEDGE_GITHUB_URL,
+  PLATFORM_MENU_LABELS,
 } from './constants/menu-labels.ts';
 export {
   NATIVE_MENU_LABELS,

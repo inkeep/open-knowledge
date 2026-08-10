@@ -34,8 +34,8 @@ function BugReportHistoryDialog({ open, onOpenChange, onReportABug }: BugReportH
           </DialogTitle>
           <DialogDescription>
             <Trans>
-              Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you
-              no longer need.
+              Reports you've generated on this computer. Retry a send, reveal a file, or delete one
+              you no longer need.
             </Trans>
           </DialogDescription>
         </DialogHeader>

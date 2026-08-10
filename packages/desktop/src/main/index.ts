@@ -165,7 +165,7 @@ import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { registerAppImageDeepLinks } from './appimage-integration.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
-import { popAssetMenu } from './asset-menu.ts';
+import { popAssetMenu, revealMenuLabel } from './asset-menu.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
@@ -4901,13 +4901,19 @@ function registerIpcHandlers() {
         }
       },
       confirmReveal: async (p) => {
+        const revealQuestion =
+          process.platform === 'darwin'
+            ? 'Reveal it in Finder?'
+            : process.platform === 'win32'
+              ? 'Reveal it in File Explorer?'
+              : 'Open its containing folder?';
         const opts: MessageBoxOptions = {
           type: 'question',
-          buttons: ['Reveal in Finder', 'Cancel'],
+          buttons: [revealMenuLabel(process.platform), 'Cancel'],
           defaultId: 0,
           cancelId: 1,
           message: `"${basename(p)}" is outside your project`,
-          detail: `${p}\n\nReveal it in Finder?`,
+          detail: `${p}\n\n${revealQuestion}`,
         };
         const { response } = callerWin
           ? await dialog.showMessageBox(callerWin, opts)

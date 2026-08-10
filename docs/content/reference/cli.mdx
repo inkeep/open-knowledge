@@ -1,10 +1,10 @@
 ---
 title: CLI & web app
 icon: LuTerminal
-description: Install the ok CLI and run the OpenKnowledge web app in your browser — on Linux, Windows, or an Intel Mac.
+description: Install the ok CLI and run the OpenKnowledge web app in your browser — on any platform, including Intel Macs and servers.
 ---
 
-On macOS, use the [desktop app](/docs/get-started/quickstart) for the smoothest experience. On **Linux**, **Windows**, or an **Intel Mac**, install the `ok` CLI from npm and run the **same editor as a local web app** in your browser.
+For the smoothest experience, use the [desktop app](/docs/get-started/quickstart) — it ships for **macOS**, **Windows**, and **Linux**. Anywhere else (an **Intel Mac**, a server), or when you'd rather stay in the terminal, install the `ok` CLI from npm and run the **same editor as a local web app** in your browser.
 
 <Callout type="info" title="Prerequisites">
   - **Node.js 24+.** OpenKnowledge requires [Node.js](https://nodejs.org) 24 or higher.
@@ -45,7 +45,7 @@ ok start
 
 One server on one port serves everything — the editor, the API, the MCP endpoint, and real-time collaboration — and the editor opens in your browser automatically (pass `--no-open-browser` to skip that). Running `ok start` again while a server is already up prints the running server's URL and exits.
 
-`ok start` also takes `-p/--port` and `--bind` to pick the address, `--idle-shutdown` (`off` or a duration like `30m`) to control when an unused server exits, `--only server` to run without the editor UI, and `--mode app` to hand off to the desktop app instead of running a server in the terminal (macOS with the desktop app installed).
+`ok start` also takes `-p/--port` and `--bind` to pick the address, `--idle-shutdown` (`off` or a duration like `30m`) to control when an unused server exits, `--only server` to run without the editor UI, and `--mode app` to hand off to the desktop app instead of running a server in the terminal (with the desktop app installed).
 
 Idle shutdown is on by default at 30 minutes — a server with no connected clients exits so it doesn't linger. If you keep a session open for a long time without interacting, pass `--idle-shutdown off` (or a longer duration) to keep it running.
 
@@ -131,7 +131,7 @@ Serve this project's web UI and `/mcp` endpoint to your other devices through an
 | `ok config migrate` | Remove keys the schema no longer reads from your config files (`--dry-run` to preview; `--scope` to narrow — defaults to every layer) |
 | `ok skills installed` | List every skill installed across your agents (read-only, cross-harness) |
 | `ok skills import <source>` | Import a skill as versioned content from skills.sh, a GitHub `owner/repo`, a git URL, or a local path |
-| `ok bug-report` | Package a support bundle — recent app logs, the project's server logs and lock diagnostics, and system info — as an auto-redacted zip under `~/.ok/bug-reports/`, revealed in Finder when it's done (`--no-reveal` to skip). Collects the same `standard` set as the desktop app's **Help → Report a bug…**; `ok diagnose bundle` produces the `full` superset (telemetry spans, live server state) into the project's `.ok/local/diagnostics/` |
+| `ok bug-report` | Package a support bundle — recent app logs, the project's server logs and lock diagnostics, and system info — as an auto-redacted zip under `~/.ok/bug-reports/`, revealed in your file manager when it's done (`--no-reveal` to skip). Collects the same `standard` set as the desktop app's **Help → Report a bug…**; `ok diagnose bundle` produces the `full` superset (telemetry spans, live server state) into the project's `.ok/local/diagnostics/` |
 
 ## Global flags
 
@@ -150,3 +150,5 @@ The rest of the CLI exists mostly for tooling and automation. Your AI editor spa
 Both commands print their plan and ask before acting; `--dry-run` previews without changing anything. Once `ok uninstall` has finished successfully, an interactive run also asks one optional question about why you're leaving — you can skip it, and `--yes`, `--json`, and non-interactive runs never ask. Anything you do answer is [sent to us](/docs/reference/what-open-knowledge-writes#what-leaves-your-machine).
 
 On the macOS desktop app, **App menu → Uninstall OpenKnowledge…** covers both steps from one flow: it optionally deinitializes your projects, removes the global footprint, shows the same optional "why are you leaving?" screen once removal succeeds, and then guides you through dragging the app to the Trash.
+
+To remove the desktop app on the other platforms: on **Windows**, uninstall OpenKnowledge from **Settings → Apps → Installed apps**; on **Linux**, remove the package with your package manager (`sudo apt remove openknowledge` on Debian/Ubuntu, `sudo dnf remove OpenKnowledge` on Fedora/RHEL). Run `ok uninstall` first if you also want the rest of the footprint cleaned up — it works the same on every platform.

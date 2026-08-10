@@ -41,6 +41,7 @@ import {
   evaluateCommandAvailability,
   MENU_LABELS,
   type MenuSection,
+  menuLabelForPlatform,
   NATIVE_MENU_LABELS,
   OPEN_KNOWLEDGE_GITHUB_URL,
   SHOW_INSTALL_SKILL,
@@ -719,7 +720,11 @@ function menuLeafLabel(
   if (key === undefined) {
     throw new Error(`command ${cmd.id} menu leaf has no resolvable label`);
   }
-  return translate(MENU_LABELS[key]);
+  // Platform resolves before translation: the platform-adaptive strings
+  // (Reveal in Finder / File Explorer, Trash / Recycle Bin) pick the right
+  // English source so the hidden Alt-menu on Windows/Linux never shows macOS
+  // surface names, and `translate` then hashes that source to the catalog.
+  return translate(menuLabelForPlatform(key, process.platform));
 }
 
 /** Generate the actionable command leaves for the current platform, grouped by

@@ -1,15 +1,14 @@
-import { platform } from 'node:os';
 import { Command } from 'commander';
 import { getCliLogger } from '../cli.ts';
 import { collectReportBundle } from '../report-bundle.ts';
-import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 import { defaultBugReportZipPath } from './bug-report-bundle.ts';
+import { revealBundle } from './bug-report-reveal.ts';
 
 export function bugReportCommand(): Command {
   return new Command('bug-report')
     .description('Generate a diagnostic bundle for bug reporting')
-    .option('--reveal', 'Reveal the bundle in Finder (default: true)', true)
-    .option('--no-reveal', 'Do not reveal the bundle in Finder')
+    .option('--reveal', 'Reveal the bundle in your file manager (default: true)', true)
+    .option('--no-reveal', 'Do not reveal the bundle in your file manager')
     .action(async (opts: { reveal: boolean }) => {
       try {
         const { zipPath, summary } = await collectReportBundle({
@@ -28,11 +27,7 @@ export function bugReportCommand(): Command {
           );
         }
 
-        if (opts.reveal && platform() === 'darwin') {
-          try {
-            spawnDetachedScrubbed('/usr/bin/open', ['-R', zipPath]);
-          } catch {}
-        }
+        if (opts.reveal) revealBundle(zipPath);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stderr.write(`ok bug-report: failed — ${msg}\n`);
