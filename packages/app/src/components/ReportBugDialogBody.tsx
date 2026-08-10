@@ -50,6 +50,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
@@ -773,20 +774,16 @@ function ReportBugDialog({
                   <Trans>{formatSize(phase.report.zipSizeBytes)} total</Trans>
                 </span>
               </div>
-              {/* The width animation is a time-eased estimate, not real
-                  transfer progress, so the machine-readable state stays
-                  indeterminate (no aria-valuenow) — assistive tech must not
-                  hear invented percentages. */}
-              <div
-                role="progressbar"
+              {/* The fill is a time-eased estimate, not real transfer progress,
+                  so the machine-readable state stays indeterminate (`value`
+                  null, hence no aria-valuenow) while the bar still moves —
+                  assistive tech must not hear invented percentages. */}
+              <Progress
+                value={null}
+                indeterminateFillPercent={uploadPct}
                 aria-label={t`Sending report`}
-                className="h-1.5 overflow-hidden rounded-full bg-secondary"
-              >
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{ width: `${uploadPct}%` }}
-                />
-              </div>
+                className="h-1.5 bg-secondary"
+              />
             </DialogBody>
             <DialogFooter className="sm:justify-between">
               <Button

@@ -348,7 +348,16 @@ describe('ReportBugDialog', () => {
     // Only the honest total — no fabricated transferred-bytes counter.
     expect(screen.getByText(/6\.8 MB total/)).not.toBeNull();
     expect(screen.queryByText(/MB of/)).toBeNull();
-    expect(screen.getByRole('progressbar')).not.toBeNull();
+    const uploadBar = screen.getByRole('progressbar');
+
+    expect(uploadBar).not.toBeNull();
+    // The width here is a time-eased estimate, not real transfer progress, so
+    // the bar must stay indeterminate: no percentage may reach assistive tech.
+    // The primitive omits these whenever `value` is null, so this pins that
+    // this call site keeps passing null rather than the eased fill percentage.
+    expect(uploadBar.getAttribute('aria-valuenow')).toBeNull();
+    expect(uploadBar.getAttribute('aria-valuetext')).toBeNull();
+    expect(uploadBar.getAttribute('data-state')).toBe('indeterminate');
     expect(
       (screen.getByRole('button', { name: 'Send report' }) as HTMLButtonElement).disabled,
     ).toBe(true);

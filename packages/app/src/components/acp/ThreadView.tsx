@@ -98,6 +98,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from '@/components/ui/message-scroller';
+import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
@@ -2540,6 +2541,7 @@ function RuntimeConsentPrompt({
   const { t } = useLingui();
   const client = getAgentThreadClient();
   const [remember, setRemember] = useState(true);
+  const downloadLabelId = useId();
 
   if (item.resolved === 'declined' || item.resolved === 'timeout') {
     return (
@@ -2587,16 +2589,24 @@ function RuntimeConsentPrompt({
       >
         <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
           <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-          <span>{t`Downloading ${item.displayName} ${item.version}…`}</span>
+          <span id={downloadLabelId}>{t`Downloading ${item.displayName} ${item.version}…`}</span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-200"
-            style={{ width: pct !== null ? `${pct}%` : '40%' }}
-          />
-        </div>
+        {/* Naming the bar off the visible status line keeps one string doing
+            both jobs. A download with no total bytes has no honest percentage,
+            so it stays indeterminate and only the fill is faked. */}
+        <Progress
+          value={pct}
+          indeterminateFillPercent={40}
+          aria-labelledby={downloadLabelId}
+          className="h-1.5"
+        />
         {pct !== null ? (
-          <div className="mt-1 text-[11px] text-muted-foreground">{`${pct}%`}</div>
+          // The bar already carries this number as aria-valuenow; leaving the
+          // text in the a11y tree would announce it twice.
+          <div
+            aria-hidden="true"
+            className="mt-1 text-[11px] text-muted-foreground"
+          >{`${pct}%`}</div>
         ) : null}
       </div>
     );
