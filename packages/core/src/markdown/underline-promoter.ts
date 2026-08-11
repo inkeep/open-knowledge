@@ -1,4 +1,3 @@
-
 import type { Nodes, Parent, Root } from 'mdast';
 import type { MdxJsxTextElement } from 'mdast-util-mdx';
 import { visit } from 'unist-util-visit';

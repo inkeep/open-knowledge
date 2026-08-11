@@ -165,11 +165,11 @@ function launchInputWrites(inputMock: ReturnType<typeof vi.fn>): string[] {
  * OK's own). It bundles server trust (`enabledMcpjsonServers`) AND — since the
  * `agents.autoApproveOkTools` preference defaults on and most tests below render
  * without a ConfigProvider — the OK-tool auto-approve allow-list plus the
- * gated-tool deny-list. Both ride the same `mcpPreApprovable` gate, so a
+ * gated-tool ask-list. Both ride the same `mcpPreApprovable` gate, so a
  * foreign/unverified entry bakes neither (the "bare" tests below). Codex/Cursor
  * never carry it, so this prefix is claude-only.
  */
-const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"deny":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
+const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
 
 /** What a WIRED Claude launch bakes once the user turns the auto-approve toggle
  *  OFF: server trust survives (it is a separate opt-in), the permissions block

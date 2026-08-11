@@ -137,7 +137,7 @@ describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install 
  * Guards the docked terminal's auto-approve policy (core `terminal-launch.ts`)
  * against this registry. Claude's allow-rule is the open-ended `mcp__<server>`
  * (every OK tool); safety is subtracted back by the CLOSED `OK_GATED_TOOL_NAMES`
- * deny-list. Left uncoupled, a newly registered destructive tool would inherit
+ * ask-list. Left uncoupled, a newly registered destructive tool would inherit
  * auto-approval the moment it shipped.
  *
  * Every registered tool must therefore appear in exactly one of the two lists —
@@ -185,7 +185,7 @@ describe('docked-terminal auto-approve classification', () => {
     expect(OK_AUTO_APPROVED_TOOLS.filter((name) => gated.has(name))).toEqual([]);
   });
 
-  test('the deny-list only names tools that actually exist', () => {
+  test('the ask-list only names tools that actually exist', () => {
     const registered = new Set(captureRegistered());
     for (const gated of OK_GATED_TOOL_NAMES) {
       expect(registered).toContain(gated);

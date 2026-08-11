@@ -17,7 +17,7 @@ import {
 // shape (or the canonical server name) ever changes.
 const CLAUDE_PREAPPROVE = `--settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"]}'`;
 const OK_ALLOW = `["mcp__${MCP_SERVER_NAME}","Bash(ok open:*)"]`;
-const OK_DENY = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install","mcp__${MCP_SERVER_NAME}__import"]`;
+const OK_ASK = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install","mcp__${MCP_SERVER_NAME}__import"]`;
 
 describe('TERMINAL_CLI_IDS', () => {
   it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > copilot > pi > antigravity > openclaw > hermes)', () => {
@@ -228,7 +228,7 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
     // arg. A regression here would silently drop auto-approve from "New chat".
     const autoOnly = buildCliLaunchArgString('claude', null, { autoApproveOkTools: true });
     expect(autoOnly).toBe(
-      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}'`,
+      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}'`,
     );
     expect(autoOnly.endsWith(' ')).toBe(false);
 
@@ -237,7 +237,7 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
       autoApproveOkTools: true,
     });
     expect(both).toBe(
-      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}'`,
+      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}'`,
     );
     expect(both.endsWith(' ')).toBe(false);
   });
@@ -341,9 +341,9 @@ describe('claude MCP pre-approval', () => {
 });
 
 describe('OK auto-approve (autoApproveOkTools)', () => {
-  it('adds the OK allow-list + destructive deny-list to Claude --settings when on', () => {
+  it('adds the OK allow-list + destructive ask-list to Claude --settings when on', () => {
     expect(buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true })).toBe(
-      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}' 'hi'`,
+      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`,
     );
   });
 
@@ -351,16 +351,24 @@ describe('OK auto-approve (autoApproveOkTools)', () => {
     expect(
       buildCliLaunchArgString('claude', 'hi', { mcpPreApprove: true, autoApproveOkTools: true }),
     ).toBe(
-      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"deny":${OK_DENY}}}' 'hi'`,
+      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`,
     );
   });
 
-  it('keeps every gated tool in the deny list (never silently auto-approved)', () => {
+  it('keeps every gated tool in the ask list (never silently auto-approved)', () => {
     const arg = buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true });
     expect(OK_GATED_TOOL_NAMES).toEqual(['delete', 'move', 'share_link', 'install', 'import']);
-    for (const denied of OK_GATED_TOOL_NAMES) {
-      expect(arg).toContain(`"mcp__${MCP_SERVER_NAME}__${denied}"`);
+    for (const gated of OK_GATED_TOOL_NAMES) {
+      expect(arg).toContain(`"mcp__${MCP_SERVER_NAME}__${gated}"`);
     }
+  });
+
+  // A bare tool-name DENY rule removes the tool from Claude's context instead of
+  // prompting for it, so a deny-gated `move` / `delete` is invisible to the agent
+  // rather than confirmable. The gate must always be `ask`.
+  it('never gates with `deny` (that would hide the tools from the agent)', () => {
+    const arg = buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true });
+    expect(arg).not.toContain('"deny"');
   });
 
   it('adds the codex per-server `-c approve` override only when on', () => {

@@ -73,7 +73,7 @@ export interface TerminalCliInfo {
   /** Fixed launch arg that auto-approves OK's OWN tools for this CLI, inserted
    *  ONLY when the caller passes `autoApproveOkTools: true`. Codex-only today (a
    *  `-c` per-server approval-mode override); already shell-safe, registry-fixed,
-   *  never user input. Claude's equivalent (an allow/deny list) is computed inline
+   *  never user input. Claude's equivalent (an allow/ask list) is computed inline
    *  by {@link buildClaudeSettingsArg}, not from the registry. */
   readonly autoApproveArg?: string;
   /** User-facing brand name ("Claude" / "Codex" / "Cursor"). */
@@ -138,8 +138,11 @@ const OK_AUTO_APPROVE_ALLOW_RULES: readonly string[] = [
 ];
 
 /**
- * OK MCP tools kept GATED even when auto-approve is on: `deny` out-ranks `allow`
+ * OK MCP tools kept GATED even when auto-approve is on: `ask` out-ranks `allow`
  * in Claude's precedence (deny then ask then allow), so these keep prompting.
+ * `ask`, never `deny`: a bare tool-name deny rule removes the tool from Claude's
+ * context entirely instead of prompting for it, which silently cost the docked
+ * terminal all five of these verbs.
  * The goal is a frictionless read/write loop, never a silent `delete` / `move`
  * (KB-wide blast radius), `share_link` (data exfiltration), `install` (writes
  * executable skill scripts into the agent's own config dir — a persistence
@@ -147,7 +150,7 @@ const OK_AUTO_APPROVE_ALLOW_RULES: readonly string[] = [
  * content from an arbitrary github / git URL — remote-code acquisition).
  *
  * The allow-rule is open-ended (`mcp__<server>` matches EVERY OK tool) while this
- * deny-list is closed, so a new destructive tool would silently inherit
+ * ask-list is closed, so a new destructive tool would silently inherit
  * auto-approval. `registry.test.ts` in the server package pins every registered
  * tool name against this list plus its auto-approved complement — adding a tool
  * fails that test until it is consciously classified. Keep the two in lockstep.
@@ -160,7 +163,7 @@ export const OK_GATED_TOOL_NAMES: readonly string[] = [
   'import',
 ];
 
-const OK_AUTO_APPROVE_DENY_RULES: readonly string[] = OK_GATED_TOOL_NAMES.map(
+const OK_AUTO_APPROVE_ASK_RULES: readonly string[] = OK_GATED_TOOL_NAMES.map(
   (tool) => `mcp__${MCP_SERVER_NAME}__${tool}`,
 );
 
@@ -184,7 +187,7 @@ const CODEX_OK_AUTO_APPROVE_ARG = `-c ${shellSingleQuote(
  * launch site only after `isOwnManagedEntry` verifies the project's
  * `open-knowledge` `.mcp.json` entry is OK's OWN (a committed, cloned `.mcp.json`
  * could carry a foreign same-named server; RCE otherwise). `autoApproveOkTools`
- * adds the OK-tool + `ok open` allow-list and the destructive-tool deny-list.
+ * adds the OK-tool + `ok open` allow-list and the destructive-tool ask-list.
  * `--settings` takes an inline JSON string the CLI layers on the user's settings,
  * so nothing is written to disk. Returns '' when neither opt-in is set. Content is
  * registry-fixed and single-quoted — never user input.
@@ -192,7 +195,7 @@ const CODEX_OK_AUTO_APPROVE_ARG = `-c ${shellSingleQuote(
 function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
   const settings: {
     enabledMcpjsonServers?: string[];
-    permissions?: { allow: string[]; deny: string[] };
+    permissions?: { allow: string[]; ask: string[] };
   } = {};
   if (opts.mcpPreApprove === true) {
     settings.enabledMcpjsonServers = [MCP_SERVER_NAME];
@@ -200,7 +203,7 @@ function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
   if (opts.autoApproveOkTools === true) {
     settings.permissions = {
       allow: [...OK_AUTO_APPROVE_ALLOW_RULES],
-      deny: [...OK_AUTO_APPROVE_DENY_RULES],
+      ask: [...OK_AUTO_APPROVE_ASK_RULES],
     };
   }
   if (settings.enabledMcpjsonServers === undefined && settings.permissions === undefined) {
@@ -371,7 +374,7 @@ export interface BuildCliLaunchOptions {
   /**
    * Auto-approve OK's OWN tools so the KB read/write loop runs without a per-call
    * prompt. Claude: an allow-list (OK tools + `ok open`) with a destructive-tool
-   * deny-list, via {@link buildClaudeSettingsArg}. Codex: the registry
+   * ask-list, via {@link buildClaudeSettingsArg}. Codex: the registry
    * {@link TerminalCliInfo.autoApproveArg} `-c` override — the launch site MUST
    * only pass true for codex once it has confirmed OK's server entry exists in the
    * codex config (see that field's precondition). Other CLIs: no effect. Defaults
@@ -408,7 +411,7 @@ export function buildCliLaunchArgString(
 ): string {
   const info: TerminalCliInfo = TERMINAL_CLIS[cli];
   // Registry-fixed fixed args between `<bin>` and the prompt (never user input):
-  // Claude's inline `--settings` (server trust + OK auto-approve allow/deny),
+  // Claude's inline `--settings` (server trust + OK auto-approve allow/ask),
   // computed inline because two independent opt-ins share one settings object;
   // every other CLI uses its registry `autoApproveArg` when `autoApproveOkTools`
   // is on (codex's `-c` override today).
