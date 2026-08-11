@@ -27,7 +27,7 @@
  *      embedded consumed-set marker for the next cut to read.
  *   8. Read the bumped package.json#version to derive baseVersion + maxBumpType.
  *
- * Emits JSON to stdout (legacy beta-cut workflow contract):
+ * Emits JSON to stdout (public-repo beta-cut workflow contract):
  *   { skip: false, baseVersion: "X.Y.Z", maxBumpType: "patch"|"minor",
  *     pendingCount: N, releaseNotes: "...markdown..." }
  * or, when no new changesets are pending:
@@ -351,7 +351,7 @@ function main() {
   }
 
   // Compute maxBumpType across the WHOLE cycle (delta + prior). baseVersion
-  // ships to legacy and must reflect the cycle's eventual stable target — a
+  // ships to the public repo and must reflect the cycle's eventual stable target — a
   // delta-only patch on a cycle that already accumulated a minor would
   // otherwise emit the wrong base.
   const cycleBumpTypes = allIds.map((id) =>

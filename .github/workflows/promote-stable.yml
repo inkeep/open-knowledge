@@ -19,8 +19,8 @@ name: Promote stable
 #   3. Tags vX.Y.Z (no suffix) at the SAME SHA as the beta tag.
 #   4. Creates a non-prerelease GitHub Release at vX.Y.Z as a DRAFT.
 #      desktop-release.yml fires automatically and builds the stable DMG with
-#      --config.extraMetadata.version=X.Y.Z (override since the legacy commit
-#      still has -beta.N in package.json).
+#      --config.extraMetadata.version=X.Y.Z (override since the public repo's
+#      commit still has -beta.N in package.json).
 #   5. desktop-release.yml smokes that DMG, promotes the draft to published,
 #      and only then dispatches publish-stable to release.yml, which promotes
 #      the npm `latest` dist-tag using a transient package.json#version
@@ -44,7 +44,7 @@ name: Promote stable
 # manually (two-button fallback).
 #
 # Concurrency group is shared with release.yml so beta cuts and stable
-# promotions never race on the same legacy state.
+# promotions never race on the same public-repo state.
 #
 # Token model. We mint a GitHub App installation token via
 # actions/create-github-app-token for every identity-asserting call. The
@@ -220,7 +220,7 @@ jobs:
           # actions/checkout fetches all refs with fetch-depth: 0; verify
           # the resolved tag is present.
           if ! git rev-parse "refs/tags/${BETA_TAG}" >/dev/null 2>&1; then
-            echo "::error::Beta tag '${BETA_TAG}' not found on legacy. Did the auto-cadence release run?"
+            echo "::error::Beta tag '${BETA_TAG}' not found on the public repo. Did the auto-cadence release run?"
             exit 1
           fi
           echo "Tag ${BETA_TAG} resolves to $(git rev-parse "refs/tags/${BETA_TAG}")"
@@ -472,10 +472,11 @@ jobs:
         if: steps.ver.outputs.skip != 'true'
         # Auto-triggering main-reset.yml on agents-private needs a credential
         # with write access to THAT repo; the workflow-default GITHUB_TOKEN is
-        # scoped to legacy only and cannot dispatch cross-repo. The "Inkeep OK
-        # Release Bridge" GitHub App supplies it: installed on agents-private,
-        # its App-ID + private key live in legacy's secrets, and the next step
-        # mints a short-lived installation token at runtime (no static
+        # scoped to the public repo only and cannot dispatch cross-repo. The
+        # "Inkeep OK Release Bridge" GitHub App supplies it: installed on
+        # agents-private, its App-ID + private key live in the public repo's
+        # secrets, and the next step mints a short-lived installation token
+        # at runtime (no static
         # long-lived token stored). If the App secrets are absent the bridge
         # is not configured — skip silently and promotion stays two-button
         # (engineer runs main-reset.yml manually). Secrets cannot be read in
@@ -501,8 +502,8 @@ jobs:
           # Public client ID for inkeep-ok-release-bridge (non-secret; supersedes the deprecated app-id input).
           client-id: Iv23lii4qS2FAc6tkzfI
           private-key: ${{ secrets.OK_RELEASE_BRIDGE_APP_PRIVATE_KEY }}
-          # The bridge App is installed on agents-private, not on legacy
-          # (where this workflow runs). owner + repositories scope the minted
+          # The bridge App is installed on agents-private, not on the public
+          # repo (where this workflow runs). owner + repositories scope the minted
           # token to that cross-repo installation.
           owner: inkeep
           repositories: agents-private

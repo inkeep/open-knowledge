@@ -187,8 +187,8 @@ jobs:
 
       # Detect channel from the release TAG (not package.json#version). Under
       # the zero-commit-bump cadence (release.yml header lines 7-10), the
-      # tag is the only source of truth for the release's version — legacy
-      # commits at the tagged SHA carry the cycle-base version (e.g.
+      # tag is the only source of truth for the release's version — the
+      # public repo's commits at the tagged SHA carry the cycle-base version (e.g.
       # `0.5.0-beta.5`), not the tag's version. Tag also drives manifest
       # selection (beta-* vs latest-* channel files) for the stable-promotion
       # case where tag (`v0.4.0`) and on-disk package.json (`0.4.0-beta.N`)

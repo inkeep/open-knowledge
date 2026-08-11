@@ -3,12 +3,13 @@ name: Release
 # Release workflow on inkeep/open-knowledge. Single npm publisher
 # for BOTH auto-cadence beta releases AND on-demand stable promotions.
 #
-# Beta path: event-driven on `push` to legacy/main with a paths filter on
-# `.changeset/**`. Copybara mirrors `public/open-knowledge/.changeset/*.md`,
-# `pre.json`, and `config.json` from agents-private. When agents-private
-# merges a PR with a changeset, Copybara batches it into a Project-import
-# commit on legacy/main; that import push IS the release trigger. The
-# workflow then runs `compute-next-beta.mjs` locally to derive baseVersion
+# Beta path: event-driven on `push` to open-knowledge/main with a paths
+# filter on `.changeset/**`. Copybara mirrors
+# `public/open-knowledge/.changeset/*.md`, `pre.json`, and `config.json`
+# from agents-private. When agents-private merges a PR with a changeset,
+# Copybara batches it into a Project-import commit on open-knowledge/main;
+# that import push IS the release trigger. The workflow then runs
+# `compute-next-beta.mjs` locally to derive baseVersion
 # + release notes from the pending changeset pile (skip-gated by the
 # previous beta's embedded consumed-set marker), resolves -beta.N inside
 # the ok-release-cadence concurrency slot, and tags `github.sha` —
@@ -16,7 +17,7 @@ name: Release
 # happens AT the push event. This replaces the prior cross-repo
 # repository_dispatch model, which suffered an off-by-one: the dispatch
 # from agents-private fired before Copybara's mirror push landed, so
-# legacy/main HEAD was still the previous import when checkout resolved
+# open-knowledge/main HEAD was still the previous import when checkout resolved
 # `github.sha`, tagging the wrong commit (Linear PRD-6701).
 #
 # Three trigger types:
@@ -56,7 +57,7 @@ name: Release
 #      - Checks out the stable tag (= the same SHA as the corresponding
 #        beta tag).
 #      - Overrides every fixed-group package.json#version to the clean
-#        X.Y.Z (the legacy commit at that SHA carries whatever
+#        X.Y.Z (the public repo's commit at that SHA carries whatever
 #        agents-private mirrored, which is a `0.0.0` placeholder under
 #        the zero-commit-bump cadence).
 #      - Publishes @inkeep/open-knowledge@X.Y.Z to npm with
@@ -87,7 +88,7 @@ name: Release
 # event-driven betas and promote-stable route their npm publishes here.
 #
 # Concurrency group is shared with promote-stable.yml so beta cuts and
-# stable promotions never race on the same legacy state.
+# stable promotions never race on the same public-repo state.
 
 on:
   push:
@@ -369,7 +370,7 @@ jobs:
       # concurrent push events (e.g., two rapid Copybara imports that each
       # carry a changeset) see different N's and never collide on tag
       # creation. The concurrency group serializes runs against the same
-      # legacy state, so the max-N scan is race-free.
+      # public-repo state, so the max-N scan is race-free.
       - name: Resolve -beta.N counter
         if: steps.compute-beta.outputs.run_beta == 'true'
         id: resolve-beta
@@ -531,7 +532,7 @@ jobs:
           fi
 
           # Same transient-jq primitive as the beta path: edit
-          # version fields in place, never commit. The legacy commit at
+          # version fields in place, never commit. The public repo's commit at
           # the source beta SHA carries whatever package.json version
           # agents-private mirrored (under the zero-commit-bump cadence,
           # that's the placeholder version on main); we override to the
