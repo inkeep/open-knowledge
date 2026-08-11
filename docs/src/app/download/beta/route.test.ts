@@ -60,6 +60,13 @@ describe('GET /download/beta', () => {
     expect(_lastCapture?.event).toBe('dmg_downloaded');
     expect(_lastCapture?.distinctId).toBe('visitor-9');
     expect(_lastCapture?.properties?.channel).toBe('beta');
+    // The resolver serves DMG_ASSET_NAME and nothing else, so the reported
+    // platform is fixed. If beta ever gains Windows/Linux builds, this fails
+    // rather than silently attributing them to macOS.
+    expect(_lastCapture?.properties?.os).toBe('macos');
+    expect(_lastCapture?.properties?.arch).toBe('arm64');
+    expect(_lastCapture?.properties?.format).toBe('dmg');
+    expect(TEST_DMG_URL.endsWith('.dmg')).toBe(true);
   });
 
   test('302 to the stale LKG URL and still counts', async () => {

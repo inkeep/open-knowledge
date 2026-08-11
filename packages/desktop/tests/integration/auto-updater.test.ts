@@ -512,6 +512,48 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     });
   });
 
+  test('proxyFeed: an accepted offer tags the artifact fetch with x-ok-to-version', () => {
+    // Windows/Linux installers have version-less names and stable resolves
+    // them through GitHub's `latest` alias, so this header is the proxy's only
+    // way to know which version an update landed on. It must be set before
+    // downloadUpdate runs — electron-updater reads requestHeaders there.
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+    });
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    expect(rig.updater.downloadUpdate).toHaveBeenCalled();
+    expect(rig.updater.requestHeaders).toEqual({
+      'x-ok-from-version': '0.4.0',
+      'x-ok-channel': 'stable',
+      'x-ok-to-version': '0.5.0',
+    });
+  });
+
+  test('proxyFeed: a vetoed cross-channel offer does NOT tag a to-version', () => {
+    // No download happens, so tagging one would attribute a version to an
+    // update that was never fetched.
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+    });
+    rig.updater.emit('update-available', { version: '0.6.0-beta.0' });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.updater.requestHeaders).toEqual({
+      'x-ok-from-version': '0.4.0',
+      'x-ok-channel': 'stable',
+    });
+  });
+
+  test('proxyFeed off: an accepted offer leaves GitHub-bound headers untouched', () => {
+    // The GitHub fallback nulls these headers; growing a custom one here would
+    // send OpenKnowledge telemetry to github.com.
+    const { rig } = makeRig({ appVersion: '0.4.0' });
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    expect(rig.updater.downloadUpdate).toHaveBeenCalled();
+    expect(rig.updater.requestHeaders).toBeNull();
+  });
+
   test('proxyFeed: default-off — channel not in the set leaves the GitHub default', () => {
     const { rig } = makeRig({
       appVersion: '0.4.0', // stable build

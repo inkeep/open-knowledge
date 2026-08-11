@@ -71,6 +71,8 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(_lastCapture?.properties?.to_version).toBe('0.20.0');
     expect(_lastCapture?.properties?.from_version).toBe('0.19.1');
     expect(_lastCapture?.properties?.ua_class).toBe('electron');
+    expect(_lastCapture?.properties?.os).toBe('macos');
+    expect(_lastCapture?.properties?.arch).toBe('arm64');
   });
 
   test('beta zip parses the prerelease version and counts (no from_version header)', async () => {
@@ -190,7 +192,7 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(_lastCapture).toBeNull();
   });
 
-  test('Windows stable exe counts with artifact_type=exe and no to_version (versionless name)', async () => {
+  test('Windows stable exe counts with artifact_type=exe and no to_version when the updater sends no header', async () => {
     _lastCapture = null;
     const file = 'OpenKnowledge-Setup-x64.exe';
     const res = await call('stable', [file], { 'x-ok-from-version': '0.19.1' });
@@ -200,6 +202,46 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(_lastCapture?.properties?.artifact_type).toBe('exe');
     expect(_lastCapture?.properties?.to_version).toBeUndefined();
     expect(_lastCapture?.properties?.from_version).toBe('0.19.1');
+    expect(_lastCapture?.properties?.os).toBe('windows');
+    expect(_lastCapture?.properties?.arch).toBe('x64');
+  });
+
+  test('a versionless stable installer takes to_version from the updater header', async () => {
+    // The whole reason the header exists: exe/deb/rpm names carry no version
+    // and stable's `latest` alias resolves no tag, so without it every Windows
+    // and Linux stable update is attributed to no version at all.
+    _lastCapture = null;
+    const res = await call('stable', ['OpenKnowledge-Setup-arm64.exe'], {
+      'x-ok-from-version': '0.19.1',
+      'x-ok-to-version': '0.20.0',
+    });
+    expect(res.status).toBe(302);
+    expect(_lastCapture?.properties?.to_version).toBe('0.20.0');
+    expect(_lastCapture?.properties?.from_version).toBe('0.19.1');
+  });
+
+  test('an ill-formed x-ok-to-version is dropped, not forwarded to analytics', async () => {
+    _lastCapture = null;
+    const res = await call('stable', ['OpenKnowledge-amd64.deb'], {
+      'x-ok-to-version': '0.20.0; DROP TABLE',
+    });
+    expect(res.status).toBe(302);
+    expect(_lastCapture?.properties?.to_version).toBeUndefined();
+  });
+
+  test('server-derived versions outrank the header, which is only a client claim', async () => {
+    // A filename version and a resolved beta tag both describe what this
+    // redirect actually serves; a lying header must not be able to overwrite
+    // either, or a client could rewrite another release's adoption numbers.
+    _lastCapture = null;
+    await call('stable', ['OpenKnowledge-0.20.0-arm64-mac.zip'], {
+      'x-ok-to-version': '9.9.9',
+    });
+    expect(_lastCapture?.properties?.to_version).toBe('0.20.0');
+
+    _lastCapture = null;
+    await call('beta', ['OpenKnowledge-arm64.deb'], { 'x-ok-to-version': '9.9.9' });
+    expect(_lastCapture?.properties?.to_version).toBe('0.20.0-beta.4');
   });
 
   test('Linux beta deb counts with to_version derived from the resolved beta tag', async () => {
@@ -211,9 +253,11 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(_lastCapture?.event).toBe('app_update_downloaded');
     expect(_lastCapture?.properties?.artifact_type).toBe('deb');
     expect(_lastCapture?.properties?.to_version).toBe('0.20.0-beta.4');
+    expect(_lastCapture?.properties?.os).toBe('linux');
+    expect(_lastCapture?.properties?.arch).toBe('arm64');
   });
 
-  test('Linux stable rpm counts with artifact_type=rpm and no to_version (versionless name)', async () => {
+  test('Linux stable rpm counts with artifact_type=rpm and no to_version when the updater sends no header', async () => {
     _lastCapture = null;
     const file = 'OpenKnowledge-x86_64.rpm';
     const res = await call('stable', [file]);
@@ -223,6 +267,36 @@ describe('GET /updates/[channel]/[...path]', () => {
     // Symmetric with the beta deb's resolved-tag assertion: the stable alias
     // resolves no tag, so a regression that propagates one must fail here.
     expect(_lastCapture?.properties?.to_version).toBeUndefined();
+    expect(_lastCapture?.properties?.os).toBe('linux');
+    expect(_lastCapture?.properties?.arch).toBe('x64');
+  });
+
+  test('every packager arch spelling normalizes onto one analytics vocabulary', async () => {
+    // dpkg says amd64, rpm says x86_64/aarch64, electron-builder says x64 —
+    // ungrouped, one platform would read as several in a breakdown.
+    const cases: ReadonlyArray<readonly [string, string, string]> = [
+      ['OpenKnowledge-Setup-arm64.exe', 'windows', 'arm64'],
+      ['OpenKnowledge-amd64.deb', 'linux', 'x64'],
+      ['OpenKnowledge-aarch64.rpm', 'linux', 'arm64'],
+      ['OpenKnowledge-0.20.0-universal-mac.zip', 'macos', 'universal'],
+    ];
+    for (const [file, os, arch] of cases) {
+      _lastCapture = null;
+      const res = await call('stable', [file]);
+      expect(res.status).toBe(302);
+      expect(_lastCapture?.properties?.os, file).toBe(os);
+      expect(_lastCapture?.properties?.arch, file).toBe(arch);
+    }
+  });
+
+  test('an unrecognized arch token is dropped, not forwarded to analytics', async () => {
+    // Bounded cardinality: a future packager spelling must arrive as an absent
+    // property a dashboard shows as a gap, never as a new free-form value.
+    _lastCapture = null;
+    const res = await call('stable', ['OpenKnowledge-riscv64.deb']);
+    expect(res.status).toBe(302);
+    expect(_lastCapture?.properties?.os).toBe('linux');
+    expect(_lastCapture?.properties?.arch).toBeUndefined();
   });
 
   test('a manifest-lookalike name that is not a real channel file → 404', async () => {

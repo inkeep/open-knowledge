@@ -1115,7 +1115,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   const onUpdateAvailable = (info: { version?: string }): void => {
     logger.info('update-available', { version: info.version });
-    const offerClass = classifyOffer(info.version);
+    const offeredVersion = info.version;
+    const offerClass = classifyOffer(offeredVersion);
     if (offerClass !== 'same-channel') {
       logger.warn('update-available vetoed', {
         reason: offerClass,
@@ -1134,6 +1135,22 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       return;
     }
     markCheckSucceeded();
+    // Tag the artifact fetch with the version being installed. The Windows and
+    // Linux installers carry version-less names and stable resolves them
+    // through GitHub's `latest` alias, so the proxy has nothing to parse and
+    // those updates would otherwise land in analytics with no `to_version` at
+    // all — only the macOS zip embeds its version. electron-updater reads
+    // `requestHeaders` when `downloadUpdate()` runs, not when the feed is
+    // configured, so setting it here reaches the artifact request; it is safe
+    // to do only because `autoDownload = false` puts that call below us rather
+    // than in a race with this handler. Guarded on the proxy feed so the
+    // GitHub fallback (which nulls these headers) never grows a custom one.
+    if (usingProxyFeed && offeredVersion) {
+      updater.requestHeaders = {
+        ...updater.requestHeaders,
+        'x-ok-to-version': offeredVersion,
+      };
+    }
     // `autoDownload = false`, so we kick off the download explicitly only
     // after the channel-match check passes. Defensive catch: rejections also
     // surface through the `error` event handler, but a synchronous reject

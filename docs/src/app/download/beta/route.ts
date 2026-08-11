@@ -33,7 +33,19 @@ export async function GET(request: Request): Promise<Response> {
     captureServerEvent({
       event: 'dmg_downloaded',
       distinctId: resolveDistinctId(request),
-      properties: { channel: 'beta', ...attribution(request) },
+      properties: {
+        channel: 'beta',
+        // Hardcoded, not resolved from `?os=`: the beta resolver matches
+        // DMG_ASSET_NAME and nothing else, so this route can only ever serve
+        // the macOS build no matter what a link asks for. Reporting the target
+        // it actually served keeps the platform split honest — and makes the
+        // missing Windows/Linux beta channel visible as an absence rather than
+        // as untyped events. Widen these the day the resolver does.
+        os: 'macos',
+        arch: 'arm64',
+        format: 'dmg',
+        ...attribution(request),
+      },
     });
   }
   return toRedirectResponse(redirect);
