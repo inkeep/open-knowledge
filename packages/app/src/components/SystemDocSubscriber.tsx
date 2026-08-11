@@ -107,7 +107,11 @@ export function SystemDocSubscriber() {
     });
 
     const unsubscribe = subscribeToDocumentsChanged((channels) => {
-      if (channels.includes('files') || channels.includes('backlinks')) {
+      if (
+        channels.includes('files') ||
+        channels.includes('backlinks') ||
+        channels.includes('local-targets')
+      ) {
         void queryClient.invalidateQueries({ queryKey: ['backlinks'] });
         void queryClient.invalidateQueries({ queryKey: ['forward-links'] });
       }
@@ -137,7 +141,11 @@ export function SystemDocSubscriber() {
       void handlersRef.current.refreshServerInfo();
     });
     provider.on('synced', () => {
-      emitDocumentsChanged(['files', 'backlinks', 'graph']);
+      // Recover any derived-view frames emitted while this connection was
+      // opening. In particular, a local file can appear or disappear after the
+      // audit's initial fetch but before CC1 is ready, so local targets must be
+      // refreshed on the first sync as well as reconnects.
+      emitDocumentsChanged(['files', 'backlinks', 'graph', 'local-targets']);
       onReconnectSynced();
     });
 

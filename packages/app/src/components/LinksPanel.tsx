@@ -4,6 +4,8 @@ import {
   type BacklinkEntry,
   BacklinksSuccessSchema,
   type ForwardLinkEntry,
+  type ForwardLinkLocalTarget,
+  type ForwardLinksSuccess,
   ForwardLinksSuccessSchema,
   isManagedArtifactDocName,
   ProblemDetailsSchema,
@@ -11,12 +13,22 @@ import {
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, ChevronDown, ChevronRight, File, Folder, TriangleAlert } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  ChevronRight,
+  File,
+  Folder,
+  Image as ImageIcon,
+  TriangleAlert,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { resolveLinkTargetIntent } from '@/components/link-target-intent';
 import { usePageList } from '@/components/PageListContext';
+import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
+import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Panel,
@@ -29,6 +41,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HttpResponseParseError } from '@/editor/http-client';
+import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { cn } from '@/lib/utils';
@@ -59,7 +72,10 @@ async function fetchBacklinks(docName: string): Promise<BacklinkEntry[]> {
   return success.data.backlinks;
 }
 
-async function fetchForwardLinks(docName: string): Promise<ForwardLinkEntry[]> {
+// Returns the whole success body so the Outgoing and Local files sections share
+// one `/api/forward-links` fetch (React Query dedupes on the query key). Outgoing
+// reads `forwardLinks`; Local files reads the additive `localTargets` sibling.
+async function fetchForwardLinks(docName: string): Promise<ForwardLinksSuccess> {
   const res = await fetch(`/api/forward-links?docName=${encodeURIComponent(docName)}`);
   const body = (await res.json().catch(() => null)) as unknown;
   if (!res.ok) {
@@ -79,7 +95,7 @@ async function fetchForwardLinks(docName: string): Promise<ForwardLinkEntry[]> {
       status: res.status,
     });
   }
-  return success.data.forwardLinks;
+  return success.data;
 }
 
 function compactDocPath(docName: string): string {
@@ -170,6 +186,14 @@ interface LinkRowProps {
    * handler unless you intentionally mean to suppress navigation.
    */
   onClick?: () => void;
+  /**
+   * Optional right-aligned content (e.g. a status badge). Rendered in normal
+   * flow beneath the primary interactive's hit-area overlay, so it stays visible
+   * but a click on it still triggers the row's primary action. Keep it
+   * non-interactive — an interactive trailing control would need `relative z-10`
+   * to escape the overlay, like the secondary buttons elsewhere in this file.
+   */
+  trailing?: ReactNode;
 }
 
 function LinkRow({
@@ -186,6 +210,7 @@ function LinkRow({
   external,
   disabled,
   onClick,
+  trailing,
 }: LinkRowProps) {
   const showPath = path !== undefined && path !== title;
   const iconNode = (
@@ -246,6 +271,7 @@ function LinkRow({
         ) : null}
         {snippet ? <p className="line-clamp-2 text-muted-foreground">{snippet}</p> : null}
       </div>
+      {trailing ? <div className="mt-0.5 flex shrink-0 items-center">{trailing}</div> : null}
     </div>
   );
 
@@ -345,15 +371,12 @@ function ForwardLinksSection({ docName }: { docName: string }) {
     pagesByBasename,
     loading: pagesLoading,
   } = usePageList();
-  const {
-    data: links = [],
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['forward-links', docName],
     queryFn: () => fetchForwardLinks(docName),
     enabled: !pagesLoading && (pages.has(docName) || isManagedArtifactDocName(docName)),
   });
+  const links = data?.forwardLinks ?? [];
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [prevDocName, setPrevDocName] = useState(docName);
@@ -513,11 +536,140 @@ function ForwardLinksSection({ docName }: { docName: string }) {
   );
 }
 
+/**
+ * Local file and image references the document authors, kept in their own
+ * section so a resource is never presented as a document graph edge (Outgoing)
+ * or a backlink. Rows come from the server's local-target assessment — the
+ * additive `localTargets` sibling of the forward-links response — not from
+ * reclassified graph rows. One row per authored occurrence, so two references to
+ * the same file stay individually navigable to their own source position.
+ */
+function LocalFilesSection({ docName }: { docName: string }) {
+  const { t } = useLingui();
+  const { pages, loading: pagesLoading } = usePageList();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['forward-links', docName],
+    queryFn: () => fetchForwardLinks(docName),
+    enabled: !pagesLoading && (pages.has(docName) || isManagedArtifactDocName(docName)),
+  });
+  const [expanded, setExpanded] = useState(false);
+  const [prevDocName, setPrevDocName] = useState(docName);
+  if (prevDocName !== docName) {
+    setPrevDocName(docName);
+    setExpanded(false);
+  }
+  // Undefined (not `[]`) when the server predates the localTargets sibling: a
+  // partial response whose document relationships are known but whose
+  // local-target assessment is not. Kept distinct from the empty case so the
+  // section says "unavailable" rather than a confident "none".
+  const localTargets = data?.localTargets;
+  const rows = localTargets ?? [];
+  const visible = expanded ? rows : rows.slice(0, INITIAL_VISIBLE);
+
+  function navigateToOccurrence(target: ForwardLinkLocalTarget): void {
+    // Occurrence line/column are 0-based; the source-navigation contract is
+    // 1-based. Bank the intent and fire it live, the same way Problems jumps to a
+    // finding — the visible editor consumes it now, or source mode replays it on
+    // its next activation. The row navigates to where the reference is authored,
+    // never opening the (possibly absent) target itself.
+    const detail: LintNavDetail = {
+      docName,
+      line: target.line + 1,
+      column: target.column + 1,
+      source: 'links',
+    };
+    rememberPendingSourceNavigation(docName, { kind: 'lint', detail });
+    window.dispatchEvent(new CustomEvent(LINT_NAV_EVENT, { detail }));
+  }
+
+  function renderLocalTargetRow(target: ForwardLinkLocalTarget) {
+    const isImage = target.role === 'image';
+    const resolved = target.status === 'exact' || target.status === 'fallback';
+    const identity = target.resolvedTarget ?? target.href;
+    // Non-color status cue: a text badge for a failing reference (plus an amber
+    // icon as redundant reinforcement), nothing for a resolved one. A proven
+    // absence reads "Missing"; a reference whose target can't be located in the
+    // project (e.g. an image path escaping the root) reads "Unresolvable".
+    const statusWord = target.status === 'missing' ? t`Missing` : t`Unresolvable`;
+    // Complete messages let translators reorder kind, identity, status, and
+    // action naturally instead of inheriting English concatenation order.
+    const ariaLabel = resolved
+      ? isImage
+        ? t`Image ${identity}. Go to reference.`
+        : t`File ${identity}. Go to reference.`
+      : target.status === 'missing'
+        ? isImage
+          ? t`Missing image ${identity}. Go to reference.`
+          : t`Missing file ${identity}. Go to reference.`
+        : isImage
+          ? t`Unresolvable image ${identity}. Go to reference.`
+          : t`Unresolvable file ${identity}. Go to reference.`;
+    return (
+      <LinkRow
+        key={`lt:${target.range.start}-${target.range.end}`}
+        icon={isImage ? <ImageIcon className="size-3.5" /> : <File className="size-3.5" />}
+        iconColorClass={resolved ? undefined : 'text-amber-600 dark:text-amber-400'}
+        title={compactDocPath(identity)}
+        titleHover={identity}
+        ariaLabel={ariaLabel}
+        trailing={
+          resolved ? undefined : (
+            <Badge variant="outline" className="font-normal text-muted-foreground">
+              {statusWord}
+            </Badge>
+          )
+        }
+        onClick={() => navigateToOccurrence(target)}
+      />
+    );
+  }
+
+  return (
+    <Collapsible defaultOpen>
+      <SectionTrigger title={t`Local files`} count={rows.length} isLoading={isLoading} />
+      <CollapsibleContent>
+        <div className="px-2 pb-3" aria-busy={isLoading}>
+          {error ? (
+            <div className="px-3">
+              <PanelError>
+                {error instanceof Error ? error.message : t`Failed to load local files`}
+              </PanelError>
+            </div>
+          ) : localTargets === undefined && !isLoading ? (
+            <div className="px-3">
+              <PanelEmpty>
+                <Trans>Local file details aren't available yet.</Trans>
+              </PanelEmpty>
+            </div>
+          ) : rows.length === 0 && !isLoading ? (
+            <div className="px-3">
+              <PanelEmpty>
+                <Trans>This page references no local files or images.</Trans>
+              </PanelEmpty>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1">{visible.map(renderLocalTargetRow)}</div>
+              <ShowMoreButton
+                total={rows.length}
+                expanded={expanded}
+                onToggle={() => setExpanded((prev) => !prev)}
+              />
+            </>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export function LinksPanel({ docName, className = '' }: { docName: string; className?: string }) {
   return (
     <Panel className={className}>
       <PanelBody className="px-0 py-0">
         <ForwardLinksSection docName={docName} />
+        <Separator />
+        <LocalFilesSection docName={docName} />
         <Separator />
         <BacklinksSection docName={docName} />
       </PanelBody>

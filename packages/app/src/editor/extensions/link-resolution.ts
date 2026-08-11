@@ -31,6 +31,7 @@
 
 import { classifyMarkdownHref, resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
+import { isLinkValidationVisible } from '../link-validation-policy';
 import type { PageListCacheSnapshot } from '../page-list-cache';
 import type { MarkInfo } from './mark-identity';
 
@@ -114,8 +115,16 @@ export function computeLinkResolutionState(
     pages: cache.pages,
     folderPaths: cache.folderPaths,
   });
-  if (intent.kind === 'create') return 'unresolved';
-  return intent.displayState;
+  if (intent.kind !== 'create') return intent.displayState;
+
+  // An extension-less href is syntactically ambiguous — it usually names a
+  // document, but it can name an ordinary file (`assets/NOTICE`). The server's
+  // canonical classifier settles that with exact inventory membership: document
+  // identity first, then an exact file hit. Resolving only against `pages` +
+  // `folderPaths` here means the editor paints a redlink, and offers Create
+  // page, over a file the server has already proven exists.
+  if (isResolvedAssetHref(href, sourceDocName, cache.assetPaths, cache.filePaths)) return 'asset';
+  return 'unresolved';
 }
 
 /**
@@ -133,12 +142,15 @@ export function computeLinkResolutionAttrs(
 ): Record<string, string> | null {
   const href = markInfo.attrs?.href;
   if (typeof href !== 'string' || href.length === 0) return null;
-  // Wiki-embed asset links are not doc-links — the pages cache is markdown-
-  // only, so running the doc-link intent classifier against a PDF/video/
-  // audio href always returns 'unresolved' and paints the link as broken.
-  // Skip the decoration; asset links get default <a> styling.
-  if (markInfo.attrs?.sourceForm === 'wikiembed') return null;
+  // Wiki embeds resolve like every other form, never skipped: the document
+  // branch consults the tracked-file sets the way the server's classifier
+  // does, so a PDF/video/audio embed resolves as an asset on its own merits
+  // instead of coming back 'unresolved' against the markdown-only page cache.
+  // Skipping would not be a conservative default but a silence — it would also
+  // swallow document-shaped embeds like `![[targets/missing-embed]]`, which
+  // the server reports as a missing document.
   const state = computeLinkResolutionState(href, sourceDocName, cache);
+  if (state === 'unresolved' && !isLinkValidationVisible()) return null;
   return { 'data-resolution-state': state };
 }
 

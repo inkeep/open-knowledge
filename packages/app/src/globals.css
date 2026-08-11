@@ -5547,6 +5547,43 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .ProseMirror .ok-lint-block-atom.ok-lint-block-error {
   outline-color: var(--lint-error-color);
 }
+
+/* Image failures use the same warning/error language as link audit and source
+   diagnostics. A present target that the browser cannot decode is a warning;
+   a target proven absent by the project inventory is an error. The labeled
+   placeholder and ImageOff icon remain the non-color channels, while the
+   authored target gets the familiar audit squiggle. */
+.ok-image-error-placeholder {
+  --ok-image-error-accent: color-mix(in oklch, var(--lint-warning-color) 82%, var(--foreground));
+
+  border-color: var(--ok-image-error-accent);
+  background: color-mix(in oklch, var(--lint-warning-color) 9%, transparent);
+}
+[data-image-error-kind="not-found"] > .ok-image-error-placeholder {
+  --ok-image-error-accent: color-mix(in oklch, var(--lint-error-color) 82%, var(--foreground));
+
+  border-color: var(--ok-image-error-accent);
+  background: color-mix(in oklch, var(--lint-error-color) 8%, transparent);
+}
+.ok-image-error-placeholder > svg {
+  color: var(--ok-image-error-accent);
+}
+.ok-image-error-target {
+  text-decoration: underline wavy var(--ok-image-error-accent);
+  text-underline-offset: 0.2em;
+}
+
+/* Percentage max-width is indefinite for shrink-to-fit inline content inside
+   an auto-layout table cell. Give the error slot a definite cell-relative
+   width there, then let the target grid item shrink and truncate within it. */
+.ProseMirror td [data-image-error="true"],
+.ProseMirror td .ok-image-error-placeholder {
+  width: 100%;
+  min-width: 0;
+}
+.ProseMirror td [data-image-error="true"] {
+  display: block;
+}
 /* Hover tooltip for a decorated lint block (markdown-lint-decorations.ts). A
    styled, instant alternative to the native `title` — OK popover tokens,
    one diagnostic per line, never intercepts pointer events. */

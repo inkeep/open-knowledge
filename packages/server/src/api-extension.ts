@@ -525,7 +525,6 @@ import {
   ManagedRenameSourceTypeMismatchError,
   SymlinkEscapeError,
 } from './apply-managed-rename.ts';
-import { computeBrokenOutboundLinks } from './backlink-index.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
@@ -646,6 +645,7 @@ import {
   runGhDeviceLoginSubprocess,
   runPatSubprocess,
 } from './local-ops/index.ts';
+import { localTargetInventoryFromIndexes } from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
 import {
   managedArtifactAbsPath,
@@ -726,6 +726,7 @@ import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { getDocumentHistory, getFolderTimeline } from './timeline-query.ts';
 import { recordTimelineCoalesced } from './timeline-telemetry.ts';
+import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
 
 // Lazy-init so the counter registers against a real meter post-initTelemetry
 // (not the pre-init no-op). Matches the httpDurationHist pattern in
@@ -3519,14 +3520,43 @@ export function createApiExtension(
     );
   }
 
-  // On-disk existence oracle for non-doc outbound link targets (linked assets
-  // and source files) used by `computeBrokenOutboundLinks`. Doc links resolve
-  // against the admitted set above; file links have no CRDT presence, so a
-  // just-written `[x](../src/foo.py)` is validated against the filesystem. The
-  // path is already content-root-confined by `resolveAssetProjectPath`, so
-  // `resolve(contentDir, …)` cannot escape the tree.
-  const linkedFileExists = (contentRootRelativePath: string): boolean =>
-    existsSync(resolve(contentDir, contentRootRelativePath));
+  // Content-scoped existence oracle for non-doc outbound targets. The watcher
+  // inventory is authoritative once an entry is indexed. The confined disk
+  // fallback preserves immediate write advisories during the short window
+  // between a native file creation and its watcher event, while applying the
+  // same ignore and realpath-escape gates before admitting that file.
+  function createLinkedFileExists(
+    allFiles = getAllFilesIndex(),
+  ): (contentRootRelativePath: string) => boolean {
+    const inventory = localTargetInventoryFromIndexes(
+      allFiles,
+      getFolderAliasIndex?.() ?? new Map(),
+      contentDir,
+    );
+    const admittedFiles = new Set(inventory.fileTargets);
+    const canonicalContentDir = realpathSync(contentDir);
+    return (contentRootRelativePath) => {
+      if (admittedFiles.has(contentRootRelativePath)) return true;
+      if (contentFilter?.isPathIgnored(contentRootRelativePath)) return false;
+
+      const candidate = resolve(contentDir, contentRootRelativePath);
+      if (!isWithinDir(candidate, contentDir) || !existsSync(candidate)) return false;
+      try {
+        return isWithinDir(realpathSync(candidate), canonicalContentDir);
+      } catch (err) {
+        // ENOENT is the expected TOCTOU race (deleted between existsSync and
+        // realpathSync) and needs no note; anything else (EACCES, ELOOP) would
+        // otherwise report a persistently absent file with no diagnostic.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          log.debug(
+            { err, candidate },
+            'linked-file existence fallback could not canonicalize; treating as absent',
+          );
+        }
+        return false;
+      }
+    };
+  }
 
   // Synchronously register a just-persisted agent-write doc into the file index,
   // mirroring `/api/create-page`. The file-watcher normally adds it on the next
@@ -5510,11 +5540,11 @@ export function createApiExtension(
         // isn't falsely flagged before the file-watcher indexes it on disk.
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
-        const brokenLinks = computeBrokenOutboundLinks(
+        const brokenLinks = computeWriteAdvisoryLinks(
           writtenSource,
           resolvedDocName,
           admittedForLinks,
-          linkedFileExists,
+          createLinkedFileExists(),
         );
 
         const subscriberCount = getSubscriberCount(resolvedDocName);
@@ -5673,7 +5703,7 @@ export function createApiExtension(
           docName: string;
           summary?: SummaryResponse;
           warnings?: AdvisoryWarning[];
-          brokenLinks: ReturnType<typeof computeBrokenOutboundLinks>;
+          brokenLinks: ReturnType<typeof computeWriteAdvisoryLinks>;
         }
         type BatchResult = BatchWrittenResult | BatchErrorResult;
 
@@ -5936,6 +5966,7 @@ export function createApiExtension(
           for (const p of pending) {
             if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
           }
+          const linkedFileExists = createLinkedFileExists();
 
           let lastWrittenDoc: string | undefined;
           for (const p of pending) {
@@ -5946,7 +5977,7 @@ export function createApiExtension(
             }
             const writtenSource = p.session.dc.document.getText('source').toString();
             registerWrittenDocInFileIndex(p.docName, writtenSource);
-            const brokenLinks = computeBrokenOutboundLinks(
+            const brokenLinks = computeWriteAdvisoryLinks(
               writtenSource,
               p.docName,
               admittedForLinks,
@@ -6299,11 +6330,11 @@ export function createApiExtension(
         // the contract uniform rather than returning a misleading empty `[]`.
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
-        const brokenLinks = computeBrokenOutboundLinks(
+        const brokenLinks = computeWriteAdvisoryLinks(
           session.dc.document.getText('source').toString(),
           resolvedDocName,
           admittedForLinks,
-          linkedFileExists,
+          createLinkedFileExists(),
         );
 
         successResponse(
@@ -6839,11 +6870,11 @@ export function createApiExtension(
         // just-edited source bytes; see handleAgentWriteMd for the full why.
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(docName);
-        const brokenLinks = computeBrokenOutboundLinks(
+        const brokenLinks = computeWriteAdvisoryLinks(
           patchedSource,
           docName,
           admittedForLinks,
-          linkedFileExists,
+          createLinkedFileExists(),
         );
 
         // Success body is flat — no `{ ok: true }` wrapper.
@@ -20503,10 +20534,10 @@ export function createApiExtension(
   }
 
   /**
-   * The world an audit plane would be true of: the lint configuration in force
-   * plus the branch whose content is on disk. The audit's coalescing key and
-   * its in-flight walks both rest on this one reader, so the two stay in step
-   * by construction.
+   * The world an audit plane would be true of: the lint configuration in force,
+   * the branch whose content is on disk, and the local-target inventory
+   * generation. The audit's coalescing key and its in-flight walks both rest on
+   * this one reader, so the three stay in step by construction.
    *
    * Branch belongs here for the same reason the config epoch does, one layer
    * down: a switch replaces the content set wholesale, so a request issued
@@ -20518,7 +20549,9 @@ export function createApiExtension(
    * a git branch name (refnames admit no spaces) or a `detached-<oid>` literal.
    */
   const readAuditGeneration = (): string =>
-    `${lintConfigEpoch} ${durabilityState.getActiveBranch()}`;
+    `${lintConfigEpoch} ${durabilityState.getActiveBranch()} ${
+      derivedDocumentIndex?.readLocalTargetGeneration?.() ?? 0
+    }`;
 
   // Content-rule violations on a post-write document, for the agent write/edit
   // advisory channel — the full validation plane, not just lint: every enabled
@@ -20589,6 +20622,9 @@ export function createApiExtension(
           line: d.range.start.line + 1,
           column: d.range.start.character + 1,
           ...('linkTarget' in d && d.linkTarget !== undefined ? { linkTarget: d.linkTarget } : {}),
+          ...('localTarget' in d && d.localTarget !== undefined
+            ? { localTarget: d.localTarget }
+            : {}),
         }));
     } catch (err) {
       log.warn(

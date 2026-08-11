@@ -8,6 +8,8 @@ import {
   AgentWriteMdSuccessSchema,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
+  LintViolationWarningSchema,
+  LocalTargetDiagnosticEvidenceSchema,
   ProblemTypeSchema,
   SummaryResponseFieldSchema,
 } from './index.ts';
@@ -318,6 +320,92 @@ describe('AgentWriteMdSuccessSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  test('round-trips a brokenLink carrying additive local-target evidence (image + reference)', () => {
+    const brokenLinks = [
+      {
+        href: './diagram.png',
+        resolvedTo: 'assets/diagram.png',
+        reason: 'no-such-file',
+        localTarget: {
+          href: './diagram.png',
+          targetKind: 'file',
+          role: 'image',
+          sourceForm: 'markdown-inline',
+          resolvedTarget: 'assets/diagram.png',
+          reason: 'no-such-file',
+          resolutionMethod: 'source-relative',
+        },
+      },
+      {
+        href: 'guide',
+        resolvedTo: 'guide',
+        reason: 'no-such-doc',
+        localTarget: {
+          href: 'guide',
+          targetKind: 'document',
+          role: 'link',
+          sourceForm: 'markdown-reference',
+          resolvedTarget: 'guide',
+          reason: 'no-such-doc',
+          resolutionMethod: 'tolerant',
+          fallbackTarget: 'Guide',
+          definition: { line: 12, label: 'guide' },
+        },
+      },
+    ];
+    const result = AgentWriteMdSuccessSchema.safeParse({
+      timestamp: '2026-04-30T00:00:00.000Z',
+      subscriberCount: 0,
+      systemSubscriberCount: 0,
+      brokenLinks,
+    });
+    expect(result.success).toBe(true);
+    // The evidence survives the round trip — a consumer reads it back verbatim.
+    expect(result.success && result.data.brokenLinks).toEqual(brokenLinks);
+  });
+
+  test('preserves additive fields in local-target evidence and its definition', () => {
+    const evidence = {
+      href: './guide',
+      targetKind: 'document',
+      role: 'link',
+      sourceForm: 'markdown-reference',
+      resolvedTarget: 'guide',
+      reason: 'no-such-doc',
+      resolutionMethod: 'source-relative',
+      futureEvidence: 'kept',
+      definition: { line: 4, label: 'guide', futureDefinition: 'kept' },
+    };
+
+    expect(LocalTargetDiagnosticEvidenceSchema.parse(evidence)).toEqual(evidence);
+  });
+
+  test.each([-1, 1.5])('rejects invalid local-target definition line %s', (line) => {
+    const result = LocalTargetDiagnosticEvidenceSchema.safeParse({
+      href: './guide',
+      targetKind: 'document',
+      role: 'link',
+      sourceForm: 'markdown-reference',
+      resolvedTarget: 'guide',
+      reason: 'no-such-doc',
+      resolutionMethod: 'source-relative',
+      definition: { line, label: 'guide' },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  test('a legacy brokenLink with no localTarget still parses (back-compat)', () => {
+    const result = AgentWriteMdSuccessSchema.safeParse({
+      timestamp: '2026-04-30T00:00:00.000Z',
+      subscriberCount: 0,
+      systemSubscriberCount: 0,
+      brokenLinks: [{ href: './old.md', resolvedTo: 'old', reason: 'no-such-doc' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.brokenLinks[0]?.localTarget).toBeUndefined();
+  });
+
   test('requires brokenLinks (always-present confirmation field)', () => {
     const result = AgentWriteMdSuccessSchema.safeParse({
       timestamp: '2026-04-30T00:00:00.000Z',
@@ -356,6 +444,46 @@ describe('AgentWriteMdSuccessSchema', () => {
       brokenLinks: [],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('LintViolationWarningSchema', () => {
+  test('round-trips a links violation carrying local-target evidence', () => {
+    const warning = {
+      kind: 'lint-violation',
+      source: 'links',
+      code: 'dead-link',
+      message: 'Image target "./logo.png" does not resolve to an existing file.',
+      severity: 'warning',
+      line: 3,
+      column: 1,
+      localTarget: {
+        href: './logo.png',
+        targetKind: 'file',
+        role: 'image',
+        sourceForm: 'html-img',
+        resolvedTarget: 'logo.png',
+        reason: 'no-such-file',
+        resolutionMethod: 'source-relative',
+      },
+    };
+    const result = LintViolationWarningSchema.safeParse(warning);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.localTarget).toEqual(warning.localTarget);
+  });
+
+  test('a markdownlint violation with no localTarget still parses (back-compat)', () => {
+    const result = LintViolationWarningSchema.safeParse({
+      kind: 'lint-violation',
+      source: 'markdownlint',
+      code: 'MD010',
+      message: 'Hard tabs',
+      severity: 'warning',
+      line: 1,
+      column: 1,
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.localTarget).toBeUndefined();
   });
 });
 

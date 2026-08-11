@@ -42,6 +42,15 @@ export function subscribeToDocumentsChanged(
   return () => window.removeEventListener(DOCUMENTS_CHANGED_EVENT, listener);
 }
 
+/**
+ * Local-target existence follows the workspace file inventory. The dedicated
+ * channel is the precise signal, while `files` is its correctness backstop when
+ * a watcher batch changes inventory but produces no assessment-generation edge.
+ */
+export function invalidatesLocalTargetAudit(channels: readonly DerivedViewChannel[]): boolean {
+  return channels.includes('local-targets') || channels.includes('files');
+}
+
 // Doc-persisted relays the CC1 `disk-ack` frame's docName — the one per-doc
 // push channel — for consumers that react to "this document's bytes just
 // reached disk" (the validation-freshness per-doc re-audit). Kept separate

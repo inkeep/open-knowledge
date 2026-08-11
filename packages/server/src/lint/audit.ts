@@ -343,6 +343,12 @@ export async function auditProject(
     if (result.diagnostics.length > 0) files.push(result);
   }
 
+  // Small corpora may finish without crossing the time-slice yield above. The
+  // final equality check keeps every audit size supersession-safe.
+  if (auditGeneration !== undefined && auditGeneration() !== startGeneration) {
+    throw new AuditSupersededError();
+  }
+
   return { files, fileCount: docFiles.length, errorCount, warningCount, warnings };
 }
 

@@ -34,8 +34,10 @@ import {
   type DerivedDocumentIndexApiPort,
   type DerivedGraphNode,
   isDerivedOrphanMode,
+  isLocalTargetIndexNotReadyError,
 } from '../derived-document-index.ts';
 import type { FileIndexEntry } from '../file-watcher.ts';
+import { toForwardLinkLocalTargets } from '../local-target-assessment.ts';
 import type { FrontmatterMetadata } from '../page-identity.ts';
 import { SuggestLinksTargetNotFoundError, suggestLinks } from '../suggest-links.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
@@ -216,30 +218,42 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
           return;
         }
         const admitted = await collectAdmittedDocNames();
+        const forwardLinks = (await derivedDocumentIndex.getForwardLinkEntries(docName)).map(
+          (entry) =>
+            entry.kind === 'doc'
+              ? {
+                  kind: 'doc' as const,
+                  docName: entry.target,
+                  anchor: entry.anchor,
+                  title: readPageTitleForLinkedDocName(entry.target, admitted),
+                  snippet: entry.snippet,
+                }
+              : {
+                  kind: 'external' as const,
+                  url: entry.url,
+                  title: entry.label ?? entry.url,
+                  snippet: entry.snippet,
+                },
+        );
+        // Local file/image references ride an additive sibling collection sourced
+        // from the assessment index — never reclassified from the graph rows above,
+        // so document relationship semantics stay pure.
+        let localTargets: ReturnType<typeof toForwardLinkLocalTargets> | undefined;
+        try {
+          const localTargetSources = await derivedDocumentIndex.getLocalTargetAssessmentsForSources(
+            [docName],
+          );
+          localTargets = toForwardLinkLocalTargets(
+            localTargetSources.flatMap((entry) => entry.assessments),
+          );
+        } catch (error) {
+          if (!isLocalTargetIndexNotReadyError(error)) throw error;
+        }
         successResponse(
           res,
           200,
           ForwardLinksSuccessSchema,
-          {
-            docName,
-            forwardLinks: (await derivedDocumentIndex.getForwardLinkEntries(docName)).map(
-              (entry) =>
-                entry.kind === 'doc'
-                  ? {
-                      kind: 'doc' as const,
-                      docName: entry.target,
-                      anchor: entry.anchor,
-                      title: readPageTitleForLinkedDocName(entry.target, admitted),
-                      snippet: entry.snippet,
-                    }
-                  : {
-                      kind: 'external' as const,
-                      url: entry.url,
-                      title: entry.label ?? entry.url,
-                      snippet: entry.snippet,
-                    },
-            ),
-          },
+          { docName, forwardLinks, ...(localTargets ? { localTargets } : {}) },
           { handler: 'forward-links' },
         );
       } catch (e) {

@@ -265,11 +265,6 @@ msgstr "{0} actúa sin preguntar — OpenKnowledge no puede añadirle solicitude
 msgid "{0} added, {1} removed"
 msgstr "{0} añadidos, {1} eliminados"
 
-#. placeholder {0}: diagnostic.message
-#: src/components/ProblemsPanel.tsx
-msgid "{0} at line {displayLine}"
-msgstr "{0} en la línea {displayLine}"
-
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
@@ -688,6 +683,10 @@ msgstr "{linkCount, plural, one {# enlace} many {# enlaces} other {# enlaces}}"
 #: src/components/settings/TemplatesManagerSection.tsx
 msgid "{loadErrorTitle}: {message}"
 msgstr "{loadErrorTitle}: {message}"
+
+#: src/components/ProblemsPanel.tsx
+msgid "{localizedMessage} at line {displayLine}"
+msgstr "{localizedMessage} en la línea {displayLine}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -2207,6 +2206,10 @@ msgstr "Buscando actualizaciones en GitHub"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "Comprobando la conexión con GitHub..."
+
+#: src/components/ProblemsPanel.tsx
+msgid "Checking links"
+msgstr "Comprobando enlaces"
 
 #: src/components/CloneDialog.tsx
 msgid "Checking out files"
@@ -5057,6 +5060,10 @@ msgstr "No se pudieron cargar los encabezados"
 msgid "Failed to load hub pages"
 msgstr "No se pudieron cargar las páginas índice"
 
+#: src/components/LinksPanel.tsx
+msgid "Failed to load local files"
+msgstr "No se pudieron cargar los archivos locales"
+
 #: src/components/GraphPanel.tsx
 msgid "Failed to load orphan pages"
 msgstr "No se pudieron cargar las páginas huérfanas"
@@ -5283,6 +5290,10 @@ msgstr "Campos"
 #: src/lib/native-menu-catalog.ts
 msgid "File"
 msgstr "Archivo"
+
+#: src/components/LinksPanel.tsx
+msgid "File {identity}. Go to reference."
+msgstr "Archivo {identity}. Ir a la referencia."
 
 #: src/components/FileTree.tsx
 msgid "File already exists"
@@ -6034,6 +6045,10 @@ msgstr "¿Qué te parece OpenKnowledge?"
 msgid "How does sharing work?"
 msgstr "¿Cómo funciona compartir?"
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
+msgstr "Cómo se notifican los documentos, archivos e imágenes locales del proyecto que faltan en Problemas, los diagnósticos del editor, las auditorías y las herramientas de agentes."
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "Cómo hacer push manualmente"
@@ -6050,10 +6065,6 @@ msgstr "Cómo configurarlo"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "Cómo configurar {0} (se abre en el navegador)"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
-msgstr "Cómo se informa de los enlaces wiki sin resolver en el panel Problemas, en las auditorías y en las herramientas de agente."
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
@@ -6110,13 +6121,33 @@ msgstr "Patrones de exclusión"
 msgid "Ignore patterns (raw text)"
 msgstr "Patrones de exclusión (texto sin formato)"
 
-#: src/components/ui/loading-image.tsx
-msgid "Image failed to load"
-msgstr "No se pudo cargar la imagen"
+#: src/components/LinksPanel.tsx
+msgid "Image {identity}. Go to reference."
+msgstr "Imagen {identity}. Ir a la referencia."
 
 #: src/components/ui/loading-image.tsx
-msgid "Image failed to load: {errorLabel}"
-msgstr "No se pudo cargar la imagen: {errorLabel}"
+msgid "Image couldn't be displayed"
+msgstr "No se pudo mostrar la imagen"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image couldn't be displayed: {errorLabel}"
+msgstr "No se pudo mostrar la imagen: {errorLabel}"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found"
+msgstr "No se encontró la imagen"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found: {errorLabel}"
+msgstr "No se encontró la imagen: {errorLabel}"
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" could not be resolved to a project-local file."
+msgstr "El destino de la imagen «{shown}» no se pudo resolver como un archivo local del proyecto."
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" does not resolve to an existing file."
+msgstr "El destino de la imagen «{shown}» no corresponde a un archivo existente."
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -6717,6 +6748,18 @@ msgstr "El enlace está listo, pero no se pudo copiar al portapapeles."
 msgid "Link target"
 msgstr "Destino del enlace"
 
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" could not be resolved to a project-local target."
+msgstr "El destino del enlace «{shown}» no se pudo resolver como un destino local del proyecto."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing document."
+msgstr "El destino del enlace «{shown}» no corresponde a un documento existente."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing file."
+msgstr "El destino del enlace «{shown}» no corresponde a un archivo existente."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "Enlaza el texto seleccionado o edita el enlace bajo el cursor."
@@ -6728,6 +6771,14 @@ msgstr "Enlaza a una página o a una URL externa."
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Link URL"
 msgstr "URL del enlace"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable."
+msgstr "La validación de enlaces no está disponible."
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable. Showing last known problems."
+msgstr "La validación de enlaces no está disponible. Se muestran los últimos problemas conocidos."
 
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
@@ -6925,6 +6976,14 @@ msgstr "No se pudieron borrar los datos locales de colaboración de \"{docName}\
 msgid "Local commits are keeping this copy from updating"
 msgstr "Hay commits locales que impiden actualizar esta copia"
 
+#: src/components/LinksPanel.tsx
+msgid "Local file details aren't available yet."
+msgstr "Los detalles de los archivos locales aún no están disponibles."
+
+#: src/components/LinksPanel.tsx
+msgid "Local files"
+msgstr "Archivos locales"
+
 #: src/components/CloneDialog.tsx
 msgid "Local path"
 msgstr "Ruta local"
@@ -7101,9 +7160,21 @@ msgstr "Origen del espejo <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Origen del espejo <0>api-spec</0>"
 
+#: src/components/LinksPanel.tsx
+msgid "Missing"
+msgstr "Ausente"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "Faltaba una función"
+
+#: src/components/LinksPanel.tsx
+msgid "Missing file {identity}. Go to reference."
+msgstr "Falta el archivo {identity}. Ir a la referencia."
+
+#: src/components/LinksPanel.tsx
+msgid "Missing image {identity}. Go to reference."
+msgstr "Falta la imagen {identity}. Ir a la referencia."
 
 #: src/components/LinksPanel.tsx
 msgid "Missing page — click to create"
@@ -8021,10 +8092,9 @@ msgstr "Lista numerada de elementos."
 msgid "Object"
 msgstr "Objeto"
 
-#. placeholder {0}: first.message
 #: src/components/ProblemsPanel.tsx
-msgid "Occurrences of {0}"
-msgstr "Apariciones de {0}"
+msgid "Occurrences of {localizedFirstMessage}"
+msgstr "Apariciones de {localizedFirstMessage}"
 
 #. placeholder {0}: basenameOf(project.mainRoot ?? '')
 #: src/components/NavigatorApp.tsx
@@ -12329,6 +12399,10 @@ msgstr "Esta página todavía no existe. Ábrela para crearla en el editor y con
 msgid "This page doesn't link to anything yet."
 msgstr "Esta página todavía no enlaza a nada."
 
+#: src/components/LinksPanel.tsx
+msgid "This page references no local files or images."
+msgstr "Esta página no hace referencia a ningún archivo o imagen local."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
 msgstr "Esta ruta está en un volumen externo (/Volumes/...). OpenKnowledge perderá la pista de los archivos cuando se expulse la unidad."
@@ -12867,6 +12941,18 @@ msgstr "Enlace no reconocido"
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Unrecognized wiki link"
 msgstr "Enlace wiki no reconocido"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable"
+msgstr "Sin resolver"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable file {identity}. Go to reference."
+msgstr "No se puede resolver el archivo {identity}. Ir a la referencia."
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable image {identity}. Go to reference."
+msgstr "No se puede resolver la imagen {identity}. Ir a la referencia."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

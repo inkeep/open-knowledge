@@ -563,6 +563,37 @@ describe('graph endpoints', () => {
     }
   });
 
+  test('keeps forward links available while the local-target projection is not ready', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-forward-links-partial-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const unavailableIndex = new DerivedDocumentIndex({
+      projectDir,
+      contentDir,
+      contentFilter: createContentFilter({ projectDir, contentDir }),
+      getGlobalSkillRoots: () => [],
+      getLocalTargetInventory: () => null,
+      signalChannel: () => {},
+    });
+    unavailableIndex.beginStartup('main');
+    await unavailableIndex.settleStartupAfterWatcherSeed();
+
+    try {
+      const response = await callRoute(
+        contentDir,
+        '/api/forward-links?docName=doc',
+        new Map(),
+        undefined,
+        { derivedDocumentIndex: unavailableIndex },
+      );
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ docName: 'doc', forwardLinks: [] });
+    } finally {
+      await unavailableIndex.close();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('forward-links / hubs / link-graph fall back to docName for excluded targets', async () => {
     // Wiki-link targets parsed from indexed docs may name a doc that is
     // itself excluded from the content scope (e.g. by `.gitignore` /

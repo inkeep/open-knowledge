@@ -158,7 +158,10 @@ describe('multi-project lock isolation (A1)', () => {
 // ---------------------------------------------------------------------------
 
 const LOCK_WORKER_PATH = resolve(__dirname, '_helpers', 'lock-worker.ts');
-const WORKER_READY_TIMEOUT_MS = 5_000;
+// `node --import tsx` startup competes with the repository's fully parallel
+// package matrix. The isolated path is ~2s, but five seconds is below the
+// observed scheduler budget under that supported topology.
+const WORKER_READY_TIMEOUT_MS = 20_000;
 const WORKER_EXIT_TIMEOUT_MS = 3_000;
 
 interface WorkerHandle {
@@ -193,6 +196,7 @@ function spawnLockWorker(
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     if (proc.pid === undefined || !proc.stdout || !proc.stderr) {
+      proc.kill('SIGKILL');
       reject(new Error('lock-worker spawn did not return a pid + pipes'));
       return;
     }
@@ -224,10 +228,21 @@ function spawnLockWorker(
         });
       } catch (err) {
         clearTimeout(timeoutHandle);
+        proc.kill('SIGKILL');
         reject(new Error(`lock-worker READY parse failed: ${(err as Error).message} :: ${line}`));
       }
     };
     proc.stdout.on('data', onData);
+
+    proc.once('exit', (code, signal) => {
+      if (resolved) return;
+      clearTimeout(timeoutHandle);
+      reject(
+        new Error(
+          `lock-worker exited before READY (code=${String(code)}, signal=${String(signal)}, lockDir=${lockDir}, stderr=${stderrBuffer || '(empty)'})`,
+        ),
+      );
+    });
 
     const timeoutHandle = setTimeout(() => {
       if (!resolved) {
@@ -248,6 +263,7 @@ function spawnLockWorker(
 
 /** SIGTERM the worker and await its exit. Falls back to SIGKILL on timeout. */
 function stopLockWorker(handle: WorkerHandle): Promise<void> {
+  if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) return Promise.resolve();
   return new Promise((resolveStop) => {
     let settled = false;
     const onExit = (): void => {
@@ -303,11 +319,18 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
         return { i, lockDir, serverPort: 52100 + i, uiPort: 3100 + i };
       });
 
-      workers = await Promise.all(
+      const spawnResults = await Promise.allSettled(
         lockDirs.map(({ lockDir, serverPort, uiPort }) =>
           spawnLockWorker(lockDir, serverPort, uiPort),
         ),
       );
+      workers = spawnResults.flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      );
+      const failedSpawn = spawnResults.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (failedSpawn) throw failedSpawn.reason;
 
       // Every worker is alive on this host.
       for (const w of workers) {

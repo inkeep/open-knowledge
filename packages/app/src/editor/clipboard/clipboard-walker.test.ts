@@ -1318,15 +1318,21 @@ function wrapUnhideNode(node: UnhideFakeNode): Element {
 }
 
 describe('unhideErrorSlotImages — error-render-state normalization', () => {
-  test('strips hidden from the img inside an error slot and drops the slot marker', () => {
+  test('strips hidden from the img inside an error slot and drops the slot markers', () => {
     const img = makeUnhideNode('img', { src: 'https://example.com/x.png', hidden: '' });
-    const slot = makeUnhideNode('span', { 'data-image-error': 'true' }, [img]);
+    const slot = makeUnhideNode(
+      'span',
+      { 'data-image-error': 'true', 'data-image-error-kind': 'not-found' },
+      [img],
+    );
     const root = makeUnhideNode('div', {}, [slot]);
 
     unhideErrorSlotImages(wrapUnhideNode(root));
 
     expect('hidden' in img.attrs).toBe(false);
     expect('data-image-error' in slot.attrs).toBe(false);
+    // The error-kind marker is render-layer state too and must not survive.
+    expect('data-image-error-kind' in slot.attrs).toBe(false);
     expect(img.attrs.src).toBe('https://example.com/x.png');
   });
 

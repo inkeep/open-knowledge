@@ -30,6 +30,10 @@ import {
   toInternalHashHref,
 } from '../internal-link-helpers';
 import {
+  isLinkValidationVisible,
+  subscribeToLinkValidationPolicy,
+} from '../link-validation-policy';
+import {
   getPageListCache,
   type PageListCacheSnapshot,
   subscribePageListCache,
@@ -150,6 +154,67 @@ export function getWikiLinkIcon(
 }
 
 /**
+ * Pure helper — the chip's resolution state for one wiki-link target, in the
+ * same vocabulary the link-mark decoration uses (`data-resolution-state`).
+ * Exported for unit testing.
+ *
+ * Wiki-link chips are NODES, not link marks, so the decoration plugin — wired
+ * for `markTypes: ['link']` — never reaches them. Without this the chip carried
+ * no resolution state at all and a missing target rendered resolved-blue, while
+ * the server reported it missing and the hover card offered Create page.
+ *
+ * Resolution mirrors `handlePrimary` exactly, including its tolerant inputs, so
+ * a chip's colour can never disagree with where clicking it goes.
+ */
+export function getWikiLinkResolutionState(
+  target: string,
+  anchor: string | null,
+  cache: PageListCacheSnapshot | null,
+): string | null {
+  if (!target) return null;
+  const classified = classifyWikiLinkTarget(target, anchor);
+  if (!classified) return null;
+  if (classified.kind === 'external') return 'external';
+  if (!cache) return 'loading';
+  if (classified.kind === 'asset') {
+    if (cache.assetPaths === undefined && cache.filePaths === undefined) return 'asset';
+    return resolveWikiLinkAssetTarget(
+      classified.url,
+      cache.assetPaths ?? new Set(),
+      cache.filePaths,
+    )
+      ? 'asset'
+      : isLinkValidationVisible()
+        ? 'unresolved'
+        : null;
+  }
+  const intent = resolveLinkTargetIntent(target, {
+    pages: cache.pages,
+    folderPaths: cache.folderPaths,
+    pagesBySlug: cache.pagesBySlug,
+    pagesByBasename: cache.pagesByBasename,
+    fallbackTargets: getWikiLinkResolutionCandidates(target),
+  });
+  if (intent.kind !== 'create') return intent.displayState;
+  return isLinkValidationVisible() ? 'unresolved' : null;
+}
+
+/**
+ * Mutate the chip's resolution-state attribute in-place. Idempotent, and
+ * mirrors `syncWikiLinkIconSlot`'s equality short-circuit so a repaint that
+ * resolves the same way costs one attribute comparison.
+ */
+function syncWikiLinkResolutionState(dom: HTMLElement, state: string | null): void {
+  const next = state ?? '';
+  if (dom.getAttribute('data-resolution-state') === next) return;
+  if (!next) {
+    dom.removeAttribute('data-resolution-state');
+    return;
+  }
+  dom.setAttribute('data-resolution-state', next);
+}
+
+/**
  * Mutate the icon slot in-place to match `icon`. Idempotent — re-running
  * with the same `(kind, value)` is a no-op (cheap equality check on the
  * data attrs before any DOM writes). Clears the slot when `icon` is
@@ -232,11 +297,18 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
       // a single attr comparison, no DOM writes.
       const refreshIconSlot = () => {
         const liveTarget = String(currentNode.attrs.target ?? '');
-        const icon = getWikiLinkIcon(liveTarget, getPageListCache());
-        syncWikiLinkIconSlot(iconSpan, icon);
+        const liveAnchor =
+          currentNode.attrs.anchor != null ? String(currentNode.attrs.anchor) : null;
+        const snapshot = getPageListCache();
+        syncWikiLinkIconSlot(iconSpan, getWikiLinkIcon(liveTarget, snapshot));
+        syncWikiLinkResolutionState(
+          dom,
+          getWikiLinkResolutionState(liveTarget, liveAnchor, snapshot),
+        );
       };
       refreshIconSlot();
       const unsubscribePageListCache = subscribePageListCache(refreshIconSlot);
+      const unsubscribePolicy = subscribeToLinkValidationPolicy(refreshIconSlot);
 
       const safeGetPos = (): number | undefined => {
         const pos = getPos();
@@ -378,6 +450,7 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
         destroy: () => {
           layer.deregister(nodeId);
           unsubscribePageListCache();
+          unsubscribePolicy();
         },
       };
     };

@@ -145,6 +145,7 @@ import {
   isPeerAdmitted,
 } from './ingress-policy.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
+import { localTargetInventoryFromWatcher } from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
 import { LossCaptureRing } from './loss-capture.ts';
 import {
@@ -182,6 +183,7 @@ import {
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { reconcile } from './reconciliation.ts';
+import { reconcileRecoveredFileTarget } from './recovered-file-target.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 import { loadRemovedDocsJournal, saveRemovedDocsJournal } from './removed-docs-journal.ts';
 import {
@@ -1215,7 +1217,14 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   function signalChannel(
-    channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'comments' | 'lint-config',
+    channel:
+      | 'files'
+      | 'backlinks'
+      | 'graph'
+      | 'tags'
+      | 'comments'
+      | 'lint-config'
+      | 'local-targets',
   ): void {
     cc1Broadcaster?.signal(channel);
   }
@@ -1396,6 +1405,20 @@ export function createServer(options: ServerOptions): ServerInstance {
       contentFilter,
       getGlobalSkillRoots: () => managedArtifactSkillsRoots(persistence.managedArtifactCtx),
       signalChannel,
+      // Late-bound so startup reads the seeded watcher. The snapshot includes
+      // canonical keys plus file/folder aliases; null means the watcher is
+      // unavailable and must not be mistaken for an authoritative empty tree.
+      getLocalTargetInventory: () => localTargetInventoryFromWatcher(watcher, contentDir),
+      onRecoveredFileTarget: (relativePath, exists) => {
+        if (!watcher) return;
+        reconcileRecoveredFileTarget({
+          watcher,
+          contentDir,
+          relativePath,
+          exists,
+          invalidateReferencedAssetsCache,
+        });
+      },
     });
 
     shadowRef = { current: shadowRepo };
@@ -2699,13 +2722,22 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
         // file-* events maintain the in-memory fileIndex as `kind:'file'`. Like
         // asset events they signal `files` (cache-invalidate /api/documents and
-        // the workspace search corpus) but do NOT touch relationship views
+        // the workspace search corpus) and do NOT touch relationship views
         // (those surfaces stay markdown-scoped). updateFileIndex
         // in handleRawEvents already mutated the index by the time we arrive
-        // here.
+        // here. They DO feed the local-target index so a `[x](y.pdf)` finding
+        // heals/breaks when its ordinary-file target appears/disappears; an
+        // ordinary-file rename arrives here as delete + create.
         case 'file-create':
-        case 'file-update':
+        case 'file-update': {
+          await derivedDocumentIndex.recordFileTargetUpsert(event.relativePath);
+          invalidateReferencedAssetsCache?.();
+          signalChannel('files');
+          break;
+        }
         case 'file-delete': {
+          await derivedDocumentIndex.recordFileTargetDelete(event.relativePath);
+          invalidateReferencedAssetsCache?.();
           signalChannel('files');
           break;
         }

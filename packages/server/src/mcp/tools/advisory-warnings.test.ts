@@ -152,6 +152,37 @@ const noSuchFile: BrokenLink = {
   reason: 'no-such-file',
 };
 
+const brokenImage: BrokenLink = {
+  href: './logo.png',
+  resolvedTo: 'assets/logo.png',
+  reason: 'no-such-file',
+  localTarget: {
+    href: './logo.png',
+    targetKind: 'file',
+    role: 'image',
+    sourceForm: 'markdown-inline',
+    resolvedTarget: 'assets/logo.png',
+    reason: 'no-such-file',
+    resolutionMethod: 'source-relative',
+  },
+};
+
+const brokenReference: BrokenLink = {
+  href: './spec.pdf',
+  resolvedTo: 'spec.pdf',
+  reason: 'no-such-file',
+  localTarget: {
+    href: './spec.pdf',
+    targetKind: 'file',
+    role: 'link',
+    sourceForm: 'markdown-reference',
+    resolvedTarget: 'spec.pdf',
+    reason: 'no-such-file',
+    resolutionMethod: 'source-relative',
+    definition: { line: 11, label: 'spec' },
+  },
+};
+
 describe('parseBrokenLinks', () => {
   test('parses a well-formed array (all three reasons)', () => {
     expect(parseBrokenLinks([noSuchDoc, noSuchFile, unresolvable])).toEqual([
@@ -180,6 +211,13 @@ describe('parseBrokenLinks', () => {
 
   test('returns [] for an empty array (the all-resolve confirmation)', () => {
     expect(parseBrokenLinks([])).toEqual([]);
+  });
+
+  test('preserves additive local-target evidence through the parse (image + reference)', () => {
+    expect(parseBrokenLinks([brokenImage, brokenReference])).toEqual([
+      brokenImage,
+      brokenReference,
+    ]);
   });
 });
 
@@ -210,6 +248,18 @@ describe('formatBrokenLinkLines', () => {
     const lines = formatBrokenLinkLines([noSuchDoc, unresolvable]);
     expect(lines[0]).toContain('2 broken outbound links —');
     expect(lines).toHaveLength(3);
+  });
+
+  test('an image finding renders its role so the break is not read as a doc link', () => {
+    const lines = formatBrokenLinkLines([brokenImage]);
+    expect(lines[1]).toBe('  • image ./logo.png → assets/logo.png (no-such-file)');
+  });
+
+  test('a reference-style finding points at its shared definition (1-based line)', () => {
+    const lines = formatBrokenLinkLines([brokenReference]);
+    expect(lines[1]).toBe(
+      '  • ./spec.pdf → spec.pdf (no-such-file) — fix the [spec] definition (line 12)',
+    );
   });
 });
 

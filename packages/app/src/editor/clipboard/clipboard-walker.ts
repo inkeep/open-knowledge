@@ -649,7 +649,12 @@ function replaceLucideIconsWithGlyphs(root: Element): void {
  */
 export function unhideErrorSlotImages(clone: Element, inErrorSlot = false): void {
   const isErrorSlot = clone.getAttribute('data-image-error') === 'true';
-  if (isErrorSlot) clone.removeAttribute('data-image-error');
+  if (isErrorSlot) {
+    clone.removeAttribute('data-image-error');
+    // Sibling render-state marker (missing vs undisplayable) — strip it with
+    // the same scoping so no placeholder chrome bleeds into the clone.
+    clone.removeAttribute('data-image-error-kind');
+  }
   const active = inErrorSlot || isErrorSlot;
   if (active && clone.tagName.toLowerCase() === 'img') {
     clone.removeAttribute('hidden');

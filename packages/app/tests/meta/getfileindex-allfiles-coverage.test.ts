@@ -38,6 +38,9 @@ const SERVER_FACTORY_PATH = join(SERVER_SRC_ROOT, 'server-factory.ts');
 // api-extension wires the accessor into `createSearchService({ getAllFilesIndex })`
 // the same way server-factory wires it into createApiExtension.
 const SEARCH_SERVICE_PATH = join(SERVER_SRC_ROOT, 'services/search.ts');
+// The inventory adapter deliberately partitions every all-files entry by
+// `kind` before exposing separate document and file target sets.
+const LOCAL_TARGET_INVENTORY_PATH = join(SERVER_SRC_ROOT, 'local-target-inventory.ts');
 // The native document/pages route group: hosts `handleDocumentList` (the
 // `/api/documents` payload site) after its Wave 2 lift out of
 // api-extension.ts. api-extension wires the accessor into
@@ -73,6 +76,9 @@ const ALLOWLISTED_SITES: ReadonlySet<string> = new Set<string>([
   // Future `/api/documents` payload site. The exact handler is
   // `handleDocumentList`; pre-allowlisted for the same reason as above.
   'handleDocumentList',
+  // Write advisories consume the all-files index through the canonical local
+  // target inventory, so both entry kinds are partitioned before membership.
+  'createLinkedFileExists',
 ]);
 
 /**
@@ -205,6 +211,7 @@ describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', ()
       API_EXT_PATH,
       SERVER_FACTORY_PATH,
       SEARCH_SERVICE_PATH,
+      LOCAL_TARGET_INVENTORY_PATH,
       DOCUMENT_ROUTES_PATH,
     ]);
     const offenders: string[] = [];

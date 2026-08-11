@@ -185,6 +185,7 @@ export function hocuspocusPlugin(): Plugin {
         contentDir: CONTENT_DIR,
         projectDir: TEST_PROJECT_DIR ?? (isTestIsolated ? CONTENT_DIR : PROJECT_ROOT),
         contentRoot: isTestIsolated ? '' : CONTENT_ROOT,
+        ...(isTestIsolated ? { configHomedirOverride: CONTENT_DIR } : {}),
         // Ephemeral single-file mode forces git off (no shadow repo) regardless
         // of OK_TEST_GIT_ENABLED, matching the real ephemeral boot.
         gitEnabled: isEphemeralTest ? false : !isTestIsolated || gitEnabledForTest,

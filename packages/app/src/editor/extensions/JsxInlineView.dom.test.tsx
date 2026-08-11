@@ -23,7 +23,11 @@ import { sharedExtensions } from './shared';
 // Portalled per the H6 cross-doc DOM bleed contract (no-unportaled-editor-content).
 function Host({ content, onEditor }: { content: object; onEditor: (e: Editor) => void }) {
   const editor = useEditor({
-    extensions: sharedExtensions,
+    extensions: sharedExtensions.map((extension) =>
+      extension.name === 'jsxInline'
+        ? extension.configure({ docName: 'all-link-types' })
+        : extension,
+    ),
     editable: true,
     content,
     immediatelyRender: true,
@@ -86,6 +90,36 @@ function docWithInline(attrs: Record<string, unknown>, text?: string) {
 afterEach(cleanup);
 
 describe('JsxInlineView', () => {
+  test('normalizes a local inline img src against its document before rendering', async () => {
+    const desktopWindow = window as typeof window & {
+      okDesktop?: { config: { apiOrigin: string } };
+    };
+    desktopWindow.okDesktop = { config: { apiOrigin: 'http://localhost:53351' } };
+
+    try {
+      mountEditor(
+        docWithInline({
+          componentName: 'img',
+          sourceRaw: '<img src="assets/space image.png" alt="Working self-closing HTML image" />',
+          props: {
+            src: 'assets/space image.png',
+            alt: 'Working self-closing HTML image',
+          },
+        }),
+      );
+
+      await waitFor(() => {
+        expect(
+          document
+            .querySelector<HTMLImageElement>('img[alt="Working self-closing HTML image"]')
+            ?.getAttribute('src'),
+        ).toBe('http://localhost:53351/assets/space image.png');
+      });
+    } finally {
+      delete desktopWindow.okDesktop;
+    }
+  });
+
   test('a registered componentName renders the descriptor widget', async () => {
     mountEditor(
       docWithInline({

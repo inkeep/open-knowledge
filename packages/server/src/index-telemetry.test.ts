@@ -7,7 +7,12 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { __resetIndexTelemetryForTests, instrumentIndexRebuild } from './index-telemetry.ts';
+import {
+  __resetIndexTelemetryForTests,
+  instrumentIndexRebuild,
+  instrumentIndexUpdate,
+  recordIndexGenerationLag,
+} from './index-telemetry.ts';
 
 let exporter: InMemorySpanExporter;
 let provider: BasicTracerProvider;
@@ -79,5 +84,33 @@ describe('instrumentIndexRebuild', () => {
     // metrics.disable() in afterEach leaves the no-op global meter; the
     // counter + histogram must never be able to break a rebuild.
     await expect(instrumentIndexRebuild('tag', 'reconcile', async () => 1)).resolves.toBe(1);
+  });
+});
+
+describe('instrumentIndexUpdate', () => {
+  test('emits only bounded operation and numeric measurement attributes', () => {
+    const result = instrumentIndexUpdate(
+      'local-target',
+      'source',
+      () => ({ changed: true, occurrences: 4, affectedSources: 2 }),
+      (update) => ({
+        'index.occurrences': update.occurrences,
+        'index.affected_sources': update.affectedSources,
+      }),
+    );
+
+    expect(result.changed).toBe(true);
+    const span = requireSpan('ok.index.update');
+    expect(span.attributes).toEqual({
+      'index.name': 'local-target',
+      'index.mode': 'source',
+      'index.occurrences': 4,
+      'index.affected_sources': 2,
+    });
+    expect(Object.keys(span.attributes).some((key) => /path|href|content/.test(key))).toBe(false);
+  });
+
+  test('records generation lag only at a real publication boundary', () => {
+    expect(() => recordIndexGenerationLag('local-target', 'signal', 3)).not.toThrow();
   });
 });

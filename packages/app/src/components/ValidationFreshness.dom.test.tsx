@@ -22,7 +22,7 @@ import type {
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { emitLintConfigChanged } from '@/editor/lint-config-client';
-import { emitBranchChanged, emitDocPersisted } from '@/lib/documents-events';
+import { emitBranchChanged, emitDocPersisted, emitDocumentsChanged } from '@/lib/documents-events';
 import {
   getValidationSnapshot,
   resetValidationStoreForTest,
@@ -30,7 +30,9 @@ import {
 } from '@/lib/validation-store';
 
 // Config context gates the whole subscriber (`validation.fileTreeIndicators`).
-let mergedConfigValue: { validation?: { fileTreeIndicators?: boolean } } | null = null;
+let mergedConfigValue: {
+  validation?: { fileTreeIndicators?: boolean; links?: 'off' | 'warning' | 'error' };
+} | null = null;
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ merged: mergedConfigValue }),
 }));
@@ -235,6 +237,37 @@ describe('ValidationFreshness', () => {
         { timeout: 3000 },
       );
       // Counts-only, project scope: no `doc=`/`path=`, and no enumerated fetch.
+      expect(fetchUrls).toEqual(['/api/audit?counts=1']);
+    });
+
+    test.each([
+      'local-targets',
+      'files',
+    ] as const)('re-audits when the local-target assessment plane changes via %s', async (channel) => {
+      countsBody = {
+        files: [
+          {
+            file: 'notes.md',
+            lint: { errorCount: 0, warningCount: 0 },
+            links: { errorCount: 0, warningCount: 1 },
+          },
+        ],
+        fileCount: 1,
+        errorCount: 0,
+        warningCount: 1,
+        warnings: [],
+      };
+      render(<ValidationFreshness />);
+      emitDocumentsChanged([channel]);
+
+      await waitFor(
+        () =>
+          expect(getValidationSnapshot().get('notes')).toEqual({
+            errorCount: 0,
+            warningCount: 1,
+          }),
+        { timeout: 3000 },
+      );
       expect(fetchUrls).toEqual(['/api/audit?counts=1']);
     });
 

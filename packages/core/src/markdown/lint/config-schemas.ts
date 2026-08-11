@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { agentIdentityFields, safeDocNameField, summaryField } from '../../schemas/api/_shared.ts';
+import { LocalTargetDiagnosticEvidenceSchema } from '../../schemas/api/agent-write.ts';
 import { DEFAULT_MARKDOWNLINT_CONFIG } from './default-config.ts';
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { FrontmatterSchemaMapping, MarkdownlintRuleSetting } from './types.ts';
@@ -37,6 +38,7 @@ export function toEffectiveBase(persisted: PersistedLinterConfig): LinterConfig 
 const fullPluginShape = Object.fromEntries(
   LINT_PLUGINS.map((plugin) => [plugin.id, plugin.sliceSchema]),
 ) as z.ZodRawShape;
+
 
 export const LinterConfigSchema = z.object({
   enabled: z.boolean(),
@@ -168,6 +170,7 @@ export type LintAuditResponse = z.infer<typeof LintAuditResponseSchema>;
 
 const ValidationDiagnosticSchema = LintDiagnosticSchema.extend({
   linkTarget: z.string().optional(),
+  localTarget: LocalTargetDiagnosticEvidenceSchema.optional(),
 });
 
 export const ValidationDocResultSchema = z.object({

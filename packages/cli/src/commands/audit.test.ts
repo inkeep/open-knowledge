@@ -38,6 +38,26 @@ function diagnostic(over: Record<string, unknown> = {}) {
   };
 }
 
+// A links/dead-link finding for a missing local image, carrying the additive
+// evidence the audit plane attaches, positioned at the image occurrence.
+function imageDiagnostic() {
+  return diagnostic({
+    range: { start: { line: 5, character: 2 }, end: { line: 5, character: 2 } },
+    source: 'links',
+    code: 'dead-link',
+    message: 'Image target "./logo.png" does not resolve to an existing file.',
+    localTarget: {
+      href: './logo.png',
+      targetKind: 'file',
+      role: 'image',
+      sourceForm: 'markdown-inline',
+      resolvedTarget: 'assets/logo.png',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+    },
+  });
+}
+
 function collectIo() {
   const out: string[] = [];
   const err: string[] = [];
@@ -199,6 +219,43 @@ describe('runAudit', () => {
 
     expect(code).toBe(1);
     expect(JSON.parse(out.join('\n'))).toEqual(body);
+  });
+
+  test('--json preserves local-target evidence verbatim', async () => {
+    const body = payload({
+      fileCount: 1,
+      warningCount: 1,
+      files: [{ file: 'pics.md', diagnostics: [imageDiagnostic()] }],
+    });
+    stubFetch(body);
+    const { io, out } = collectIo();
+
+    const code = await runAudit(undefined, { json: true }, minimalConfig, dir, dir, io);
+
+    expect(code).toBe(1);
+    // The whole plane round-trips through the parse, evidence included.
+    expect(JSON.parse(out.join('\n'))).toEqual(body);
+  });
+
+  test('formatted output points at the occurrence and reads as an image break', async () => {
+    stubFetch(
+      payload({
+        fileCount: 1,
+        warningCount: 1,
+        files: [{ file: 'pics.md', diagnostics: [imageDiagnostic()] }],
+      }),
+    );
+    const { io, out } = collectIo();
+
+    const code = await runAudit(undefined, {}, minimalConfig, dir, dir, io);
+
+    expect(code).toBe(1);
+    const text = out.join('\n');
+    // 1-based location from the 0-based occurrence range — the row points at the
+    // authored image, not the top of the doc.
+    expect(text).toContain('6:3');
+    expect(text).toContain('links/dead-link');
+    expect(text).toContain('Image target "./logo.png" does not resolve to an existing file');
   });
 
   test('surfaces engine degradation warnings in the report', async () => {

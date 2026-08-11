@@ -335,6 +335,42 @@ describe('non-stale fast path', () => {
 // ---------------------------------------------------------------------------
 
 describe('wiring arms', () => {
+  test('docName-aware render extensions receive the provider document name synchronously', () => {
+    const docName = `nested/image-matrix-${randomUUID()}`;
+    const { provider, cleanup } = makeProvider(docName);
+    try {
+      const extensions = buildExtensionList({
+        provider,
+        clipboard: fakeClipboard,
+        ctorStart: 0,
+      });
+      const configured = new Map(
+        extensions
+          .filter((extension) =>
+            ['link', 'wikiLink', 'jsxComponent', 'jsxInline', 'imageReference'].includes(
+              extension.name,
+            ),
+          )
+          .map((extension) => [
+            extension.name,
+            (extension.options as { docName?: unknown }).docName,
+          ]),
+      );
+
+      expect(configured).toEqual(
+        new Map([
+          ['link', docName],
+          ['wikiLink', docName],
+          ['jsxComponent', docName],
+          ['jsxInline', docName],
+          ['imageReference', docName],
+        ]),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   test('no prebuiltMapping → walk-currency extension absent from the extension list', () => {
     const { provider, cleanup } = makeProvider(`wiring-negative-${randomUUID()}`);
     try {

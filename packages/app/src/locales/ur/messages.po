@@ -265,11 +265,6 @@ msgstr "{0} پوچھے بغیر عمل کرتا ہے — OpenKnowledge اس کے
 msgid "{0} added, {1} removed"
 msgstr "{0} شامل، {1} ہٹائے گئے"
 
-#. placeholder {0}: diagnostic.message
-#: src/components/ProblemsPanel.tsx
-msgid "{0} at line {displayLine}"
-msgstr "{0} سطر {displayLine} پر"
-
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
@@ -688,6 +683,10 @@ msgstr "{linkCount, plural, one {# لنک} other {# لنکس}}"
 #: src/components/settings/TemplatesManagerSection.tsx
 msgid "{loadErrorTitle}: {message}"
 msgstr "{loadErrorTitle}: {message}"
+
+#: src/components/ProblemsPanel.tsx
+msgid "{localizedMessage} at line {displayLine}"
+msgstr "سطر {displayLine} پر {localizedMessage}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -2207,6 +2206,10 @@ msgstr "GitHub پر اپ ڈیٹس دیکھے جا رہے ہیں"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "GitHub کنکشن جانچا جا رہا ہے..."
+
+#: src/components/ProblemsPanel.tsx
+msgid "Checking links"
+msgstr "لنکس کی جانچ ہو رہی ہے"
 
 #: src/components/CloneDialog.tsx
 msgid "Checking out files"
@@ -5057,6 +5060,10 @@ msgstr "عنوانات لوڈ نہیں ہو سکے"
 msgid "Failed to load hub pages"
 msgstr "مرکزی صفحات لوڈ نہیں ہو سکے"
 
+#: src/components/LinksPanel.tsx
+msgid "Failed to load local files"
+msgstr "مقامی فائلیں لوڈ نہیں ہو سکیں"
+
 #: src/components/GraphPanel.tsx
 msgid "Failed to load orphan pages"
 msgstr "یتیم صفحات لوڈ نہیں ہو سکے"
@@ -5283,6 +5290,10 @@ msgstr "فیلڈز"
 #: src/lib/native-menu-catalog.ts
 msgid "File"
 msgstr "فائل"
+
+#: src/components/LinksPanel.tsx
+msgid "File {identity}. Go to reference."
+msgstr "فائل {identity}۔ حوالہ پر جائیں۔"
 
 #: src/components/FileTree.tsx
 msgid "File already exists"
@@ -6034,6 +6045,10 @@ msgstr "OpenKnowledge آپ کو کیسا لگا؟"
 msgid "How does sharing work?"
 msgstr "اشتراک کیسے کام کرتا ہے؟"
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
+msgstr "گم شدہ پروجیکٹ-لوکل دستاویزات، فائلوں اور تصاویر کو مسائل، ایڈیٹر تشخیصات، آڈٹس اور ایجنٹ ٹولز میں کیسے رپورٹ کیا جاتا ہے۔"
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "دستی طور پر پُش کیسے کریں"
@@ -6050,10 +6065,6 @@ msgstr "ترتیب کیسے دیں"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "{0} کیسے ترتیب دیں (براؤزر میں کھلتا ہے)"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
-msgstr "غیر حل شدہ وکی لنکس مسائل کے پینل، آڈٹس اور ایجنٹ ٹولز میں کیسے رپورٹ ہوتے ہیں۔"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
@@ -6110,13 +6121,33 @@ msgstr "نظر انداز کرنے کے پیٹرنز"
 msgid "Ignore patterns (raw text)"
 msgstr "نظر انداز کرنے کے پیٹرنز (خام متن)"
 
-#: src/components/ui/loading-image.tsx
-msgid "Image failed to load"
-msgstr "تصویر لوڈ نہیں ہو سکی"
+#: src/components/LinksPanel.tsx
+msgid "Image {identity}. Go to reference."
+msgstr "تصویر {identity}۔ حوالہ پر جائیں۔"
 
 #: src/components/ui/loading-image.tsx
-msgid "Image failed to load: {errorLabel}"
-msgstr "تصویر لوڈ نہیں ہو سکی: {errorLabel}"
+msgid "Image couldn't be displayed"
+msgstr "تصویر دکھائی نہیں جا سکی"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image couldn't be displayed: {errorLabel}"
+msgstr "تصویر دکھائی نہیں جا سکی: {errorLabel}"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found"
+msgstr "تصویر نہیں ملی"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found: {errorLabel}"
+msgstr "تصویر نہیں ملی: {errorLabel}"
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" could not be resolved to a project-local file."
+msgstr "تصویر کے ہدف \"{shown}\" کو پروجیکٹ کی مقامی فائل کے طور پر حل نہیں کیا جا سکا۔"
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" does not resolve to an existing file."
+msgstr "تصویر کا ہدف \"{shown}\" کسی موجودہ فائل کی طرف اشارہ نہیں کرتا۔"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -6717,6 +6748,18 @@ msgstr "لنک تیار ہے، مگر کلپ بورڈ پر کاپی نہیں ہ�
 msgid "Link target"
 msgstr "لنک کا ہدف"
 
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" could not be resolved to a project-local target."
+msgstr "لنک کے ہدف \"{shown}\" کو پروجیکٹ کے مقامی ہدف کے طور پر حل نہیں کیا جا سکا۔"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing document."
+msgstr "لنک کا ہدف \"{shown}\" کسی موجودہ دستاویز کی طرف اشارہ نہیں کرتا۔"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing file."
+msgstr "لنک کا ہدف \"{shown}\" کسی موجودہ فائل کی طرف اشارہ نہیں کرتا۔"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "منتخب متن کو لنک کریں، یا کرسر کے نیچے موجود لنک میں ترمیم کریں۔"
@@ -6728,6 +6771,14 @@ msgstr "کسی صفحے یا بیرونی URL سے لنک کریں۔"
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Link URL"
 msgstr "لنک کا URL"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable."
+msgstr "لنک کی توثیق دستیاب نہیں ہے۔"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable. Showing last known problems."
+msgstr "لنک کی توثیق دستیاب نہیں ہے۔ آخری معلوم مسائل دکھائے جا رہے ہیں۔"
 
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
@@ -6925,6 +6976,14 @@ msgstr "«{docName}» کا مقامی اشتراکی ڈیٹا صاف نہیں ہ
 msgid "Local commits are keeping this copy from updating"
 msgstr "مقامی کمٹس اس نقل کو تازہ ہونے سے روک رہے ہیں"
 
+#: src/components/LinksPanel.tsx
+msgid "Local file details aren't available yet."
+msgstr "مقامی فائل کی تفصیلات ابھی دستیاب نہیں ہیں۔"
+
+#: src/components/LinksPanel.tsx
+msgid "Local files"
+msgstr "مقامی فائلیں"
+
 #: src/components/CloneDialog.tsx
 msgid "Local path"
 msgstr "مقامی راستہ"
@@ -7101,9 +7160,21 @@ msgstr "مرر کا ماخذ <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "مرر کا ماخذ <0>api-spec</0>"
 
+#: src/components/LinksPanel.tsx
+msgid "Missing"
+msgstr "غائب"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "ایک خصوصیت غائب ہے"
+
+#: src/components/LinksPanel.tsx
+msgid "Missing file {identity}. Go to reference."
+msgstr "غائب فائل {identity}۔ حوالہ پر جائیں۔"
+
+#: src/components/LinksPanel.tsx
+msgid "Missing image {identity}. Go to reference."
+msgstr "غائب تصویر {identity}۔ حوالہ پر جائیں۔"
 
 #: src/components/LinksPanel.tsx
 msgid "Missing page — click to create"
@@ -8021,10 +8092,9 @@ msgstr "آئٹمز کی نمبر شدہ فہرست۔"
 msgid "Object"
 msgstr "آبجیکٹ"
 
-#. placeholder {0}: first.message
 #: src/components/ProblemsPanel.tsx
-msgid "Occurrences of {0}"
-msgstr "{0} کے مواقع"
+msgid "Occurrences of {localizedFirstMessage}"
+msgstr "{localizedFirstMessage} کے واقعات"
 
 #. placeholder {0}: basenameOf(project.mainRoot ?? '')
 #: src/components/NavigatorApp.tsx
@@ -12329,6 +12399,10 @@ msgstr "یہ صفحہ ابھی موجود نہیں۔ ایڈیٹر میں صفح�
 msgid "This page doesn't link to anything yet."
 msgstr "یہ صفحہ ابھی کسی چیز سے لنک نہیں کرتا۔"
 
+#: src/components/LinksPanel.tsx
+msgid "This page references no local files or images."
+msgstr "یہ صفحہ کسی مقامی فائل یا تصویر کا حوالہ نہیں دیتا۔"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
 msgstr "یہ راستہ بیرونی والیوم پر ہے (/Volumes/...)۔ ڈرائیو نکالنے پر OpenKnowledge فائلوں کا سراغ کھو دے گا۔"
@@ -12867,6 +12941,18 @@ msgstr "ناقابلِ شناخت لنک"
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Unrecognized wiki link"
 msgstr "ناقابلِ شناخت وکی لنک"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable"
+msgstr "ناقابلِ حل"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable file {identity}. Go to reference."
+msgstr "ناقابلِ حل فائل {identity}۔ حوالہ پر جائیں۔"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable image {identity}. Go to reference."
+msgstr "ناقابلِ حل تصویر {identity}۔ حوالہ پر جائیں۔"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

@@ -26,6 +26,10 @@ import {
   openInternalHashHrefInNewTab,
   shouldOpenInNewTab,
 } from '../internal-link-helpers';
+import {
+  isLinkValidationVisible,
+  subscribeToLinkValidationPolicy,
+} from '../link-validation-policy';
 import type { PageListCacheSnapshot } from '../page-list-cache';
 import { getPageListCache, subscribePageListCache } from '../page-list-cache';
 
@@ -48,7 +52,9 @@ export function markdownSourceLinkClass(
 ): string | null {
   const state = computeLinkResolutionState(href, sourceDocName, cache);
   if (state === 'external') return null;
-  return state === 'unresolved' ? 'cm-md-internal-link cm-md-link-broken' : 'cm-md-internal-link';
+  return state === 'unresolved' && isLinkValidationVisible()
+    ? 'cm-md-internal-link cm-md-link-broken'
+    : 'cm-md-internal-link';
 }
 
 function markdownSourceLinkMark(
@@ -95,12 +101,15 @@ const mdLinkDecorations = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     private cacheAtBuild: PageListCacheSnapshot | null;
-    private readonly unsubscribe: () => void;
+    private validationVisibleAtBuild: boolean;
+    private readonly unsubscribePageList: () => void;
+    private readonly unsubscribePolicy: () => void;
 
     constructor(view: EditorView) {
       this.cacheAtBuild = getPageListCache();
+      this.validationVisibleAtBuild = isLinkValidationVisible();
       this.decorations = buildDecorations(view);
-      this.unsubscribe = subscribePageListCache((snapshot) => {
+      this.unsubscribePageList = subscribePageListCache((snapshot) => {
         if (this.cacheAtBuild === snapshot) return;
         queueMicrotask(() => {
           try {
@@ -110,16 +119,31 @@ const mdLinkDecorations = ViewPlugin.fromClass(
           }
         });
       });
+      this.unsubscribePolicy = subscribeToLinkValidationPolicy(() => {
+        try {
+          view.dispatch({});
+        } catch {
+          /* view destroyed before policy refresh */
+        }
+      });
     }
     update(update: ViewUpdate) {
       const cache = getPageListCache();
-      if (update.docChanged || update.viewportChanged || this.cacheAtBuild !== cache) {
+      const validationVisible = isLinkValidationVisible();
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        this.cacheAtBuild !== cache ||
+        this.validationVisibleAtBuild !== validationVisible
+      ) {
         this.cacheAtBuild = cache;
+        this.validationVisibleAtBuild = validationVisible;
         this.decorations = buildDecorations(update.view);
       }
     }
     destroy() {
-      this.unsubscribe();
+      this.unsubscribePageList();
+      this.unsubscribePolicy();
     }
   },
   { decorations: (v) => v.decorations },

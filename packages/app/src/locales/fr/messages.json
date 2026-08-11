@@ -188,6 +188,7 @@
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
     "1oSHI0": ["Impossible d'installer ", ["skillName"], " : ", ["0"]],
+    "1pdLQw": ["Image introuvable"],
     "1qpGKz": [
       "Impossible d’enregistrer les modifications. Essayez à nouveau de modifier une couleur."
     ],
@@ -197,6 +198,7 @@
       "Impossible de démarrer la synchronisation. Vérifiez votre connexion, puis réessayez."
     ],
     "1vn0CI": ["Réponse du serveur invalide"],
+    "1xui0Q": ["Échec du chargement des fichiers locaux"],
     "2277Tu": ["Réduire le graphe"],
     "237hSL": ["Terminé"],
     "253MN6": ["Impossible d'envoyer vos commentaires — veuillez réessayer."],
@@ -534,6 +536,7 @@
     "6HCOwA": ["Échec de l'ouverture."],
     "6KCH4m": ["Fichiers masqués"],
     "6KXnz5": ["Vous pouvez restaurer ce fichier depuis la corbeille."],
+    "6LJJ1v": ["Fichier ", ["identity"], ". Accéder à la référence."],
     "6LbUG7": ["Le dépôt est privé et votre compte GitHub n'y a pas accès."],
     "6Mbe-P": [
       "Décrivez ce qu'elle doit faire, ou ajoutez-en une vous-même. OpenKnowledge regroupe vos compétences au même endroit, les versionne, et les installe dans des agents comme Claude, Codex et Cursor."
@@ -1166,7 +1169,6 @@
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens utilisés"],
     "EQXPXf": ["Défiler jusqu'à la fin"],
     "ETyvvg": ["Aucune langue correspondante."],
-    "EUiJEM": ["Occurrences de ", ["0"]],
     "EWCJFu": [["target"], " créé"],
     "EWPtMO": ["Code"],
     "EWX92Z": ["Réduire Demander à l'IA"],
@@ -1511,6 +1513,9 @@
     "IgN3LY": ["Sur le texte sélectionné dans <0>", ["address"], "</0>"],
     "IgTwLt": ["Ouvre ce document dans l'éditeur et réduit le graphe."],
     "Ik-gP0": ["Titre de niveau ", ["level"], " : ", ["text"]],
+    "IoHQYP": [
+      "La validation des liens est indisponible. Affichage des derniers problèmes connus."
+    ],
     "Iq8zdU": ["Fermer le terminal"],
     "IrB5AK": [
       "Le nettoyage côté serveur a échoué pour ",
@@ -1727,6 +1732,7 @@
     "Lm3r51": ["Slidev n'a pas pu afficher ce document."],
     "LnVIW4": ["Échec du démarrage de la connexion — réessayez"],
     "LpB85N": ["Simple"],
+    "Lrsl_h": ["Fichier ", ["identity"], " manquant. Accéder à la référence."],
     "LtI9AS": ["Propriétaire"],
     "LtSYdi": ["Afficher dans le Finder"],
     "LtiJ5c": ["Compétence de projet"],
@@ -1841,9 +1847,6 @@
       "Quand vous survolez un lien externe, son URL est envoyée au site de destination pour récupérer les métadonnées d'aperçu de la page — une requête par lien prévisualisé."
     ],
     "MysZUL": ["Connexion à ", ["agentName"], "…"],
-    "N-IonL": [
-      "Comment les liens wiki non résolus sont signalés dans le panneau Problèmes, les audits et les outils d'agent."
-    ],
     "N1KkEO": ["Aller au dernier onglet"],
     "N1YYa7": ["Chargement de l'image"],
     "N1mdmS": ["Ce fichier ne peut pas être ouvert dans l'éditeur de texte."],
@@ -2322,6 +2325,7 @@
     "U2Kx6T": ["Fermer tous les onglets non épinglés"],
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Guide complet"],
+    "U3RIJu": ["Fichiers locaux"],
     "U4nTfu": ["Activer Suivre"],
     "U5Spo9": ["Le répertoire de contenu doit se trouver dans le projet"],
     "U6wmNc": ["Synchronisation en pause"],
@@ -2457,6 +2461,7 @@
     "VNNRfN": ["définir comme source"],
     "VNgKZz": ["Paramètres avancés"],
     "VTulZj": ["Ouvrir dans un worktree"],
+    "VU3Nrn": ["Manquant"],
     "VUijjF": ["Intègre une image avec un texte alternatif facultatif."],
     "VVRrPk": [["0"], " ne propose aucun paramètre à ajuster"],
     "VXGFMg": ["Annuler ou rétablir dans un champ de code"],
@@ -2465,6 +2470,7 @@
     "VZSBXL": [
       "Le classement sémantique s'active la première fois qu'un agent lance une recherche."
     ],
+    "VZg6Gn": ["Impossible d'afficher l'image : ", ["errorLabel"]],
     "V_6bJ4": [
       "Les paramètres du terminal ne sont pas encore chargés — réessayez dans un instant."
     ],
@@ -2509,12 +2515,18 @@
     ],
     "W3Tsgy": ["Détecté dans ", ["0"]],
     "W5A0Ly": ["Une erreur inattendue s'est produite."],
+    "W5qdI_": [
+      "La cible de l’image « ",
+      ["shown"],
+      " » n’a pas pu être résolue en tant que fichier local au projet."
+    ],
     "W7XJN4": [
       "Impossible d'imbriquer les projets. Un projet OpenKnowledge existe déjà dans <0>",
       ["rootPath"],
       "</0>. Choisissez un emplacement en dehors, ou ouvrez plutôt ce projet."
     ],
     "W8vpBM": ["pack de démarrage"],
+    "W9NSe0": ["Vérification des liens"],
     "W9_Bub": ["Les modifications locales chevauchent la synchronisation entrante"],
     "WBNpt9": ["Impossible de lire ce thème (", ["0"], ")"],
     "WFEbV1": [
@@ -2577,11 +2589,13 @@
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
     "XAyxsa": ["Extraire une branche distante"],
+    "XBBZnv": ["La cible du lien « ", ["shown"], " » ne correspond à aucun document existant."],
     "XBgr2S": ["Copier ici"],
     "XDzAnp": ["S'ouvre dans un nouvel onglet"],
     "XFpEgc": [
       "Choisissez quels agents apparaissent dans les menus d'agents de l'application, comme Ask AI, Open with AI et le bouton ＋ de nouveau chat. Désactivez un agent pour le masquer de tous ces menus."
     ],
+    "XGKy1z": ["Impossible d'afficher l'image"],
     "XH30C4": ["document"],
     "XIltnd": ["Une compétence nommée « ", ["trimmed"], " » existe déjà ici"],
     "XJOV1Y": ["Activité"],
@@ -2599,6 +2613,7 @@
     "XW18jo": ["La réponse des titres de page ne correspond pas au schéma de succès"],
     "XWEqQj": [["days"], "j"],
     "XXA1b_": [["componentLabel"], " (vide)"],
+    "XYZ7tp": ["Non résolu"],
     "XYlJJT": ["Configuration en cours"],
     "XZkdtg": ["Changer de branche"],
     "XcGbim": ["Afficher les fichiers masqués"],
@@ -2713,6 +2728,7 @@
     ],
     "Y_GpJd": ["La demande de téléchargement de ", ["0"], " a expiré."],
     "Y_ZQ6l": ["Installation de ", ["agentName"], "…"],
+    "Y_iImT": ["Fichier ", ["identity"], " impossible à résoudre. Accéder à la référence."],
     "Y_kL7X": ["Personnalisez l'apparence et le comportement de l'éditeur."],
     "Ya3PlJ": ["Autorisation requise"],
     "YaeyFh": [
@@ -2843,6 +2859,7 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_Bix3-": ["Occurrences de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Création…"],
     "_FLBbi": [["sizeText"], " · secrets masqués · vidage de plantage non masqué"],
     "_GRWOJ": ["Changer de fournisseur d'embeddings ?"],
@@ -3017,6 +3034,11 @@
       " » avant la reconnexion."
     ],
     "bnOTEz": ["Récupération…"],
+    "bpMVIA": [
+      "La cible du lien « ",
+      ["shown"],
+      " » n’a pas pu être résolue en tant que cible locale au projet."
+    ],
     "bpytj4": ["Déplacer vers ", ["0"]],
     "brCtGB": ["Historique indisponible"],
     "buNXgr": [
@@ -3303,6 +3325,7 @@
     "fJgQHX": ["Échec de la création du fichier"],
     "fMsFdZ": ["Impossible d'enregistrer le réglage de mise à jour automatique : ", ["0"]],
     "fNr-MX": ["Désactiver la recherche sémantique"],
+    "fOzzSV": ["La cible du lien « ", ["shown"], " » ne correspond à aucun fichier existant."],
     "fR-Kdc": ["(niveau projet uniquement)"],
     "fRVBiq": [
       "Ajoute la télémétrie, l'état du serveur et les informations d'exécution lorsqu'elles sont disponibles. Les identifiants sont toujours supprimés ; les noms de documents, s'ils sont inclus, apparaissent en clair (non masqués)."
@@ -3352,6 +3375,7 @@
       "<0>Vous avez autre chose à ajouter ?</0> Écrivez à <1/> en mentionnant votre référence."
     ],
     "fxbCNQ": ["Synchronisé. Le lien est à jour."],
+    "g-dkjJ": ["Les détails des fichiers locaux ne sont pas encore disponibles."],
     "g12y1g": ["YAML non valide"],
     "g1ZTh_": [
       [
@@ -3446,6 +3470,7 @@
     "gmJ0An": ["Échec de l'ouverture du dossier."],
     "goO4Ll": ["Barre d'état de l'éditeur"],
     "gp3I7-": ["Avant de synchroniser, définissez votre identité pour les commits git :"],
+    "gpbKxw": ["La validation des liens est indisponible."],
     "gqk-3R": [["0"], " déplacé vers ", ["destination"], "."],
     "gtEbeW": ["Surlignage"],
     "gtGQ9S": ["Démarrer ", ["agentName"], ", ", ["hint"]],
@@ -3580,6 +3605,7 @@
     "iRdfLr": ["Instance de développement : ", ["label"]],
     "iSLIjg": ["Connecter"],
     "iSQTsg": ["Liste numérotée"],
+    "iSWh95": ["La cible de l’image « ", ["shown"], " » ne correspond à aucun fichier existant."],
     "iSnkwB": ["Échec de l'ouverture du projet cloné."],
     "iTylMl": ["Modèles"],
     "iUwpZI": ["Pas d'espaces — utilisez <0>-</0> à la place."],
@@ -3622,6 +3648,9 @@
       "Le <0>type</0> que reçoit chaque document créé à partir de ce modèle (par ex. <1>research-note</1>). Garde les nouveaux documents conformes à l'Open Knowledge Format."
     ],
     "iqIDv4": ["État de synchronisation indisponible"],
+    "iqr14Z": [
+      "Comment les documents, fichiers et images locaux au projet manquants sont signalés dans Problèmes, les diagnostics de l’éditeur, les audits et les outils d’agent."
+    ],
     "iqugog": ["Échec de l'initialisation : ", ["errorDetail"]],
     "irFGwu": ["Liste des modèles"],
     "irrm_E": ["Retirer la sélection"],
@@ -3731,6 +3760,7 @@
       "Insère une référence de note de bas de page et l'ébauche de définition correspondante."
     ],
     "kGp168": ["Impossible de préparer ce projet pour la publication."],
+    "kI5pWt": ["Image introuvable : ", ["errorLabel"]],
     "kKw0H3": [
       "Vous avez modifié cette compétence en local et la source a de nouveaux changements. Prendre la version amont remplace la vôtre ; vos modifications restent récupérables dans l'historique des versions."
     ],
@@ -4007,7 +4037,6 @@
     "nCzR-G": ["Copier le code ", ["userCode"]],
     "nDT8qt": [["0"], " initialisé mais impossible à ouvrir."],
     "nG-XA9": ["Le texte ancré a disparu. Vous pouvez le replacer sur un texte sélectionné."],
-    "nL-HHD": ["Échec du chargement de l’image"],
     "nMSYz5": [
       "Ce chemin se trouve sur un volume externe (/Volumes/...). OpenKnowledge perdra la trace des fichiers lorsque le disque sera éjecté."
     ],
@@ -4150,6 +4179,7 @@
     "pFRz_E": ["Ne pas inclure ces commentaires dans ce message"],
     "pFagOn": ["Édition de la source"],
     "pHYP6v": ["Ouvrez <0>Personnaliser</0> dans la barre latérale <1/> <2>Compétences</2>."],
+    "pJ7XCo": ["Cette page ne référence aucun fichier ou image local."],
     "pOo4Aa": ["Texte brut"],
     "pSimwP": ["Nouveau nom pour la version ", ["editor"]],
     "pTPqMK": ["Bascule un bloc de code délimité."],
@@ -4302,7 +4332,6 @@
     "qjHMHf": ["Échec de la désactivation de la synchronisation — ", ["detail"]],
     "qkqG0b": ["Prendre la version amont"],
     "qlAIQ1": ["Distant"],
-    "qlnfTD": ["Échec du chargement de l’image : ", ["errorLabel"]],
     "qmL1UG": ["Envoi sécurisé"],
     "qo4zCg": ["Le chemin ne peut pas contenir d'antislash"],
     "qpQwGC": ["Décrivez ce sur quoi vous travaillez et l'agent le met en place pour vous."],
@@ -4347,6 +4376,7 @@
     "rXz97P": ["Liste numérotée d'éléments."],
     "rZ9HZq": ["À faire"],
     "rZVMkf": ["Champ de remplacement de l'éditeur visuel actif"],
+    "radOpL": ["Image ", ["identity"], ". Accéder à la référence."],
     "rageVb": ["HTML personnalisé avec un volet d'aperçu en direct (iframe en bac à sable)."],
     "rbrHTd": ["Approuvé — ", ["optionName"]],
     "rcJmK8": ["Convertir les emplacements en copies"],
@@ -4526,6 +4556,7 @@
       ["trashNoun"],
       ". Voulez-vous le supprimer définitivement ?"
     ],
+    "txUHO8": [["localizedMessage"], " à la ligne ", ["displayLine"]],
     "tzGWeg": ["Préparation de la désinstallation d'OpenKnowledge"],
     "tzZ6ha": ["Se connecter à GitHub Enterprise Server"],
     "u-9fWA": ["Voir <0>Architecture</0> pour la vue d'ensemble du système."],
@@ -4548,7 +4579,6 @@
     "uCaIdy": [
       "La connexion GitHub est absente ou expirée. Reconnectez-vous pour reprendre la synchronisation."
     ],
-    "uCe4AX": [["0"], " à la ligne ", ["displayLine"]],
     "uDlyqd": [
       "Documente l'architecture de ce dépôt : crée une page de synthèse qui renvoie vers une page par module principal décrivant ses responsabilités et ses points d'entrée."
     ],
@@ -4650,6 +4680,7 @@
     "vPEyDz": ["Transcription de l'agent"],
     "vPF04k": ["Démarrer une nouvelle discussion"],
     "vPKX2i": ["Dans l'application (bêta)"],
+    "vPLUCm": ["Image ", ["identity"], " manquante. Accéder à la référence."],
     "vPXOUw": ["Basculer l'affichage de la source"],
     "vQIVHc": ["Propriétés du dossier"],
     "vWc9a0": ["Saisissez pour modifier ; <0>⌘ Entrée</0> enregistre, <1>Échap</1> annule."],
@@ -4843,6 +4874,7 @@
     "xxRpzT": ["Slidev trouvé sur votre système."],
     "xzAmL_": ["Approuvé automatiquement"],
     "xzktOa": ["Modifier le lien wiki"],
+    "y-LQPF": ["Image ", ["identity"], " impossible à résoudre. Accéder à la référence."],
     "y1eoq1": ["Copier le lien"],
     "y1t8bQ": ["Sections des paramètres"],
     "y3aU20": ["Enregistrer les modifications"],

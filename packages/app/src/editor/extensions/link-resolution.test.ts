@@ -13,7 +13,11 @@
  */
 
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import {
+  resetLinkValidationPolicyForTest,
+  setLinkValidationVisible,
+} from '../link-validation-policy';
 import { buildPagesBySlugIndex, type PageListCacheSnapshot } from '../page-list-cache';
 import {
   computeLinkResolutionAttrs,
@@ -21,6 +25,8 @@ import {
   makeLinkResolutionAttrsComputer,
 } from './link-resolution';
 import type { MarkInfo } from './mark-identity';
+
+beforeEach(() => resetLinkValidationPolicyForTest());
 
 function makeCache(opts: {
   pages?: Iterable<string>;
@@ -217,6 +223,12 @@ describe('computeLinkResolutionAttrs', () => {
     expect(result).toEqual({ 'data-resolution-state': 'resolved' });
   });
 
+  test('validation.links off omits the unresolved decoration attribute', () => {
+    setLinkValidationVisible(false);
+    const mark = makeMarkInfo({ href: './MISSING.md' });
+    expect(computeLinkResolutionAttrs(mark, makeCache({ pages: [] }), 'README')).toBeNull();
+  });
+
   test('returns null when href attr missing', () => {
     const mark = makeMarkInfo({});
     expect(computeLinkResolutionAttrs(mark, null, 'README')).toBeNull();
@@ -258,19 +270,24 @@ describe('computeLinkResolutionAttrs', () => {
     });
   });
 
-  test('wikiembed-sourced link → no decoration (skip classification)', () => {
+  test('wikiembed-sourced media link → asset, not broken-link styling', () => {
     // Asset-embed links (`![[foo.pdf]]` → link mark with sourceForm='wikiembed')
-    // must NOT be classified against the pages cache — the cache is markdown-
-    // only, so PDF/video/audio hrefs would always resolve 'unresolved' and
-    // paint the link with broken-link styling.
+    // must not be painted with broken-link styling. They used to be skipped
+    // wholesale to achieve that, because resolving a PDF/video/audio href
+    // against the markdown-only pages cache always came back 'unresolved'. The
+    // href is classified as an asset on its own merits now, so the embed
+    // resolves rather than being silenced — which also lets a document-shaped
+    // embed report the missing target the skip used to swallow.
     const cache = makeCache({ pages: ['README'] });
     const mark = makeMarkInfo({ href: 'docs/foo.pdf', sourceForm: 'wikiembed' });
-    expect(computeLinkResolutionAttrs(mark, cache, 'README')).toBeNull();
+    expect(computeLinkResolutionAttrs(mark, cache, 'README')).toEqual({
+      'data-resolution-state': 'asset',
+    });
   });
 
   test('plain link mark (sourceForm=null) still gets decoration', () => {
-    // Regression guard: the skip-for-wikiembed rule must NOT affect normal
-    // markdown links `[text](./foo.md)` — those still need resolution state.
+    // Regression guard: wiki-embed handling must NOT affect normal markdown
+    // links `[text](./foo.md)` — those still need resolution state.
     const cache = makeCache({ pages: ['OTHER'] });
     const mark = makeMarkInfo({ href: './OTHER.md', sourceForm: null });
     expect(computeLinkResolutionAttrs(mark, cache, 'README')).toEqual({

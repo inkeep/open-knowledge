@@ -1,3 +1,4 @@
+
 import {
   type FromProseMirrorOptions,
   fromProseMirror,
@@ -30,10 +31,12 @@ import { highlightPromoterPlugin } from './highlight-promoter.ts';
 import { imagePromoterPlugin } from './image-promoter.ts';
 import { indentedCodePromoterPlugin } from './indented-code-promoter.ts';
 import { insertInteriorBlankRunParagraphs } from './interior-blank-runs.ts';
+import { linkReferenceDestinationPlugin } from './link-reference-destination.ts';
 import { mathPromoterPlugin } from './math-promoter.ts';
 import type { SourceDocBoundary } from './mdast-augmentation.ts';
 import { mergedPostParseWalkerPlugin } from './merged-walker.ts';
 import { mermaidPromoterPlugin } from './mermaid-promoter.ts';
+import { nonRenderingContextDemotePlugin } from './non-rendering-context-demote.ts';
 import { positionAwareBlankLineJoin } from './position-aware-join.ts';
 import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
@@ -101,6 +104,8 @@ export const ACTIVE_MDAST_PLUGINS = [
   { name: 'comment-promoter', plugin: commentPromoterPlugin },
   { name: 'merged-post-parse-walker', plugin: mergedPostParseWalkerPlugin },
   { name: 'empty-task-item-unmint', plugin: emptyTaskItemUnmintPlugin },
+  { name: 'link-reference-destination', plugin: linkReferenceDestinationPlugin },
+  { name: 'non-rendering-context-demote', plugin: nonRenderingContextDemotePlugin },
   { name: 'ensure-non-empty-doc', plugin: () => ensureNonEmptyDoc },
 ] as const;
 

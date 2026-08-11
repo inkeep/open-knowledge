@@ -1,3 +1,6 @@
+
+import type { BrokenLinkReason } from '../../schemas/api/agent-write.ts';
+
 export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter'] as const;
 export type LintPluginId = (typeof LINT_PLUGIN_IDS)[number];
 
@@ -32,9 +35,34 @@ export interface LintDiagnostic {
 const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;
 export type ValidationSource = (typeof VALIDATION_SOURCES)[number];
 
+export type LocalTargetKind = 'document' | 'file' | 'unknown';
+
+export type LocalTargetRole = 'link' | 'image';
+
+export type LocalTargetSourceForm = 'markdown-inline' | 'markdown-reference' | 'html-img';
+
+export type LocalTargetResolutionMethod = 'source-relative' | 'root-relative' | 'tolerant' | 'none';
+
+export interface LocalTargetDiagnosticEvidence extends Record<string, unknown> {
+  href: string;
+  targetKind: LocalTargetKind;
+  role: LocalTargetRole;
+  sourceForm: LocalTargetSourceForm;
+  resolvedTarget: string | null;
+  reason: BrokenLinkReason;
+  resolutionMethod: LocalTargetResolutionMethod;
+  fallbackTarget?: string;
+  definition?: {
+    [key: string]: unknown;
+    line: number;
+    label: string;
+  };
+}
+
 export interface ValidationDiagnostic extends Omit<LintDiagnostic, 'source'> {
   source: ValidationSource;
   linkTarget?: string;
+  localTarget?: LocalTargetDiagnosticEvidence;
 }
 
 export const LINKS_VALIDATION_SETTINGS = ['off', 'warning', 'error'] as const;
@@ -70,6 +98,7 @@ export interface FrontmatterSlice {
   enabled: boolean;
   schemas: ResolvedFrontmatterSchemaEntry[];
 }
+
 
 interface RuleOptionSpecBase {
   key: string;

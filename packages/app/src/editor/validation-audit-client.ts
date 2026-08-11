@@ -15,7 +15,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
-import { subscribeToDocumentsChanged } from '@/lib/documents-events';
+import { invalidatesLocalTargetAudit, subscribeToDocumentsChanged } from '@/lib/documents-events';
 
 /** Wire-loose diagnostic (schema `source` is any string, by design). */
 type WireDiagnostic = ValidationDocResult['diagnostics'][number];
@@ -41,8 +41,9 @@ export const AUDIT_SUPERSEDED = 'audit-superseded' as const;
  */
 export async function runValidationAudit(
   scope: AuditScope = { kind: 'project' },
+  signal?: AbortSignal,
 ): Promise<ValidationAuditResponse | null | typeof AUDIT_SUPERSEDED> {
-  return fetchAudit(scope, ValidationAuditResponseSchema, false);
+  return fetchAudit(scope, ValidationAuditResponseSchema, false, signal);
 }
 
 /**
@@ -130,37 +131,98 @@ async function fetchAudit<T>(
  * both this doc's own edits and cross-doc ripples (a deleted target turning
  * this doc's link dead).
  */
-export function useDocLinkFindings(docName: string | null): WireDiagnostic[] {
-  const [findings, setFindings] = useState<WireDiagnostic[]>([]);
-  useEffect(() => {
-    // Reset on every doc change, not just null: the previous doc's findings
-    // must never survive into the new doc's render window — a stale carryover
-    // would show doc A's dead links under doc B (panel rows AND store counts)
-    // until the scoped fetch resolves.
-    setFindings((prev) => (prev.length === 0 ? prev : []));
-    if (docName === null) {
+export type DocLinkFindingsState =
+  | { status: 'idle'; findings: readonly WireDiagnostic[] }
+  | { status: 'loading'; findings: readonly WireDiagnostic[] }
+  | { status: 'loaded'; findings: readonly WireDiagnostic[] }
+  | { status: 'failed'; findings: readonly WireDiagnostic[] };
+
+/**
+ * One serialized scoped-audit subscription. Invalidations received during a
+ * walk mark it dirty instead of starting a competing request; once that walk
+ * settles, exactly one fresh request runs against the new local-target world.
+ * This is stronger than abort-only cancellation because the server may
+ * coalesce an invalidating request onto the same already-running audit.
+ */
+export function subscribeToDocLinkFindings(
+  docName: string,
+  onState: (state: DocLinkFindingsState) => void,
+): () => void {
+  let disposed = false;
+  let inFlight = false;
+  let dirty = false;
+  let findings: readonly WireDiagnostic[] = [];
+  let controller: AbortController | null = null;
+
+  const load = (): void => {
+    if (inFlight) {
+      dirty = true;
       return;
     }
-    let cancelled = false;
-    const load = () => {
-      void runValidationAudit({ kind: 'doc', docName }).then((result) => {
-        if (cancelled || result === null || result === AUDIT_SUPERSEDED) return;
-        const linkFindings = result.files
-          .flatMap((f) => f.diagnostics)
-          .filter((d) => d.source === 'links');
-        setFindings((prev) =>
-          prev.length === 0 && linkFindings.length === 0 ? prev : linkFindings,
-        );
+    inFlight = true;
+    controller = new AbortController();
+    onState({ status: 'loading', findings });
+    void runValidationAudit({ kind: 'doc', docName }, controller.signal)
+      .then((result) => {
+        if (disposed || controller?.signal.aborted === true) return;
+        if (result === null) {
+          onState({ status: 'failed', findings });
+          return;
+        }
+        if (result === AUDIT_SUPERSEDED) {
+          dirty = true;
+          return;
+        }
+        // An invalidation proves this completion describes an older world.
+        // Keep the current visible state until the queued replacement settles.
+        if (dirty) return;
+        findings = result.files
+          .flatMap((file) => file.diagnostics)
+          .filter((diagnostic) => diagnostic.source === 'links');
+        onState({ status: 'loaded', findings });
+      })
+      .finally(() => {
+        if (disposed) return;
+        inFlight = false;
+        controller = null;
+        if (dirty) {
+          dirty = false;
+          load();
+        }
       });
-    };
-    load();
-    const unsub = subscribeToDocumentsChanged((channels) => {
-      if (channels.includes('backlinks')) load();
-    });
-    return () => {
-      cancelled = true;
-      unsub();
-    };
+  };
+
+  load();
+  const unsubscribe = subscribeToDocumentsChanged((channels) => {
+    if (channels.includes('backlinks') || invalidatesLocalTargetAudit(channels)) load();
+  });
+  return () => {
+    disposed = true;
+    controller?.abort();
+    unsubscribe();
+  };
+}
+
+export function useDocLinkFindings(docName: string | null): DocLinkFindingsState {
+  const [owned, setOwned] = useState<{
+    docName: string | null;
+    state: DocLinkFindingsState;
+  }>({ docName: null, state: { status: 'idle', findings: [] } });
+  useEffect(() => {
+    if (docName === null) {
+      setOwned({ docName: null, state: { status: 'idle', findings: [] } });
+      return;
+    }
+    // A new document starts unsettled with no carryover from the prior doc.
+    setOwned({ docName, state: { status: 'loading', findings: [] } });
+    return subscribeToDocLinkFindings(docName, (state) => setOwned({ docName, state }));
   }, [docName]);
-  return findings;
+  // Effects run after render. Owner-gating prevents the previous document's
+  // findings and counts from painting during the first render of a new one.
+  if (owned.docName !== docName) {
+    return docName === null
+      ? { status: 'idle', findings: [] }
+      : { status: 'loading', findings: [] };
+  }
+  return owned.state;
 }

@@ -83,7 +83,7 @@ vi.doMock('@/editor/validation-audit-client', () => ({
     auditCalls += 1;
     return runLintAuditImpl();
   },
-  useDocLinkFindings: () => [],
+  useDocLinkFindings: () => ({ status: 'loaded', findings: [] }),
 }));
 // Page-list context for the dead-link "Create page" one-shot. `addPage` is the
 // only member the panel touches.
@@ -171,6 +171,57 @@ function linkDiag(
   };
 }
 
+/** Wire-loose local-target evidence (open-enum strings), as the audit projects it. */
+type LocalTargetEvidence = {
+  href: string;
+  targetKind: 'document' | 'file' | 'unknown';
+  role: 'link' | 'image';
+  sourceForm: 'markdown-inline' | 'markdown-reference' | 'html-img';
+  resolvedTarget: string | null;
+  reason: string;
+  resolutionMethod: string;
+  definition?: { line: number; label: string };
+};
+
+/**
+ * A `links` finding carrying local-target evidence — the shape the audit plane
+ * projects for a missing file, image, unresolvable, or reference-style target.
+ * `linkTarget` is threaded only for an eligible missing document (create-page
+ * intent); files, images, and unresolvable targets never carry it in production.
+ */
+function localTargetDiag(args: {
+  line?: number;
+  message: string;
+  role: 'link' | 'image';
+  targetKind: 'document' | 'file' | 'unknown';
+  sourceForm?: LocalTargetEvidence['sourceForm'];
+  resolvedTarget?: string | null;
+  reason?: string;
+  linkTarget?: string;
+  definition?: { line: number; label: string };
+}): LintDiagnostic & { localTarget: LocalTargetEvidence; linkTarget?: string } {
+  return {
+    ...diag({
+      line: args.line ?? 3,
+      severity: 'warning',
+      code: 'dead-link',
+      message: args.message,
+      source: 'links' as LintDiagnostic['source'],
+    }),
+    ...(args.linkTarget !== undefined ? { linkTarget: args.linkTarget } : {}),
+    localTarget: {
+      href: args.resolvedTarget ?? 'assets/x',
+      targetKind: args.targetKind,
+      role: args.role,
+      sourceForm: args.sourceForm ?? 'markdown-inline',
+      resolvedTarget: args.resolvedTarget ?? null,
+      reason: args.reason ?? 'no-such-file',
+      resolutionMethod: 'source-relative',
+      ...(args.definition ? { definition: args.definition } : {}),
+    },
+  };
+}
+
 beforeEach(() => {
   auditCalls = 0;
   runLintAuditImpl = async () => null;
@@ -236,6 +287,30 @@ describe('ProblemsPanel', () => {
     expect(screen.getByText('No problems found.')).toBeTruthy();
   });
 
+  test('does not claim the document is clean while link validation is loading', () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[]} linkFindingsStatus="loading" />);
+    expect(screen.getByRole('status').textContent).toContain('Checking links');
+    expect(screen.queryByText('No problems found.')).toBeNull();
+  });
+
+  test('reports an unavailable link plane instead of a clean document', () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[]} linkFindingsStatus="failed" />);
+    expect(screen.getByTestId('problems-links-failed').textContent).toBe(
+      'Link validation is unavailable.',
+    );
+    expect(screen.queryByText('No problems found.')).toBeNull();
+  });
+
+  test('labels retained problems as last known when a refresh fails', () => {
+    render(
+      <ProblemsPanel docName="notes" diagnostics={[linkDiag()]} linkFindingsStatus="failed" />,
+    );
+    expect(screen.getByTestId('problems-links-failed').textContent).toContain(
+      'Showing last known problems',
+    );
+    expect(screen.getByText(/does not resolve/)).toBeTruthy();
+  });
+
   test('a compact Checked-by line reveals the active plugins in a tooltip', async () => {
     projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: true });
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
@@ -278,6 +353,34 @@ describe('ProblemsPanel', () => {
     // (broken links) must never be hidden behind it.
     expect(screen.queryByTestId('problems-no-plugins')).toBeNull();
     expect(screen.getByText(/does not resolve/)).toBeTruthy();
+  });
+
+  test('renders local-target prose from structured evidence instead of server English', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          diag({
+            source: 'links',
+            code: 'dead-link',
+            message: 'opaque server fallback',
+            localTarget: {
+              href: './missing.png',
+              targetKind: 'file',
+              role: 'image',
+              sourceForm: 'markdown-inline',
+              resolvedTarget: 'missing.png',
+              reason: 'no-such-file',
+              resolutionMethod: 'source-relative',
+            },
+          }),
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText('Image target "missing.png" does not resolve to an existing file.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('opaque server fallback')).toBeNull();
   });
 
   test('while the lint config has not loaded, the panel makes no plugin claim', () => {
@@ -1850,5 +1953,204 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
     await waitFor(() => expect(fixLintDocCalls.length).toBe(3));
     parked[2]?.();
     await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
+  });
+});
+
+/**
+ * Local-target findings (files, images, reference-style, unresolvable) share the
+ * one validation plane with lint and document dead-links. The panel reads their
+ * kind from the assessment evidence — never the message text — so a missing file
+ * or image reads apart from a missing document by glyph, and Create page (a
+ * document-only recovery) never appears on a file, image, or unresolvable row.
+ */
+describe('ProblemsPanel — local-target findings', () => {
+  const fileLink = (line: number) =>
+    localTargetDiag({
+      line,
+      role: 'link',
+      targetKind: 'file',
+      resolvedTarget: 'docs/spec.pdf',
+      message: 'Link target "docs/spec.pdf" does not resolve to an existing file.',
+    });
+  const imageEmbed = (line: number) =>
+    localTargetDiag({
+      line,
+      role: 'image',
+      targetKind: 'file',
+      resolvedTarget: 'assets/logo.png',
+      message: 'Image target "assets/logo.png" does not resolve to an existing file.',
+    });
+  const unresolvableLink = (line: number) =>
+    localTargetDiag({
+      line,
+      role: 'link',
+      targetKind: 'unknown',
+      reason: 'unresolvable',
+      message: 'Link target "../../etc/passwd" could not be resolved to a project-local target.',
+    });
+
+  test('reads file, image, unresolvable, and document kinds apart from the evidence', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          diag({ line: 1 }),
+          linkDiag({ line: 2 }),
+          fileLink(3),
+          imageEmbed(4),
+          unresolvableLink(5),
+        ]}
+      />,
+    );
+    const tags = screen.getAllByTestId('problems-source-tag');
+    // Every producer keeps its own chip; the links validator owns four of them.
+    expect(tags.map((tag) => tag.textContent)).toEqual([
+      'markdownlint',
+      'links',
+      'links',
+      'links',
+      'links',
+    ]);
+    // The kind is a stable, non-color cue read from the assessment, not the text:
+    // a lint finding has none, then document, file, image, and unresolvable.
+    expect(tags.map((tag) => tag.getAttribute('data-target-kind'))).toEqual([
+      null,
+      'document',
+      'file',
+      'image',
+      'unresolvable',
+    ]);
+  });
+
+  test('never offers Create page for file, image, or unresolvable findings', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[fileLink(3), imageEmbed(4), unresolvableLink(5), linkDiag({ line: 6 })]}
+      />,
+    );
+    // Only the missing document is eligible; the other three carry no create intent.
+    const created = screen.getAllByTestId('problems-create-page');
+    expect(created).toHaveLength(1);
+  });
+
+  test('offers Create page for a reference-style missing document and creates that doc', async () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          localTargetDiag({
+            line: 3,
+            role: 'link',
+            targetKind: 'document',
+            sourceForm: 'markdown-reference',
+            resolvedTarget: 'guides/setup',
+            reason: 'no-such-doc',
+            linkTarget: 'guides/setup',
+            message: 'Link target "guides/setup" does not resolve to an existing document.',
+            definition: { line: 20, label: 'setup' },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('problems-source-tag').getAttribute('data-target-kind')).toBe(
+      'document',
+    );
+    fireEvent.click(screen.getByTestId('problems-create-page'));
+    await waitFor(() =>
+      expect(createPageCalls).toEqual([{ initialDir: '', suggestedName: 'guides/setup' }]),
+    );
+    expect(addPageCalls).toEqual(['guides/setup']);
+  });
+
+  test('a stray create target on an image finding still surfaces no Create page', () => {
+    // The panel enforces the document-only invariant locally: even if the wire
+    // leaked a linkTarget onto an image, the evidence says image, so no Create.
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          localTargetDiag({
+            line: 3,
+            role: 'image',
+            targetKind: 'file',
+            resolvedTarget: 'assets/logo.png',
+            linkTarget: 'assets/logo.png',
+            message: 'Image target "assets/logo.png" does not resolve to an existing file.',
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId('problems-create-page')).toBeNull();
+  });
+
+  test('a file finding click-jumps to its authored occurrence', () => {
+    let received: { docName: string; line: number; column: number } | null = null;
+    const listener = (e: Event) => {
+      received = (e as CustomEvent<LintNavDetail>).detail;
+    };
+    window.addEventListener(LINT_NAV_EVENT, listener);
+    try {
+      render(<ProblemsPanel docName="notes" diagnostics={[fileLink(7)]} />);
+      fireEvent.click(screen.getByRole('button', { name: /does not resolve to an existing file/ }));
+      expect(received).toEqual({ docName: 'notes', line: 7, column: 1, source: 'links' });
+    } finally {
+      window.removeEventListener(LINT_NAV_EVENT, listener);
+    }
+  });
+
+  test('keeps the finding message in the row accessible name and hides the kind glyph', () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[imageEmbed(3)]} />);
+    // The kind reads from words, not color: the message is the row's accessible name.
+    expect(
+      screen.getByRole('button', {
+        name: /Image target "assets\/logo.png" does not resolve to an existing file/,
+      }),
+    ).toBeTruthy();
+    // The glyph is decorative, so it never doubles the announcement.
+    const glyph = screen.getByTestId('problems-source-tag').querySelector('svg');
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('project file groups surface file and image findings with gated actions', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          {
+            file: 'guides/setup.md',
+            diagnostics: [linkDiag({ line: 2 }), fileLink(4), imageEmbed(6)],
+          },
+        ],
+        fileCount: 1,
+        warningCount: 3,
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    expandGroup('guides/setup.md');
+
+    const kinds = screen
+      .getAllByTestId('problems-source-tag')
+      .map((tag) => tag.getAttribute('data-target-kind'));
+    expect(kinds).toEqual(['document', 'file', 'image']);
+    // Only the missing document is repairable via Create in the project group.
+    expect(screen.getAllByTestId('problems-create-page')).toHaveLength(1);
+  });
+
+  test('repeated image findings to one target group and never offer Create', () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[imageEmbed(3), imageEmbed(8)]} />);
+    const group = screen.getByTestId('problems-duplicate-group');
+    expect(group.textContent).toContain('2 instances');
+    // The collapsed header still carries the image kind.
+    expect(screen.getByTestId('problems-source-tag').getAttribute('data-target-kind')).toBe(
+      'image',
+    );
+    expect(screen.queryByTestId('problems-create-page')).toBeNull();
+    fireEvent.click(group.querySelector('button') as HTMLElement);
+    expect(
+      screen.getByTestId('problems-duplicate-instances').querySelectorAll('button'),
+    ).toHaveLength(2);
+    // Neither occurrence gains a Create action on expand.
+    expect(screen.queryByTestId('problems-create-page')).toBeNull();
   });
 });

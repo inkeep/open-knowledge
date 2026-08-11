@@ -265,11 +265,6 @@ msgstr "{0} bertindak tanpa bertanya — OpenKnowledge tidak dapat menambahkan p
 msgid "{0} added, {1} removed"
 msgstr "{0} ditambahkan, {1} dihapus"
 
-#. placeholder {0}: diagnostic.message
-#: src/components/ProblemsPanel.tsx
-msgid "{0} at line {displayLine}"
-msgstr "{0} di baris {displayLine}"
-
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
@@ -688,6 +683,10 @@ msgstr "{linkCount, plural, other {# tautan}}"
 #: src/components/settings/TemplatesManagerSection.tsx
 msgid "{loadErrorTitle}: {message}"
 msgstr "{loadErrorTitle}: {message}"
+
+#: src/components/ProblemsPanel.tsx
+msgid "{localizedMessage} at line {displayLine}"
+msgstr "{localizedMessage} pada baris {displayLine}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -2203,6 +2202,10 @@ msgstr "Memeriksa pembaruan di GitHub"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "Memeriksa koneksi GitHub..."
+
+#: src/components/ProblemsPanel.tsx
+msgid "Checking links"
+msgstr "Memeriksa tautan"
 
 #: src/components/CloneDialog.tsx
 msgid "Checking out files"
@@ -5053,6 +5056,10 @@ msgstr "Gagal memuat judul"
 msgid "Failed to load hub pages"
 msgstr "Gagal memuat halaman pusat"
 
+#: src/components/LinksPanel.tsx
+msgid "Failed to load local files"
+msgstr "Gagal memuat berkas lokal"
+
 #: src/components/GraphPanel.tsx
 msgid "Failed to load orphan pages"
 msgstr "Gagal memuat halaman yatim"
@@ -5279,6 +5286,10 @@ msgstr "Bidang"
 #: src/lib/native-menu-catalog.ts
 msgid "File"
 msgstr "Berkas"
+
+#: src/components/LinksPanel.tsx
+msgid "File {identity}. Go to reference."
+msgstr "File {identity}. Buka referensi."
 
 #: src/components/FileTree.tsx
 msgid "File already exists"
@@ -6030,6 +6041,10 @@ msgstr "Bagaimana pendapat Anda tentang OpenKnowledge?"
 msgid "How does sharing work?"
 msgstr "Bagaimana cara kerja berbagi?"
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
+msgstr "Cara dokumen, file, dan gambar lokal proyek yang hilang dilaporkan di Masalah, diagnostik editor, audit, dan alat agen."
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "Cara push manual"
@@ -6046,10 +6061,6 @@ msgstr "Cara menyiapkan"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "Cara menyiapkan {0} (terbuka di peramban)"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
-msgstr "Bagaimana tautan wiki yang tidak terselesaikan dilaporkan di panel Masalah, audit, dan alat agen."
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
@@ -6106,13 +6117,33 @@ msgstr "Pola abaikan"
 msgid "Ignore patterns (raw text)"
 msgstr "Pola abaikan (teks mentah)"
 
-#: src/components/ui/loading-image.tsx
-msgid "Image failed to load"
-msgstr "Gambar gagal dimuat"
+#: src/components/LinksPanel.tsx
+msgid "Image {identity}. Go to reference."
+msgstr "Gambar {identity}. Buka referensi."
 
 #: src/components/ui/loading-image.tsx
-msgid "Image failed to load: {errorLabel}"
-msgstr "Gambar gagal dimuat: {errorLabel}"
+msgid "Image couldn't be displayed"
+msgstr "Gambar tidak dapat ditampilkan"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image couldn't be displayed: {errorLabel}"
+msgstr "Gambar tidak dapat ditampilkan: {errorLabel}"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found"
+msgstr "Gambar tidak ditemukan"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found: {errorLabel}"
+msgstr "Gambar tidak ditemukan: {errorLabel}"
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" could not be resolved to a project-local file."
+msgstr "Target gambar \"{shown}\" tidak dapat dicocokkan dengan file lokal proyek."
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" does not resolve to an existing file."
+msgstr "Target gambar \"{shown}\" tidak merujuk ke file yang ada."
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -6713,6 +6744,18 @@ msgstr "Tautan siap, tetapi tidak dapat disalin ke papan klip."
 msgid "Link target"
 msgstr "Tujuan tautan"
 
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" could not be resolved to a project-local target."
+msgstr "Target tautan \"{shown}\" tidak dapat dicocokkan dengan target lokal proyek."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing document."
+msgstr "Target tautan \"{shown}\" tidak merujuk ke dokumen yang ada."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing file."
+msgstr "Target tautan \"{shown}\" tidak merujuk ke file yang ada."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "Menautkan teks yang dipilih, atau menyunting tautan di bawah kursor."
@@ -6724,6 +6767,14 @@ msgstr "Menaut ke sebuah halaman atau URL eksternal."
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Link URL"
 msgstr "URL tautan"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable."
+msgstr "Validasi tautan tidak tersedia."
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable. Showing last known problems."
+msgstr "Validasi tautan tidak tersedia. Menampilkan masalah terakhir yang diketahui."
 
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
@@ -6921,6 +6972,14 @@ msgstr "Data kolaborasi lokal untuk \"{docName}\" tidak dapat dibersihkan. Muat 
 msgid "Local commits are keeping this copy from updating"
 msgstr "Commit lokal menghalangi salinan ini diperbarui"
 
+#: src/components/LinksPanel.tsx
+msgid "Local file details aren't available yet."
+msgstr "Detail berkas lokal belum tersedia."
+
+#: src/components/LinksPanel.tsx
+msgid "Local files"
+msgstr "Berkas lokal"
+
 #: src/components/CloneDialog.tsx
 msgid "Local path"
 msgstr "Jalur lokal"
@@ -7097,9 +7156,21 @@ msgstr "Sumber cermin <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Sumber cermin <0>api-spec</0>"
 
+#: src/components/LinksPanel.tsx
+msgid "Missing"
+msgstr "Hilang"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "Ada fitur yang kurang"
+
+#: src/components/LinksPanel.tsx
+msgid "Missing file {identity}. Go to reference."
+msgstr "File {identity} tidak ditemukan. Buka referensi."
+
+#: src/components/LinksPanel.tsx
+msgid "Missing image {identity}. Go to reference."
+msgstr "Gambar {identity} tidak ditemukan. Buka referensi."
 
 #: src/components/LinksPanel.tsx
 msgid "Missing page — click to create"
@@ -8017,10 +8088,9 @@ msgstr "Daftar item bernomor."
 msgid "Object"
 msgstr "Objek"
 
-#. placeholder {0}: first.message
 #: src/components/ProblemsPanel.tsx
-msgid "Occurrences of {0}"
-msgstr "Kemunculan {0}"
+msgid "Occurrences of {localizedFirstMessage}"
+msgstr "Kemunculan {localizedFirstMessage}"
 
 #. placeholder {0}: basenameOf(project.mainRoot ?? '')
 #: src/components/NavigatorApp.tsx
@@ -12325,6 +12395,10 @@ msgstr "Halaman ini belum ada. Buka untuk membuat halamannya di penyunting dan m
 msgid "This page doesn't link to anything yet."
 msgstr "Halaman ini belum menaut ke apa pun."
 
+#: src/components/LinksPanel.tsx
+msgid "This page references no local files or images."
+msgstr "Halaman ini tidak merujuk ke berkas atau gambar lokal apa pun."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
 msgstr "Jalur ini berada di volume eksternal (/Volumes/...). OpenKnowledge akan kehilangan jejak berkasnya ketika drive itu dicabut."
@@ -12863,6 +12937,18 @@ msgstr "Tautan tidak dikenali"
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Unrecognized wiki link"
 msgstr "Tautan wiki tidak dikenali"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable"
+msgstr "Tidak terselesaikan"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable file {identity}. Go to reference."
+msgstr "File {identity} tidak dapat ditentukan. Buka referensi."
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable image {identity}. Go to reference."
+msgstr "Gambar {identity} tidak dapat ditentukan. Buka referensi."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

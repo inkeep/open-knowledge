@@ -28,10 +28,21 @@ interface InitializedSession {
 // declared core types. Importing the core type would let a silent type↔wire
 // drift pass unnoticed — the literal expectations below are the contract, not
 // the TypeScript declarations.
+interface LocalTargetEvidence {
+  href: string;
+  targetKind: string;
+  role: string;
+  sourceForm: string;
+  resolvedTarget: string | null;
+  reason: string;
+  resolutionMethod: string;
+  definition?: { line: number; label: string };
+}
 interface BrokenLink {
   href: string;
   resolvedTo: string | null;
   reason: 'no-such-doc' | 'no-such-file' | 'unresolvable';
+  localTarget?: LocalTargetEvidence;
 }
 
 async function openMcpSession(port: number): Promise<InitializedSession> {
@@ -284,6 +295,82 @@ test('the HTTP /api/agent-write-md response carries brokenLinks directly', async
   expect(body.brokenLinks).toEqual([
     { href: './nope.md', resolvedTo: 'nope', reason: 'no-such-doc' },
   ]);
+});
+
+test('write surfaces missing image + reference-style targets with local-target evidence', async () => {
+  const session = await openMcpSession(server.port);
+  const docName = `pics-${randomUUID().slice(0, 8)}`;
+  const content = [
+    '# Pics',
+    '',
+    '![logo](./logo.png)',
+    '',
+    'See [the spec][spec].',
+    '',
+    '[spec]: ./spec.pdf',
+    '',
+  ].join('\n');
+
+  const result = await callTool(
+    server.port,
+    session,
+    'write',
+    { document: { path: docName, content, position: 'replace' } },
+    server.contentDir,
+  );
+  expect(result.isError ?? false).toBe(false);
+  const doc = docResult(result.structuredContent);
+  const broken = doc.brokenLinks as BrokenLink[];
+
+  // The Markdown image — a form the graph-only triple never reached — is now a
+  // file finding carrying the same evidence scoped audit reports.
+  expect(broken.find((l) => l.href === './logo.png')).toEqual({
+    href: './logo.png',
+    resolvedTo: 'logo.png',
+    reason: 'no-such-file',
+    localTarget: {
+      href: './logo.png',
+      targetKind: 'file',
+      role: 'image',
+      sourceForm: 'markdown-inline',
+      resolvedTarget: 'logo.png',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+    },
+  });
+  // The reference-style use points at its shared definition for repair.
+  expect(broken.find((l) => l.href === './spec.pdf')).toEqual({
+    href: './spec.pdf',
+    resolvedTo: 'spec.pdf',
+    reason: 'no-such-file',
+    localTarget: {
+      href: './spec.pdf',
+      targetKind: 'file',
+      role: 'link',
+      sourceForm: 'markdown-reference',
+      resolvedTarget: 'spec.pdf',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+      definition: { line: 6, label: 'spec' },
+    },
+  });
+
+  // The same evidence rides the unified advisory (warnings) channel: the image
+  // is a lint-violation carrying localTarget, so an agent reading either channel
+  // derives one target identity.
+  const warnings = (doc.warnings ?? []) as Array<{
+    kind: string;
+    localTarget?: LocalTargetEvidence;
+  }>;
+  const imageViolation = warnings.find(
+    (w) => w.kind === 'lint-violation' && w.localTarget?.role === 'image',
+  );
+  expect(imageViolation?.localTarget?.resolvedTarget).toBe('logo.png');
+
+  // Report-only: the write landed byte-for-byte, images and reference syntax intact.
+  const stored = readFileSync(join(server.contentDir, `${docName}.md`), 'utf-8');
+  expect(stored).toContain('![logo](./logo.png)');
+  expect(stored).toContain('[spec]: ./spec.pdf');
 });
 
 test('a link to a doc that actually exists is not flagged (admitted-set membership)', async () => {

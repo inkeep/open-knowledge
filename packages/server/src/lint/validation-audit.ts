@@ -18,17 +18,32 @@ import {
   type ValidationDocCounts,
 } from '@inkeep/open-knowledge-core';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
+import {
+  buildLocalTargetEvidence,
+  type LocalTargetAssessment,
+} from '../local-target-assessment.ts';
 import { getLogger } from '../logger.ts';
 import { AuditSupersededError, auditProject } from './audit.ts';
 import type { AuditCache } from './audit-cache.ts';
 
 type DeadLinksResult = Awaited<ReturnType<DerivedDocumentIndexApiPort['getDeadLinks']>>;
+type LocalTargetsResult = Awaited<
+  ReturnType<DerivedDocumentIndexApiPort['getLocalTargetAssessmentsForSources']>
+>;
 
 interface ValidationDerivedIndexReader {
   getDeadLinks(
     admittedDocuments: Iterable<string>,
     sourceDocumentNames?: readonly string[],
   ): DeadLinksResult | Promise<DeadLinksResult>;
+  /**
+   * Assessed local-target occurrences per source (all sources, or a scoped set).
+   * The links validator projects the unresolved ones — files, images, and
+   * reference-style targets — into the same plane as graph dead-links.
+   */
+  getLocalTargetAssessmentsForSources(
+    sourceDocumentNames?: readonly string[],
+  ): LocalTargetsResult | Promise<LocalTargetsResult>;
 }
 
 interface FileValidationResult {
@@ -236,19 +251,87 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
           warnings: ['links validation unavailable: backlink index is not configured'],
         };
       }
+      const startGeneration = deps.auditGeneration?.();
+      const assertCurrent = (): void => {
+        if (deps.auditGeneration !== undefined && deps.auditGeneration() !== startGeneration) {
+          throw new AuditSupersededError();
+        }
+      };
       const admitted = [...(await deps.admittedDocNames())];
       const sourceFilter = scopedSourceDocNames(admitted, scope.targetPath);
       // `getDeadLinks` reads an empty source filter as "no filter" — a scope
       // matching zero docs must short-circuit here or it would silently widen
       // back to the whole project.
       if (sourceFilter !== undefined && sourceFilter.length === 0) {
+        assertCurrent();
         return { files: [], fileCount: 0, warnings: [] };
       }
       const deadLinks = await deps.derivedDocumentIndex.getDeadLinks(admitted, sourceFilter);
 
       const byFile = new Map<string, ValidationDiagnostic[]>();
+      const push = (file: string, diagnostic: ValidationDiagnostic): void => {
+        const diagnostics = byFile.get(file) ?? [];
+        diagnostics.push(diagnostic);
+        byFile.set(file, diagnostics);
+      };
+
+      // The canonical classification comes from the assessment plane, so it is
+      // computed FIRST and the graph plane fills only what it does not cover.
+      // Both planes see the same occurrence; whichever reports it must be the
+      // one every consumer reads, and the assessment row is a strict superset —
+      // same message, plus the `localTarget` evidence (definition pointer,
+      // resolution method, fallback target) and the same create-page
+      // `linkTarget`. Reconciling by source form, as this once did, is a
+      // hand-maintained rule that drifts the moment either plane learns a form.
+      const localTargetDiagnostics: Array<{ file: string; diagnostic: ValidationDiagnostic }> = [];
+      const documentTargetsFromAssessment = new Set<string>();
+      const resolvedTargetsFromAssessment = new Set<string>();
+      const warnings: string[] = [];
+      try {
+        const assessed =
+          await deps.derivedDocumentIndex.getLocalTargetAssessmentsForSources(sourceFilter);
+        for (const { source, assessments } of assessed) {
+          const file = deps.docFilePathFor(source) ?? `${source}.md`;
+          for (const assessment of assessments) {
+            const diagnostic = toLocalTargetDiagnostic(assessment, severity);
+            if (!diagnostic) continue;
+            localTargetDiagnostics.push({ file, diagnostic });
+            if (assessment.targetKind === 'document' && assessment.resolvedTarget !== null) {
+              documentTargetsFromAssessment.add(`${source}\0${assessment.resolvedTarget}`);
+            }
+          }
+          // A target the canonical classifier proved EXISTS is not a dead link,
+          // whatever the graph concluded. `assets/NOTICE` is the case: an
+          // extension-less href naming a real ordinary file, which the graph
+          // reads as a document. Suppressing here keeps Problems correct even
+          // if the graph was built before the file inventory had seeded.
+          for (const assessment of assessments) {
+            if (assessment.status === 'exact' && assessment.resolvedTarget !== null) {
+              resolvedTargetsFromAssessment.add(`${source}\0${assessment.resolvedTarget}`);
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof AuditSupersededError) throw error;
+        getLogger('validation-audit').warn(
+          { err: error },
+          '[audit] local-target projection unavailable; preserving graph link findings',
+        );
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`local-target validation unavailable: ${message}`);
+      }
+
       for (const { target, sources } of deadLinks) {
         for (const occurrence of sources) {
+          const key = `${occurrence.source}\0${target}`;
+          // Already reported with richer evidence by the canonical classifier,
+          // or proven by it to exist and therefore not a dead link at all.
+          if (
+            occurrence.sourceForm !== 'wiki' &&
+            (documentTargetsFromAssessment.has(key) || resolvedTargetsFromAssessment.has(key))
+          ) {
+            continue;
+          }
           // A source indexed from a live CRDT doc may not be on disk yet — fall
           // back to the default extension so the finding still names a file.
           const file = deps.docFilePathFor(occurrence.source) ?? `${occurrence.source}.md`;
@@ -256,8 +339,7 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
           // degrade to the start of the doc rather than dropping the finding.
           const line = occurrence.line ?? 0;
           const character = occurrence.column ?? 0;
-          const diagnostics = byFile.get(file) ?? [];
-          diagnostics.push({
+          push(file, {
             range: { start: { line, character }, end: { line, character } },
             severity,
             source: 'links',
@@ -267,16 +349,91 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
             // create-the-missing-page affordance never parses the message.
             linkTarget: target,
           });
-          byFile.set(file, diagnostics);
         }
       }
+
+      for (const { file, diagnostic } of localTargetDiagnostics) push(file, diagnostic);
+
+      assertCurrent();
+
       return {
         files: [...byFile.entries()].map(([file, diagnostics]) => ({ file, diagnostics })),
         fileCount: 0,
-        warnings: [],
+        warnings,
       };
     },
   };
+}
+
+/** Human-readable message for a local-target finding, by reason, kind, and role. */
+function localTargetMessage(assessment: LocalTargetAssessment, shown: string): string {
+  const isImage = assessment.occurrence.role === 'image';
+  // An unresolvable target never resolved to any identity (root escape, empty,
+  // unsupported form) — distinct wording from a resolved-but-absent target. A
+  // 'unknown' kind only ever arrives with this reason.
+  if (assessment.reason === 'unresolvable') {
+    return isImage
+      ? `Image target "${shown}" could not be resolved to a project-local file.`
+      : `Link target "${shown}" could not be resolved to a project-local target.`;
+  }
+  if (assessment.targetKind === 'file') {
+    return isImage
+      ? `Image target "${shown}" does not resolve to an existing file.`
+      : `Link target "${shown}" does not resolve to an existing file.`;
+  }
+  return `Link target "${shown}" does not resolve to an existing document.`;
+}
+
+/**
+ * Project one local-target assessment onto a validation diagnostic, or null when
+ * it is not a finding. Exact targets are dropped (not a problem), and so are
+ * forms with no local-target wire spelling — `buildLocalTargetEvidence` owns
+ * that decision.
+ *
+ * Cross-plane de-duplication is NOT decided here. The caller runs this plane
+ * first and suppresses the graph plane for any document target it already
+ * reported, so one occurrence yields one finding without either plane guessing
+ * at the other's coverage.
+ */
+function toLocalTargetDiagnostic(
+  assessment: LocalTargetAssessment,
+  severity: 'error' | 'warning',
+): ValidationDiagnostic | null {
+  // `reason` is null exactly when the target is `exact`, so this both drops
+  // resolved targets and narrows `reason` to a concrete failure below.
+  if (assessment.reason === null) return null;
+  const { occurrence, targetKind } = assessment;
+
+  // Wiki forms are classified but do not project onto the local-target wire
+  // surfaces: a wiki document link is a graph edge, and a file-shaped wiki embed
+  // resolves by vault-wide basename under its own contract.
+  // `buildLocalTargetEvidence` owns that decision, so reading its null is the
+  // single check rather than a second form predicate here that could drift.
+  const localTarget = buildLocalTargetEvidence(assessment, assessment.reason);
+  if (localTarget === null) return null;
+
+  const shown = assessment.resolvedTarget ?? occurrence.href;
+  const line = occurrence.line;
+  const character = occurrence.column;
+  const diagnostic: ValidationDiagnostic = {
+    range: { start: { line, character }, end: { line, character } },
+    severity,
+    source: 'links',
+    code: 'dead-link',
+    message: localTargetMessage(assessment, shown),
+    localTarget,
+  };
+  // Create page is document-only: only a missing document carries `linkTarget`,
+  // and a document target always has a resolved docName. Files, images, and
+  // unresolvable targets never offer it.
+  if (
+    targetKind === 'document' &&
+    assessment.status === 'missing' &&
+    assessment.resolvedTarget !== null
+  ) {
+    diagnostic.linkTarget = assessment.resolvedTarget;
+  }
+  return diagnostic;
 }
 
 /**

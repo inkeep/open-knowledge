@@ -45,6 +45,7 @@ import {
 } from './source-editor-navigation';
 import { sourceHeadingLines } from './source-heading-lines';
 import { sourceLineDirection } from './source-line-direction';
+import { createLocalTargetDiagnosticsExtension } from './source-lint/local-target-diagnostics';
 import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
 import { sourceModeSetup } from './source-mode-setup';
 import { createSourcePolishExtension } from './source-polish';
@@ -309,6 +310,12 @@ export function SourceEditor({
               // Transient highlight for a mode-switch jump that lands in source.
               landingFlashSource(),
               lintCompartment.of(createMarkdownLintExtension(linterConfig, docName)),
+              // Server-authoritative target-existence diagnostics (missing local
+              // files/images/documents + reference-style targets). Separate from
+              // the markdownlint compartment above: it follows `validation.links`
+              // server-side, not the markdownlint enabled flag, and fetches its
+              // own findings rather than re-linting off the doc text.
+              createLocalTargetDiagnosticsExtension(docName),
               sourceClipboard,
               // A user edit promotes this doc's preview tab to permanent. Safe to
               // capture `resolvedDocName` in the closure even though the view

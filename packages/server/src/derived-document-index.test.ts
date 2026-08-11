@@ -8,6 +8,8 @@ import {
   DerivedDocumentIndex,
   isDerivedDocumentIndexClosedError,
 } from './derived-document-index.ts';
+import { LocalTargetIndex } from './local-target-index.ts';
+import type { WatcherLocalTargetInventory } from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
 import { TagIndex } from './tag-index.ts';
 
@@ -34,7 +36,10 @@ function createDeferred(): Deferred {
   return { promise, resolve };
 }
 
-function createRig(): Rig {
+function createRig(
+  getLocalTargetInventory?: () => WatcherLocalTargetInventory | null,
+  onRecoveredFileTarget?: (relativePath: string, exists: boolean) => void,
+): Rig {
   const projectDir = mkdtempSync(join(tmpdir(), 'ok-derived-index-'));
   const contentDir = join(projectDir, 'content');
   mkdirSync(contentDir, { recursive: true });
@@ -46,6 +51,8 @@ function createRig(): Rig {
     contentFilter,
     getGlobalSkillRoots: () => [],
     signalChannel: (channel) => signals.push(channel),
+    ...(getLocalTargetInventory ? { getLocalTargetInventory } : {}),
+    ...(onRecoveredFileTarget ? { onRecoveredFileTarget } : {}),
   });
   cleanups.push(async () => {
     await index.close();
@@ -693,6 +700,67 @@ describe('DerivedDocumentIndex', () => {
     );
   });
 
+  test('a startup graph pass with no file inventory keeps extension-less file hrefs as document edges', async () => {
+    // The watcher never seeds (factory stays null), as when it fails outright:
+    // the settlement reconcile has no inventory to consult either, so the
+    // startup pass's document-shaped reading of `assets/NOTICE` persists.
+    const rig = createRig(() => null);
+    writeDoc(rig, 'src.md', 'See [notice](assets/NOTICE).\n');
+    writeDoc(rig, 'assets/NOTICE', 'plain text\n');
+
+    const startup = rig.index.beginStartup('main');
+    await startup.backlinksReady;
+    await rig.index.settleStartupAfterWatcherSeed();
+
+    expect((await rig.index.getBacklinks('assets/NOTICE')).map((entry) => entry.source)).toEqual([
+      'src',
+    ]);
+  });
+
+  test('startup settlement re-derives the graph once the watcher inventory arrives', async () => {
+    let inventory: WatcherLocalTargetInventory | null = null;
+    const rig = createRig(() => inventory);
+    writeDoc(rig, 'src.md', 'See [notice](assets/NOTICE).\n');
+    writeDoc(rig, 'assets/NOTICE', 'plain text\n');
+
+    const startup = rig.index.beginStartup('main');
+    await startup.backlinksReady;
+    // The real cold-boot ordering: the graph builds before the watcher seeds,
+    // then the inventory exists by the time startup settles.
+    inventory = { documentTargets: ['src'], fileTargets: ['assets/NOTICE'] };
+    await rig.index.settleStartupAfterWatcherSeed();
+
+    // The reconcile re-derived the graph against the inventory: the
+    // extension-less href names an existing ordinary file, not a document.
+    expect(await rig.index.getBacklinks('assets/NOTICE')).toEqual([]);
+  });
+
+  test('startup settlement re-derives a warm graph cache against the watcher inventory', async () => {
+    let inventory: WatcherLocalTargetInventory | null = null;
+    const rig = createRig(() => inventory);
+    writeDoc(rig, 'src.md', 'See [notice](assets/NOTICE).\n');
+    writeDoc(rig, 'assets/NOTICE', 'plain text\n');
+
+    // Seed the persisted cache in the pre-inventory shape an older build or a
+    // prior cold startup would have written. Its mtime snapshot is current, so
+    // the warm reconcile legitimately has no changed document to re-parse.
+    const cached = new BacklinkIndex({
+      projectDir: rig.projectDir,
+      contentDir: rig.contentDir,
+      contentFilter: rig.contentFilter,
+    });
+    await cached.rebuildFromDisk('main');
+    await cached.saveToDisk('main');
+    expect(cached.getBacklinks('assets/NOTICE', 'main')).toHaveLength(1);
+
+    const startup = rig.index.beginStartup('main');
+    await startup.backlinksReady;
+    inventory = { documentTargets: ['src'], fileTargets: ['assets/NOTICE'] };
+    await rig.index.settleStartupAfterWatcherSeed();
+
+    expect(await rig.index.getBacklinks('assets/NOTICE')).toEqual([]);
+  });
+
   test('close flushes a pending paired save and rejects future commands', async () => {
     vi.useFakeTimers();
     const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
@@ -814,5 +882,294 @@ describe('DerivedDocumentIndex', () => {
     await closing;
 
     expect(backlinkSave).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('DerivedDocumentIndex local-target projection', () => {
+  test('a source edit assesses local targets and signals local-targets alongside relations', async () => {
+    const rig = createRig();
+    await settleStartup(rig);
+
+    await rig.index.recordDirectDocument('src', 'See [x](target) and [pdf](assets/f.pdf).\n');
+
+    const assessments = await rig.index.getLocalTargetAssessments('src');
+    expect(assessments.map((a) => [a.targetKind, a.resolvedTarget, a.status])).toEqual([
+      ['document', 'target', 'missing'],
+      ['file', 'assets/f.pdf', 'missing'],
+    ]);
+    // local-targets rides the relation signal set only because an assessment moved.
+    expect(rig.signals).toEqual(['backlinks', 'graph', 'local-targets', 'tags']);
+  });
+
+  test('the batch source query returns every source, or a scoped subset, through the ready gate', async () => {
+    const rig = createRig();
+    await settleStartup(rig);
+    await rig.index.recordDirectDocument('a', 'Download [pdf](assets/a.pdf).\n');
+    await rig.index.recordDirectDocument('b', 'Download [pdf](assets/b.pdf).\n');
+
+    const all = await rig.index.getLocalTargetAssessmentsForSources();
+    expect(all.map((entry) => entry.source).sort()).toEqual(['a', 'b']);
+    expect(all.flatMap((entry) => entry.assessments).every((a) => a.status === 'missing')).toBe(
+      true,
+    );
+
+    // A source filter narrows enumeration to just those sources — the path a
+    // folder/doc scope drives.
+    const scoped = await rig.index.getLocalTargetAssessmentsForSources(['a']);
+    expect(scoped.map((entry) => entry.source)).toEqual(['a']);
+  });
+
+  test('wiki-only and occurrence-free edits never signal local-targets or move its generation', async () => {
+    const rig = createRig();
+    await settleStartup(rig);
+    const generation = await rig.index.getLocalTargetGeneration();
+
+    await rig.index.recordDirectDocument('wiki', 'See [[target]]. #tagged\n');
+
+    expect(rig.signals).toEqual(['backlinks', 'graph', 'tags']);
+    expect(await rig.index.getLocalTargetGeneration()).toBe(generation);
+    expect(await rig.index.getLocalTargetAssessments('wiki')).toEqual([]);
+  });
+
+  test('creating the target document heals the reference and re-signals', async () => {
+    const rig = createRig();
+    await settleStartup(rig);
+    await rig.index.recordDirectDocument('src', 'See [x](target).\n');
+    rig.signals.length = 0;
+
+    await rig.index.recordDirectDocument('target', '# Target\n');
+
+    expect((await rig.index.getLocalTargetAssessments('src'))[0]).toMatchObject({
+      status: 'exact',
+    });
+    expect(rig.signals).toContain('local-targets');
+    expect(await rig.index.getLocalTargetDocumentDependents('target')).toEqual(['src']);
+  });
+
+  test('ordinary-file target events heal and break references and signal only when a dependent moves', async () => {
+    const rig = createRig();
+    await settleStartup(rig);
+    await rig.index.recordDirectDocument('src', 'Download [pdf](assets/report.pdf).\n');
+    rig.signals.length = 0;
+
+    await rig.index.recordFileTargetUpsert('assets/report.pdf');
+    expect((await rig.index.getLocalTargetAssessments('src'))[0]).toMatchObject({
+      status: 'exact',
+    });
+    expect(rig.signals).toEqual(['local-targets']);
+
+    rig.signals.length = 0;
+    await rig.index.recordFileTargetDelete('assets/report.pdf');
+    expect((await rig.index.getLocalTargetAssessments('src'))[0]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-file',
+    });
+    expect(rig.signals).toEqual(['local-targets']);
+
+    // An unreferenced file create moves nothing and stays silent.
+    rig.signals.length = 0;
+    await rig.index.recordFileTargetUpsert('assets/unreferenced.pdf');
+    expect(rig.signals).toEqual([]);
+  });
+
+  test('the dependency-only sweep repairs file inventory in both missed-watcher directions', async () => {
+    vi.useFakeTimers();
+    const inventory: WatcherLocalTargetInventory = {
+      documentTargets: ['source'],
+      fileTargets: ['assets/report.pdf'],
+    };
+    const recovered: Array<{ relativePath: string; exists: boolean }> = [];
+    const rig = createRig(
+      () => inventory,
+      (relativePath, exists) => recovered.push({ relativePath, exists }),
+    );
+    writeDoc(rig, 'source.md', 'Download [pdf](assets/report.pdf).\n');
+    writeDoc(rig, 'assets/report.pdf', '%PDF-1.4\n');
+    await settleStartup(rig);
+    expect((await rig.index.getLocalTargetAssessments('source'))[0]).toMatchObject({
+      status: 'exact',
+    });
+
+    unlinkSync(join(rig.contentDir, 'assets/report.pdf'));
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect((await rig.index.getLocalTargetAssessments('source'))[0]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-file',
+    });
+    expect(rig.signals).toEqual(['local-targets', 'files']);
+    expect(recovered).toEqual([{ relativePath: 'assets/report.pdf', exists: false }]);
+
+    rig.signals.length = 0;
+    writeDoc(rig, 'assets/report.pdf', '%PDF-1.4 restored\n');
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect((await rig.index.getLocalTargetAssessments('source'))[0]).toMatchObject({
+      status: 'exact',
+    });
+    expect(rig.signals).toEqual(['local-targets', 'files']);
+    expect(recovered).toEqual([
+      { relativePath: 'assets/report.pdf', exists: false },
+      { relativePath: 'assets/report.pdf', exists: true },
+    ]);
+  });
+
+  test('a canonical document rename invalidates old aliases and admits new aliases', async () => {
+    let inventory: WatcherLocalTargetInventory = {
+      documentTargets: ['source', 'canonical-old', 'old-alias'],
+      fileTargets: [],
+    };
+    const rig = createRig(() => inventory);
+    writeDoc(rig, 'source.md', 'See [old](old-alias) and [new](new-alias).\n');
+    writeDoc(rig, 'canonical-old.md', '# Old\n');
+    await settleStartup(rig);
+    expect((await rig.index.getLocalTargetAssessments('source')).map((a) => a.status)).toEqual([
+      'exact',
+      'missing',
+    ]);
+
+    inventory = {
+      documentTargets: ['source', 'canonical-new', 'new-alias'],
+      fileTargets: [],
+    };
+    await rig.index.recordDirectRename('canonical-old', 'canonical-new', '# New\n');
+
+    expect((await rig.index.getLocalTargetAssessments('source')).map((a) => a.status)).toEqual([
+      'missing',
+      'exact',
+    ]);
+  });
+
+  test('an ordinary-file delete invalidates direct and directory-alias identities together', async () => {
+    let inventory: WatcherLocalTargetInventory = {
+      documentTargets: ['source'],
+      fileTargets: ['canonical/data.csv', 'direct.csv', 'folder-alias/data.csv'],
+    };
+    const rig = createRig(() => inventory);
+    writeDoc(
+      rig,
+      'source.md',
+      '[canonical](canonical/data.csv) [direct](direct.csv) [folder](folder-alias/data.csv)\n',
+    );
+    await settleStartup(rig);
+    expect(
+      (await rig.index.getLocalTargetAssessments('source')).every((a) => a.status === 'exact'),
+    ).toBe(true);
+
+    inventory = { documentTargets: ['source'], fileTargets: [] };
+    await rig.index.recordFileTargetDelete('canonical/data.csv');
+
+    expect((await rig.index.getLocalTargetAssessments('source')).map((a) => a.status)).toEqual([
+      'missing',
+      'missing',
+      'missing',
+    ]);
+  });
+
+  test('a direct batch coalesces high-fanout source assessments into one local-targets signal', async () => {
+    const rig = createRig();
+    await settleStartup(rig);
+
+    await rig.index.recordDirectMutations(
+      Array.from({ length: 12 }, (_, i) => ({
+        kind: 'upsert' as const,
+        documentName: `dep-${i}`,
+        markdown: 'Download [pdf](assets/shared.pdf).\n',
+      })),
+    );
+
+    expect(rig.signals.filter((channel) => channel === 'local-targets')).toHaveLength(1);
+    // One file create heals every dependent in the batch.
+    expect(await rig.index.getLocalTargetFileDependents('assets/shared.pdf')).toHaveLength(12);
+    expect(await rig.index.recordFileTargetUpsert('assets/shared.pdf')).toBeUndefined();
+    for (let i = 0; i < 12; i++) {
+      expect((await rig.index.getLocalTargetAssessments(`dep-${i}`))[0]).toMatchObject({
+        status: 'exact',
+      });
+    }
+  });
+
+  test('local-target queries wait for post-watcher settlement rather than return a falsely clean result', async () => {
+    const rig = createRig();
+    writeDoc(rig, 'src.md', 'See [x](target).\n');
+    const startup = rig.index.beginStartup('main');
+
+    const pending = rig.index.getLocalTargetAssessments('src');
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+
+    await startup.backlinksReady;
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await rig.index.settleStartupAfterWatcherSeed();
+    const assessments = await pending;
+    expect(settled).toBe(true);
+    // Seeded from disk: `target` does not exist, so the reference is missing, not absent.
+    expect(assessments[0]).toMatchObject({ resolvedTarget: 'target', status: 'missing' });
+  });
+
+  test('local-target queries fail closed when the startup rebuild fails', async () => {
+    const rig = createRig();
+    writeDoc(rig, 'src.md', 'See [x](target).\n');
+    vi.spyOn(LocalTargetIndex.prototype, 'rebuildFromDisk').mockRejectedValueOnce(
+      new Error('forced local-target rebuild failure'),
+    );
+
+    const startup = rig.index.beginStartup('main');
+    await startup.backlinksReady;
+    await rig.index.settleStartupAfterWatcherSeed();
+
+    await expect(rig.index.getIndexedDocNames()).resolves.toContain('src');
+    await expect(rig.index.getLocalTargetAssessments('src')).rejects.toThrow(
+      'Local-target index is not ready',
+    );
+    await expect(rig.index.getLocalTargetAssessmentsForSources()).rejects.toThrow(
+      'Local-target index is not ready',
+    );
+  });
+
+  test('a transient startup rebuild failure recovers on the scheduled retry', async () => {
+    vi.useFakeTimers();
+    const rig = createRig();
+    writeDoc(rig, 'src.md', 'See [x](target).\n');
+    vi.spyOn(LocalTargetIndex.prototype, 'rebuildFromDisk').mockRejectedValueOnce(
+      new Error('transient rebuild failure'),
+    );
+
+    const startup = rig.index.beginStartup('main');
+    await startup.backlinksReady;
+    await rig.index.settleStartupAfterWatcherSeed();
+    await expect(rig.index.getLocalTargetAssessments('src')).rejects.toThrow(
+      'Local-target index is not ready',
+    );
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(rig.index.getLocalTargetAssessments('src')).resolves.toEqual([
+      expect.objectContaining({ resolvedTarget: 'target', status: 'missing' }),
+    ]);
+    expect(rig.signals).toContain('local-targets');
+  });
+
+  test('a branch switch reassesses against the new branch inventory', async () => {
+    const rig = createRig();
+    writeDoc(rig, 'src.md', 'See [x](target).\n');
+    writeDoc(rig, 'target.md', '# Target\n');
+    await settleStartup(rig);
+    expect((await rig.index.getLocalTargetAssessments('src'))[0]).toMatchObject({
+      status: 'exact',
+    });
+
+    // The new branch no longer has the target on disk.
+    unlinkSync(join(rig.contentDir, 'target.md'));
+    const transition = await rig.index.beginBranchSwitch('feature');
+    await rig.index.settleBranchFromDisk(transition);
+
+    expect((await rig.index.getLocalTargetAssessments('src'))[0]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-doc',
+    });
   });
 });

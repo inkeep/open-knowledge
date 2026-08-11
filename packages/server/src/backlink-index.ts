@@ -25,6 +25,7 @@ import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { instrumentIndexRebuild } from './index-telemetry.ts';
 import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
+import { extractLocalTargetOccurrences } from './local-target-occurrences.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 
@@ -37,6 +38,46 @@ interface InlineWikiLinkOccurrence {
   end: number;
 }
 
+/**
+ * The one inventory question the graph plane has to ask before it can decide
+ * whether an extension-less href names a document.
+ *
+ * Without it this plane has no file inventory at all, so it reads
+ * `assets/NOTICE` as a document and emits a dead-document edge for a file that
+ * is right there on disk — while the local-target plane, which does see the
+ * files, calls the same occurrence an existing file. Structurally satisfied by
+ * `LocalTargetInventory`, so the two planes share one oracle rather than each
+ * growing their own.
+ *
+ * Optional at every entry point: a caller with no inventory (a rebuild before
+ * the file index has seeded, a test exercising graph shape alone) keeps the
+ * document-shaped reading, which is the safe default when existence is unknown.
+ */
+export interface GraphFileOracle {
+  /** Whether a content-root-relative path names an admitted ordinary file. */
+  hasFile(contentRootRelativePath: string): boolean;
+}
+
+/**
+ * Whether an extension-less doc-shaped href actually names an existing ordinary
+ * file, which makes it NOT a document edge.
+ *
+ * Mirrors the local-target plane's disambiguation: document identity is decided
+ * by the caller, and an exact file hit is what overrides it. An href carrying a
+ * document extension is never re-read as a file, so `notes/guide.md` stays a
+ * document even if some file of that name is tracked.
+ */
+function namesExistingFile(
+  href: string,
+  sourceDocName: string,
+  oracle: GraphFileOracle | undefined,
+): boolean {
+  if (!oracle) return false;
+  if (isSupportedDocFile(href)) return false;
+  const filePath = resolveAssetProjectPath(href, sourceDocName);
+  return filePath !== null && oracle.hasFile(filePath);
+}
+
 interface FenceState {
   char: '`' | '~';
   length: number;
@@ -46,6 +87,8 @@ export interface ExtractedWikiLink {
   target: string;
   anchor: string | null;
   snippet: string | null;
+  /** Authored syntax that produced this graph edge. */
+  sourceForm?: 'wiki' | 'markdown';
   /**
    * 0-based source line of the occurrence (the extractor's `lineOffset` param
    * folds a stripped-frontmatter prefix back in, keeping this full-doc exact).
@@ -69,6 +112,8 @@ export interface BacklinkEntry {
   source: string;
   anchor: string | null;
   snippet: string | null;
+  /** Authored syntax retained for cross-plane audit reconciliation. */
+  sourceForm?: 'wiki' | 'markdown';
   /**
    * 0-based full-doc position of the link occurrence in the source doc (line
    * exact, column approximate — see `ExtractedWikiLink`). Absent on entries
@@ -126,6 +171,7 @@ export { isOrphanMode, ORPHAN_MODES, type OrphanMode };
 interface BackwardLinkMeta {
   anchor: string | null;
   snippet: string | null;
+  sourceForm?: 'wiki' | 'markdown';
   line?: number;
   column?: number;
 }
@@ -176,6 +222,13 @@ interface BacklinkIndexOptions {
   projectDir: string;
   contentDir: string;
   contentFilter?: ContentFilter;
+  /**
+   * Existence oracle for ordinary files, so an extension-less href naming a
+   * tracked file is not read as a document edge. Supplied as a getter because
+   * the file inventory seeds asynchronously and lives in a sibling index — the
+   * graph must read it live, not capture it at construction.
+   */
+  getFileOracle?: () => GraphFileOracle | undefined;
 }
 
 function createEmptyState(): BranchGraphState {
@@ -239,6 +292,7 @@ function mergeLinkMeta(
   return {
     anchor: existing.anchor ?? next.anchor,
     snippet: existing.snippet ?? next.snippet,
+    sourceForm: existing.sourceForm ?? next.sourceForm,
     line: positioned.line,
     column: positioned.column,
   };
@@ -499,6 +553,7 @@ function readMarkdownLink(
 function extractMarkdownLinksFromLine(
   line: string,
   sourceDocName: string,
+  fileOracle?: GraphFileOracle,
 ): { text: string; occurrences: InlineWikiLinkOccurrence[] } {
   let flatText = '';
   const occurrences: InlineWikiLinkOccurrence[] = [];
@@ -534,7 +589,10 @@ function extractMarkdownLinksFromLine(
       const mdLink = readMarkdownLink(line, idx);
       if (mdLink) {
         const classified = classifyMarkdownHref(mdLink.href, sourceDocName);
-        if (classified?.kind === 'doc') {
+        if (
+          classified?.kind === 'doc' &&
+          !namesExistingFile(mdLink.href, sourceDocName, fileOracle)
+        ) {
           const start = flatText.length;
           flatText += mdLink.text;
           occurrences.push({
@@ -642,6 +700,7 @@ export function extractMarkdownLinksFromMarkdown(
   markdown: string,
   sourceDocName: string,
   lineOffset = 0,
+  fileOracle?: GraphFileOracle,
 ): ExtractedWikiLink[] {
   const source = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   const lines = source.split('\n');
@@ -658,7 +717,7 @@ export function extractMarkdownLinksFromMarkdown(
       if (nextFence) {
         fence = nextFence;
       } else {
-        const extracted = extractMarkdownLinksFromLine(line, sourceDocName);
+        const extracted = extractMarkdownLinksFromLine(line, sourceDocName, fileOracle);
         links.push(
           ...extracted.occurrences.map(({ target, anchor, start, end }) => ({
             target,
@@ -672,6 +731,65 @@ export function extractMarkdownLinksFromMarkdown(
     }
   }
 
+  links.push(...extractReferenceLinksFromMarkdown(source, sourceDocName, lineOffset, fileOracle));
+
+  return links;
+}
+
+/**
+ * A line-initial `[label]:` — CommonMark's reference-definition opener, allowing
+ * the up-to-three-space indent it permits and backslash-escaped brackets inside
+ * the label (`[foo\]bar]:`). Permissive by design: a false positive just runs
+ * the real extractor, which decides for itself.
+ */
+const HAS_REFERENCE_DEFINITION = /^ {0,3}\[(?:\\.|[^\\\]])*\]:/m;
+
+/**
+ * Document edges authored as reference-style links (`[text][label]`,
+ * `[label][]`, `[label]`), whose destination lives in a separate definition.
+ *
+ * The line scanner above reads only inline destinations, so this pass is what
+ * makes a reference-style document link visible to the graph. Without it,
+ * Problems still warns (the local-target plane reads the definition straight
+ * from source) while Outgoing, backlinks, orphans, hubs, and dead-links all
+ * under-report by the same amount.
+ *
+ * Recognition is not re-implemented here. `extractLocalTargetOccurrences` is the
+ * consolidated reader for every authored form, including reference resolution
+ * and the full non-rendering-context masking, so this reuses it and keeps only
+ * the graph-shaped projection: document-kind link occurrences, minus any that
+ * name an existing ordinary file.
+ */
+function extractReferenceLinksFromMarkdown(
+  source: string,
+  sourceDocName: string,
+  lineOffset: number,
+  fileOracle: GraphFileOracle | undefined,
+): ExtractedWikiLink[] {
+  // The full occurrence extractor is the price of not re-implementing reference
+  // resolution, and this runs per document on every rebuild and every write. A
+  // reference use needs a matching definition to be a link at all, and a
+  // definition is a line-initial `[label]:`, so a body without one cannot
+  // contain a reference edge. Most documents have none, and they skip the pass.
+  if (!HAS_REFERENCE_DEFINITION.test(source)) return [];
+
+  const links: ExtractedWikiLink[] = [];
+  for (const occurrence of extractLocalTargetOccurrences(source)) {
+    if (occurrence.sourceForm !== 'markdown-reference' || occurrence.role !== 'link') continue;
+    const classified = classifyMarkdownHref(occurrence.href, sourceDocName);
+    if (classified?.kind !== 'doc') continue;
+    if (namesExistingFile(occurrence.href, sourceDocName, fileOracle)) continue;
+    links.push({
+      target: classified.docName,
+      anchor: classified.anchor,
+      // The reference's visible text is its label, not its destination, and the
+      // occurrence range covers the whole authored use — enough for a snippet
+      // without re-flattening the line the way the inline scanner does.
+      snippet: source.slice(occurrence.range.start, occurrence.range.end) || null,
+      line: lineOffset + occurrence.line,
+      column: occurrence.column,
+    });
+  }
   return links;
 }
 
@@ -964,6 +1082,7 @@ function serializeState(state: BranchGraphState): SerializedBranchGraphState {
           source,
           anchor: meta.anchor,
           snippet: meta.snippet,
+          sourceForm: meta.sourceForm,
           line: meta.line,
           column: meta.column,
         })),
@@ -1042,6 +1161,10 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
             {
               anchor: entry.anchor ?? null,
               snippet: entry.snippet ?? null,
+              sourceForm:
+                entry.sourceForm === 'wiki' || entry.sourceForm === 'markdown'
+                  ? entry.sourceForm
+                  : undefined,
               // Cache files predating position indexing lack these fields, and
               // the cache is read without schema validation — admit non-negative
               // integers only (typeof alone lets -2 / 1.5 / NaN through to the
@@ -1068,6 +1191,7 @@ export class BacklinkIndex {
   private readonly projectDir: string;
   private readonly contentDir: string;
   private readonly contentFilter?: ContentFilter;
+  private readonly getFileOracle: () => GraphFileOracle | undefined;
   private readonly states = new Map<string, BranchGraphState>();
   /**
    * Per-branch mtime snapshots. Populated by rebuildFromDisk / reconcileWithDisk
@@ -1081,6 +1205,7 @@ export class BacklinkIndex {
     this.projectDir = options.projectDir;
     this.contentDir = options.contentDir;
     this.contentFilter = options.contentFilter;
+    this.getFileOracle = options.getFileOracle ?? (() => undefined);
     this.states.set(this.activeBranch, createEmptyState());
   }
 
@@ -1321,6 +1446,7 @@ export class BacklinkIndex {
         mergeLinkMeta(sources.get(docName), {
           anchor: link.anchor,
           snippet: link.snippet,
+          sourceForm: link.sourceForm,
           line: link.line,
           column: link.column,
         }),
@@ -1351,8 +1477,16 @@ export class BacklinkIndex {
     try {
       const { frontmatter, body } = stripFrontmatter(markdown);
       const lineOffset = frontmatterLineCount(frontmatter);
-      const wikiLinks = extractWikiLinksFromMarkdown(body, docName, lineOffset);
-      const mdLinks = extractMarkdownLinksFromMarkdown(body, docName, lineOffset);
+      const wikiLinks = extractWikiLinksFromMarkdown(body, docName, lineOffset).map((link) => ({
+        ...link,
+        sourceForm: 'wiki' as const,
+      }));
+      const mdLinks = extractMarkdownLinksFromMarkdown(
+        body,
+        docName,
+        lineOffset,
+        this.getFileOracle(),
+      ).map((link) => ({ ...link, sourceForm: 'markdown' as const }));
       const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
       const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
       // Merge: wiki links take precedence for duplicate targets (they have richer snippet context)
@@ -1576,6 +1710,7 @@ export class BacklinkIndex {
             source,
             anchor: meta.anchor,
             snippet: meta.snippet,
+            sourceForm: meta.sourceForm,
             line: meta.line,
             column: meta.column,
           }))
@@ -1864,8 +1999,16 @@ export class BacklinkIndex {
         mtimes.set(docName, mtimeMs);
         const { frontmatter, body } = stripFrontmatter(markdown);
         const lineOffset = frontmatterLineCount(frontmatter);
-        const wikiLinks = extractWikiLinksFromMarkdown(body, docName, lineOffset);
-        const mdLinks = extractMarkdownLinksFromMarkdown(body, docName, lineOffset);
+        const wikiLinks = extractWikiLinksFromMarkdown(body, docName, lineOffset).map((link) => ({
+          ...link,
+          sourceForm: 'wiki' as const,
+        }));
+        const mdLinks = extractMarkdownLinksFromMarkdown(
+          body,
+          docName,
+          lineOffset,
+          this.getFileOracle(),
+        ).map((link) => ({ ...link, sourceForm: 'markdown' as const }));
         const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
         const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
         const seen = new Set(wikiLinks.map((l) => l.target));
@@ -1892,6 +2035,7 @@ export class BacklinkIndex {
             mergeLinkMeta(sources.get(docName), {
               anchor: link.anchor,
               snippet: link.snippet,
+              sourceForm: link.sourceForm,
               line: link.line,
               column: link.column,
             }),

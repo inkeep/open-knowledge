@@ -1,8 +1,8 @@
 /**
  * Unit tests for the unified validation audit: the validator registry fanning
  * out to the real lint walk (`auditProject`) and a real in-memory
- * `BacklinkIndex` over a temp content tree, merged into one source-tagged
- * diagnostic plane.
+ * `BacklinkIndex` and `LocalTargetIndex` over a temp content tree, merged into
+ * one source-tagged diagnostic plane.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +17,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { BacklinkIndex } from '../backlink-index.ts';
+import { LocalTargetIndex } from '../local-target-index.ts';
 import {
   createProjectValidators,
   runValidationAudit,
@@ -26,6 +27,7 @@ import {
 
 let root: string;
 let index: BacklinkIndex;
+let localTargets: LocalTargetIndex;
 let admitted: Set<string>;
 
 const lintOn: LinterConfig = {
@@ -42,19 +44,34 @@ const DOC_WITH_TAB = '# Title\n\n\tindented with a tab\n';
 beforeEach(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-validation-audit-')));
   index = new BacklinkIndex({ projectDir: root, contentDir: root });
+  localTargets = new LocalTargetIndex({ contentDir: root });
   admitted = new Set();
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Write the doc to disk AND index it — the two views production keeps in sync. */
+/**
+ * Write the doc to disk AND index it into both derived indexes — the three views
+ * production keeps in sync (disk for the lint walk, the graph for wiki/inline-md
+ * document dead-links, the local-target index for file/image/reference targets).
+ */
 function seedDoc(docName: string, markdown: string): void {
   const abs = join(root, `${docName}.md`);
   mkdirSync(join(abs, '..'), { recursive: true });
   writeFileSync(abs, markdown, 'utf-8');
   index.updateDocumentFromMarkdown(docName, markdown);
+  localTargets.setSource(docName, markdown);
   admitted.add(docName);
+}
+
+/**
+ * Mark an ordinary-file target as present in the local-target inventory — what
+ * the watcher's all-files snapshot does in production. Order-independent: the
+ * index reassesses any source already pointing at this path.
+ */
+function seedFile(contentRootRelativePath: string): void {
+  localTargets.setFileTarget(contentRootRelativePath, true);
 }
 
 function docFilePathFor(docName: string): string | null {
@@ -69,7 +86,14 @@ function deps(overrides: Partial<ValidationAuditDeps> = {}): ValidationAuditDeps
     projectDir: root,
     contentDir: root,
     baseConfig: lintOn,
-    derivedDocumentIndex: index,
+    // The reader composes the two real derived indexes the way
+    // DerivedDocumentIndex does — the graph for document dead-links, the
+    // local-target index for file/image/reference targets — so the projection
+    // is tested against real assessment data, not a stand-in.
+    derivedDocumentIndex: {
+      getDeadLinks: (a, s) => index.getDeadLinks(a, s),
+      getLocalTargetAssessmentsForSources: (s) => localTargets.getAssessmentsForSources(s),
+    },
     admittedDocNames: () => admitted,
     docFilePathFor,
     ...overrides,
@@ -294,13 +318,14 @@ describe('runValidationAudit', () => {
   test('a dead link from an admitted-but-unsaved source still names a file', async () => {
     // Admitted in the index but not on disk yet: docFilePathFor returns null, so
     // the finding falls back to the default extension rather than emitting null.
-    const fakeIndex: Pick<BacklinkIndex, 'getDeadLinks'> = {
+    const fakeIndex = {
       getDeadLinks: () => [
         {
           target: 'ghost',
           sources: [{ source: 'unsaved', anchor: null, snippet: null, line: 3, column: 2 }],
         },
       ],
+      getLocalTargetAssessmentsForSources: () => [],
     };
 
     const result = await runValidationAudit(
@@ -323,10 +348,11 @@ describe('runValidationAudit', () => {
   test('a dead link from a pre-position cache degrades to the start of the doc', async () => {
     // Entries deserialized from a cache written before positions were indexed
     // carry no line/column; the finding degrades to the doc start, not undefined.
-    const fakeIndex: Pick<BacklinkIndex, 'getDeadLinks'> = {
+    const fakeIndex = {
       getDeadLinks: () => [
         { target: 'ghost', sources: [{ source: 'legacy', anchor: null, snippet: null }] },
       ],
+      getLocalTargetAssessmentsForSources: () => [],
     };
 
     const result = await runValidationAudit(
@@ -346,6 +372,272 @@ describe('runValidationAudit', () => {
     });
     // An undefined position would fail the wire schema and 500 the route.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
+  });
+
+  test('graph findings survive when the local-target index is unavailable', async () => {
+    const fakeIndex = {
+      getDeadLinks: () => [
+        {
+          target: 'ghost',
+          sources: [{ source: 'source', anchor: null, snippet: null, line: 1, column: 2 }],
+        },
+      ],
+      getLocalTargetAssessmentsForSources: () => {
+        throw new Error('Local-target index is not ready');
+      },
+    };
+
+    const result = await runValidationAudit(
+      createProjectValidators(
+        deps({
+          derivedDocumentIndex: fakeIndex,
+          admittedDocNames: () => ['source'],
+          docFilePathFor: () => 'source.md',
+        }),
+      ),
+    );
+
+    expect(result.files[0]?.diagnostics).toEqual([
+      expect.objectContaining({ code: 'dead-link', linkTarget: 'ghost' }),
+    ]);
+    expect(result.warnings).toContain(
+      'local-target validation unavailable: Local-target index is not ready',
+    );
+  });
+});
+
+describe('local-target findings (files, images, reference-style)', () => {
+  test('a missing ordinary-file link is a positioned finding with file evidence and no create affordance', async () => {
+    seedDoc('doc', '# Doc\n\n[report](./report.pdf)\n');
+    // report.pdf is never seeded — the file does not exist.
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(result.files.map((f) => f.file)).toEqual(['doc.md']);
+    const diagnostics = result.files[0]?.diagnostics ?? [];
+    expect(diagnostics).toHaveLength(1);
+    const d = diagnostics[0];
+    expect(d?.source).toBe('links');
+    expect(d?.code).toBe('dead-link');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toBe('Link target "report.pdf" does not resolve to an existing file.');
+    // Files never offer Create page.
+    expect(d?.linkTarget).toBeUndefined();
+    expect(d?.localTarget).toEqual({
+      href: './report.pdf',
+      targetKind: 'file',
+      role: 'link',
+      sourceForm: 'markdown-inline',
+      resolvedTarget: 'report.pdf',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+    });
+    expect(d?.range.start).toEqual({ line: 2, character: 0 });
+    // New evidence survives the wire schema round trip untouched.
+    expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
+  });
+
+  test('a missing markdown image reports the image with a not-found message', async () => {
+    seedDoc('doc', '# Doc\n\n![logo](./logo.png)\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const d = result.files[0]?.diagnostics[0];
+    expect(d?.message).toBe('Image target "logo.png" does not resolve to an existing file.');
+    expect(d?.linkTarget).toBeUndefined();
+    expect(d?.localTarget?.role).toBe('image');
+    expect(d?.localTarget?.targetKind).toBe('file');
+    expect(d?.localTarget?.sourceForm).toBe('markdown-inline');
+    expect(d?.localTarget?.reason).toBe('no-such-file');
+  });
+
+  test('a bare HTML img with a missing source reports as an html-img image finding', async () => {
+    seedDoc('doc', '# Doc\n\n<img src="./banner.png">\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const d = result.files[0]?.diagnostics[0];
+    expect(d?.message).toBe('Image target "banner.png" does not resolve to an existing file.');
+    expect(d?.localTarget?.role).toBe('image');
+    expect(d?.localTarget?.sourceForm).toBe('html-img');
+    expect(d?.localTarget?.reason).toBe('no-such-file');
+    expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
+  });
+
+  test('an existing file target produces no finding', async () => {
+    seedDoc('doc', '# Doc\n\n[report](./report.pdf)\n');
+    seedFile('report.pdf');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(result.files).toEqual([]);
+    expect(result.warningCount).toBe(0);
+  });
+
+  test('an exact file link does not suppress a same-target missing wiki document', async () => {
+    seedDoc('doc', '# Doc\n\n[file](assets/NOTICE) and [[assets/NOTICE]]\n');
+    seedFile('assets/NOTICE');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const diagnostics = result.files.find((file) => file.file === 'doc.md')?.diagnostics ?? [];
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        source: 'links',
+        code: 'dead-link',
+        message: 'Link target "assets/NOTICE" does not resolve to an existing document.',
+        linkTarget: 'assets/NOTICE',
+      }),
+    ]);
+    expect(diagnostics[0]?.localTarget).toBeUndefined();
+  });
+
+  test('a missing markdown document link does not suppress a same-target wiki occurrence', async () => {
+    seedDoc('doc', '# Doc\n\n[markdown](ghost) and [[ghost]]\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const diagnostics = result.files.find((file) => file.file === 'doc.md')?.diagnostics ?? [];
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.filter((diagnostic) => diagnostic.linkTarget === 'ghost')).toHaveLength(2);
+    expect(diagnostics.filter((diagnostic) => diagnostic.localTarget !== undefined)).toHaveLength(
+      1,
+    );
+  });
+
+  test('every reference-style use is positioned and points at the shared definition', async () => {
+    seedDoc('doc', '# Doc\n\n[one][r] and [two][r]\n\n[r]: ./missing.pdf\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const diagnostics = result.files[0]?.diagnostics ?? [];
+    expect(diagnostics).toHaveLength(2);
+    for (const d of diagnostics) {
+      expect(d.localTarget?.sourceForm).toBe('markdown-reference');
+      expect(d.localTarget?.targetKind).toBe('file');
+      expect(d.localTarget?.reason).toBe('no-such-file');
+      // All uses of one label share one repair location: the definition line.
+      expect(d.localTarget?.definition).toEqual({ line: 4, label: 'r' });
+      expect(d.linkTarget).toBeUndefined();
+    }
+    // The two uses are positioned independently, not collapsed to one.
+    expect(diagnostics.map((d) => d.range.start.character)).toEqual([0, 13]);
+  });
+
+  test('a reference-style link to a missing document keeps the Create-page affordance', async () => {
+    seedDoc('doc', '# Doc\n\n[it][d]\n\n[d]: ./ghost-doc\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const d = result.files[0]?.diagnostics[0];
+    // The graph does not extract reference-style links, so this is the only
+    // finding — and a missing document, unlike a file, is create-eligible.
+    expect(result.files[0]?.diagnostics).toHaveLength(1);
+    expect(d?.linkTarget).toBe('ghost-doc');
+    expect(d?.localTarget?.targetKind).toBe('document');
+    expect(d?.localTarget?.definition).toEqual({ line: 4, label: 'd' });
+    expect(d?.message).toBe('Link target "ghost-doc" does not resolve to an existing document.');
+  });
+
+  test('a tolerant document fallback stays a finding but never offers Create page', async () => {
+    seedDoc('Guide', '# Guide\n');
+    seedDoc('doc', '# Doc\n\n[it][d]\n\n[d]: guide\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const d = result.files.find((file) => file.file === 'doc.md')?.diagnostics[0];
+    expect(d?.localTarget).toMatchObject({
+      targetKind: 'document',
+      resolvedTarget: 'guide',
+      reason: 'no-such-doc',
+      resolutionMethod: 'tolerant',
+      fallbackTarget: 'Guide',
+    });
+    expect(d?.linkTarget).toBeUndefined();
+  });
+
+  test('an inline-markdown document link is reported once, by the canonical classifier', async () => {
+    seedDoc('doc', '# Doc\n\n[other](./ghost-doc)\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    // Both planes see this occurrence, and exactly one finding reaches the
+    // panel. The surviving row is the assessment plane's: it carries the same
+    // create-page `linkTarget` the graph row did, plus the canonical evidence
+    // the graph cannot produce.
+    const diagnostics = result.files[0]?.diagnostics ?? [];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.linkTarget).toBe('ghost-doc');
+    expect(diagnostics[0]?.localTarget).toMatchObject({
+      targetKind: 'document',
+      resolvedTarget: 'ghost-doc',
+      reason: 'no-such-doc',
+    });
+  });
+
+  test('a root-escaping file target is reported as unresolvable without a resolved target', async () => {
+    seedDoc('doc', '# Doc\n\n[x](../../../secrets.pdf)\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const d = result.files[0]?.diagnostics[0];
+    expect(d?.localTarget?.reason).toBe('unresolvable');
+    expect(d?.localTarget?.resolvedTarget).toBeNull();
+    expect(d?.localTarget?.resolutionMethod).toBe('none');
+    expect(d?.linkTarget).toBeUndefined();
+    expect(d?.message).toBe(
+      'Link target "../../../secrets.pdf" could not be resolved to a project-local target.',
+    );
+  });
+
+  test('validation.links=off silences file findings; =error raises them uniformly with dead links', async () => {
+    seedDoc('doc', '# Doc\n\n[report](./report.pdf)\n');
+
+    const off = await runValidationAudit(createProjectValidators(deps({ linksValidation: 'off' })));
+    expect(off.files).toEqual([]);
+    expect(off.warnings).toEqual([]);
+
+    const asError = await runValidationAudit(
+      createProjectValidators(deps({ linksValidation: 'error' })),
+    );
+    expect(asError.files[0]?.diagnostics[0]?.severity).toBe('error');
+    expect(asError.errorCount).toBe(1);
+  });
+
+  test('a folder scope restricts file findings to sources under it', async () => {
+    seedDoc('top', '# Top\n\n[a](./top-file.pdf)\n');
+    seedDoc('sub/inner', '# Inner\n\n[b](./inner-file.pdf)\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()), { targetPath: 'sub' });
+
+    expect(result.files.map((f) => f.file)).toEqual(['sub/inner.md']);
+    expect(result.files[0]?.diagnostics[0]?.localTarget?.resolvedTarget).toBe('sub/inner-file.pdf');
+  });
+
+  test('a legacy validation payload with no localTarget field still parses', () => {
+    // A finding written before this field existed must remain valid on the wire.
+    const legacy = {
+      files: [
+        {
+          file: 'doc.md',
+          diagnostics: [
+            {
+              range: { start: { line: 2, character: 0 }, end: { line: 2, character: 0 } },
+              severity: 'warning',
+              source: 'links',
+              code: 'dead-link',
+              message: 'Link target "ghost" does not resolve to an existing document.',
+              linkTarget: 'ghost',
+            },
+          ],
+        },
+      ],
+      fileCount: 1,
+      errorCount: 0,
+      warningCount: 1,
+      warnings: [],
+    };
+    expect(ValidationAuditResponseSchema.parse(legacy)).toEqual(legacy);
   });
 });
 

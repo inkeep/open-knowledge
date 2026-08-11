@@ -56,6 +56,9 @@ export function createDerivedDocumentIndexApiPortStub(
     async getDeadLinks() {
       return [];
     },
+    async getLocalTargetAssessmentsForSources() {
+      return [];
+    },
     async getIndexedDocNames() {
       return [];
     },
@@ -199,6 +202,11 @@ function createLegacyDerivedIndexPort(
     },
     async getDeadLinks(admittedDocuments, sourceDocumentNames) {
       return backlinkIndex?.getDeadLinks(admittedDocuments, sourceDocumentNames) ?? [];
+    },
+    // This legacy port wraps only the backlink + tag indexes; the local-target
+    // assessment index is not part of it, so there are no local-target findings.
+    async getLocalTargetAssessmentsForSources() {
+      return [];
     },
     async getIndexedDocNames() {
       return backlinkIndex?.getIndexedDocNames() ?? [];

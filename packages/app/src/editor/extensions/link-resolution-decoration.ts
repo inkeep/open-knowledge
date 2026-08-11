@@ -53,6 +53,7 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { mark } from '@/lib/perf';
+import { subscribeToLinkValidationPolicy } from '../link-validation-policy';
 import {
   getPageListCache,
   type PageListCacheSnapshot,
@@ -197,12 +198,15 @@ export function linkResolutionDecorationPlugin(
         { markTypes: Array.from(markTypeSet).join(',') },
         { startTime: performance.now(), duration: 0 },
       );
-      const unsubscribe = subscribePageListCache(() => {
+      const refresh = () => {
         view.dispatch(view.state.tr.setMeta(linkResolutionDecorationKey, { refresh: true }));
-      });
+      };
+      const unsubscribePageList = subscribePageListCache(refresh);
+      const unsubscribePolicy = subscribeToLinkValidationPolicy(refresh);
       return {
         destroy() {
-          unsubscribe();
+          unsubscribePageList();
+          unsubscribePolicy();
         },
       };
     },

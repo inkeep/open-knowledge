@@ -8,8 +8,11 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  File as FileIcon,
   FilePlus2,
+  Image as ImageIcon,
   Link2,
+  type LucideIcon,
   RefreshCw,
   Sparkles,
   Wrench,
@@ -38,10 +41,12 @@ import {
   subscribeToLintConfigChanged,
   useProjectLintConfig,
 } from '@/editor/lint-config-client';
+import { localizedValidationMessage } from '@/editor/localized-validation-message';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { AUDIT_SUPERSEDED, runValidationAudit } from '@/editor/validation-audit-client';
 import { createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
+import { invalidatesLocalTargetAudit, subscribeToDocumentsChanged } from '@/lib/documents-events';
 import {
   cancelProjectFixSweep,
   startProjectFixSweep,
@@ -103,6 +108,46 @@ type ProjectAuditState =
   | { status: 'loaded'; result: ValidationAuditResponse }
   | { status: 'failed' };
 
+/** What a `links` finding points at: three project-local kinds plus an
+ *  unresolvable form. `null` for any other validator. */
+type LinkTargetKind = 'document' | 'file' | 'image' | 'unresolvable';
+
+/**
+ * What a `links` finding points at, read from the assessment evidence rather
+ * than the rendered message. A document dead-link flows from the backlink graph
+ * and carries no `localTarget`, so a `links` finding without evidence is always
+ * a document. Drives both the row's leading glyph and the create-page gate, so a
+ * missing file or image neither reads nor acts like a missing document.
+ */
+function linkTargetKindOf(diagnostic: DiagnosticLike): LinkTargetKind | null {
+  if (diagnostic.source !== 'links') return null;
+  const evidence = diagnostic.localTarget;
+  if (evidence === undefined) return 'document';
+  if (evidence.role === 'image') return 'image';
+  if (evidence.targetKind === 'file') return 'file';
+  if (evidence.targetKind === 'document') return 'document';
+  return 'unresolvable';
+}
+
+const LINK_TARGET_ICON: Record<LinkTargetKind, LucideIcon> = {
+  document: Link2,
+  file: FileIcon,
+  image: ImageIcon,
+  // An unresolvable link has no derivable file identity, so it keeps the link
+  // glyph rather than borrowing the file one.
+  unresolvable: Link2,
+};
+
+/**
+ * Create page is a document-only recovery. The server marks an eligible missing
+ * document with `linkTarget`; the panel additionally requires the evidence to
+ * agree it is a document, so a stray `linkTarget` on a file, image, or
+ * unresolvable finding can never surface the affordance.
+ */
+function canCreateMissingPage(diagnostic: DiagnosticLike): boolean {
+  return diagnostic.linkTarget !== undefined && linkTargetKindOf(diagnostic) === 'document';
+}
+
 /** Message line + producer chip + `code · line` subline shared by doc- and project-scope rows. */
 function DiagnosticRowBody({
   diagnostic,
@@ -115,7 +160,8 @@ function DiagnosticRowBody({
   const { t } = useLingui();
   const Icon = diagnostic.severity === 'error' ? AlertCircle : AlertTriangle;
   const displayLine = diagnostic.range.start.line + 1;
-  const isLink = diagnostic.source === 'links';
+  const targetKind = linkTargetKindOf(diagnostic);
+  const KindIcon = targetKind === null ? null : LINK_TARGET_ICON[targetKind];
   const grouped = instanceCount !== undefined && instanceCount > 1;
   return (
     <>
@@ -127,7 +173,9 @@ function DiagnosticRowBody({
             diagnostic.severity === 'error' ? 'text-destructive' : 'text-amber-500',
           )}
         />
-        <span className="min-w-0 flex-1 text-foreground">{diagnostic.message}</span>
+        <span className="min-w-0 flex-1 text-foreground">
+          {localizedValidationMessage(diagnostic)}
+        </span>
         {grouped ? (
           // Count and disclosure both sit on the right so a grouped row keeps
           // the exact left edge of an ungrouped one — a leading chevron indents
@@ -164,12 +212,15 @@ function DiagnosticRowBody({
         <Badge
           variant="gray"
           data-testid="problems-source-tag"
+          // Non-color kind cue: the leading glyph reads a missing file, image,
+          // and document apart at a glance; the message states the same in text.
+          data-target-kind={targetKind ?? undefined}
           className={cn(
             'h-4 shrink-0 px-1 font-sans text-[10px] uppercase leading-none',
-            isLink && 'gap-0.5',
+            KindIcon !== null && 'gap-0.5',
           )}
         >
-          {isLink ? <Link2 aria-hidden="true" className="size-2.5" /> : null}
+          {KindIcon !== null ? <KindIcon aria-hidden="true" className="size-2.5" /> : null}
           {diagnostic.source}
         </Badge>
         {/* A group spans many lines, so only a single finding names one. */}
@@ -231,6 +282,7 @@ function DiagnosticGroupItem({
   // `groupDiagnostics` seeds every group with one instance and only ever pushes,
   // so the non-empty tuple type guarantees a first element.
   const first = group.instances[0];
+  const localizedFirstMessage = localizedValidationMessage(first);
 
   if (group.instances.length === 1) {
     const actions = renderActions(first);
@@ -268,13 +320,14 @@ function DiagnosticGroupItem({
         </CollapsibleTrigger>
         <CollapsibleContent className="overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
           <ul
-            aria-label={t`Occurrences of ${first.message}`}
+            aria-label={t`Occurrences of ${localizedFirstMessage}`}
             className="flex flex-col gap-0.5 pb-1 ps-5"
             data-testid="problems-duplicate-instances"
           >
             {group.instances.map((diagnostic) => {
               const actions = renderActions(diagnostic);
               const displayLine = diagnostic.range.start.line + 1;
+              const localizedMessage = localizedValidationMessage(diagnostic);
               return (
                 <li
                   key={diagnosticKey(diagnostic)}
@@ -288,7 +341,7 @@ function DiagnosticGroupItem({
                     // The visible text is just the line number; the message
                     // rides the accessible name so the occurrence still reads
                     // as a whole finding out of list context.
-                    aria-label={t`${diagnostic.message} at line ${displayLine}`}
+                    aria-label={t`${localizedMessage} at line ${displayLine}`}
                   >
                     {t`line ${displayLine}`}
                   </button>
@@ -507,6 +560,7 @@ function FixWithAiButton({
 export function ProblemsPanel({
   docName,
   diagnostics,
+  linkFindingsStatus = 'loaded',
   onFix,
   onAutoFix,
   onAskAi,
@@ -516,6 +570,8 @@ export function ProblemsPanel({
   /** Live lint diagnostics for the open doc PLUS its broken-link findings —
    *  wire-loose so both the in-process lint shape and the audit plane fit. */
   diagnostics: DiagnosticLike[];
+  /** Freshness of the asynchronous links slice composed into `diagnostics`. */
+  linkFindingsStatus?: 'idle' | 'loading' | 'loaded' | 'failed';
   /** Apply a fixable diagnostic's auto-fix (this-doc scope only). When absent
    *  (e.g. unit harness), fixable rows render no Fix button. */
   onFix?: (diagnostic: DiagnosticLike) => void;
@@ -703,6 +759,13 @@ export function ProblemsPanel({
     };
   });
   useEffect(() => subscribeToLintConfigChanged(() => onLintConfigChangedRef.current()), []);
+  useEffect(
+    () =>
+      subscribeToDocumentsChanged((channels) => {
+        if (invalidatesLocalTargetAudit(channels)) onLintConfigChangedRef.current();
+      }),
+    [],
+  );
 
   // A settled sweep leaves the loaded plane describing problems it just fixed.
   // Refresh it in place — but only for a panel that is actually mounted and
@@ -756,7 +819,7 @@ export function ProblemsPanel({
   /** Per-occurrence actions in doc scope: create the missing page, fix, ask AI. */
   function renderDocActions(diagnostic: DiagnosticLike): ReactElement | null {
     const fixable = onFix !== undefined && (diagnostic.fixes?.length ?? 0) > 0;
-    const canCreate = diagnostic.linkTarget !== undefined && pageList !== null;
+    const canCreate = canCreateMissingPage(diagnostic) && pageList !== null;
     if (!fixable && !canCreate && onAskAi === undefined) return null;
     const flatId = `${diagnostic.source}/${diagnostic.code}`;
     return (
@@ -828,8 +891,26 @@ export function ProblemsPanel({
       <PanelScopeHeader scope={scope} onScopeChange={handleScopeChange} />
       {scope === 'doc' ? (
         <PanelBody className="px-2 py-2">
+          {linkFindingsStatus === 'idle' || linkFindingsStatus === 'loading' ? (
+            <PanelEmpty
+              className="px-2 pb-2"
+              role="status"
+              aria-live="polite"
+              data-testid="problems-links-loading"
+            >
+              <Trans>Checking links</Trans>
+            </PanelEmpty>
+          ) : linkFindingsStatus === 'failed' ? (
+            <PanelError className="px-2 pb-2" role="status" data-testid="problems-links-failed">
+              {sorted.length > 0 ? (
+                <Trans>Link validation is unavailable. Showing last known problems.</Trans>
+              ) : (
+                <Trans>Link validation is unavailable.</Trans>
+              )}
+            </PanelError>
+          ) : null}
           {sorted.length === 0 ? (
-            noPluginsEnabled ? (
+            linkFindingsStatus !== 'loaded' ? null : noPluginsEnabled ? (
               // Zero lint plugins narrows the plane to link validation alone —
               // say so instead of an unqualified "no problems", and point at
               // the switch. Only the empty list carries the hint: link
@@ -1255,9 +1336,9 @@ function ProjectFileGroup({
               // Same hover-revealed overlay contract as the doc scope, minus
               // the fix / ask-AI actions (both are this-doc only).
               renderActions={(diagnostic) =>
-                diagnostic.linkTarget === undefined || onCreateTarget === undefined ? null : (
+                !canCreateMissingPage(diagnostic) || onCreateTarget === undefined ? null : (
                   <CreatePageButton
-                    target={diagnostic.linkTarget}
+                    target={diagnostic.linkTarget ?? ''}
                     creating={creatingTarget === diagnostic.linkTarget}
                     disabled={creatingTarget !== null}
                     onCreate={() => onCreateTarget(diagnostic)}

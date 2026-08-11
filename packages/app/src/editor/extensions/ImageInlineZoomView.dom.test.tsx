@@ -14,7 +14,7 @@
  * `render()` — the inline-`<span>` choice IS the assertion.
  */
 
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.doMock('react-medium-image-zoom', () => ({
@@ -125,6 +125,21 @@ describe('ImageInlineZoomView — inline-image lightbox wrap', () => {
     expect(img).not.toBeNull();
     expect(img?.getAttribute('alt')).toBe('A cat');
     expect(img?.getAttribute('title')).toBe('Hover');
+  });
+
+  test('an inline Markdown image load failure uses the shared image placeholder', () => {
+    render(
+      <ImageInlineZoomView
+        {...makeNode({ src: '/assets/broken.png', alt: 'Broken inline image' })}
+      />,
+    );
+    fireEvent.error(document.querySelector('img') as HTMLImageElement);
+
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error-kind')).toBe('undisplayable');
+    expect(slot.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+      "Image couldn't be displayed: Broken inline image",
+    );
   });
 
   test('alt defaults to empty string when PM attrs has no alt — matches descriptor `Image.tsx` decorative-image contract', () => {

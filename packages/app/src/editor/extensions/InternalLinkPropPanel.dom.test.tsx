@@ -24,7 +24,7 @@ if (typeof globalThis.DOMRect === 'undefined') {
 type CurrentMarkInfo = {
   id: string;
   markType: string;
-  attrs: { href: string };
+  attrs: { href: string; linkStyle?: string };
   from: number;
   to: number;
 };
@@ -37,12 +37,22 @@ let currentMarkInfo: CurrentMarkInfo | null = {
   to: 4,
 };
 
+const pageListHarness = {
+  pages: new Set<string>(),
+  pagesBySlug: new Map<string, string>(),
+  pagesByBasename: new Map<string, string>(),
+};
+
 vi.doMock('../../components/PageListContext', () => ({
   usePageList: () => ({
     addPage: () => {},
+    assetPaths: new Set<string>(),
+    filePaths: new Set<string>(),
     folderPaths: new Set<string>(),
     loading: false,
-    pages: new Set<string>(),
+    pageMeta: new Map(),
+    pageTitles: new Map(),
+    ...pageListHarness,
   }),
 }));
 
@@ -134,6 +144,9 @@ afterEach(() => {
   loadHarness.calls = 0;
   loadHarness.result = null;
   configHarness.enabled = false;
+  pageListHarness.pages = new Set<string>();
+  pageListHarness.pagesBySlug = new Map<string, string>();
+  pageListHarness.pagesByBasename = new Map<string, string>();
 });
 
 describe('InternalLinkPropPanel', () => {
@@ -264,6 +277,68 @@ describe('InternalLinkPropPanel', () => {
       expect(onClose).toHaveBeenCalled();
     });
     expect(deleteRange).not.toHaveBeenCalled();
+  });
+
+  test('navigates a tolerant-case fallback without offering Create page', () => {
+    currentMarkInfo = {
+      id: 'm1',
+      markType: 'link',
+      attrs: { href: 'targets/case-sensitive' },
+      from: 0,
+      to: 4,
+    };
+    pageListHarness.pages = new Set(['targets/Case Sensitive']);
+    pageListHarness.pagesBySlug = new Map([['targets-case-sensitive', 'targets/Case Sensitive']]);
+
+    const { container } = render(
+      <TooltipProvider>
+        <InternalLinkPropPanel
+          editor={makeEditor()}
+          nodeId="m1"
+          sourceDocName="all-link-types"
+          onClose={() => {}}
+          onNavigate={() => true}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(container.querySelector('[data-slot="internal-link-prop-panel-create"]')).toBeNull();
+    expect(
+      container.querySelector('[data-slot="internal-link-prop-panel-text"]')?.getAttribute('href'),
+    ).toBe('#/targets/Case Sensitive');
+  });
+
+  test('reference-style links preserve navigation without offering a lossy destination edit', () => {
+    currentMarkInfo = {
+      id: 'm1',
+      markType: 'link',
+      attrs: { href: '/targets/reference', linkStyle: 'full' },
+      from: 0,
+      to: 4,
+    };
+    pageListHarness.pages = new Set(['targets/reference']);
+    const onNavigate = vi.fn(() => true);
+    const onClose = vi.fn(() => {});
+
+    const { container } = render(
+      <TooltipProvider>
+        <InternalLinkPropPanel
+          editor={makeEditor()}
+          nodeId="m1"
+          sourceDocName="notes/source"
+          onClose={onClose}
+          onNavigate={onNavigate}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(container.querySelector('[data-slot="internal-link-prop-panel-edit"]')).toBeNull();
+    const destination = screen.getByRole('link', { name: 'targets/reference' });
+    expect(destination.getAttribute('href')).toBe('#/targets/reference');
+
+    fireEvent.click(destination);
+    expect(onNavigate).toHaveBeenCalledWith(false);
+    expect(onClose).toHaveBeenCalled();
   });
 });
 

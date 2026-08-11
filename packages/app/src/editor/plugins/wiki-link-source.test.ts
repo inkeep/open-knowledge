@@ -1,9 +1,16 @@
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import {
+  resetLinkValidationPolicyForTest,
+  setLinkValidationVisible,
+} from '../link-validation-policy';
 import {
   buildKnownWikilinkTargetSet,
   buildPageNameSet,
   extractWikilinkTarget,
+  wikiLinkSourceClass,
 } from './wiki-link-source';
+
+beforeEach(() => resetLinkValidationPolicyForTest());
 
 /**
  * Unit tests for the wikilink broken-detection primitives.
@@ -129,6 +136,15 @@ describe('extractWikilinkTarget', () => {
   test('preserves internal whitespace in the target', () => {
     expect(extractWikilinkTarget('Some Page')).toBe('some page');
     expect(extractWikilinkTarget('Some Page#heading')).toBe('some page');
+  });
+});
+
+describe('wikiLinkSourceClass', () => {
+  test('validation.links off suppresses the broken wikilink decoration', () => {
+    const targets = new Set(['known']);
+    expect(wikiLinkSourceClass('missing', targets)).toBe('cm-wiki-link cm-wiki-link-broken');
+    setLinkValidationVisible(false);
+    expect(wikiLinkSourceClass('missing', targets)).toBe('cm-wiki-link');
   });
 });
 

@@ -67,7 +67,7 @@ vi.doMock('@/editor/useDocDiagnostics', () => ({
 vi.doMock('@/editor/validation-audit-client', () => ({
   AUDIT_SUPERSEDED: 'audit-superseded',
   runValidationAudit: async () => null,
-  useDocLinkFindings: () => [],
+  useDocLinkFindings: () => ({ status: 'loaded', findings: [] }),
 }));
 // Terminal availability drives the Ask-AI gate — null mirrors the web host.
 let terminalLaunchValue: unknown = null;

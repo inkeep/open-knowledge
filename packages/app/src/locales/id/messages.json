@@ -158,11 +158,13 @@
     "1njn7W": ["Terang"],
     "1nke1r": ["Buka ", ["0"], " di GitHub (terbuka di tab baru)"],
     "1oSHI0": [["skillName"], " tidak bisa dipasang: ", ["0"]],
+    "1pdLQw": ["Gambar tidak ditemukan"],
     "1qpGKz": ["Perubahan tidak dapat disimpan. Coba sunting warna lagi."],
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Tolak"],
     "1u-mAI": ["Sinkronisasinya tidak bisa dimulai. Periksa koneksi Anda, lalu coba lagi."],
     "1vn0CI": ["Respons server tidak valid"],
+    "1xui0Q": ["Gagal memuat berkas lokal"],
     "2277Tu": ["Ciutkan graf"],
     "237hSL": ["Berakhir"],
     "253MN6": ["Komentar Anda tidak bisa dikirim — silakan coba lagi."],
@@ -446,6 +448,7 @@
     "6HCOwA": ["Gagal membuka."],
     "6KCH4m": ["Berkas tersembunyi"],
     "6KXnz5": ["Anda dapat memulihkan berkas ini dari Tempat Sampah."],
+    "6LJJ1v": ["File ", ["identity"], ". Buka referensi."],
     "6LbUG7": ["Repositorinya bersifat pribadi dan akun GitHub Anda tidak punya akses ke sana."],
     "6Mbe-P": [
       "Jelaskan apa yang harus dilakukannya, atau tambahkan sendiri. OpenKnowledge menyimpan keterampilan Anda di satu tempat, memberinya versi, dan memasangnya ke agen seperti Claude, Codex, dan Cursor."
@@ -969,7 +972,6 @@
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " token terpakai"],
     "EQXPXf": ["Gulir ke akhir"],
     "ETyvvg": ["Tidak ada bahasa yang cocok."],
-    "EUiJEM": ["Kemunculan ", ["0"]],
     "EWCJFu": [["target"], " dibuat"],
     "EWPtMO": ["Kode"],
     "EWX92Z": ["Ciutkan Tanya AI"],
@@ -1284,6 +1286,7 @@
     "IgN3LY": ["Pada teks terpilih di <0>", ["address"], "</0>"],
     "IgTwLt": ["Membuka dokumen ini di penyunting dan menciutkan graf."],
     "Ik-gP0": ["Judul H", ["level"], ": ", ["text"]],
+    "IoHQYP": ["Validasi tautan tidak tersedia. Menampilkan masalah terakhir yang diketahui."],
     "Iq8zdU": ["Tutup terminal"],
     "IrB5AK": [
       "Pembersihan di sisi server gagal untuk ",
@@ -1476,6 +1479,7 @@
     "Lm3r51": ["Slidev tidak dapat merender dokumen ini."],
     "LnVIW4": ["Gagal memulai proses masuk — coba lagi"],
     "LpB85N": ["Polos"],
+    "Lrsl_h": ["File ", ["identity"], " tidak ditemukan. Buka referensi."],
     "LtI9AS": ["Pemilik"],
     "LtSYdi": ["Tampilkan di Finder"],
     "LtiJ5c": ["Keterampilan proyek"],
@@ -1572,9 +1576,6 @@
       "Ketika Anda mengarahkan kursor ke tautan eksternal, URL-nya dikirim ke situs tujuan untuk mengambil metadata pratinjau halaman itu — satu permintaan per tautan yang dipratinjau."
     ],
     "MysZUL": ["Menghubungkan ke ", ["agentName"], "…"],
-    "N-IonL": [
-      "Bagaimana tautan wiki yang tidak terselesaikan dilaporkan di panel Masalah, audit, dan alat agen."
-    ],
     "N1KkEO": ["Lompat ke tab terakhir"],
     "N1YYa7": ["Memuat gambar"],
     "N1mdmS": ["Berkas ini tidak bisa dibuka di penyunting teks."],
@@ -2009,6 +2010,7 @@
     "U2Kx6T": ["Tutup semua yang tidak disematkan"],
     "U2pMtf": ["nama-tag"],
     "U3IvM5": ["Panduan lengkap"],
+    "U3RIJu": ["Berkas lokal"],
     "U4nTfu": ["Aktifkan Ikuti"],
     "U5Spo9": ["Direktori konten harus berada di dalam proyek"],
     "U6wmNc": ["Sinkronisasi dijeda"],
@@ -2128,6 +2130,7 @@
     "VNNRfN": ["jadikan sumber"],
     "VNgKZz": ["Pengaturan lanjutan"],
     "VTulZj": ["Buka di worktree"],
+    "VU3Nrn": ["Hilang"],
     "VUijjF": ["Menyematkan gambar dengan teks alternatif opsional."],
     "VVRrPk": [["0"], " tidak menawarkan pengaturan untuk disesuaikan"],
     "VXGFMg": ["Batalkan atau ulangi di bidang kode"],
@@ -2138,6 +2141,7 @@
     "VZSBXL": [
       "Pemeringkatan semantik aktif pertama kali ketika sebuah agen menjalankan pencarian."
     ],
+    "VZg6Gn": ["Gambar tidak dapat ditampilkan: ", ["errorLabel"]],
     "V_6bJ4": ["Pengaturan terminal belum dimuat — coba lagi sebentar."],
     "V_DjMe": ["galat render"],
     "V_wltx": ["Masukkan judul untuk templat ini."],
@@ -2166,12 +2170,18 @@
     "W1qRuM": ["Dokumen ini sudah aktif di penyunting. Gunakan Buka untuk menciutkan graf."],
     "W3Tsgy": ["Terdeteksi di ", ["0"]],
     "W5A0Ly": ["Terjadi galat yang tidak terduga."],
+    "W5qdI_": [
+      "Target gambar \"",
+      ["shown"],
+      "\" tidak dapat dicocokkan dengan file lokal proyek."
+    ],
     "W7XJN4": [
       "Proyek tidak bisa disarangkan. Sudah ada proyek OpenKnowledge di <0>",
       ["rootPath"],
       "</0>. Pilih lokasi di luarnya, atau buka proyek itu saja."
     ],
     "W8vpBM": ["paket awal"],
+    "W9NSe0": ["Memeriksa tautan"],
     "W9_Bub": ["Perubahan lokal bertumpang tindih dengan sinkronisasi yang masuk"],
     "WBNpt9": ["Tema ini tidak dapat dibaca (", ["0"], ")"],
     "WFEbV1": [
@@ -2234,11 +2244,13 @@
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
     "XAyxsa": ["Ambil cabang remote"],
+    "XBBZnv": ["Target tautan \"", ["shown"], "\" tidak merujuk ke dokumen yang ada."],
     "XBgr2S": ["Salin ke sini"],
     "XDzAnp": ["Terbuka di tab baru"],
     "XFpEgc": [
       "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, seperti Ask AI, Open with AI, dan tombol ＋ obrolan baru. Nonaktifkan agen untuk menyembunyikannya dari semuanya."
     ],
+    "XGKy1z": ["Gambar tidak dapat ditampilkan"],
     "XH30C4": ["dokumen"],
     "XIltnd": ["Keterampilan bernama \"", ["trimmed"], "\" sudah ada di sini"],
     "XJOV1Y": ["Aktivitas"],
@@ -2256,6 +2268,7 @@
     "XW18jo": ["Respons judul halaman tidak sesuai skema sukses"],
     "XWEqQj": [["days"], "h"],
     "XXA1b_": [["componentLabel"], " (kosong)"],
+    "XYZ7tp": ["Tidak terselesaikan"],
     "XYlJJT": ["Menyiapkan"],
     "XZkdtg": ["Ganti cabang"],
     "XcGbim": ["Tampilkan berkas tersembunyi"],
@@ -2343,6 +2356,7 @@
     "YW7Q86": ["Pengaturan pencarian belum dimuat — coba lagi sebentar"],
     "Y_GpJd": ["Permintaan unduhan ", ["0"], " kehabisan waktu."],
     "Y_ZQ6l": ["Memasang ", ["agentName"], "…"],
+    "Y_iImT": ["File ", ["identity"], " tidak dapat ditentukan. Buka referensi."],
     "Y_kL7X": ["Sesuaikan tampilan dan perilaku penyunting."],
     "Ya3PlJ": ["Perlu izin"],
     "YaeyFh": ["Pull bisa menimpa suntingan yang belum di-commit di berkas lokal Anda."],
@@ -2457,6 +2471,7 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_Bix3-": ["Kemunculan ", ["localizedFirstMessage"]],
     "_DwR-n": ["Membuat…"],
     "_FLBbi": [["sizeText"], " · rahasia disunting · crash dump tidak disunting"],
     "_GRWOJ": ["Ganti penyedia embedding?"],
@@ -2619,6 +2634,11 @@
       "\" sebelum menyambung ulang."
     ],
     "bnOTEz": ["Mengambil…"],
+    "bpMVIA": [
+      "Target tautan \"",
+      ["shown"],
+      "\" tidak dapat dicocokkan dengan target lokal proyek."
+    ],
     "bpytj4": ["Pindahkan ke ", ["0"]],
     "brCtGB": ["Riwayat tidak tersedia"],
     "buNXgr": ["Beralih antara penyunting visual dan sumber, tanpa kehilangan posisi Anda."],
@@ -2851,6 +2871,7 @@
     "fJgQHX": ["Gagal membuat berkas"],
     "fMsFdZ": ["Pengaturan pembaruan otomatis tidak bisa disimpan: ", ["0"]],
     "fNr-MX": ["Nonaktifkan pencarian semantik"],
+    "fOzzSV": ["Target tautan \"", ["shown"], "\" tidak merujuk ke file yang ada."],
     "fR-Kdc": ["(hanya tingkat proyek)"],
     "fRVBiq": [
       "Menambahkan telemetri, keadaan server, dan info runtime bila tersedia. Kredensial selalu dihapus; nama dokumen, jika disertakan, muncul sebagai teks biasa (tidak disunting)."
@@ -2888,6 +2909,7 @@
     "fwrPh4": ["Silakan masukkan surel yang valid."],
     "fxJk_6": ["<0>Ada yang ingin ditambahkan?</0> Tulis ke <1/> dan sebutkan referensi Anda."],
     "fxbCNQ": ["Tersinkron. Tautannya sudah mutakhir."],
+    "g-dkjJ": ["Detail berkas lokal belum tersedia."],
     "g12y1g": ["YAML tidak valid"],
     "g1ZTh_": [
       [
@@ -2966,6 +2988,7 @@
     "gmJ0An": ["Gagal membuka folder."],
     "goO4Ll": ["Bilah status penyunting"],
     "gp3I7-": ["Sebelum menyinkronkan, setel identitas Anda untuk commit git:"],
+    "gpbKxw": ["Validasi tautan tidak tersedia."],
     "gqk-3R": [["0"], " dipindahkan ke ", ["destination"], "."],
     "gtEbeW": ["Sorotan"],
     "gtGQ9S": ["Mulai ", ["agentName"], ", ", ["hint"]],
@@ -3099,6 +3122,7 @@
     "iRdfLr": ["Instans pengembangan: ", ["label"]],
     "iSLIjg": ["Hubungkan"],
     "iSQTsg": ["Daftar berurut"],
+    "iSWh95": ["Target gambar \"", ["shown"], "\" tidak merujuk ke file yang ada."],
     "iSnkwB": ["Gagal membuka proyek hasil kloning."],
     "iTylMl": ["Templat"],
     "iUwpZI": ["Tanpa spasi — gunakan <0>-</0> saja."],
@@ -3135,6 +3159,9 @@
       "<0>type</0> yang didapat setiap dokumen yang dibuat dari templat ini (mis. <1>research-note</1>). Menjaga dokumen baru tetap sesuai Open Knowledge Format."
     ],
     "iqIDv4": ["Status sinkronisasi tidak tersedia"],
+    "iqr14Z": [
+      "Cara dokumen, file, dan gambar lokal proyek yang hilang dilaporkan di Masalah, diagnostik editor, audit, dan alat agen."
+    ],
     "iqugog": ["Inisialisasi gagal: ", ["errorDetail"]],
     "irFGwu": ["Daftar templat"],
     "irrm_E": ["Hapus pilihan"],
@@ -3242,6 +3269,7 @@
     "kCqCyf": ["Membuka panel diagnostik lint CodeMirror."],
     "kFLlsI": ["Menyisipkan rujukan catatan kaki + kerangka definisi yang sesuai."],
     "kGp168": ["Tidak dapat menyiapkan proyek ini untuk diterbitkan."],
+    "kI5pWt": ["Gambar tidak ditemukan: ", ["errorLabel"]],
     "kKw0H3": [
       "Anda menyunting keterampilan ini secara lokal dan sumbernya punya perubahan baru. Mengambil versi remote akan menggantikan versi Anda; suntingan Anda tetap bisa dipulihkan lewat riwayat versi."
     ],
@@ -3487,7 +3515,6 @@
     "nG-XA9": [
       "Teks berjangkarnya sudah hilang. Anda bisa menempatkannya ulang pada teks yang dipilih."
     ],
-    "nL-HHD": ["Gambar gagal dimuat"],
     "nMSYz5": [
       "Jalur ini berada di volume eksternal (/Volumes/...). OpenKnowledge akan kehilangan jejak berkasnya ketika drive itu dicabut."
     ],
@@ -3620,6 +3647,7 @@
     "pFRz_E": ["Jangan sertakan komentar ini dalam pesan ini"],
     "pFagOn": ["Penyuntingan sumber"],
     "pHYP6v": ["Buka <0>Sesuaikan</0> di bilah sisi <1/> <2>Keterampilan</2>."],
+    "pJ7XCo": ["Halaman ini tidak merujuk ke berkas atau gambar lokal apa pun."],
     "pOo4Aa": ["Teks biasa"],
     "pSimwP": ["Nama baru untuk versi ", ["editor"]],
     "pTPqMK": ["Menyalakan atau mematikan blok kode berpagar."],
@@ -3722,7 +3750,6 @@
     "qjHMHf": ["Gagal menonaktifkan sinkronisasi — ", ["detail"]],
     "qkqG0b": ["Ambil versi remote"],
     "qlAIQ1": ["Remote"],
-    "qlnfTD": ["Gambar gagal dimuat: ", ["errorLabel"]],
     "qmL1UG": ["Mengunggah dengan aman"],
     "qo4zCg": ["Jalur tidak boleh memuat garis miring terbalik"],
     "qpQwGC": ["Jelaskan apa yang sedang Anda kerjakan dan agennya akan menyiapkannya untuk Anda."],
@@ -3763,6 +3790,7 @@
     "rXz97P": ["Daftar item bernomor."],
     "rZ9HZq": ["Akan dikerjakan"],
     "rZVMkf": ["Bidang penggantian penyunting visual sedang difokus"],
+    "radOpL": ["Gambar ", ["identity"], ". Buka referensi."],
     "rageVb": ["HTML khusus dengan panel pratinjau langsung (iframe tersekat)."],
     "rbrHTd": ["Disetujui — ", ["optionName"]],
     "rcJmK8": ["Ubah lokasi menjadi salinan"],
@@ -3929,6 +3957,7 @@
       ["trashNoun"],
       ". Apakah Anda ingin menghapus permanen saja?"
     ],
+    "txUHO8": [["localizedMessage"], " pada baris ", ["displayLine"]],
     "tzGWeg": ["Bersiap mencopot OpenKnowledge"],
     "tzZ6ha": ["Hubungkan ke GitHub Enterprise Server"],
     "u-9fWA": ["Lihat <0>Arsitektur</0> untuk ikhtisar sistemnya."],
@@ -3945,7 +3974,6 @@
     "uCaIdy": [
       "Status masuk GitHub tidak ada atau kedaluwarsa. Sambungkan ulang untuk melanjutkan sinkronisasi."
     ],
-    "uCe4AX": [["0"], " di baris ", ["displayLine"]],
     "uDlyqd": [
       "Dokumentasikan arsitektur repo ini: buat halaman ikhtisar yang menaut ke satu halaman per modul utama yang menjelaskan tanggung jawab dan titik masuknya."
     ],
@@ -4019,6 +4047,7 @@
     "vPEyDz": ["Transkrip agen"],
     "vPF04k": ["Mulai obrolan baru"],
     "vPKX2i": ["Di aplikasi (beta)"],
+    "vPLUCm": ["Gambar ", ["identity"], " tidak ditemukan. Buka referensi."],
     "vPXOUw": ["Tampilkan atau sembunyikan tampilan sumber"],
     "vQIVHc": ["Properti folder"],
     "vWc9a0": ["Ketik untuk menyunting; <0>⌘ Enter</0> menyimpan, <1>Esc</1> membatalkan."],
@@ -4192,6 +4221,7 @@
     "xxRpzT": ["Slidev ditemukan di sistem Anda."],
     "xzAmL_": ["Disetujui otomatis"],
     "xzktOa": ["Sunting tautan wiki"],
+    "y-LQPF": ["Gambar ", ["identity"], " tidak dapat ditentukan. Buka referensi."],
     "y1eoq1": ["Salin tautan"],
     "y1t8bQ": ["Bagian pengaturan"],
     "y3aU20": ["Simpan perubahan"],

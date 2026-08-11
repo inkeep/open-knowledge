@@ -985,6 +985,16 @@
       "hasOptions": false
     },
     {
+      "name": "link-reference-destination",
+      "version": null,
+      "hasOptions": false
+    },
+    {
+      "name": "non-rendering-context-demote",
+      "version": null,
+      "hasOptions": false
+    },
+    {
       "name": "ensure-non-empty-doc",
       "version": null,
       "hasOptions": false

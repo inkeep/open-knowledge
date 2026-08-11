@@ -37,6 +37,10 @@ import {
   type WikiLinkContext,
 } from '../extensions/wiki-link-suggestion';
 import { openInternalHashHrefInNewTab, shouldOpenInNewTab } from '../internal-link-helpers';
+import {
+  isLinkValidationVisible,
+  subscribeToLinkValidationPolicy,
+} from '../link-validation-policy';
 
 // ── Data fetching (module-level TTL cache wrapping shared fetchers) ──────────
 //
@@ -142,6 +146,14 @@ export function extractWikilinkTarget(inner: string): string {
   return inner.split(/[#|]/)[0].trim().toLowerCase();
 }
 
+export function wikiLinkSourceClass(inner: string, targetSet: ReadonlySet<string> | null): string {
+  if (targetSet === null) return 'cm-wiki-link';
+  const target = extractWikilinkTarget(inner);
+  return target && !targetSet.has(target) && isLinkValidationVisible()
+    ? 'cm-wiki-link cm-wiki-link-broken'
+    : 'cm-wiki-link';
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   // Cache-cold → all wikilinks get plain mark (no false-positive broken flash)
@@ -153,13 +165,8 @@ function buildDecorations(view: EditorView): DecorationSet {
     WIKI_LINK_RE.lastIndex = 0;
     let m = WIKI_LINK_RE.exec(text);
     while (m !== null) {
-      let mark = wikiLinkMark;
-      if (targetSet) {
-        const target = extractWikilinkTarget(m[0].slice(2, -2)); // strip [[ and ]]
-        if (target && !targetSet.has(target)) {
-          mark = wikiLinkBrokenMark;
-        }
-      }
+      const className = wikiLinkSourceClass(m[0].slice(2, -2), targetSet);
+      const mark = className.includes('cm-wiki-link-broken') ? wikiLinkBrokenMark : wikiLinkMark;
       builder.add(from + m.index, from + m.index + m[0].length, mark);
       m = WIKI_LINK_RE.exec(text);
     }
@@ -171,17 +178,34 @@ const wikiLinkDecorations = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     private cacheWarmAtBuild: boolean;
+    private validationVisibleAtBuild: boolean;
+    private readonly unsubscribePolicy: () => void;
 
     constructor(view: EditorView) {
       this.cacheWarmAtBuild = pagesCache !== null;
+      this.validationVisibleAtBuild = isLinkValidationVisible();
       this.decorations = buildDecorations(view);
+      this.unsubscribePolicy = subscribeToLinkValidationPolicy(() => {
+        try {
+          view.dispatch({});
+        } catch {
+          /* view destroyed before policy refresh */
+        }
+      });
       if (!this.cacheWarmAtBuild) this.warmCache(view);
     }
 
     update(update: ViewUpdate) {
       const cacheNowWarm = pagesCache !== null;
-      if (update.docChanged || update.viewportChanged || (!this.cacheWarmAtBuild && cacheNowWarm)) {
+      const validationVisible = isLinkValidationVisible();
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        (!this.cacheWarmAtBuild && cacheNowWarm) ||
+        this.validationVisibleAtBuild !== validationVisible
+      ) {
         this.cacheWarmAtBuild = cacheNowWarm;
+        this.validationVisibleAtBuild = validationVisible;
         this.decorations = buildDecorations(update.view);
       }
     }
@@ -198,6 +222,10 @@ const wikiLinkDecorations = ViewPlugin.fromClass(
         .catch((err) => {
           console.warn('[wiki-link-source] warmCache fetch failed:', err);
         });
+    }
+
+    destroy() {
+      this.unsubscribePolicy();
     }
   },
   { decorations: (v) => v.decorations },

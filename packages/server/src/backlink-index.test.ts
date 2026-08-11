@@ -233,6 +233,34 @@ describe('extractWikiLinksFromMarkdown', () => {
 });
 
 describe('BacklinkIndex', () => {
+  test('indexes full, collapsed, and shortcut reference links across graph queries', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-reference-links-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocumentFromMarkdown(
+        'source',
+        [
+          'See [full label][full-ref], [collapsed-ref][], and [shortcut-ref].',
+          '',
+          '[full-ref]: ./full-target.md',
+          '[collapsed-ref]: ./collapsed-target.md',
+          '[shortcut-ref]: ./shortcut-target.md',
+        ].join('\n'),
+      );
+
+      const targets = ['collapsed-target', 'full-target', 'shortcut-target'];
+      expect(index.getForwardLinks('source')).toEqual(targets);
+      for (const target of targets) {
+        expect(index.getBacklinks(target)).toEqual([expect.objectContaining({ source: 'source' })]);
+      }
+      expect(index.getDeadLinks(['source']).map((entry) => entry.target)).toEqual(targets);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('deleteDocument removes outbound links and incoming backlinks', () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-del-'));
     const contentDir = join(projectDir, 'content');
@@ -1559,6 +1587,38 @@ describe('BacklinkIndex with markdown links', () => {
       expect(index.getBacklinks('docs/guide').map((b) => b.source)).toContain('source');
       expect(index.getForwardLinks('source')).toContain('target');
       expect(index.getForwardLinks('source')).toContain('docs/guide');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('rebuildFromDisk indexes full, collapsed, and shortcut reference links', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'backlinks-reference-rebuild-'));
+    try {
+      writeFileSync(
+        join(tmpDir, 'source.md'),
+        [
+          'See [full label][full-ref], [collapsed-ref][], and [shortcut-ref].',
+          '',
+          '[full-ref]: ./full-target.md',
+          '[collapsed-ref]: ./collapsed-target.md',
+          '[shortcut-ref]: ./shortcut-target.md',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+      for (const target of ['full-target', 'collapsed-target', 'shortcut-target']) {
+        writeFileSync(join(tmpDir, `${target}.md`), `# ${target}\n`, 'utf-8');
+      }
+
+      const index = new BacklinkIndex({ projectDir: tmpDir, contentDir: tmpDir });
+      await index.rebuildFromDisk();
+
+      const targets = ['collapsed-target', 'full-target', 'shortcut-target'];
+      expect(index.getForwardLinks('source')).toEqual(targets);
+      for (const target of targets) {
+        expect(index.getBacklinks(target)).toEqual([expect.objectContaining({ source: 'source' })]);
+      }
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

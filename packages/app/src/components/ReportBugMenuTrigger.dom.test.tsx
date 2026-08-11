@@ -12,12 +12,17 @@
  */
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
 import { ReportBugMenuTrigger } from './ReportBugMenuTrigger';
+
+vi.mock('./ReportBugDialog', () => ({
+  ReportBugDialog: ({ open }: { open: boolean }) =>
+    open ? <div aria-label="Report a bug" role="dialog" /> : null,
+}));
 
 // Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. The
 // broadly-needed constructors (MutationObserver) live in the shared

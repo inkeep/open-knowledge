@@ -180,11 +180,13 @@
     "1njn7W": ["Claro"],
     "1nke1r": ["Abrir ", ["0"], " en GitHub (se abre en una pestaña nueva)"],
     "1oSHI0": ["No se pudo instalar ", ["skillName"], ": ", ["0"]],
+    "1pdLQw": ["No se encontró la imagen"],
     "1qpGKz": ["No se pudieron guardar los cambios. Intenta editar un color de nuevo."],
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Rechazar"],
     "1u-mAI": ["No se pudo iniciar la sincronización. Revisa tu conexión y vuelve a intentarlo."],
     "1vn0CI": ["Respuesta del servidor no válida"],
+    "1xui0Q": ["No se pudieron cargar los archivos locales"],
     "2277Tu": ["Contraer el grafo"],
     "237hSL": ["Terminado"],
     "253MN6": ["No se pudieron enviar tus comentarios; inténtalo de nuevo."],
@@ -512,6 +514,7 @@
     "6HCOwA": ["No se pudo abrir."],
     "6KCH4m": ["Archivos ocultos"],
     "6KXnz5": ["Puedes restaurar este archivo desde la Papelera."],
+    "6LJJ1v": ["Archivo ", ["identity"], ". Ir a la referencia."],
     "6LbUG7": ["El repositorio es privado y tu cuenta de GitHub no tiene acceso."],
     "6Mbe-P": [
       "Describe lo que debería hacer, o añade una tú. OpenKnowledge guarda tus habilidades en un solo sitio, las versiona y las instala en agentes como Claude, Codex y Cursor."
@@ -1134,7 +1137,6 @@
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens usados"],
     "EQXPXf": ["Desplazar hasta el final"],
     "ETyvvg": ["Ningún idioma coincide."],
-    "EUiJEM": ["Apariciones de ", ["0"]],
     "EWCJFu": ["Se creó ", ["target"]],
     "EWPtMO": ["Código"],
     "EWX92Z": ["Contraer Preguntar a la IA"],
@@ -1484,6 +1486,9 @@
     "IgN3LY": ["Sobre el texto seleccionado en <0>", ["address"], "</0>"],
     "IgTwLt": ["Abre este documento en el editor y contrae el grafo."],
     "Ik-gP0": ["Encabezado H", ["level"], ": ", ["text"]],
+    "IoHQYP": [
+      "La validación de enlaces no está disponible. Se muestran los últimos problemas conocidos."
+    ],
     "Iq8zdU": ["Cerrar terminal"],
     "IrB5AK": [
       "Falló la limpieza en el servidor de ",
@@ -1696,6 +1701,7 @@
     "Lm3r51": ["Slidev no pudo renderizar este documento."],
     "LnVIW4": ["No se pudo iniciar la sesión: inténtalo de nuevo"],
     "LpB85N": ["Sencillo"],
+    "Lrsl_h": ["Falta el archivo ", ["identity"], ". Ir a la referencia."],
     "LtI9AS": ["Propietario"],
     "LtSYdi": ["Mostrar en el Finder"],
     "LtiJ5c": ["Habilidad del proyecto"],
@@ -1812,9 +1818,6 @@
       "Al pasar el cursor por un enlace externo, su URL se envía al sitio de destino para obtener los metadatos de vista previa de la página: una solicitud por cada enlace previsualizado."
     ],
     "MysZUL": ["Conectando con ", ["agentName"], "…"],
-    "N-IonL": [
-      "Cómo se informa de los enlaces wiki sin resolver en el panel Problemas, en las auditorías y en las herramientas de agente."
-    ],
     "N1KkEO": ["Ir a la última pestaña"],
     "N1YYa7": ["Cargando la imagen"],
     "N1mdmS": ["Este archivo no se puede abrir en el editor de texto."],
@@ -2285,6 +2288,7 @@
     "U2Kx6T": ["Cerrar todas las no fijadas"],
     "U2pMtf": ["nombre-de-etiqueta"],
     "U3IvM5": ["Guía completa"],
+    "U3RIJu": ["Archivos locales"],
     "U4nTfu": ["Activar Seguir"],
     "U5Spo9": ["El directorio de contenido debe estar dentro del proyecto"],
     "U6wmNc": ["Sincronización en pausa"],
@@ -2416,6 +2420,7 @@
     "VNNRfN": ["convertir en origen"],
     "VNgKZz": ["Ajustes avanzados"],
     "VTulZj": ["Abrir en un worktree"],
+    "VU3Nrn": ["Ausente"],
     "VUijjF": ["Incrusta una imagen con texto alternativo opcional."],
     "VVRrPk": [["0"], " no ofrece ajustes que configurar"],
     "VXGFMg": ["Deshacer o rehacer en el campo de código"],
@@ -2424,6 +2429,7 @@
     "VZSBXL": [
       "La clasificación semántica se activa la primera vez que un agente ejecuta una búsqueda."
     ],
+    "VZg6Gn": ["No se pudo mostrar la imagen: ", ["errorLabel"]],
     "V_6bJ4": [
       "Los ajustes de la terminal aún no se han cargado; inténtalo de nuevo en un momento."
     ],
@@ -2466,12 +2472,18 @@
     "W1qRuM": ["Este documento ya está activo en el editor. Usa Abrir para contraer el grafo."],
     "W3Tsgy": ["Detectado en ", ["0"]],
     "W5A0Ly": ["Se produjo un error inesperado."],
+    "W5qdI_": [
+      "El destino de la imagen «",
+      ["shown"],
+      "» no se pudo resolver como un archivo local del proyecto."
+    ],
     "W7XJN4": [
       "No se pueden anidar proyectos. Ya existe un proyecto de OpenKnowledge en <0>",
       ["rootPath"],
       "</0>. Elige una ubicación fuera de él o abre ese proyecto."
     ],
     "W8vpBM": ["paquete inicial"],
+    "W9NSe0": ["Comprobando enlaces"],
     "W9_Bub": ["Los cambios locales se solapan con la sincronización entrante"],
     "WBNpt9": ["No se pudo leer este tema (", ["0"], ")"],
     "WFEbV1": [
@@ -2534,11 +2546,13 @@
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
     "XAyxsa": ["Extraer rama remota"],
+    "XBBZnv": ["El destino del enlace «", ["shown"], "» no corresponde a un documento existente."],
     "XBgr2S": ["Copiar aquí"],
     "XDzAnp": ["Se abre en una pestaña nueva"],
     "XFpEgc": [
       "Elige qué agentes aparecen en los menús de agentes de la aplicación, como Ask AI, Open with AI y el botón ＋ de nuevo chat. Desactiva un agente para ocultarlo de todos ellos."
     ],
+    "XGKy1z": ["No se pudo mostrar la imagen"],
     "XH30C4": ["documento"],
     "XIltnd": ["Ya existe aquí una habilidad llamada \"", ["trimmed"], "\""],
     "XJOV1Y": ["Actividad"],
@@ -2556,6 +2570,7 @@
     "XW18jo": ["La respuesta de los encabezados de página no coincide con el esquema de éxito"],
     "XWEqQj": [["days"], "d"],
     "XXA1b_": [["componentLabel"], " (vacío)"],
+    "XYZ7tp": ["Sin resolver"],
     "XYlJJT": ["Configurando"],
     "XZkdtg": ["Cambiar de rama"],
     "XcGbim": ["Mostrar los archivos ocultos"],
@@ -2673,6 +2688,7 @@
     "YW7Q86": ["Los ajustes de búsqueda aún no se han cargado; inténtalo de nuevo en un momento"],
     "Y_GpJd": ["Se agotó el tiempo de la solicitud de descarga de ", ["0"], "."],
     "Y_ZQ6l": ["Instalando ", ["agentName"], "…"],
+    "Y_iImT": ["No se puede resolver el archivo ", ["identity"], ". Ir a la referencia."],
     "Y_kL7X": ["Personaliza el aspecto y el comportamiento del editor."],
     "Ya3PlJ": ["Se requiere permiso"],
     "YaeyFh": ["El pull puede sobrescribir ediciones sin confirmar en tus archivos locales."],
@@ -2803,6 +2819,7 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_Bix3-": ["Apariciones de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creando…"],
     "_FLBbi": [["sizeText"], " · secretos ocultos · volcado de fallo sin ocultar"],
     "_GRWOJ": ["¿Cambiar el proveedor de embeddings?"],
@@ -2983,6 +3000,11 @@
       "\" antes de reconectar."
     ],
     "bnOTEz": ["Recuperando…"],
+    "bpMVIA": [
+      "El destino del enlace «",
+      ["shown"],
+      "» no se pudo resolver como un destino local del proyecto."
+    ],
     "bpytj4": ["Mover a ", ["0"]],
     "brCtGB": ["El historial no está disponible"],
     "buNXgr": ["Cambia entre el editor visual y el de código sin perder tu sitio."],
@@ -3266,6 +3288,7 @@
     "fJgQHX": ["No se pudo crear el archivo"],
     "fMsFdZ": ["No se pudo guardar el ajuste de actualización automática: ", ["0"]],
     "fNr-MX": ["Desactivar la búsqueda semántica"],
+    "fOzzSV": ["El destino del enlace «", ["shown"], "» no corresponde a un archivo existente."],
     "fR-Kdc": ["(solo a nivel de proyecto)"],
     "fRVBiq": [
       "Añade telemetría, estado del servidor e información de ejecución cuando está disponible. Las credenciales siempre se eliminan; los nombres de documento, si se incluyen, aparecen en texto plano (sin ocultar)."
@@ -3313,6 +3336,7 @@
     "fwrPh4": ["Escribe un correo válido."],
     "fxJk_6": ["<0>¿Tienes algo más que añadir?</0> Escribe a <1/> y menciona tu referencia."],
     "fxbCNQ": ["Sincronizado. El enlace está al día."],
+    "g-dkjJ": ["Los detalles de los archivos locales aún no están disponibles."],
     "g12y1g": ["YAML no válido"],
     "g1ZTh_": [
       [
@@ -3411,6 +3435,7 @@
     "gmJ0An": ["No se pudo abrir la carpeta."],
     "goO4Ll": ["Barra de estado del editor"],
     "gp3I7-": ["Antes de sincronizar, define tu identidad para los commits de git:"],
+    "gpbKxw": ["La validación de enlaces no está disponible."],
     "gqk-3R": ["Se movió ", ["0"], " a ", ["destination"], "."],
     "gtEbeW": ["Resaltado"],
     "gtGQ9S": ["Iniciar ", ["agentName"], ", ", ["hint"]],
@@ -3543,6 +3568,7 @@
     "iRdfLr": ["Instancia de desarrollo: ", ["label"]],
     "iSLIjg": ["Conectar"],
     "iSQTsg": ["Lista numerada"],
+    "iSWh95": ["El destino de la imagen «", ["shown"], "» no corresponde a un archivo existente."],
     "iSnkwB": ["No se pudo abrir el proyecto clonado."],
     "iTylMl": ["Plantillas"],
     "iUwpZI": ["Sin espacios: usa <0>-</0> en su lugar."],
@@ -3585,6 +3611,9 @@
       "El <0>type</0> que recibe cada documento creado a partir de esta plantilla (p. ej. <1>research-note</1>). Mantiene los documentos nuevos conformes al Open Knowledge Format."
     ],
     "iqIDv4": ["Estado de sincronización no disponible"],
+    "iqr14Z": [
+      "Cómo se notifican los documentos, archivos e imágenes locales del proyecto que faltan en Problemas, los diagnósticos del editor, las auditorías y las herramientas de agentes."
+    ],
     "iqugog": ["Falló la inicialización: ", ["errorDetail"]],
     "irFGwu": ["Lista de plantillas"],
     "irrm_E": ["Quitar la selección"],
@@ -3692,6 +3721,7 @@
     "kCqCyf": ["Abre el panel de diagnóstico de análisis de CodeMirror."],
     "kFLlsI": ["Inserta una referencia a nota al pie y su definición correspondiente."],
     "kGp168": ["No se pudo preparar este proyecto para publicarlo."],
+    "kI5pWt": ["No se encontró la imagen: ", ["errorLabel"]],
     "kKw0H3": [
       "Editaste esta habilidad en local y el origen tiene cambios nuevos. Aceptar la versión remota reemplaza la tuya; tus ediciones siguen recuperables en el historial de versiones."
     ],
@@ -3968,7 +3998,6 @@
     "nG-XA9": [
       "El texto anclado ha desaparecido. Puedes volver a colocarlo sobre el texto seleccionado."
     ],
-    "nL-HHD": ["No se pudo cargar la imagen"],
     "nMSYz5": [
       "Esta ruta está en un volumen externo (/Volumes/...). OpenKnowledge perderá la pista de los archivos cuando se expulse la unidad."
     ],
@@ -4111,6 +4140,7 @@
     "pFRz_E": ["Dejar estos comentarios fuera de este mensaje"],
     "pFagOn": ["Edición de código"],
     "pHYP6v": ["Abre <0>Personalizar</0> en la barra lateral <1/> <2>Habilidades</2>."],
+    "pJ7XCo": ["Esta página no hace referencia a ningún archivo o imagen local."],
     "pOo4Aa": ["Texto sin formato"],
     "pSimwP": ["Nombre nuevo para la versión de ", ["editor"]],
     "pTPqMK": ["Activa o desactiva un bloque de código delimitado."],
@@ -4247,7 +4277,6 @@
     "qjHMHf": ["No se pudo desactivar la sincronización — ", ["detail"]],
     "qkqG0b": ["Aceptar la versión remota"],
     "qlAIQ1": ["Remoto"],
-    "qlnfTD": ["No se pudo cargar la imagen: ", ["errorLabel"]],
     "qmL1UG": ["Subiendo de forma segura"],
     "qo4zCg": ["La ruta no puede contener barras invertidas"],
     "qpQwGC": ["Describe en qué estás trabajando y el agente te lo prepara."],
@@ -4288,6 +4317,7 @@
     "rXz97P": ["Lista numerada de elementos."],
     "rZ9HZq": ["Por hacer"],
     "rZVMkf": ["Campo de reemplazo del editor visual enfocado"],
+    "radOpL": ["Imagen ", ["identity"], ". Ir a la referencia."],
     "rageVb": ["HTML personalizado con panel de vista previa en vivo (iframe aislado)."],
     "rbrHTd": ["Aprobado — ", ["optionName"]],
     "rcJmK8": ["Convertir las ubicaciones en copias"],
@@ -4468,6 +4498,7 @@
       ["trashNoun"],
       ". ¿Quieres eliminarlo permanentemente?"
     ],
+    "txUHO8": [["localizedMessage"], " en la línea ", ["displayLine"]],
     "tzGWeg": ["Preparando la desinstalación de OpenKnowledge"],
     "tzZ6ha": ["Conectar con GitHub Enterprise Server"],
     "u-9fWA": ["Consulta <0>Arquitectura</0> para ver una visión general del sistema."],
@@ -4490,7 +4521,6 @@
     "uCaIdy": [
       "Falta la sesión de GitHub o ha caducado. Vuelve a conectarte para reanudar la sincronización."
     ],
-    "uCe4AX": [["0"], " en la línea ", ["displayLine"]],
     "uDlyqd": [
       "Documenta la arquitectura de este repositorio: crea una página general que enlace a una página por cada módulo principal describiendo sus responsabilidades y sus puntos de entrada."
     ],
@@ -4592,6 +4622,7 @@
     "vPEyDz": ["Transcripción del agente"],
     "vPF04k": ["Empezar un chat nuevo"],
     "vPKX2i": ["En la aplicación (beta)"],
+    "vPLUCm": ["Falta la imagen ", ["identity"], ". Ir a la referencia."],
     "vPXOUw": ["Mostrar u ocultar la vista de código"],
     "vQIVHc": ["Propiedades de la carpeta"],
     "vWc9a0": ["Escribe para editar; <0>⌘ Intro</0> guarda, <1>Esc</1> cancela."],
@@ -4785,6 +4816,7 @@
     "xxRpzT": ["Slidev encontrado en tu sistema."],
     "xzAmL_": ["Aprobado automáticamente"],
     "xzktOa": ["Editar el enlace wiki"],
+    "y-LQPF": ["No se puede resolver la imagen ", ["identity"], ". Ir a la referencia."],
     "y1eoq1": ["Copiar enlace"],
     "y1t8bQ": ["Secciones de ajustes"],
     "y3aU20": ["Guardar los cambios"],

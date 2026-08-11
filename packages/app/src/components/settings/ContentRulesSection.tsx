@@ -71,8 +71,8 @@ export function ContentRulesSection() {
               className="text-1sm text-muted-foreground"
             >
               <Trans>
-                How unresolved wiki-links are reported in the Problems panel, audits, and agent
-                tools.
+                How missing project-local documents, files, and images are reported in Problems,
+                editor diagnostics, audits, and agent tools.
               </Trans>
             </p>
           </div>

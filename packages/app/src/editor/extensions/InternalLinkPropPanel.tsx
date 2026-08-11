@@ -72,6 +72,7 @@ import { useInternalDocPreview } from '../link-preview/use-internal-doc-preview.
 import { isSafeNavigationUrl } from '../safe-navigation-url';
 import { CopyButton } from './LinkPropPanelCopy';
 import { consumePendingLinkEdit } from './link-edit-autoopen';
+import { isResolvedAssetHref } from './link-resolution';
 import { getCurrentMarkInfo } from './mark-interaction-bridge';
 import { useHeadings } from './use-headings';
 import { isResolvedWikiLinkTarget } from './wiki-link-helpers';
@@ -353,6 +354,9 @@ export function InternalLinkPropPanel({
 }: InternalLinkPropPanelProps) {
   const info = getCurrentMarkInfo(editor.state, nodeId);
   const href = (info?.attrs?.href as string | undefined) ?? '';
+  const linkStyle = info?.attrs?.linkStyle;
+  const canEditDestination =
+    linkStyle !== 'full' && linkStyle !== 'collapsed' && linkStyle !== 'shortcut';
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -367,21 +371,44 @@ export function InternalLinkPropPanel({
     if (consumePendingLinkEdit(nodeId)) setEditDialogOpen(true);
   }, [nodeId]);
 
-  const { addPage, folderPaths, pages, loading } = usePageList();
+  const {
+    addPage,
+    assetPaths,
+    filePaths,
+    folderPaths,
+    pages,
+    pagesBySlug,
+    pagesByBasename,
+    loading,
+  } = usePageList();
   const { t } = useLingui();
 
   // Classify + resolve the target before the early-return guards so the
   // doc-preview hook is called unconditionally (Rules of Hooks). The card only
   // renders for a resolved doc target; every other kind leaves the pill as-is.
   const target = href ? classifyMarkdownHref(href, sourceDocName) : null;
+  // An extension-less href with no document identity can still name an existing
+  // ordinary file, and the server's classifier settles that with exact
+  // inventory membership. Without the same check the card offers Create page
+  // over a file that is right there on disk — and the chip beside it, which
+  // does consult the tracked-file sets, renders resolved at the same moment.
+  const namesTrackedFile =
+    target?.kind === 'doc' && isResolvedAssetHref(href, sourceDocName, assetPaths, filePaths);
   const docIntent =
-    target?.kind === 'doc' ? resolveLinkTargetIntent(target.docName, { pages, folderPaths }) : null;
+    target?.kind === 'doc' && !namesTrackedFile
+      ? resolveLinkTargetIntent(target.docName, {
+          pages,
+          folderPaths,
+          pagesBySlug,
+          pagesByBasename,
+        })
+      : null;
   const docPreview = useInternalDocPreview({
     docName:
       target?.kind === 'doc' &&
       docIntent?.kind === 'navigate' &&
       docIntent.displayState === 'resolved'
-        ? target.docName
+        ? docIntent.hashDocName
         : null,
     anchor: target?.kind === 'doc' ? target.anchor : null,
     enabled: true,
@@ -459,7 +486,7 @@ export function InternalLinkPropPanel({
     onClose();
   }
 
-  const editDialog = (
+  const editDialog = canEditDestination ? (
     <EditMarkdownLinkDialog
       open={editDialogOpen}
       href={href}
@@ -470,7 +497,7 @@ export function InternalLinkPropPanel({
       onOpenChange={href ? setEditDialogOpen : handleEmptyHrefDialogOpenChange}
       onSave={handleSave}
     />
-  );
+  ) : null;
 
   if (!href) {
     return <>{editDialog}</>;
@@ -577,7 +604,10 @@ export function InternalLinkPropPanel({
   const isExternalLink = target?.kind === 'external';
   const linkHref =
     target?.kind === 'doc'
-      ? toInternalHashHref({ docName: target.docName, anchor: target.anchor })
+      ? toInternalHashHref({
+          docName: docIntent?.kind === 'navigate' ? docIntent.hashDocName : target.docName,
+          anchor: target.anchor,
+        })
       : target?.kind === 'anchor'
         ? toInternalHashHref({ docName: sourceDocName, anchor: target.anchor })
         : target?.kind === 'external' && isSafeNavigationUrl(target.url)
@@ -704,23 +734,25 @@ export function InternalLinkPropPanel({
                 {isCreating ? <Trans>Creating...</Trans> : <Trans>Create page</Trans>}
               </Button>
             ) : null}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={t`Edit`}
-                  onClick={() => setEditDialogOpen(true)}
-                  data-slot="internal-link-prop-panel-edit"
-                >
-                  <Pencil className="size-3.5" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <Trans>Edit</Trans>
-              </TooltipContent>
-            </Tooltip>
+            {canEditDestination ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t`Edit`}
+                    onClick={() => setEditDialogOpen(true)}
+                    data-slot="internal-link-prop-panel-edit"
+                  >
+                    <Pencil className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <Trans>Edit</Trans>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             <CopyButton copyContent={href} />
             <Tooltip>
               <TooltipTrigger asChild>

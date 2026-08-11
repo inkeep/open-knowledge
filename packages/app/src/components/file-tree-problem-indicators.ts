@@ -78,7 +78,7 @@ export function applyProblemIndicators(
     if (row.getAttribute(OK_PROBLEM_ROW_ATTR) !== severity) {
       row.setAttribute(OK_PROBLEM_ROW_ATTR, severity);
     }
-    upsertProblemBadge(row, entry.errorCount + entry.warningCount);
+    upsertProblemBadge(row, entry);
   }
 }
 
@@ -93,13 +93,21 @@ function clearProblemIndicators(row: HTMLElement): void {
  * extension badge already in that position so the order reads
  * `[label] [decoration?] [EXT?] [count] [action ···]`.
  */
-function upsertProblemBadge(row: HTMLElement, total: number): void {
+function problemBadgeLabel(counts: DocProblemCounts): string {
+  const total = counts.errorCount + counts.warningCount;
+  const problems = total === 1 ? 'problem' : 'problems';
+  const errors = counts.errorCount === 1 ? 'error' : 'errors';
+  const warnings = counts.warningCount === 1 ? 'warning' : 'warnings';
+  return `${total} ${problems}: ${counts.errorCount} ${errors}, ${counts.warningCount} ${warnings}`;
+}
+
+function upsertProblemBadge(row: HTMLElement, counts: DocProblemCounts): void {
+  const total = counts.errorCount + counts.warningCount;
   const label = total > 99 ? '99+' : String(total);
   let badge = row.querySelector<HTMLSpanElement>(`[${OK_PROBLEM_BADGE_ATTR}]`);
   if (!badge) {
     badge = row.ownerDocument.createElement('span');
     badge.setAttribute(OK_PROBLEM_BADGE_ATTR, '');
-    badge.setAttribute('aria-hidden', 'true');
     const actionSection = row.querySelector('[data-item-section="action"]');
     if (actionSection) {
       actionSection.before(badge);
@@ -108,4 +116,8 @@ function upsertProblemBadge(row: HTMLElement, total: number): void {
     }
   }
   if (badge.textContent !== label) badge.textContent = label;
+  const accessibleLabel = problemBadgeLabel(counts);
+  if (badge.getAttribute('aria-label') !== accessibleLabel) {
+    badge.setAttribute('aria-label', accessibleLabel);
+  }
 }

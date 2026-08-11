@@ -275,6 +275,38 @@ export const RenderWarningSchema = z
 export type RenderWarning = z.infer<typeof RenderWarningSchema>;
 
 /**
+ * Wire mirror of core's `LocalTargetDiagnosticEvidence` (markdown/lint/types.ts):
+ * additive evidence carried on a broken local-target finding — the authored
+ * href, what it resolves to, the target kind (document/file/unknown), occurrence
+ * role (link/image), authored syntax family, failure reason, resolution method,
+ * and a reference-style definition pointer. One schema so write advisories, the
+ * audit plane, and lint-violation advisories describe a local target identically.
+ *
+ * Enum-shaped fields are `z.string()` (open enums), not `z.enum`, deliberately:
+ * a server that learns a new kind/reason/form must not fail an older client's
+ * parse. The runtime object carries the precise union value; the loose wire
+ * passes it through. `reason` reuses the `no-such-doc | no-such-file |
+ * unresolvable` vocabulary above without pinning the wire to it.
+ */
+export const LocalTargetDiagnosticEvidenceSchema = z
+  .object({
+    href: z.string(),
+    targetKind: z.string(),
+    role: z.string(),
+    sourceForm: z.string(),
+    resolvedTarget: z.string().nullable(),
+    reason: z.string(),
+    resolutionMethod: z.string(),
+    fallbackTarget: z.string().nullable().optional(),
+    definition: z
+      .object({ line: z.number().int().nonnegative(), label: z.string() })
+      .loose()
+      .optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalTargetDiagnosticEvidenceWire = z.infer<typeof LocalTargetDiagnosticEvidenceSchema>;
+
+/**
  * A content-rule violation on the post-write document — the full validation
  * plane: markdown-lint findings AND broken internal links. Strictly advisory —
  * the write always lands (storage never gates on rules). Emitted by
@@ -298,6 +330,12 @@ export const LintViolationWarningSchema = z
     column: z.number().int().positive(),
     /** `links` findings only: the unresolved target docName, verbatim. */
     linkTarget: z.string().optional(),
+    /**
+     * `links` findings on a project-local file/image/reference target: the same
+     * additive evidence the audit plane carries. Absent on markdownlint findings
+     * and on document dead-links that flow from the graph.
+     */
+    localTarget: LocalTargetDiagnosticEvidenceSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type LintViolationWarning = z.infer<typeof LintViolationWarningSchema>;
@@ -370,6 +408,13 @@ export const BrokenLinkSchema = z
     href: z.string(),
     resolvedTo: z.string().nullable(),
     reason: z.enum(BROKEN_LINK_REASONS),
+    /**
+     * Additive local-target evidence, matching what scoped audit reports for the
+     * same occurrence — carried for the forms the graph-only `{href, resolvedTo,
+     * reason}` triple cannot describe (images, reference-style targets). Absent
+     * on plain document/wiki links, whose triple already fully describes them.
+     */
+    localTarget: LocalTargetDiagnosticEvidenceSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type BrokenLink = z.infer<typeof BrokenLinkSchema>;

@@ -1,3 +1,4 @@
+
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { LintDiagnostic } from './types.ts';
 
@@ -111,6 +112,11 @@ export type {
   LintRange,
   LintSeverity,
   LintTextEdit,
+  LocalTargetDiagnosticEvidence,
+  LocalTargetKind,
+  LocalTargetResolutionMethod,
+  LocalTargetRole,
+  LocalTargetSourceForm,
   MarkdownlintRuleSetting,
   MarkdownlintRuleSeverity,
   MarkdownlintRuleWriteValue,

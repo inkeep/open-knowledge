@@ -115,7 +115,8 @@ export function DocPanel({
   // The doc's broken-link findings ride the SAME scoped audit predicate the
   // project audit runs (one canonical determination); lint stays on the live
   // CRDT read above, which is fresher than the audit's walk.
-  const linkFindings = useDocLinkFindings(docName);
+  const linkFindingsState = useDocLinkFindings(docName);
+  const linkFindings = linkFindingsState.findings;
   const diagnostics = [...lintDiagnostics, ...linkFindings];
   // Freshness trigger 2: the open doc's shared-store entry tracks its own live
   // counts (lint off the CRDT debounce, links off the scoped audit fetch) so
@@ -128,9 +129,9 @@ export function DocPanel({
     patchDocValidationSource(docName, 'lint', countsOf(lintDiagnostics));
   }, [docName, lintProvider, lintDiagnostics]);
   useEffect(() => {
-    if (lintProvider === null) return;
+    if (lintProvider === null || linkFindingsState.status !== 'loaded') return;
     patchDocValidationSource(docName, 'links', countsOf(linkFindings));
-  }, [docName, lintProvider, linkFindings]);
+  }, [docName, lintProvider, linkFindings, linkFindingsState.status]);
   // Apply a diagnostic's auto-fix to the source CRDT. `lintProvider` is the
   // active provider only when it matches this doc, so a fix always targets the
   // document the user is viewing.
@@ -274,6 +275,7 @@ export function DocPanel({
             <ProblemsPanel
               docName={docName}
               diagnostics={diagnostics}
+              linkFindingsStatus={linkFindingsState.status}
               onFix={lintProvider !== null ? handleFix : undefined}
               onAutoFix={lintProvider !== null ? handleAutoFix : undefined}
               onAskAi={lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined}

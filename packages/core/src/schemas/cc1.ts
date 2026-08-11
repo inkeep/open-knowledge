@@ -96,6 +96,13 @@ export const CC1_CHANNEL_CONFIG_IGNORE_NESTED_ERROR = 'config-ignore-nested-erro
  * `.ok/config.yml` + native/schema files fresh from disk, so clients must
  * refetch when the persisted bytes change — a moment the config CRDT
  * observers fire BEFORE (persistence debounce), not at.
+ *
+ * `local-targets` invalidates project-local file/image target assessments:
+ * a source edit or a document/ordinary-file create/delete/rename reassessed
+ * some sources' local-target findings, so consumers refetch the assessment
+ * projection. Distinct from `backlinks` (document relationship graph) and
+ * `files` (raw file list) so a file mutation that only heals a `[x](y.pdf)`
+ * finding does not force a graph or listing refetch.
  */
 export const DerivedViewChannelSchema = z.enum([
   'files',
@@ -106,6 +113,7 @@ export const DerivedViewChannelSchema = z.enum([
   'tags',
   'comments',
   'lint-config',
+  'local-targets',
 ]);
 export type DerivedViewChannel = z.infer<typeof DerivedViewChannelSchema>;
 

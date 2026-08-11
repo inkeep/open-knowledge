@@ -56,6 +56,7 @@ import {
   createHandlePaste,
 } from './clipboard/index.ts';
 import { useDocumentContext } from './DocumentContext';
+import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';
 import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
@@ -385,14 +386,21 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
   const { collaboration, guard } = buildPrewarmBoundCollaboration(provider, prebuiltMapping);
   return [
     // Configure docName-aware extensions before construction. Link extensions
-    // use it for resolved/folder/unresolved states; jsxComponent uses it to
-    // normalize doc-relative media src values while rendering raw JSX/MDX.
+    // use it for resolved/folder/unresolved states; render-time media nodes use
+    // it to normalize doc-relative src values on their initial render.
     ...sharedExtensions.map((ext) => {
-      if (ext.name === 'link' || ext.name === 'wikiLink' || ext.name === 'jsxComponent') {
+      if (
+        ext.name === 'link' ||
+        ext.name === 'wikiLink' ||
+        ext.name === 'jsxComponent' ||
+        ext.name === 'jsxInline' ||
+        ext.name === 'imageReference'
+      ) {
         return ext.configure({ docName: provider.configuration.name ?? '' });
       }
       return ext;
     }),
+    createBareHtmlImageDecoration(provider.configuration.name ?? ''),
     Placeholder.configure({
       // A getter, not a string: extensions are built once at editor
       // construction, so a resolved string would pin the placeholder to

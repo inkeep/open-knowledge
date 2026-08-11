@@ -102,6 +102,27 @@ function deadLinkError(line: number, target: string) {
   };
 }
 
+// A local-target (image) finding as the links validator emits it: the graph
+// triple plus additive `localTarget` evidence and an image-specific message.
+function deadImageWarning(line: number, href: string, resolved: string) {
+  return {
+    range: { start: { line, character: 0 }, end: { line, character: 0 } },
+    severity: 'warning',
+    source: 'links',
+    code: 'dead-link',
+    message: `Image target "${href}" does not resolve to an existing file.`,
+    localTarget: {
+      href,
+      targetKind: 'file',
+      role: 'image',
+      sourceForm: 'markdown-inline',
+      resolvedTarget: resolved,
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+    },
+  };
+}
+
 function auditPayloadOf(fileCount: number, diagnosticsPerFile: number) {
   const files = Array.from({ length: fileCount }, (_, i) => ({
     file: `doc-${String(i).padStart(2, '0')}.md`,
@@ -153,6 +174,21 @@ beforeAll(async () => {
             errorCount: 0,
             warningCount: 0,
             warnings: ['links validation unavailable: backlink index is not configured'],
+          });
+        }
+        if (path === 'local-targets') {
+          return Response.json({
+            ok: true,
+            files: [
+              {
+                file: 'notes/pics.md',
+                diagnostics: [deadImageWarning(3, './logo.png', 'assets/logo.png')],
+              },
+            ],
+            fileCount: 1,
+            errorCount: 0,
+            warningCount: 1,
+            warnings: [],
           });
         }
         if (path === 'problems-and-warnings') {
@@ -270,6 +306,30 @@ describe('audit — unified project audit', () => {
     // Text output displays 1-based lines from the 0-based wire range.
     expect(text).toContain('line 10');
     expect(text).toContain('"ghost"');
+  });
+
+  test('preserves local-target evidence in structured output; text message stays intelligible', async () => {
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl, tmpDir));
+    const result = await getTool().handler({ path: 'local-targets' });
+    const s = result.structuredContent as {
+      files: Array<{ diagnostics: Array<{ localTarget?: Record<string, unknown> }> }>;
+    };
+    // The additive evidence survives the MCP structured channel verbatim.
+    expect(s.files[0]?.diagnostics[0]?.localTarget).toEqual({
+      href: './logo.png',
+      targetKind: 'file',
+      role: 'image',
+      sourceForm: 'markdown-inline',
+      resolvedTarget: 'assets/logo.png',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+    });
+    // The human-facing text distinguishes an image-file break from a doc link
+    // without relying on the structured evidence.
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain('Image target "./logo.png" does not resolve to an existing file');
+    expect(text).toContain('links/dead-link');
   });
 
   test('passes a sub-path scope through to the audit endpoint', async () => {

@@ -37,8 +37,9 @@ import { toDesktopAssetHref } from '@inkeep/open-knowledge-core';
 import type { ImgHTMLAttributes } from 'react';
 import Zoom from 'react-medium-image-zoom';
 import { LoadingImage } from '@/components/ui/loading-image';
+import { useImageTargetExistence } from './image-target-existence';
 
-interface ImageProps {
+export interface ImageProps {
   src?: string;
   alt?: string;
   width?: number | string;
@@ -71,7 +72,12 @@ function coerceDimension(value: number | string | undefined): number | string | 
  * without document reflow. Translates lowercase HTML-attr names to React's
  * camelCase at this JSX boundary.
  */
-function BareImg(props: ImageProps) {
+export function BareImg(props: ImageProps) {
+  // Classify against the project inventory on the pre-desktop-href src (the
+  // normalized server-absolute form) so a proven-absent target renders "Image
+  // not found" while a present one that fails to decode reads "couldn't be
+  // displayed" — and either heals as the target is created/deleted on disk.
+  const targetExistence = useImageTargetExistence(props.src);
   return (
     <LoadingImage
       src={props.src === undefined ? undefined : toDesktopAssetHref(props.src)}
@@ -86,6 +92,7 @@ function BareImg(props: ImageProps) {
       fetchPriority={props.fetchpriority}
       crossOrigin={props.crossorigin}
       referrerPolicy={props.referrerpolicy}
+      targetExistence={targetExistence}
     />
   );
 }

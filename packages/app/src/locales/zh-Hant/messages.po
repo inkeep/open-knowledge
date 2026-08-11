@@ -265,11 +265,6 @@ msgstr "{0} 不經詢問即執行操作 — OpenKnowledge 無法為其加入權�
 msgid "{0} added, {1} removed"
 msgstr "新增 {0} 項，移除 {1} 項"
 
-#. placeholder {0}: diagnostic.message
-#: src/components/ProblemsPanel.tsx
-msgid "{0} at line {displayLine}"
-msgstr "{0}，第 {displayLine} 行"
-
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
@@ -688,6 +683,10 @@ msgstr "{linkCount, plural, other {# 個連結}}"
 #: src/components/settings/TemplatesManagerSection.tsx
 msgid "{loadErrorTitle}: {message}"
 msgstr "{loadErrorTitle}：{message}"
+
+#: src/components/ProblemsPanel.tsx
+msgid "{localizedMessage} at line {displayLine}"
+msgstr "第 {displayLine} 行：{localizedMessage}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -2207,6 +2206,10 @@ msgstr "正在 GitHub 上檢查更新"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "正在檢查 GitHub 連線…"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Checking links"
+msgstr "正在檢查連結"
 
 #: src/components/CloneDialog.tsx
 msgid "Checking out files"
@@ -5057,6 +5060,10 @@ msgstr "載入標題失敗"
 msgid "Failed to load hub pages"
 msgstr "載入樞紐頁面失敗"
 
+#: src/components/LinksPanel.tsx
+msgid "Failed to load local files"
+msgstr "載入本機檔案失敗"
+
 #: src/components/GraphPanel.tsx
 msgid "Failed to load orphan pages"
 msgstr "載入孤立頁面失敗"
@@ -5283,6 +5290,10 @@ msgstr "欄位"
 #: src/lib/native-menu-catalog.ts
 msgid "File"
 msgstr "檔案"
+
+#: src/components/LinksPanel.tsx
+msgid "File {identity}. Go to reference."
+msgstr "檔案 {identity}。前往引用位置。"
 
 #: src/components/FileTree.tsx
 msgid "File already exists"
@@ -6034,6 +6045,10 @@ msgstr "你覺得 OpenKnowledge 如何？"
 msgid "How does sharing work?"
 msgstr "分享是怎麼運作的？"
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
+msgstr "如何在「問題」、編輯器診斷、稽核和代理工具中報告缺少的專案本機文件、檔案和影像。"
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "如何手動推送"
@@ -6050,10 +6065,6 @@ msgstr "如何設定"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "如何設定 {0}（在瀏覽器中開啟）"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
-msgstr "未解析的維基連結會如何呈現在「問題」面板、稽核結果和代理工具中。"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
@@ -6110,13 +6121,33 @@ msgstr "忽略模式"
 msgid "Ignore patterns (raw text)"
 msgstr "忽略模式（純文字）"
 
-#: src/components/ui/loading-image.tsx
-msgid "Image failed to load"
-msgstr "圖片載入失敗"
+#: src/components/LinksPanel.tsx
+msgid "Image {identity}. Go to reference."
+msgstr "圖片 {identity}。前往引用位置。"
 
 #: src/components/ui/loading-image.tsx
-msgid "Image failed to load: {errorLabel}"
-msgstr "圖片載入失敗：{errorLabel}"
+msgid "Image couldn't be displayed"
+msgstr "無法顯示圖片"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image couldn't be displayed: {errorLabel}"
+msgstr "無法顯示圖片：{errorLabel}"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found"
+msgstr "找不到圖片"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image not found: {errorLabel}"
+msgstr "找不到圖片：{errorLabel}"
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" could not be resolved to a project-local file."
+msgstr "無法將圖片目標「{shown}」解析為專案本機檔案。"
+
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" does not resolve to an existing file."
+msgstr "圖片目標「{shown}」未指向現有檔案。"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -6717,6 +6748,18 @@ msgstr "連結已備妥，但無法複製到剪貼簿。"
 msgid "Link target"
 msgstr "連結目標"
 
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" could not be resolved to a project-local target."
+msgstr "無法將連結目標「{shown}」解析為專案本機目標。"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing document."
+msgstr "連結目標「{shown}」未指向現有文件。"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" does not resolve to an existing file."
+msgstr "連結目標「{shown}」未指向現有檔案。"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "為選取的文字加上連結，或編輯游標處的連結。"
@@ -6728,6 +6771,14 @@ msgstr "連到某個頁面或外部 URL。"
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Link URL"
 msgstr "連結 URL"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable."
+msgstr "連結驗證無法使用。"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Link validation is unavailable. Showing last known problems."
+msgstr "連結驗證無法使用。正在顯示上次已知的問題。"
 
 #: src/components/GraphView.tsx
 msgid "Link-graph response did not match expected shape."
@@ -6925,6 +6976,14 @@ msgstr "無法清除「{docName}」的本機協作資料。請重新載入後再
 msgid "Local commits are keeping this copy from updating"
 msgstr "本機的提交讓這份副本無法更新"
 
+#: src/components/LinksPanel.tsx
+msgid "Local file details aren't available yet."
+msgstr "本機檔案詳情尚無法使用。"
+
+#: src/components/LinksPanel.tsx
+msgid "Local files"
+msgstr "本機檔案"
+
 #: src/components/CloneDialog.tsx
 msgid "Local path"
 msgstr "本機路徑"
@@ -7101,9 +7160,21 @@ msgstr "鏡像來源 <0>{label}</0>"
 msgid "Mirror source <0>api-spec</0>"
 msgstr "鏡像來源 <0>api-spec</0>"
 
+#: src/components/LinksPanel.tsx
+msgid "Missing"
+msgstr "缺失"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "缺少某個功能"
+
+#: src/components/LinksPanel.tsx
+msgid "Missing file {identity}. Go to reference."
+msgstr "檔案 {identity} 不存在。前往引用位置。"
+
+#: src/components/LinksPanel.tsx
+msgid "Missing image {identity}. Go to reference."
+msgstr "圖片 {identity} 不存在。前往引用位置。"
 
 #: src/components/LinksPanel.tsx
 msgid "Missing page — click to create"
@@ -8021,10 +8092,9 @@ msgstr "有編號的項目清單。"
 msgid "Object"
 msgstr "物件"
 
-#. placeholder {0}: first.message
 #: src/components/ProblemsPanel.tsx
-msgid "Occurrences of {0}"
-msgstr "{0} 出現的位置"
+msgid "Occurrences of {localizedFirstMessage}"
+msgstr "{localizedFirstMessage} 的出現位置"
 
 #. placeholder {0}: basenameOf(project.mainRoot ?? '')
 #: src/components/NavigatorApp.tsx
@@ -12329,6 +12399,10 @@ msgstr "這個頁面還不存在。開啟它就能在編輯器中建立這個頁
 msgid "This page doesn't link to anything yet."
 msgstr "這個頁面還沒有連到任何地方。"
 
+#: src/components/LinksPanel.tsx
+msgid "This page references no local files or images."
+msgstr "此頁面未引用任何本機檔案或圖片。"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
 msgstr "這個路徑在外接磁碟區（/Volumes/...）上。磁碟退出後，OpenKnowledge 會找不到這些檔案。"
@@ -12867,6 +12941,18 @@ msgstr "無法辨識的連結"
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Unrecognized wiki link"
 msgstr "無法辨識的維基連結"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable"
+msgstr "無法解析"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable file {identity}. Go to reference."
+msgstr "無法解析檔案 {identity}。前往引用位置。"
+
+#: src/components/LinksPanel.tsx
+msgid "Unresolvable image {identity}. Go to reference."
+msgstr "無法解析圖片 {identity}。前往引用位置。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

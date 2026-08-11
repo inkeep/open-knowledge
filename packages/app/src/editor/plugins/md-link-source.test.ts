@@ -1,5 +1,9 @@
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import {
+  resetLinkValidationPolicyForTest,
+  setLinkValidationVisible,
+} from '../link-validation-policy';
 import { buildPagesBySlugIndex, type PageListCacheSnapshot } from '../page-list-cache';
 import { markdownSourceLinkClass } from './md-link-source';
 
@@ -18,6 +22,8 @@ function makeCache(opts: {
 }
 
 describe('markdownSourceLinkClass', () => {
+  beforeEach(() => resetLinkValidationPolicyForTest());
+
   test('external URLs are not source-mode internal links', () => {
     expect(markdownSourceLinkClass('https://example.com', 'README', makeCache({}))).toBeNull();
     expect(markdownSourceLinkClass('//example.com/page', 'README', makeCache({}))).toBeNull();
@@ -30,6 +36,13 @@ describe('markdownSourceLinkClass', () => {
   test('missing root-absolute docs use the broken class after cache warms', () => {
     expect(markdownSourceLinkClass('/not-existing', 'README', makeCache({ pages: [] }))).toBe(
       'cm-md-internal-link cm-md-link-broken',
+    );
+  });
+
+  test('validation.links off keeps a missing target navigable without broken styling', () => {
+    setLinkValidationVisible(false);
+    expect(markdownSourceLinkClass('/not-existing', 'README', makeCache({ pages: [] }))).toBe(
+      'cm-md-internal-link',
     );
   });
 

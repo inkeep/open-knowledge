@@ -28,7 +28,9 @@ import { Button } from '../../components/ui/button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { PropPanel } from '../components/PropPanel.tsx';
 import { getDescriptor } from '../registry/index.ts';
+import { getEditorDocName } from './doc-context.ts';
 import { extractPrimitiveProps, stableHash } from './JsxComponentView.tsx';
+import { normalizeDocRelativeMediaRenderProps } from './media-render-props.ts';
 
 export function JsxInlineView(viewProps: NodeViewProps) {
   const { node } = viewProps;
@@ -50,6 +52,7 @@ function RegisteredInlineView({
   selected,
   editor,
   getPos,
+  extension,
   name,
 }: NodeViewProps & { name: string }) {
   const descriptor = getDescriptor(name);
@@ -69,6 +72,16 @@ function RegisteredInlineView({
   if (typeof bodyText === 'string' && bodyText !== '') {
     (primitiveProps as Record<string, unknown>).children = bodyText;
   }
+  const configuredDocName = (extension.options as { docName?: unknown }).docName;
+  const sourceDocName =
+    typeof configuredDocName === 'string' && configuredDocName
+      ? configuredDocName
+      : getEditorDocName(editor);
+  const renderProps = normalizeDocRelativeMediaRenderProps(
+    descriptor.name,
+    primitiveProps,
+    sourceDocName,
+  );
   // `stableHash` sorts keys recursively so a props re-serialization that
   // reorders insertion order doesn't remount the ErrorBoundary mid-render.
   const resetKey = `${descriptor.name}::${stableHash(primitiveProps)}`;
@@ -136,7 +149,7 @@ function RegisteredInlineView({
                 <span className="text-xs font-mono text-destructive">[{name}]</span>
               )}
             >
-              <Component {...primitiveProps} />
+              <Component {...renderProps} />
             </ErrorBoundary>
           </span>
         </PopoverTrigger>

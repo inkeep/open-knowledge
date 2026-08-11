@@ -9,6 +9,7 @@ import {
   ForwardLinkDocEntrySchema,
   ForwardLinkEntrySchema,
   ForwardLinkExternalEntrySchema,
+  ForwardLinkLocalTargetSchema,
   ForwardLinksSuccessSchema,
   LinkGraphDocNodeSchema,
   LinkGraphEdgeSchema,
@@ -507,6 +508,140 @@ describe('ForwardLinkEntrySchema', () => {
   });
 });
 
+describe('ForwardLinkLocalTargetSchema', () => {
+  test('parses a missing-file row (link to an absent local file)', () => {
+    expect(
+      ForwardLinkLocalTargetSchema.safeParse({
+        role: 'link',
+        sourceForm: 'markdown-inline',
+        targetKind: 'file',
+        href: './report.pdf',
+        resolvedTarget: 'report.pdf',
+        status: 'missing',
+        reason: 'no-such-file',
+        resolutionMethod: 'source-relative',
+        fallbackTarget: null,
+        range: { start: 10, end: 32 },
+        line: 2,
+        column: 4,
+        definition: null,
+      }).success,
+    ).toBe(true);
+  });
+  test('parses a missing-image row (HTML img to an absent local image)', () => {
+    expect(
+      ForwardLinkLocalTargetSchema.safeParse({
+        role: 'image',
+        sourceForm: 'html-img',
+        targetKind: 'file',
+        href: './pic.png',
+        resolvedTarget: 'pic.png',
+        status: 'missing',
+        reason: 'no-such-file',
+        resolutionMethod: 'source-relative',
+        fallbackTarget: null,
+        range: { start: 0, end: 24 },
+        line: 0,
+        column: 0,
+        definition: null,
+      }).success,
+    ).toBe(true);
+  });
+  test('parses an exact (resolved) image row with a null reason', () => {
+    const result = ForwardLinkLocalTargetSchema.safeParse({
+      role: 'image',
+      sourceForm: 'markdown-inline',
+      targetKind: 'file',
+      href: './logo.svg',
+      resolvedTarget: 'logo.svg',
+      status: 'exact',
+      reason: null,
+      resolutionMethod: 'source-relative',
+      fallbackTarget: null,
+      range: { start: 5, end: 20 },
+      line: 1,
+      column: 5,
+      definition: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.reason).toBeNull();
+  });
+  test('parses a reference-style row carrying the shared definition pointer', () => {
+    const result = ForwardLinkLocalTargetSchema.safeParse({
+      role: 'link',
+      sourceForm: 'markdown-reference',
+      targetKind: 'file',
+      href: './data.csv',
+      resolvedTarget: 'data.csv',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+      fallbackTarget: null,
+      range: { start: 40, end: 49 },
+      line: 3,
+      column: 0,
+      definition: { label: 'data', line: 9 },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.definition).toEqual({ label: 'data', line: 9 });
+  });
+  test('defaults fallbackTarget and definition to null when omitted', () => {
+    const result = ForwardLinkLocalTargetSchema.safeParse({
+      role: 'link',
+      sourceForm: 'markdown-inline',
+      targetKind: 'file',
+      href: './a.pdf',
+      resolvedTarget: 'a.pdf',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolutionMethod: 'source-relative',
+      range: { start: 0, end: 8 },
+      line: 0,
+      column: 0,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.fallbackTarget).toBeNull();
+      expect(result.data.definition).toBeNull();
+    }
+  });
+  test('tolerates an unknown status/targetKind value (open enums — forward-compat)', () => {
+    // A client on an older schema must still parse a row whose server added a
+    // new status token later; the enums are deliberately open `z.string()`.
+    expect(
+      ForwardLinkLocalTargetSchema.safeParse({
+        role: 'link',
+        sourceForm: 'markdown-inline',
+        targetKind: 'future-kind',
+        href: './x',
+        resolvedTarget: null,
+        status: 'future-status',
+        reason: null,
+        resolutionMethod: 'none',
+        range: { start: 0, end: 2 },
+        line: 0,
+        column: 0,
+      }).success,
+    ).toBe(true);
+  });
+  test('rejects a row missing its source range', () => {
+    expect(
+      ForwardLinkLocalTargetSchema.safeParse({
+        role: 'link',
+        sourceForm: 'markdown-inline',
+        targetKind: 'file',
+        href: './x.pdf',
+        resolvedTarget: 'x.pdf',
+        status: 'missing',
+        reason: 'no-such-file',
+        resolutionMethod: 'source-relative',
+        line: 0,
+        column: 0,
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe('ForwardLinksSuccessSchema', () => {
   test('parses success body', () => {
     expect(
@@ -523,6 +658,45 @@ describe('ForwardLinksSuccessSchema', () => {
         ],
       }).success,
     ).toBe(true);
+  });
+  test('a legacy response without localTargets stays valid; the field is undefined', () => {
+    // Version skew: an older server omits the sibling collection entirely. The
+    // document/external union is untouched, so the response must still parse.
+    const result = ForwardLinksSuccessSchema.safeParse({
+      docName: 'alpha',
+      forwardLinks: [{ kind: 'doc', docName: 'beta', anchor: null, title: 'Beta', snippet: null }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.localTargets).toBeUndefined();
+  });
+  test('a current response carries localTargets alongside the forwardLinks union', () => {
+    const body = {
+      docName: 'alpha',
+      forwardLinks: [{ kind: 'doc', docName: 'beta', anchor: null, title: 'Beta', snippet: null }],
+      localTargets: [
+        {
+          role: 'image',
+          sourceForm: 'markdown-inline',
+          targetKind: 'file',
+          href: './missing.png',
+          resolvedTarget: 'missing.png',
+          status: 'missing',
+          reason: 'no-such-file',
+          resolutionMethod: 'source-relative',
+          fallbackTarget: null,
+          range: { start: 12, end: 40 },
+          line: 2,
+          column: 0,
+          definition: null,
+        },
+      ],
+    };
+    const result = ForwardLinksSuccessSchema.safeParse(body);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Fully-specified rows round-trip unchanged (defaults already applied).
+      expect(result.data).toEqual(body);
+    }
   });
 });
 

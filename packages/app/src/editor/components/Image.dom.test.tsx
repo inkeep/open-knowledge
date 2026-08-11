@@ -38,6 +38,25 @@ vi.doMock('react-medium-image-zoom', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// The project inventory that feeds target-existence classification is a
+// fetched-from-`/api/documents` boundary; stub it here (null = no provider, the
+// same "unknown" state a portal/renderToString render sees). Only the fields
+// the classifier reads are supplied.
+type StubPageList = { assetPaths: Set<string>; filePaths: Set<string>; loading: boolean };
+let currentPageList: StubPageList | null = null;
+vi.doMock('@/components/PageListContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/PageListContext')>();
+  return {
+    ...actual,
+    useOptionalPageList: () =>
+      currentPageList as unknown as ReturnType<typeof actual.useOptionalPageList>,
+  };
+});
+
+beforeEach(() => {
+  currentPageList = null;
+});
+
 const { Image } = await import('./Image');
 
 describe('Image — loading-state placeholder (PRD-6638)', () => {
@@ -161,7 +180,9 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     // DOM (hidden) so consumers can still inspect src.
     const overlay = slot.querySelector('[role="img"]');
     expect(overlay).not.toBeNull();
-    expect(overlay?.getAttribute('aria-label')).toBe('Image failed to load: /missing.png');
+    // No project inventory (currentPageList = null) → 'unknown' existence → a
+    // load failure reads as undisplayable, never claiming the target is absent.
+    expect(overlay?.getAttribute('aria-label')).toBe("Image couldn't be displayed: /missing.png");
     expect(slot.getAttribute('aria-hidden')).toBeNull();
     // Img stays mounted (hidden) so tests + walkers can still find its src.
     const img = slot.querySelector('img');
@@ -180,7 +201,7 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     fireEvent.error(container.querySelector('img') as HTMLImageElement);
     const slot = screen.getByTestId('image-slot');
     const overlay = slot.querySelector('[role="img"]');
-    expect(overlay?.getAttribute('aria-label')).toBe('Image failed to load: a cat photo');
+    expect(overlay?.getAttribute('aria-label')).toBe("Image couldn't be displayed: a cat photo");
     expect(slot.getAttribute('aria-hidden')).toBeNull();
     // Img stays mounted (hidden) in the alt-provided branch too, so DOM
     // inspectors can still find src regardless of alt shape.
@@ -211,7 +232,7 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     expect(screen.queryByTestId('image-loading-skeleton')).toBeNull();
     const slot = screen.getByTestId('image-slot');
     expect(slot.getAttribute('data-image-error')).toBe('true');
-    expect(slot.textContent).toContain('Image failed to load');
+    expect(slot.textContent).toContain("Image couldn't be displayed");
     expect(slot.textContent).toContain('/missing-asset.png');
     // Stays inline for phrasing-content compatibility with <p>.
     expect(slot.tagName).toBe('SPAN');
@@ -237,7 +258,7 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     const slot = screen.getByTestId('image-slot');
     const optOut = slot.querySelector('[data-clipboard-omit="true"]');
     expect(optOut).not.toBeNull();
-    expect(optOut?.textContent).toContain('Image failed to load');
+    expect(optOut?.textContent).toContain("Image couldn't be displayed");
     const img = slot.querySelector('img');
     expect(img?.getAttribute('data-clipboard-omit')).toBeNull();
   });
@@ -282,5 +303,81 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     // the recovery path can't silently regress.
     const imgAfterRecovery = screen.getByTestId('image-slot').querySelector('img');
     expect(imgAfterRecovery?.hasAttribute('hidden')).toBe(false);
+  });
+});
+
+describe('Image — target-existence wiring (PRD-7860)', () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  function seedInventory(assetPaths: string[], filePaths: string[] = []) {
+    currentPageList = {
+      assetPaths: new Set(assetPaths),
+      filePaths: new Set(filePaths),
+      loading: false,
+    };
+  }
+
+  test('a src the inventory does not contain renders "Image not found" with no load attempt', () => {
+    seedInventory(['images/present.png']);
+    render(<Image src="/images/ghost.png" alt="" />);
+
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error-kind')).toBe('not-found');
+    expect(slot.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+      'Image not found: /images/ghost.png',
+    );
+    // The authored src is still queryable on the hidden <img> for clipboard.
+    const img = slot.querySelector('img');
+    expect(img?.hasAttribute('hidden')).toBe(true);
+    expect(img?.getAttribute('src')).toBe('/images/ghost.png');
+  });
+
+  test('a tracked src that loads shows the image with no placeholder', () => {
+    seedInventory(['images/cat.png']);
+    const { container } = render(<Image src="/images/cat.png" alt="" />);
+    fireEvent.load(container.querySelector('img') as HTMLImageElement);
+
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error')).toBeNull();
+    expect(slot.querySelector('[role="img"]')).toBeNull();
+  });
+
+  test('a tracked src that fails to display says "couldn\'t be displayed", not missing', () => {
+    seedInventory(['images/cat.png']);
+    const { container } = render(<Image src="/images/cat.png" alt="" />);
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error-kind')).toBe('undisplayable');
+    expect(slot.querySelector('[role="img"]')?.textContent).toContain("couldn't be displayed");
+  });
+
+  test('creating the target on disk heals "not found" to a fresh load', () => {
+    seedInventory([]);
+    const { rerender } = render(<Image src="/images/created.png" alt="" />);
+    expect(screen.getByTestId('image-slot').getAttribute('data-image-error-kind')).toBe(
+      'not-found',
+    );
+
+    // Target lands on disk → the next `/api/documents` snapshot lists it →
+    // the oracle flips missing → exists on re-render.
+    seedInventory(['images/created.png']);
+    rerender(<Image src="/images/created.png" alt="" />);
+
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error')).toBeNull();
+    expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
   });
 });

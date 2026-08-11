@@ -34,6 +34,7 @@ import { FootnoteAnchorScroll } from './footnote-anchor-scroll';
 import { FormattingShortcuts } from './formatting-shortcuts';
 import { HeadingAnchors } from './heading-anchors';
 import { ImageInlineZoom } from './image-inline-zoom';
+import { ImageReference } from './image-reference';
 import { InternalLink } from './internal-link';
 import { JsxComponent } from './jsx-component';
 import { JsxInline } from './jsx-inline';
@@ -87,6 +88,7 @@ export const sharedExtensions = [
       const coreOptions = (ext as unknown as { options?: Record<string, unknown> }).options ?? {};
       return ImageInlineZoom.configure({ ...coreOptions, inline: true });
     }
+    if (ext.name === 'imageReference') return ImageReference;
     if (ext.name === 'rawMdxFallback') return RawMdxFallback;
     if (ext.name === 'wikiLink') return WikiLink;
     if (ext.name === 'wikiLinkEmbed') return WikiLinkEmbed;

@@ -469,6 +469,7 @@ export {
 export { HardBreakFidelity } from './extensions/hard-break-fidelity.ts';
 export { HeadingFidelity } from './extensions/heading-fidelity.ts';
 export { HtmlBlockFidelity } from './extensions/html-block-fidelity.ts';
+export { ImageReferenceFidelity } from './extensions/image-reference-fidelity.ts';
 export { ImageSrcFidelity } from './extensions/image-src-fidelity.ts';
 export { JsxComponent } from './extensions/jsx-component.ts';
 export { JsxInline } from './extensions/jsx-inline.ts';
@@ -676,6 +677,11 @@ export {
   type LintRange,
   type LintSeverity,
   type LintTextEdit,
+  type LocalTargetDiagnosticEvidence,
+  type LocalTargetKind,
+  type LocalTargetResolutionMethod,
+  type LocalTargetRole,
+  type LocalTargetSourceForm,
   lintDocument,
   MARKDOWNLINT_RULE_CATALOG,
   type MarkdownlintRuleSetting,
@@ -716,6 +722,14 @@ export {
   ZERO_SOURCE_COUNTS,
 } from './markdown/lint/index.ts';
 export { markdownToHtml, mdastToHtml } from './markdown/mdast-to-html.ts';
+export {
+  isNonRenderingRange,
+  type MaskableLine,
+  maskNonRenderingContextLines,
+  maskNonRenderingContexts,
+  skipInlineCode,
+} from './markdown/non-rendering-contexts.ts';
+export { normalizeReferenceLabel } from './markdown/reference-label.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
 export {
   isRelativeUrl,
@@ -924,6 +938,8 @@ export {
   ForwardLinkEntrySchema,
   type ForwardLinkExternalEntry,
   ForwardLinkExternalEntrySchema,
+  type ForwardLinkLocalTarget,
+  ForwardLinkLocalTargetSchema,
   type ForwardLinksSuccess,
   ForwardLinksSuccessSchema,
   type FrontmatterPatchRequest,
@@ -1002,6 +1018,8 @@ export {
   LocalOpOkInitRequestSchema,
   type LocalOpOkInitResponse,
   LocalOpOkInitResponseSchema,
+  LocalTargetDiagnosticEvidenceSchema,
+  type LocalTargetDiagnosticEvidenceWire,
   type MetricsAgentEffectsSuccess,
   MetricsAgentEffectsSuccessSchema,
   type MetricsAgentPresenceSuccess,

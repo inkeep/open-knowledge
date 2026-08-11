@@ -128,29 +128,30 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     const destroyServer = vi.fn(async () => {
       teardownOrder.push('server');
     });
+    const createServerSpy = vi.fn(() => ({
+      lockDir: testContentDir,
+      contentFilter: { isPathIgnored: () => false },
+      hocuspocus: {
+        hooks: async () => {},
+        getConnectionsCount: () => 0,
+        handleConnection: () => ({
+          handleMessage: () => {},
+          handleClose: () => {},
+        }),
+      },
+      sessionManager: { closeAllForAgent: async () => {} },
+      agentFocusBroadcaster: { clearFocus: () => {} },
+      agentPresenceBroadcaster: { clearPresence: () => {}, bumpPresenceTs: () => {} },
+      maintenanceCoordinator: {},
+      destroy: destroyServer,
+    }));
 
     vi.doMock('@inkeep/open-knowledge-server', () => ({
       ...actualServerPkg,
       AcpThreadManager: FakeAcpThreadManager,
       createAssetServeMiddleware: createAssetServeMiddlewareSpy,
       createCollaborationHost: createCollaborationHostSpy,
-      createServer: () => ({
-        lockDir: testContentDir,
-        contentFilter: { isPathIgnored: () => false },
-        hocuspocus: {
-          hooks: async () => {},
-          getConnectionsCount: () => 0,
-          handleConnection: () => ({
-            handleMessage: () => {},
-            handleClose: () => {},
-          }),
-        },
-        sessionManager: { closeAllForAgent: async () => {} },
-        agentFocusBroadcaster: { clearFocus: () => {} },
-        agentPresenceBroadcaster: { clearPresence: () => {}, bumpPresenceTs: () => {} },
-        maintenanceCoordinator: {},
-        destroy: destroyServer,
-      }),
+      createServer: createServerSpy,
       handleCollabSocketError: () => false,
       parseKeepaliveConnectionId: () => null,
       releaseServerLock: () => {},
@@ -186,6 +187,9 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
 
     // biome-ignore lint/suspicious/noExplicitAny: minimal Vite ViteDevServer stub for the structural assertion
     const result = await (plugin.configureServer as any).call(plugin, viteServerStub);
+
+    const createServerOptions = createServerSpy.mock.calls[0]?.[0];
+    expect(createServerOptions?.configHomedirOverride).toBe(createServerOptions?.contentDir);
 
     // No post-hook returned — both middlewares are registered synchronously.
     // (Returning a function would defer registration to AFTER Vite's internal

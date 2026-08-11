@@ -57,6 +57,7 @@ describe('ContentRulesSection', () => {
   test('defaults read as links=warning and indicators on, with the plugins pointer', () => {
     render(<ContentRulesSection />);
     expect(screen.getByTestId('settings-content-rules-links').textContent).toContain('Warning');
+    expect(screen.getByText(/missing project-local documents, files, and images/)).toBeTruthy();
     const toggle = screen.getByTestId('settings-content-rules-indicators');
     expect(toggle.getAttribute('data-state')).toBe('checked');
     expect(screen.getByTestId('settings-content-rules-plugins-note').textContent).toContain(
@@ -76,7 +77,10 @@ describe('ContentRulesSection', () => {
   test('both controls are described by their own row description', () => {
     render(<ContentRulesSection />);
     for (const [testId, expected] of [
-      ['settings-content-rules-links', 'How unresolved wiki-links are reported'],
+      [
+        'settings-content-rules-links',
+        'How missing project-local documents, files, and images are reported',
+      ],
       ['settings-content-rules-indicators', 'Tint and badge files'],
     ] as const) {
       expect(describedTextOf(testId)).toContain(expected);

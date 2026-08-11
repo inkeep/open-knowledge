@@ -14,11 +14,21 @@
  * `window.open`).
  */
 
+import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
 import { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { getInteractionLayer } from '../interaction-layer-host';
+import {
+  resetLinkValidationPolicyForTest,
+  setLinkValidationVisible,
+} from '../link-validation-policy';
+import {
+  __resetPageListCacheForTests,
+  buildPagesBySlugIndex,
+  setPageListCache,
+} from '../page-list-cache';
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { WikiLink } from './wiki-link';
 
@@ -49,6 +59,8 @@ const liveEditors = new Set<Editor>();
 afterEach(() => {
   for (const editor of liveEditors) editor.destroy();
   liveEditors.clear();
+  __resetPageListCacheForTests();
+  resetLinkValidationPolicyForTest();
   delete testWindow().okDesktop;
 });
 
@@ -91,6 +103,20 @@ function mountWithExternalWikiLink(url: string): {
   };
 }
 
+function mountWikiLink(target: string): { editor: Editor; chip: HTMLElement } {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const editor = new Editor({
+    element: host,
+    content: `<p><span data-wiki-link data-target="${target}"></span></p>`,
+    extensions: [StarterKit, WikiLink.configure({ docName: 'notes/test' })],
+  });
+  liveEditors.add(editor);
+  const chip = host.querySelector<HTMLElement>('[data-wiki-link]');
+  if (!chip) throw new Error('setup: no wiki-link chip');
+  return { editor, chip };
+}
+
 describe('WYSIWYG wiki-link external activation — desktop (bridge present)', () => {
   test('bare click routes to the OS browser via okDesktop.shell.openExternal, NOT window.open', () => {
     const url = 'https://youtube.com/watch?v=abc';
@@ -124,5 +150,25 @@ describe('WYSIWYG wiki-link external activation — web (no bridge)', () => {
     expect(handled).toBe(true);
     expect(openWindow).toHaveBeenCalledTimes(1);
     expect(openWindow).toHaveBeenCalledWith(url, '_blank', 'noopener,noreferrer');
+  });
+});
+
+describe('WYSIWYG wiki-link validation visibility', () => {
+  test('a missing chip repaints when validation visibility changes at runtime', () => {
+    const pages = new Set<string>();
+    setPageListCache({
+      pages,
+      folderPaths: new Set(),
+      assetPaths: new Set(),
+      filePaths: new Set(),
+      pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+    });
+    const { chip } = mountWikiLink('missing-page');
+
+    expect(chip.getAttribute('data-resolution-state')).toBe('unresolved');
+    setLinkValidationVisible(false);
+    expect(chip.hasAttribute('data-resolution-state')).toBe(false);
+    setLinkValidationVisible(true);
+    expect(chip.getAttribute('data-resolution-state')).toBe('unresolved');
   });
 });

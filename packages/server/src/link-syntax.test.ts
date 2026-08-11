@@ -5,9 +5,13 @@ import {
   extractWikiLinksFromMarkdown,
 } from './backlink-index.ts';
 import {
+  matchHtmlImgs,
   matchMarkdownLinks,
   matchWikiLinks,
+  readHtmlImgAt,
   readMarkdownLinkAt,
+  readMarkdownReferenceAt,
+  readReferenceDefinition,
   readWikiLinkAt,
 } from './link-syntax.ts';
 import { rewriteWikiLinksForDocumentRename } from './managed-rename-rewrite.ts';
@@ -227,6 +231,157 @@ describe('matchMarkdownLinks', () => {
       matchMarkdownLinks('[a [b] c](./x.md)', { nestedBracketLabels: true }).map((m) => m.href),
     ).toEqual(['./x.md']);
     expect(matchMarkdownLinks('[a [b] c](./x.md)').map((m) => m.href)).toEqual([]);
+  });
+});
+
+describe('readMarkdownReferenceAt', () => {
+  test('full reference carries the second-bracket label', () => {
+    expect(readMarkdownReferenceAt('[text][ref]', 0)).toMatchObject({
+      image: false,
+      label: 'text',
+      form: 'full',
+      referenceLabelRaw: 'ref',
+      start: 0,
+      end: 11,
+      labelEnd: 6,
+    });
+  });
+
+  test('collapsed reference reuses the label', () => {
+    expect(readMarkdownReferenceAt('[text][]', 0)).toMatchObject({
+      form: 'collapsed',
+      label: 'text',
+      referenceLabelRaw: 'text',
+      end: 8,
+      labelEnd: 6,
+    });
+  });
+
+  test('shortcut reference ends at the label', () => {
+    expect(readMarkdownReferenceAt('[text]', 0)).toMatchObject({
+      form: 'shortcut',
+      referenceLabelRaw: 'text',
+      end: 6,
+      labelEnd: 6,
+    });
+  });
+
+  test('image form at the ! position', () => {
+    expect(readMarkdownReferenceAt('![alt][ref]', 0)).toMatchObject({
+      image: true,
+      label: 'alt',
+      form: 'full',
+      referenceLabelRaw: 'ref',
+      labelEnd: 6,
+    });
+  });
+
+  test('a space between the brackets is a shortcut, not a full reference', () => {
+    expect(readMarkdownReferenceAt('[text] [ref]', 0)).toMatchObject({
+      form: 'shortcut',
+      end: 6,
+    });
+  });
+
+  test('unterminated label does not match', () => {
+    expect(readMarkdownReferenceAt('[text', 0)).toBeNull();
+  });
+
+  test('end always equals start + matched length (range fidelity)', () => {
+    for (const [input, matched] of [
+      ['[text][ref]', '[text][ref]'],
+      ['![alt][ref]', '![alt][ref]'],
+      ['[text][]', '[text][]'],
+      ['[text]', '[text]'],
+    ] as const) {
+      const m = readMarkdownReferenceAt(input, 0);
+      expect(m).not.toBeNull();
+      expect(input.slice(m?.start, m?.end)).toBe(matched);
+    }
+  });
+});
+
+describe('readReferenceDefinition', () => {
+  test('bare destination with the repair range bounding the destination token', () => {
+    const line = '[ref]: ./file.pdf';
+    const def = readReferenceDefinition(line);
+    expect(def).toMatchObject({ label: 'ref', destination: './file.pdf', titleSuffix: '' });
+    expect(line.slice(def?.destinationStart, def?.destinationEnd)).toBe('./file.pdf');
+  });
+
+  test('angle-wrapped destination admits spaces and unwraps', () => {
+    const line = '[ref]: <./my file.pdf> "title"';
+    const def = readReferenceDefinition(line);
+    expect(def).toMatchObject({ destination: './my file.pdf', titleSuffix: ' "title"' });
+    expect(line.slice(def?.destinationStart, def?.destinationEnd)).toBe('<./my file.pdf>');
+  });
+
+  test('up to three leading spaces are tolerated; the repair range still lands on the destination', () => {
+    const line = '   [ref]: ./file.pdf';
+    const def = readReferenceDefinition(line);
+    expect(line.slice(def?.destinationStart, def?.destinationEnd)).toBe('./file.pdf');
+  });
+
+  test('four leading spaces disqualify the definition (indented code)', () => {
+    expect(readReferenceDefinition('    [ref]: ./file.pdf')).toBeNull();
+  });
+
+  test('a non-definition line does not match', () => {
+    expect(readReferenceDefinition('see [ref] here')).toBeNull();
+    expect(readReferenceDefinition('[ref]: ./a ./b')).toBeNull();
+  });
+});
+
+describe('readHtmlImgAt / matchHtmlImgs', () => {
+  test('bare void form with a double-quoted src', () => {
+    expect(readHtmlImgAt('<img src="./photo.png">', 0)).toMatchObject({
+      src: './photo.png',
+      selfClosing: false,
+      start: 0,
+      end: 23,
+    });
+  });
+
+  test('self-closing form is flagged', () => {
+    expect(readHtmlImgAt('<img src="./photo.png" />', 0)).toMatchObject({
+      src: './photo.png',
+      selfClosing: true,
+    });
+  });
+
+  test('quoted attributes may contain src-like text and greater-than signs', () => {
+    expect(
+      readHtmlImgAt('<img alt="fake src=\'./wrong.png\' > still alt" src="./right.png">', 0),
+    ).toMatchObject({ src: './right.png' });
+  });
+
+  test('does not treat data-src, srcset, or quoted text as src', () => {
+    expect(readHtmlImgAt('<img data-src="./wrong.png" srcset="./also.png 2x">', 0)).toBeNull();
+  });
+
+  test('single-quoted and unquoted src values', () => {
+    expect(readHtmlImgAt("<img src='./a.png'>", 0)).toMatchObject({ src: './a.png' });
+    expect(readHtmlImgAt('<img src=./a.png>', 0)).toMatchObject({ src: './a.png' });
+  });
+
+  test('src after other attributes; data-src / srcset are not read as the source', () => {
+    expect(readHtmlImgAt('<img alt="x" src="./a.png">', 0)).toMatchObject({ src: './a.png' });
+    expect(readHtmlImgAt('<img data-src="./decoy.png" src="./real.png">', 0)).toMatchObject({
+      src: './real.png',
+    });
+    expect(readHtmlImgAt('<img srcset="./a.png 1x">', 0)).toBeNull();
+  });
+
+  test('non-img tags and img without src do not match', () => {
+    expect(readHtmlImgAt('<a href="./a.png">', 0)).toBeNull();
+    expect(readHtmlImgAt('<img alt="no source">', 0)).toBeNull();
+  });
+
+  test('scans every img on a line and preserves exact spans', () => {
+    const line = 'a <img src="./a.png"> b <img src="./b.png"/> c';
+    const matches = matchHtmlImgs(line);
+    expect(matches.map((m) => m.src)).toEqual(['./a.png', './b.png']);
+    for (const m of matches) expect(line.slice(m.start, m.end).startsWith('<img')).toBe(true);
   });
 });
 

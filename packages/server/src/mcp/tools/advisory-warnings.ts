@@ -73,9 +73,16 @@ export function formatBrokenLinkBrief(links: BrokenLink[]): string | null {
 }
 
 function formatBrokenLink(link: BrokenLink): string {
-  return link.resolvedTo
-    ? `${link.href} → ${link.resolvedTo} (${link.reason})`
-    : `${link.href} (${link.reason})`;
+  // An image reads as a different kind of break than a link; the plain triple
+  // can't say which, so surface the role when the evidence carries it.
+  const rolePrefix = link.localTarget?.role === 'image' ? 'image ' : '';
+  const base = link.resolvedTo
+    ? `${rolePrefix}${link.href} → ${link.resolvedTo} (${link.reason})`
+    : `${rolePrefix}${link.href} (${link.reason})`;
+  // A reference-style target is repaired at its shared definition, not at the
+  // use — point the agent there (definition line is 0-based; show it 1-based).
+  const def = link.localTarget?.definition;
+  return def ? `${base} — fix the [${def.label}] definition (line ${def.line + 1})` : base;
 }
 
 function integrityEntries(warnings: AdvisoryWarning[]): WriteWarning[] {

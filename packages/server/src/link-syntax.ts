@@ -53,6 +53,7 @@ const markdownPattern = (label: string, flags: string) =>
 const WIKI_AT_RE = wikiPattern('y');
 const WIKI_SCAN_RE = wikiPattern('g');
 const MD_AT_RE = markdownPattern(LABEL_STRICT_SOURCE, 'y');
+const MD_AT_NESTED_RE = markdownPattern(LABEL_NESTED_SOURCE, 'y');
 const MD_SCAN_STRICT_RE = markdownPattern(LABEL_STRICT_SOURCE, 'g');
 const MD_SCAN_NESTED_RE = markdownPattern(LABEL_NESTED_SOURCE, 'g');
 
@@ -142,9 +143,14 @@ export function readWikiLinkAt(line: string, start: number): WikiLinkMatch | nul
  * `![…](…)` at `start` is an image; `[…](…)` is a link — dispatch on
  * `.image` when the two forms need different handling.
  */
-export function readMarkdownLinkAt(line: string, start: number): MarkdownLinkMatch | null {
-  MD_AT_RE.lastIndex = start;
-  const match = MD_AT_RE.exec(line);
+export function readMarkdownLinkAt(
+  line: string,
+  start: number,
+  options?: MatchMarkdownLinksOptions,
+): MarkdownLinkMatch | null {
+  const pattern = options?.nestedBracketLabels ? MD_AT_NESTED_RE : MD_AT_RE;
+  pattern.lastIndex = start;
+  const match = pattern.exec(line);
   if (!match) return null;
   return toMarkdownLinkMatch(match, start);
 }
@@ -186,6 +192,231 @@ export function matchMarkdownLinks(
   const matches: MarkdownLinkMatch[] = [];
   for (const match of line.matchAll(scanRe)) {
     matches.push(toMarkdownLinkMatch(match, match.index));
+  }
+  return matches;
+}
+
+// Reference-style label: `[text][ref]` (full), `[text][]` (collapsed),
+// `[text]` (shortcut). Label + optional second bracket use the same strict
+// `[^\]]*` class as the inline label above, so recognition stays observationally
+// aligned with `readMarkdownLinkAt`. Whether a shortcut/collapsed form is a real
+// reference depends on a matching definition, which only the caller (holding the
+// whole-document definition table) can decide — this recognizer reports the
+// authored shape and leaves resolution to the caller.
+const MD_REFERENCE_SOURCE = String.raw`(!?)\[([^\]\n]*)\](?:\[([^\]\n]*)\])?`;
+const MD_REFERENCE_AT_RE = new RegExp(MD_REFERENCE_SOURCE, 'y');
+
+// A link reference definition line: up to 3 leading spaces, `[label]:`, a
+// destination (`<…>` admits spaces; the bare form runs to the first whitespace),
+// and an optional CommonMark title. Anchored to the whole line — definitions are
+// block-level and carry no other content. Group 1 captures the prefix so the
+// destination's offset is `prefix.length` without needing match indices.
+const REFERENCE_DEFINITION_RE =
+  /^( {0,3}\[([^\]\n]+)\]:[ \t]*)(<[^>\n]*>|[^\s\n]+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*)$/;
+
+type MarkdownReferenceForm = 'full' | 'collapsed' | 'shortcut';
+
+export interface MarkdownReferenceMatch {
+  /** True for the `![…][…]` image form. */
+  image: boolean;
+  /** Link text as authored (the first bracket's contents). */
+  label: string;
+  form: MarkdownReferenceForm;
+  /**
+   * Label to resolve against the definition table: the second bracket's
+   * contents for `full`, otherwise `label` (collapsed and shortcut reuse the
+   * text as the reference).
+   */
+  referenceLabelRaw: string;
+  start: number;
+  /** Index just past the whole form (through the second bracket for full/collapsed). */
+  end: number;
+  /** Index just past the label's closing `]` — where a shortcut form ends. */
+  labelEnd: number;
+}
+
+export interface ReferenceDefinitionMatch {
+  /** Definition label as authored (untrimmed, not case-folded). */
+  label: string;
+  /** Destination as authored, including any `<…>` wrapper. */
+  destinationRaw: string;
+  /** Destination with a `<…>` wrapper removed. */
+  destination: string;
+  /** Offset of the destination token within the line — the repair-range start. */
+  destinationStart: number;
+  /** Index just past the destination token — the repair-range end. */
+  destinationEnd: number;
+  /** Authored whitespace+title suffix, '' when no title. */
+  titleSuffix: string;
+}
+
+export interface HtmlImgMatch {
+  /** The `src` value as authored (quotes removed, not URL-decoded). */
+  src: string;
+  /** True when the tag closes with `/>` rather than a bare `>`. */
+  selfClosing: boolean;
+  start: number;
+  /** Index just past the closing `>`. */
+  end: number;
+}
+
+function toMarkdownReferenceMatch(match: RegExpExecArray, start: number): MarkdownReferenceMatch {
+  const image = match[1] === '!';
+  const label = match[2] ?? '';
+  const secondBracket = match[3];
+  const labelEnd = start + (image ? 2 : 1) + label.length + 1;
+  const end = start + match[0].length;
+  if (secondBracket === undefined) {
+    return { image, label, form: 'shortcut', referenceLabelRaw: label, start, end, labelEnd };
+  }
+  if (secondBracket === '') {
+    return { image, label, form: 'collapsed', referenceLabelRaw: label, start, end, labelEnd };
+  }
+  return { image, label, form: 'full', referenceLabelRaw: secondBracket, start, end, labelEnd };
+}
+
+/**
+ * Match a reference-style markdown link or image starting exactly at `start`.
+ * `![…]` at `start` is an image; `[…]` is a link. Returns the authored shape
+ * ({@link MarkdownReferenceForm}); the caller decides whether a matching
+ * definition exists. Returns null when the label is unterminated.
+ */
+export function readMarkdownReferenceAt(
+  line: string,
+  start: number,
+): MarkdownReferenceMatch | null {
+  MD_REFERENCE_AT_RE.lastIndex = start;
+  const match = MD_REFERENCE_AT_RE.exec(line);
+  if (!match) return null;
+  return toMarkdownReferenceMatch(match, start);
+}
+
+/**
+ * Parse a whole line as a link reference definition (`[label]: dest "title"`).
+ * Returns null when the line is not a definition. `destinationStart` /
+ * `destinationEnd` bound the destination token so a rewriter can replace just
+ * that span (the definition repair range).
+ */
+export function readReferenceDefinition(line: string): ReferenceDefinitionMatch | null {
+  const match = REFERENCE_DEFINITION_RE.exec(line);
+  if (!match) return null;
+  const prefix = match[1] ?? '';
+  const destinationRaw = match[3] ?? '';
+  return {
+    label: match[2] ?? '',
+    destinationRaw,
+    destination: unwrapAngleHref(destinationRaw),
+    destinationStart: prefix.length,
+    destinationEnd: prefix.length + destinationRaw.length,
+    titleSuffix: match[4] ?? '',
+  };
+}
+
+function isHtmlSpace(char: string | undefined): boolean {
+  return char === ' ' || char === '\t' || char === '\r' || char === '\n' || char === '\f';
+}
+
+/** Find the closing `>` without letting one inside a quoted attribute terminate the tag. */
+function findHtmlTagEnd(line: string, start: number): number | null {
+  let quote: '"' | "'" | null = null;
+  for (let i = start; i < line.length; i++) {
+    const char = line[i];
+    if (quote !== null) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '>') return i;
+  }
+  return null;
+}
+
+/** Read the first exact `src` attribute from a bounded `<img ...>` tag. */
+function readImgSrcAttribute(line: string, attributesStart: number, tagEnd: number): string | null {
+  let cursor = attributesStart;
+  while (cursor < tagEnd) {
+    while (isHtmlSpace(line[cursor]) || line[cursor] === '/') cursor += 1;
+    if (cursor >= tagEnd) break;
+
+    const nameStart = cursor;
+    while (
+      cursor < tagEnd &&
+      !isHtmlSpace(line[cursor]) &&
+      line[cursor] !== '=' &&
+      line[cursor] !== '/' &&
+      line[cursor] !== '>'
+    ) {
+      cursor += 1;
+    }
+    const name = line.slice(nameStart, cursor).toLowerCase();
+    if (!name) {
+      cursor += 1;
+      continue;
+    }
+    while (isHtmlSpace(line[cursor])) cursor += 1;
+    if (line[cursor] !== '=') continue;
+    cursor += 1;
+    while (isHtmlSpace(line[cursor])) cursor += 1;
+    if (cursor >= tagEnd) return null;
+
+    const quote = line[cursor];
+    let value: string;
+    if (quote === '"' || quote === "'") {
+      const valueStart = cursor + 1;
+      const valueEnd = line.indexOf(quote, valueStart);
+      if (valueEnd < 0 || valueEnd > tagEnd) return null;
+      value = line.slice(valueStart, valueEnd);
+      cursor = valueEnd + 1;
+    } else {
+      const valueStart = cursor;
+      while (cursor < tagEnd && !isHtmlSpace(line[cursor]) && line[cursor] !== '>') cursor += 1;
+      value = line.slice(valueStart, cursor);
+    }
+    if (name === 'src') return value;
+  }
+  return null;
+}
+
+/**
+ * Match an HTML `<img>` starting exactly at `start`, reading its `src`. Covers
+ * the bare void form and the self-closing form. Returns null when `start` is not
+ * an `<img>` with a `src`.
+ */
+export function readHtmlImgAt(line: string, start: number): HtmlImgMatch | null {
+  if (line.slice(start, start + 4).toLowerCase() !== '<img') return null;
+  const boundary = line[start + 4];
+  if (boundary !== '>' && boundary !== '/' && !isHtmlSpace(boundary)) return null;
+  const tagEnd = findHtmlTagEnd(line, start + 4);
+  if (tagEnd === null) return null;
+  const src = readImgSrcAttribute(line, start + 4, tagEnd);
+  if (src === null) return null;
+  let beforeClose = tagEnd - 1;
+  while (beforeClose >= start && isHtmlSpace(line[beforeClose])) beforeClose -= 1;
+  return {
+    src,
+    selfClosing: line[beforeClose] === '/',
+    start,
+    end: tagEnd + 1,
+  };
+}
+
+/** Every HTML `<img src>` on a line, left to right, non-overlapping. */
+export function matchHtmlImgs(line: string): HtmlImgMatch[] {
+  const matches: HtmlImgMatch[] = [];
+  const lower = line.toLowerCase();
+  for (let cursor = 0; cursor < line.length; ) {
+    const start = lower.indexOf('<img', cursor);
+    if (start < 0) break;
+    const match = readHtmlImgAt(line, start);
+    if (match) {
+      matches.push(match);
+      cursor = match.end;
+    } else {
+      cursor = start + 1;
+    }
   }
   return matches;
 }

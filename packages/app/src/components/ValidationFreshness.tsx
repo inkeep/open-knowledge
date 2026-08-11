@@ -10,11 +10,13 @@
  * re-validate per doc per burst is enough for a tree tint.
  *
  * Trigger 4 — when the world every entry was produced against stops holding, the
- * whole plane is re-audited. Two signals qualify. A lint-config change (a plugin
+ * whole plane is re-audited. Three signals qualify. A lint-config change (a plugin
  * enabled, a rule toggled, a frontmatter schema edited) invalidates the config
  * the counts were computed under; without this, enabling a plugin lights up
  * nothing until you open files one at a time, and toggling a rule off leaves its
- * counts standing. A branch switch invalidates the content itself — it replaces
+ * counts standing. A local-targets change invalidates file/image existence
+ * findings without necessarily changing the document graph. A branch switch
+ * invalidates the content itself — it replaces
  * the content set wholesale in-window, with no reload to rebuild the plane, so
  * the sidebar would otherwise keep showing the previous branch's problems until
  * a config change or a per-doc write happened to trip triggers 3/4.
@@ -51,8 +53,9 @@
  * not once per launch.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { setLinkValidationVisible } from '@/editor/link-validation-policy';
 import { subscribeToLintConfigChanged } from '@/editor/lint-config-client';
 import {
   AUDIT_SUPERSEDED,
@@ -61,7 +64,12 @@ import {
 } from '@/editor/validation-audit-client';
 import { useConfigContext } from '@/lib/config-provider';
 import { filePathToDocName } from '@/lib/doc-hash';
-import { subscribeToBranchChanged, subscribeToDocPersisted } from '@/lib/documents-events';
+import {
+  invalidatesLocalTargetAudit,
+  subscribeToBranchChanged,
+  subscribeToDocPersisted,
+  subscribeToDocumentsChanged,
+} from '@/lib/documents-events';
 import { patchDocValidationFromAudit, replaceValidationFromCounts } from '@/lib/validation-store';
 
 const REVALIDATE_DEBOUNCE_MS = 500;
@@ -124,6 +132,10 @@ export function ValidationFreshness() {
   // the background work entirely instead of writing to a store nothing reads.
   const { merged } = useConfigContext();
   const indicatorsEnabled = merged?.validation?.fileTreeIndicators !== false;
+  const linksVisible = merged?.validation?.links !== 'off';
+  // This subscriber mounts before the editors; update before paint so a
+  // project configured with "Don't show" never flashes broken-link styling.
+  useLayoutEffect(() => setLinkValidationVisible(linksVisible), [linksVisible]);
   // Doc count for the on-open budget, read off the list the file tree already
   // loaded — so deciding whether to audit never costs a walk of its own. Optional
   // like the Problems panel's own use: absent provider (bare harness) reads as
@@ -206,6 +218,9 @@ export function ValidationFreshness() {
     const unsubscribers = [
       subscribeToLintConfigChanged(schedule),
       subscribeToBranchChanged(schedule),
+      subscribeToDocumentsChanged((channels) => {
+        if (invalidatesLocalTargetAudit(channels)) schedule();
+      }),
     ];
 
     return () => {

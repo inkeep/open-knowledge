@@ -57,11 +57,16 @@ describe('applyProblemIndicators', () => {
 
     const errorRow = rows.get('a.md');
     expect(errorRow?.getAttribute(OK_PROBLEM_ROW_ATTR)).toBe('error');
-    expect(errorRow?.querySelector(`[${OK_PROBLEM_BADGE_ATTR}]`)?.textContent).toBe('3');
+    const errorBadge = errorRow?.querySelector(`[${OK_PROBLEM_BADGE_ATTR}]`);
+    expect(errorBadge?.textContent).toBe('3');
+    expect(errorBadge?.getAttribute('aria-label')).toBe('3 problems: 2 errors, 1 warning');
+    expect(errorBadge?.hasAttribute('aria-hidden')).toBe(false);
 
     const warningRow = rows.get('guides/b.md');
     expect(warningRow?.getAttribute(OK_PROBLEM_ROW_ATTR)).toBe('warning');
-    expect(warningRow?.querySelector(`[${OK_PROBLEM_BADGE_ATTR}]`)?.textContent).toBe('4');
+    const warningBadge = warningRow?.querySelector(`[${OK_PROBLEM_BADGE_ATTR}]`);
+    expect(warningBadge?.textContent).toBe('4');
+    expect(warningBadge?.getAttribute('aria-label')).toBe('4 problems: 0 errors, 4 warnings');
 
     const cleanRow = rows.get('clean.md');
     expect(cleanRow?.hasAttribute(OK_PROBLEM_ROW_ATTR)).toBe(false);

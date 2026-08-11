@@ -135,6 +135,10 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
             src={src}
             alt={fileName}
             draggable={false}
+            // The previewed asset is a real tree entry the user selected, so
+            // it provably exists — a load failure here is a decode/serve
+            // problem ("couldn't be displayed"), never a missing target.
+            targetExistence="exists"
             // Slot needs an explicit `h-full` so the `<img>`'s `max-h-full`
             // resolves — percentage max-heights against an auto-height
             // containing block are treated as `none` per CSS spec.

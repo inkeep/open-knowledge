@@ -1,10 +1,11 @@
 /**
- * App-layer WikiLinkEmbed extension — plain-DOM NodeView routed via the
- * shared InteractionLayer.
+ * App-layer WikiLinkEmbed extension. Asset chips use a plain-DOM NodeView
+ * routed via the shared InteractionLayer; image embeds use the shared React
+ * image leaf so all image failures report consistently.
  *
  * Mirrors the `wiki-link.ts` pattern (atom-node + module-level counter +
  * InteractionLayer registration + in-place DOM update). Image extensions
- * render as `<img>` (matching the core `renderHTML` output) and do NOT
+ * render a React-owned `<img>` (matching the core `renderHTML` output) and do NOT
  * register with the layer — clicking an inline image is a PM-selection
  * operation, not an asset dispatch. Non-image extensions render as a
  * clickable `<a>` chip + register `handlePrimary` → `activateAssetLink`:
@@ -27,10 +28,11 @@ import {
   extractAssetExtension,
   IMAGE_EXTENSIONS,
   resolveAssetProjectPath,
-  toDesktopAssetHref,
 } from '@inkeep/open-knowledge-core';
+import { ReactRenderer } from '@tiptap/react';
 import { getInteractionLayer } from '../interaction-layer-host';
 import { activateAssetLink } from '../internal-link-helpers';
+import { WikiLinkEmbedImageView } from './WikiLinkEmbedImageView';
 
 // Module-level monotonic counter — drives the stable `data-node-id`
 // attribute used by InteractionLayer's event delegation.
@@ -97,37 +99,21 @@ function buildWikiLinkEmbedChipDom(params: {
 }
 
 /**
- * Build the plain-DOM `<img>` for image-ext WikiLinkEmbed NodeViews.
- * No InteractionLayer registration — inline images don't have an asset-
- * dispatch click story (clicking selects, same as before this amendment).
- *
- * Exported (internal) for unit testing — the DOM layout + `toDesktopAssetHref`
- * application can be exercised without constructing a full TipTap Editor.
+ * Apply the stable NodeView metadata around the shared React image leaf.
  */
-export function buildWikiLinkEmbedImageDom(params: {
-  nodeId: string;
-  target: string;
-  alias: string | null;
-  src: string;
-  doc?: Pick<Document, 'createElement'>;
-}): BuildChipDomResult {
-  const docImpl: Pick<Document, 'createElement'> =
-    params.doc ??
-    (typeof document !== 'undefined' ? document : ({ createElement: null as never } as never));
-
-  const dom = docImpl.createElement('img') as HTMLElement;
+export function applyWikiLinkEmbedImageDomAttributes(
+  dom: HTMLElement,
+  params: {
+    nodeId: string;
+    target: string;
+    alias: string | null;
+  },
+): void {
   dom.setAttribute('data-wiki-embed', '');
   dom.setAttribute('data-node-id', params.nodeId);
   dom.setAttribute('data-target', params.target);
   dom.setAttribute('data-alias', params.alias ?? '');
-  // `resolvedSrc` is server-absolute (`/<contentDir-relative>`); in Electron
-  // the page may be at `file://` or a Vite dev URL with no asset middleware,
-  // so `/...` resolves against the wrong base. Mirror the rewrite the
-  // canonical media components apply (Image.tsx, Video.tsx, Audio.tsx,
-  // Pdf.tsx, File.tsx + ImageSrcFidelity.renderHTML).
-  dom.setAttribute('src', toDesktopAssetHref(params.src));
-  dom.setAttribute('alt', params.alias ?? params.target);
-  return { dom };
+  dom.setAttribute('contenteditable', 'false');
 }
 
 function isImageExtension(target: string): boolean {
@@ -152,7 +138,14 @@ export const WikiLinkEmbed = BaseWikiLinkEmbed.extend({
       // dispatch — the click is a PM-selection concern).
       if (isImage) {
         const src = resolvedSrc ?? target;
-        const { dom } = buildWikiLinkEmbedImageDom({ nodeId, target, alias, src });
+        const renderer = new ReactRenderer(WikiLinkEmbedImageView, {
+          editor,
+          props: { src, alt: alias ?? target },
+          as: 'span',
+          className: 'wiki-link-embed-image',
+        });
+        const dom = renderer.element;
+        applyWikiLinkEmbedImageDomAttributes(dom, { nodeId, target, alias });
         return {
           dom,
           ignoreMutation: () => true,
@@ -170,12 +163,15 @@ export const WikiLinkEmbed = BaseWikiLinkEmbed.extend({
             // `false` if the new target isn't an image so PM rebuilds.
             if (!isImageExtension(newTarget)) return false;
             const newSrc = newResolvedSrc ?? newTarget;
-            dom.setAttribute('data-target', newTarget);
-            dom.setAttribute('data-alias', newAlias ?? '');
-            dom.setAttribute('src', toDesktopAssetHref(newSrc));
-            dom.setAttribute('alt', newAlias ?? newTarget);
+            applyWikiLinkEmbedImageDomAttributes(dom, {
+              nodeId,
+              target: newTarget,
+              alias: newAlias,
+            });
+            renderer.updateProps({ src: newSrc, alt: newAlias ?? newTarget });
             return true;
           },
+          destroy: () => renderer.destroy(),
         };
       }
 

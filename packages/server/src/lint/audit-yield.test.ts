@@ -103,6 +103,20 @@ describe('auditProject generation supersession', () => {
     expect(generation).toBe('1 main');
   });
 
+  test('abandons a one-file walk when generation changes without a time-slice yield', async () => {
+    let reads = 0;
+    await expect(
+      auditProject({
+        projectDir: root,
+        contentDir: root,
+        baseConfig: base,
+        targetPath: 'folder-0/doc-0.md',
+        auditGeneration: () => (reads++ === 0 ? '0 main 1' : '0 main 2'),
+      }),
+    ).rejects.toBeInstanceOf(AuditSupersededError);
+    expect(reads).toBe(2);
+  });
+
   test('completes normally when the generation holds', async () => {
     const result = await auditProject({
       projectDir: root,

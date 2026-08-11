@@ -160,11 +160,13 @@
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
+    "1pdLQw": ["Image not found"],
     "1qpGKz": ["Couldn’t save changes. Try editing a color again."],
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
     "1vn0CI": ["Invalid server response"],
+    "1xui0Q": ["Failed to load local files"],
     "2277Tu": ["Collapse graph"],
     "237hSL": ["Ended"],
     "253MN6": ["Couldn't send your comments — please try again."],
@@ -443,6 +445,7 @@
     "6HCOwA": ["Failed to open."],
     "6KCH4m": ["Hidden files"],
     "6KXnz5": ["You can restore this file from the Trash."],
+    "6LJJ1v": ["File ", ["identity"], ". Go to reference."],
     "6LbUG7": ["The repository is private and your GitHub account doesn't have access to it."],
     "6Mbe-P": [
       "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
@@ -982,7 +985,6 @@
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "EQXPXf": ["Scroll to end"],
     "ETyvvg": ["No language match."],
-    "EUiJEM": ["Occurrences of ", ["0"]],
     "EWCJFu": ["Created ", ["target"]],
     "EWPtMO": ["Code"],
     "EWX92Z": ["Collapse Ask AI"],
@@ -1278,6 +1280,7 @@
     "IgN3LY": ["On selected text in <0>", ["address"], "</0>"],
     "IgTwLt": ["Open this document in the editor and collapse the graph."],
     "Ik-gP0": ["Heading H", ["level"], ": ", ["text"]],
+    "IoHQYP": ["Link validation is unavailable. Showing last known problems."],
     "Iq8zdU": ["Close terminal"],
     "IrB5AK": [
       "Server-side cleanup failed for ",
@@ -1463,6 +1466,7 @@
     "Lm3r51": ["Slidev couldn't render this document."],
     "LnVIW4": ["Failed to start sign-in — try again"],
     "LpB85N": ["Plain"],
+    "Lrsl_h": ["Missing file ", ["identity"], ". Go to reference."],
     "LtI9AS": ["Owner"],
     "LtSYdi": ["Reveal in Finder"],
     "LtiJ5c": ["Project skill"],
@@ -1567,9 +1571,6 @@
       "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
     ],
     "MysZUL": ["Connecting to ", ["agentName"], "…"],
-    "N-IonL": [
-      "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
-    ],
     "N1KkEO": ["Jump to last tab"],
     "N1YYa7": ["Loading image"],
     "N1mdmS": ["This file can't be opened in the text editor."],
@@ -2001,6 +2002,7 @@
     "U2Kx6T": ["Close all unpinned"],
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Full guide"],
+    "U3RIJu": ["Local files"],
     "U4nTfu": ["Enable Follow"],
     "U5Spo9": ["Content directory must be inside the project"],
     "U6wmNc": ["Sync paused"],
@@ -2120,12 +2122,14 @@
     "VNNRfN": ["make source"],
     "VNgKZz": ["Advanced settings"],
     "VTulZj": ["Open in worktree"],
+    "VU3Nrn": ["Missing"],
     "VUijjF": ["Embed an image with optional alt text."],
     "VVRrPk": [["0"], " doesn't offer any settings to adjust"],
     "VXGFMg": ["Code field undo or redo"],
     "VYd_YA": ["Open an existing project folder from disk."],
     "VZGh8G": ["Fold, unfold, fold all, or unfold all source ranges."],
     "VZSBXL": ["Semantic ranking activates the first time an agent runs a search."],
+    "VZg6Gn": ["Image couldn't be displayed: ", ["errorLabel"]],
     "V_6bJ4": ["Terminal settings not loaded yet — try again in a moment."],
     "V_DjMe": ["render error"],
     "V_wltx": ["Enter a title for this template."],
@@ -2150,12 +2154,14 @@
     "W1qRuM": ["This document is already active in the editor. Use Open to collapse the graph."],
     "W3Tsgy": ["Detected in ", ["0"]],
     "W5A0Ly": ["An unexpected error occurred."],
+    "W5qdI_": ["Image target \"", ["shown"], "\" could not be resolved to a project-local file."],
     "W7XJN4": [
       "Can't nest projects. An OpenKnowledge project already exists at <0>",
       ["rootPath"],
       "</0>. Choose a location outside it, or open that project instead."
     ],
     "W8vpBM": ["starter pack"],
+    "W9NSe0": ["Checking links"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
     "WBNpt9": ["Couldn’t read this theme (", ["0"], ")"],
     "WFEbV1": ["Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."],
@@ -2216,11 +2222,13 @@
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
     "XAyxsa": ["Check out remote branch"],
+    "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
     "XBgr2S": ["Copy in"],
     "XDzAnp": ["Opens in a new tab"],
     "XFpEgc": [
       "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
     ],
+    "XGKy1z": ["Image couldn't be displayed"],
     "XH30C4": ["document"],
     "XIltnd": ["A skill named \"", ["trimmed"], "\" already exists here"],
     "XJOV1Y": ["Activity"],
@@ -2238,6 +2246,7 @@
     "XW18jo": ["Page headings response did not match success schema"],
     "XWEqQj": [["days"], "d"],
     "XXA1b_": [["componentLabel"], " (empty)"],
+    "XYZ7tp": ["Unresolvable"],
     "XYlJJT": ["Setting up"],
     "XZkdtg": ["Switch branch"],
     "XcGbim": ["Show hidden files"],
@@ -2329,6 +2338,7 @@
     "YW7Q86": ["Search settings not yet loaded — try again in a moment"],
     "Y_GpJd": ["The ", ["0"], " download request timed out."],
     "Y_ZQ6l": ["Installing ", ["agentName"], "…"],
+    "Y_iImT": ["Unresolvable file ", ["identity"], ". Go to reference."],
     "Y_kL7X": ["Customize how the editor looks and behaves."],
     "Ya3PlJ": ["Permission required"],
     "YaeyFh": ["Pulls may overwrite uncommitted edits in your local files."],
@@ -2443,6 +2453,7 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creating…"],
     "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
     "_GRWOJ": ["Change the embeddings provider?"],
@@ -2590,6 +2601,7 @@
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
     "bnOTEz": ["Retrieving…"],
+    "bpMVIA": ["Link target \"", ["shown"], "\" could not be resolved to a project-local target."],
     "bpytj4": ["Move to ", ["0"]],
     "brCtGB": ["History unavailable"],
     "buNXgr": ["Switch between the visual and source editors, keeping your place."],
@@ -2826,6 +2838,7 @@
     "fJgQHX": ["Failed to create file"],
     "fMsFdZ": ["Couldn't save the auto-update setting: ", ["0"]],
     "fNr-MX": ["Disable semantic search"],
+    "fOzzSV": ["Link target \"", ["shown"], "\" does not resolve to an existing file."],
     "fR-Kdc": ["(project-level only)"],
     "fRVBiq": [
       "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -2861,6 +2874,7 @@
     "fwrPh4": ["Please enter a valid email."],
     "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
     "fxbCNQ": ["Synced. The link is up to date."],
+    "g-dkjJ": ["Local file details aren't available yet."],
     "g12y1g": ["Invalid YAML"],
     "g1ZTh_": [
       [
@@ -2948,6 +2962,7 @@
     "gmJ0An": ["Failed to open folder."],
     "goO4Ll": ["Editor status bar"],
     "gp3I7-": ["Before syncing, set your identity for git commits:"],
+    "gpbKxw": ["Link validation is unavailable."],
     "gqk-3R": ["Moved ", ["0"], " to ", ["destination"], "."],
     "gtEbeW": ["Highlight"],
     "gtGQ9S": ["Start ", ["agentName"], ", ", ["hint"]],
@@ -3066,6 +3081,7 @@
     "iRdfLr": ["Dev instance: ", ["label"]],
     "iSLIjg": ["Connect"],
     "iSQTsg": ["Ordered list"],
+    "iSWh95": ["Image target \"", ["shown"], "\" does not resolve to an existing file."],
     "iSnkwB": ["Failed to open cloned project."],
     "iTylMl": ["Templates"],
     "iUwpZI": ["No spaces — use <0>-</0> instead."],
@@ -3104,6 +3120,9 @@
       "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."
     ],
     "iqIDv4": ["Sync status unavailable"],
+    "iqr14Z": [
+      "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
+    ],
     "iqugog": ["Initialize failed: ", ["errorDetail"]],
     "irFGwu": ["Template list"],
     "irrm_E": ["Remove selection"],
@@ -3205,6 +3224,7 @@
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
     "kFLlsI": ["Insert a footnote reference + matching definition stub."],
     "kGp168": ["Couldn't prepare this project for publish."],
+    "kI5pWt": ["Image not found: ", ["errorLabel"]],
     "kKw0H3": [
       "You edited this skill locally and the source has new changes. Taking upstream replaces your version; your edits stay recoverable in version history."
     ],
@@ -3449,7 +3469,6 @@
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
     "nG-XA9": ["The anchored text is gone. You can re-place it on selected text."],
-    "nL-HHD": ["Image failed to load"],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
     ],
@@ -3585,6 +3604,7 @@
     "pFRz_E": ["Leave these comments out of this message"],
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
+    "pJ7XCo": ["This page references no local files or images."],
     "pOo4Aa": ["Plain text"],
     "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
@@ -3698,7 +3718,6 @@
     "qjHMHf": ["Failed to disable sync — ", ["detail"]],
     "qkqG0b": ["Take upstream"],
     "qlAIQ1": ["Remote"],
-    "qlnfTD": ["Image failed to load: ", ["errorLabel"]],
     "qmL1UG": ["Uploading securely"],
     "qo4zCg": ["Path cannot contain backslashes"],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
@@ -3739,6 +3758,7 @@
     "rXz97P": ["Numbered list of items."],
     "rZ9HZq": ["To do"],
     "rZVMkf": ["Visual editor replace input focused"],
+    "radOpL": ["Image ", ["identity"], ". Go to reference."],
     "rageVb": ["Custom HTML with a live preview pane (sandboxed iframe)."],
     "rbrHTd": ["Approved — ", ["optionName"]],
     "rcJmK8": ["Convert locations to copies"],
@@ -3903,6 +3923,7 @@
       ["trashNoun"],
       ". Do you want to permanently delete instead?"
     ],
+    "txUHO8": [["localizedMessage"], " at line ", ["displayLine"]],
     "tzGWeg": ["Preparing to uninstall OpenKnowledge"],
     "tzZ6ha": ["Connect to GitHub Enterprise Server"],
     "u-9fWA": ["See <0>Architecture</0> for the system overview."],
@@ -3917,7 +3938,6 @@
     "uA_jXp": ["Switch and update branch"],
     "uBAxNB": ["Editor"],
     "uCaIdy": ["GitHub sign-in is missing or expired. Reconnect to resume syncing."],
-    "uCe4AX": [["0"], " at line ", ["displayLine"]],
     "uDlyqd": [
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
     ],
@@ -4008,6 +4028,7 @@
     "vPEyDz": ["Agent transcript"],
     "vPF04k": ["Start a new chat"],
     "vPKX2i": ["In app (beta)"],
+    "vPLUCm": ["Missing image ", ["identity"], ". Go to reference."],
     "vPXOUw": ["Toggle source view"],
     "vQIVHc": ["Folder properties"],
     "vWc9a0": ["Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."],
@@ -4173,6 +4194,7 @@
     "xxRpzT": ["Slidev found on your system."],
     "xzAmL_": ["Auto-approved"],
     "xzktOa": ["Edit wiki link"],
+    "y-LQPF": ["Unresolvable image ", ["identity"], ". Go to reference."],
     "y1eoq1": ["Copy link"],
     "y1t8bQ": ["Settings sections"],
     "y3aU20": ["Save changes"],
