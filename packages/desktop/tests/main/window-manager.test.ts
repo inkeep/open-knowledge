@@ -793,6 +793,74 @@ describe('WindowManager', () => {
       expect(env.createWindowOpts[0]?.additionalArguments).not.toContain('--ok-fresh-create=1');
     });
 
+    // The canonical attach contract (server.lock v2): a shell-serving server
+    // advertises ONE record — `url` plus `capabilities` containing "ui" — and
+    // everything the desktop dials must derive from that record. These pins
+    // are what make it provably safe to retire the `ok ui` sibling + `ui.lock`:
+    // the desktop's attach surface consumes only server.lock.
+
+    test('attach consumes the v2 advertisement end-to-end — probe + renderer args derive from url', async () => {
+      // A ui-capable holder bound to a non-default loopback (::1). If any
+      // dial falls back to a hardcoded localhost:<port>, the attach succeeds
+      // but every subsequent connection misses the server.
+      const probed: string[] = [];
+      enableAttachProbe({
+        readServerLock: () => ({
+          ...liveLock,
+          url: 'http://[::1]:59534',
+          capabilities: ['http', 'ws', 'ui'],
+        }),
+        probeWsUpgrade: (url) => {
+          probed.push(url);
+          return Promise.resolve(true);
+        },
+      });
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+
+      expect(ctx.ownsServer).toBe(false);
+      expect(ctx.apiOrigin).toBe('http://[::1]:59534');
+      // The WS-upgrade health probe dials the advertised origin.
+      expect(probed).toEqual(['ws://[::1]:59534/collab/__attach_probe__']);
+      // The renderer's injected args — the preload/React bundle's only view of
+      // the server — carry the same one-URL derivation.
+      const args = env.createWindowOpts[0]?.additionalArguments ?? [];
+      expect(args).toContain('--ok-api-origin=http://[::1]:59534');
+      expect(args).toContain('--ok-collab-url=ws://[::1]:59534/collab');
+    });
+
+    test('pre-v2 lock (no url) attaches with the localhost:<port> fallback end-to-end', async () => {
+      // Version-skew window: an older server's lock has no `url`. The desktop
+      // must keep attaching via the port so a stable-channel straggler server
+      // still gets a window.
+      const probed: string[] = [];
+      enableAttachProbe({
+        probeWsUpgrade: (url) => {
+          probed.push(url);
+          return Promise.resolve(true);
+        },
+      });
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+
+      expect(ctx.apiOrigin).toBe('http://localhost:59534');
+      expect(probed).toEqual(['ws://localhost:59534/collab/__attach_probe__']);
+      const args = env.createWindowOpts[0]?.additionalArguments ?? [];
+      expect(args).toContain('--ok-api-origin=http://localhost:59534');
+      expect(args).toContain('--ok-collab-url=ws://localhost:59534/collab');
+    });
+
+    test('a non-loopback lock url is refused by validation — dials fall back to the port', async () => {
+      // The url comes off disk; only http(s) + loopback hosts are honored, so
+      // a tampered advertisement cannot point the renderer off-machine.
+      enableAttachProbe({
+        readServerLock: () => ({ ...liveLock, url: 'http://evil.example:80' }),
+      });
+      const wm = new WindowManager(env.deps);
+      const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(ctx.apiOrigin).toBe('http://localhost:59534');
+    });
+
     function driftSends(w: ReturnType<typeof makeWindow>): unknown[] {
       return (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-version-drift',

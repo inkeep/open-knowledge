@@ -313,9 +313,37 @@ export function lockApiOrigin(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>
   return `http://localhost:${lock.port}`;
 }
 
+/**
+ * http(s) origin → ws(s) origin. The single scheme-swap primitive — every
+ * desktop WS dial (lock-shaped or already-resolved `apiOrigin` string)
+ * derives from this so `https` → `wss` can never silently diverge between
+ * surfaces. Module-private: external callers go through `lockWsOrigin` /
+ * `collabUrlFromApiOrigin`, which carry the validated-origin guarantee.
+ */
+function httpOriginToWsOrigin(origin: string): string {
+  return origin.replace(/^http/, 'ws');
+}
+
+/**
+ * WebSocket origin for a lock holder — `lockApiOrigin` with the ws(s) scheme,
+ * so the v2 `url` preference and its port fallback carry into every WS dial.
+ */
+export function lockWsOrigin(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
+  return httpOriginToWsOrigin(lockApiOrigin(lock));
+}
+
+/**
+ * `/collab` WebSocket endpoint for an already-resolved http(s) origin.
+ * Consumers holding a `ProjectContext.apiOrigin` (the lock v2 `url` in attach
+ * mode) call this instead of restating the scheme swap.
+ */
+export function collabUrlFromApiOrigin(apiOrigin: string): string {
+  return `${httpOriginToWsOrigin(apiOrigin)}/collab`;
+}
+
 /** `/collab` WebSocket endpoint derived from the same origin as `lockApiOrigin`. */
 export function lockCollabUrl(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
-  return `${lockApiOrigin(lock).replace(/^http/, 'ws')}/collab`;
+  return collabUrlFromApiOrigin(lockApiOrigin(lock));
 }
 
 interface ProjectContext {
@@ -2719,7 +2747,14 @@ export class WindowManager {
     const apiOrigin = lockApiOrigin(lock);
 
     this.deps.log?.info(
-      { projectPath, holderPid: lock.pid, port, startedAt: lock.startedAt },
+      {
+        projectPath,
+        holderPid: lock.pid,
+        port,
+        startedAt: lock.startedAt,
+        apiOrigin,
+        capabilities: lock.capabilities,
+      },
       'attaching to existing OpenKnowledge server',
     );
 

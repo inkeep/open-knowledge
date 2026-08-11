@@ -178,16 +178,19 @@ describe('resolveDetachedSpawnArgs', () => {
     expect(opts.cwd).toBe('/tmp/some-project');
   });
 
-  test('args invoke the bundled CLI with start + content-asset serving + the react shell dist dir', () => {
+  test('args invoke the bundled CLI with start + the react shell dist dir', () => {
     const { args } = resolveDetachedSpawnArgs(makeInput());
     expect(args).toEqual([
       '--max-old-space-size=16384',
       `${PARENT_APP}/Contents/Resources/app.asar.unpacked/dist/cli.mjs`,
       'start',
-      '--serve-content-assets',
       '--react-shell-dist-dir',
       `${PARENT_APP}/Contents/Resources/app`,
     ]);
+    // The spawned server is the canonical single-listener: content assets are
+    // served by default on every CLI boot path, so the sibling-era
+    // `--serve-content-assets` flag must not come back.
+    expect(args).not.toContain('--serve-content-assets');
   });
 
   // Ephemeral single-file mode (`ok <file>`): the resolver appends
@@ -205,7 +208,6 @@ describe('resolveDetachedSpawnArgs', () => {
       '--max-old-space-size=16384',
       `${PARENT_APP}/Contents/Resources/app.asar.unpacked/dist/cli.mjs`,
       'start',
-      '--serve-content-assets',
       '--react-shell-dist-dir',
       `${PARENT_APP}/Contents/Resources/app`,
       '--single-file',

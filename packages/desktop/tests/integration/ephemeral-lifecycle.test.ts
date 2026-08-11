@@ -121,7 +121,8 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
         // the `localhost` default; the host is irrelevant to G4 / teardown).
         '--host',
         '127.0.0.1',
-        '--serve-content-assets',
+        // No `--serve-content-assets` — mirrors the production spawn shape;
+        // content-asset serving is the CLI default on every boot path.
         '--react-shell-dist-dir',
         SHELL_DIST_PATH,
         '--no-color',

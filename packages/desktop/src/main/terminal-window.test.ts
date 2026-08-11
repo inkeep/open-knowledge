@@ -200,7 +200,7 @@ describe('createTerminalWindow', () => {
 });
 
 describe('resolveTerminalWindowProject', () => {
-  test('an editor window context wins, deriving the collab URL from its port', () => {
+  test('an editor window context wins, deriving the collab URL from its apiOrigin', () => {
     expect(
       resolveTerminalWindowProject({
         editor: {
@@ -216,6 +216,25 @@ describe('resolveTerminalWindowProject', () => {
       projectName: 'proj',
       collabUrl: 'ws://localhost:5200/collab',
       apiOrigin: 'http://localhost:5200',
+    });
+  });
+
+  test('a non-localhost apiOrigin (lock v2 url, ::1 bind) carries into the collab URL', () => {
+    expect(
+      resolveTerminalWindowProject({
+        editor: {
+          projectPath: '/Users/me/proj',
+          projectName: 'proj',
+          port: 5200,
+          apiOrigin: 'http://[::1]:5200',
+        },
+        terminal: undefined,
+      }),
+    ).toEqual({
+      projectPath: '/Users/me/proj',
+      projectName: 'proj',
+      collabUrl: 'ws://[::1]:5200/collab',
+      apiOrigin: 'http://[::1]:5200',
     });
   });
 

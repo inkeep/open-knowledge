@@ -52,6 +52,24 @@ describe('resolveProjectServerOrigin', () => {
     expect(origin).toBe('http://localhost:12345');
   });
 
+  test('prefers the lock v2 url over the port — non-default loopback binds resolve', async () => {
+    const origin = await resolveProjectServerOrigin(
+      '/tmp/p',
+      buildDeps({ readServerLock: () => ({ pid: 4242, port: 12345, url: 'http://[::1]:12345' }) }),
+    );
+    expect(origin).toBe('http://[::1]:12345');
+  });
+
+  test('a non-loopback lock url is refused by validation and falls back to the port', async () => {
+    const origin = await resolveProjectServerOrigin(
+      '/tmp/p',
+      buildDeps({
+        readServerLock: () => ({ pid: 4242, port: 12345, url: 'http://evil.example:80' }),
+      }),
+    );
+    expect(origin).toBe('http://localhost:12345');
+  });
+
   test('returns null when no lock is present after the poll window', async () => {
     const origin = await resolveProjectServerOrigin(
       '/tmp/p',

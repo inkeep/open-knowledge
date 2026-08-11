@@ -46,6 +46,7 @@ import {
   ShareTargetStatusResponseSchema,
 } from '@inkeep/open-knowledge-core';
 import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
+import { lockApiOrigin } from './window-manager.ts';
 
 // Client version metadata on every main-process /api request (v1 wire contract).
 const DESKTOP_MAIN_VERSION_HEADERS = clientVersionHeaders({
@@ -56,11 +57,13 @@ const DESKTOP_MAIN_VERSION_HEADERS = clientVersionHeaders({
 /**
  * Bounded subset of the server-lock metadata we read here. Mirrors the
  * shape consumed by `WindowManager.tryAttachExistingServer` so behavior
- * stays consistent across surfaces.
+ * stays consistent across surfaces. `url` is the lock v2 one-URL contract
+ * field; optional for pre-v2 locks.
  */
 export interface ServerLockReadShape {
   readonly pid: number;
   readonly port: number;
+  readonly url?: string;
 }
 
 /** Dependencies injected so unit tests can substitute deterministic fakes. */
@@ -80,11 +83,12 @@ export interface BranchInfoProxyDeps {
 }
 
 /**
- * Locate the running server for `projectPath` and return its HTTP origin
- * (`http://localhost:<port>`). Polls briefly because the dispatcher may
- * call this right after `bridge.project.open`, before the utility's lock
- * file lands. Returns `null` when no live server resolves within the
- * poll window.
+ * Locate the running server for `projectPath` and return its HTTP origin —
+ * the lock v2 `url` when the holder advertises one (`lockApiOrigin`'s
+ * loopback validation applies), else `http://localhost:<port>`. Polls
+ * briefly because the dispatcher may call this right after
+ * `bridge.project.open`, before the utility's lock file lands. Returns
+ * `null` when no live server resolves within the poll window.
  *
  * `signal` is checked before each poll iteration so renderer-side cleanup
  * (dialog dismiss, payload-keyed reset) bails the busy-wait early instead
@@ -103,7 +107,7 @@ export async function resolveProjectServerOrigin(
     if (signal?.aborted) return null;
     const lock = deps.readServerLock(lockDir);
     if (lock && lock.port > 0 && lock.pid > 0 && deps.isProcessAlive(lock.pid)) {
-      return `http://localhost:${lock.port}`;
+      return lockApiOrigin(lock);
     }
     if (Date.now() >= deadline) {
       deps.log?.warn('[branch-info-proxy] gave up waiting for server lock', {

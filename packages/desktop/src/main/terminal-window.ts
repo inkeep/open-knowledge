@@ -24,7 +24,7 @@ import {
   type TerminalWindowContext,
   unregisterTerminalWindow,
 } from './terminal-window-registry.ts';
-import type { BrowserWindowLike } from './window-manager.ts';
+import { type BrowserWindowLike, collabUrlFromApiOrigin } from './window-manager.ts';
 
 /** A created window exposing the numeric `id` the reap + registry wiring needs.
  *  The real Electron `BrowserWindow` always has `id`; `BrowserWindowLike` omits
@@ -131,12 +131,13 @@ interface EditorProjectContext {
 
 /**
  * Resolve the project a new terminal window inherits from the focused window.
- * An editor window's context (from `windowsByPath`) wins — its collab URL is
- * derived from the port the same way editor windows build their `--ok-collab-url`
- * argv. Otherwise a focused terminal window's registry context lets "New
- * Terminal Window" chain within the same project. Returns null when neither
- * resolves (the Navigator, no focused window, or a project-less terminal window)
- * so the new window opens project-less (home cwd).
+ * An editor window's context (from `windowsByPath`) wins — its collab URL
+ * derives from the context's `apiOrigin` (the lock v2 `url` in attach mode)
+ * via the same helper the editor's own dials use. Otherwise a focused
+ * terminal window's registry context lets "New Terminal Window" chain within
+ * the same project. Returns null when neither resolves (the Navigator, no
+ * focused window, or a project-less terminal window) so the new window opens
+ * project-less (home cwd).
  */
 export function resolveTerminalWindowProject(args: {
   readonly editor: EditorProjectContext | null;
@@ -146,7 +147,7 @@ export function resolveTerminalWindowProject(args: {
     return {
       projectPath: args.editor.projectPath,
       projectName: args.editor.projectName,
-      collabUrl: `ws://localhost:${args.editor.port}/collab`,
+      collabUrl: collabUrlFromApiOrigin(args.editor.apiOrigin),
       apiOrigin: args.editor.apiOrigin,
     };
   }

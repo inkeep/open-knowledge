@@ -1,6 +1,10 @@
 import { lockBaseUrl } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
-import { lockApiOrigin, lockCollabUrl } from '../../src/main/window-manager';
+import {
+  collabUrlFromApiOrigin,
+  lockApiOrigin,
+  lockCollabUrl,
+} from '../../src/main/window-manager';
 
 /**
  * Pins the hand-maintained mirror in `window-manager.ts` to the canonical
@@ -50,5 +54,16 @@ describe('lockApiOrigin parity with the canonical lockBaseUrl', () => {
     expect(lockCollabUrl({ port: 4123, url: 'http://evil.example.com:9999' })).toBe(
       'ws://localhost:4123/collab',
     );
+    // https must map to wss — pins the scheme swap against a future narrowing
+    // to /^http:/ that would silently break secure-loopback locks.
+    expect(lockCollabUrl({ port: 4123, url: 'https://127.0.0.1:9999' })).toBe(
+      'wss://127.0.0.1:9999/collab',
+    );
+  });
+
+  test('an apiOrigin-string consumer derives the same collab URL as the lock-shaped helper', () => {
+    const lock = { port: 4123, url: 'https://[::1]:9999' };
+    expect(collabUrlFromApiOrigin(lockApiOrigin(lock))).toBe(lockCollabUrl(lock));
+    expect(collabUrlFromApiOrigin('http://[::1]:9999')).toBe('ws://[::1]:9999/collab');
   });
 });

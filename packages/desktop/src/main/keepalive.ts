@@ -27,7 +27,7 @@ import {
   startKeepalive,
 } from '@inkeep/open-knowledge-core/keepalive';
 import type { DesktopLogger } from './desktop-logger.ts';
-import type { ServerLockMetadataLike } from './window-manager.ts';
+import { lockWsOrigin, type ServerLockMetadataLike } from './window-manager.ts';
 
 /**
  * Adapt a pino-style `DesktopLogger` (`(data, msg)`) to the core
@@ -69,6 +69,21 @@ export interface CreateDesktopKeepaliveOpts {
 }
 
 /**
+ * WS base origin for the keepalive dial, from the lock's v2 advertisement.
+ * Derives via `lockWsOrigin` (the lock's `url` when usable, `port` fallback
+ * for pre-v2 locks) — a hardcoded `ws://localhost:<port>` would miss a server
+ * bound to a non-default loopback (`::1`, `127.0.0.2`), silently dropping the
+ * keepalive and letting idle-shutdown reap the server under an open window.
+ * `undefined` (no lock yet / pre-listen port sentinel) tells the core
+ * keepalive to back off and re-resolve.
+ */
+export function resolveKeepaliveWsOrigin(lock: ServerLockMetadataLike | null): string | undefined {
+  if (!lock) return undefined;
+  if (typeof lock.port !== 'number' || lock.port <= 0) return undefined;
+  return lockWsOrigin(lock);
+}
+
+/**
  * Pure factory — returns a `createKeepalive` callback compatible with
  * `WindowManagerDeps.createKeepalive`. Production wiring captures
  * `readServerLock` from the server package; tests inject a stub.
@@ -79,12 +94,7 @@ export function createDesktopKeepaliveFactory(
   return (opts) => {
     const connectionId = randomUUID();
     return startKeepalive({
-      resolveWsUrl: async () => {
-        const lock = deps.readServerLock(opts.lockDir);
-        if (!lock) return undefined;
-        if (typeof lock.port !== 'number' || lock.port <= 0) return undefined;
-        return `ws://localhost:${lock.port}`;
-      },
+      resolveWsUrl: async () => resolveKeepaliveWsOrigin(deps.readServerLock(opts.lockDir)),
       connectionId,
       pid: process.pid,
       // Presence-invisibility: intentionally omit displayName, clientName,

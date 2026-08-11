@@ -449,6 +449,7 @@ import { buildViewMenuStateDeps, EditorViewMenuStateRegistry } from './view-menu
 import { applyThemeToWindow, buildNonDarwinChromeOpts } from './window-chrome.ts';
 import {
   type BrowserWindowLike,
+  collabUrlFromApiOrigin,
   setWindowInstanceLabel,
   type UtilityProcessLike,
   WindowManager,
@@ -5183,7 +5184,7 @@ function registerIpcHandlers() {
     const ctx = wm?.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
     if (!ctx) throw new Error('No project context for this window');
     return {
-      collabUrl: `ws://localhost:${ctx.port}/collab`,
+      collabUrl: collabUrlFromApiOrigin(ctx.apiOrigin),
       apiOrigin: ctx.apiOrigin,
       projectPath: ctx.projectPath,
       projectName: ctx.projectName,
@@ -6467,7 +6468,7 @@ function installDockIcon(instanceLabel: string | null) {
  * Two behaviors:
  *   1. Any localhost response missing `Access-Control-Allow-Origin` gets
  *      `*` + `Allow-Methods` + `Allow-Headers` injected. Safe because the
- *      server binds 127.0.0.1 only — no remote origin could ever reach it.
+ *      filter below admits loopback URLs only — no remote origin is in scope.
  *   2. A `405`/`404` to an `OPTIONS` preflight from such a server is rewritten
  *      to `204 No Content` with the CORS headers so POSTs with a JSON body
  *      (which trigger a preflight) don't fail before the real request fires.
@@ -6475,6 +6476,13 @@ function installDockIcon(instanceLabel: string | null) {
  * Both are gated on hostname (`localhost` / `127.0.0.1`) and on `hasAcao`
  * being false — we leave responses from CORS-aware servers (our current
  * api-extension + any future release) untouched.
+ *
+ * The filter deliberately stays at `localhost` / `127.0.0.1` even though
+ * `lockApiOrigin` admits other loopbacks (`[::1]`, `127.0.0.x`): pre-CORS CLI
+ * servers — the only servers this injector exists for — could only ever bind
+ * those two addresses, and any server new enough to take a non-default
+ * loopback bind is new enough to emit native CORS headers. Widening the
+ * filter would guard an unreachable version-skew combination.
  */
 function installLocalhostCorsInjector() {
   session.defaultSession.webRequest.onHeadersReceived(

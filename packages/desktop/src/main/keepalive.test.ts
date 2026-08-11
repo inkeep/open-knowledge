@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import type { DesktopLogger } from './desktop-logger.ts';
-import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
+import {
+  createDesktopKeepaliveFactory,
+  resolveKeepaliveWsOrigin,
+  toKeepaliveLogger,
+} from './keepalive.ts';
 import type { ServerLockMetadataLike } from './window-manager.ts';
 
 const FAKE_LOCK: ServerLockMetadataLike = {
@@ -75,6 +79,35 @@ describe('createDesktopKeepaliveFactory', () => {
     expect(zeroPortReads).toBeGreaterThanOrEqual(1);
     expect(handle.isConnected()).toBe(false);
     handle.close();
+  });
+});
+
+describe('resolveKeepaliveWsOrigin', () => {
+  test('prefers the lock v2 url — a non-default loopback bind keeps its keepalive', () => {
+    expect(resolveKeepaliveWsOrigin({ ...FAKE_LOCK, url: 'http://[::1]:51234' })).toBe(
+      'ws://[::1]:51234',
+    );
+    expect(resolveKeepaliveWsOrigin({ ...FAKE_LOCK, url: 'http://127.0.0.2:51234' })).toBe(
+      'ws://127.0.0.2:51234',
+    );
+  });
+
+  test('pre-v2 lock (no url) falls back to ws://localhost:<port>', () => {
+    expect(resolveKeepaliveWsOrigin(FAKE_LOCK)).toBe('ws://localhost:51234');
+  });
+
+  test('a non-loopback url is refused by validation and falls back to the port', () => {
+    // The url string comes off disk — `lockApiOrigin` only honors http(s) +
+    // loopback hosts, so a tampered/foreign advertisement degrades to the
+    // legacy port dial instead of pointing the keepalive off-machine.
+    expect(resolveKeepaliveWsOrigin({ ...FAKE_LOCK, url: 'http://evil.example:80' })).toBe(
+      'ws://localhost:51234',
+    );
+  });
+
+  test('no lock / pre-listen port sentinel resolve to undefined (back off and retry)', () => {
+    expect(resolveKeepaliveWsOrigin(null)).toBeUndefined();
+    expect(resolveKeepaliveWsOrigin({ ...FAKE_LOCK, port: 0 })).toBeUndefined();
   });
 });
 

@@ -194,7 +194,12 @@ export function resolveDetachedSpawnArgs(
     '--max-old-space-size=16384',
     bundleCliMjsPath,
     'start',
-    '--serve-content-assets',
+    // No `--serve-content-assets`: the bundled CLI (always version-matched to
+    // this build) serves content assets on every boot path by default. The
+    // explicit shell dir stays — resolving the shell from inside app.asar is
+    // not guaranteed by the packaging layout, and the flag makes the spawned
+    // server the canonical single-listener (it advertises `url` +
+    // `capabilities: ["ui"]` in server.lock).
     '--react-shell-dist-dir',
     reactShellDistDir,
     ...(singleFile !== undefined
