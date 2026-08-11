@@ -83,11 +83,11 @@ describe('filterItems', () => {
 describe('built-in slash command items', () => {
   test('every item has a name, label, icon, category, and command', () => {
     for (const item of getSlashCommandItems()) {
-      expect(item.name).toBeString();
-      expect(item.label).toBeString();
+      expect(typeof item.name).toBe('string');
+      expect(typeof item.label).toBe('string');
       expect(item.icon).toBeDefined();
-      expect(item.category).toBeString();
-      expect(item.command).toBeFunction();
+      expect(typeof item.category).toBe('string');
+      expect(typeof item.command).toBe('function');
     }
   });
 

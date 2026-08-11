@@ -254,7 +254,8 @@ describe('POST /api/link-preview preview outcomes', () => {
 
     const body = (await res.json()) as { ok: boolean; metadata?: { faviconDataUri?: string } };
     expect(body.ok).toBe(true);
-    expect(body.metadata?.faviconDataUri).toStartWith('data:image/png;base64,');
+    const pngDataUri = 'data:image/png;base64,';
+    expect(body.metadata?.faviconDataUri?.slice(0, pngDataUri.length)).toBe(pngDataUri);
   });
 
   test('a guard rejection crosses the wire with the single coarse reason', async () => {

@@ -44,16 +44,16 @@ describe('SlashCommand extension configuration', () => {
 
     // Every resolved item has the fields a consumer needs
     for (const item of items) {
-      expect(item.name).toBeString();
-      expect(item.label).toBeString();
-      expect(item.command).toBeFunction();
-      expect(item.category).toBeString();
+      expect(typeof item.name).toBe('string');
+      expect(typeof item.label).toBe('string');
+      expect(typeof item.command).toBe('function');
+      expect(typeof item.category).toBe('string');
     }
 
     // Category labels cover every category present in the items
     const categories = new Set(items.map((i) => i.category));
     for (const cat of categories) {
-      expect(opts.categoryLabels[cat]).toBeString();
+      expect(typeof opts.categoryLabels[cat]).toBe('string');
     }
   });
 
@@ -193,7 +193,7 @@ describe('SlashCommand extension configuration', () => {
     // is in the extension's Suggestion command callback, which we can't
     // exercise without a DOM. But we CAN verify the item itself is valid
     // and that calling its command throws (proving the boundary exists).
-    expect(boom.command).toBeFunction();
+    expect(typeof boom.command).toBe('function');
     expect(() => boom.command({} as never)).toThrow('command exploded');
   });
 

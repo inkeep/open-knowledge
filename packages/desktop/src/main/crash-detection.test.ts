@@ -625,7 +625,7 @@ describe('machine-level death suppression', () => {
     rig.setBootSessionUuid('boot-epoch-b');
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(armed?.kind).toBe('boot');
-    expect(armed?.eventId).toStartWith('boot:dump:');
+    expect(armed?.eventId.slice(0, 'boot:dump:'.length)).toBe('boot:dump:');
     if (armed?.kind === 'boot') {
       expect(armed.context.dirtyShutdown).toBe(false);
       expect(armed.context.newMinidumps).toBe(1);
@@ -1192,7 +1192,7 @@ describe('the version a boot invitation attributes the crash to', () => {
     rig.setAppVersion(DETECTING_VERSION);
     const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
 
-    expect(armed.eventId).toStartWith('boot:dump:');
+    expect(armed.eventId.slice(0, 'boot:dump:'.length)).toBe('boot:dump:');
     expect(armed.context.dirtyShutdown).toBe(false);
     expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
   });
@@ -1209,7 +1209,7 @@ describe('the version a boot invitation attributes the crash to', () => {
     rig.setAppVersion(DETECTING_VERSION);
     const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
 
-    expect(armed.eventId).toStartWith('boot:dump:');
+    expect(armed.eventId.slice(0, 'boot:dump:'.length)).toBe('boot:dump:');
     expect(armed.crashedAppVersion).toBe('0.41.0-beta.3');
   });
 

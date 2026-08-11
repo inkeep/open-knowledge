@@ -26,8 +26,8 @@ describe('getCollector', () => {
   test('returns a collector object in dev builds', () => {
     const c = getCollector();
     expect(c).toBeDefined();
-    expect(c?.marks.toArray()).toBeArray();
-    expect(c?.vitals.toArray()).toBeArray();
+    expect(c?.marks.toArray()).toBeInstanceOf(Array);
+    expect(c?.vitals.toArray()).toBeInstanceOf(Array);
     expect(typeof c?.startedAt).toBe('number');
   });
 

@@ -153,7 +153,7 @@ describe('planGraphLabels', () => {
       maxLabels: 1,
     });
 
-    expect(placements.some((placement) => placement.nodeId === 'active')).toBeFalse();
+    expect(placements.map((placement) => placement.nodeId)).not.toContain('active');
   });
 
   test('closer-to-center node wins when active state and degree are equal', () => {

@@ -11,6 +11,12 @@
  * rewritten to `node:http` / `node:child_process` per file during the owning
  * package's flip, because a faithful streaming facade would hide semantic
  * differences the rewrites need to make explicit.
+ *
+ * Two globals get installed, not one: the `Bun` facade and a `self` alias.
+ * Dependents of the first are literal `Bun.` in test files, which a grep finds.
+ * Dependents of the second are import-time reads of `self` in browser-targeting
+ * modules (`scheduler-polyfill` is one), which no `Bun.` search surfaces. Both
+ * have to be accounted for before this module can go away.
  */
 import { spawnSync as nodeSpawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -19,7 +25,6 @@ import { createRequire, stripTypeScriptTypes } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
-import { expect } from 'vitest';
 
 // ---- Bun.Glob (hand-rolled: no glob dependency) ----
 
@@ -484,63 +489,3 @@ export function installBunGlobal(): void {
 }
 
 installBunGlobal();
-
-// ---- bun `expect` matcher surface ----
-
-/**
- * bun's `expect` ships a jest-extended-flavored matcher set on top of the Jest
- * core matchers. Vitest's `expect` provides the core matchers only, so the suite
- * matchers below (the ones OK's tests actually use) are registered here. Only
- * these are added; the rest of the surface stays Vitest's.
- */
-interface BunMatchers<R = unknown> {
-  toStartWith(prefix: string): R;
-  toEndWith(suffix: string): R;
-  toBeString(): R;
-  toBeFunction(): R;
-  toBeArray(): R;
-  toBeTrue(): R;
-  toBeFalse(): R;
-}
-
-declare module 'vitest' {
-  interface Assertion<T = unknown> extends BunMatchers<T> {}
-  interface AsymmetricMatchersContaining extends BunMatchers {}
-}
-
-interface MatcherContext {
-  isNot: boolean;
-  utils: { printReceived(v: unknown): string; printExpected(v: unknown): string };
-}
-
-function typeMatcher(name: string, predicate: (received: unknown) => boolean) {
-  return function (this: MatcherContext, received: unknown) {
-    return {
-      pass: predicate(received),
-      message: () =>
-        `expected ${this.utils.printReceived(received)} to ${this.isNot ? 'not ' : ''}be ${name}`,
-    };
-  };
-}
-
-expect.extend({
-  toStartWith(this: MatcherContext, received: unknown, prefix: string) {
-    return {
-      pass: typeof received === 'string' && received.startsWith(prefix),
-      message: () =>
-        `expected ${this.utils.printReceived(received)} to ${this.isNot ? 'not ' : ''}start with ${this.utils.printExpected(prefix)}`,
-    };
-  },
-  toEndWith(this: MatcherContext, received: unknown, suffix: string) {
-    return {
-      pass: typeof received === 'string' && received.endsWith(suffix),
-      message: () =>
-        `expected ${this.utils.printReceived(received)} to ${this.isNot ? 'not ' : ''}end with ${this.utils.printExpected(suffix)}`,
-    };
-  },
-  toBeString: typeMatcher('a string', (v) => typeof v === 'string'),
-  toBeFunction: typeMatcher('a function', (v) => typeof v === 'function'),
-  toBeArray: typeMatcher('an array', (v) => Array.isArray(v)),
-  toBeTrue: typeMatcher('true', (v) => v === true),
-  toBeFalse: typeMatcher('false', (v) => v === false),
-});

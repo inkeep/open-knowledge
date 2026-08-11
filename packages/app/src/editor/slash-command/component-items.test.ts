@@ -79,17 +79,17 @@ describe('getComponentItems (slash menu)', () => {
     // slash-select time.
     expect(file?.name).toBe('component-File');
     expect(file?.icon).toBeDefined();
-    expect(file?.command).toBeFunction();
+    expect(typeof file?.command).toBe('function');
   });
 
   test('every entry exposes the SlashCommandItem contract', () => {
     const items = getComponentItems();
     for (const item of items) {
       expect(item.name).toMatch(/^component-/);
-      expect(item.label).toBeString();
+      expect(typeof item.label).toBe('string');
       expect(item.icon).toBeDefined();
-      expect(item.category).toBeString();
-      expect(item.command).toBeFunction();
+      expect(typeof item.category).toBe('string');
+      expect(typeof item.command).toBe('function');
     }
   });
 
@@ -324,7 +324,7 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     expect(tag.label).toBe('Tag');
     expect(tag.category).toBe('content');
     expect(tag.icon).toBeDefined();
-    expect(tag.command).toBeFunction();
+    expect(typeof tag.command).toBe('function');
     expect(tag.aliases).toContain('hashtag');
     expect(tag.aliases).toContain('#');
   });

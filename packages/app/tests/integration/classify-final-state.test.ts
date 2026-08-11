@@ -41,7 +41,8 @@ describe('classifyFinalState', () => {
     const result = classifyFinalState([a, b]);
     expect(result.outcome).toBe('stalled');
     if (result.outcome === 'stalled') {
-      expect(result.detail).toStartWith('bridge invariant beyond tolerance at budget exhaustion');
+      const prefix = 'bridge invariant beyond tolerance at budget exhaustion';
+      expect(result.detail.slice(0, prefix.length)).toBe(prefix);
     }
   });
 

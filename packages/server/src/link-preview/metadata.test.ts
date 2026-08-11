@@ -44,7 +44,8 @@ describe('buildLinkPreviewMetadata favicon', () => {
   test('encodes a validated image as a data URI whose bytes round-trip', async () => {
     const { fetch } = recordingFetch(okResult(PNG));
     const meta = await buildLinkPreviewMetadata({ html: '<html></html>', ...BASE, fetch });
-    expect(meta.faviconDataUri).toStartWith('data:image/png;base64,');
+    const pngDataUri = 'data:image/png;base64,';
+    expect(meta.faviconDataUri?.slice(0, pngDataUri.length)).toBe(pngDataUri);
     const decoded = new Uint8Array(Buffer.from(meta.faviconDataUri?.split(',')[1] ?? '', 'base64'));
     expect(decoded).toEqual(PNG);
   });
@@ -61,7 +62,8 @@ describe('buildLinkPreviewMetadata favicon', () => {
     const { fetch } = recordingFetch(okResult(header, 'application/octet-stream'));
     const meta = await buildLinkPreviewMetadata({ html: '<html></html>', ...BASE, fetch });
     // The data-URI type comes from the sniffed bytes, not the response header.
-    expect(meta.faviconDataUri).toStartWith(`data:${mime};base64,`);
+    const dataUriPrefix = `data:${mime};base64,`;
+    expect(meta.faviconDataUri?.slice(0, dataUriPrefix.length)).toBe(dataUriPrefix);
   });
 
   test('rejects non-image bytes even when the response claims an image type', async () => {
@@ -130,7 +132,8 @@ describe('buildLinkPreviewMetadata assembly', () => {
       siteName: 'Example',
       faviconDataUri: meta.faviconDataUri,
     });
-    expect(meta.faviconDataUri).toStartWith('data:image/png;base64,');
+    const pngDataUri = 'data:image/png;base64,';
+    expect(meta.faviconDataUri?.slice(0, pngDataUri.length)).toBe(pngDataUri);
   });
 
   test('yields domain-only when the page has no head tags and the favicon fails', async () => {

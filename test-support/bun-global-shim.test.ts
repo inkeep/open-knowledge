@@ -172,31 +172,6 @@ describe('Bun.CryptoHasher', () => {
   });
 });
 
-describe('bun expect matchers', () => {
-  test('toStartWith / toEndWith on strings', () => {
-    expect('# heading').toStartWith('#');
-    expect('# heading').not.toStartWith('=');
-    expect('name.ts').toEndWith('.ts');
-    expect('name.ts').not.toEndWith('.tsx');
-  });
-
-  test('toBeString / toBeFunction / toBeArray type guards', () => {
-    expect('x').toBeString();
-    expect(1).not.toBeString();
-    expect(() => {}).toBeFunction();
-    expect('x').not.toBeFunction();
-    expect([1, 2]).toBeArray();
-    expect({ length: 0 }).not.toBeArray();
-  });
-
-  test('toBeTrue / toBeFalse boolean identity', () => {
-    expect(true).toBeTrue();
-    expect(1).not.toBeTrue();
-    expect(false).toBeFalse();
-    expect(0).not.toBeFalse();
-  });
-});
-
 test('self alias is defined for browser-targeting modules', () => {
   expect(self).toBe(globalThis);
 });

@@ -75,7 +75,7 @@ describe('formatSelectionMessage', () => {
       rangeEncompassedBlockIds: new Set<string>(),
     };
     const msg = formatSelectionMessage(editor, sel);
-    expect(msg).toStartWith('Selected: ');
+    expect(msg.slice(0, 'Selected: '.length)).toBe('Selected: ');
     expect(msg).toContain('Callout');
   });
 

@@ -151,8 +151,9 @@ describe('desktop self-uninstall helpers', () => {
     const truncated = readDesktopUninstallLogForDisplay('/log', {
       readFile: () => `start-marker${'x'.repeat(8000)}end-marker`,
     });
-    expect(truncated).toStartWith('… (earlier lines omitted — full log on disk)\n');
-    expect(truncated).toEndWith('end-marker');
+    const elision = '… (earlier lines omitted — full log on disk)\n';
+    expect(truncated?.slice(0, elision.length)).toBe(elision);
+    expect(truncated?.slice(-'end-marker'.length)).toBe('end-marker');
     expect(truncated).not.toContain('start-marker');
   });
 
