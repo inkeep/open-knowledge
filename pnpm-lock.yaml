@@ -284,6 +284,9 @@ importers:
       fumadocs-typescript:
         specifier: ~4.0.13
         version: 4.0.14(@types/react@19.2.17)(fumadocs-core@16.1.0(@types/react@19.2.17)(lucide-react@0.503.0(react@19.2.5))(next@16.2.10(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(fumadocs-ui@16.1.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(lucide-react@0.503.0(react@19.2.5))(next@16.2.10(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(tailwindcss@4.3.2))(typescript@5.9.3)
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(@noble/hashes@2.2.0)
       next-validate-link:
         specifier: ^1.6.6
         version: 1.6.6(@types/mdast@4.0.4)(@types/unist@3.0.3)
