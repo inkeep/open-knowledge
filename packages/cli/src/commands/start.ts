@@ -41,6 +41,7 @@ import {
   EnvVarError,
   IDLE_SHUTDOWN_DURATION_RE,
   idleShutdownToMs,
+  isLoopbackOnlyBind,
   resolveEnvConfigLayer,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
@@ -253,6 +254,105 @@ export function coerceRemoteBindHost(
     return { host: '127.0.0.1', coerced: true };
   }
   return { host, coerced: false };
+}
+
+/** The `server.*` keys `--remote` expands into — nothing beyond the ratified surface. */
+interface RemoteAliasServerOverlay {
+  publicUrl: string;
+  allowExternal: true;
+  idleShutdown: 'off';
+}
+
+export type RemoteAliasExpansion =
+  | { ok: true; url: string; serverOverlay: RemoteAliasServerOverlay }
+  | { ok: false; errorMessage: string };
+
+/**
+ * Scope the alias's self-consent to the topology it promises: a loopback
+ * bind where the tunnel's edge auth is the only ingress. A non-loopback bind
+ * (a tailnet/LAN address from `server.bind`, `OK_BIND`, `HOST`, or a `--bind`
+ * shape `coerceRemoteBindHost` does not recognize) is reachable AROUND the
+ * tunnel, so `--remote` must not consent to it on the operator's behalf —
+ * without this, the exposure interlock that refused `--remote` + a
+ * non-loopback bind before the alias would be silently satisfied. Dropping
+ * `allowExternal` here lets the interlock refuse exactly as before;
+ * `OK_ALLOW_EXTERNAL=1` remains the sanctioned override.
+ */
+export function scopeRemoteAliasConsentToBind(
+  serverOverlay: RemoteAliasServerOverlay,
+  bindList: readonly string[],
+): { publicUrl: string; idleShutdown: 'off'; allowExternal?: true } {
+  if (isLoopbackOnlyBind(bindList)) return serverOverlay;
+  return { publicUrl: serverOverlay.publicUrl, idleShutdown: serverOverlay.idleShutdown };
+}
+
+/**
+ * `--remote [url]` is a deprecated thin alias over the ratified `server.*`
+ * networking keys: it expands to `server.publicUrl` = the tunnel url (its
+ * host joins the Host/Origin allowlists), a loopback bind (tunnels proxy to
+ * `127.0.0.1` — the deployer's tunnel agent covers ingress, see
+ * `coerceRemoteBindHost`), and `server.allowExternal` consent, which
+ * satisfies the exposure interlock and the forwarded-header tripwire. Plus
+ * `server.idleShutdown: 'off'`: remote MCP sessions arrive as plain HTTP,
+ * and the idle timer counts /collab WS clients only — it would tear the
+ * server down under a live remote client. Networking-only — the alias
+ * carries no auth semantics; restricting who reaches the URL stays the
+ * tunnel's job (edge auth).
+ *
+ * Returns `null` when the flag is absent. `ok: false` carries the exit-78
+ * message: a missing url is unusable, and the legacy https-only rule is kept
+ * through the deprecation window (a tunnel URL over plain http would be
+ * credentials-in-the-clear).
+ */
+export function expandRemoteAlias(
+  remoteFlag: string | boolean | undefined,
+  configRemoteUrl: string | undefined,
+): RemoteAliasExpansion | null {
+  if (remoteFlag === undefined || remoteFlag === false) return null;
+  const url = typeof remoteFlag === 'string' ? remoteFlag : configRemoteUrl;
+  if (url === undefined || url === '') {
+    return {
+      ok: false,
+      errorMessage:
+        '--remote requires a public tunnel URL — pass it (`ok start --remote https://<your-tunnel-host>`) or set remote.url in .ok/config.yml.',
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, errorMessage: `remote.url is not a valid URL: ${url}` };
+  }
+  if (parsed.protocol !== 'https:') {
+    return {
+      ok: false,
+      errorMessage: `remote.url must be https — it is the public tunnel URL remote clients connect to (got: ${url})`,
+    };
+  }
+  const normalizedUrl = url.replace(/\/+$/, '');
+  return {
+    ok: true,
+    url: normalizedUrl,
+    serverOverlay: { publicUrl: normalizedUrl, allowExternal: true, idleShutdown: 'off' },
+  };
+}
+
+/**
+ * Validator for Commander's `--public-url` parser — the flag-layer setter for
+ * `server.publicUrl`, matching the schema leaf's http(s)-origin shape so a
+ * flag value can never smuggle in what the config file would reject.
+ */
+export function parsePublicUrlFlag(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new InvalidArgumentError(`--public-url is not a valid URL: ${value}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new InvalidArgumentError(`--public-url must be an http(s) origin (got: ${value})`);
+  }
+  return value;
 }
 
 /** Hard cap on the project-name suffix in `process.title` to keep `ps`/Activity Monitor lines readable. */
@@ -963,11 +1063,6 @@ interface BootStartServerOptions {
    * synthesized `.ok/config.yml`. Defaults to `cwd`.
    */
   projectDir?: string;
-  /**
-   * Explicit remote-access opt-in (from `ok start --remote`). See
-   * `BootServerOptions.enableRemote` — config alone never arms remote access.
-   */
-  enableRemote?: boolean;
 }
 
 export interface BootedStartServer {
@@ -1251,7 +1346,6 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     contentRoot: ephemeral ? undefined : config.content.dir,
     port: opts.port,
     host,
-    ...(opts.enableRemote === true ? { enableRemote: true } : {}),
     quiet: false,
     detectGh,
     tokenStore,
@@ -1424,12 +1518,15 @@ interface StartCommandOptions {
    *  throwaway temp project root for the ephemeral single-file shape. */
   projectDir?: string;
   /**
-   * From `--remote [url]`: explicit remote-access opt-in. `true` when the flag
-   * is bare (url comes from `remote.url` in config); a string when the url is
-   * supplied inline (used for this run, not persisted). Absent → loopback-only,
-   * regardless of any `remote.url` in config.
+   * From `--remote [url]`: deprecated alias over the `server.*` keys — see
+   * `expandRemoteAlias`. `true` when the flag is bare (url comes from
+   * `remote.url` in config); a string when the url is supplied inline (used
+   * for this run, not persisted). Absent → loopback-only, regardless of any
+   * `remote.url` in config.
    */
   remote?: string | boolean;
+  /** From `--public-url <url>`: flag-layer `server.publicUrl` for this run. */
+  publicUrl?: string;
 }
 
 /**
@@ -1521,13 +1618,9 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // Remote access is an explicit `--remote [url]` opt-in. A `remote.url` left
   // in `.ok/config.yml` does NOT arm it by itself — the flag decides; the
   // config url fills in when the flag is bare, and a flag-supplied url wins
-  // for this run without persisting.
-  const remoteEnabled = opts.remote !== undefined && opts.remote !== false;
-  const remoteUrlOverride = typeof opts.remote === 'string' ? opts.remote : undefined;
-  const activeConfig: Config =
-    remoteUrlOverride !== undefined
-      ? { ...config, remote: { ...config.remote, url: remoteUrlOverride } }
-      : config;
+  // for this run without persisting. The flag is a deprecated thin alias over
+  // the ratified `server.*` keys — `expandRemoteAlias` holds the expansion.
+  const remoteFlagSet = opts.remote !== undefined && opts.remote !== false;
 
   // Set the process title as early as possible so Activity Monitor and
   // `ps -ax | grep open-knowledge-server` show each running server by
@@ -1536,31 +1629,38 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // action; the OS process list is the discovery path.
   process.title = deriveServerProcessTitle(cwd);
 
-  // Fail loud BEFORE booting: --remote with no url anywhere is unusable, and
-  // the error message is the fix instruction.
-  if (
-    remoteEnabled &&
-    (typeof activeConfig.remote?.url !== 'string' || activeConfig.remote.url === '')
-  ) {
-    console.error(
-      error(
-        '--remote requires a public tunnel URL — pass it (`ok start --remote https://<your-tunnel-host>`) or set remote.url in .ok/config.yml.',
+  // Deprecation notice first, even when the expansion below refuses — the
+  // operator should learn the successor spelling from the same run that
+  // errors. Networking-only alias; removal ships separately after a soak.
+  if (remoteFlagSet) {
+    console.warn(
+      warning(
+        '--remote is deprecated — use `OK_IDLE_SHUTDOWN=off OK_ALLOW_EXTERNAL=1 ok start --public-url <url>` instead (add --bind to serve a non-loopback address; keep OK_IDLE_SHUTDOWN=off — the idle timer only counts WS clients and would tear the server down under a live remote MCP client). The flag now just expands to those server.* keys and will be removed in a later release.',
       ),
     );
+  }
+
+  // Fail loud BEFORE booting: --remote with no url anywhere (or a non-https
+  // url) is unusable, and the error message is the fix instruction.
+  const aliasResult = expandRemoteAlias(opts.remote, config.remote?.url);
+  if (aliasResult !== null && !aliasResult.ok) {
+    console.error(error(aliasResult.errorMessage));
     process.exit(78);
   }
+  const remoteAlias = aliasResult?.ok ? aliasResult : null;
+  const remoteEnabled = remoteAlias !== null;
 
   // The trust-the-tunnel warning. Deliberately unmissable: with --remote there
   // is NO server-side authentication — access control is entirely the
   // tunnel's job (edge auth), and every admitted caller has the full owner
   // surface. Printed on every remote start so the trade is never implicit.
-  if (remoteEnabled) {
+  if (remoteAlias !== null) {
     console.warn(
       warning(
         [
           '',
           '⚠  REMOTE ACCESS ENABLED — no server-side authentication.',
-          `   Anyone who can reach ${activeConfig.remote?.url} has FULL control of this`,
+          `   Anyone who can reach ${remoteAlias.url} has FULL control of this`,
           '   knowledge base, including sync, publishing, credentials, and local operations.',
           '   Restrict who can reach it at the tunnel: ngrok OAuth, Cloudflare Access,',
           '   Tailscale ACLs, or equivalent edge auth.',
@@ -1586,7 +1686,7 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   for (const diag of envLayer.diagnostics) {
     console.warn(warning(`[config] ${diag.message}`));
   }
-  const envConfig = applyConfigOverlay(activeConfig, envLayer.layer) as Config;
+  const envConfig = applyConfigOverlay(config, envLayer.layer) as Config;
 
   // Bind precedence: --bind / deprecated --host flags > ratified OK_BIND >
   // legacy HOST env > server.bind file layer > loopback default. The resolved
@@ -1641,8 +1741,31 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // request. Without this, `HOST=0.0.0.0 ok start --remote` coerces to
   // loopback yet still trips ExposureConsentError off the uncoerced list.
   const bindList = remoteEnabled ? [host] : requestedBind;
+  // The flag-layer overlay, applied ABOVE the env layer: the resolved bind
+  // list, the `--remote` alias expansion (publicUrl + allowExternal +
+  // idleShutdown 'off' — the SAME server.* resolution path any other exposure
+  // route uses), and `--public-url`. Nothing here is remote-specific
+  // machinery; the alias is only these keys. Self-consent is loopback-scoped
+  // (see scopeRemoteAliasConsentToBind) — a non-loopback bind under --remote
+  // still needs explicit consent, so the interlock refusal below matches the
+  // pre-alias behavior.
+  const aliasOverlay =
+    remoteAlias !== null ? scopeRemoteAliasConsentToBind(remoteAlias.serverOverlay, bindList) : {};
+  if (remoteAlias !== null && !('allowExternal' in aliasOverlay)) {
+    console.warn(
+      warning(
+        `--remote does not consent to exposing a non-loopback bind (${bindList.join(', ')}) — the tunnel is the only ingress the alias vouches for. Consent explicitly with OK_ALLOW_EXTERNAL=1 (or server.allowExternal in .ok/local/config.yml), or drop the non-loopback bind.`,
+      ),
+    );
+  }
   const runtime: ServerRuntimeConfig = resolveServerRuntimeConfig(
-    applyConfigOverlay(envConfig, { server: { bind: bindList } }) as Config,
+    applyConfigOverlay(envConfig, {
+      server: {
+        bind: bindList,
+        ...aliasOverlay,
+        ...(opts.publicUrl !== undefined ? { publicUrl: opts.publicUrl } : {}),
+      },
+    }) as Config,
   );
 
   // The consent warning, sibling to the --remote banner above. `allowExternal`
@@ -1694,8 +1817,8 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   //    inherit a dormant `remote.port` (set long ago for tunnel use); doing so
   //    pins every local boot to that fixed port instead of a free dynamic one,
   //    and two projects both carrying `remote.port` could never run at once.
-  const remotePort = resolveServerRuntimeConfig(activeConfig).port;
-  const localPort = activeConfig.server?.port;
+  const remotePort = resolveServerRuntimeConfig(config).port;
+  const localPort = config.server?.port;
   if (remoteEnabled && portFromCli === undefined && portFromEnv !== undefined) {
     console.warn(
       `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${remotePort ?? DEFAULT_REMOTE_PORT}). Pass --port to override deliberately.`,
@@ -1748,7 +1871,7 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   let booted: BootedStartServer;
   try {
     booted = await bootStartServer({
-      config: activeConfig,
+      config,
       cwd,
       host,
       port,
@@ -1769,12 +1892,16 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       // the resolver's covers OK_IDLE_SHUTDOWN, the config leaf, and the
       // bind-derived default ('30m' loopback-only, 'off' exposed). Converted to
       // ms (null for 'off') at this single boundary. The flag stays a string
-      // through Commander on purpose — see parseIdleShutdownFlag.
-      idleThresholdMs: idleShutdownToMs(opts.idleShutdown ?? runtime.idleShutdown),
+      // through Commander on purpose — see parseIdleShutdownFlag. Under
+      // --remote the alias overlay pins 'off' and the flag is ignored — the
+      // legacy remote flow always disabled the idle timer, and a remote MCP
+      // client is plain HTTP the /collab-counting timer can't see.
+      idleThresholdMs: idleShutdownToMs(
+        (remoteEnabled ? undefined : opts.idleShutdown) ?? runtime.idleShutdown,
+      ),
       serverRuntime: runtime,
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
-      ...(remoteEnabled ? { enableRemote: true } : {}),
     });
   } catch (err) {
     // Project not initialized — clean message, no stack trace.
@@ -1795,16 +1922,9 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       process.exit(78);
     }
 
-    // Unusable `remote:` config block (--remote without a url, a plain-http
-    // url, …) — the error message is the fix instruction. EX_CONFIG.
-    if (err instanceof serverModule.RemoteConfigError) {
-      console.error(error(err.message));
-      process.exit(78);
-    }
-
     // Exposure without consent (non-loopback bind or publicUrl set while
     // server.allowExternal is off) — the interlock's message IS the one-line
-    // fix. EX_CONFIG, same contract as RemoteConfigError.
+    // fix. EX_CONFIG, same contract as the other config-shaped boot errors.
     if (err instanceof serverModule.ExposureConsentError) {
       console.error(error(err.message));
       process.exit(78);
@@ -2228,8 +2348,13 @@ export function startCommand(getConfig: () => Config): Command {
       'Throwaway project root for --single-file (where ephemeral .ok/ state lives)',
     )
     .option(
+      '--public-url <url>',
+      'Canonical external origin clients dial (sets server.publicUrl for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (OK_ALLOW_EXTERNAL=1 or server.allowExternal).',
+      parsePublicUrlFlag,
+    )
+    .option(
       '--remote [url]',
-      'Serve through a tunnel: admit requests carrying the tunnel Host with NO server-side auth (anyone who can reach the URL has full control — restrict access at the tunnel with edge auth). Bare --remote uses remote.url from .ok/config.yml; --remote <url> supplies it for this run.',
+      'Deprecated alias: expands to --public-url <url> + OK_ALLOW_EXTERNAL consent on a loopback bind. Serves through a tunnel with NO server-side auth (anyone who can reach the URL has full control — restrict access at the tunnel with edge auth). Bare --remote uses remote.url from .ok/config.yml; --remote <url> supplies it for this run.',
     )
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();
@@ -2237,6 +2362,27 @@ export function startCommand(getConfig: () => Config): Command {
       // `--server-url` only means something to the --only ui proxy.
       if (opts.serverUrl !== undefined && opts.only !== 'ui') {
         process.stderr.write("error: option '--server-url' requires '--only ui'\n");
+        process.exit(2);
+      }
+
+      // `--remote` IS a `--public-url` (plus consent) — combining them would
+      // make one silently win. Fail loud; pass one.
+      if (opts.publicUrl !== undefined && opts.remote !== undefined && opts.remote !== false) {
+        process.stderr.write(
+          "error: option '--remote' cannot be combined with '--public-url' (--remote is a deprecated alias that sets server.publicUrl)\n",
+        );
+        process.exit(2);
+      }
+
+      // Ephemeral single-file mode has no project and no consented root — the
+      // legacy remote flow refused to arm there (while still printing an
+      // "enabled" banner). Now that --remote expands into real exposure
+      // consent, refuse the combination loudly instead of exposing a
+      // throwaway root.
+      if (opts.singleFile !== undefined && opts.remote !== undefined && opts.remote !== false) {
+        process.stderr.write(
+          "error: option '--single-file' cannot be combined with '--remote' — ephemeral single-file mode has no project and no consented root to serve remotely\n",
+        );
         process.exit(2);
       }
 
@@ -2312,6 +2458,8 @@ export function startCommand(getConfig: () => Config): Command {
         if (opts.serverUrl !== undefined) ignored.push('--server-url');
         if (opts.idleShutdown !== undefined) ignored.push('--idle-shutdown');
         if (opts.openBrowser === false) ignored.push('--no-open-browser');
+        if (opts.publicUrl !== undefined) ignored.push('--public-url');
+        if (opts.remote !== undefined && opts.remote !== false) ignored.push('--remote');
         if (ignored.length > 0) {
           // Debug-level surface; reuse the existing program log-level
           // gate (--log-level=debug). Inline check to avoid a logger dep.

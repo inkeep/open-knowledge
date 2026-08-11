@@ -143,7 +143,7 @@ export function resolveServerRuntimeConfig(config: Config | undefined): ServerRu
   const loopbackOnly = isLoopbackOnlyBind(bind);
 
   // Alias-reads: the successor key wins whenever present; an empty-string
-  // `remote.url` reads as unset (matching `resolveRemoteAccess`).
+  // `remote.url` reads as unset (matching the CLI's `expandRemoteAlias`).
   const port = server?.port ?? remote?.port;
   const legacyUrl = remote?.url === '' ? undefined : remote?.url;
   const publicUrl = server?.publicUrl ?? legacyUrl;

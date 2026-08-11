@@ -8,16 +8,8 @@
  * allowing the other only breaks the desktop renderer's WS surfaces
  * (`/collab/thread`) while its HTTP calls sail through.
  */
-import { originMatchesPublicHost } from './remote-access.ts';
-
-export function isAllowedApiOrigin(origin: string, remotePublicHost?: string): boolean {
+export function isAllowedApiOrigin(origin: string): boolean {
   if (origin === 'null' || origin === 'file://') return true;
-  // Remote mode: the SPA served through the tunnel fetches from its public
-  // origin — admitted alongside the loopback set. Absent (local mode), the
-  // allowlist stays loopback-only.
-  if (remotePublicHost !== undefined && originMatchesPublicHost(origin, remotePublicHost)) {
-    return true;
-  }
   try {
     const { hostname } = new URL(origin);
     return (

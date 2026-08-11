@@ -23,18 +23,12 @@ describe('API origin guards', () => {
   });
 });
 
-describe('isAllowedApiOrigin with a remote public host', () => {
-  test('admits the https tunnel origin only when the host is supplied', () => {
-    expect(isAllowedApiOrigin('https://myproject.ngrok.app', 'myproject.ngrok.app')).toBe(true);
+// Tunnel/public origins are an ingress-policy concern now — `isOriginAdmitted`
+// admits the declared `server.publicUrl` origin (see ingress-policy.test.ts);
+// this helper stays loopback-only.
+describe('isAllowedApiOrigin stays loopback-only', () => {
+  test('refuses a tunnel origin — publicUrl admission lives in the ingress policy', () => {
     expect(isAllowedApiOrigin('https://myproject.ngrok.app')).toBe(false);
-  });
-
-  test('still refuses foreign and http origins with the host supplied', () => {
-    expect(isAllowedApiOrigin('https://evil.example.com', 'myproject.ngrok.app')).toBe(false);
-    expect(isAllowedApiOrigin('http://myproject.ngrok.app', 'myproject.ngrok.app')).toBe(false);
-  });
-
-  test('loopback origins keep working alongside the remote host', () => {
-    expect(isAllowedApiOrigin('http://localhost:5173', 'myproject.ngrok.app')).toBe(true);
+    expect(isAllowedApiOrigin('http://localhost:5173')).toBe(true);
   });
 });

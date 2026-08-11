@@ -66,10 +66,10 @@ export interface NativeApiHandle {
  * public tunnel with full local trust, decided by whether the tunnel
  * rewrites Host.
  *
- * Gate 2 — with the legacy `--remote` flow armed, ONE admit decision covers
- * every surface (trust-the-tunnel — see remote-access.ts): loopback socket +
- * Host on the allowlist. Refusals are wrong-Host callers (DNS-rebound
- * pages), not auth failures.
+ * Gate 2 — with the surface EXPOSED (`server.allowExternal` consent, which
+ * `ok start --remote` also expands into), ONE admit decision covers every
+ * surface: an admitted peer + Host on the allowlist. Refusals are wrong-Host
+ * callers (DNS-rebound pages), not auth failures.
  *
  * `handler` is the caller's tag on the `ok.api.error.count` counter for
  * rejections ('mcp-mount' for the legacy dispatch, 'native-api-surface' for
@@ -92,18 +92,18 @@ export function admitRequestSurface(
     );
     return false;
   }
-  // Gate 2 runs whenever the surface is EXPOSED — legacy `--remote` OR
-  // `allowExternal` consent. This covers every surface the prelude fronts:
-  // `/mcp`, `/api/*`, the static shell, and project-mode content assets. The
-  // predicate is the consolidated one (loopback + bind literals + publicUrl),
-  // identical to the `/api` pipeline gate, so direct-IP access to the shell/
-  // content matches what the API admits. Pure-local (no exposure) skips this
-  // SURFACE-wide gate on purpose — the read-sensitive legs behind it carry
-  // their own always-on Host gates (the `/api` pipeline read gate, the
-  // content-serve gate in `asset-serve-middleware.ts`, the unconditional
-  // `/mcp` gate), while the SPA shell stays deliberately ungated: it is
-  // public bundle code, and a rebound attacker serves their own page anyway.
-  if (policy.legacyRemote !== undefined || policy.allowExternal) {
+  // Gate 2 runs whenever the surface is EXPOSED (`allowExternal` consent).
+  // This covers every surface the prelude fronts: `/mcp`, `/api/*`, the
+  // static shell, and project-mode content assets. The predicate is the
+  // consolidated one (loopback + bind literals + publicUrl), identical to the
+  // `/api` pipeline gate, so direct-IP access to the shell/content matches
+  // what the API admits. Pure-local (no exposure) skips this SURFACE-wide
+  // gate on purpose — the read-sensitive legs behind it carry their own
+  // always-on Host gates (the `/api` pipeline read gate, the content-serve
+  // gate in `asset-serve-middleware.ts`, the unconditional `/mcp` gate),
+  // while the SPA shell stays deliberately ungated: it is public bundle
+  // code, and a rebound attacker serves their own page anyway.
+  if (policy.allowExternal) {
     const host = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
     if (!isPeerAdmitted(req.socket.remoteAddress, policy) || !isHostAdmitted(host, policy)) {
       errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {

@@ -103,8 +103,8 @@ const HTTP_URL_SCHEME_RE = /^https?:\/\//;
 
 /**
  * Fallback listen port when remote access is enabled but `remote.port` is
- * unset. Lives in the READERS (`resolveRemoteAccess`, the CLI port
- * resolution), not as a zod `.default()` — the successor `server.port` is
+ * unset. Lives in the READER (the CLI's remote-mode port resolution), not as
+ * a zod `.default()` — the successor `server.port` is
  * alias-read from `remote.port` only when unset, and a schema-baked default
  * would make "unset" undetectable in a parsed config.
  */

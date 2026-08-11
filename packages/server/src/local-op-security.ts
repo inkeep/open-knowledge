@@ -20,7 +20,6 @@ import { errorResponse } from './http/error-response.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { buildIngressPolicy, type IngressPolicy, isPeerAdmitted } from './ingress-policy.ts';
 import { getLogger } from './logger.ts';
-import { originMatchesPublicHost } from './remote-access.ts';
 
 const log = getLogger('local-op-security');
 
@@ -228,9 +227,9 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
  * Returns true if the Origin header (when present) is admitted. Absent Origin
  * header is allowed (same-origin browser requests / CLI tools).
  *
- * The admitted set beyond loopback comes from the ingress policy: the legacy
- * tunnel origin, the declared `publicUrl` origin (scheme-matched), and the
- * bind literals — an empty policy keeps the historical loopback-only set.
+ * The admitted set beyond loopback comes from the ingress policy: the
+ * declared `publicUrl` origin (scheme-matched) and the bind literals — an
+ * empty policy keeps the historical loopback-only set.
  *
  * Parses the URL and compares hostname exactly; a raw `startsWith` would
  * accept crafted origins like `http://127.0.0.1.evil.com` if DNS rebinding
@@ -239,10 +238,6 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
 export function hasValidLocalOpOrigin(req: IncomingMessage, policy?: IngressPolicy): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
-  const legacyHost = policy?.legacyRemote?.publicHost;
-  if (legacyHost !== undefined && originMatchesPublicHost(origin, legacyHost)) {
-    return true;
-  }
   try {
     // WHATWG URL preserves the IPv6 brackets in `hostname` (e.g. `[::1]`), so
     // the comparison set includes the bracketed form alongside the literal.
@@ -277,7 +272,7 @@ export function hasValidLocalOpOrigin(req: IncomingMessage, policy?: IngressPoli
   }
 }
 
-/** Strip a default-port suffix — mirrors `normalizeHostHeader` in remote-access.ts. */
+/** Strip a default-port suffix — mirrors `normalizeHostHeader` in ingress-policy.ts. */
 function normalizeOriginHost(host: string): string {
   return host.replace(/:(443|80)$/, '').toLowerCase();
 }

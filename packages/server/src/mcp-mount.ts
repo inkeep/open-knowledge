@@ -227,7 +227,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
     // Surface-wide admission prelude — the proxied-request tripwire plus the
-    // remote-access admit decision. Shared with the natively-mounted /api/*
+    // exposure admit decision. Shared with the natively-mounted /api/*
     // routes (`admitRequestSurface` in http-app.ts), which sit above the
     // strangler catch-all and would otherwise bypass it.
     if (!admitRequestSurface(req, res, ingressPolicy, 'mcp-mount')) return;
@@ -236,22 +236,19 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
       const sessionId = Array.isArray(req.headers['mcp-session-id'])
         ? req.headers['mcp-session-id'][0]
         : req.headers['mcp-session-id'];
-      if (ingressPolicy.legacyRemote === undefined) {
-        // The policy's peer + Host gate pair. (With legacy remote armed the
-        // shared admit gate above already enforced the superset.)
-        if (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy)) {
-          errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-            handler: 'mcp',
-          });
-          return;
-        }
-        if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
-          errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-            handler: 'mcp',
-            detail: HOST_NOT_ADMITTED_REMEDIATION,
-          });
-          return;
-        }
+      // The policy's peer + Host gate pair.
+      if (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy)) {
+        errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
+          handler: 'mcp',
+        });
+        return;
+      }
+      if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
+        errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+          handler: 'mcp',
+          detail: HOST_NOT_ADMITTED_REMEDIATION,
+        });
+        return;
       }
       if (origin !== undefined && !isOriginAdmitted(origin, ingressPolicy)) {
         errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {

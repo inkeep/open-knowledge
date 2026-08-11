@@ -329,19 +329,20 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     //     modes. A missing Origin (native / server-to-server clients) is
     //     admitted — those are not CSWSH vectors and legitimately carry none.
     //
-    // (2) Peer + Host admission (`admitted()`) — only when EXPOSED (legacy
-    //     `--remote` OR `allowExternal`). Pure-local keeps its historical
-    //     ungated posture on this axis — a deliberate carve-out from the
-    //     read-posture hardening that Host-gates `/api` reads and content-
-    //     asset serving in every mode: WS upgrades are not reachable from a
-    //     rebound page without an Origin header, and axis (1) refuses the
-    //     foreign-Origin shape unconditionally. Under consent the loopback
-    //     bind no longer implies a loopback peer, so `admitted()` (loopback +
-    //     bind literals + publicUrl, identical to the HTTP API gate) keeps
-    //     direct-IP access matching what `/api` accepts.
+    // (2) Peer + Host admission (`admitted()`) — only when EXPOSED
+    //     (`allowExternal` consent, which `ok start --remote` expands into).
+    //     Pure-local keeps its historical ungated posture on this axis — a
+    //     deliberate carve-out from the read-posture hardening that
+    //     Host-gates `/api` reads and content-asset serving in every mode: WS
+    //     upgrades are not reachable from a rebound page without an Origin
+    //     header, and axis (1) refuses the foreign-Origin shape
+    //     unconditionally. Under consent the loopback bind no longer implies
+    //     a loopback peer, so `admitted()` (loopback + bind literals +
+    //     publicUrl, identical to the HTTP API gate) keeps direct-IP access
+    //     matching what `/api` accepts.
     const foreignOrigin =
       req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy);
-    const exposed = ingressPolicy.legacyRemote !== undefined || ingressPolicy.allowExternal;
+    const exposed = ingressPolicy.allowExternal;
     if (foreignOrigin || (exposed && !admitted(req))) {
       log.debug(
         { url: req.url, host: req.headers.host, origin: req.headers.origin },

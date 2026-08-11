@@ -3,9 +3,12 @@ import { describe, expect, test } from 'vitest';
 import {
   buildIngressPolicy,
   getIngressContext,
+  hasForwardingHeaders,
+  hostHeaderMatchesPublicHost,
   isHostAdmitted,
   isOriginAdmitted,
   isPeerAdmitted,
+  normalizeHostHeader,
   stampIngressContext,
   tripsForwardedHeaderTripwire,
 } from './ingress-policy.ts';
@@ -24,10 +27,16 @@ function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeCon
   };
 }
 
-const LEGACY_REMOTE = {
-  url: 'https://myproject.ngrok.app',
-  publicHost: 'myproject.ngrok.app',
-  port: 24_550,
+/**
+ * The runtime shape `ok start --remote <url>` expands to: declared public
+ * origin + consent on a loopback bind — no dedicated tunnel shape.
+ */
+const REMOTE_ALIAS_RUNTIME: Partial<ServerRuntimeConfig> = {
+  publicUrl: 'https://myproject.ngrok.app',
+  publicUrlSource: 'server',
+  allowExternal: true,
+  idleShutdown: 'off',
+  openBrowser: false,
 };
 
 describe('buildIngressPolicy', () => {
@@ -36,7 +45,6 @@ describe('buildIngressPolicy', () => {
     expect(policy.allowExternal).toBe(false);
     expect(policy.bindLiterals).toEqual([]);
     expect(policy.publicOrigin).toBeUndefined();
-    expect(policy.legacyRemote).toBeUndefined();
     expect(policy.tolerateForwardedHeaders).toBe(false);
   });
 
@@ -67,8 +75,11 @@ describe('buildIngressPolicy', () => {
     expect(aliased.publicOrigin).toBeUndefined();
   });
 
-  test('forwarded headers are tolerated only under legacy remote, or consent + declared publicUrl', () => {
-    expect(buildIngressPolicy({ remoteAccess: LEGACY_REMOTE }).tolerateForwardedHeaders).toBe(true);
+  test('forwarded headers are tolerated only under consent + declared publicUrl', () => {
+    // The --remote alias lands exactly here: its expansion carries both keys.
+    expect(
+      buildIngressPolicy({ serverRuntime: runtime(REMOTE_ALIAS_RUNTIME) }).tolerateForwardedHeaders,
+    ).toBe(true);
     expect(
       buildIngressPolicy({
         serverRuntime: runtime({
@@ -226,6 +237,58 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for public
     expect(isOriginAdmitted('://missing-scheme', case3)).toBe(false);
     expect(isOriginAdmitted('not a url', case3)).toBe(false);
     expect(isOriginAdmitted('https://', case3)).toBe(false);
+  });
+});
+
+describe('the --remote alias shape — tunnel admission via the ratified keys', () => {
+  // Behavior-preservation pins for the legacy `--remote` contract, expressed
+  // through the ONE policy: the tunnel's public Host is admitted, its https
+  // origin is admitted, foreign names stay refused.
+  const tunnel = buildIngressPolicy({ serverRuntime: runtime(REMOTE_ALIAS_RUNTIME) });
+
+  test('the tunnel public Host is admitted, with or without default-port suffix', () => {
+    expect(isHostAdmitted('myproject.ngrok.app', tunnel)).toBe(true);
+    expect(isHostAdmitted('myproject.ngrok.app:443', tunnel)).toBe(true);
+    expect(isHostAdmitted('127.0.0.1:24550', tunnel)).toBe(true);
+    expect(isHostAdmitted('evil.example.com', tunnel)).toBe(false);
+    expect(isHostAdmitted(undefined, tunnel)).toBe(false);
+  });
+
+  test('the https tunnel origin is admitted; http and foreign origins are not', () => {
+    expect(isOriginAdmitted('https://myproject.ngrok.app', tunnel)).toBe(true);
+    expect(isOriginAdmitted('http://myproject.ngrok.app', tunnel)).toBe(false);
+    expect(isOriginAdmitted('https://evil.example.com', tunnel)).toBe(false);
+  });
+
+  test('forwarding headers (tunnels always inject them) do not trip the wire', () => {
+    expect(
+      tripsForwardedHeaderTripwire({ headers: { 'x-forwarded-for': '203.0.113.7' } }, tunnel),
+    ).toBe(false);
+  });
+});
+
+describe('normalizeHostHeader / hostHeaderMatchesPublicHost', () => {
+  test('matches the public host, with or without default-port suffix, case-insensitively', () => {
+    expect(normalizeHostHeader('MyProject.NGROK.app:443')).toBe('myproject.ngrok.app');
+    expect(normalizeHostHeader('host.example:8080')).toBe('host.example:8080');
+    expect(hostHeaderMatchesPublicHost('myproject.ngrok.app', 'myproject.ngrok.app')).toBe(true);
+    expect(hostHeaderMatchesPublicHost('myproject.ngrok.app:443', 'myproject.ngrok.app')).toBe(
+      true,
+    );
+    expect(hostHeaderMatchesPublicHost('MyProject.NGROK.app', 'myproject.ngrok.app')).toBe(true);
+  });
+
+  test('refuses other hosts and missing Host', () => {
+    expect(hostHeaderMatchesPublicHost('evil.example.com', 'myproject.ngrok.app')).toBe(false);
+    expect(hostHeaderMatchesPublicHost(undefined, 'myproject.ngrok.app')).toBe(false);
+  });
+});
+
+describe('hasForwardingHeaders', () => {
+  test('detects standard forwarding headers; plain local requests carry none', () => {
+    expect(hasForwardingHeaders({ headers: { 'x-forwarded-for': '203.0.113.7' } })).toBe(true);
+    expect(hasForwardingHeaders({ headers: { forwarded: 'for=203.0.113.7' } })).toBe(true);
+    expect(hasForwardingHeaders({ headers: { host: 'localhost:24550' } })).toBe(false);
   });
 });
 

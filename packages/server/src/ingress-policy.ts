@@ -1,12 +1,15 @@
 /**
  * One ingress policy for every admission gate — HTTP requests AND WebSocket
- * upgrades. Built once at boot from the resolved `server.*` runtime plus the
- * legacy `--remote` shape, then threaded to every gate site: the surface
- * admission prelude (`admitRequestSurface`), the `/api/*` pipeline gates, the
- * `/mcp` gates, the collaboration host's upgrade admission, the config-doc
- * admission, and the local-op security checks. One policy, one set of
- * predicates — the HTTP and WS halves of the server can never disagree about
- * who is admitted.
+ * upgrades. Built once at boot from the resolved `server.*` runtime, then
+ * threaded to every gate site: the surface admission prelude
+ * (`admitRequestSurface`), the `/api/*` pipeline gates, the `/mcp` gates, the
+ * collaboration host's upgrade admission, the config-doc admission, and the
+ * local-op security checks. One policy, one set of predicates — the HTTP and
+ * WS halves of the server can never disagree about who is admitted.
+ *
+ * The `ok start --remote <url>` flag is CLI sugar over the same keys (it
+ * expands to `server.publicUrl` + loopback `server.bind` +
+ * `server.allowExternal`) — there is no separate tunnel policy shape.
  *
  * The three predicates and what governs each:
  *
@@ -17,9 +20,9 @@
  *  - HOST (`isHostAdmitted`) — the name the client dialed (DNS-rebinding
  *    defense). Always validates, in every mode, against loopback names + the
  *    non-loopback bind-address literals + the declared `server.publicUrl`
- *    host + the legacy tunnel host. Consent does NOT widen this set: an
- *    unconfigured name stays refused, so a rebound page presenting the
- *    attacker's domain is refused no matter what the peer looks like.
+ *    host. Consent does NOT widen this set: an unconfigured name stays
+ *    refused, so a rebound page presenting the attacker's domain is refused
+ *    no matter what the peer looks like.
  *  - ORIGIN (`isOriginAdmitted`) — browser CSRF defense; "if present, must
  *    match" (curl and MCP clients send none). Admits the loopback set, the
  *    null/file:// Electron shapes, the bind literals, and the declared
@@ -34,12 +37,40 @@ import type { IncomingMessage } from 'node:http';
 import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { isAllowedApiOrigin } from './api-origin.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
-import {
-  hasForwardingHeaders,
-  hostHeaderMatchesPublicHost,
-  normalizeHostHeader,
-  type ResolvedRemoteAccess,
-} from './remote-access.ts';
+
+/** Strip a default-port suffix so `host:443`/`host:80` compare equal to `host`. */
+export function normalizeHostHeader(host: string): string {
+  return host.replace(/:(443|80)$/, '').toLowerCase();
+}
+
+/** True when a raw `Host` names the declared public host — for the Host gates. */
+export function hostHeaderMatchesPublicHost(host: string | undefined, publicHost: string): boolean {
+  return host !== undefined && normalizeHostHeader(host) === publicHost;
+}
+
+/**
+ * Proxy-forwarding headers (standard `X-Forwarded-*` / `Forwarded` plus common
+ * vendor ones). Their presence while the policy does not tolerate them means
+ * a tunnel/proxy points at a server that never opted into exposure — the
+ * tripwire refuses with a hint.
+ */
+const FORWARDING_HEADERS = [
+  'x-forwarded-for',
+  'x-forwarded-proto',
+  'x-forwarded-host',
+  'forwarded',
+  'x-real-ip',
+  'x-client-ip',
+  'x-cluster-client-ip',
+  'cf-connecting-ip',
+  'fastly-client-ip',
+  'true-client-ip',
+] as const;
+
+/** True when the request carries any standard proxy-forwarding header. */
+export function hasForwardingHeaders(req: Pick<IncomingMessage, 'headers'>): boolean {
+  return FORWARDING_HEADERS.some((h) => req.headers[h] !== undefined);
+}
 
 /**
  * Remediation detail for a `host-not-allowed` refusal. The read gate now fires
@@ -73,13 +104,11 @@ export interface IngressPolicy {
    * Origin checks since the key admits http for tailnet/LAN deployments.
    */
   publicOrigin: { host: string; protocol: string } | undefined;
-  /** The legacy `ok start --remote` shape (tunnel publicHost; https-only). */
-  legacyRemote: ResolvedRemoteAccess | undefined;
   /**
    * Proxy-forwarding headers tolerated (never trusted — addressing and
-   * identity stay socket/config-derived). True under the legacy remote flow
-   * or under consent with a declared public origin; otherwise their presence
-   * trips the proxied-request tripwire.
+   * identity stay socket/config-derived). True under consent with a declared
+   * public origin; otherwise their presence trips the proxied-request
+   * tripwire.
    */
   tolerateForwardedHeaders: boolean;
 }
@@ -98,8 +127,6 @@ export interface BuildIngressPolicyInput {
    * loopback-only default (test rigs, legacy construction sites).
    */
   serverRuntime?: ServerRuntimeConfig | undefined;
-  /** Legacy `--remote` resolution; undefined when remote is not armed. */
-  remoteAccess?: ResolvedRemoteAccess | null | undefined;
 }
 
 /** Loopback / wildcard shapes that never contribute an admissible Host name. */
@@ -112,7 +139,6 @@ function normalizeBindLiteral(address: string): string {
 
 export function buildIngressPolicy(input: BuildIngressPolicyInput): IngressPolicy {
   const runtime = input.serverRuntime;
-  const legacyRemote = input.remoteAccess ?? undefined;
 
   const bindLiterals =
     runtime === undefined
@@ -134,9 +160,7 @@ export function buildIngressPolicy(input: BuildIngressPolicyInput): IngressPolic
     allowExternal,
     bindLiterals,
     publicOrigin,
-    legacyRemote,
-    tolerateForwardedHeaders:
-      legacyRemote !== undefined || (allowExternal && publicOrigin !== undefined),
+    tolerateForwardedHeaders: allowExternal && publicOrigin !== undefined,
   };
 }
 
@@ -162,9 +186,9 @@ function hostnameOfHostHeader(host: string): string | null {
 }
 
 /**
- * HOST gate: loopback names, the bind literals (any port), the declared
- * `publicUrl` host (exact host[:port] after default-port normalization), and
- * the legacy tunnel host. Never widened by consent.
+ * HOST gate: loopback names, the bind literals (any port), and the declared
+ * `publicUrl` host (exact host[:port] after default-port normalization).
+ * Never widened by consent.
  */
 export function isHostAdmitted(host: string | undefined, policy: IngressPolicy): boolean {
   if (isAllowedWorkspaceHostHeader(host)) return true;
@@ -173,26 +197,19 @@ export function isHostAdmitted(host: string | undefined, policy: IngressPolicy):
     const hostname = hostnameOfHostHeader(host);
     if (hostname !== null && policy.bindLiterals.includes(hostname)) return true;
   }
-  if (
-    policy.publicOrigin !== undefined &&
-    hostHeaderMatchesPublicHost(host, policy.publicOrigin.host)
-  ) {
-    return true;
-  }
   return (
-    policy.legacyRemote !== undefined &&
-    hostHeaderMatchesPublicHost(host, policy.legacyRemote.publicHost)
+    policy.publicOrigin !== undefined && hostHeaderMatchesPublicHost(host, policy.publicOrigin.host)
   );
 }
 
 /**
  * ORIGIN gate ("if present, must match" — callers skip when absent): the
- * loopback/null/file:// set, the legacy tunnel origin (https), the declared
- * public origin (scheme-matched against `publicUrl`'s own scheme), and the
- * bind literals over http or https.
+ * loopback/null/file:// set, the declared public origin (scheme-matched
+ * against `publicUrl`'s own scheme), and the bind literals over http or
+ * https.
  */
 export function isOriginAdmitted(origin: string, policy: IngressPolicy): boolean {
-  if (isAllowedApiOrigin(origin, policy.legacyRemote?.publicHost)) return true;
+  if (isAllowedApiOrigin(origin)) return true;
   let parsed: URL;
   try {
     parsed = new URL(origin);

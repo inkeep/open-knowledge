@@ -177,17 +177,24 @@ describe('createCollaborationHost', () => {
     );
   });
 
-  test('uses remote access admission for bare collaboration upgrades', () => {
+  test('uses the tunnel-shape admission (publicUrl + consent) for bare collaboration upgrades', () => {
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
       hocuspocus,
       log,
+      // The `ok start --remote` alias shape: declared public origin + consent
+      // on a loopback bind.
       ingressPolicy: buildIngressPolicy({
-        remoteAccess: {
-          url: 'https://myproject.ngrok.app',
-          publicHost: 'myproject.ngrok.app',
-          port: 24_550,
+        serverRuntime: {
+          port: undefined,
+          bind: ['127.0.0.1'],
+          publicUrl: 'https://myproject.ngrok.app',
+          publicUrlSource: 'server',
+          allowExternal: true,
+          openBrowser: false,
+          idleShutdown: 'off',
+          loopbackOnly: true,
         },
       }),
     });

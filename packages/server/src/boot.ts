@@ -72,7 +72,6 @@ import { createMcpHttpHandler } from './mcp-http.ts';
 import { mountMcpAndApi, type ReadinessState } from './mcp-mount.ts';
 import { MissingOkConfigError } from './missing-ok-config-error.ts';
 import { createProjectRuntime, type ProjectRuntime } from './project-runtime.ts';
-import { RemoteConfigError, resolveRemoteAccess } from './remote-access.ts';
 import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 import { installServerMemoryGauge, installServerRuntimeGauges } from './server-memory-telemetry.ts';
 import {
@@ -246,14 +245,6 @@ export interface BootServerOptions
    * invoke UI-sibling spawn logic. Default false.
    */
   skipAutoInit?: boolean;
-  /**
-   * Explicit remote-access opt-in (`ok start --remote`). Remote access is
-   * NEVER armed from config alone — a `remote.url` left in `.ok/config.yml`
-   * must not silently expose a server whose operator didn't ask for it this
-   * run. Only the CLI passes true; the Electron utility and dev-server boot
-   * paths never do. Default false.
-   */
-  enableRemote?: boolean;
   /**
    * The resolved `server.*` runtime (bind list, publicUrl, consent, derived
    * defaults). The CLI passes the fully-layered resolution (flags > env >
@@ -580,23 +571,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const attachUi = opts.attachUiSibling ?? true;
   const log = opts.log ?? getLogger('boot');
 
-  // Remote access (the `remote:` config block) — armed only on the explicit
-  // `enableRemote` opt-in, never from config alone. Throws RemoteConfigError
-  // on requested-but-unusable config — fail loud at boot rather than serving
-  // a half-open remote surface. Ephemeral single-file mode never serves
-  // remotely (it has no project, no MCP endpoint, and no consented root).
-  const remoteAccess =
-    opts.enableRemote === true && opts.ephemeral !== true ? resolveRemoteAccess(opts.config) : null;
-  if (opts.enableRemote === true && opts.ephemeral !== true && remoteAccess === null) {
-    throw new RemoteConfigError(
-      'remote access was requested but remote.url is not set — pass a url (`ok start --remote <url>`) or set remote.url in .ok/config.yml.',
-    );
-  }
-  // Remote MCP sessions arrive over the tunnel as plain HTTP; the idle timer
-  // counts /collab WS clients only and would tear the server down under a
-  // live remote client. Keep it up in remote mode.
-  const idleMsOption = remoteAccess !== null ? null : opts.idleShutdownMs;
-
   // The resolved server.* runtime. The CLI passes its fully-layered
   // resolution (flags > env > project-local > project > user). Direct
   // embedders (desktop utility, dev-server plugin, tests) fall back to a
@@ -655,7 +629,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // ONE ingress policy for the whole listener — HTTP gates, WS upgrade
   // admission, config-doc admission, and the local-op checks all consult this
   // object. Built from the resolved server.* runtime (consent, declared bind
-  // literals, publicUrl) plus the legacy remote shape.
+  // literals, publicUrl); `ok start --remote` reaches here through the same
+  // runtime, expanded by the CLI into these keys.
   //
   // The policy's admitted Host names come from `serverRuntime.bind` — the
   // DECLARED bind (which Host headers to accept) — NOT the physical
@@ -668,7 +643,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // `effectiveBindAddresses`. Different questions, deliberately different
   // sources; do NOT unify them (doing so drops declared-but-not-physically-
   // bound Hosts from the allowlist → spurious 403s).
-  const ingressPolicy = buildIngressPolicy({ serverRuntime, remoteAccess });
+  const ingressPolicy = buildIngressPolicy({ serverRuntime });
   if (
     serverRuntime.allowExternal &&
     !serverRuntime.loopbackOnly &&
@@ -874,10 +849,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // Issued URLs (MCP serverUrl → preview_url, ACP thread bootstrap) name the
   // declared public origin when one is configured via the successor key —
   // that is the name clients actually type, and a loopback URL handed to a
-  // remote agent is unreachable. The remote-alias source stays with the
-  // legacy --remote flow (which never rewrote issued URLs), and the
-  // server.lock URL stays loopback below: the lock is same-machine discovery
-  // by contract.
+  // remote agent is unreachable. The remote-alias source (a dormant
+  // `remote.url` left in config with no `--remote` flag) never rewrites
+  // issued URLs, and the server.lock URL stays loopback below: the lock is
+  // same-machine discovery by contract.
   const issuedBaseUrl = (): string =>
     serverRuntime.publicUrlSource === 'server' && serverRuntime.publicUrl !== undefined
       ? serverRuntime.publicUrl.replace(/\/+$/, '')
@@ -1055,10 +1030,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // mounts, so the first `list` already includes them.
   if (acpThreadManager !== null) await acpThreadManager.init();
 
-  if (remoteAccess !== null) {
-    log.info({ url: remoteAccess.url }, '[remote] remote access enabled (trust-the-tunnel)');
-  }
-
   // Readiness snapshot for /readyz. Both callbacks handle the promise so a
   // failed async init cannot surface as an unhandled rejection here (the
   // caller still owns `ready` and observes the real error there).
@@ -1119,8 +1090,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // after 30 min of zero WS clients; the Electron utility disables it because
   // window-close IS the shutdown trigger.
   let idleHandle: IdleShutdownHandle | null = null;
-  if (idleMsOption !== null) {
-    const idleMs = idleMsOption ?? DEFAULT_IDLE_THRESHOLD_MS;
+  if (opts.idleShutdownMs !== null) {
+    const idleMs = opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS;
     const idleHandler =
       opts.idleShutdownHandler ??
       ((destroyFn) => async () => {
