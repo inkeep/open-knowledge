@@ -96,6 +96,10 @@ msgstr "\"{trimmed}\" ya existe aquí"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "\"frontmatter\" es un nombre de propiedad reservado"
 
+#: src/components/settings/LintingSection.tsx
+msgid "(a bare folder name needs /** after it to match what's inside)"
+msgstr "(un nombre de carpeta solo necesita /** después para coincidir con su contenido)"
+
 #. placeholder {0}: seed.parentProjectName
 #: src/components/ShareReceiveDialog.tsx
 msgid "(a worktree of {0})"
@@ -176,6 +180,11 @@ msgstr "{0, plural, one {# documento} many {# documentos} other {# documentos}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, one {# error} many {# errores} other {# errores}}"
 
+#. placeholder {0}: selected.size
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{0, plural, one {# folder picked} other {# folders picked}}"
+msgstr "{0, plural, one {# carpeta seleccionada} many {# carpetas seleccionadas} other {# carpetas seleccionadas}}"
+
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "{0, plural, one {# item} other {# items}}"
@@ -235,6 +244,15 @@ msgstr "{0, plural, one {Archivo} many {Archivos} other {Archivos}}"
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, one {Carpeta} many {Carpetas} other {Carpetas}}"
+
+#. placeholder {0}: counted.total
+#. placeholder {1}: counted.matched
+#. placeholder {2}: counted.total
+#. placeholder {3}: counted.matched
+#. placeholder {4}: counted.total
+#: src/components/settings/LintingSection.tsx
+msgid "{0, plural, one {Matches {1} of {2} doc right now.} other {Matches {3} of {4} docs right now.}}"
+msgstr "{0, plural, one {Ahora mismo coincide con {1} de {2} documento.} many {Ahora mismo coincide con {3} de {4} documentos.} other {Ahora mismo coincide con {3} de {4} documentos.}}"
 
 #. placeholder {0}: result.fileCount
 #: src/components/ProblemsPanel.tsx
@@ -484,6 +502,10 @@ msgstr "{conflictCount, plural, one {# archivo en conflicto} many {# archivos en
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# comentario} many {# comentarios} other {# comentarios}}"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{count, plural, one {# doc} other {# docs}}"
+msgstr "{count, plural, one {# documento} many {# documentos} other {# documentos}}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
@@ -1495,6 +1517,10 @@ msgstr "Valores permitidos para {field}"
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "Ya está en {assetContentPath}: se reutiliza."
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Already covered by a picked parent folder"
+msgstr "Ya cubierta por una carpeta principal seleccionada"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
@@ -7781,6 +7807,14 @@ msgstr "No hay ningún archivo seleccionado"
 msgid "No files yet."
 msgstr "Todavía no hay archivos."
 
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders in this project yet."
+msgstr "Aún no hay carpetas en este proyecto."
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders match."
+msgstr "Ninguna carpeta coincide."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "No git remote"
 msgstr "No hay remoto de git"
@@ -9067,6 +9101,14 @@ msgstr "Elige un tema o crea el tuyo."
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
 msgstr "Elige un emoji para insertarlo en el cursor."
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders"
+msgstr "Elegir carpetas"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders this schema applies to"
+msgstr "Elegir las carpetas a las que se aplica este esquema"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
@@ -10401,6 +10443,10 @@ msgstr "Busca archivos, carpetas y comandos del espacio de trabajo actual."
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, or commands"
 msgstr "Busca archivos, carpetas o comandos"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Search folders"
+msgstr "Buscar carpetas"
 
 #: src/editor/components/IconPickerInput.tsx
 msgid "Search icons..."
@@ -12700,6 +12746,11 @@ msgstr "Mostrar u ocultar las miniaturas"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle underline formatting."
 msgstr "Activa o desactiva el subrayado."
+
+#. placeholder {0}: row.path
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Toggles the pattern {0}/**"
+msgstr "Alterna el patrón {0}/**"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"

@@ -96,6 +96,10 @@ msgstr "「{trimmed}」在這裡已存在"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "「frontmatter」是保留的屬性名稱"
 
+#: src/components/settings/LintingSection.tsx
+msgid "(a bare folder name needs /** after it to match what's inside)"
+msgstr "（僅寫資料夾名稱時需要在後面加上 /** 才能符合其中的內容）"
+
 #. placeholder {0}: seed.parentProjectName
 #: src/components/ShareReceiveDialog.tsx
 msgid "(a worktree of {0})"
@@ -176,6 +180,11 @@ msgstr "{0, plural, other {# 個文件}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {# 個錯誤}}"
 
+#. placeholder {0}: selected.size
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{0, plural, one {# folder picked} other {# folders picked}}"
+msgstr "{0, plural, other {已選 # 個資料夾}}"
+
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "{0, plural, one {# item} other {# items}}"
@@ -235,6 +244,15 @@ msgstr "{0, plural, other {檔案}}"
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, other {資料夾}}"
+
+#. placeholder {0}: counted.total
+#. placeholder {1}: counted.matched
+#. placeholder {2}: counted.total
+#. placeholder {3}: counted.matched
+#. placeholder {4}: counted.total
+#: src/components/settings/LintingSection.tsx
+msgid "{0, plural, one {Matches {1} of {2} doc right now.} other {Matches {3} of {4} docs right now.}}"
+msgstr "{0, plural, other {目前符合 {4} 個文件中的 {3} 個。}}"
 
 #. placeholder {0}: result.fileCount
 #: src/components/ProblemsPanel.tsx
@@ -484,6 +502,10 @@ msgstr "{conflictCount, plural, other {# 個檔案有衝突}}"
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# 則註解}}"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{count, plural, one {# doc} other {# docs}}"
+msgstr "{count, plural, other {# 個文件}}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
@@ -1495,6 +1517,10 @@ msgstr "{field} 允許的值"
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "已經在 {assetContentPath} 了——直接重複使用。"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Already covered by a picked parent folder"
+msgstr "已由選取的上層資料夾涵蓋"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
@@ -7781,6 +7807,14 @@ msgstr "沒有選取任何檔案"
 msgid "No files yet."
 msgstr "還沒有檔案。"
 
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders in this project yet."
+msgstr "此專案中還沒有資料夾。"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders match."
+msgstr "沒有符合的資料夾。"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "No git remote"
 msgstr "沒有 git 遠端"
@@ -9067,6 +9101,14 @@ msgstr "選擇主題或建立自己的主題。"
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
 msgstr "挑一個表情符號插入到游標處。"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders"
+msgstr "選擇資料夾"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders this schema applies to"
+msgstr "選擇這個結構描述適用的資料夾"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
@@ -10401,6 +10443,10 @@ msgstr "在目前的工作區中搜尋檔案、資料夾和指令。"
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, or commands"
 msgstr "搜尋檔案、資料夾或指令"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Search folders"
+msgstr "搜尋資料夾"
 
 #: src/editor/components/IconPickerInput.tsx
 msgid "Search icons..."
@@ -12700,6 +12746,11 @@ msgstr "切換縮圖"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle underline formatting."
 msgstr "切換底線格式。"
+
+#. placeholder {0}: row.path
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Toggles the pattern {0}/**"
+msgstr "切換模式 {0}/**"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"

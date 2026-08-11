@@ -1148,6 +1148,7 @@
     "GUYwCr": ["Tutup pemberitahuan"],
     "GUZHkL": ["Warna palet tidak lengkap"],
     "GUqTzn": ["Riset pesaing"],
+    "GW9ZdV": ["Pilih folder"],
     "GXf9hG": ["Mengkloning ", ["repoName"], "..."],
     "GZzDqc": [
       "Detail tentang galat yang baru Anda alami disertakan. Rahasia seperti kunci API dan token disunting otomatis."
@@ -1963,6 +1964,7 @@
       " bertindak tanpa bertanya — OpenKnowledge tidak dapat menambahkan permintaan izin untuknya"
     ],
     "SqIoy_": ["Perbaikan otomatis — tidak ada masalah di sini yang punya perbaikan otomatis"],
+    "Sr9xtj": ["Pilih folder tempat skema ini berlaku"],
     "SrOuyg": ["Panel dokumen"],
     "SvBFYA": ["Tidak ada proyek terbaru"],
     "Sxx_Zz": [
@@ -2154,11 +2156,13 @@
     "V_DjMe": ["galat render"],
     "V_wltx": ["Masukkan judul untuk templat ini."],
     "Va3xJe": ["Tambahkan bidang"],
+    "VbM4Sv": ["Cari folder"],
     "VbqhBI": ["Sudah ada di ", ["assetContentPath"], " — memakai ulang."],
     "VbyRUy": ["Komentar"],
     "VcqWBy": [
       "Unggahan mungkin berhasil tetapi bilah sisi tidak mutakhir — segarkan untuk menyinkronkan ulang"
     ],
+    "Vd8wxu": [["0", "plural", { "other": ["#", " folder dipilih"] }]],
     "VdXv4D": ["Kloning dari GitHub"],
     "VeVIIk": ["Memuat keterampilan"],
     "Vftef5": [
@@ -2290,6 +2294,7 @@
     ],
     "Xhm7gG": ["Saran aset"],
     "Xisk4u": ["Disunting ", ["editedAgo"]],
+    "XjqA8x": ["Mengaktifkan atau menonaktifkan pola ", ["0"], "/**"],
     "Xk0-VC": [
       "Pratinjau tautan ke dokumen lain di proyek ini selalu aktif dan dibaca dari indeks lokal — untuk yang itu, tidak ada yang keluar dari komputer Anda."
     ],
@@ -2459,6 +2464,9 @@
     ],
     "Zon_qG": ["Sumber cermin <0>", ["label"], "</0>"],
     "ZptNUh": ["Tampilkan ", ["hidden"], " lagi"],
+    "Zs3d0w": [
+      ["0", "plural", { "other": ["Saat ini cocok dengan ", ["3"], " dari ", ["4"], " dokumen."] }]
+    ],
     "ZsGpr_": ["Tempel tautan"],
     "ZscwQ0": ["Tidak bisa berpindah ke Hanya saya"],
     "Zue_jx": ["Token GitHub Anda kehilangan cakupan yang wajib. Coba masuk lagi."],
@@ -2612,6 +2620,7 @@
     "bBE5tC": ["Terdeteksi di komputer ini"],
     "bBcFK_": ["Buka pemilih emoji untuk ", ["keyName"]],
     "bD8I7O": ["Lengkap"],
+    "bDiiSM": ["Sudah tercakup oleh folder induk yang dipilih"],
     "bEp7UY": ["Tidak terhubung ke bridge desktop"],
     "bF22t6": ["Hapus bidang ", ["field"]],
     "bGOTXx": [
@@ -3551,6 +3560,7 @@
       "Disimpan di <0>.ok/templates/</0> pada proyek ini. Tersedia di setiap folder (templat khusus folder bisa menimpanya berdasarkan nama berkas)."
     ],
     "ng2Ibo": ["Nama cabang"],
+    "ni5Vqi": ["(nama folder saja memerlukan /** setelahnya agar cocok dengan isinya)"],
     "njBeMm": ["Keduanya"],
     "njU86j": ["Properti \"", ["trimmed"], "\" sudah ada"],
     "nmwqWS": ["Belum dijawab"],
@@ -4169,6 +4179,7 @@
     "wqD3pI": [["failed"], " dari ", ["0"], " komentar tidak dapat diperbarui."],
     "ws5o1F": ["Diperiksa oleh: ", ["0"]],
     "wtcxiD": ["Bagikan penyiapan ini dengan tim Anda?"],
+    "wtd69q": ["Tidak ada folder yang cocok."],
     "wvK7Ay": ["Salinan lokal cabang <0>", ["branch"], "</0> milik Anda tertinggal."],
     "wvbc1r": ["Dokumen tidak bisa dibuka"],
     "wzq9Rv": ["Cabang dengan nama itu sudah ada. Buka worktree-nya dari pengalih saja."],
@@ -4299,6 +4310,7 @@
     "yhdqox": [
       "Terpasang — ok tersedia di terminal eksternal. Melepas centang menghapusnya; terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
     ],
+    "yit5dF": ["Belum ada folder di proyek ini."],
     "yjExfe": ["Cabang <0>", ["shareBranch"], "</0> sedang dipakai di:"],
     "ylXj1N": ["Terpilih"],
     "ymWJLd": ["Tampilkan ", ["0"], " lagi"],
@@ -4334,6 +4346,7 @@
     "zAJzIg": ["Masalah di ", ["0"]],
     "zAsDLY": ["Visualisasi graf tautan antardokumen"],
     "zBUqvf": ["Siapkan integrasi OpenKnowledge…"],
+    "zD1Nqf": [["count", "plural", { "other": ["#", " dokumen"] }]],
     "zJL34S": ["Jendela Terminal baru"],
     "zKxoPm": ["\"", ["0"], "\" tidak bisa diganti namanya: ", ["1"]],
     "zL0LPh": ["Global di luar bidang teks"],

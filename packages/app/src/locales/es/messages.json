@@ -1321,6 +1321,7 @@
     "GUYwCr": ["Descartar el aviso"],
     "GUZHkL": ["Faltan colores de la paleta"],
     "GUqTzn": ["Investigación de la competencia"],
+    "GW9ZdV": ["Elegir carpetas"],
     "GXf9hG": ["Clonando ", ["repoName"], "..."],
     "GZzDqc": [
       "Se incluyen los detalles del error que acabas de encontrar. Los secretos como claves de API y tokens se ocultan automáticamente."
@@ -2235,6 +2236,7 @@
       " actúa sin preguntar — OpenKnowledge no puede añadirle solicitudes de permiso"
     ],
     "SqIoy_": ["Arreglo automático: ningún problema de aquí tiene arreglo automático"],
+    "Sr9xtj": ["Elegir las carpetas a las que se aplica este esquema"],
     "SrOuyg": ["Paneles del documento"],
     "SvBFYA": ["No hay proyectos recientes"],
     "Sxx_Zz": [
@@ -2444,10 +2446,22 @@
     "V_DjMe": ["error de renderizado"],
     "V_wltx": ["Escribe un título para esta plantilla."],
     "Va3xJe": ["Añadir campo"],
+    "VbM4Sv": ["Buscar carpetas"],
     "VbqhBI": ["Ya está en ", ["assetContentPath"], ": se reutiliza."],
     "VbyRUy": ["Comentarios"],
     "VcqWBy": [
       "Puede que la subida haya funcionado, pero la barra lateral está desactualizada; actualízala para resincronizar"
+    ],
+    "Vd8wxu": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " carpeta seleccionada"],
+          "many": ["#", " carpetas seleccionadas"],
+          "other": ["#", " carpetas seleccionadas"]
+        }
+      ]
     ],
     "VdXv4D": ["Clonar desde GitHub"],
     "VeVIIk": ["Cargando habilidades"],
@@ -2594,6 +2608,7 @@
     ],
     "Xhm7gG": ["Sugerencias de recursos"],
     "Xisk4u": ["Editado ", ["editedAgo"]],
+    "XjqA8x": ["Alterna el patrón ", ["0"], "/**"],
     "Xk0-VC": [
       "Las vistas previas de enlaces a otros documentos de este proyecto están siempre activas y se leen del índice local: para esas no sale nada de tu equipo."
     ],
@@ -2804,6 +2819,17 @@
     ],
     "Zon_qG": ["Origen del espejo <0>", ["label"], "</0>"],
     "ZptNUh": ["Mostrar ", ["hidden"], " más"],
+    "Zs3d0w": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Ahora mismo coincide con ", ["1"], " de ", ["2"], " documento."],
+          "many": ["Ahora mismo coincide con ", ["3"], " de ", ["4"], " documentos."],
+          "other": ["Ahora mismo coincide con ", ["3"], " de ", ["4"], " documentos."]
+        }
+      ]
+    ],
     "ZsGpr_": ["Pegar enlace"],
     "ZscwQ0": ["No se pudo cambiar a Solo yo"],
     "Zue_jx": [
@@ -2972,6 +2998,7 @@
     "bBE5tC": ["Detectado en este equipo"],
     "bBcFK_": ["Abrir el selector de emojis de ", ["keyName"]],
     "bD8I7O": ["Completo"],
+    "bDiiSM": ["Ya cubierta por una carpeta principal seleccionada"],
     "bEp7UY": ["Sin conexión con el puente de escritorio"],
     "bF22t6": ["Quitar el campo ", ["field"]],
     "bGOTXx": [
@@ -4042,6 +4069,7 @@
       "Se guarda en <0>.ok/templates/</0> dentro de este proyecto. Disponible en todas las carpetas (las plantillas de carpeta pueden sustituirla por nombre de archivo)."
     ],
     "ng2Ibo": ["Nombre de la rama"],
+    "ni5Vqi": ["(un nombre de carpeta solo necesita /** después para coincidir con su contenido)"],
     "njBeMm": ["Ambos"],
     "njU86j": ["La propiedad \"", ["trimmed"], "\" ya existe"],
     "nmwqWS": ["Sin responder"],
@@ -4758,6 +4786,7 @@
     "wqD3pI": ["No se pudieron actualizar ", ["failed"], " de ", ["0"], " comentarios."],
     "ws5o1F": ["Comprobado por: ", ["0"]],
     "wtcxiD": ["¿Compartir esta configuración con tu equipo?"],
+    "wtd69q": ["Ninguna carpeta coincide."],
     "wvK7Ay": ["Tu copia local de la rama <0>", ["branch"], "</0> está por detrás."],
     "wvbc1r": ["No se pudo abrir el documento"],
     "wzq9Rv": ["Ya existe una rama con ese nombre. Abre su worktree desde el selector."],
@@ -4910,6 +4939,7 @@
     "yhdqox": [
       "Instalado: ok está disponible en terminales externas. Al desmarcarlo se quita; la terminal integrada y las herramientas de IA de OpenKnowledge siguen funcionando."
     ],
+    "yit5dF": ["Aún no hay carpetas en este proyecto."],
     "yjExfe": ["La rama <0>", ["shareBranch"], "</0> está activa en:"],
     "ylXj1N": ["Seleccionado"],
     "ymWJLd": ["Mostrar ", ["0"], " más"],
@@ -4955,6 +4985,13 @@
     "zAJzIg": ["Problemas en ", ["0"]],
     "zAsDLY": ["Visualización en grafo de los enlaces entre documentos"],
     "zBUqvf": ["Configurar las integraciones de OpenKnowledge…"],
+    "zD1Nqf": [
+      [
+        "count",
+        "plural",
+        { "one": ["#", " documento"], "many": ["#", " documentos"], "other": ["#", " documentos"] }
+      ]
+    ],
     "zJL34S": ["Ventana de Terminal nueva"],
     "zKxoPm": ["No se pudo renombrar \"", ["0"], "\": ", ["1"]],
     "zL0LPh": ["Global fuera de los campos de texto"],

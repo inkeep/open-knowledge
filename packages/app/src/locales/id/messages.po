@@ -96,6 +96,10 @@ msgstr "\"{trimmed}\" sudah ada di sini"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "\"frontmatter\" adalah nama properti yang dicadangkan"
 
+#: src/components/settings/LintingSection.tsx
+msgid "(a bare folder name needs /** after it to match what's inside)"
+msgstr "(nama folder saja memerlukan /** setelahnya agar cocok dengan isinya)"
+
 #. placeholder {0}: seed.parentProjectName
 #: src/components/ShareReceiveDialog.tsx
 msgid "(a worktree of {0})"
@@ -176,6 +180,11 @@ msgstr "{0, plural, other {# dokumen}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {# galat}}"
 
+#. placeholder {0}: selected.size
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{0, plural, one {# folder picked} other {# folders picked}}"
+msgstr "{0, plural, other {# folder dipilih}}"
+
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "{0, plural, one {# item} other {# items}}"
@@ -235,6 +244,15 @@ msgstr "{0, plural, other {Berkas}}"
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, other {Folder}}"
+
+#. placeholder {0}: counted.total
+#. placeholder {1}: counted.matched
+#. placeholder {2}: counted.total
+#. placeholder {3}: counted.matched
+#. placeholder {4}: counted.total
+#: src/components/settings/LintingSection.tsx
+msgid "{0, plural, one {Matches {1} of {2} doc right now.} other {Matches {3} of {4} docs right now.}}"
+msgstr "{0, plural, other {Saat ini cocok dengan {3} dari {4} dokumen.}}"
 
 #. placeholder {0}: result.fileCount
 #: src/components/ProblemsPanel.tsx
@@ -484,6 +502,10 @@ msgstr "{conflictCount, plural, other {# berkas berkonflik}}"
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# komentar}}"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{count, plural, one {# doc} other {# docs}}"
+msgstr "{count, plural, other {# dokumen}}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
@@ -1491,6 +1513,10 @@ msgstr "Nilai yang diizinkan untuk {field}"
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "Sudah ada di {assetContentPath} — memakai ulang."
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Already covered by a picked parent folder"
+msgstr "Sudah tercakup oleh folder induk yang dipilih"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
@@ -7777,6 +7803,14 @@ msgstr "Tidak ada berkas yang dipilih"
 msgid "No files yet."
 msgstr "Belum ada berkas."
 
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders in this project yet."
+msgstr "Belum ada folder di proyek ini."
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders match."
+msgstr "Tidak ada folder yang cocok."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "No git remote"
 msgstr "Tidak ada remote git"
@@ -9063,6 +9097,14 @@ msgstr "Pilih tema atau buat tema Anda sendiri."
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
 msgstr "Pilih sebuah emoji untuk disisipkan di posisi kursor."
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders"
+msgstr "Pilih folder"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders this schema applies to"
+msgstr "Pilih folder tempat skema ini berlaku"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
@@ -10397,6 +10439,10 @@ msgstr "Mencari berkas, folder, dan perintah untuk ruang kerja saat ini."
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, or commands"
 msgstr "Cari berkas, folder, atau perintah"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Search folders"
+msgstr "Cari folder"
 
 #: src/editor/components/IconPickerInput.tsx
 msgid "Search icons..."
@@ -12696,6 +12742,11 @@ msgstr "Tampilkan atau sembunyikan gambar mini"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle underline formatting."
 msgstr "Menyalakan atau mematikan format garis bawah."
+
+#. placeholder {0}: row.path
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Toggles the pattern {0}/**"
+msgstr "Mengaktifkan atau menonaktifkan pola {0}/**"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"

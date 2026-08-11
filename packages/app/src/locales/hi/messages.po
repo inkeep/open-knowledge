@@ -96,6 +96,10 @@ msgstr "\"{trimmed}\" यहाँ पहले से मौजूद है"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "\"frontmatter\" एक आरक्षित प्रॉपर्टी नाम है"
 
+#: src/components/settings/LintingSection.tsx
+msgid "(a bare folder name needs /** after it to match what's inside)"
+msgstr "(केवल फ़ोल्डर नाम के बाद /** जोड़ना ज़रूरी है ताकि उसके अंदर की सामग्री मेल खाए)"
+
 #. placeholder {0}: seed.parentProjectName
 #: src/components/ShareReceiveDialog.tsx
 msgid "(a worktree of {0})"
@@ -176,6 +180,11 @@ msgstr "{0, plural, one {# दस्तावेज़} other {# दस्ता
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, one {# त्रुटि} other {# त्रुटियाँ}}"
 
+#. placeholder {0}: selected.size
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{0, plural, one {# folder picked} other {# folders picked}}"
+msgstr "{0, plural, one {# फ़ोल्डर चुना गया} other {# फ़ोल्डर चुने गए}}"
+
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "{0, plural, one {# item} other {# items}}"
@@ -235,6 +244,15 @@ msgstr "{0, plural, one {फ़ाइल} other {फ़ाइलें}}"
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, one {फ़ोल्डर} other {फ़ोल्डर}}"
+
+#. placeholder {0}: counted.total
+#. placeholder {1}: counted.matched
+#. placeholder {2}: counted.total
+#. placeholder {3}: counted.matched
+#. placeholder {4}: counted.total
+#: src/components/settings/LintingSection.tsx
+msgid "{0, plural, one {Matches {1} of {2} doc right now.} other {Matches {3} of {4} docs right now.}}"
+msgstr "{0, plural, one {अभी {2} में से {1} दस्तावेज़ से मेल खाता है।} other {अभी {4} में से {3} दस्तावेज़ों से मेल खाता है।}}"
 
 #. placeholder {0}: result.fileCount
 #: src/components/ProblemsPanel.tsx
@@ -484,6 +502,10 @@ msgstr "{conflictCount, plural, one {# फ़ाइल में टकराव
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# टिप्पणी} other {# टिप्पणियाँ}}"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{count, plural, one {# doc} other {# docs}}"
+msgstr "{count, plural, one {# दस्तावेज़} other {# दस्तावेज़}}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
@@ -1491,6 +1513,10 @@ msgstr "{field} के लिए अनुमत मान"
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "पहले से ही {assetContentPath} पर — पुन: उपयोग किया जा रहा है।"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Already covered by a picked parent folder"
+msgstr "पहले से चुने गए मूल फ़ोल्डर में शामिल है"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
@@ -7777,6 +7803,14 @@ msgstr "कोई फ़ाइल नहीं चुनी गई"
 msgid "No files yet."
 msgstr "अभी कोई फ़ाइल नहीं।"
 
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders in this project yet."
+msgstr "इस प्रोजेक्ट में अभी कोई फ़ोल्डर नहीं है।"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders match."
+msgstr "कोई फ़ोल्डर मेल नहीं खाता।"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "No git remote"
 msgstr "कोई git रिमोट नहीं"
@@ -9063,6 +9097,14 @@ msgstr "कोई थीम चुनें या अपनी थीम बन
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
 msgstr "कर्सर पर डालने के लिए कोई इमोजी चुनें।"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders"
+msgstr "फ़ोल्डर चुनें"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders this schema applies to"
+msgstr "वे फ़ोल्डर चुनें जिन पर यह स्कीमा लागू होती है"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
@@ -10397,6 +10439,10 @@ msgstr "मौजूदा कार्यक्षेत्र के लिए
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, or commands"
 msgstr "फ़ाइलें, फ़ोल्डर या कमांड खोजें"
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Search folders"
+msgstr "फ़ोल्डर खोजें"
 
 #: src/editor/components/IconPickerInput.tsx
 msgid "Search icons..."
@@ -12696,6 +12742,11 @@ msgstr "थंबनेल चालू या बंद करें"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle underline formatting."
 msgstr "रेखांकित फ़ॉर्मैटिंग चालू या बंद करें।"
+
+#. placeholder {0}: row.path
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Toggles the pattern {0}/**"
+msgstr "पैटर्न {0}/** टॉगल करें"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"

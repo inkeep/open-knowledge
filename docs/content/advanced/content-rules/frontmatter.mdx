@@ -100,7 +100,7 @@ Frontmatter findings are always **warnings** — there's no severity promotion y
 
 ## The settings editor
 
-**Settings ▸ Plugins ▸ Frontmatter schemas** (once the plugin is enabled) lists the project's schema files: search, and **New schema** to scaffold a fresh file in `.ok/schemas/`. Each entry shows a plain-language summary of its scope ("everything under docs/ — except any doc named index"), an editor for the `appliesTo` globs, an enable toggle, and delete for schema files OK manages.
+**Settings ▸ Plugins ▸ Frontmatter schemas** (once the plugin is enabled) lists the project's schema files: search, and **New schema** to scaffold a fresh file in `.ok/schemas/`. Each entry shows a plain-language summary of its scope ("everything under docs/ — except any doc named index") with a live match count ("Matches 12 of 40 docs right now"), a **Pick folders** button, an editor for the `appliesTo` globs, an enable toggle, and delete for schema files OK manages. **Pick folders** scopes a schema to folders without hand-writing glob syntax: checking a folder authors its recursive `folder/**` pattern into the glob editor, and unchecking removes it. The live count is the immediate tell when a hand-typed pattern misses (a bare folder name like `blog` matches only a doc literally named `blog`, so it reads "Matches 0 of N docs right now" until it becomes `blog/**`).
 
 The toggle is the only control over whether a schema validates. Turning it off keeps the schema's `appliesTo` globs, so turning it back on restores them — the toggle never discards the mapping. To drop a schema from `config.yml` entirely, edit `config.yml` directly. (Deleting a schema file is the one destructive action here: it removes the file and, with it, its `config.yml` mapping.)
 

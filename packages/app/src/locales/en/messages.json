@@ -1153,6 +1153,7 @@
     "GUYwCr": ["Dismiss notice"],
     "GUZHkL": ["Missing palette colors"],
     "GUqTzn": ["Competitor research"],
+    "GW9ZdV": ["Pick folders"],
     "GXf9hG": ["Cloning ", ["repoName"], "..."],
     "GZzDqc": [
       "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
@@ -1959,6 +1960,7 @@
     "SlfejT": ["Error"],
     "Soy_80": [["0"], " acts without asking — OpenKnowledge can't add permission prompts for it"],
     "SqIoy_": ["Auto-fix — no problems here have an automatic fix"],
+    "Sr9xtj": ["Pick folders this schema applies to"],
     "SrOuyg": ["Document panels"],
     "SvBFYA": ["No recent projects"],
     "Sxx_Zz": [
@@ -2142,9 +2144,13 @@
     "V_DjMe": ["render error"],
     "V_wltx": ["Enter a title for this template."],
     "Va3xJe": ["Add field"],
+    "VbM4Sv": ["Search folders"],
     "VbqhBI": ["Already at ", ["assetContentPath"], " — reusing."],
     "VbyRUy": ["Comments"],
     "VcqWBy": ["Upload may have succeeded but the sidebar is out of date — refresh to resync"],
+    "Vd8wxu": [
+      ["0", "plural", { "one": ["#", " folder picked"], "other": ["#", " folders picked"] }]
+    ],
     "VdXv4D": ["Clone from GitHub"],
     "VeVIIk": ["Loading skills"],
     "Vftef5": ["Common markdown issues — hard tabs, heading increments, list markers, and more."],
@@ -2266,6 +2272,7 @@
     "XgqUOy": ["No skill found at that source. Import will report why if you continue."],
     "Xhm7gG": ["Asset suggestions"],
     "Xisk4u": ["Edited ", ["editedAgo"]],
+    "XjqA8x": ["Toggles the pattern ", ["0"], "/**"],
     "Xk0-VC": [
       "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
     ],
@@ -2440,6 +2447,16 @@
     ],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
+    "Zs3d0w": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Matches ", ["1"], " of ", ["2"], " doc right now."],
+          "other": ["Matches ", ["3"], " of ", ["4"], " docs right now."]
+        }
+      ]
+    ],
     "ZsGpr_": ["Paste link"],
     "ZscwQ0": ["Couldn't switch to Only me"],
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
@@ -2583,6 +2600,7 @@
     "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
     "bD8I7O": ["Complete"],
+    "bDiiSM": ["Already covered by a picked parent folder"],
     "bEp7UY": ["Not attached to desktop bridge"],
     "bF22t6": ["Remove field ", ["field"]],
     "bGOTXx": [
@@ -3512,6 +3530,7 @@
       "Stored at <0>.ok/templates/</0> in this project. Available in every folder (folder-scoped templates can override by filename)."
     ],
     "ng2Ibo": ["Branch name"],
+    "ni5Vqi": ["(a bare folder name needs /** after it to match what's inside)"],
     "njBeMm": ["Both"],
     "njU86j": ["Property \"", ["trimmed"], "\" already exists"],
     "nmwqWS": ["Not answered"],
@@ -4140,6 +4159,7 @@
     "wqD3pI": [["failed"], " of ", ["0"], " comments could not be updated."],
     "ws5o1F": ["Checked by: ", ["0"]],
     "wtcxiD": ["Share this setup with your team?"],
+    "wtd69q": ["No folders match."],
     "wvK7Ay": ["Your local copy of branch <0>", ["branch"], "</0> is behind."],
     "wvbc1r": ["Couldn't open document"],
     "wzq9Rv": [
@@ -4276,6 +4296,7 @@
     "yhdqox": [
       "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
     ],
+    "yit5dF": ["No folders in this project yet."],
     "yjExfe": ["Branch <0>", ["shareBranch"], "</0> is checked out in:"],
     "ylXj1N": ["Selected"],
     "ymWJLd": ["Show ", ["0"], " more"],
@@ -4307,6 +4328,7 @@
     "zAJzIg": ["Problems in ", ["0"]],
     "zAsDLY": ["Graph visualization of document links"],
     "zBUqvf": ["Set up OpenKnowledge integrations…"],
+    "zD1Nqf": [["count", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
     "zJL34S": ["New Terminal Window"],
     "zKxoPm": ["Couldn't rename \"", ["0"], "\": ", ["1"]],
     "zL0LPh": ["Global outside text fields"],

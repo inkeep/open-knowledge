@@ -15,16 +15,18 @@ import {
   type ConfigBinding,
   type ConfigPatch,
   type FrontmatterSchemaMapping,
+  findZeroMatchAppliesToPatterns,
   humanFormat,
   isFrontmatterSchemaAsset,
   type LintPluginId,
   summarizeAppliesTo,
 } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Plus, SquarePen, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
+import { useOptionalPageList } from '@/components/PageListContext';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +45,8 @@ import { useConfigContext } from '@/lib/config-provider';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { requestSchemaFieldsView } from '@/lib/schema-fields-view-intent';
+import { countMatchingDocs } from './applies-to-folder-globs';
+import { AppliesToFolderPicker } from './applies-to-folder-picker';
 import { indexGlobProblemsByFile, parseAppliesToGlobProblem } from './applies-to-glob-problems';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { MarkdownlintRuleBrowser } from './markdownlint-rule-browser';
@@ -375,6 +379,25 @@ function AppliesToSummaryLine({
   appliesTo: FrontmatterSchemaMapping['appliesTo'];
 }) {
   const { includes, excludes } = summarizeAppliesTo(appliesTo);
+  const pageList = useOptionalPageList();
+  // Live count over the project's actual docs — the immediate counterpart to
+  // the server's after-the-fact zero-match warning. An authored set matching
+  // nothing (the `blog`-instead-of-`blog/**` trap) reads "0 of N" the moment
+  // it's typed. A polite status line: zero is de-emphasized rather than
+  // alarmed.
+  const counted =
+    pageList !== null && pageList.pages.size > 0
+      ? countMatchingDocs(appliesTo, pageList.pages)
+      : null;
+  const zeroMatch =
+    counted !== null && counted.matched === 0 && appliesToList(appliesTo).length > 0;
+  // Diagnose each authored pattern independently: a live sibling must not
+  // hide a bare folder name that still matches nothing on its own.
+  const zeroMatchPatterns =
+    pageList !== null ? findZeroMatchAppliesToPatterns(appliesTo, [...pageList.pages]) : [];
+  const zeroMatchBareNameAuthored = zeroMatchPatterns.some((pattern) =>
+    summarizeAppliesTo(pattern).includes.some((entry) => entry.kind === 'exact'),
+  );
   const list = (entries: AppliesToPatternSummary[]) =>
     entries.map((entry, index) => (
       // biome-ignore lint/suspicious/noArrayIndexKey: display-only phrase list, order-stable.
@@ -401,6 +424,34 @@ function AppliesToSummaryLine({
         </>
       ) : null}
       .
+      {counted !== null ? (
+        <span
+          role="status"
+          aria-live="polite"
+          className={zeroMatch ? 'text-muted-foreground/70' : undefined}
+          data-testid={`frontmatter-schema-match-count-${file}`}
+        >
+          {' '}
+          <Plural
+            value={counted.total}
+            one={
+              <Trans>
+                Matches {counted.matched} of {counted.total} doc right now.
+              </Trans>
+            }
+            other={
+              <Trans>
+                Matches {counted.matched} of {counted.total} docs right now.
+              </Trans>
+            }
+          />
+          {zeroMatchBareNameAuthored ? (
+            <span className="ml-1 text-muted-foreground/60">
+              <Trans>(a bare folder name needs /** after it to match what's inside)</Trans>
+            </span>
+          ) : null}
+        </span>
+      ) : null}
     </p>
   );
 }
@@ -485,6 +536,12 @@ function SchemaFileRow({
           <Label htmlFor={`frontmatter-schema-applies-${file}`} className="text-xs">
             <Trans>Applies to (globs — leading ! excludes; empty means every doc)</Trans>
           </Label>
+          <AppliesToFolderPicker
+            file={file}
+            globs={appliesToList(mapping?.appliesTo)}
+            disabled={disabled}
+            onChange={onAppliesToChange}
+          />
           <TagPillInput
             id={`frontmatter-schema-applies-${file}`}
             value={appliesToList(mapping?.appliesTo)}

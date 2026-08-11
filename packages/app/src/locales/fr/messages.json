@@ -1356,6 +1356,7 @@
     "GUYwCr": ["Ignorer cet avis"],
     "GUZHkL": ["Des couleurs de la palette sont manquantes"],
     "GUqTzn": ["Étude concurrentielle"],
+    "GW9ZdV": ["Choisir des dossiers"],
     "GXf9hG": ["Clonage de ", ["repoName"], "…"],
     "GZzDqc": [
       "Les détails de l'erreur que vous venez de rencontrer sont inclus. Les secrets comme les clés API et les jetons sont masqués automatiquement."
@@ -2268,6 +2269,7 @@
       " agit sans demander — OpenKnowledge ne peut pas lui ajouter de demandes de permission"
     ],
     "SqIoy_": ["Correction automatique — aucun problème ici n'a de correction automatique"],
+    "Sr9xtj": ["Choisir les dossiers auxquels ce schéma s'applique"],
     "SrOuyg": ["Panneaux du document"],
     "SvBFYA": ["Aucun projet récent"],
     "Sxx_Zz": [
@@ -2485,10 +2487,22 @@
     "V_DjMe": ["erreur de rendu"],
     "V_wltx": ["Saisissez un titre pour ce modèle."],
     "Va3xJe": ["Ajouter un champ"],
+    "VbM4Sv": ["Rechercher des dossiers"],
     "VbqhBI": ["Déjà dans ", ["assetContentPath"], " — réutilisation."],
     "VbyRUy": ["Commentaires"],
     "VcqWBy": [
       "L'envoi a peut-être réussi, mais la barre latérale n'est pas à jour — actualisez pour resynchroniser"
+    ],
+    "Vd8wxu": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " dossier sélectionné"],
+          "many": ["#", " dossiers sélectionnés"],
+          "other": ["#", " dossiers sélectionnés"]
+        }
+      ]
     ],
     "VdXv4D": ["Cloner depuis GitHub"],
     "VeVIIk": ["Chargement des compétences"],
@@ -2637,6 +2651,7 @@
     ],
     "Xhm7gG": ["Suggestions de ressources"],
     "Xisk4u": ["Modifié ", ["editedAgo"]],
+    "XjqA8x": ["Active ou désactive le motif ", ["0"], "/**"],
     "Xk0-VC": [
       "Les aperçus des liens vers d'autres documents de ce projet sont toujours actifs et lus depuis l'index local — rien ne quitte votre ordinateur pour ceux-là."
     ],
@@ -2844,6 +2859,17 @@
     ],
     "Zon_qG": ["Source du miroir <0>", ["label"], "</0>"],
     "ZptNUh": ["Afficher ", ["hidden"], " de plus"],
+    "Zs3d0w": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Correspond actuellement à ", ["1"], " document sur ", ["2"], "."],
+          "many": ["Correspond actuellement à ", ["3"], " documents sur ", ["4"], "."],
+          "other": ["Correspond actuellement à ", ["3"], " documents sur ", ["4"], "."]
+        }
+      ]
+    ],
     "ZsGpr_": ["Coller le lien"],
     "ZscwQ0": ["Impossible de passer à Moi uniquement"],
     "Zue_jx": [
@@ -3010,6 +3036,7 @@
     "bBE5tC": ["Détecté sur cette machine"],
     "bBcFK_": ["Ouvrir le sélecteur d'émojis de ", ["keyName"]],
     "bD8I7O": ["Terminé"],
+    "bDiiSM": ["Déjà couvert par un dossier parent sélectionné"],
     "bEp7UY": ["Non connecté au pont de bureau"],
     "bF22t6": ["Retirer le champ ", ["field"]],
     "bGOTXx": [
@@ -4081,6 +4108,7 @@
       "Stocké dans <0>.ok/templates/</0> de ce projet. Disponible dans tous les dossiers (les modèles propres à un dossier peuvent le remplacer par nom de fichier)."
     ],
     "ng2Ibo": ["Nom de la branche"],
+    "ni5Vqi": ["(un nom de dossier seul doit être suivi de /** pour correspondre à son contenu)"],
     "njBeMm": ["Les deux"],
     "njU86j": ["La propriété « ", ["trimmed"], " » existe déjà"],
     "nmwqWS": ["Sans réponse"],
@@ -4816,6 +4844,7 @@
     "wqD3pI": [["failed"], " commentaires sur ", ["0"], " n'ont pas pu être mis à jour."],
     "ws5o1F": ["Vérifié par : ", ["0"]],
     "wtcxiD": ["Partager cette configuration avec votre équipe ?"],
+    "wtd69q": ["Aucun dossier ne correspond."],
     "wvK7Ay": ["Votre copie locale de la branche <0>", ["branch"], "</0> est en retard."],
     "wvbc1r": ["Impossible d'ouvrir le document"],
     "wzq9Rv": [
@@ -4968,6 +4997,7 @@
     "yhdqox": [
       "Installé — ok est disponible dans les terminaux externes. Décocher le retire ; le terminal intégré et les outils IA d'OpenKnowledge continuent de fonctionner."
     ],
+    "yit5dF": ["Aucun dossier dans ce projet pour l'instant."],
     "yjExfe": ["La branche <0>", ["shareBranch"], "</0> est extraite dans :"],
     "ylXj1N": ["Sélectionné"],
     "ymWJLd": ["Afficher ", ["0"], " de plus"],
@@ -5013,6 +5043,13 @@
     "zAJzIg": ["Problèmes dans ", ["0"]],
     "zAsDLY": ["Visualisation en graphe des liens entre documents"],
     "zBUqvf": ["Configurer les intégrations OpenKnowledge…"],
+    "zD1Nqf": [
+      [
+        "count",
+        "plural",
+        { "one": ["#", " document"], "many": ["#", " documents"], "other": ["#", " documents"] }
+      ]
+    ],
     "zJL34S": ["Nouvelle fenêtre Terminal"],
     "zKxoPm": ["Impossible de renommer « ", ["0"], " » : ", ["1"]],
     "zL0LPh": ["Global, hors champs de texte"],

@@ -19,6 +19,10 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   }
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
+// jsdom does not implement scrollIntoView; cmdk (the folder picker) calls it.
+if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
 
 let mockProjectConfig: Partial<Config> | null = null;
 const patches: ConfigPatch[] = [];
@@ -75,6 +79,14 @@ vi.doMock('@/editor/lint-config-client', () => ({
   },
 }));
 
+// Null (no provider) by default so the folder picker and match-count line stay
+// out of the frame for the browser-behavior tests; the picker-wiring tests set
+// a value.
+let mockPageListValue: { pages: Set<string>; folderPaths: Set<string> } | null = null;
+vi.doMock('@/components/PageListContext', () => ({
+  useOptionalPageList: () => mockPageListValue,
+}));
+
 const { FrontmatterPluginSection } = await import('./LintingSection.tsx');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
@@ -119,6 +131,7 @@ beforeEach(() => {
   deleted.length = 0;
   lintConfigChangedCount = 0;
   mockLintData = null;
+  mockPageListValue = null;
   mockDiscovered = ['.ok/schemas/doc.schema.json', 'schemas/local.schema.json'];
   mockProjectConfig = configWithMappings([
     { appliesTo: ['docs/**'], file: '.ok/schemas/doc.schema.json', enabled: true },
@@ -532,5 +545,70 @@ describe('FrontmatterPluginSection — findings with no pill to land on', () => 
       target: { value: 'local' },
     });
     expect(screen.queryByTestId('frontmatter-config-problems')).toBeNull();
+  });
+});
+
+describe('FrontmatterPluginSection — folder picker + live match count', () => {
+  const FILE = '.ok/schemas/doc.schema.json';
+
+  function withPages() {
+    mockPageListValue = {
+      pages: new Set(['blog/a', 'blog/nested/b', 'docs/c', 'root-doc']),
+      folderPaths: new Set(['blog', 'blog/nested', 'docs']),
+    };
+  }
+
+  test('without a page-list provider, neither picker nor count renders', () => {
+    renderSection();
+    expect(screen.queryByTestId(`frontmatter-schema-pick-folders-${FILE}`)).toBeNull();
+    expect(screen.queryByTestId(`frontmatter-schema-match-count-${FILE}`)).toBeNull();
+  });
+
+  test('checking a folder appends its recursive glob to the mapping', () => {
+    withPages();
+    renderSection();
+    fireEvent.click(screen.getByTestId(`frontmatter-schema-pick-folders-${FILE}`));
+    fireEvent.click(screen.getByTestId(`frontmatter-schema-folder-item-${FILE}-blog`));
+    expect(lastSchemas()[0]?.appliesTo).toEqual(['docs/**', 'blog/**']);
+  });
+
+  test('unchecking a picked folder removes its glob from the mapping', () => {
+    withPages();
+    renderSection();
+    fireEvent.click(screen.getByTestId(`frontmatter-schema-pick-folders-${FILE}`));
+    fireEvent.click(screen.getByTestId(`frontmatter-schema-folder-item-${FILE}-docs`));
+    // The mapping's only glob is gone — appliesTo drops entirely (every doc).
+    expect(lastSchemas()[0]?.appliesTo).toBeUndefined();
+  });
+
+  test('the summary line counts matched docs live', () => {
+    withPages();
+    renderSection();
+    expect(screen.getByTestId(`frontmatter-schema-match-count-${FILE}`).textContent).toContain(
+      'Matches 1 of 4 docs right now.',
+    );
+  });
+
+  test('a pattern matching nothing reads 0 — the bare-folder-name trap is visible', () => {
+    withPages();
+    mockProjectConfig = configWithMappings([{ appliesTo: ['blog'], file: FILE, enabled: true }]);
+    renderSection();
+    expect(screen.getByTestId(`frontmatter-schema-match-count-${FILE}`).textContent).toContain(
+      'Matches 0 of 4 docs right now.',
+    );
+  });
+
+  test('a zero-match bare folder still teaches /** beside a live sibling pattern', () => {
+    withPages();
+    mockProjectConfig = configWithMappings([
+      { appliesTo: ['blog', 'docs/**'], file: FILE, enabled: true },
+    ]);
+    renderSection();
+
+    const matchCount = screen.getByTestId(`frontmatter-schema-match-count-${FILE}`);
+    expect(matchCount.textContent).toContain('Matches 1 of 4 docs right now.');
+    expect(matchCount.textContent).toContain(
+      "(a bare folder name needs /** after it to match what's inside)",
+    );
   });
 });

@@ -96,6 +96,10 @@ msgstr ""
 msgid "\"frontmatter\" is a reserved property name"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "(a bare folder name needs /** after it to match what's inside)"
+msgstr ""
+
 #. placeholder {0}: seed.parentProjectName
 #: src/components/ShareReceiveDialog.tsx
 msgid "(a worktree of {0})"
@@ -176,6 +180,11 @@ msgstr ""
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr ""
 
+#. placeholder {0}: selected.size
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{0, plural, one {# folder picked} other {# folders picked}}"
+msgstr ""
+
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "{0, plural, one {# item} other {# items}}"
@@ -234,6 +243,15 @@ msgstr ""
 #. placeholder {0}: folderRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Folder} other {Folders}}"
+msgstr ""
+
+#. placeholder {0}: counted.total
+#. placeholder {1}: counted.matched
+#. placeholder {2}: counted.total
+#. placeholder {3}: counted.matched
+#. placeholder {4}: counted.total
+#: src/components/settings/LintingSection.tsx
+msgid "{0, plural, one {Matches {1} of {2} doc right now.} other {Matches {3} of {4} docs right now.}}"
 msgstr ""
 
 #. placeholder {0}: result.fileCount
@@ -483,6 +501,10 @@ msgstr ""
 
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
+msgstr ""
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr ""
 
 #: src/components/TrashFailureModal.tsx
@@ -1490,6 +1512,10 @@ msgstr ""
 
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
+msgstr ""
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Already covered by a picked parent folder"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -7777,6 +7803,14 @@ msgstr ""
 msgid "No files yet."
 msgstr ""
 
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders in this project yet."
+msgstr ""
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "No folders match."
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "No git remote"
 msgstr ""
@@ -9062,6 +9096,14 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
+msgstr ""
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders"
+msgstr ""
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Pick folders this schema applies to"
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -10396,6 +10438,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Search files, folders, or commands"
+msgstr ""
+
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Search folders"
 msgstr ""
 
 #: src/editor/components/IconPickerInput.tsx
@@ -12695,6 +12741,11 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle underline formatting."
+msgstr ""
+
+#. placeholder {0}: row.path
+#: src/components/settings/applies-to-folder-picker.tsx
+msgid "Toggles the pattern {0}/**"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
