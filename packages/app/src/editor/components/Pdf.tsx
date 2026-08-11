@@ -134,6 +134,7 @@ interface PageInfo {
 }
 
 type PdfDoc = import('pdfjs-dist').PDFDocumentProxy;
+type PdfLoadingTask = import('pdfjs-dist').PDFDocumentLoadingTask;
 
 /** Recognise pdfjs-dist's `RenderingCancelledException` so cleanup-driven
  *  cancellations don't surface as unhandled rejections / console errors.
@@ -198,29 +199,27 @@ export function Pdf(props: PdfProps) {
     // a server-absolute src onto `apiOrigin` (no-op in web/CLI builds).
     const docUrl = toDesktopAssetHref(props.src);
     let cancelled = false;
-    let activeDoc: PdfDoc | null = null;
+    let loadingTask: PdfLoadingTask | null = null;
     setLoading(true);
     setError(null);
 
     (async () => {
       try {
         const pdfjs = await loadPdfjs();
-        // `isEvalSupported: false` — defense-in-depth for hosts deployed
-        // under a CSP without `unsafe-eval`. The default lets PDF.js use
-        // `new Function()` for optimized CMap processing; the `false` path
-        // is functionally equivalent at slightly higher CPU cost. Every
-        // other media canonical avoids eval-adjacent code paths; PDF
-        // should match. The `as` cast widens past pdfjs's overload
-        // ambiguity (`{url}` matches the URL-shorthand overload first).
-        const doc = await pdfjs.getDocument({
-          url: docUrl,
-          isEvalSupported: false,
-        } as Parameters<typeof pdfjs.getDocument>[0]).promise;
+        // No `isEvalSupported: false` here: pdf.js removed the `new Function`
+        // font/operator-compilation path — and the option that opted out of it
+        // — in mozilla/pdf.js#18015, so there is no eval left to harden.
+        const task = pdfjs.getDocument({ url: docUrl });
+        // Hold the loading task, not just its promise. `destroy()` lives on the
+        // task, and it aborts in-flight network requests as well as terminating
+        // the worker, so it covers the window before `.promise` settles — which
+        // a handle on the resolved document cannot reach.
+        loadingTask = task;
+        const doc = await task.promise;
         if (cancelled) {
-          await doc.destroy();
+          await task.destroy();
           return;
         }
-        activeDoc = doc;
         docRef.current = doc;
 
         const meta: PageInfo[] = [];
@@ -233,6 +232,9 @@ export function Pdf(props: PdfProps) {
         if (cancelled) return;
         setPages(meta);
       } catch (err) {
+        // Tearing down mid-load rejects the promise being awaited above, so
+        // this guard is what keeps an unmounting viewer from painting a load
+        // error. It has to stay first in the block.
         if (cancelled) return;
         setError(err instanceof Error ? err.message : t`Failed to load PDF`);
         setLoading(false);
@@ -241,13 +243,13 @@ export function Pdf(props: PdfProps) {
 
     return () => {
       cancelled = true;
-      // Release worker state + decoded page trees + font caches.
-      // `destroy()` returns a Promise, but we don't await it — React's
-      // cleanup function is sync, and the destroy is fire-and-forget.
-      if (activeDoc) {
-        void activeDoc.destroy();
-        activeDoc = null;
-      }
+      // Releases worker state + decoded page trees + font caches, and aborts
+      // the fetch when the load is still in flight. Not awaited — React's
+      // cleanup is sync and the destroy is fire-and-forget — so a teardown
+      // that rejects has nowhere to surface and nothing to recover; swallow
+      // it rather than emit an unhandled rejection from an unmounting view.
+      void loadingTask?.destroy().catch(() => {});
+      loadingTask = null;
       docRef.current = null;
     };
   }, [props.src, t]);

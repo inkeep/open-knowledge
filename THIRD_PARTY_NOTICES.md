@@ -883,7 +883,7 @@ Homepage: https://github.com/dcodeIO/long.js
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `pdfjs-dist@5.7.284`
+### `pdfjs-dist@6.2.108`
 Homepage: https://mozilla.github.io/pdf.js/
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -1541,7 +1541,7 @@ Homepage: https://modelcontextprotocol.io
 
 Copyright (c) 2024 Anthropic, PBC
 
-### `@napi-rs/canvas@0.1.100`
+### `@napi-rs/canvas@1.0.3`
 Homepage: https://github.com/Brooooooklyn/canvas
 
 Copyright (c) 2020 lynweklm@gmail.com
