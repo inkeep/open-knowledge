@@ -38,11 +38,12 @@
 
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { homeEnv, userDataDirFor } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -50,15 +51,11 @@ const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
-// `--user-data-dir` is the only reliable way to redirect Electron's
-// `app.getPath('userData')` on macOS — `HOME`/`USERPROFILE` env vars don't
-// work because `NSHomeDirectory()` resolves via `getpwuid()` not the env.
-// Without it, every smoke run reads/writes the developer's real
-// `~/Library/Application Support/Electron/state.json` and `lastOpenedProject`
-// from real usage causes the editor window to spawn instead of Navigator —
-// breaking this file's first-window assertions.
-function userDataDirFor(home: string): string {
-  return join(home, 'electron-userdata');
+function createTestDirs(prefix: string): { tmpHome: string; projectDir: string } {
+  return {
+    tmpHome: realpathSync(mkdtempSync(join(tmpdir(), `${prefix}-home-`))),
+    projectDir: realpathSync(mkdtempSync(join(tmpdir(), `${prefix}-project-`))),
+  };
 }
 
 test.describe('chrome-modernization theme-sync smoke', () => {
@@ -74,7 +71,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     // 'test-doc'). The deep-link query passes the extension-less wire form,
     // matching `preview-url.ts`'s producer contract.
     const docName = `theme-sync-${randomUUID()}`;
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-theme-sync-'));
+    const { tmpHome, projectDir } = createTestDirs('ok-theme-sync');
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(
       join(projectDir, '.ok', 'config.yml'),
@@ -88,11 +85,12 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     const app = await electron.launch(
       desktopLaunchOptions({
         target: TARGET,
-        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+        env: homeEnv(tmpHome),
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [projectDir] });
+    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
 
     // Wait for first window (Navigator on cold launch). Confirms whenReady
     // fired and the show-gate released SOMETHING — proves the boot path
@@ -122,6 +120,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       throw new Error(`no window matches ${expectedHashSuffix} yet`);
     }).toPass({ timeout: 15_000 });
     if (!editorPage) throw new Error('unreachable');
+    const resolvedEditorPage = editorPage;
 
     // Bridge wired in the editor renderer — confirms preload exposed
     // `window.okDesktop` AND the bridge carries the theme methods. If the
@@ -156,15 +155,16 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     const bootSource = await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource);
     expect(bootSource).toBe('system');
 
-    // IPC roundtrip — call setThemeSource from the renderer and assert main's
-    // nativeTheme reflects the change. The renderer await resolves only after
-    // main's handler returned `{ ok: true }` (which has already set
-    // nativeTheme.themeSource), so read main state directly — no poll needed.
+    // Config hydration can legitimately re-apply `system` while this assertion
+    // runs. Re-drive the idempotent public call until its observable main state
+    // survives that startup traffic instead of snapshotting the race window.
     for (const target of ['dark', 'light', 'system'] as const) {
-      await editorPage.evaluate(async (t) => {
-        await window.okDesktop?.setThemeSource?.(t);
-      }, target);
-      expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe(target);
+      await expect(async () => {
+        await resolvedEditorPage.evaluate(async (t) => {
+          await window.okDesktop?.setThemeSource?.(t);
+        }, target);
+        expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe(target);
+      }).toPass({ timeout: 5_000 });
     }
   });
 
@@ -198,7 +198,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     //      rejection would stall the gate to the 5 s safety timeout.
     //      A follow-up successful call proves the bridge didn't degrade.
     const docName = `theme-sync-rapid-${randomUUID()}`;
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-theme-sync-rapid-'));
+    const { tmpHome, projectDir } = createTestDirs('ok-theme-sync-rapid');
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(
       join(projectDir, '.ok', 'config.yml'),
@@ -212,11 +212,12 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     const app = await electron.launch(
       desktopLaunchOptions({
         target: TARGET,
-        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+        env: homeEnv(tmpHome),
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [projectDir] });
+    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
 
     await app.firstWindow({ timeout: 15_000 });
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=${encodeURIComponent(docName)}`;
@@ -400,7 +401,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     // call must request `null`; after `false`, every call must request
     // the default `'sidebar'`.
     const docName = `theme-sync-rt-${randomUUID()}`;
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-theme-sync-rt-'));
+    const { tmpHome, projectDir } = createTestDirs('ok-theme-sync-rt');
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(
       join(projectDir, '.ok', 'config.yml'),
@@ -414,11 +415,12 @@ test.describe('chrome-modernization theme-sync smoke', () => {
     const app = await electron.launch(
       desktopLaunchOptions({
         target: TARGET,
-        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+        env: homeEnv(tmpHome),
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [projectDir] });
+    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
 
     await app.firstWindow({ timeout: 15_000 });
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=${encodeURIComponent(docName)}`;
@@ -453,7 +455,9 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       const g = globalThis as unknown as Record<string, unknown>;
       const calls: Array<{ winId: number; material: string | null; at: number }> = [];
       g.__okSetVibrancyCalls = calls;
-      for (const win of BrowserWindow.getAllWindows()) {
+      const windows = BrowserWindow.getAllWindows();
+      g.__okSetVibrancyWindowIds = windows.map((win) => win.id);
+      for (const win of windows) {
         const original = win.setVibrancy.bind(win);
         win.setVibrancy = (material: Parameters<typeof original>[0]) => {
           calls.push({
@@ -466,89 +470,43 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       }
     });
 
-    // Establish a known 'sidebar' baseline before measuring. On a runner whose
-    // OS `prefers-reduced-transparency` defaults ON, cold-launch already left
-    // vibrancy at null, so driving `reducedTransparency:true` below would be a
-    // no-op that `applyReducedTransparency`'s per-window flicker memo correctly
-    // suppresses (zero `setVibrancy` calls — correct app behavior, not a bug).
-    // Driving false first makes the true->null drive a real material change the
-    // fan-out must act on, regardless of the runner's reduced-transparency
-    // default. The baseline calls land before the snapshot below, so they don't
-    // contaminate the measured delta.
+    // `signalThemeApplied` is intentionally fire-and-forget, so a fixed wait
+    // cannot establish that main has consumed a prior signal. Queue a complete
+    // round trip from one renderer instead: regardless of the memo's initial
+    // material, false -> true -> false must produce null followed by sidebar.
     await editorPage.evaluate(() => {
       window.okDesktop?.signalThemeApplied?.({ reducedTransparency: false });
-    });
-    await editorPage.waitForTimeout(600);
-
-    // Snapshot the call count BEFORE driving each direction so every
-    // assertion measures a delta against its own baseline. The
-    // cold-launch path may have queued background `setVibrancy` calls
-    // (window-manager creating new editor windows, etc.) that are
-    // unrelated to the IPC we're driving.
-    const reducedTrueBefore = await app.evaluate(() => {
-      const g = globalThis as unknown as { __okSetVibrancyCalls?: unknown[] };
-      return g.__okSetVibrancyCalls?.length ?? 0;
-    });
-
-    // Direct bridge call — see test docstring for why we don't dispatch
-    // synthetic matchMedia events. The bridge call is the same wire the
-    // production matchMedia listener crosses, just driven from the test
-    // instead of from the hook.
-    await editorPage.evaluate(() => {
       window.okDesktop?.signalThemeApplied?.({ reducedTransparency: true });
-    });
-
-    // Poll the recorder for at least one new `setVibrancy` call with
-    // material === null. We assert the value, not just the count — a
-    // chain bug that sent the wrong `reducedTransparency` value would
-    // still increment the counter but emit the wrong material.
-    await expect(async () => {
-      const calls = await app.evaluate(() => {
-        const g = globalThis as unknown as {
-          __okSetVibrancyCalls?: Array<{ material: string | null }>;
-        };
-        return g.__okSetVibrancyCalls ?? [];
-      });
-      const newCalls = calls.slice(reducedTrueBefore);
-      expect(newCalls.length).toBeGreaterThan(0);
-      // Every fan-out call after reducedTransparency:true must request
-      // null material (vibrancy disabled). If the chain misroutes the
-      // value or fan-out visits no windows, this fails.
-      expect(newCalls.every((c) => c.material === null)).toBe(true);
-    }).toPass({ timeout: 2_000 });
-
-    // Snapshot before the reverse direction so the next assertion isn't
-    // contaminated by the reducedTransparency:true calls we just
-    // verified.
-    const reducedFalseBefore = await app.evaluate(() => {
-      const g = globalThis as unknown as { __okSetVibrancyCalls?: unknown[] };
-      return g.__okSetVibrancyCalls?.length ?? 0;
-    });
-
-    // Reverse — reducedTransparency:false (re-enable vibrancy with the
-    // default material).
-    await editorPage.evaluate(() => {
       window.okDesktop?.signalThemeApplied?.({ reducedTransparency: false });
     });
 
-    // After reducedTransparency:false, every fan-out call must request
-    // the default material ('sidebar' — pinned in `VIBRANCY_DEFAULT`).
-    // A regression that drops the negation or hard-codes null in the
-    // off path would be caught here.
     await expect(async () => {
-      const calls = await app.evaluate(() => {
+      const observation = await app.evaluate(({ BrowserWindow }) => {
         const g = globalThis as unknown as {
-          __okSetVibrancyCalls?: Array<{ material: string | null }>;
+          __okSetVibrancyCalls?: Array<{ winId: number; material: string | null }>;
+          __okSetVibrancyWindowIds?: number[];
         };
-        return g.__okSetVibrancyCalls ?? [];
+        const liveWindowIds = new Set(
+          BrowserWindow.getAllWindows()
+            .filter((win) => !win.isDestroyed())
+            .map((win) => win.id),
+        );
+        return {
+          calls: g.__okSetVibrancyCalls ?? [],
+          windowIds: (g.__okSetVibrancyWindowIds ?? []).filter((id) => liveWindowIds.has(id)),
+        };
       });
-      const newCalls = calls.slice(reducedFalseBefore);
-      expect(newCalls.length).toBeGreaterThan(0);
-      expect(newCalls.every((c) => c.material === 'sidebar')).toBe(true);
+      expect(observation.windowIds.length).toBeGreaterThan(0);
+      for (const windowId of observation.windowIds) {
+        const materials = observation.calls
+          .filter((call) => call.winId === windowId)
+          .map((call) => call.material);
+        expect(materials.slice(-2)).toEqual([null, 'sidebar']);
+      }
     }).toPass({ timeout: 2_000 });
 
-    // Bridge integrity — channel still works after the recorder fired
-    // twice. Catches a future regression that breaks the IPC channel
+    // Bridge integrity — channel still works after the recorded round trip.
+    // Catches a future regression that breaks the IPC channel
     // mid-test (e.g. a handler throw that corrupts ipcMain state).
     await editorPage.evaluate(async () => {
       await window.okDesktop?.setThemeSource?.('light');

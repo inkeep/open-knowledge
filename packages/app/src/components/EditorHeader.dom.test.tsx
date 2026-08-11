@@ -353,6 +353,40 @@ describe('EditorHeader runtime behavior', () => {
     }
   });
 
+  test('includes the WCO reserve margin in the trailing tab-strip width', async () => {
+    const offsetWidth = vi
+      .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.tagName === 'HEADER') return 1_000;
+        if (this.hasAttribute('data-editor-header-tabs')) return 800;
+        if (this.hasAttribute('data-editor-header-actions')) return 300;
+        if (this.hasAttribute('data-editor-header-leading-actions')) return 100;
+        return 0;
+      });
+    const realGetComputedStyle = window.getComputedStyle.bind(window);
+    const computedStyle = vi
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation((element: Element, pseudo?: string | null) => {
+        const style = realGetComputedStyle(element, pseudo);
+        if (element instanceof HTMLElement && element.hasAttribute('data-editor-header-actions')) {
+          return new Proxy(style, {
+            get: (target, property) =>
+              property === 'marginRight' ? '137px' : Reflect.get(target, property),
+          }) as CSSStyleDeclaration;
+        }
+        return style;
+      });
+
+    try {
+      const header = await renderHeader(<div>tabs</div>);
+      // 300px actions + 137px reserve - 200px outside the tab host.
+      expect(header.style.getPropertyValue('--editor-header-trailing-width')).toBe('237px');
+    } finally {
+      computedStyle.mockRestore();
+      offsetWidth.mockRestore();
+    }
+  });
+
   test('keeps sidebar chrome movement immediate after a post-mount state change', async () => {
     setElectronHost(true);
     sidebarState = 'collapsed';

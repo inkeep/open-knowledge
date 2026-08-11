@@ -124,10 +124,14 @@ export function EditorHeader({
 
     const updateChromeWidths = () => {
       header.style.setProperty('--editor-header-leading-width', `${leadingActions.offsetWidth}px`);
+      // The trailing rail carries the window-controls-overlay reserve as a
+      // margin. offsetWidth excludes that margin, so omitting it lets the tab
+      // strip place controls underneath the rail's draggable region.
+      const trailingMargin = Number.parseFloat(getComputedStyle(trailingActions).marginRight) || 0;
       const rightRailWidth = Math.max(0, header.offsetWidth - tabsHost.offsetWidth);
       header.style.setProperty(
         '--editor-header-trailing-width',
-        `${Math.max(0, trailingActions.offsetWidth - rightRailWidth)}px`,
+        `${Math.max(0, trailingActions.offsetWidth + trailingMargin - rightRailWidth)}px`,
       );
     };
     updateChromeWidths();
