@@ -290,6 +290,11 @@ const EXEMPT_HANDLERS = new Set([
   // `extractActorIdentity` to attribute the revert as a new version, same posture
   // as restore.
   'handleSkillRevert',
+  // `/api/skill/track-in-git` (appends a `.gitignore` negation so a gitignored
+  // bundle becomes trackable). It rewrites a config file fs-direct and never
+  // authors doc content, so there is no contributor to record — same posture as
+  // the other project-config skill handlers.
+  'handleSkillTrackInGit',
   'handleSuggestLinks',
   'handlePageHeadings',
   'handleHistory',

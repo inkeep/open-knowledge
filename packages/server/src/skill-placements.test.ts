@@ -5,6 +5,7 @@ import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { InPlaceSkill } from './in-place-skills.ts';
 import {
+  clearSkillPlacements,
   readSkillPlacements,
   recordSkillPlacement,
   resyncRecordedSkillCopies,
@@ -137,5 +138,34 @@ describe('concurrent ledger writes', () => {
 
     const recorded = (readSkillPlacements(projectDir).parallel ?? []).map((p) => p.path).sort();
     expect(recorded).toEqual([...paths].sort());
+  });
+});
+
+describe('clearSkillPlacements', () => {
+  test('drops every record for one skill and leaves the others alone', async () => {
+    writeSkill(join(projectDir, '.claude/skills/guarded'), '# A');
+    writeSkill(join(projectDir, '.agents/skills/guarded'), '# A');
+    writeSkill(join(projectDir, '.claude/skills/other'), '# B');
+    await recordSkillPlacement(projectDir, 'guarded', {
+      path: '.claude/skills/guarded',
+      mode: 'link',
+    });
+    await recordSkillPlacement(projectDir, 'guarded', {
+      path: '.agents/skills/guarded',
+      mode: 'link',
+    });
+    await recordSkillPlacement(projectDir, 'other', { path: '.claude/skills/other', mode: 'copy' });
+
+    await clearSkillPlacements(projectDir, 'guarded');
+
+    const store = readSkillPlacementsStore(projectDir);
+    // The stale "link" records are what a move leaves behind to be re-read as
+    // drift once the round trip re-creates those locations as copies.
+    expect(store.skills.guarded).toBeUndefined();
+    expect(store.skills.other).toHaveLength(1);
+  });
+
+  test('clearing a skill with no records is a no-op', async () => {
+    await expect(clearSkillPlacements(projectDir, 'never-placed')).resolves.toBeUndefined();
   });
 });

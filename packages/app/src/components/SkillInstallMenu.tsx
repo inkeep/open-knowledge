@@ -1,12 +1,8 @@
-import type {
-  SkillInstallTarget,
-  SkillsListEntry,
-  SkillTargetEditor,
-} from '@inkeep/open-knowledge-core';
+import type { SkillInstallTarget, SkillsListEntry } from '@inkeep/open-knowledge-core';
 import {
+  AGENTS_SKILLS_ROOT,
   EDITOR_LABELS,
   isSkillInstallTarget,
-  SkillTargetEditorSchema,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Folder, Settings as SettingsIcon } from 'lucide-react';
@@ -32,14 +28,17 @@ import {
   skillOverlayKey,
   subscribeToSkillOverlay,
 } from '@/lib/skill-install-overlay-store';
-import { aliasSubscribersOf, customPlacementRoot, skillHostRootDir } from '@/lib/skill-scope';
+import {
+  deriveSkillInstallRows,
+  INSTALL_EDITORS,
+  type SkillInstallMenuSkill,
+} from '@/lib/skill-install-rows';
+import { aliasSubscribersOf, skillHostRootDir } from '@/lib/skill-scope';
 import { placeSkill, putSkillFolderAction, setSkillSource, unplaceSkill } from '@/lib/skills-api';
 
-// The editors a project skill can install into — the narrowed `.options` of the
-// canonical schema, so this can never drift from the install verb + picker. The
-// editor toolbar badge reuses this for its installed-agent icon cluster (stable
-// order + `SkillTargetEditor` typing for `TargetIcon`).
-export const INSTALL_EDITORS: readonly SkillTargetEditor[] = SkillTargetEditorSchema.options;
+// Re-exported at its historical home: the editor toolbar badge imports it from
+// here for its installed-agent icon cluster.
+export { INSTALL_EDITORS } from '@/lib/skill-install-rows';
 
 /**
  * Width floor for any container holding {@link SkillInstallMenuItems}.
@@ -312,20 +311,7 @@ export function SkillInstallMenuItems({
    *  `symlinkedHosts` (when present) mark THE source row and link rows. Always
    *  passed (every install surface has a skill); the detail fields stay Partial
    *  because an un-imported preview carries only `{scope, name}`. */
-  skill: Pick<SkillsListEntry, 'scope' | 'name'> &
-    Partial<
-      Pick<
-        SkillsListEntry,
-        | 'hosts'
-        | 'symlinkedHosts'
-        | 'path'
-        | 'customPlacements'
-        | 'hostAliases'
-        | 'conflictHosts'
-        | 'driftPaths'
-        | 'installableEditors'
-      >
-    >;
+  skill: SkillInstallMenuSkill;
   /** Opens the fork-resolution dialog for a conflicted editor's copy. */
   onResolveFork?: (editor: string) => void;
   /**
@@ -340,64 +326,26 @@ export function SkillInstallMenuItems({
 }) {
   const { t } = useLingui();
   const { hostSet, toggleEditor, installAll } = toggles;
-  const pathFor = (host: string): string | null =>
-    skill ? `${skillHostRootDir(host, skill.scope)}/${skill.name}` : null;
   const allSkills = useSkills();
-  // The `.agents` hub is EXISTENCE-ACTIVATED: offered only when this project
-  // already adopted it (any skill lives there or lists it as a host). OK never
-  // pushes the hub on a repo — adopting it is one Custom path away, and the
-  // first placement there lights this row up for every skill.
-  const hubActive =
-    skill !== undefined &&
-    ((skill.hosts ?? []).includes('agents') ||
-      (allSkills.status === 'ready' &&
-        allSkills.data.some((s) => s.hosts.includes('agents') || s.path.startsWith('.agents/'))));
-  // Folder-level aliases (host id → base-relative target root). An aliased
-  // folder is a derived view of its target: NO row of its own (checking it
-  // could only write through the alias), its agent icon rides the target
-  // root's row instead. Observable disk facts only — a row's audience is the
-  // set of folders that resolve into it, never a vendor-capability claim.
-  // Folder-level links are a property of the SCOPE's dirs, not of one skill —
-  // a not-yet-installed skill (explore preview) has no entry to carry them, so
-  // fall back to the union across installed same-scope skills; otherwise the
-  // preview menu shows aliased folders as plain rows (inconsistent menus).
-  const aliases: Record<string, string> =
-    skill?.hostAliases ??
-    (skill && allSkills.status === 'ready'
-      ? Object.assign(
-          {},
-          ...allSkills.data.filter((s) => s.scope === skill.scope).map((s) => s.hostAliases ?? {}),
-        )
-      : {});
-  // only OFFER editors installable on THIS machine for the skill's
-  // scope — for global skills that is the set whose user-home dir exists, so we
-  // don't show an editor (e.g. Copilot with no `~/.copilot`) whose install
-  // silently no-ops and flashes a checkmark that reverts. Same same-scope
-  // fallback as `aliases` for a preview skill that carries no entry of its own;
-  // null = no data → offer everything (never over-hide). The `.agents` hub and
-  // any editor the skill is ALREADY in are always kept (uninstall stays reachable).
-  const installableList: readonly string[] | undefined =
-    skill?.installableEditors ??
-    (skill && allSkills.status === 'ready'
-      ? allSkills.data.find((s) => s.scope === skill.scope)?.installableEditors
-      : undefined);
-  const installable = installableList ? new Set<string>(installableList) : null;
-  const rows: Array<SkillInstallTarget> = (
-    hubActive ? (['agents', ...INSTALL_EDITORS] as const) : INSTALL_EDITORS
-  )
-    .filter((e) => !(e in aliases))
-    .filter((e) => e === 'agents' || installable === null || installable.has(e) || hostSet.has(e));
-  const stdPaths = new Set(rows.map((e) => pathFor(e)));
-  const homePrefix = skill?.scope === 'global' ? '~/' : '';
-  // `path` is `<dir>/SKILL.md`; the guard on '/' skips placeholder entries.
-  const entryDir = skill?.path?.includes('/')
-    ? `${homePrefix}${skill.path.replace(/\/SKILL\.mdx?$/i, '')}`
-    : null;
-  const sourceRow = entryDir !== null && !stdPaths.has(entryDir) ? entryDir : null;
-  // A host row carries the SOURCE badge ONLY when the skill's real dir IS that
-  // host's dir (in-place skills). A store-backed skill's source is its own
-  // row (`sourceRow`) — badging hosts[0] there showed TWO sources.
-  const sourceHost = sourceRow === null ? (toggles.sourceHost ?? skill?.hosts?.[0]) : undefined;
+  const {
+    pathFor,
+    aliases,
+    rows,
+    sourceRow,
+    sourceHost,
+    conflicted,
+    drifted,
+    linked,
+    expectedMode,
+    convertible,
+    customRootRows,
+  } = deriveSkillInstallRows({
+    skill,
+    allSkills: allSkills.status === 'ready' ? allSkills.data : null,
+    hostSet,
+    sourceHostOverlay: toggles.sourceHost,
+    linkMode: toggles.linkMode,
+  });
   const subscribersOf = (rootRel: string): string[] => aliasSubscribersOf(aliases, rootRel);
   const hostLabel = (h: string): string =>
     h === 'agents' ? '.agents' : ((EDITOR_LABELS as Record<string, string>)[h] ?? h);
@@ -461,12 +409,6 @@ export function SkillInstallMenuItems({
       </Hint>
     );
   };
-  const conflicted = new Set(skill?.conflictHosts ?? []);
-  // Drift = OK's record of what it wrote disagrees with disk (another tool
-  // rewrote the path). PASSIVE disclosure only — OK only writes on explicit
-  // clicks, so there is no war to referee and no hands-off state to manage.
-  // Ledger paths are base-relative; display paths may carry `~/` — strip.
-  const drifted = new Set(skill?.driftPaths ?? []);
   // While a run is in flight the folders are mid-rewrite and the list refetches
   // underneath us, so per-row form and drift are snapshots of a half-converted
   // state — they flip to "symlink"/"changed outside" and then settle, which
@@ -475,44 +417,6 @@ export function SkillInstallMenuItems({
   // per-row marks stay hidden until it settles.
   const busy = toggles.installing;
   const relOf = (display: string | null): string => (display ?? '').replace(/^~\//, '');
-  const linked = new Set(skill?.symlinkedHosts ?? []);
-  // The mode a location is EXPECTED to have: what the skill's other locations
-  // are, falling back to the server's effective preference when there are none
-  // to compare against. A row matching this says nothing (a menu of identical
-  // COPY tags was pure noise); a row that DIVERGES gets a tag that converts it.
-  const otherStates: Array<'copy' | 'link'> = [
-    ...[...hostSet]
-      .filter((h) => h !== sourceHost && !(h in aliases) && !conflicted.has(h) && !h.includes('/'))
-      .map((h) => (linked.has(h) ? ('link' as const) : ('copy' as const))),
-    ...(skill?.customPlacements ?? []).map((cp) => cp.mode),
-  ];
-  const linkCount = otherStates.filter((st) => st === 'link').length;
-  const expectedMode: 'copy' | 'link' =
-    otherStates.length === 0
-      ? toggles.linkMode
-        ? 'link'
-        : 'copy'
-      : linkCount * 2 >= otherStates.length
-        ? 'link'
-        : 'copy';
-  // Every location this skill has BESIDES its source, with the form each one is
-  // in — the same membership `otherStates` measures, kept addressable so the
-  // skill-wide convert below can write each one. The source is never included:
-  // it is the real folder the others copy or point at.
-  const convertible: Array<{ target: string; display: string; mode: 'copy' | 'link' }> = [
-    ...[...hostSet]
-      .filter((h) => h !== sourceHost && !(h in aliases) && !conflicted.has(h) && !h.includes('/'))
-      .map((h) => ({
-        target: h,
-        display: pathFor(h) ?? hostLabel(h),
-        mode: linked.has(h) ? ('link' as const) : ('copy' as const),
-      })),
-    ...(skill?.customPlacements ?? []).map((cp) => ({
-      target: customPlacementRoot(cp),
-      display: `${homePrefix}${cp.path}`,
-      mode: cp.mode,
-    })),
-  ];
   // Row-level convert (never skill-wide): state the whole effect, then write
   // exactly one path. The old skill-wide Copies/Symlinks tabs silently
   // reconverted every existing location on click, which is what this replaces.
@@ -552,43 +456,6 @@ export function SkillInstallMenuItems({
       </Hint>
     );
   };
-  // Non-standard locations that actually hold this skill get their own rows:
-  // the skill's OWN folder when it isn't an editor dir (e.g. a `.ok/skills`
-  // store bundle — the true SOURCE), and every recorded custom placement.
-  // KNOWN custom roots travel between SKILLS (per-machine): every distinct
-  // parent dir any skill at this scope has a recorded placement under becomes
-  // an offerable row on EVERY skill's menu — use a custom path once and it's a
-  // first-class choice from then on. Checked when THIS skill is placed there.
-  const myPlacements = new Map(
-    (skill?.customPlacements ?? []).map((cp) => [customPlacementRoot(cp), cp]),
-  );
-  const knownRoots = new Set<string>(myPlacements.keys());
-  if (allSkills.status === 'ready' && skill) {
-    for (const s of allSkills.data) {
-      if (s.scope !== skill.scope) continue;
-      for (const cp of s.customPlacements ?? []) {
-        const root = customPlacementRoot(cp);
-        // `.ok/skills` is the retired store, offered like any other custom root
-        // so projects that still keep skills there can manage them; the rest of
-        // `.ok/` is OK's own state and the server refuses it.
-        if (root !== '') knownRoots.add(root);
-      }
-    }
-  }
-  const customRootRows =
-    skill !== undefined
-      ? [...knownRoots]
-          .sort()
-          .map((root) => ({
-            root,
-            display: `${homePrefix}${root}/${skill.name}`,
-            placed: myPlacements.get(root) ?? null,
-          }))
-          // Alias-covered custom roots (a folder-symlink into another root)
-          // get NO row — same rule as editor folders: their icon rides the
-          // target root's audience instead.
-          .filter((r) => !stdPaths.has(r.display) && r.display !== entryDir && !(r.root in aliases))
-      : [];
   return (
     <>
       {/* NO skill-wide Copies/Symlinks tabs: they applied the chosen mode to
@@ -807,7 +674,7 @@ export function SkillInstallMenuItems({
             className="group"
             data-testid={`skill-custom-root-${r.root}`}
           >
-            {r.root === '.agents/skills' ? (
+            {r.root === AGENTS_SKILLS_ROOT ? (
               <AgentBrandIcon host="agents" aria-hidden className="size-4" />
             ) : (
               <Folder aria-hidden className="size-4 text-muted-foreground" />

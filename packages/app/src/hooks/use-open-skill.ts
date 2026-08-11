@@ -3,8 +3,13 @@ import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useSkills } from '@/hooks/use-skills';
-import { hashFromDocName, replaceHashWithoutNavigation } from '@/lib/doc-hash';
+import {
+  hashFromDocName,
+  pushHashWithoutNavigation,
+  replaceHashWithoutNavigation,
+} from '@/lib/doc-hash';
 import { skillEntryLiveDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
+import { requestSkillTrackPrompt } from '@/lib/skill-track-prompt-store';
 import { listSkills } from '@/lib/skills-api';
 
 /**
@@ -23,9 +28,16 @@ import { listSkills } from '@/lib/skills-api';
 export function useOpenSkill(): (
   scope: SkillScope,
   name: string,
-  opts?: { replaceActive?: boolean; path?: string },
+  opts?: {
+    replaceActive?: boolean;
+    path?: string;
+    /** Replace the history entry instead of pushing one — for an open that
+     *  SUPERSEDES what the user is looking at (the preview tab becoming the
+     *  real skill after an install), not merely one that reuses the tab. */
+    replaceHistory?: boolean;
+  },
 ) => void {
-  const { openTarget } = useDocumentContext();
+  const { openTarget, setSkillsSidebar } = useDocumentContext();
   const skillsState = useSkills();
   return (scope, name, opts) => {
     const open = (docName: string) => {
@@ -36,7 +48,26 @@ export function useOpenSkill(): (
         { kind: 'doc', target: docName, docName },
         opts?.replaceActive ? { tabBehavior: 'replace-active' } : undefined,
       );
-      replaceHashWithoutNavigation(hashFromDocName(docName));
+      // Pin the surface to Skills AFTER the open, never before: committing a tab
+      // re-arms autofollow, so a pin set first is simply overwritten. A PROJECT
+      // skill's doc is ordinary project content (`.claude/skills/<name>/SKILL`),
+      // so autofollow drops the user into the file tree after they asked for a
+      // skill. This is the shared entry point every open-a-skill surface routes
+      // through — sidebar click, create, import, detected-adopt, and the
+      // post-install redirect — so pinning here covers all of them.
+      setSkillsSidebar(true);
+      // PUSH for a user-initiated open; REPLACE only when this open supersedes
+      // the entry the user is standing on.
+      //
+      // Deliberately NOT keyed on `replaceActive`: that means "reuse the TAB"
+      // (the preview-tabs preference, on by default) and says nothing about
+      // history. Conflating them makes every ordinary skill click replace, which
+      // eats the entry it came from — opening a skill from the Skills home
+      // overwrote `#/__skills__`, so Back skipped it and landed on whatever
+      // preceded it. Caught by `navigation-history.e2e.ts`.
+      const hash = hashFromDocName(docName);
+      if (opts?.replaceHistory) replaceHashWithoutNavigation(hash);
+      else pushHashWithoutNavigation(hash);
     };
     // Entry-first: an existing skill's REAL doc (in-place skills live at
     // editor-dir paths, not the store). A fresh create's entry hasn't landed
@@ -45,6 +76,19 @@ export function useOpenSkill(): (
       skillsState.status === 'ready'
         ? skillsState.data.find((sk) => sk.scope === scope && sk.name === name)
         : undefined;
+    // A gitignored bundle is listed but never indexed, so there is no doc to
+    // open — every surface that routes through here would otherwise hand the
+    // user an empty tab and no reason. Explain it once, from the one place all
+    // of them come through, and offer the `.gitignore` line that fixes it.
+    // `canonicalPath` present means the bundle is mounted through a symlink and
+    // the server judged `ignored` on the resolved path, which is the one this
+    // opener uses — so the flag and the open agree. Kept explicit because the
+    // two were computed from different paths once, and that combination refused
+    // to open a skill that opened fine.
+    if (entry?.ignored === true && entry.managed !== true) {
+      requestSkillTrackPrompt({ scope: entry.scope, name: entry.name });
+      return;
+    }
     if (entry) return open(skillEntryLiveDocName(entry));
     if (scope === 'project' && opts?.path) return open(opts.path.replace(/\.mdx?$/i, ''));
     // Global: the managed `__skill__/global/<name>` doc resolves store-or-native

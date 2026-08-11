@@ -287,6 +287,7 @@
       ")"
     ],
     "3LbBJn": ["Adjuntar imágenes"],
+    "3MA3Hh": ["No se pudo leer la regla de ", ["gitignorePath"], ": ", ["previewError"]],
     "3MnvrL": [
       "Mostrando las ",
       ["0"],
@@ -1155,6 +1156,11 @@
     "Ef6ukL": ["vía la carpeta superior"],
     "Ef7StM": ["Desconocido"],
     "EhDLBx": ["Modificaste <0>", ["filePath"], "</0> en local, pero se eliminó en el remoto."],
+    "Ehb_JP": [
+      "Tus agentes siguen cargando esta habilidad, pero OpenKnowledge no puede abrirla ni editarla: no indexa un archivo que git está configurado para ignorar, porque la sincronización fallaría. Añadir una línea a ",
+      ["gitignorePath"],
+      " la hace editable aquí."
+    ],
     "Ehkru0": ["Abre, recorre, acepta o descarta las sugerencias de autocompletado de CodeMirror."],
     "EiVgl5": ["No tienes permiso para hacer push a este repositorio."],
     "Eiowpn": [
@@ -1197,6 +1203,7 @@
     "F-vBv0": ["Preguntar"],
     "F0OA00": ["Obtener ", ["displayName"]],
     "F1T9y_": ["Mostrando las coincidencias principales; sigue escribiendo para acotar"],
+    "F1yEaG": ["No se pudo actualizar ", ["gitignorePath"], ": ", ["0"]],
     "F4IYWe": ["Compartir el documento"],
     "F4_wQj": ["Buscar con Google"],
     "F4vEsL": ["Estado de sincronización: ", ["syncStateLabel"]],
@@ -1448,6 +1455,7 @@
       "OpenKnowledge guarda su configuración y sus archivos internos en un directorio <0>.ok</0> recién creado en la carpeta raíz de tu proyecto."
     ],
     "Hrz9NY": ["Enlace wiki"],
+    "HwAKaw": ["«", ["0"], "» está ignorado por git"],
     "HzVAoz": [
       "Mueve o renombra este archivo dentro de la habilidad: la ruta se mantiene bajo references/ o scripts/."
     ],
@@ -3068,6 +3076,7 @@
         { "one": ["#", " conflicto"], "many": ["#", " conflictos"], "other": ["#", " conflictos"] }
       ]
     ],
+    "cUagXn": ["Añadir a ", ["gitignorePath"]],
     "cUk6TF": [
       "Falló la sincronización: consulta los registros del servidor para ver los detalles."
     ],

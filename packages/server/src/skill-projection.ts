@@ -28,6 +28,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
+  AGENTS_SKILLS_ROOT,
   containsXmlTag,
   EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
@@ -234,7 +235,7 @@ function skillTargetDir(
   name: string,
   roots: SkillProjectionRoots = EDITOR_PROJECT_SKILL_ROOT,
 ): string | null {
-  if (target === 'agents') return resolve(cwd, '.agents/skills', name);
+  if (target === 'agents') return resolve(cwd, AGENTS_SKILLS_ROOT, name);
   return skillHostDir(cwd, target, name, roots);
 }
 
@@ -417,6 +418,16 @@ export function projectInPlaceSkill(opts: {
   /** With copy mode: ALSO convert existing links-to-canonical into copies —
    *  only for an EXPLICIT user copy choice (lossless; links otherwise kept). */
   convertLinks?: boolean;
+  /** Mirror of {@link convertLinks} for the other direction: with link mode,
+   *  ALSO convert existing same-hash COPIES into links — again only for an
+   *  EXPLICIT user choice.
+   *
+   *  Without this the two directions were asymmetric: a link survived an
+   *  implicit install but a copy did not, so simply adding one more editor
+   *  restamped every existing copy as a symlink. An install the user did not
+   *  ask to convert must leave each location in the form it is already in;
+   *  `mode` then only decides what a BRAND-NEW location gets. */
+  convertCopies?: boolean;
   /** Project-vs-user root map; defaults to project roots. */
   roots?: SkillProjectionRoots;
 }): { hosts: SkillHostId[]; conflicted: SkillHostId[] } {
@@ -440,7 +451,7 @@ export function projectInPlaceSkill(opts: {
   for (const editor of targets) {
     if (
       editor === 'agents'
-        ? canonicalRootRel === '.agents/skills'
+        ? canonicalRootRel === AGENTS_SKILLS_ROOT
         : roots[editor] === canonicalRootRel
     ) {
       // This host's own dir IS the canonical root — never CREATE a copy here.
@@ -452,7 +463,7 @@ export function projectInPlaceSkill(opts: {
       if (own !== null && !hostSkillsRootEscapes(cwd, dirname(own))) {
         const cls = classifyInPlaceDest(own, canonicalAbs, canonicalHash);
         if (
-          (mode === 'link' && cls === 'same-copy') ||
+          (mode === 'link' && opts.convertCopies === true && cls === 'same-copy') ||
           (mode === 'copy' && opts.convertLinks === true && cls === 'link-to-canonical')
         ) {
           materialize(own, dirname(own));
@@ -489,8 +500,12 @@ export function projectInPlaceSkill(opts: {
         hosts.push(editor);
         break;
       case 'same-copy':
-        // Lossless conversion when the preference is link; already right in copy mode.
-        if (mode === 'link') materialize(dest, hostRoot);
+        // Lossless conversion when the user EXPLICITLY chose links; an implicit
+        // link preference leaves an existing copy alone. Symmetric with the
+        // link-to-canonical arm above, which already required an explicit copy
+        // choice — the asymmetry is what let one added editor restamp the form
+        // of every location the user had already set up.
+        if (mode === 'link' && opts.convertCopies === true) materialize(dest, hostRoot);
         hosts.push(editor);
         break;
       case 'different':

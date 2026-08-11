@@ -17,11 +17,18 @@ vi.doMock('@lingui/react/macro', () => linguiShim);
 const moveSkillScope = vi.fn(async () => ({ ok: true as const, skippedBinaryFiles: [] }));
 const retarget = vi.fn(() => {});
 
+// `useMoveSkillScope` reads DocumentContext to pin the Skills sidebar across a
+// move and to resolve the open tab it must repoint. No provider here, so stub it.
+vi.doMock('@/editor/DocumentContext', () => ({
+  useDocumentContext: () => ({ setSkillsSidebar: vi.fn(), openTabs: [] }),
+}));
 vi.doMock('@/lib/skills-api', () => ({ moveSkillScope }));
 vi.doMock('@/components/ManagedArtifactProperties', () => ({
   useManagedArtifactRetarget: () => retarget,
 }));
 vi.doMock('@/lib/documents-events', () => ({
+  beginSkillWrite: vi.fn(),
+  endSkillWrite: vi.fn(),
   beginOptimisticSkillMove: () => {},
   endOptimisticSkillMove: () => {},
   // Pulled in transitively by use-skills (the move hook now resolves the real

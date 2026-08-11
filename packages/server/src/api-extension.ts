@@ -19,6 +19,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -33,6 +34,7 @@ import type { Document, Extension, Hocuspocus } from '@hocuspocus/server';
 import {
   type AdvisoryWarning,
   AGENT_ICON_COLORS,
+  AGENTS_SKILLS_ROOT,
   AgentActivitySuccessSchema,
   AgentBurstDiffSuccessSchema,
   AgentPatchRequestSchema,
@@ -220,6 +222,8 @@ import {
   SkillTargetsGetSuccessSchema,
   SkillTargetsPutRequestSchema,
   SkillTargetsPutSuccessSchema,
+  SkillTrackInGitRequestSchema,
+  SkillTrackInGitSuccessSchema,
   SkillUninstallRequestSchema,
   SkillUninstallSuccessSchema,
   SYSTEM_DOC_NAME,
@@ -611,6 +615,7 @@ import { successResponse } from './http/success-response.ts';
 import {
   aliasedSourceRoots,
   knownSkillRootsFor,
+  removableSkillOccurrenceDirs,
   resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
   scanGlobalInPlaceSkills,
@@ -712,6 +717,7 @@ import {
 import { rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
 import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 import {
+  clearSkillPlacements,
   readFolderExpectations,
   readSkillInstallModeRaw,
   readSkillPlacements,
@@ -1182,6 +1188,88 @@ export function safeSubdir(baseDir: string, subdir: string): string {
     throw new Error(`Invalid directory: ${subdir}`);
   }
   return resolved;
+}
+
+/**
+ * The contentDir-relative path a skill's SKILL.md is INDEXED under, which is
+ * NOT always where the bundle is mounted. Null when there is no such path
+ * (unreadable, or the link escapes contentDir); callers compare against the
+ * mounted path to decide whether the difference is worth reporting.
+ *
+ * A repo may keep its bundles in `plugins/<x>/skills/` and symlink them into
+ * the editor dir agents read from. Both names reach the same inode, and the
+ * document index holds one doc per inode under the resolved one, so the mounted
+ * name is not openable: a tab there has no page behind it and the next
+ * page-list sync prunes it.
+ *
+ * Resolved with `realpath` rather than the watcher's folder-alias index, which
+ * is populated asynchronously after boot — the list must not answer differently
+ * depending on how warm the watcher is, since clicking a skill right after
+ * launch is exactly when it is cold. A target OUTSIDE contentDir has no
+ * canonical content doc to point at, so it stays null.
+ */
+export function indexedSkillContentPath(absolutePath: string, contentDir: string): string | null {
+  let real: string;
+  let realContentDir: string;
+  try {
+    real = realpathSync(absolutePath);
+    // Resolve the root too, or a project under a symlinked ancestor (on macOS
+    // every `/var` path is one) reads as "outside contentDir" and the whole
+    // redirect silently turns itself off.
+    realContentDir = realpathSync(contentDir);
+  } catch {
+    // Unreadable / dangling — the mounted path is all we can honestly report.
+    return null;
+  }
+  if (!isWithinDir(real, realContentDir)) return null;
+  return relative(realContentDir, real).split(sep).join('/');
+}
+
+/** State for {@link healUnservableSkillAdmission} — one per API extension. */
+export interface SkillAdmissionHealState {
+  lastKey: string | null;
+}
+
+/**
+ * An in-place skill dir is only servable once the content filter's allow-list
+ * knows about it, and that list refreshes on rebuild — at boot, and in each
+ * skill-writing handler. Anything else that puts a bundle on disk (an older
+ * build that predates those rebuilds, an agent writing the files directly, a
+ * branch switch) leaves a skill that LISTS but cannot be opened: there is no
+ * page for it, so the editor falls back to a Files tab. Until now the only
+ * cure was restarting the server.
+ *
+ * So heal on READ. The Skills sidebar refetches the list on open and on every
+ * `files` signal, which makes this the one place that sees every such dir no
+ * matter who wrote it — no new per-writer obligation, and a tenth handler
+ * shipping without a rebuild degrades to one late refresh instead of a skill
+ * nobody can open.
+ *
+ * Rebuilds at most once per distinct skill-dir set: a bundle excluded for a
+ * legitimate reason (gitignored, so the user has said that path stays out of
+ * git) must not re-walk the tree on every sidebar refresh.
+ */
+export async function healUnservableSkillAdmission(
+  paths: readonly string[],
+  filter: {
+    isExcluded: (relativePath: string) => boolean;
+    rebuildIgnorePatterns: () => Promise<unknown>;
+  } | null,
+  state: SkillAdmissionHealState,
+): Promise<boolean> {
+  if (!filter) return false;
+  const key = [...paths].sort().join(' ');
+  if (key === state.lastKey) return false;
+  state.lastKey = key;
+  if (!paths.some((p) => filter.isExcluded(p))) return false;
+  try {
+    await filter.rebuildIgnorePatterns();
+    return true;
+  } catch {
+    // Fail-soft, matching every other rebuild call site: a stale allow-list
+    // costs this skill its page until the next refresh, not the response.
+    return false;
+  }
 }
 
 /**
@@ -13728,7 +13816,11 @@ export function createApiExtension(
   // live at `<home>/.ok/skills/`; the user-level install marker is
   // `<home>/.ok/local/installed-skills.json` (readInstalledSkills(skillsHome)).
   const skillsHome = homeDirOverride ?? homedir();
-  const skillInstallOps = createSkillInstallOpsService({ contentDir, skillsHome });
+  const skillInstallOps = createSkillInstallOpsService({
+    contentDir,
+    skillsHome,
+    effectiveInstallMode,
+  });
 
   /**
    * Resolve a skill scope to its absolute `.ok/skills` store root. Project
@@ -14019,7 +14111,7 @@ export function createApiExtension(
         id: editorId as string,
         root: EDITOR_PROJECT_SKILL_ROOT[editorId] ?? '',
       })),
-      { id: 'agents', root: '.agents/skills' },
+      { id: 'agents', root: AGENTS_SKILLS_ROOT },
     ];
     for (const { id, root } of roots) {
       if (!root) continue;
@@ -14204,8 +14296,33 @@ export function createApiExtension(
     base: string,
     name: string,
     scope: 'project' | 'global',
+    /**
+     * `purge`: leave NOTHING at this scope. A cross-scope move has already put
+     * the bytes at the destination, so the hub-consolidation an uninstall
+     * performs below is wrong here — it kept a copy in `.agents/skills`, which
+     * the next scan re-detected as a second skill of the same name at the scope
+     * the user just moved away from.
+     */
+    opts: { purge?: { contentHash: string } } = {},
   ): Promise<boolean> {
     const installed = await removeSkillInstall(base, name);
+    const scanBaseForPurge = scope === 'project' ? contentDir : skillsHome;
+    if (opts.purge !== undefined) {
+      reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
+      // Content-guarded: only THIS skill's occurrences go. Two same-named
+      // bundles with different bytes are two distinct skills by design
+      // (`conflictHosts`), and deleting the other one because this one moved
+      // away destroys a bundle its owner never touched.
+      for (const dir of removableSkillOccurrenceDirs(
+        scanBaseForPurge,
+        scope,
+        name,
+        opts.purge.contentHash,
+      )) {
+        tracedRmSync(dir, { recursive: true, force: true });
+      }
+      return installed !== null;
+    }
     if (!existsSync(resolve(resolveSkillsRoot(scope), name, 'SKILL.md'))) {
       const entry = (
         scope === 'project' ? scanInPlaceSkills(contentDir) : scanGlobalInPlaceSkills(skillsHome)
@@ -14327,6 +14444,137 @@ export function createApiExtension(
     }
     return { skills, truncated };
   }
+
+  /**
+   * The `.gitignore` line that re-includes a skill bundle's SKILLS ROOT.
+   *
+   * Whole directory, never the one bundle: git cannot re-include a file whose
+   * parent directory is excluded, and the common rule (`.claude/*`) excludes
+   * `.claude/skills` itself — so `!/.claude/skills/<name>/` silently does
+   * nothing while looking exactly like a fix. Verified in
+   * `api-extension.test.ts`.
+   */
+  function trackInGitLine(skillDirRel: string): string {
+    const root = dirname(skillDirRel);
+    return `!/${root.split(sep).join('/')}/`;
+  }
+
+  const handleSkillTrackInGit = withValidation(
+    SkillTrackInGitRequestSchema,
+    catchErrors(
+      async (_req, res, body) => {
+        if (!validateSkillName(body.name, res, 'skill-track-in-git')) return;
+        if (body.scope !== 'project') {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'Only project skills live in the repository; a global skill is outside any .gitignore.',
+            { handler: 'skill-track-in-git' },
+          );
+          return;
+        }
+        if (!projectDir) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project directory.', {
+            handler: 'skill-track-in-git',
+          });
+          return;
+        }
+        const inPlace = scanInPlaceSkills(contentDir).find((s) => s.name === body.name);
+        const mountedDirRel = inPlace?.dir ?? `${LEGACY_SKILL_STORE_ROOT}/${body.name}`;
+        // Resolve through any symlink first: the rule has to name the directory
+        // git is actually excluding, which for an aliased bundle is the
+        // canonical one, not the mount. A negation for the mount would verify
+        // as ineffective and be reverted — correct, but useless to the user.
+        const indexedFileRel =
+          indexedSkillContentPath(resolve(contentDir, mountedDirRel, 'SKILL.md'), contentDir) ??
+          `${mountedDirRel}/SKILL.md`;
+        const skillDirRel = dirname(indexedFileRel);
+        const skillFileRel = indexedFileRel;
+        const line = trackInGitLine(skillDirRel);
+        const gitignoreRel = '.gitignore';
+        const gitignoreAbs = resolve(contentDir, gitignoreRel);
+
+        // Already admitted: nothing to do, and saying so beats writing a rule
+        // that changes nothing.
+        if (contentFilter && !contentFilter.isPathIgnored(skillFileRel)) {
+          successResponse(
+            res,
+            200,
+            SkillTrackInGitSuccessSchema,
+            { line, gitignorePath: gitignoreRel, applied: false, alreadyTracked: true },
+            { handler: 'skill-track-in-git' },
+          );
+          return;
+        }
+        if (body.apply !== true) {
+          successResponse(
+            res,
+            200,
+            SkillTrackInGitSuccessSchema,
+            { line, gitignorePath: gitignoreRel, applied: false },
+            { handler: 'skill-track-in-git' },
+          );
+          return;
+        }
+
+        const before = existsSync(gitignoreAbs) ? readFileSync(gitignoreAbs, 'utf-8') : null;
+        const lines = (before ?? '').split('\n');
+        if (lines.some((l) => l.trim() === line)) {
+          // The rule is present but the path is still ignored — appending a
+          // duplicate would not change that. Report rather than no-op silently.
+          errorResponse(
+            res,
+            409,
+            'urn:ok:error:invalid-request',
+            `"${line}" is already in ${gitignoreRel}, but ${skillFileRel} is still ignored — another rule excludes it.`,
+            { handler: 'skill-track-in-git' },
+          );
+          return;
+        }
+        const next = `${before === null || before.endsWith('\n') || before === '' ? (before ?? '') : `${before}\n`}${line}\n`;
+        writeFileSync(gitignoreAbs, next, 'utf-8');
+        await contentFilter?.rebuildIgnorePatterns();
+
+        // VERIFY, then keep or revert. A negation rule is not universally
+        // sufficient — an ancestor excluded as a directory (`.claude/`, not
+        // `.claude/*`) cannot be re-included from below — so the only honest
+        // way to report success is to ask the filter again. Leaving a rule
+        // behind that did not work would be the same class of silent lie this
+        // whole endpoint exists to end.
+        if (contentFilter?.isPathIgnored(skillFileRel)) {
+          if (before === null) rmSync(gitignoreAbs, { force: true });
+          else writeFileSync(gitignoreAbs, before, 'utf-8');
+          await contentFilter.rebuildIgnorePatterns();
+          errorResponse(
+            res,
+            409,
+            'urn:ok:error:invalid-request',
+            `Adding "${line}" did not make ${skillFileRel} trackable — another .gitignore rule excludes a parent directory. ${gitignoreRel} was left unchanged.`,
+            { handler: 'skill-track-in-git' },
+          );
+          return;
+        }
+        // Every other handler that rebuilds the filter broadcasts; without it
+        // the newly admitted skill sits unindexed in the UI until an unrelated
+        // refresh — the same "it's right there and won't open" this endpoint
+        // exists to end.
+        signalChannel?.('files');
+        successResponse(
+          res,
+          200,
+          SkillTrackInGitSuccessSchema,
+          { line, gitignorePath: gitignoreRel, applied: true },
+          { handler: 'skill-track-in-git' },
+        );
+      },
+      { handler: 'skill-track-in-git', title: 'Failed to update .gitignore.' },
+    ),
+    { handler: 'skill-track-in-git', method: 'POST' },
+  );
+
+  // Per-extension state for the read-side allow-list heal in the list handler.
+  const skillAdmissionHeal: SkillAdmissionHealState = { lastKey: null };
 
   const handleSkillsList = withValidation(
     EmptyRequestSchema,
@@ -14627,17 +14875,56 @@ export function createApiExtension(
           .map((name) => builtinSkillListEntry(skillsHome, name, 'global'))
           .filter((e): e is NonNullable<typeof e> => e !== null);
         const inPlaceNames = new Set(inPlace.map((e) => e.name));
+        const listed = [
+          ...enrich(project, projectInstalled, true).filter((e) => !inPlaceNames.has(e.name)),
+          ...inPlace,
+          ...enrich(globalSkills, globalInstalled, false),
+          ...globalInPlace,
+          ...(projectBuiltin ? [projectBuiltin] : []),
+          ...globalBuiltins,
+        ];
+        // A project skill dir can be a SYMLINK to a canonical dir elsewhere in
+        // the content tree. Report BOTH: `path` is where the bundle is mounted
+        // (what install / reveal / host wiring reasons about), `canonicalPath`
+        // is the name the document index actually holds, which is the only one
+        // that opens. Global entries are home-relative, not content paths.
         const enriched = {
-          skills: [
-            ...enrich(project, projectInstalled, true).filter((e) => !inPlaceNames.has(e.name)),
-            ...inPlace,
-            ...enrich(globalSkills, globalInstalled, false),
-            ...globalInPlace,
-            ...(projectBuiltin ? [projectBuiltin] : []),
-            ...globalBuiltins,
-          ],
+          skills: listed.map((entry) => {
+            const canonicalPath =
+              entry.scope === 'project' && entry.absolutePath
+                ? indexedSkillContentPath(entry.absolutePath, contentDir)
+                : null;
+            const withCanonical =
+              canonicalPath === null || canonicalPath === entry.path
+                ? entry
+                : { ...entry, canonicalPath };
+            // Listed but NOT admitted: a gitignored bundle is deliberately kept
+            // out of the document index, so it has no doc to open. Say so here
+            // rather than letting the click produce an empty tab.
+            //
+            // Judged on the path the client will actually OPEN, not the mounted
+            // one: for a symlinked bundle those differ, and asking about the
+            // wrong one gets it backwards both ways — a mount under a gitignored
+            // dir whose canonical is tracked opens fine yet would be refused,
+            // and the reverse would offer a `.gitignore` line for a directory
+            // that is not the one doing the excluding.
+            const openedPath = canonicalPath ?? entry.path;
+            return entry.scope === 'project' && contentFilter?.isPathIgnored(openedPath) === true
+              ? { ...withCanonical, ignored: true }
+              : withCanonical;
+          }),
           truncated: project.truncated || globalSkills.truncated,
         };
+        // Heal a stale in-place allow-list on the way out: a dir written by
+        // anything that skipped the rebuild lists here but has no page, so the
+        // skill opens into a Files fallback until the server restarts. The
+        // rebuild's re-scan lands asynchronously, so the skill becomes openable
+        // on the next refresh rather than in this response.
+        await healUnservableSkillAdmission(
+          inPlace.map((e) => e.path),
+          contentFilter ?? null,
+          skillAdmissionHeal,
+        );
         successResponse(res, 200, SkillsListSuccessSchema, enriched, { handler: 'skills-list' });
       },
       { handler: 'skills-list', title: 'Failed to list skills.' },
@@ -15656,7 +15943,30 @@ export function createApiExtension(
         // Re-project on ANY resolved host (marker OR scan) — a scan-only in-place
         // skill has no marker entry but still occupies real editor dirs. Stamp the
         // new marker with the DESTINATION scope (not the source's stale scope).
-        if (fromBase) await uninstallSkillFromHostDirs(fromBase, name, fromScope);
+        // The scan entry captured BEFORE the move carries the hash that decides
+        // which same-named occurrences are this skill. Without it we cannot tell
+        // a projection of the moved bundle from somebody else's fork, so skip
+        // the purge rather than guess — a leftover is recoverable, a wrongly
+        // deleted skill is not.
+        if (fromBase) {
+          await uninstallSkillFromHostDirs(
+            fromBase,
+            name,
+            fromScope,
+            scanEntry ? { purge: { contentHash: scanEntry.contentHash } } : {},
+          );
+        }
+        // The placement ledger is keyed by NAME and would otherwise survive the
+        // move describing locations in their pre-move form, which the list then
+        // reports as "changed outside" — OK accusing another tool of its own
+        // rewrite. Clear the source scope's records; the destination records its
+        // own as it projects.
+        // `fromBase` (the install base) is what every placement reader uses —
+        // `readSkillPlacements(projectDir)` in the list handler, and the ledger
+        // ops in `services/skill-*-ops.ts`. Passing the CONTENT dir would clear
+        // a ledger nobody reads and mint a stray `.ok/local/` beside the content
+        // whenever the two differ, leaving the drift this is meant to end.
+        if (fromBase) await clearSkillPlacements(fromBase, name);
         if (toBase && priorHosts.length > 0) {
           const newHosts = projectSkill(
             toDir,
@@ -15718,6 +16028,12 @@ export function createApiExtension(
           );
           return;
         }
+
+        // The destination scope's skill dir is not servable until the filter's
+        // in-place allow-list knows about it, so without this the moved SKILL.md
+        // 404s and the editor falls back to a Files tab. Same reason and same
+        // placement as `handleSkillInstall`, which rebuilds before every exit.
+        await contentFilter?.rebuildIgnorePatterns();
 
         signalChannel?.('files');
         successResponse(
@@ -15828,6 +16144,11 @@ export function createApiExtension(
           await commitOkArtifactWrite('skill-duplicate');
         }
         signalChannel?.('files');
+        // A skill dir is not servable until the filter's in-place allow-list knows
+        // about it, and an API write does not otherwise trigger a rebuild. Same
+        // call, same reason, same placement as `handleSkillInstall`.
+        await contentFilter?.rebuildIgnorePatterns();
+
         successResponse(
           res,
           200,
@@ -16886,6 +17207,11 @@ export function createApiExtension(
             resolveSkillInstallReportSettings(),
           );
         }
+        // The imported skill dir is brand new on disk; until the filter's in-place
+        // allow-list is rebuilt its SKILL.md is not servable, and opening the skill
+        // the user just imported falls back to a Files tab.
+        await contentFilter?.rebuildIgnorePatterns();
+
         respondSkillImport(res, outcome);
       } catch (e) {
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to import skill.', {
@@ -17112,6 +17438,11 @@ export function createApiExtension(
             );
           }
         }
+        // A skill dir is not servable until the filter's in-place allow-list knows
+        // about it, and an API write does not otherwise trigger a rebuild. Same
+        // call, same reason, same placement as `handleSkillInstall`.
+        await contentFilter?.rebuildIgnorePatterns();
+
         successResponse(
           res,
           200,
@@ -17583,6 +17914,14 @@ export function createApiExtension(
             }
           }
           signalChannel?.('files');
+          // Admit the just-written skill dirs to the content-filter allow-list
+          // BEFORE responding. A skill dir only enters that allow-list on
+          // `rebuildIgnorePatterns()`, which an API write does not otherwise
+          // trigger — so the client could open the freshly installed SKILL.md,
+          // have it judged excluded, and hang until the 30s sync timeout before
+          // a later rebuild made the retry work. `skill-get` and the scope-move
+          // handler already do this; install was the gap.
+          await contentFilter?.rebuildIgnorePatterns();
           successResponse(
             res,
             200,
@@ -17683,6 +18022,14 @@ export function createApiExtension(
             return;
           }
           signalChannel?.('files');
+          // Admit the just-written skill dirs to the content-filter allow-list
+          // BEFORE responding. A skill dir only enters that allow-list on
+          // `rebuildIgnorePatterns()`, which an API write does not otherwise
+          // trigger — so the client could open the freshly installed SKILL.md,
+          // have it judged excluded, and hang until the 30s sync timeout before
+          // a later rebuild made the retry work. `skill-get` and the scope-move
+          // handler already do this; install was the gap.
+          await contentFilter?.rebuildIgnorePatterns();
           successResponse(
             res,
             200,
@@ -17750,6 +18097,14 @@ export function createApiExtension(
           if (!('alreadyAtSource' in placed)) {
             signalChannel?.('files');
           }
+          // Admit the just-written skill dirs to the content-filter allow-list
+          // BEFORE responding. A skill dir only enters that allow-list on
+          // `rebuildIgnorePatterns()`, which an API write does not otherwise
+          // trigger — so the client could open the freshly installed SKILL.md,
+          // have it judged excluded, and hang until the 30s sync timeout before
+          // a later rebuild made the retry work. `skill-get` and the scope-move
+          // handler already do this; install was the gap.
+          await contentFilter?.rebuildIgnorePatterns();
           successResponse(
             res,
             200,
@@ -17836,6 +18191,14 @@ export function createApiExtension(
             }
           }
           signalChannel?.('files');
+          // Admit the just-written skill dirs to the content-filter allow-list
+          // BEFORE responding. A skill dir only enters that allow-list on
+          // `rebuildIgnorePatterns()`, which an API write does not otherwise
+          // trigger — so the client could open the freshly installed SKILL.md,
+          // have it judged excluded, and hang until the 30s sync timeout before
+          // a later rebuild made the retry work. `skill-get` and the scope-move
+          // handler already do this; install was the gap.
+          await contentFilter?.rebuildIgnorePatterns();
           successResponse(
             res,
             200,
@@ -18550,6 +18913,11 @@ export function createApiExtension(
         );
         await commitOkArtifactWrite('skill-restore');
         signalChannel?.('files');
+        // A skill dir is not servable until the filter's in-place allow-list knows
+        // about it, and an API write does not otherwise trigger a rebuild. Same
+        // call, same reason, same placement as `handleSkillInstall`.
+        await contentFilter?.rebuildIgnorePatterns();
+
         successResponse(
           res,
           200,
@@ -18679,6 +19047,11 @@ export function createApiExtension(
               },
             },
           }));
+          // A skill dir is not servable until the filter's in-place allow-list knows
+          // about it, and an API write does not otherwise trigger a rebuild. Same
+          // call, same reason, same placement as `handleSkillInstall`.
+          await contentFilter?.rebuildIgnorePatterns();
+
           successResponse(
             res,
             200,
@@ -18812,6 +19185,11 @@ export function createApiExtension(
         // Already up to date — nothing to write. (Temp dir is dropped by the
         // handler's `finally { cleanup() }` — no explicit call needed here.)
         if (acquired.contentHash === entry.contentHash && removedUpstream.length === 0) {
+          // A skill dir is not servable until the filter's in-place allow-list knows
+          // about it, and an API write does not otherwise trigger a rebuild. Same
+          // call, same reason, same placement as `handleSkillInstall`.
+          await contentFilter?.rebuildIgnorePatterns();
+
           successResponse(
             res,
             200,
@@ -18849,6 +19227,11 @@ export function createApiExtension(
               gitTracked = undefined; // not a git repo / unborn index — no gate
             }
           }
+          // A skill dir is not servable until the filter's in-place allow-list knows
+          // about it, and an API write does not otherwise trigger a rebuild. Same
+          // call, same reason, same placement as `handleSkillInstall`.
+          await contentFilter?.rebuildIgnorePatterns();
+
           successResponse(
             res,
             200,
@@ -18979,6 +19362,11 @@ export function createApiExtension(
         }
 
         signalChannel?.('files');
+        // A skill dir is not servable until the filter's in-place allow-list knows
+        // about it, and an API write does not otherwise trigger a rebuild. Same
+        // call, same reason, same placement as `handleSkillInstall`.
+        await contentFilter?.rebuildIgnorePatterns();
+
         successResponse(
           res,
           200,
@@ -21588,6 +21976,7 @@ export function createApiExtension(
     '/api/skill/restore': handleSkillRestore,
     '/api/skill/reimport': handleSkillReimport,
     '/api/skill/revert': handleSkillRevert,
+    '/api/skill/track-in-git': handleSkillTrackInGit,
     '/api/skill-targets': handleSkillTargets,
     '/api/search': handleSearch,
     '/api/semantic-status': handleSemanticStatus,
@@ -21721,6 +22110,7 @@ export function createApiExtension(
     '/api/skill/restore',
     '/api/skill/reimport',
     '/api/skill/revert',
+    '/api/skill/track-in-git',
     // Read-shaped GETs, but each triggers an arbitrary `git clone` (network egress)
     // + local SKILL.md reads, so they ride the loopback/host gate, not the read posture.
     '/api/skills/preview',

@@ -482,6 +482,18 @@ export const SkillsListEntrySchema = z
     description: z.string().optional(),
     scope: SkillScopeSchema,
     path: z.string().min(1),
+    /**
+     * Set ONLY when `path` sits under a directory-symlink alias: the same
+     * SKILL.md addressed through the canonical dir it links to (a repo that
+     * keeps its skills in `plugins/<x>/skills/` and links them into
+     * `.agents/skills/`). The document index holds ONE page per inode, under
+     * the canonical name — so `path` itself is not a page, and a tab opened
+     * there is pruned the moment the page list syncs (the skill flickers open
+     * and vanishes). Opening the alias name anyway would be worse: a second
+     * Y.Doc fighting the canonical over one file on disk. Doc-name builders
+     * prefer this when present; `path` still reports where the bundle lives.
+     */
+    canonicalPath: z.string().min(1).optional(),
     /** Absolute on-disk path to the skill's SKILL.md — drives the desktop
      *  Reveal-in-Finder / Open-in-Terminal / Copy-Path row actions. Always set on
      *  `/api/skills` list entries; omitted on partial entries built client-side
@@ -539,9 +551,51 @@ export const SkillsListEntrySchema = z
     // fails: a `modified` skill in a non-git project has a `localHash` (Modified
     // shows) but no `baselineRef` (nothing to revert to), so Revert stays hidden.
     revertable: z.boolean().optional(),
+    // The bundle sits on a GITIGNORED path, so it is listed but NOT admitted as
+    // content: OK will not index a doc the sync engine could never commit. The
+    // skill is real and agents load it; OK just cannot open or edit it.
+    //
+    // Without this the list and the document index disagreed in silence — the
+    // row was there, the click produced a tab with no doc behind it, and nothing
+    // anywhere said why. Every surface that offers to OPEN a skill reads this
+    // first and offers `POST /api/skill/track-in-git` instead.
+    ignored: z.boolean().optional(),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillsListEntry = z.infer<typeof SkillsListEntrySchema>;
+
+/**
+ * Make a gitignored skill bundle trackable, so OK can index (and therefore
+ * open) it. `apply: false` previews the exact `.gitignore` line without writing
+ * — every caller shows the user that line before it touches their repo.
+ *
+ * Project scope only: a global skill lives under `$HOME`, outside any repo.
+ */
+export const SkillTrackInGitRequestSchema = z
+  .object({
+    name: z.string().min(1),
+    scope: SkillScopeSchema,
+    // Write the rule. Omitted/false returns the proposed line only.
+    apply: z.boolean().optional(),
+  })
+  .strict() satisfies StandardSchemaV1;
+export type SkillTrackInGitRequest = z.infer<typeof SkillTrackInGitRequestSchema>;
+
+export const SkillTrackInGitSuccessSchema = z
+  .object({
+    // The exact line, e.g. `!/.claude/skills/`. Re-includes the whole skills
+    // DIRECTORY, never one bundle: git cannot re-include a file whose parent
+    // directory is excluded, so a per-skill negation silently does nothing.
+    line: z.string().min(1),
+    // Project-relative path of the file the line goes in.
+    gitignorePath: z.string().min(1),
+    // Did this call write? False for a preview, and for a rule already present.
+    applied: z.boolean(),
+    // The bundle was already trackable — nothing to do.
+    alreadyTracked: z.boolean().optional(),
+  })
+  .strict() satisfies StandardSchemaV1;
+export type SkillTrackInGitSuccess = z.infer<typeof SkillTrackInGitSuccessSchema>;
 
 /** Success body for `GET /api/skills`. Flat enumeration across in-scope stores. */
 export const SkillsListSuccessSchema = z

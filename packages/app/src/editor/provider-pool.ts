@@ -1723,6 +1723,39 @@ export class ProviderPool {
   open(docName: string): PoolEntry | null {
     if (isSystemDoc(docName)) return null;
 
+    // A pooled provider whose socket has already dropped can never emit
+    // `synced` again, so handing it back on the hit path parks the caller's
+    // `syncPromise` on an event that cannot arrive: it burns the full sync
+    // timeout, and only then does `DocumentErrorBoundary` recycle the entry
+    // and reload the same doc in a few hundred ms. Do that recovery eagerly
+    // instead. Skipped while the provider still holds unsynced local edits —
+    // this path has no buffer-and-replay (that exists only for
+    // `server-instance-mismatch`), the same reason the debounced
+    // disconnect-recycle re-checks `unsyncedChanges` at fire time. Gated on
+    // `hasSynced` for the same reason that path is: an entry still working
+    // through its first connect is waiting on a sync that its own backoff
+    // will deliver, and recycling it would discard a pending persistence
+    // attach on every open.
+    const pooled = this.entries.get(docName);
+    if (
+      pooled !== undefined &&
+      pooled.kind === 'active' &&
+      pooled.hasSynced &&
+      pooled.syncState === 'disconnected' &&
+      pooled.provider.unsyncedChanges === 0
+    ) {
+      mark('ok/pool/recycle-disconnected-on-open', { docName });
+      this.emitStructuredClientBreadcrumb({
+        event: 'ok-pool-recycle-disconnected-on-open',
+        docName,
+      });
+      this.recycleDisconnectedEntry(docName);
+      // The recycle re-admits the active doc under a fresh provider; any
+      // other doc is simply dropped and the MISS path below rebuilds it.
+      const reopened = this.entries.get(docName);
+      if (reopened !== undefined) return reopened;
+    }
+
     const existing = this.entries.get(docName);
     if (existing) {
       const previousAccessedAt = existing.lastAccessedAt;

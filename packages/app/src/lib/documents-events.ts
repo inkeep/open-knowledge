@@ -166,6 +166,53 @@ export function endOptimisticSkillMove(fromScope: SkillScope, name: string): voi
   if (hiddenMovingSkills.delete(movingSkillKey(fromScope, name))) emitSkillsChanged();
 }
 
+// Skill writes currently in flight, keyed scope+name. A write is not atomic on
+// disk — `projectInPlaceSkill` rm's a destination before materializing it, and a
+// scope move hides the source before the destination lands — so a scan taken
+// mid-write can report a skill that plainly exists as absent. Anything that
+// DESTROYS user state on absence has to be able to tell "being written" from
+// "deleted"; inferring it from the list alone is what closed people's tabs.
+const pendingSkillWrites = new Set<string>();
+
+/** Mark a skill as being written. Pair with {@link endSkillWrite} in a finally. */
+export function beginSkillWrite(scope: SkillScope, name: string): void {
+  pendingSkillWrites.add(movingSkillKey(scope, name));
+  emitSkillsChanged();
+}
+
+export function endSkillWrite(scope: SkillScope, name: string): void {
+  if (pendingSkillWrites.delete(movingSkillKey(scope, name))) emitSkillsChanged();
+}
+
+export function isSkillWritePending(scope: SkillScope, name: string): boolean {
+  return pendingSkillWrites.has(movingSkillKey(scope, name));
+}
+
+/**
+ * Stable key describing WHICH skills are mid-write.
+ *
+ * Consumers that skip work on an unchanged input signature must fold this in:
+ * suppressing an action while a write is pending and then clearing the flag
+ * leaves the underlying list identical, so without this the guarded action is
+ * skipped forever rather than merely deferred. That is the trap that turned a
+ * deferred tab-close into one that never happened.
+ */
+export function pendingSkillWritesKey(): string {
+  return [...pendingSkillWrites].sort().join('\u0001');
+}
+
+/**
+ * Is a scope-move currently in flight for this skill at this (source) scope?
+ *
+ * A move passes through a window where the skill is in NEITHER scope's list: the
+ * source row is hidden here and the destination row has not landed yet. Anything
+ * that reads "absent from the list" as "deleted" will act on that window, so
+ * consumers that destroy user state need to be able to tell the two apart.
+ */
+export function isOptimisticallyMoving(scope: SkillScope, name: string): boolean {
+  return hiddenMovingSkills.has(movingSkillKey(scope, name));
+}
+
 /** Drop rows a scope-move is optimistically relocating away from their source. */
 export function applyOptimisticSkillMoves<T extends { scope: SkillScope; name: string }>(
   skills: readonly T[],

@@ -555,6 +555,59 @@ describe('ProviderPool disconnect recycling', () => {
 
     expect(pool.getActive()?.provider).toBe(originalProvider);
   });
+
+  test('open() recycles a pooled entry whose socket already dropped', () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    pool.setActive('doc1');
+
+    const staleProvider = entry.provider;
+    staleProvider.emit('synced', { state: true });
+    // Socket drop reported as a status change: the pool records the entry as
+    // disconnected without arming the debounced recycle (that only happens on
+    // the 'disconnect' event), which is the state the hit path used to hand
+    // straight back to syncPromise.
+    staleProvider.emit('status', { status: 'disconnected' });
+    expect(entry.syncState).toBe('disconnected');
+
+    const reopened = pool.open('doc1');
+    expect(reopened).not.toBeNull();
+    expect(reopened?.provider).not.toBe(staleProvider);
+    expect(reopened?.syncState).toBe('connecting');
+    expect(pool.getActiveDocName()).toBe('doc1');
+  });
+
+  test('open() re-opens a disconnected background doc from scratch', () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    pool.open('doc1');
+    pool.setActive('doc1');
+    const background = pool.open('doc2');
+    if (!background) throw new Error('expected entry');
+
+    const staleProvider = background.provider;
+    staleProvider.emit('synced', { state: true });
+    staleProvider.emit('status', { status: 'disconnected' });
+
+    const reopened = pool.open('doc2');
+    expect(reopened?.provider).not.toBe(staleProvider);
+    expect(pool.entries.size).toBe(2);
+  });
+
+  test('open() keeps a disconnected entry that still holds unsynced edits', () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    pool.setActive('doc1');
+
+    const originalProvider = entry.provider;
+    originalProvider.emit('synced', { state: true });
+    originalProvider.unsyncedChanges = 1;
+    originalProvider.emit('status', { status: 'disconnected' });
+
+    // No buffer-and-replay on this path, so recycling would drop the edit.
+    expect(pool.open('doc1')?.provider).toBe(originalProvider);
+  });
 });
 
 describe('ProviderPool dispose', () => {

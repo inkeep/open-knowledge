@@ -22,6 +22,7 @@
 import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
+  AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
@@ -47,7 +48,7 @@ function rootsByPrecedence(
   map: Record<EditorId, string | null>,
 ): ReadonlyArray<{ host: SkillHostId; root: string }> {
   return [
-    { host: 'agents' as SkillHostId, root: '.agents/skills' },
+    { host: 'agents' as SkillHostId, root: AGENTS_SKILLS_ROOT },
     ...(Object.entries(map) as [EditorId, string | null][])
       .filter((e): e is [EditorId, string] => e[1] !== null)
       .map(([host, root]) => ({ host: host as SkillHostId, root })),

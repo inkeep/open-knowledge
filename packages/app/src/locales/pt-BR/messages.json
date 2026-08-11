@@ -283,6 +283,7 @@
       ")"
     ],
     "3LbBJn": ["Anexar imagens"],
+    "3MA3Hh": ["Não foi possível ler a regra de ", ["gitignorePath"], ": ", ["previewError"]],
     "3MnvrL": [
       "Mostrando as ",
       ["0"],
@@ -1147,6 +1148,11 @@
       ["filePath"],
       "</0> localmente, mas ele foi excluído no remoto."
     ],
+    "Ehb_JP": [
+      "Seus agentes continuam carregando esta habilidade, mas o OpenKnowledge não consegue abri-la nem editá-la: ele não indexa um arquivo que o git está configurado para ignorar, porque a sincronização falharia. Adicionar uma linha ao ",
+      ["gitignorePath"],
+      " a torna editável aqui."
+    ],
     "Ehkru0": ["Abre, percorre, aceita ou dispensa as sugestões de autocompletar do CodeMirror."],
     "EiVgl5": ["Você não tem permissão para enviar a este repositório."],
     "Eiowpn": [
@@ -1189,6 +1195,7 @@
     "F-vBv0": ["Perguntar"],
     "F0OA00": ["Obter ", ["displayName"]],
     "F1T9y_": ["Mostrando as principais ocorrências — continue digitando para restringir"],
+    "F1yEaG": ["Não foi possível atualizar ", ["gitignorePath"], ": ", ["0"]],
     "F4IYWe": ["Compartilhar o documento"],
     "F4_wQj": ["Pesquisar com o Google"],
     "F4vEsL": ["Status da sincronização: ", ["syncStateLabel"]],
@@ -1436,6 +1443,7 @@
       "O OpenKnowledge guarda sua configuração e seus arquivos internos em um diretório <0>.ok</0> recém-criado na pasta raiz do seu projeto."
     ],
     "Hrz9NY": ["Link wiki"],
+    "HwAKaw": ["\"", ["0"], "\" é ignorado pelo git"],
     "HzVAoz": [
       "Mova ou renomeie este arquivo dentro da habilidade — o caminho continua sob references/ ou scripts/."
     ],
@@ -2998,6 +3006,7 @@
         { "one": ["#", " conflito"], "many": ["#", " conflitos"], "other": ["#", " conflitos"] }
       ]
     ],
+    "cUagXn": ["Adicionar a ", ["gitignorePath"]],
     "cUk6TF": ["Falha na sincronização — veja os logs do servidor para os detalhes."],
     "cUt8yN": ["As alterações são salvas automaticamente."],
     "cV7LOw": ["Wiki da equipe"],

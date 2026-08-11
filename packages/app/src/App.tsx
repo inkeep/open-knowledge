@@ -26,6 +26,7 @@ import {
 } from '@/components/navigation-targets';
 import { PageListProvider, usePageList } from '@/components/PageListContext';
 import { ReportBugMenuTrigger } from '@/components/ReportBugMenuTrigger';
+import { SkillTrackInGitDialog } from '@/components/SkillTrackInGitDialog';
 import { SystemDocSubscriber } from '@/components/SystemDocSubscriber';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { ValidationFreshness } from '@/components/ValidationFreshness';
@@ -595,6 +596,10 @@ function AppBody() {
       <PageListProvider>
         <SystemDocSubscriber />
         <ValidationFreshness />
+        {/* Explains a skill that lists but can't open (gitignored bundle) and
+            offers the one-line fix. Mounted here because the guard fires from
+            the shared opener, which has no surface of its own. */}
+        <SkillTrackInGitDialog />
         <NavigationHandler />
         <ActiveTargetBridgePush />
         <NewItemShortcutHandler />

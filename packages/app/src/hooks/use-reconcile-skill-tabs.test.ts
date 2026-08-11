@@ -220,18 +220,108 @@ describe('computeSkillTabReconcile', () => {
     expect(actions).toEqual([{ kind: 'close', docName: '.ok/skills/demo/references/notes' }]);
   });
 
-  test('closes a reference FILE tab when its skill moved scope (SKILL tab follows the move)', () => {
-    // A file tab is not retargeted (its new-scope doc name is not reconstructed);
-    // the SKILL tab retargets to the new scope, so the skill stays open.
+  test('closes a reference FILE tab when its skill moved scope and the SKILL tab carries it', () => {
+    // A file tab is not retargeted to its own new-scope name (that name is not
+    // reconstructed); the SKILL tab retargets to the new scope, so the skill
+    // stays open and the file tab can just close.
     const actions = computeSkillTabReconcile(
-      ['.ok/skills/demo/references/notes'],
+      ['.ok/skills/demo/SKILL', '.ok/skills/demo/references/notes'],
       [{ scope: 'global', name: 'demo', path: '~/.claude/skills/demo/SKILL.md' }],
     );
-    expect(actions).toEqual([{ kind: 'close', docName: '.ok/skills/demo/references/notes' }]);
+    expect(actions).toEqual([
+      {
+        kind: 'retarget',
+        fromDocName: '.ok/skills/demo/SKILL',
+        toDocName: skillLiveDocName('global', 'demo'),
+      },
+      { kind: 'close', docName: '.ok/skills/demo/references/notes' },
+    ]);
+  });
+
+  // Clicking a skill and then one of its bundle files leaves the FILE tab as the
+  // only tab for that skill — the file replaces the SKILL preview tab. Closing
+  // it on a scope move emptied the Skills surface, which fell back to Files.
+  test('retargets a lone bundle FILE tab to the new scope SKILL doc on a scope move', () => {
+    const actions = computeSkillTabReconcile(
+      ['.claude/skills/demo/mocking'],
+      [{ scope: 'global', name: 'demo', path: '~/.claude/skills/demo/SKILL.md' }],
+    );
+    expect(actions).toEqual([
+      {
+        kind: 'retarget',
+        fromDocName: '.claude/skills/demo/mocking',
+        toDocName: skillLiveDocName('global', 'demo'),
+      },
+    ]);
+  });
+
+  test('promotes only ONE of several lone bundle FILE tabs, closing the rest', () => {
+    const actions = computeSkillTabReconcile(
+      ['.claude/skills/demo/mocking', '.claude/skills/demo/tests'],
+      [{ scope: 'global', name: 'demo', path: '~/.claude/skills/demo/SKILL.md' }],
+    );
+    expect(actions).toEqual([
+      {
+        kind: 'retarget',
+        fromDocName: '.claude/skills/demo/mocking',
+        toDocName: skillLiveDocName('global', 'demo'),
+      },
+      { kind: 'close', docName: '.claude/skills/demo/tests' },
+    ]);
+  });
+
+  // A companion doc lives outside `references/`, so the canonical parsers drop
+  // it. Unseen here, a delete left its tab on a doc that no longer exists.
+  test('closes a companion bundle tab when its skill is deleted', () => {
+    expect(computeSkillTabReconcile(['.claude/skills/demo/mocking'], [])).toEqual([
+      { kind: 'close', docName: '.claude/skills/demo/mocking' },
+    ]);
+    expect(computeSkillTabReconcile(['__skill__/global/demo/mocking'], [])).toEqual([
+      { kind: 'close', docName: '__skill__/global/demo/mocking' },
+    ]);
+  });
+
+  test('leaves a companion bundle tab alone while its skill still exists', () => {
+    expect(
+      computeSkillTabReconcile(
+        ['.claude/skills/demo/mocking'],
+        [{ scope: 'project', name: 'demo', path: '.claude/skills/demo/SKILL.md' }],
+      ),
+    ).toEqual([]);
   });
 
   test('ignores non-skill tabs entirely', () => {
     const actions = computeSkillTabReconcile(['notes/standup', 'notes/.ok/templates/daily'], []);
     expect(actions).toEqual([]);
+  });
+});
+
+describe('scope-move window', () => {
+  const projectTab = '.claude/skills/grill-me/SKILL';
+
+  test('does NOT close a skill tab while its move is still in flight', () => {
+    // The window a move passes through: source row optimistically hidden, and
+    // the destination row has not landed. Treating that as a deletion drops the
+    // user's tab, leaving an empty "New tab" with the surface falling to Files.
+    const actions = computeSkillTabReconcile([projectTab], [], () => true);
+    expect(actions).toEqual([]);
+  });
+
+  test('still closes a tab for a skill that is genuinely gone', () => {
+    // The guard must not swallow real deletions — that is what the reconciler
+    // exists for.
+    const actions = computeSkillTabReconcile([projectTab], [], () => false);
+    expect(actions).toEqual([{ kind: 'close', docName: projectTab }]);
+  });
+
+  test('retargets once the skill lands at its new scope', () => {
+    const actions = computeSkillTabReconcile(
+      [projectTab],
+      [{ scope: 'global', name: 'grill-me', path: '.agents/skills/grill-me/SKILL.md' }],
+      () => true,
+    );
+    expect(actions).toEqual([
+      { kind: 'retarget', fromDocName: projectTab, toDocName: '__skill__/global/grill-me' },
+    ]);
   });
 });

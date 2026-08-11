@@ -299,6 +299,7 @@
       ")"
     ],
     "3LbBJn": ["Joindre des images"],
+    "3MA3Hh": ["Impossible de lire la règle de ", ["gitignorePath"], " : ", ["previewError"]],
     "3MnvrL": [
       "Affichage des ",
       ["0"],
@@ -1191,6 +1192,11 @@
       ["filePath"],
       "</0> en local, mais il a été supprimé en amont."
     ],
+    "Ehb_JP": [
+      "Vos agents chargent toujours cette compétence, mais OpenKnowledge ne peut ni l'ouvrir ni la modifier : il n'indexe pas un fichier que git est configuré pour ignorer, car la synchronisation échouerait. Ajouter une ligne à ",
+      ["gitignorePath"],
+      " la rend modifiable ici."
+    ],
     "Ehkru0": ["Ouvre, parcourt, accepte ou ferme les suggestions de complétion de CodeMirror."],
     "EiVgl5": ["Vous n'avez pas la permission de pousser vers ce dépôt."],
     "Eiowpn": [
@@ -1232,6 +1238,7 @@
     "F-vBv0": ["Demander"],
     "F0OA00": ["Obtenir ", ["displayName"]],
     "F1T9y_": ["Affichage des résultats les plus pertinents — continuez à saisir pour affiner"],
+    "F1yEaG": ["Impossible de mettre à jour ", ["gitignorePath"], " : ", ["0"]],
     "F4IYWe": ["Partager le document"],
     "F4_wQj": ["Rechercher avec Google"],
     "F4vEsL": ["État de la synchronisation : ", ["syncStateLabel"]],
@@ -1475,6 +1482,7 @@
       "OpenKnowledge stocke sa configuration et ses fichiers internes dans un répertoire <0>.ok</0> nouvellement créé à la racine de votre projet."
     ],
     "Hrz9NY": ["Lien wiki"],
+    "HwAKaw": ["« ", ["0"], " » est ignoré par git"],
     "HzVAoz": [
       "Déplacez ou renommez ce fichier à l'intérieur de la compétence — le chemin reste sous references/ ou scripts/."
     ],
@@ -3103,6 +3111,7 @@
         { "one": ["#", " conflit"], "many": ["#", " conflits"], "other": ["#", " conflits"] }
       ]
     ],
+    "cUagXn": ["Ajouter à ", ["gitignorePath"]],
     "cUk6TF": ["Échec de la synchronisation — consultez les journaux du serveur pour les détails."],
     "cUt8yN": ["Les modifications sont enregistrées automatiquement."],
     "cV7LOw": ["Wiki d'équipe"],

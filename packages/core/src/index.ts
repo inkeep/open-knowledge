@@ -392,6 +392,7 @@ export {
 export { PRODUCT_NAME } from './constants/product.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
+  AGENTS_SKILLS_ROOT,
   extractSkillRefs,
   isOpenKnowledgeSkillsSource,
   isSkillRefCandidate,
@@ -1261,6 +1262,10 @@ export {
   SkillTargetsPutRequestSchema,
   type SkillTargetsPutSuccess,
   SkillTargetsPutSuccessSchema,
+  type SkillTrackInGitRequest,
+  SkillTrackInGitRequestSchema,
+  type SkillTrackInGitSuccess,
+  SkillTrackInGitSuccessSchema,
   type SkillUninstallRequest,
   SkillUninstallRequestSchema,
   type SkillUninstallSuccess,

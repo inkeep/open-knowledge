@@ -60,6 +60,11 @@ msgstr "“{0}”"
 msgid "\"{0}\" install refreshed ({1})"
 msgstr "Instalação de \"{0}\" atualizada ({1})"
 
+#. placeholder {0}: prompt.name
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "\"{0}\" is ignored by git"
+msgstr "\"{0}\" é ignorado pelo git"
+
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
 msgid "\"{0}\" was already added (identical content)."
@@ -1313,6 +1318,10 @@ msgstr "Adicione o comando <0>ok</0> ao seu terminal"
 msgid "Add the next matching source selection."
 msgstr "Adiciona a próxima correspondência da seleção de origem."
 
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Add to {gitignorePath}"
+msgstr "Adicionar a {gitignorePath}"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Add to Dictionary"
 msgstr "Adicionar ao dicionário"
@@ -2089,6 +2098,7 @@ msgstr "Não é possível compartilhar este caminho."
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/components/SkillTrackInGitDialog.tsx
 #: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 #: src/components/TrashFailureModal.tsx
@@ -3488,6 +3498,10 @@ msgstr "Não deu para contatar o servidor do Open Knowledge para enviar {fileNam
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "Não deu para ler {fileName}. Ele pode ter sido movido, excluído ou não terminou de baixar. Tente adicioná-lo de novo."
 
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Couldn't read the {gitignorePath} rule: {previewError}"
+msgstr "Não foi possível ler a regra de {gitignorePath}: {previewError}"
+
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send — nothing was sent."
 msgstr "Não deu para ler os comentários que aguardam envio — nada foi enviado."
@@ -3651,6 +3665,11 @@ msgstr "Não deu para mudar para Somente eu"
 #: src/comments/store.ts
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "Não deu para desmarcar esse comentário — ele continua aguardando envio."
+
+#. placeholder {0}: result.error
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Couldn't update {gitignorePath}: {0}"
+msgstr "Não foi possível atualizar {gitignorePath}: {0}"
 
 #. placeholder {0}: r.error
 #: src/components/SkillInstallMenu.tsx
@@ -13638,6 +13657,10 @@ msgstr "Assinatura confirmada!"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "voce@empresa.com"
+
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Your agents still load this skill, but OpenKnowledge can't open or edit it: it won't index a file that git is set to ignore, because syncing it would fail. Adding one line to {gitignorePath} makes it editable here."
+msgstr "Seus agentes continuam carregando esta habilidade, mas o OpenKnowledge não consegue abri-la nem editá-la: ele não indexa um arquivo que o git está configurado para ignorar, porque a sincronização falharia. Adicionar uma linha ao {gitignorePath} a torna editável aqui."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Your change is still being saved — run the test again in a moment."

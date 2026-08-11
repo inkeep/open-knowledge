@@ -22,9 +22,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useDocumentContext } from '@/editor/DocumentContext';
+import { parseEditorTabId } from '@/editor/editor-tabs';
 import { useExplorePreviewInstall } from '@/hooks/use-explore-preview-install';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { useSkillOrigin } from '@/hooks/use-skill-origin';
+import { useSkills } from '@/hooks/use-skills';
 import { hashFromSkillFile, hashFromSkillPreview, type SkillPreviewFlavor } from '@/lib/doc-hash';
 import { useSkillScopeLabels } from '@/lib/skill-scope';
 import { discoverSkillsInSource, fetchSkillDetail } from '@/lib/skills-api';
@@ -201,15 +204,52 @@ export function SkillPreviewTab({
   // (which only tracks ITS own import-then-place cycle) never sees it.
   const [bulkInstalledName, setBulkInstalledName] = useState<string | null>(null);
   const landedName = previewInstall.importedName ?? bulkInstalledName;
+  // Redirect against the scope the bundle ACTUALLY landed at, never the live
+  // `scope` selector. `useOpenSkill` resolves a skill's doc by (scope, name), so
+  // if the selector has moved since the import — or the import ran at a scope the
+  // selector no longer shows — the tab opens a document that does not exist and
+  // strands on "Couldn't load document" until it times out. Falls back to the
+  // selector only for the bulk-install path, which imports at the current scope
+  // and reports no scope of its own.
+  const landedScope = previewInstall.importedScope ?? previewInstall.scope;
+  // Redirect only once the skill is actually IN the list, and open it at the
+  // scope the list reports. `useOpenSkill` resolves the doc from that same list,
+  // which lags a fresh import by the `skills-changed` refetch — and the fire-once
+  // ref is set BEFORE the open resolves, so firing early burns the one attempt
+  // on a lookup that cannot succeed and strands the preview for good.
+  //
+  // Still gated on `landedName`, so previewing a marketplace skill whose name
+  // already exists locally does not bounce you straight out of the preview.
+  const { openTabs, closeTab } = useDocumentContext();
+  const allSkills = useSkills();
+  const landedEntry =
+    landedName !== null && allSkills.status === 'ready'
+      ? allSkills.data.find((sk) => sk.name === landedName && sk.scope === landedScope)
+      : undefined;
   const importedNow =
-    (flavor === 'explore' || foreign || pluginInfo !== null) && landedName !== null;
+    (flavor === 'explore' || foreign || pluginInfo !== null) && landedEntry !== undefined;
   useEffect(() => {
     if (!importedNow || redirectedRef.current) return;
     redirectedRef.current = true;
-    openSkill(previewInstall.scope, landedName as string, {
-      replaceActive: true,
+    // Capture THIS preview's tab id(s) before opening, then close them after.
+    // `replaceActive` only opens with preview DISPOSITION — it swaps whatever
+    // holds the preview slot, which is not the same thing as replacing this tab.
+    // A skill-preview tab opened permanently therefore survives, and the real
+    // skill lands beside it: two tabs for one skill, the stale one still
+    // advertising "Install it into your agents" for a skill you already own.
+    const stalePreviewTabIds = openTabs.filter((id) => {
+      const tab = parseEditorTabId(id);
+      return tab.kind === 'skill-preview' && tab.name === name;
     });
-  }, [importedNow, previewInstall.scope, landedName, openSkill]);
+    openSkill(landedScope, landedName as string, {
+      replaceActive: true,
+      // This open REPLACES the preview the user is standing on, so it takes
+      // that history entry rather than stacking a second one for the same skill.
+      replaceHistory: true,
+    });
+    // After the open, so a failure to resolve can never leave zero tabs.
+    for (const id of stalePreviewTabIds) closeTab(id);
+  }, [importedNow, landedScope, landedName, openSkill, openTabs, name, closeTab]);
   // Capitalized harness for the header copy ("detected in Claude"), matching
   // the "From Claude" provenance chip.
   const harnessLabel = subtitle ? subtitle.charAt(0).toUpperCase() + subtitle.slice(1) : subtitle;

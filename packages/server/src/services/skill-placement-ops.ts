@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import type { EditorId } from '@inkeep/open-knowledge-core';
-import { isSkillInstallTarget } from '@inkeep/open-knowledge-core';
+import { AGENTS_SKILLS_ROOT, isSkillInstallTarget } from '@inkeep/open-knowledge-core';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedSymlinkSync } from '../fs-traced.ts';
 import {
@@ -159,7 +159,7 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
       const isHost = isSkillInstallTarget(input.target);
       const rootRel = isHost
         ? input.target === 'agents'
-          ? '.agents/skills'
+          ? AGENTS_SKILLS_ROOT
           : roots[input.target as EditorId]
         : input.target
             .replace(/\\/g, '/')

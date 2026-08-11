@@ -26,21 +26,108 @@ let lastKnownSkills: readonly SkillsListEntry[] | null = null;
 
 /** One in-flight `/api/skills` request shared across every hook instance — a
  *  mutation fires `skills-changed` + the CC1 `files` signal into N mounted
- *  instances at once; without sharing, each ran its own full server scan. */
+ *  instances at once, and the endpoint is a synchronous walk of every editor
+ *  skills root, so without sharing each one ran its own full server scan. That
+ *  single-flight ceiling is load-bearing: racing N scans on the server's event
+ *  loop stalls CRDT sync and the editor stops taking keystrokes. */
 let inFlightSkills: Promise<unknown> | null = null;
-function fetchSkillsShared(): Promise<unknown> {
-  inFlightSkills ??= fetch('/api/skills')
-    .then(async (r) => {
+/** A write landed while `inFlightSkills` was running, so that request predates
+ *  the write and its response must not be served. Coalescing on a bare promise
+ *  is what let a post-mutation refetch settle on pre-write data forever. */
+let inFlightStale = false;
+
+function invalidateSkills(): void {
+  if (inFlightSkills !== null) inFlightStale = true;
+}
+
+/**
+ * Invalidation is wired once, independent of any hook instance: a request can
+ * outlive the last unmount (that slowness is the whole premise), and an agent
+ * write landing in that window has to invalidate too, or the next mount joins
+ * the pre-write request and renders a skill the user already deleted.
+ *
+ * Attached on first use rather than at module load, because
+ * `subscribeToSkillsChanged` touches `window` — doing it at import time makes
+ * merely IMPORTING this module require a DOM, which throws in the node-env unit
+ * tests (and would throw under SSR) for every consumer that transitively pulls
+ * it in. Lazy is still mount-independent: once attached the listeners outlive
+ * every unmount, which is the window the stale-join bug lives in.
+ */
+let invalidationSubscribed = false;
+function ensureInvalidationSubscribed(): void {
+  if (invalidationSubscribed || typeof window === 'undefined') return;
+  invalidationSubscribed = true;
+  subscribeToSkillsChanged(invalidateSkills);
+  subscribeToDocumentsChanged((channels) => {
+    if (channels.includes('files')) invalidateSkills();
+  });
+}
+
+/**
+ * A hung request must not wedge the shared promise FOREVER.
+ *
+ * Every reader joins `inFlightSkills`, and the slot is only released in that
+ * promise's `.finally` — so a fetch that never settles freezes the skills list
+ * at its last value for the rest of the session: stale rows, a stale toolbar,
+ * and clicks that mint doc names from entries that have since moved. Only a
+ * reload clears it, because the slot is module state. This endpoint is a
+ * synchronous walk of every skills root on the machine, so it is exactly the
+ * one that can stall. Aborting turns a permanent wedge into one failed refresh
+ * that the next `files` signal retries.
+ */
+const SKILLS_REQUEST_TIMEOUT_MS = 20_000;
+
+function requestSkills(): Promise<unknown> {
+  return fetch('/api/skills', { signal: AbortSignal.timeout(SKILLS_REQUEST_TIMEOUT_MS) }).then(
+    async (r) => {
       if (!r.ok) {
         const body = (await r.json().catch(() => null)) as unknown;
         throw new Error(parseApiError(body) ?? `HTTP ${r.status}`);
       }
       return r.json() as Promise<unknown>;
-    })
-    .finally(() => {
-      inFlightSkills = null;
-    });
-  return inFlightSkills;
+    },
+  );
+}
+
+/**
+ * Re-run rather than race: keep exactly one scan in flight, and if a write lands
+ * while it is running, throw that response away and go again. Callers therefore
+ * always share ONE promise that can only resolve with post-write data — which is
+ * why nothing downstream (including the shared `lastKnownSkills` seed) needs its
+ * own staleness check.
+ *
+ * Bounded because the retry is driven by external writes: a sustained stream of
+ * mutations would otherwise spin here forever. After the cap we serve what we
+ * have; the next signal schedules another refetch anyway, so the list converges.
+ */
+const MAX_STALE_REFETCHES = 3;
+
+function fetchSkillsShared(): Promise<unknown> {
+  ensureInvalidationSubscribed();
+  if (inFlightSkills !== null) return inFlightSkills;
+  const pending: Promise<unknown> = (async () => {
+    for (let attempt = 0; attempt < MAX_STALE_REFETCHES; attempt++) {
+      inFlightStale = false;
+      const data = await requestSkills();
+      if (!inFlightStale) return data;
+    }
+    inFlightStale = false;
+    return requestSkills();
+  })().finally(() => {
+    // `.finally` so BOTH outcomes release the slot: a rejected request (offline,
+    // non-ok status) must clear it too, or every later caller would join a
+    // promise that can only ever re-reject and the list would never recover.
+    //
+    // Identity-guarded because settle order is not start order: a superseded
+    // request can resolve AFTER the one that replaced it, and an unconditional
+    // reset would then null out a live newer request, so the next caller starts
+    // a duplicate scan. Keep the guard on any reset added here — in particular
+    // do not add a bare `.catch(() => { inFlightSkills = null; })`, which runs
+    // for the same superseded requests without the identity check.
+    if (inFlightSkills === pending) inFlightSkills = null;
+  });
+  inFlightSkills = pending;
+  return pending;
 }
 
 export function useSkills(options?: { enabled?: boolean }): AsyncState<readonly SkillsListEntry[]> {
@@ -60,6 +147,8 @@ export function useSkills(options?: { enabled?: boolean }): AsyncState<readonly 
     // coalesce the burst into a single refetch instead of several back-to-back.
     let timer: ReturnType<typeof setTimeout> | null = null;
     const bump = () => {
+      // Invalidation itself is wired at module scope, so it already happened
+      // synchronously when the signal fired. This only paces the re-render.
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => setRefreshKey((k) => k + 1), 200);
     };
@@ -111,7 +200,15 @@ export function useSkills(options?: { enabled?: boolean }): AsyncState<readonly 
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+        // Stale beats blank. A refresh that fails (offline, a 20s abort on a
+        // huge skills tree) must not replace a list the user is working from
+        // with an error screen — the next `files`/`skills-changed` signal
+        // refetches anyway. Only a FIRST load has nothing to fall back to.
+        setState((prev) =>
+          prev.status === 'ready'
+            ? prev
+            : { status: 'error', message: err instanceof Error ? err.message : String(err) },
+        );
       });
     return () => {
       cancelled = true;

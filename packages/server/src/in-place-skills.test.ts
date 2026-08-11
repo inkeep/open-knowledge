@@ -1,9 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import {
+  removableSkillOccurrenceDirs,
   resolveGlobalNativeSkillDir,
   scanGlobalInPlaceSkills,
   scanHostRootAliases,
@@ -348,5 +350,59 @@ describe('scanHostRootAliases (folder-level aliases, observable facts only)', ()
     const foo = skills.find((s) => s.name === 'foo');
     expect(foo?.dir).toBe('.ok/skills/foo');
     expect(foo?.hosts).not.toContain('.tim/skills');
+  });
+});
+
+describe('removableSkillOccurrenceDirs', () => {
+  let base: string;
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'ok-occurrences-'));
+  });
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  const hashOf = (rel: string) => parseSkillDir(join(base, rel))?.contentHash as string;
+
+  test('removes THIS skill everywhere, and never a same-named fork', () => {
+    // The blocker this guards: the registry models two same-named bundles with
+    // different bytes as two DISTINCT skills (`conflictHosts`). Deleting
+    // `.cursor/skills/foo` because `.claude/skills/foo` moved away destroys a
+    // bundle its owner never touched — unrecoverably when it is untracked.
+    writeSkill(base, '.claude/skills/foo', '# Moved');
+    writeSkill(base, '.agents/skills/foo', '# Moved');
+    writeSkill(base, '.cursor/skills/foo', '# A DIFFERENT skill that happens to share the name');
+    const moved = hashOf('.claude/skills/foo');
+
+    const dirs = removableSkillOccurrenceDirs(base, 'project', 'foo', moved);
+
+    expect(new Set(dirs)).toEqual(
+      new Set([join(base, '.claude/skills/foo'), join(base, '.agents/skills/foo')]),
+    );
+    expect(dirs).not.toContain(join(base, '.cursor/skills/foo'));
+  });
+
+  test('a symlink goes even when its target is already gone', () => {
+    // A projection whose target the move deleted is still a dir entry the next
+    // scan trips on, and `existsSync` reports it absent — hence lstat.
+    mkdirSync(join(base, '.claude/skills'), { recursive: true });
+    symlinkSync(join(base, 'gone'), join(base, '.claude/skills/foo'));
+    expect(removableSkillOccurrenceDirs(base, 'project', 'foo', 'any-hash')).toEqual([
+      join(base, '.claude/skills/foo'),
+    ]);
+  });
+
+  test('covers the legacy .ok/skills store, not just host roots', () => {
+    // A copy parked outside the standard roots would otherwise survive the move
+    // and be re-detected as a second skill at the scope just moved away from.
+    writeSkill(base, '.ok/skills/foo', '# Moved');
+    const moved = hashOf('.ok/skills/foo');
+    expect(removableSkillOccurrenceDirs(base, 'project', 'foo', moved)).toEqual([
+      join(base, '.ok/skills/foo'),
+    ]);
+  });
+
+  test('nothing to remove is an empty list', () => {
+    expect(removableSkillOccurrenceDirs(base, 'project', 'nothing-here', 'h')).toEqual([]);
   });
 });

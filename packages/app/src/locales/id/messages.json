@@ -251,6 +251,7 @@
       ")"
     ],
     "3LbBJn": ["Lampirkan gambar"],
+    "3MA3Hh": ["Tidak dapat membaca aturan ", ["gitignorePath"], ": ", ["previewError"]],
     "3MnvrL": ["Menampilkan ", ["0"], " kecocokan teratas — terus ketik untuk mempersempit"],
     "3Mwaly": [["0"], " tidak dapat diinisialisasi."],
     "3SDfZl": [
@@ -992,6 +993,11 @@
       ["filePath"],
       "</0> secara lokal, tetapi ia dihapus di remote."
     ],
+    "Ehb_JP": [
+      "Agen Anda tetap memuat keterampilan ini, tetapi OpenKnowledge tidak dapat membuka atau mengeditnya: OpenKnowledge tidak mengindeks berkas yang diatur untuk diabaikan oleh git, karena sinkronisasi akan gagal. Menambahkan satu baris ke ",
+      ["gitignorePath"],
+      " membuatnya dapat diedit di sini."
+    ],
     "Ehkru0": ["Membuka, menelusuri, menerima, atau menutup saran pelengkapan CodeMirror."],
     "EiVgl5": ["Anda tidak punya izin push ke repo ini."],
     "Eiowpn": [
@@ -1034,6 +1040,7 @@
     "F-vBv0": ["Tanya"],
     "F0OA00": ["Dapatkan ", ["displayName"]],
     "F1T9y_": ["Menampilkan kecocokan teratas — terus ketik untuk mempersempit"],
+    "F1yEaG": ["Tidak dapat memperbarui ", ["gitignorePath"], ": ", ["0"]],
     "F4IYWe": ["Bagikan dokumen"],
     "F4_wQj": ["Cari dengan Google"],
     "F4vEsL": ["Status sinkronisasi: ", ["syncStateLabel"]],
@@ -1248,6 +1255,7 @@
       "OpenKnowledge menyimpan konfigurasi dan berkas internalnya di dalam direktori <0>.ok</0> yang baru dibuat di folder akar proyek Anda."
     ],
     "Hrz9NY": ["Tautan wiki"],
+    "HwAKaw": ["\"", ["0"], "\" diabaikan oleh git"],
     "HzVAoz": [
       "Pindahkan atau ganti nama berkas ini di dalam keterampilan — jalurnya tetap di bawah references/ atau scripts/."
     ],
@@ -2687,6 +2695,7 @@
     "cT_pW4": ["Blok konten yang dapat dilipat (toggle gaya Notion)."],
     "cU-seF": ["Lompat ke sumber markdown untuk blok di posisi kursor, terpusat dan tersorot."],
     "cUK8lW": [["conflictCount", "plural", { "other": ["#", " konflik"] }]],
+    "cUagXn": ["Tambahkan ke ", ["gitignorePath"]],
     "cUk6TF": ["Sinkronisasi gagal — periksa log server untuk detailnya."],
     "cUt8yN": ["Perubahan disimpan otomatis."],
     "cV7LOw": ["Wiki Tim"],

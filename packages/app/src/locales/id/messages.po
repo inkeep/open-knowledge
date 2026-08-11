@@ -60,6 +60,11 @@ msgstr "“{0}”"
 msgid "\"{0}\" install refreshed ({1})"
 msgstr "Pemasangan \"{0}\" diperbarui ({1})"
 
+#. placeholder {0}: prompt.name
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "\"{0}\" is ignored by git"
+msgstr "\"{0}\" diabaikan oleh git"
+
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
 msgid "\"{0}\" was already added (identical content)."
@@ -1313,6 +1318,10 @@ msgstr "Tambahkan perintah <0>ok</0> ke terminal Anda"
 msgid "Add the next matching source selection."
 msgstr "Menambahkan pilihan sumber berikutnya yang cocok."
 
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Add to {gitignorePath}"
+msgstr "Tambahkan ke {gitignorePath}"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Add to Dictionary"
 msgstr "Tambahkan ke kamus"
@@ -2089,6 +2098,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/components/SkillTrackInGitDialog.tsx
 #: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 #: src/components/TrashFailureModal.tsx
@@ -3488,6 +3498,10 @@ msgstr "Server Open Knowledge tidak bisa dihubungi untuk mengunggah {fileName}."
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "{fileName} tidak bisa dibaca. Mungkin ia sudah dipindahkan, dihapus, atau belum selesai diunduh. Coba tambahkan lagi."
 
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Couldn't read the {gitignorePath} rule: {previewError}"
+msgstr "Tidak dapat membaca aturan {gitignorePath}: {previewError}"
+
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send — nothing was sent."
 msgstr "Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang dikirim."
@@ -3651,6 +3665,11 @@ msgstr "Tidak bisa berpindah ke Hanya saya"
 #: src/comments/store.ts
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "Tanda pada komentar itu tidak bisa dilepas — ia masih menunggu dikirim."
+
+#. placeholder {0}: result.error
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Couldn't update {gitignorePath}: {0}"
+msgstr "Tidak dapat memperbarui {gitignorePath}: {0}"
 
 #. placeholder {0}: r.error
 #: src/components/SkillInstallMenu.tsx
@@ -13638,6 +13657,10 @@ msgstr "Anda sudah berlangganan!"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "anda@perusahaan.com"
+
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Your agents still load this skill, but OpenKnowledge can't open or edit it: it won't index a file that git is set to ignore, because syncing it would fail. Adding one line to {gitignorePath} makes it editable here."
+msgstr "Agen Anda tetap memuat keterampilan ini, tetapi OpenKnowledge tidak dapat membuka atau mengeditnya: OpenKnowledge tidak mengindeks berkas yang diatur untuk diabaikan oleh git, karena sinkronisasi akan gagal. Menambahkan satu baris ke {gitignorePath} membuatnya dapat diedit di sini."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Your change is still being saved — run the test again in a moment."

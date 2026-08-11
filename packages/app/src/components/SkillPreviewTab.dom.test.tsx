@@ -73,6 +73,32 @@ vi.doMock('@/components/SkillInstallMenu', () => ({
 vi.doMock('@/components/skill-actions', () => ({
   SkillPlaceDialog: () => null,
 }));
+// The redirect waits for the skill to appear in the list, since that is what
+// `useOpenSkill` resolves the doc from.
+vi.doMock('@/hooks/use-skills', () => ({
+  useSkills: () => ({
+    status: 'ready',
+    data: [
+      {
+        scope: 'global',
+        name: 'grill-me',
+        path: '.claude/skills/grill-me/SKILL.md',
+        installed: true,
+        hosts: ['claude'],
+      },
+    ],
+  }),
+}));
+const closeTab = vi.fn();
+vi.doMock('@/editor/DocumentContext', () => ({
+  useDocumentContext: () => ({
+    openTabs: [
+      'skill-preview:explore:grill-me:project',
+      'skill-preview:explore:grill-with-docs:project',
+    ],
+    closeTab,
+  }),
+}));
 const openSkill = vi.fn();
 vi.doMock('@/hooks/use-open-skill', () => ({
   useOpenSkill: () => openSkill,
@@ -197,7 +223,12 @@ describe('SkillPreviewTab bulk plugin install', () => {
     // about its own arrival through the banner's callback.
     await user.click(await screen.findByTestId('bulk-install-finished'));
 
-    expect(openSkill).toHaveBeenCalledWith('global', 'grill-me', { replaceActive: true });
+    expect(openSkill).toHaveBeenCalledWith('global', 'grill-me', {
+      replaceActive: true,
+      // This open supersedes the preview the user is standing on, so it takes
+      // that history entry rather than stacking a second one for the same skill.
+      replaceHistory: true,
+    });
     previewMeta.pluginBundle = undefined;
   });
 });

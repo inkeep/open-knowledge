@@ -127,6 +127,24 @@ export async function removeSkillPlacement(
   });
 }
 
+/**
+ * Drop EVERY recorded placement for a skill.
+ *
+ * The ledger is keyed by skill NAME and outlives a cross-scope move, so records
+ * written before the move describe locations that no longer exist in that form.
+ * Coming back, the re-projection re-creates them as copies while the ledger
+ * still claims links — and the list then reports drift ("changed outside"),
+ * blaming another tool for a shape OK itself produced. A move clears the source
+ * scope's records instead of leaving them to be re-read as evidence.
+ */
+export async function clearSkillPlacements(projectDir: string, name: string): Promise<void> {
+  await mutateSkillPlacementsStore(projectDir, (file) => {
+    if (file.skills[name] === undefined) return;
+    file.skills = { ...file.skills };
+    delete file.skills[name];
+  });
+}
+
 /** Record (or refresh) one placement for a skill. */
 export async function recordSkillPlacement(
   projectDir: string,

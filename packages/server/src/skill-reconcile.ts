@@ -43,6 +43,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
+  AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   PROJECT_SKILL_EDITOR_IDS,
@@ -104,7 +105,7 @@ function detectionRoots(): DetectionRoot[] {
   }
   // The generic broadcast dir is scanned for foreign skills but is not any
   // editor's per-editor install root, so it carries no marker host.
-  roots.push({ rel: '.agents/skills', editor: null });
+  roots.push({ rel: AGENTS_SKILLS_ROOT, editor: null });
   return roots;
 }
 

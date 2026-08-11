@@ -1,10 +1,13 @@
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
+  healUnservableSkillAdmission,
+  indexedSkillContentPath,
   resumeSyncOnAuthEvent,
+  type SkillAdmissionHealState,
   safeSubdir,
   sanitizeFilename,
 } from './api-extension.test-helper.ts';
@@ -724,5 +727,163 @@ describe('resumeSyncOnAuthEvent (reconnect → resume wiring)', () => {
     expect(stub.calls.length).toBe(1);
     // Give the swallowed rejection a tick to settle without crashing the test.
     await Promise.resolve();
+  });
+});
+
+describe('indexedSkillContentPath', () => {
+  let contentDir: string;
+
+  beforeEach(() => {
+    contentDir = mkdtempSync(join(tmpdir(), 'ok-skill-canonical-'));
+  });
+  afterEach(() => {
+    rmSync(contentDir, { recursive: true, force: true });
+  });
+
+  function bundle(rel: string): string {
+    const dir = join(contentDir, rel);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), '---\nname: x\ndescription: d\n---\n');
+    return join(dir, 'SKILL.md');
+  }
+
+  test('resolves a skill mounted through a directory symlink to its indexed doc', () => {
+    bundle('plugins/ok/skills/demo');
+    mkdirSync(join(contentDir, '.agents/skills'), { recursive: true });
+    symlinkSync(
+      join(contentDir, 'plugins/ok/skills/demo'),
+      join(contentDir, '.agents/skills/demo'),
+    );
+
+    expect(
+      indexedSkillContentPath(join(contentDir, '.agents/skills/demo/SKILL.md'), contentDir),
+    ).toBe('plugins/ok/skills/demo/SKILL.md');
+  });
+
+  test('resolves a symlinked SKILL.md file, not just a symlinked dir', () => {
+    bundle('plugins/ok/skills/demo');
+    mkdirSync(join(contentDir, '.agents/skills/demo'), { recursive: true });
+    symlinkSync(
+      join(contentDir, 'plugins/ok/skills/demo/SKILL.md'),
+      join(contentDir, '.agents/skills/demo/SKILL.md'),
+    );
+
+    expect(
+      indexedSkillContentPath(join(contentDir, '.agents/skills/demo/SKILL.md'), contentDir),
+    ).toBe('plugins/ok/skills/demo/SKILL.md');
+  });
+
+  test('an unlinked bundle indexes at its own path (caller emits no redirect)', () => {
+    const real = bundle('.agents/skills/plain');
+    expect(indexedSkillContentPath(real, contentDir)).toBe('.agents/skills/plain/SKILL.md');
+  });
+
+  test('null when the link escapes contentDir — no canonical content doc exists', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'ok-skill-outside-'));
+    try {
+      mkdirSync(join(outside, 'demo'), { recursive: true });
+      writeFileSync(join(outside, 'demo/SKILL.md'), '---\nname: x\ndescription: d\n---\n');
+      mkdirSync(join(contentDir, '.agents/skills'), { recursive: true });
+      symlinkSync(join(outside, 'demo'), join(contentDir, '.agents/skills/demo'));
+
+      expect(
+        indexedSkillContentPath(join(contentDir, '.agents/skills/demo/SKILL.md'), contentDir),
+      ).toBeNull();
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test('null for a dangling link rather than throwing', () => {
+    mkdirSync(join(contentDir, '.agents/skills'), { recursive: true });
+    symlinkSync(join(contentDir, 'gone'), join(contentDir, '.agents/skills/demo'));
+    expect(
+      indexedSkillContentPath(join(contentDir, '.agents/skills/demo/SKILL.md'), contentDir),
+    ).toBeNull();
+  });
+});
+
+describe('healUnservableSkillAdmission', () => {
+  function makeFilter(excluded: Set<string>) {
+    const rebuilds: number[] = [];
+    return {
+      rebuilds,
+      filter: {
+        isExcluded: (p: string) => excluded.has(p),
+        rebuildIgnorePatterns: async () => {
+          rebuilds.push(1);
+          // A real rebuild re-scans and admits the dir; model that.
+          excluded.clear();
+        },
+      },
+    };
+  }
+
+  test('rebuilds when a listed skill dir is not servable', async () => {
+    const { filter, rebuilds } = makeFilter(new Set(['.claude/skills/new/SKILL.md']));
+    const state: SkillAdmissionHealState = { lastKey: null };
+    await expect(
+      healUnservableSkillAdmission(['.claude/skills/new/SKILL.md'], filter, state),
+    ).resolves.toBe(true);
+    expect(rebuilds.length).toBe(1);
+  });
+
+  test('does not rebuild when every listed skill is already servable', async () => {
+    const { filter, rebuilds } = makeFilter(new Set());
+    const state: SkillAdmissionHealState = { lastKey: null };
+    await expect(
+      healUnservableSkillAdmission(['.claude/skills/ok/SKILL.md'], filter, state),
+    ).resolves.toBe(false);
+    expect(rebuilds.length).toBe(0);
+  });
+
+  test('rebuilds at most once per skill-dir set, then again when the set changes', async () => {
+    // A permanently-excluded bundle (gitignored) must not re-walk the tree on
+    // every sidebar refresh — that is a list call per `files` signal.
+    const excluded = new Set(['.claude/skills/ignored/SKILL.md']);
+    const rebuilds: number[] = [];
+    const filter = {
+      isExcluded: (p: string) => excluded.has(p),
+      rebuildIgnorePatterns: async () => {
+        rebuilds.push(1);
+      },
+    };
+    const state: SkillAdmissionHealState = { lastKey: null };
+    const paths = ['.claude/skills/ignored/SKILL.md'];
+    await healUnservableSkillAdmission(paths, filter, state);
+    await healUnservableSkillAdmission(paths, filter, state);
+    await healUnservableSkillAdmission([...paths], filter, state);
+    expect(rebuilds.length).toBe(1);
+
+    excluded.add('.claude/skills/fresh/SKILL.md');
+    await healUnservableSkillAdmission([...paths, '.claude/skills/fresh/SKILL.md'], filter, state);
+    expect(rebuilds.length).toBe(2);
+  });
+
+  test('ordering of the listed paths does not count as a changed set', async () => {
+    const excluded = new Set(['b/SKILL.md']);
+    const rebuilds: number[] = [];
+    const filter = {
+      isExcluded: (p: string) => excluded.has(p),
+      rebuildIgnorePatterns: async () => {
+        rebuilds.push(1);
+      },
+    };
+    const state: SkillAdmissionHealState = { lastKey: null };
+    await healUnservableSkillAdmission(['a/SKILL.md', 'b/SKILL.md'], filter, state);
+    await healUnservableSkillAdmission(['b/SKILL.md', 'a/SKILL.md'], filter, state);
+    expect(rebuilds.length).toBe(1);
+  });
+
+  test('a failing rebuild is swallowed, and no filter at all is a no-op', async () => {
+    const state: SkillAdmissionHealState = { lastKey: null };
+    const filter = {
+      isExcluded: () => true,
+      rebuildIgnorePatterns: () => Promise.reject(new Error('boom')),
+    };
+    await expect(healUnservableSkillAdmission(['x/SKILL.md'], filter, state)).resolves.toBe(false);
+    await expect(
+      healUnservableSkillAdmission(['x/SKILL.md'], null, { lastKey: null }),
+    ).resolves.toBe(false);
   });
 });

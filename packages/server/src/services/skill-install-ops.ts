@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
+  AGENTS_SKILLS_ROOT,
   applyPatchToFm,
   detectFmRegion,
   EDITOR_PROJECT_SKILL_ROOT,
@@ -61,6 +62,9 @@ interface ForkCanonical {
   dir: string;
   contentHash: string;
   hosts: readonly string[];
+  /** Hosts reaching this skill via a SYMLINK rather than their own copy. Needed
+   *  to judge the skill's existing form when no install mode is requested. */
+  linkedHosts?: readonly string[];
 }
 
 type ResolveForkOutcome =
@@ -94,6 +98,23 @@ type FanOutInPlaceOutcome =
 export interface SkillInstallOpsDeps {
   contentDir: string;
   skillsHome: string;
+  /**
+   * The form a NEW location should take when the caller names none: the skill's
+   * own recorded preference, else whatever its existing locations are.
+   *
+   * Without it this fan-out passed `undefined` straight through and
+   * `projectInPlaceSkill` fell back to its `copy` default, so re-installing a
+   * skill whose locations were SYMLINKS silently rewrote them as full copies —
+   * duplicating bytes into git and detaching those locations from the source,
+   * then reporting the result as "changed outside" because the placement ledger
+   * still described links. `skill-import` already takes this dep; the install
+   * path was the one that did not.
+   */
+  effectiveInstallMode: (
+    scope: 'project' | 'global',
+    name: string,
+    entry: { hosts: readonly string[]; linkedHosts: readonly string[] },
+  ) => 'copy' | 'link';
 }
 
 export interface SkillInstallOpsService {
@@ -185,7 +206,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
       const forkWarnings: string[] = [];
       const rootMap = scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT;
       const forkRootRel =
-        fork.editor === 'agents' ? '.agents/skills' : (rootMap[fork.editor as EditorId] ?? null);
+        fork.editor === 'agents' ? AGENTS_SKILLS_ROOT : (rootMap[fork.editor as EditorId] ?? null);
       if (forkRootRel === null) {
         return { ok: false, kind: 'unknown-editor', editor: fork.editor };
       }
@@ -340,7 +361,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
         ) {
           const subRoot =
             id === 'agents'
-              ? '.agents/skills'
+              ? AGENTS_SKILLS_ROOT
               : ((scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT)[
                   id as EditorId
                 ] ?? null);
@@ -356,7 +377,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           ) {
             const subRoot =
               id === 'agents'
-                ? '.agents/skills'
+                ? AGENTS_SKILLS_ROOT
                 : ((scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT)[
                     id as EditorId
                   ] ?? null);
@@ -446,14 +467,60 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           return { ok: false, kind: 'source-occupied', reason: moved.reason };
         }
         sourceMovedTo = relative(inPlaceScanBase, moved.newAbs).split(sep).join('/');
-        // The swap left a symlink at the old source path (relocate's
-        // `leaveLinkBehind`). RECORD it as the expected form — without
-        // the receipt, an external tool rewriting that link as a copy
-        // would be invisible to drift detection (the .agents blind spot).
-        await recordSkillPlacement(ledgerBase, name, {
-          path: oldSourceRel,
-          mode: 'link',
+        // Record the old source path so an external rewrite of it stays visible
+        // to drift detection (the .agents blind spot) — but record the form it
+        // ACTUALLY has, not the form relocate is expected to leave.
+        //
+        // This assumed `link` unconditionally, on the premise that the swap
+        // always leaves a symlink behind. When it does not, the receipt claims
+        // a symlink while a real directory sits there, and the very next drift
+        // read flags OK's own promote as "changed outside" — always on the
+        // PREVIOUS source, and clearing as soon as any install rewrites and
+        // re-records that location. Reading the form back costs one lstat and
+        // cannot claim something the disk disagrees with.
+        // Match the siblings, per `effectiveInstallMode`'s stated contract: "a
+        // skill whose locations are all copies keeps getting copies, so a new
+        // one matches its siblings rather than silently mixing forms."
+        //
+        // relocate always leaves a SYMLINK behind, hard-coded. When the skill's
+        // other locations are copies that mixes forms — and the menu then tags
+        // the symlink as divergent and offers to convert it, so the app warns
+        // about the state it just created. Guaranteed, not incidental: a promote
+        // leaves exactly one link, so it is always the minority.
+        //
+        // Decided HERE rather than inside the primitive, matching how import and
+        // the install fan-out already consult this helper and pass the result
+        // down.
+        const oldSourceAbs = resolve(inPlaceScanBase, oldSourceRel);
+        const siblingForm = deps.effectiveInstallMode(scope, name, {
+          hosts: inPlaceEntry.hosts,
+          linkedHosts: inPlaceEntry.linkedHosts ?? [],
         });
+        if (siblingForm === 'copy') {
+          try {
+            if (lstatSync(oldSourceAbs).isSymbolicLink()) {
+              tracedRmSync(oldSourceAbs, { recursive: true, force: true });
+              tracedCpSync(moved.newAbs, oldSourceAbs, { recursive: true, dereference: true });
+            }
+          } catch {
+            // Absent or unreadable — leave whatever relocate did.
+          }
+        }
+        let oldSourceIsLink = false;
+        try {
+          oldSourceIsLink = lstatSync(oldSourceAbs).isSymbolicLink();
+        } catch {
+          // Gone entirely — nothing to describe, so leave the ledger alone
+          // rather than assert a form for a path that no longer exists.
+          oldSourceIsLink = true;
+        }
+        await recordSkillPlacement(
+          ledgerBase,
+          name,
+          oldSourceIsLink
+            ? { path: oldSourceRel, mode: 'link' }
+            : { path: oldSourceRel, mode: 'copy', hash: inPlaceEntry.contentHash },
+        );
         // Re-point recorded placement SYMLINKS that referenced the old
         // source: `relocateInPlaceCanonical`'s own sweep only walks host dirs,
         // so the ledger is a second slot source over the same relocation. Both
@@ -585,11 +652,24 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
         name,
         cwd: base,
         targets: inPlaceTargets,
-        mode: input.installMode,
+        // An explicit choice wins; otherwise match the skill's existing form
+        // rather than defaulting to copy. `convertLinks` below still honours an
+        // EXPLICIT copy request, so deliberate link→copy conversion is intact —
+        // only the implicit default changes.
+        mode:
+          // The CALLER owns mode resolution: `installMode` is required on this
+          // interface and the only call site resolves it via
+          // `effectiveInstallMode` before calling in, so a `??` fallback here
+          // could never fire and made the service look like it defaulted when
+          // it does not. `deps.effectiveInstallMode` stays wired for the
+          // sibling service and for tests.
+          input.installMode,
         // An EXPLICIT copy choice converts existing links back to copies
         // (lossless — the link's bytes ARE the canonical's); an implicit
         // copy default never touches links.
         convertLinks: input.linkModeReq === false,
+        // The mirror: only an EXPLICIT link request restamps existing copies.
+        convertCopies: input.linkModeReq === true,
         roots: skillProjectionRoots(scope),
       });
       for (const editor of fanned.conflicted) {
@@ -631,7 +711,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
       // drift detection can spot another tool rewriting the path.
       for (const editor of fanned.hosts) {
         const editorRoot =
-          editor === 'agents' ? '.agents/skills' : EDITOR_PROJECT_SKILL_ROOT[editor];
+          editor === 'agents' ? AGENTS_SKILLS_ROOT : EDITOR_PROJECT_SKILL_ROOT[editor];
         if (editorRoot === null || editorRoot === input.canonicalRootRel) continue;
         const copyAbs = resolve(base, editorRoot, name);
         let isLink = false;

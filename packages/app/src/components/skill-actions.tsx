@@ -55,6 +55,7 @@ import {
   SkillMenuSubTrigger,
 } from '@/components/skill-menu-primitives';
 import { useOpenSkill } from '@/hooks/use-open-skill';
+import { beginSkillWrite, endSkillWrite } from '@/lib/documents-events';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { skillDir, useSkillScopeLabels } from '@/lib/skill-scope';
@@ -148,12 +149,18 @@ export function useSkillActions(): SkillActions {
     opts?: { linkMode?: boolean },
   ) {
     setInstallingName(skill.name);
+    // Mark the write so the tab reconciler does not read the mid-write scan as a
+    // deletion and close the user's tab: `projectInPlaceSkill` rm's each
+    // destination before materializing it, so the skill can momentarily vanish
+    // from the list while this is in flight.
+    beginSkillWrite(skill.scope, skill.name);
     const result = await installSkill({
       scope: skill.scope,
       name: skill.name,
       ...(targets ? { targets: [...targets] } : {}),
       ...(opts?.linkMode !== undefined ? { linkMode: opts.linkMode } : {}),
     });
+    endSkillWrite(skill.scope, skill.name);
     setInstallingName(null);
     if (!result.ok) {
       toast.error(t`Couldn't install skill: ${result.error}`);
@@ -228,6 +235,12 @@ export function useSkillActions(): SkillActions {
   ) {
     if (targets.length === 0) return;
     setInstallingName(skill.name);
+    // Same reconciler protection as `install` / `runLocationWrite`: a convert
+    // rm's each destination before materializing it, so the skill can read as
+    // absent from a scan taken mid-write, and anything that treats absence as
+    // deletion would close the user's tab. Convert was the one writer on that
+    // rm-then-materialize path without the guard.
+    beginSkillWrite(skill.scope, skill.name);
     // No try/finally: `convertSkillLocation` reports failures in its result
     // rather than throwing, so a single exit point clears the flag (and the
     // React Compiler cannot lower a try without a catch).
@@ -243,15 +256,20 @@ export function useSkillActions(): SkillActions {
         break;
       }
     }
+    endSkillWrite(skill.scope, skill.name);
     setInstallingName(null);
   }
 
   async function runLocationWrite<T>(skill: SkillsListEntry, run: () => Promise<T>): Promise<T> {
     setInstallingName(skill.name);
+    // Same reconciler protection as `install`: a placement/convert rewrites dirs
+    // on disk, so the skill can read as absent mid-write.
+    beginSkillWrite(skill.scope, skill.name);
     // Single exit point, no try/finally: these writers report failures in their
     // result rather than throwing (and the React Compiler cannot lower a try
     // without a catch). The caller keeps its own error reporting.
     const result = await run();
+    endSkillWrite(skill.scope, skill.name);
     setInstallingName(null);
     return result;
   }

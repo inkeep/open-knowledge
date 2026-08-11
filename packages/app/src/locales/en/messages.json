@@ -254,6 +254,7 @@
       ")"
     ],
     "3LbBJn": ["Attach images"],
+    "3MA3Hh": ["Couldn't read the ", ["gitignorePath"], " rule: ", ["previewError"]],
     "3MnvrL": ["Showing top ", ["0"], " matches — keep typing to narrow"],
     "3Mwaly": ["Could not initialize ", ["0"], "."],
     "3SDfZl": [
@@ -1001,6 +1002,11 @@
     "Ef6ukL": ["via parent"],
     "Ef7StM": ["Unknown"],
     "EhDLBx": ["You modified <0>", ["filePath"], "</0> locally, but it was deleted upstream."],
+    "Ehb_JP": [
+      "Your agents still load this skill, but OpenKnowledge can't open or edit it: it won't index a file that git is set to ignore, because syncing it would fail. Adding one line to ",
+      ["gitignorePath"],
+      " makes it editable here."
+    ],
     "Ehkru0": ["Open, navigate, accept, or dismiss CodeMirror completion suggestions."],
     "EiVgl5": ["You don't have permission to push to this repo."],
     "Eiowpn": [
@@ -1043,6 +1049,7 @@
     "F-vBv0": ["Ask"],
     "F0OA00": ["Get ", ["displayName"]],
     "F1T9y_": ["Showing top matches — keep typing to narrow"],
+    "F1yEaG": ["Couldn't update ", ["gitignorePath"], ": ", ["0"]],
     "F4IYWe": ["Share doc"],
     "F4_wQj": ["Search with Google"],
     "F4vEsL": ["Sync status: ", ["syncStateLabel"]],
@@ -1246,6 +1253,7 @@
       "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
     ],
     "Hrz9NY": ["Wiki link"],
+    "HwAKaw": ["\"", ["0"], "\" is ignored by git"],
     "HzVAoz": [
       "Move or rename this file inside the skill — the path stays under references/ or scripts/."
     ],
@@ -2652,6 +2660,7 @@
     "cUK8lW": [
       ["conflictCount", "plural", { "one": ["#", " conflict"], "other": ["#", " conflicts"] }]
     ],
+    "cUagXn": ["Add to ", ["gitignorePath"]],
     "cUk6TF": ["Sync failed — check the server logs for details."],
     "cUt8yN": ["Changes save automatically."],
     "cV7LOw": ["Team Wiki"],

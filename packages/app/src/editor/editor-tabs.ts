@@ -385,8 +385,15 @@ export function isSkillDocName(docName: string): boolean {
  * link index and managed-artifact resolution, where a looser shape would mint
  * skill edges for any document that happens to sit at this path. Widening only
  * the surface decision keeps the blast radius at "which sidebar is showing".
+ *
+ * Every file under a bundle counts, not just `SKILL` and `references/**`. A
+ * skill is free to ship companion markdown at its bundle root (`tdd` on
+ * skills.sh ships `tests.md` + `mocking.md` beside `SKILL.md`), and those docs
+ * addressed as ordinary content dropped the sidebar to Files the moment the
+ * user clicked one — right after installing, when the tree has the bundle
+ * expanded and those rows are the obvious thing to click.
  */
-const SKILL_BUNDLE_SHAPED_PATH = /(?:^|\/)skills\/[^/]+\/(?:SKILL|references\/.+)$/;
+const SKILL_BUNDLE_SHAPED_PATH = /(?:^|\/)skills\/[^/]+\/.+$/;
 
 export function isSkillBundleShapedPath(docName: string): boolean {
   return SKILL_BUNDLE_SHAPED_PATH.test(docName);
@@ -567,6 +574,31 @@ export function filterOpenTabsForKnownTargets(
     // coordinates (not a page) — keep it like skill-file so a page-list sync
     // doesn't prune the open preview mid-session.
     if (tab.kind === 'skill-preview') return true;
+    // The SKILL doc itself is owned by the skills reconciler
+    // (`useReconcileSkillTabs`), which decides against the SKILLS list and holds
+    // off while a write is in flight. The page list is the wrong authority for
+    // it: a scope move deletes the source bundle BEFORE its response lands, so
+    // the doc stops being a page mid-move and pruning it closes the very tab the
+    // move is about to repoint — the retarget then matches nothing and the skill
+    // cannot be opened again until a reload.
+    //
+    // Scoped as narrowly as that reason allows, and no wider:
+    //   - the SKILL doc only (`rel === null`). A `references/*` tab keeps riding
+    //     the page list, because an external delete (agent, MCP, another client)
+    //     has no other closer — the reconciler keeps any tab whose SKILL still
+    //     exists, so exempting them would leave a live provider on a deleted
+    //     file, and typing in it would rematerialise the file on disk.
+    //   - names the reconciler can actually PARSE. Exempting a shape it cannot
+    //     read (a canonical `plugins/x/skills/foo/SKILL`, or an ordinary note at
+    //     `docs/skills/react/SKILL.md`) would leave a tab nothing can ever close.
+    //     Those names are real pages anyway, so the prune leaves them be.
+    //   - the core parser directly, NOT the reconciler's `parseSkillTabDocName`
+    //     wrapper: that lives in a hook which imports THIS module, and a value
+    //     cycle here is what produced the CI "export not found" flake before.
+    //     Global skills are managed-artifact docs and are already kept below.
+    if (tab.kind === 'doc' && parseProjectSkillBundleDoc(tab.docName)?.kind === 'skill') {
+      return true;
+    }
     const markdownStem = stripMarkdownTabExtension(tab.docName);
     return (
       pages.has(tab.docName) ||

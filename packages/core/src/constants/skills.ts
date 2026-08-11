@@ -1,4 +1,13 @@
 /**
+ * The vendor-neutral `.agents/skills` hub, cwd-relative (home-relative at global
+ * scope). A first-class in-place skill host with no `EditorId` of its own — it is
+ * addressed by the `agents` host id, so it is absent from `EDITOR_PROJECT_SKILL_ROOT`
+ * and every consumer had spelled it as a bare literal instead. Server, core and app
+ * all resolve the same hub, so a change to it has to reach every site at once.
+ */
+export const AGENTS_SKILLS_ROOT = '.agents/skills';
+
+/**
  * LEGACY prefix the starter-pack skills carried before the marketplace rename
  * (`open-knowledge-pack-<packId>[-<member>]`). It no longer names anything the
  * codebase ships: shipped names come from SKILL.md frontmatter. It survives

@@ -206,6 +206,57 @@ describe('editor tab state', () => {
     ).toEqual(['docs/a', folderTabId('hello')]);
   });
 
+  test('filterOpenTabsForKnownTargets keeps the SKILL doc that left the page list', () => {
+    // A scope move deletes the source bundle BEFORE its response lands, so the
+    // source doc stops being a page mid-move. Pruning it there closed the tab
+    // `useMoveSkillScope` was about to repoint; the retarget then matched no
+    // open tab, did nothing, and the skill could not be opened until a reload.
+    // The skills reconciler owns this doc's lifecycle instead.
+    expect(
+      filterOpenTabsForKnownTargets(['.claude/skills/demo/SKILL', 'docs/a', 'deleted'], {
+        pages: new Set(['docs/a']),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+      }),
+    ).toEqual(['.claude/skills/demo/SKILL', 'docs/a']);
+  });
+
+  test('filterOpenTabsForKnownTargets still prunes a bundle FILE tab', () => {
+    // Deliberately NOT exempt. The reconciler keeps any tab whose SKILL still
+    // exists, so it will never close a `references/*` doc deleted out of band
+    // (an agent, MCP, another client). The page list is that file's only
+    // closer; exempting it would leave a live provider on a deleted file, and
+    // typing into that tab would rematerialise it on disk.
+    expect(
+      filterOpenTabsForKnownTargets(['.claude/skills/demo/references/notes'], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+      }),
+    ).toEqual([]);
+  });
+
+  test('filterOpenTabsForKnownTargets does not exempt a shape the reconciler cannot parse', () => {
+    // A symlinked bundle's canonical doc (`plugins/x/skills/<name>/SKILL`) is a
+    // REAL page, so it needs no exemption — and exempting it would be worse than
+    // useless: `parseSkillTabDocName` cannot read that shape, so nothing could
+    // ever close the tab once the skill was deleted.
+    expect(
+      filterOpenTabsForKnownTargets(['plugins/ok/skills/demo/SKILL'], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+      }),
+    ).toEqual([]);
+    expect(
+      filterOpenTabsForKnownTargets(['plugins/ok/skills/demo/SKILL'], {
+        pages: new Set(['plugins/ok/skills/demo/SKILL']),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+      }),
+    ).toEqual(['plugins/ok/skills/demo/SKILL']);
+  });
+
   test('filterOpenTabsForKnownTargets preserves the active missing document draft', () => {
     expect(
       filterOpenTabsForKnownTargets(['docs/a', 'Untitled', 'deleted'], {
@@ -843,5 +894,28 @@ describe('skill discriminators reject template content shapes', () => {
 
   test('isSkillTabId is false for a template content doc tab', () => {
     expect(isSkillTabId(docTabId('docs/.ok/templates/note'))).toBe(false);
+  });
+
+  // Bundles are free to ship companion markdown beside SKILL.md — `tdd` on
+  // skills.sh carries `tests.md` + `mocking.md` at its root. Those are ordinary
+  // content docs, so the surface decision is the only thing keeping the sidebar
+  // on Skills when the user clicks one straight after installing.
+  const companionDocs = [
+    '.claude/skills/tdd/mocking',
+    '.claude/skills/tdd/tests',
+    '.agents/skills/grill-me/GUIDE',
+    'plugins/ok/skills/demo/notes/deep',
+  ];
+
+  test('isSkillBundleShapedPath is true for companion docs inside a bundle', () => {
+    for (const doc of companionDocs) expect(isSkillBundleShapedPath(doc)).toBe(true);
+  });
+
+  test('isSkillTabId keeps a bundle companion doc on the Skills surface', () => {
+    for (const doc of companionDocs) expect(isSkillTabId(docTabId(doc))).toBe(true);
+  });
+
+  test('isSkillBundleShapedPath is false for the bundle dir itself', () => {
+    expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import {
   type ManagedArtifactScope,
   parseGlobalSkillBundleDoc,
+  parseManagedArtifactName,
   parseProjectSkillBundleDoc,
   type SkillsListEntry,
 } from '@inkeep/open-knowledge-core';
@@ -8,15 +9,31 @@ import { useEffect, useRef } from 'react';
 import { useManagedArtifactRetarget } from '@/components/ManagedArtifactProperties';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { parseEditorTabId } from '@/editor/editor-tabs';
+import {
+  isOptimisticallyMoving,
+  isSkillWritePending,
+  pendingSkillWritesKey,
+} from '@/lib/documents-events';
 import { skillEntryFileLiveDocName, skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { useSkills } from './use-skills';
 
 /**
+ * Companion markdown a bundle ships OUTSIDE `references/` — `<host>/skills/
+ * <name>/<rel>`. The two canonical parsers admit only `SKILL` and
+ * `references/**`, so without this a companion tab is invisible here and a
+ * scope move or delete leaves it pointing at a doc it just removed. Anchored on
+ * the same leading-dot host segment the canonical project parser uses: this
+ * feeds a CLOSE decision, and a looser shape would evict an ordinary content
+ * doc that merely lives under some `skills/` directory.
+ */
+const PROJECT_SKILL_COMPANION_DOC_RE = /^\.[A-Za-z0-9_-]+\/skills\/([^/]+)\/(.+)$/;
+
+/**
  * A skill tab's identity parsed from its live doc name. Covers BOTH the
- * SKILL-level doc (`rel: null`) AND a bundle-FILE doc (`references/<rel>`) — a
- * project content doc or a global managed-artifact doc. Returns null when the
- * doc name isn't a skill or skill-file. Recognizing file tabs is what lets a
- * reference-editing tab close when its skill is deleted.
+ * SKILL-level doc (`rel: null`) AND any bundle-FILE doc — a project content doc
+ * or a global managed-artifact doc. Returns null when the doc name isn't a
+ * skill or skill-file. Recognizing file tabs is what lets a bundle-editing tab
+ * close when its skill is deleted.
  */
 export function parseSkillTabDocName(
   docName: string,
@@ -25,6 +42,16 @@ export function parseSkillTabDocName(
   if (project) return { scope: 'project', name: project.name, rel: project.rel };
   const global = parseGlobalSkillBundleDoc(docName);
   if (global) return { scope: 'global', name: global.name, rel: global.rel };
+  // Managed-artifact names carry any bundle-relative `rel`, so this catches a
+  // global companion (`__skill__/global/<name>/<rel>`) the strict parser drops.
+  const managed = parseManagedArtifactName(docName);
+  if (managed?.kind === 'skill') {
+    return { scope: managed.scope, name: managed.name, rel: managed.rel };
+  }
+  const companion = PROJECT_SKILL_COMPANION_DOC_RE.exec(docName);
+  if (companion) {
+    return { scope: 'project', name: companion[1] as string, rel: companion[2] as string };
+  }
   return null;
 }
 
@@ -51,7 +78,10 @@ export function tabIdsForSkill(
  */
 export function tabIdsForSkillFile(
   openTabIds: ReadonlyArray<string>,
-  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path'>,
+  // `canonicalPath` included deliberately: `skillEntryFileLiveDocName` prefers
+  // it, so a caller passing a literal without it would mint alias-shaped names
+  // that match no open tab and silently select nothing.
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath'>,
   filePath: string,
 ): string[] {
   const liveDocName = skillEntryFileLiveDocName(skill, filePath);
@@ -110,16 +140,33 @@ export type SkillTabReconcileAction =
  *     new live doc (follows the move);
  *   - the skill is gone entirely (deleted) → close the tab, INCLUDING a
  *     reference-FILE tab — the lingering tab a delete used to leave;
- *   - a bundle-FILE tab whose skill moved scope → close it (its SKILL tab
- *     retargets to the new scope, so the skill stays open).
+ *   - a bundle-FILE tab whose skill moved scope → close it, PROVIDED the skill
+ *     stays open some other way. Clicking a skill and then one of its bundle
+ *     files leaves the file tab as the only one for that skill (the file
+ *     replaces the SKILL preview tab), and closing it outright emptied the
+ *     Skills surface, which then fell back to Files — the user asked to move a
+ *     skill and landed in the file tree. With no SKILL-level tab to carry them,
+ *     the first such tab retargets to the new scope's SKILL doc instead.
  * A tab whose skill still exists at its own scope is untouched.
  */
 export function computeSkillTabReconcile(
   openTabDocNames: ReadonlyArray<string>,
   skills: ReadonlyArray<Pick<SkillsListEntry, 'name' | 'scope' | 'path'>>,
+  /** Is a write in flight for this skill? While one is, its absence from the
+   *  list is not evidence of deletion, so nothing destructive may act on it. */
+  isBusy: (scope: ManagedArtifactScope, name: string) => boolean = (scope, name) =>
+    isOptimisticallyMoving(scope, name) || isSkillWritePending(scope, name),
 ): SkillTabReconcileAction[] {
   const present = new Map(skills.map((s) => [`${s.scope}\u0000${s.name}`, s]));
   const actions: SkillTabReconcileAction[] = [];
+  // Skills that already have a SKILL-level tab open to carry the move, plus the
+  // ones a bundle-file tab has been promoted to carry it. One promotion per
+  // skill: a second retarget onto the same doc would duplicate the tab.
+  const carried = new Set<string>();
+  for (const docName of openTabDocNames) {
+    const tab = parseSkillTabDocName(docName);
+    if (tab !== null && tab.rel === null) carried.add(`${tab.scope}\u0000${tab.name}`);
+  }
   for (const docName of openTabDocNames) {
     const tab = parseSkillTabDocName(docName);
     if (!tab) continue;
@@ -132,6 +179,14 @@ export function computeSkillTabReconcile(
     // Retarget to the entry's REAL doc — minting a shape here produced phantom
     // `.ok/skills` tabs for in-place skills (the store-fossil class).
     if (tab.rel === null && moved !== undefined) {
+      actions.push({
+        kind: 'retarget',
+        fromDocName: docName,
+        toDocName: skillEntryLiveDocName(moved),
+      });
+    } else if (isBusy(tab.scope, tab.name)) {
+    } else if (moved !== undefined && !carried.has(`${tab.scope}\u0000${tab.name}`)) {
+      carried.add(`${tab.scope}\u0000${tab.name}`);
       actions.push({
         kind: 'retarget',
         fromDocName: docName,
@@ -167,10 +222,15 @@ export function useReconcileSkillTabs(): void {
   useEffect(() => {
     if (skillsState.status !== 'ready') return;
     const skills = skillsState.data;
+    // Pending writes belong in the signature: a guarded close is DEFERRED,
+    // not cancelled, so clearing the flag must re-run this effect. Without it
+    // the list is identical either side of the write, the effect short-
+    // circuits, and "close once it settles" silently becomes "never" —
+    // leaking dead tabs instead of closing them.
     const signature = `${openTabs.join('\u0001')}\u0002${skills
       .map((s) => `${s.scope}\u0000${s.name}`)
       .sort()
-      .join('\u0001')}`;
+      .join('\u0001')}\u0002${pendingSkillWritesKey()}`;
     if (lastSignatureRef.current === signature) return;
     lastSignatureRef.current = signature;
 

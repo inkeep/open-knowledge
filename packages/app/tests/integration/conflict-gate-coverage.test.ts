@@ -264,6 +264,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleSkillRestore',
   'handleSkillRevert',
   'handleSkillsManagement',
+  // POST /api/skill/track-in-git — appends a negation to the project's
+  // `.gitignore` so a gitignored bundle becomes trackable. It targets a config
+  // file, never a Y.Doc body, so the per-doc conflict gate does not apply —
+  // same posture as `handleFolderConfig`.
+  'handleSkillTrackInGit',
   // Skill discovery + import (skills marketplace). Search/detail/installed are
   // read-only proxies; import/reimport/upload materialize an upstream (or
   // uploaded) skill to disk fs-direct (like seed/clone) rather than mutating a

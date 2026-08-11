@@ -20,9 +20,11 @@
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
+  LEGACY_SKILL_STORE_ROOT,
   type SkillScope,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -53,10 +55,10 @@ function hostRoots(
 
 /** host → project-relative skills root: every editor primary (non-null) plus
  *  the vendor-neutral `.agents/skills` hub (first-class in-place host). */
-const EDITOR_SKILL_ROOTS = hostRoots(EDITOR_PROJECT_SKILL_ROOT, '.agents/skills');
+const EDITOR_SKILL_ROOTS = hostRoots(EDITOR_PROJECT_SKILL_ROOT, AGENTS_SKILLS_ROOT);
 
 /** host → home-relative skills root for USER scope (editors + the `~/.agents` hub). */
-const USER_SKILL_ROOTS = hostRoots(EDITOR_USER_SKILL_ROOT, '.agents/skills');
+const USER_SKILL_ROOTS = hostRoots(EDITOR_USER_SKILL_ROOT, AGENTS_SKILLS_ROOT);
 
 /** One in-place skill the registry canonicalized — the list-surface projection. */
 export interface InPlaceSkill {
@@ -188,6 +190,58 @@ export function standardSkillRoots(scope: SkillScope): ReadonlySet<string> {
 }
 
 /**
+ * The `<root>/<name>` bundle dirs a cross-scope MOVE may remove from the source
+ * scope — every occurrence that is THIS skill, and nothing else.
+ *
+ * A move relocated the bytes, so nothing of this skill may survive here. But
+ * "same name" is not "same skill": the registry deliberately models two
+ * same-named bundles with different content as two DISTINCT skills
+ * (`conflictHosts`), and an uninstall protects them via the hash-guarded
+ * `removeInPlaceSkillCopies`. A move must protect them too — deleting
+ * `.cursor/skills/foo` because `.claude/skills/foo` moved away destroys a
+ * bundle its owner never touched, unrecoverably when it is untracked.
+ *
+ * So: symlinks go (a projection of the moved tree, dangling or not), and a real
+ * directory goes ONLY when its content hash matches the skill that moved.
+ * Anything else is somebody else's skill and stays.
+ *
+ * Roots come from `knownSkillRootsFor` (host roots + recorded custom roots) plus
+ * the legacy `.ok/skills` store, so a copy parked outside the standard roots
+ * cannot survive to be re-detected as a second skill at the scope the user just
+ * moved away from.
+ */
+export function removableSkillOccurrenceDirs(
+  base: string,
+  scope: SkillScope,
+  name: string,
+  /** Content hash of the bundle that moved; a real dir must match it to go. */
+  contentHash: string,
+): string[] {
+  const roots = new Set<string>([
+    ...knownSkillRootsFor(base, scope).map((r) => r.root),
+    LEGACY_SKILL_STORE_ROOT,
+  ]);
+  const dirs: string[] = [];
+  for (const root of roots) {
+    const dir = join(base, root, name);
+    let stat: ReturnType<typeof lstatSync>;
+    try {
+      // `lstat`, not `existsSync`: a projection whose target the move already
+      // deleted is still a dir entry the next scan trips on.
+      stat = lstatSync(dir);
+    } catch {
+      continue;
+    }
+    if (stat.isSymbolicLink()) {
+      dirs.push(dir);
+      continue;
+    }
+    if (parseSkillDir(dir)?.contentHash === contentHash) dirs.push(dir);
+  }
+  return dirs;
+}
+
+/**
  * The SOURCE roots of the aliases `scanHostRootAliases` found — the paths that
  * are themselves symlinked folders (e.g. `.codex/skills` when it links to
  * `.agents/skills`). Placement records under these paths are receipts written
@@ -219,7 +273,7 @@ export function aliasedSourceRoots(
  */
 export function resolveDefaultSkillHomeRel(base: string, scope: SkillScope): string {
   const roots = scope === 'project' ? EDITOR_SKILL_ROOTS : USER_SKILL_ROOTS;
-  if (existsSync(join(base, '.agents'))) return '.agents/skills';
+  if (existsSync(join(base, '.agents'))) return AGENTS_SKILLS_ROOT;
   const byPrecedence = [...roots]
     .filter((r) => r.editor !== 'agents')
     .sort((a, b) => {

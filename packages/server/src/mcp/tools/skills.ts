@@ -9,7 +9,11 @@
  * NEVER browses `.ok/` to find or read a skill — `.ok/` stays opaque (no `ls`,
  * no raw `.ok/skills/...` paths). Read-only; mutation stays with the verb tools.
  */
-import { EDITOR_PROJECT_SKILL_ROOT, EDITOR_USER_SKILL_ROOT } from '@inkeep/open-knowledge-core';
+import {
+  AGENTS_SKILLS_ROOT,
+  EDITOR_PROJECT_SKILL_ROOT,
+  EDITOR_USER_SKILL_ROOT,
+} from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { INTERNAL_BUNDLE_SKILL_NAMES, isInternalBundleSkillName } from '../../skill-bundles.ts';
 import {
@@ -66,7 +70,7 @@ function projectListRow(s: Record<string, unknown>): {
   const aliases = (s.hostAliases ?? {}) as Record<string, string>;
   const drift = new Set(Array.isArray(s.driftPaths) ? (s.driftPaths as string[]) : []);
   const rootOf = (h: string): string => {
-    if (h === 'agents') return '.agents/skills';
+    if (h === 'agents') return AGENTS_SKILLS_ROOT;
     if (h.includes('/')) return h; // custom-root id IS its path
     const map = scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT;
     return (map as Record<string, string | null>)[h] ?? h;

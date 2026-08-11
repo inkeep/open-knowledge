@@ -60,6 +60,11 @@ msgstr "「{0}」"
 msgid "\"{0}\" install refreshed ({1})"
 msgstr "已重新整理「{0}」的安裝（{1}）"
 
+#. placeholder {0}: prompt.name
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "\"{0}\" is ignored by git"
+msgstr "git 已忽略「{0}」"
+
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
 msgid "\"{0}\" was already added (identical content)."
@@ -1317,6 +1322,10 @@ msgstr "把 <0>ok</0> 指令加到你的終端機"
 msgid "Add the next matching source selection."
 msgstr "加入下一處與所選來源相符的內容。"
 
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Add to {gitignorePath}"
+msgstr "新增至 {gitignorePath}"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Add to Dictionary"
 msgstr "加入詞典"
@@ -2093,6 +2102,7 @@ msgstr "無法分享這個路徑。"
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/components/SkillTrackInGitDialog.tsx
 #: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 #: src/components/TrashFailureModal.tsx
@@ -3492,6 +3502,10 @@ msgstr "無法連上 Open Knowledge 伺服器來上傳 {fileName}。"
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "無法讀取 {fileName}。它可能已被移動、刪除，或還沒下載完。請試著重新加入。"
 
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Couldn't read the {gitignorePath} rule: {previewError}"
+msgstr "無法讀取 {gitignorePath} 規則：{previewError}"
+
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send — nothing was sent."
 msgstr "無法讀取等著傳送的註解——什麼都沒有送出。"
@@ -3655,6 +3669,11 @@ msgstr "無法切換到「僅自己」"
 #: src/comments/store.ts
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "無法取消標記那則註解——它仍在等著傳送。"
+
+#. placeholder {0}: result.error
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Couldn't update {gitignorePath}: {0}"
+msgstr "無法更新 {gitignorePath}：{0}"
 
 #. placeholder {0}: r.error
 #: src/components/SkillInstallMenu.tsx
@@ -13642,6 +13661,10 @@ msgstr "訂閱成功！"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
+
+#: src/components/SkillTrackInGitDialog.tsx
+msgid "Your agents still load this skill, but OpenKnowledge can't open or edit it: it won't index a file that git is set to ignore, because syncing it would fail. Adding one line to {gitignorePath} makes it editable here."
+msgstr "你的智慧代理仍會載入該技能，但 OpenKnowledge 無法開啟或編輯它：它不會索引 git 設定為忽略的檔案，因為同步會失敗。在 {gitignorePath} 中新增一行即可在這裡編輯它。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Your change is still being saved — run the test again in a moment."

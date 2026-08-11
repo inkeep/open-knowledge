@@ -36,21 +36,34 @@ export { skillLiveDocName };
  * `skillLiveDocName`. Global entries keep the managed-artifact scheme.
  */
 export function skillEntryLiveDocName(
-  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path'>,
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath'>,
 ): string {
   return skill.scope === 'project'
-    ? stripMdExt(skill.path)
+    ? stripMdExt(skillEntryDocPath(skill))
     : skillLiveDocName(skill.scope, skill.name);
+}
+
+/**
+ * The path a PROJECT entry's docs are ADDRESSED by. `path` is where the bundle
+ * is mounted, which for a symlinked skill dir is an alias: the document index
+ * holds one page per inode under the canonical name, so a tab opened at the
+ * alias has no page and is pruned by the next page-list sync (skill flickers
+ * open, vanishes, surface falls back to Files). `canonicalPath` is the server's
+ * resolution of that alias — prefer it wherever a doc NAME is minted, and leave
+ * `path` to the on-disk questions (install targets, reveal, host wiring).
+ */
+function skillEntryDocPath(skill: Pick<SkillsListEntry, 'path' | 'canonicalPath'>): string {
+  return skill.canonicalPath ?? skill.path;
 }
 
 /** Per-bundle-file analogue of {@link skillEntryLiveDocName}: the live doc name
  *  for `rel` (e.g. `references/patterns.md`) inside the entry's real dir. */
 export function skillEntryFileLiveDocName(
-  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path'>,
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath'>,
   rel: string,
 ): string {
   if (skill.scope !== 'project') return skillFileLiveDocName(skill.scope, skill.name, rel);
-  const dir = skill.path.replace(/\/SKILL\.mdx?$/i, '');
+  const dir = skillEntryDocPath(skill).replace(/\/SKILL\.mdx?$/i, '');
   return `${dir}/${stripMdExt(rel)}`;
 }
 

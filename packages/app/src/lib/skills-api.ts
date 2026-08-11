@@ -527,6 +527,41 @@ export async function moveSkillScope(input: {
 }
 
 /**
+ * `POST /api/skill/track-in-git`. A gitignored bundle is listed but never
+ * indexed, so it cannot be opened — this offers the one `.gitignore` line that
+ * changes that. Call with `apply: false` first: every caller shows the user the
+ * literal line before writing to their repo.
+ */
+export async function trackSkillInGit(input: {
+  name: string;
+  scope: SkillScope;
+  apply?: boolean;
+}): Promise<WriteResult<{ line: string; gitignorePath: string; applied: boolean }>> {
+  try {
+    const res = await fetch('/api/skill/track-in-git', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as {
+      line?: string;
+      gitignorePath?: string;
+      applied?: boolean;
+    } | null;
+    if (input.apply === true) emitSkillsChanged();
+    return {
+      ok: true,
+      line: payload?.line ?? '',
+      gitignorePath: payload?.gitignorePath ?? '.gitignore',
+      applied: payload?.applied === true,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * POST `/api/skill` — rename `fromName` → `toName` within one scope. Optional
  * `frontmatter`/`body` rewrite the relocated `SKILL.md` in the same request, so
  * a Save that changes the name AND the body is one atomic server op (history-

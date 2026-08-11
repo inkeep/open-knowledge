@@ -1,4 +1,8 @@
-import { isSkillInstallTarget, type SkillScope } from '@inkeep/open-knowledge-core';
+import {
+  AGENTS_SKILLS_ROOT,
+  isSkillInstallTarget,
+  type SkillScope,
+} from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -36,6 +40,12 @@ export function useExplorePreviewInstall({
   /** The on-disk skill name once imported (else null) — the caller transitions the
    *  preview tab into this real skill when the install menu closes. */
   importedName: string | null;
+  /** The scope the bundle ACTUALLY landed at, captured at import time (else
+   *  null). The caller must redirect against this, not the live `scope` state:
+   *  `scope` is a user-settable selector that can move after the import, and
+   *  opening a skill resolves its doc by (scope, name), so a disagreement sends
+   *  the tab at a document that does not exist. */
+  importedScope: SkillScope | null;
   /** Import WITHOUT installing anywhere (the custom-path flow) — returns the
    *  on-disk name, or null on failure (toast already shown). */
   importNow: () => Promise<string | null>;
@@ -44,6 +54,9 @@ export function useExplorePreviewInstall({
   const { t } = useLingui();
   const [scope, setScope] = useState<SkillScope>(initialScope);
   const [importedName, setImportedName] = useState<string | null>(null);
+  // Mirrors `importedScopeRef` into render state so the caller's redirect can
+  // read it; the ref alone is invisible to React.
+  const [importedScope, setImportedScope] = useState<SkillScope | null>(null);
   const [hosts, setHosts] = useState<readonly string[]>([]);
   const [busy, setBusy] = useState(false);
   const liveHostsRef = useRef<readonly string[]>([]);
@@ -73,6 +86,7 @@ export function useExplorePreviewInstall({
       }
       importedNameRef.current = res.name;
       importedScopeRef.current = importScope;
+      setImportedScope(importScope);
       setImportedName(res.name);
       return res.name;
     });
@@ -137,7 +151,7 @@ export function useExplorePreviewInstall({
             const result = await placeSkill({
               scope: importScope,
               name: skillName,
-              dir: '.agents/skills',
+              dir: AGENTS_SKILLS_ROOT,
               mode: 'copy',
             });
             if (result.ok) {
@@ -184,6 +198,7 @@ export function useExplorePreviewInstall({
     setScope,
     scopeLocked: importedName !== null || busy,
     importedName,
+    importedScope,
     importNow: ensureImported,
     toggles,
   };

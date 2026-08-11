@@ -3,8 +3,8 @@
  * `SkillsSidebarSection.tsx`. The section owns data loading, dialogs and the
  * section chrome, and hands this everything it needs as props.
  *
- * `EMPTY_SCOPE_SENTINEL` lives here because `SKILLS_TREE_CSS` interpolates it;
- * the section imports it back, so the dependency runs section -> tree only.
+ * `EMPTY_SCOPE_SENTINEL` is owned by the path builder that emits it; this file
+ * imports it because `SKILLS_TREE_CSS` interpolates it.
  */
 import type { CatalogSkill, SkillScope, SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -60,17 +60,12 @@ import {
   tildeHomePath,
 } from '@/lib/skill-scope';
 import { SKILL_MD_PATH } from '@/lib/skill-sort';
+import { EMPTY_SCOPE_SENTINEL } from '@/lib/skills-tree-paths';
 
-// A scope with ZERO skills renders no child, and Pierre drops a childless
-// directory from the visible tree — so the GLOBAL / PROJECT header would vanish
-// and the sibling scope slides to the top (breaks "project always first" when the
-// project has no skills). Give an empty scope ONE sentinel child so its folder +
-// header always render in SKILL_SCOPE_ORDER. The sentinel row is display:none'd
-// (SKILLS_TREE_CSS) and every row handler skips it (skillFor/detectedFor return
-// undefined for it). Underscores can't appear in a real skill name (SKILL_NAME_REGEX),
-// so it can't collide. Works WITH `flattenEmptyDirectories: false` — that keeps the
-// resulting single-child folder from collapsing back into the sentinel.
-export const EMPTY_SCOPE_SENTINEL = '__ok_empty_scope__';
+// The sentinel row is display:none'd (SKILLS_TREE_CSS) and every row handler
+// skips it (skillFor/detectedFor return undefined for it). Works WITH
+// `flattenEmptyDirectories: false` — that keeps the resulting single-child
+// folder from collapsing back into the sentinel.
 
 // Built-in skills are locked (bundled, read-only) — a lock glyph on the row is
 // the "you can't edit this" signal, in place of a state badge. Registered as a
@@ -394,9 +389,27 @@ export function SkillsTree({
   // Reassigned every render so the pass-through handler above captures the LIVE
   // `activePath` + open callbacks + `model` (declared just above). Manual memo is
   // banned; the ref is how we stay current.
+  // Deliberately a PASSIVE effect, not `useLayoutEffect`. Installing the handler
+  // before paint also puts it in front of Pierre's own mount-time selection,
+  // which then dispatches an open nobody asked for and pushes a history entry —
+  // `goBack` walks duplicates instead of leaving the skill
+  // (`navigation-history.e2e.ts`). The no-op window this leaves open is real but
+  // narrow, and a spurious open is the worse trade.
   useEffect(() => {
     handleSelectionChangeRef.current = (selected) => {
       const p = selected[0];
+      // Bail on the row that is already open. This guard was briefly removed to
+      // make a dead row retryable, which traded one bug for a worse one: the
+      // re-dispatch is idempotent for TAB state but not for HISTORY, so every
+      // redundant click pushed another hash entry and `goBack` walked through
+      // duplicates instead of leaving the skill (caught by
+      // `navigation-history.e2e.ts`).
+      //
+      // It is safe to keep now because `activePath` is derived from
+      // `isSkillDocActive`, which requires a genuinely OPEN tab. The stale
+      // `activeDocName` that made this guard swallow retries — a doc with no tab
+      // behind it — no longer produces an `activePath` at all, so a dead row
+      // dispatches and an open row does not.
       if (!p || p === activePath) return;
       const node = parseTreePath(p);
       if (node.sub !== null && node.isDir) return;

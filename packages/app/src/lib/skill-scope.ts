@@ -1,4 +1,5 @@
 import {
+  AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   PACK_SKILL_PREFIX,
@@ -114,7 +115,7 @@ export function skillHostRootDir(host: string, scope: SkillScope): string {
   const map = scope === 'global' ? EDITOR_USER_SKILL_ROOT : EDITOR_PROJECT_SKILL_ROOT;
   const rel =
     host === 'agents'
-      ? '.agents/skills'
+      ? AGENTS_SKILLS_ROOT
       : ((map as Record<string, string | null>)[host] ?? `.${host}/skills`);
   return scope === 'global' ? `~/${rel}` : rel;
 }
