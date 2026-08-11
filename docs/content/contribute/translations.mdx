@@ -1,41 +1,34 @@
 ---
 title: Translate the interface
 icon: LuLanguages
-description: Read one of our machine-translated interface languages and correct what a machine got wrong.
+description: Community driven translations
 ---
 
-OpenKnowledge's interface exists in eleven languages, nine of them offered in **Settings → Preferences → Language**. Ten were translated by a machine, and only one of those ten has had a native speaker read it.
+The app is natively written in English and we did our best to provide machine generated translations for some of the most spoken languages in the world.
 
-Correcting one is what this page is asking for. If you read one of the other nine, a pass over its translations is the most useful thing you can do for it.
+OpenKnowledge's interface is available in many languages. The language selection can be found at **Settings → Preferences → Language**.
 
-Which language is in which state lives in the `appearance.language` row of the [configuration reference](/docs/reference/configuration#schema). That table is the source of truth, so this page doesn't repeat it.
+Language is an app appearance setting and can be set directly in the config [configuration reference](/docs/reference/configuration#schema). That table is the source of truth, so this page doesn't repeat it.
 
-## What is actually wrong with them
+## How you can help
 
-Completeness is not the gap. Every language already has a translation for every string in the interface, and a change that adds a new string is refused unless it translates that string into every language in the same change. Nothing is blank, the placeholders line up, the plural forms are all present.
-
-What machine translation does not reliably produce is prose that reads naturally and terminology a user of that language would actually recognize. No test we can write sees that failure, and neither can anyone here. Only a reader of the language does.
-
-We used to hold a language out of the picker until a native speaker had read it. That turned out to be backwards: the people who could tell us a translation was wrong were exactly the people who never met it, because it wasn't offered to them. So they ship, and we say plainly which ones a human has read — today that is English, which is the source, and Español. Everything else is a machine's best guess sitting in front of users who deserve better, which is why a correction is worth sending even if it is one word.
+- Fix errors, improve existing translations
+- Add new language sets
 
 ## Run OpenKnowledge in the language you're checking
 
-Nine languages are one click away in **Settings → Preferences → Language**. For the two that aren't, or if you'd rather not click, set it by hand in `~/.ok/global.yml`:
+Set the language in the UI setting or set it by hand in `~/.ok/global.yml`:
 
 ```yaml
 appearance:
-  language: bn
+  language: bn # <-- set to the language you are testing
 ```
 
-Any of the eleven works here, in the picker or not. That is deliberate — a translator has to be able to look at their own work. Use the tag exactly as it appears in the configuration reference (`zh-Hans`, `pt-BR`, and so on). The editor picks the change up without a restart.
+Use the tag exactly as it appears in the configuration reference (`zh-Hans`, `pt-BR`, and so on). The editor picks the change up without a restart.
 
 Reading the interface in your own language is the best review there is, and the one nobody here can do for you.
 
 On the desktop app, the `OK_LANG` environment variable additionally overrides the **native menus** for a single run, which is the quickest way to check menu translations without touching config. The rest of the window follows `appearance.language`, so set both if you want everything in one language at once.
-
-<Callout type="warn" title="Arabic and Urdu are a special case">
-`ar` and `ur` have full, maintained translations and are the two languages the picker doesn't offer. Setting one by hand does flip the interface to right-to-left, and most of the layout follows, but the sweep isn't finished: some labels stay left-aligned, some arrows and chevrons keep pointing the way they did, spacing lands on the wrong side in places, and section headings are letter-spaced in a way that pulls Arabic apart at the joins. Corrections to the *text* are as welcome as for any other language — just don't spend your time reporting the layout, which we already know about.
-</Callout>
 
 ## Make the change
 
@@ -57,17 +50,17 @@ packages/app/src/locales/<locale>/messages.po
 
    Commit both files.
 
-4. **Open a pull request.** Say which language you read and whether you speak it natively. That is the part we can't get any other way, and it's what lets us stop describing the language as unread.
+4. **Open a pull request.** Say which language you read and whether you speak it natively.
 
 [CONTRIBUTING.md](https://github.com/inkeep/open-knowledge/blob/main/CONTRIBUTING.md) covers the rest: toolchain, `pnpm run check`, and the Contributor License Agreement.
 
 ## What is and isn't translated
 
-- **The application's own chrome** — menus, buttons, settings, dialogs, notifications — is what these catalogs cover.
-- **Your content is never translated.** Document bodies, titles, file and folder names, frontmatter values and tags stay exactly as you wrote them, in every language.
-- **The CLI's commands, flags and machine-readable output stay English** on purpose, so scripts keep working whatever the machine's locale is.
+- **The application strings ARE translated.**
+- **User Generated content is NEVER translated:&#x20;**Document bodies, titles, file and folder names, frontmatter values and tags stay exactly as you wrote them, in every language.
+- **The CLI's commands, flags and machine-readable output REMAIN English ONLY** on purpose, so scripts keep working whatever the machine's locale is.
 - **This documentation site is English only** for now.
 
 ## A language that isn't on the list
 
-Open an [issue](https://github.com/inkeep/open-knowledge/issues) before starting work on one. Each language adds a permanent obligation on every string written from then on, so adding one is a decision rather than a merge. The ask is genuinely welcome, though: knowing which languages people want is how the list grows.
+Open an [issue](https://github.com/inkeep/open-knowledge/issues) before starting work on one. Then follow the instructions above to provide a complete language set. Don't forget to add the language to the list of available UI languages so other users can select your translation set from within the desktop application!
