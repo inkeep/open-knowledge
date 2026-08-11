@@ -3368,23 +3368,30 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
 
     if (item.dataset.itemType === 'folder') {
       const folderPath = treeDirectoryPathToFolderPath(path);
-      const folderItem = asDirectoryHandle(model.getItem(path));
-      if (!wasSelected) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (folderItem && !folderItem.isExpanded()) folderItem.expand();
-        queueMicrotask(() => navigateWithPulse({ kind: 'folder', folderPath }));
-        return;
+      // A folder click is never swallowed. Pierre's own row handler is what
+      // toggles the row, and it treats the whole row (chevron, icon, label,
+      // empty space) as one hit target. Stopping the event here to expand the
+      // folder by hand made collapsing impossible on any row that was not
+      // already the selected one — the state every click on a child document
+      // leaves behind.
+      //
+      // Navigation is additive rather than a second toggle, and neither of the
+      // two ancestor-expanding mechanisms reopens the row this click closed:
+      // `useSelectionMirror` and the model subscription below both expand
+      // `activeAncestorTreePaths`, and that list never contains the active
+      // folder itself (`computeTreeAncestorPaths` returns strict ancestors, and
+      // the `selectedFolderPath` branch additionally drops its last segment).
+      // The clicked folder becomes the active target, so it leaves its own
+      // ancestor list. The ordering that matters — the collapse happening
+      // before navigation commits, while the stale ancestor ref still names
+      // this folder — is pinned end to end by the "stays collapsed after the
+      // navigation settles" assertion in
+      // `tests/stress/file-tree-collapse-spaced-folder.e2e.ts`.
+      if (wasSelected) {
+        if (model.getSelectedPaths().length !== 1) return;
+        // Already on this folder's page: nothing left to navigate to.
+        if (isSameHash(window.location.hash, hashFromFolderPath(folderPath))) return;
       }
-      if (model.getSelectedPaths().length !== 1) return;
-      // Already on this folder's page: fall through so Pierre's own handler
-      // gets the click and toggles the row. Swallowing it here instead is what
-      // makes a folder unable to collapse — the only other way to reach the
-      // expanded state is a re-navigation this branch has nothing left to do.
-      if (isSameHash(window.location.hash, hashFromFolderPath(folderPath))) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (folderItem && !folderItem.isExpanded()) folderItem.expand();
       queueMicrotask(() => navigateWithPulse({ kind: 'folder', folderPath }));
       return;
     }

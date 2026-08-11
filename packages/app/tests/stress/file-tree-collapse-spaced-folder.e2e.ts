@@ -49,4 +49,44 @@ test.describe('file-tree collapse with a spaced folder name', () => {
     await spaced.click();
     await expect(spaced).toHaveAttribute('aria-expanded', 'true', { timeout: 10_000 });
   });
+
+  /**
+   * The other half of the same swallow: the handler only stepped aside for a
+   * folder that was already the selected row, and opening any child document
+   * moves the selection off the folder. So a folder whose child you just read
+   * took two clicks to close - the first one re-expanded it and re-navigated.
+   */
+  test('a folder collapses in one click after its child document took the selection', async ({
+    page,
+    api,
+  }) => {
+    await api.seedDocs([{ name: 'roundtrip/child', markdown: '# Child\n' }]);
+
+    await page.goto('/');
+    const sidebar = page.locator(SIDEBAR);
+
+    const folder = sidebar.getByRole('treeitem', { name: 'roundtrip', exact: true });
+    await expect(folder).toBeVisible({ timeout: 20_000 });
+
+    await folder.click();
+    await expect(folder).toHaveAttribute('aria-expanded', 'true', { timeout: 10_000 });
+
+    const child = sidebar.getByRole('treeitem', { name: 'child.md', exact: true });
+    await child.click();
+    await expect(child).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
+
+    await folder.click();
+    await expect(folder).toHaveAttribute('aria-expanded', 'false', { timeout: 10_000 });
+    // Stays collapsed once the navigation commits, which is the whole risk
+    // window. Both ancestor-expanding paths (useSelectionMirror and the model
+    // subscription in FileTree.tsx) run off `activeAncestorTreePaths`, and at
+    // click time that list still names this folder - it only leaves when the
+    // queued navigation lands and the folder becomes the active target. So a
+    // force-expand, if it fired, would land in the gap between the collapse
+    // and the URL below. Anchoring the re-assert on the committed URL is what
+    // makes the assertion above a settled state rather than a transient the
+    // polling happened to catch.
+    await expect(page).toHaveURL(/#\/roundtrip\/$/);
+    await expect(folder).toHaveAttribute('aria-expanded', 'false');
+  });
 });

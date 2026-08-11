@@ -309,6 +309,7 @@ vi.doMock('@pierre/trees/react', () => ({
       <div data-testid="fake-pierre-tree" role="tree" onClickCapture={onClickCapture}>
         {header}
         {[...model.items.values()].map((item) => (
+          // biome-ignore lint/a11y/useKeyWithClickEvents: stub row standing in for Pierre's own row button; the keyboard path lives in the real library.
           <div
             key={item.path}
             role="treeitem"
@@ -316,6 +317,15 @@ vi.doMock('@pierre/trees/react', () => ({
             data-item-type={item.isDirectory() ? 'folder' : 'file'}
             aria-selected={model.selectedPaths.includes(item.path) ? 'true' : 'false'}
             tabIndex={-1}
+            // Pierre toggles a directory on any unmodified click on the row, in
+            // the bubble phase. Modelling it here is what makes the capture
+            // handler's `stopPropagation` observable: stopping the event in
+            // capture is exactly what keeps this from running.
+            onClick={() => {
+              if (!item.isDirectory()) return;
+              if (item.isExpanded()) item.collapse();
+              else item.expand();
+            }}
           >
             {item.path}
           </div>
@@ -580,6 +590,27 @@ describe('FileTree showAll lazy root seed', () => {
     );
     expect(window.location.hash).toBe('#/docs/');
     expect(model.getItem('docs/')?.isExpanded()).toBe(true);
+  });
+
+  test('an expanded folder collapses on one click even when a child row holds the selection', async () => {
+    // Opening a child document moves the selection off its folder, which is the
+    // state the folder branch used to read as a first click: it re-expanded and
+    // re-navigated, so the folder took two clicks to close.
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [folderEntry('docs', true), docEntry('docs/nested')],
+        truncated: false,
+      });
+    const view = render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('docs/')).toBe(true));
+    model.getItem('docs/')?.expand();
+    model.selectedPaths = ['docs/nested.md'];
+    view.rerender(<FileTree />);
+
+    fireEvent.click(screen.getByRole('treeitem', { name: 'docs/' }));
+
+    await waitFor(() => expect(model.getItem('docs/')?.isExpanded()).toBe(false));
   });
 
   test('a truncated depth-1 level still drives the truncation notice (QA-002 wiring)', async () => {

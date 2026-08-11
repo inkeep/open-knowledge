@@ -374,12 +374,16 @@ test('sidebar folder: row click navigates to folder overview; treeitem toggles e
   // affordance for keyboard expand/collapse.
   //
   // Ancestor-priority UX: while a doc inside sidebar-folder is active, the
-  // folder is unconditionally expanded — collapsing the treeitem is a no-op
-  // for the derived state because `ancestors` takes
+  // folder is unconditionally expanded — collapsing the treeitem with the
+  // KEYBOARD is a no-op for the derived state because `ancestors` takes
   // priority over `userCollapsed`. The test exercises the toggle BEFORE
   // navigating into the folder (where toggle IS honored) and asserts the
   // ancestor-priority behavior after navigation. See reveal-on-activate.e2e.ts
   // for Model A semantics coverage.
+  //
+  // A row CLICK is different from the keyboard toggle and is not subject to
+  // ancestor priority: it moves the active target to the folder itself, so the
+  // folder stops being an ancestor and the toggle stands.
   //
   // Recreate the shared sidebar-folder fixture in case an earlier test in
   // this worker deleted it while exercising bulk delete.
@@ -434,9 +438,23 @@ test('sidebar folder: row click navigates to folder overview; treeitem toggles e
   await expect(folderRow).toHaveAttribute('aria-expanded', 'true');
   await expect(nestedFile).toBeVisible();
 
-  // Row click navigates back to the folder target. Folder routes keep a
-  // trailing slash so a folder and same-basename document remain distinct, and
-  // the navigation click must not also collapse the already-open folder.
+  // Row click navigates back to the folder target AND toggles the row, which
+  // here means collapsing it. Folder routes keep a trailing slash so a folder
+  // and same-basename document remain distinct.
+  //
+  // The collapse is the point: the row is one hit target and a
+  // click on it toggles, including the click that navigates. Ancestor priority
+  // does not fight it, because the same click makes the folder itself the
+  // active target, and `activeAncestorTreePaths` excludes the active folder.
+  // That the collapse STAYS collapsed once navigation settles is pinned in
+  // file-tree-collapse-spaced-folder.e2e.ts, which re-asserts after a wait.
+  await folderRow.click();
+  await expect(page).toHaveURL(/#\/sidebar-folder\/$/);
+  await expect(folderRow).toHaveAttribute('aria-expanded', 'false');
+  await expect(nestedFile).toHaveCount(0);
+
+  // And it toggles back. The second click has nowhere left to navigate, so it
+  // only re-expands.
   await folderRow.click();
   await expect(page).toHaveURL(/#\/sidebar-folder\/$/);
   await expect(folderRow).toHaveAttribute('aria-expanded', 'true');
