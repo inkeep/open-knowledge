@@ -40,7 +40,7 @@ Decide once; then every "open / show / preview this doc" this session uses that 
 
 - **`ok open <name>`** — opens a **doc or folder** in the OK Desktop app. The type is auto-detected (a directory on disk → folder, otherwise a doc), so **`--folder` is not needed** (it stays only as an explicit override for a folder that doesn't exist on disk yet). An action you run, not a URL to print.
 - **`ok open <skill-name> --skill [--scope project|global]`** — opens a **skill** in the skill editor (skills are addressed by name + scope, not a content path, so they need the flag).
-- All three deep-link into OK Desktop when a bundle is installed, and fall back to the browser UI (`ok ui`) otherwise. No `ok` on PATH or no shell → `preview_url`, then `open <url>` in the system browser as a last resort, and say so plainly. The system browser is the fallback, never the default.
+- All three deep-link into OK Desktop when a bundle is installed, and fall back to the browser UI (`ok start`) otherwise. No `ok` on PATH or no shell → `preview_url`, then `open <url>` in the system browser as a last resort, and say so plainly. The system browser is the fallback, never the default.
 
 (The same vendors' *desktop apps* with a built-in browser — Cursor, Codex desktop — are NOT here; they navigate their own browser per the in-app branch above. Codex **IDE extension** / **Cloud** are web-search-only → they're on this CLI track too.) **Running inside OpenKnowledge itself — the desktop built-in terminal (`OK_DESKTOP_TERMINAL`) or the in-app agent panel (`OK_HOSTED_AGENT`)? Same track — `ok open <name>` re-targets the surface you're already in** (switches it to the doc/folder; when that surface is a desktop window there's no second window, and no need to raise it since it's already frontmost). Don't resolve preview URLs in that case; `ok open` is the whole answer.
 
@@ -61,7 +61,7 @@ Warnings fire at most once per session in the fresh-start case.
 
 If you see `"Hocuspocus server is not running"`, run `ok start` and retry.
 
-OK Electron and `ok ui` share `ui.lock`; when a second UI binds a different port, the OK lock-collision proxy bridges it to the live server transparently. That is exactly why `previewUrl` is route-only — the port behind the proxy is not the agent's to use. **Do not nudge the user to quit OK Electron to free a port** — the proxy handles it, and quitting tears down a UI in active use.
+OK Electron and the project server coordinate through the same lock files; a second UI-serving process yields to the live holder transparently. That is exactly why `previewUrl` is route-only — the underlying port is not the agent's to use. **Do not nudge the user to quit OK Electron to free a port** — the server handles coexistence, and quitting tears down a UI in active use.
 
 **The preview is read-only for the agent — it is the user's view, not a surface you read back.** You cannot click or type to drive edits — the CRDT flow is one-way (agent → MCP → CRDT → preview).
 

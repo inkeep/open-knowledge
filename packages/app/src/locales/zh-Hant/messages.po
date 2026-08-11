@@ -7498,8 +7498,8 @@ msgid "Network error — please try again"
 msgstr "網路錯誤——請再試一次"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok ui` running?)"
-msgstr "網路錯誤（`ok ui` 有在執行嗎？）"
+msgid "network error (is `ok start` running?)"
+msgstr "網路錯誤（`ok start` 有在執行嗎？）"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -8149,10 +8149,6 @@ msgstr "OK 桌面版"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "OK 上次把這個資料夾設為 {0}——之後 OK 以外的東西改動過它。顯示的是磁碟上現在的狀態；你下一次的「符號連結／取消連結」會覆蓋它。"
-
-#: src/components/ConnectingBanner.tsx
-msgid "ok ui responded but server.lock has no port yet"
-msgstr "ok ui 有回應，但 server.lock 裡還沒有連接埠"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -12110,6 +12106,10 @@ msgstr "儲存庫的原始複製目錄"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "結構描述檔案不存在或載入失敗——新增欄位就會建立它。"
+
+#: src/components/ConnectingBanner.tsx
+msgid "the server responded but server.lock has no port yet"
+msgstr "伺服器有回應，但 server.lock 裡還沒有連接埠"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"

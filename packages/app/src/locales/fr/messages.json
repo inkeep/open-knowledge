@@ -225,6 +225,7 @@
     "2IYGkU": [
       "Ce document a des modifications non poussées. Les destinataires verront la dernière version poussée."
     ],
+    "2L8aeZ": ["erreur réseau (`ok start` est-il en cours d'exécution ?)"],
     "2M0JF6": ["Mise à jour automatique"],
     "2O5Z0r": ["Masquer ", ["appName"]],
     "2QM24L": ["Toutes les étiquettes"],
@@ -2284,7 +2285,6 @@
     ],
     "TEEPPF": ["Remplacera l'entrée OpenKnowledge existante"],
     "TEJiKw": ["OpenKnowledge a vérifié ", ["subject"]],
-    "TJnkyf": ["ok ui a répondu mais server.lock n'a pas encore de port"],
     "TKQ7K-": ["Installer"],
     "TLIO3j": ["Bascule la mise en forme italique."],
     "TMLAx2": ["Obligatoire"],
@@ -2982,7 +2982,6 @@
     "akmOT9": ["Modifier ce commentaire"],
     "anmUZq": ["Une fonctionnalité manquante"],
     "aoT2xX": ["Ce commentaire porte sur toute la propriété"],
-    "aoa6xA": ["erreur réseau (`ok ui` est-il en cours d'exécution ?)"],
     "arUUsK": ["Nouveautés du produit"],
     "ax9kie": [
       "Les paramètres d'aperçu des liens ne sont pas encore chargés — réessayez dans un instant"
@@ -4568,6 +4567,7 @@
     "txUHO8": [["localizedMessage"], " à la ligne ", ["displayLine"]],
     "tzGWeg": ["Préparation de la désinstallation d'OpenKnowledge"],
     "tzZ6ha": ["Se connecter à GitHub Enterprise Server"],
+    "tz_FDV": ["le serveur a répondu mais server.lock n'a pas encore de port"],
     "u-9fWA": ["Voir <0>Architecture</0> pour la vue d'ensemble du système."],
     "u3BOHd": [
       [

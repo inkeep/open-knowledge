@@ -1541,8 +1541,7 @@ function ensureWindowManager() {
             // `<projectRoot>/.ok/local/<SPAWN_ERROR_LOG>` so production
             // failure modes (port-bind error, dependency load failure,
             // bootServer init throw) are diagnosable. The MCP shim
-            // (`packages/cli/src/mcp/shim.ts`) and `spawnOkUi`
-            // (`packages/cli/src/commands/start.ts`) write to the same
+            // (`packages/cli/src/mcp/shim.ts`) writes to the same
             // filename — one tail target for operators. `stdio: 'ignore'`
             // would route everything to /dev/null and leave the user
             // staring at a 15-second `spawn-lock-timeout` with no
@@ -1591,7 +1590,7 @@ function ensureWindowManager() {
             // for the child stays out of the parent .app's MacOS dir on darwin
             // packaged builds — see resolve-detached-spawn-args.ts. stdin +
             // stdout route to /dev/null and stderr to the SPAWN_ERROR_LOG fd
-            // (matches MCP shim + spawnOkUi convention). The child inherits
+            // (matches the MCP shim convention). The child inherits
             // the open fd; we close our copy once 'spawn' fires (in the
             // finally below) so the parent doesn't keep the file open.
             const spawnArgs = resolveDetachedSpawnArgs({

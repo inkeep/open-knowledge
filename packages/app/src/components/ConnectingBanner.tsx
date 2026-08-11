@@ -70,8 +70,8 @@ type CollabError =
 
 /**
  * Is the terminal failure specifically "this folder has a UI but no collab
- * server" (the worktree case)? `null-collab` is exactly that signal — `ok ui`
- * responded, the lock has no port. A transient boot-race `null-collab` clears
+ * server" (the worktree case)? `null-collab` is exactly that signal — the
+ * config endpoint responded, the lock has no port. A transient boot-race `null-collab` clears
  * well inside the ~30s grace+retry window, so reaching terminal with it means
  * the folder genuinely has no collab server. Pure + exported so the message
  * branch is unit-testable without a DOM (matches `computeBannerMode`).
@@ -82,8 +82,8 @@ export function isNoCollabServerError(err: CollabError): boolean {
 
 export function describeError(err: CollabError): string {
   if (err === null) return t`no response`;
-  if (err.kind === 'null-collab') return t`ok ui responded but server.lock has no port yet`;
-  if (err.code === 'network') return t`network error (is \`ok ui\` running?)`;
+  if (err.kind === 'null-collab') return t`the server responded but server.lock has no port yet`;
+  if (err.code === 'network') return t`network error (is \`ok start\` running?)`;
   if (err.code === 'invalid-body') return t`/api/config returned a malformed body`;
   const code = err.code;
   return t`/api/config returned HTTP ${code}`;

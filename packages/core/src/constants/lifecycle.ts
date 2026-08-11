@@ -22,17 +22,14 @@ export const DEFAULT_SIGTERM_POLL_MS = 200;
 
 /**
  * Filename under `<contentDir>/.ok/local/` that detached-subprocess spawn
- * sites redirect the child's stdio to. Three sites currently write here:
+ * sites redirect the child's stdio to. Two sites currently write here:
  *
  *   1. MCP shim's `resolveMcpHttpUrl` (`packages/cli/src/mcp/shim.ts`) —
  *      stderr only, so the parent can read it back and include in the
  *      timeout error when the spawned `ok start` doesn't write `server.lock`
  *      within `DEFAULT_SPAWN_TIMEOUT_MS`.
- *   2. CLI `spawnOkUi` (`packages/cli/src/commands/start.ts`) — stderr only;
- *      the `ok ui` sibling's failure mode surfaces here for the parent's
- *      `awaitUiSiblingPort` poll-timeout error.
- *   3. Desktop `spawnDetachedServer` (`packages/desktop/src/main/index.ts`) —
- *      stderr only (mirroring the peer sites), used both for diagnostic
+ *   2. Desktop `spawnDetachedServer` (`packages/desktop/src/main/index.ts`) —
+ *      stderr only (mirroring the peer site), used both for diagnostic
  *      capture and for `spawn-lock-timeout` error enrichment.
  *
  * The shared filename means one tail target for operators and one constant

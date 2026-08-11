@@ -133,7 +133,6 @@ describe('bootServer git-preflight', () => {
         quiet: true,
         gitEnabled: true,
         idleShutdownMs: null,
-        attachUiSibling: false,
         log: logger,
         gitPreflight: () => {
           throw thrown;
@@ -190,7 +189,6 @@ describe('bootServer git-preflight', () => {
         quiet: true,
         gitEnabled: true,
         idleShutdownMs: null,
-        attachUiSibling: false,
         log: logger,
         gitPreflight: () => {
           throw thrown;
@@ -242,7 +240,6 @@ describe('bootServer git-preflight', () => {
         quiet: true,
         gitEnabled: true,
         idleShutdownMs: null,
-        attachUiSibling: false,
         log: logger,
         gitPreflight: () => {
           throw unexpected;
@@ -297,7 +294,6 @@ describe('bootServer git-preflight', () => {
         quiet: true,
         gitEnabled: true,
         idleShutdownMs: null,
-        attachUiSibling: false,
         log: logger,
         gitPreflight: () => ok,
       });
@@ -346,7 +342,6 @@ describe('bootServer git-preflight', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
         log: logger,
         gitPreflight: () => {
           preflightCalled = true;
@@ -426,7 +421,6 @@ describe('bootServer git-preflight OTEL emission', () => {
           quiet: true,
           gitEnabled: true,
           idleShutdownMs: null,
-          attachUiSibling: false,
           log: logger,
           gitPreflight: () => {
             throw new GitNotAvailableError('linux', makeGuidance());
@@ -464,7 +458,6 @@ describe('bootServer git-preflight OTEL emission', () => {
           quiet: true,
           gitEnabled: true,
           idleShutdownMs: null,
-          attachUiSibling: false,
           log: logger,
           gitPreflight: () => {
             throw new GitTooOldError('linux', '2.20.0', '2.31.0', '/usr/bin/git', makeGuidance());
@@ -510,7 +503,6 @@ describe('bootServer git-preflight OTEL emission', () => {
           quiet: true,
           gitEnabled: true,
           idleShutdownMs: null,
-          attachUiSibling: false,
           log: logger,
           gitPreflight: () => ok,
         });

@@ -731,7 +731,6 @@ describeBoot('FR14: boot-time lifecycle restoration from conflicts.json', () => 
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       cleanups.push(() => booted.destroy());
 

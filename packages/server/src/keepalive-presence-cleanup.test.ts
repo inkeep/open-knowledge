@@ -54,7 +54,6 @@ async function bootTestServer(
   const booted = await bootServer({
     host: '127.0.0.1',
     contentDir,
-    attachUiSibling: false,
     idleShutdownMs: null,
     gitEnabled: false,
     quiet: true,

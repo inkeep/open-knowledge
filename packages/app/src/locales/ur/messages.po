@@ -7498,8 +7498,8 @@ msgid "Network error — please try again"
 msgstr "نیٹ ورک کی خرابی — براہِ کرم دوبارہ کوشش کریں"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok ui` running?)"
-msgstr "نیٹ ورک کی خرابی (کیا `ok ui` چل رہا ہے؟)"
+msgid "network error (is `ok start` running?)"
+msgstr "نیٹ ورک کی خرابی (کیا `ok start` چل رہا ہے؟)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -8149,10 +8149,6 @@ msgstr "OK Desktop"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "OK نے آخری بار اس فولڈر کو {0} مقرر کیا تھا — اس کے بعد OK سے باہر کسی چیز نے اسے بدل دیا۔ دکھائی گئی حالت وہی ہے جو اب ڈسک پر ہے؛ آپ کا اگلا سِم لنک یا لنک ختم کرنا فیصلہ کن ہو گا۔"
-
-#: src/components/ConnectingBanner.tsx
-msgid "ok ui responded but server.lock has no port yet"
-msgstr "ok ui نے جواب دیا مگر server.lock میں ابھی کوئی پورٹ نہیں"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -12110,6 +12106,10 @@ msgstr "ریپازٹری کی اصل کلون ڈائریکٹری"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "اسکیما فائل موجود نہیں یا لوڈ نہیں ہو سکی — فیلڈ شامل کرنے سے یہ بن جاتی ہے۔"
+
+#: src/components/ConnectingBanner.tsx
+msgid "the server responded but server.lock has no port yet"
+msgstr "سرور نے جواب دیا مگر server.lock میں ابھی کوئی پورٹ نہیں"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"

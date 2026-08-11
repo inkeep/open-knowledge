@@ -7498,8 +7498,8 @@ msgid "Network error — please try again"
 msgstr "خطأ في الشبكة — يرجى المحاولة مرة أخرى"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok ui` running?)"
-msgstr "خطأ في الشبكة (هل `ok ui` يعمل؟)"
+msgid "network error (is `ok start` running?)"
+msgstr "خطأ في الشبكة (هل `ok start` يعمل؟)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -8149,10 +8149,6 @@ msgstr "OK Desktop"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "ضبط OK هذا المجلد آخر مرة على {0} — وقد غيّره شيء خارج OK منذ ذلك الحين. الحالة المعروضة هي ما على القرص الآن؛ وعملية الربط أو فك الربط التالية لديك هي التي تسود."
-
-#: src/components/ConnectingBanner.tsx
-msgid "ok ui responded but server.lock has no port yet"
-msgstr "استجاب ok ui لكن server.lock لا يحمل منفذًا بعد"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -12110,6 +12106,10 @@ msgstr "دليل النسخة الأصلية للمستودع"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "ملف المخطط غير موجود أو فشل تحميله — إضافة حقل تنشئه."
+
+#: src/components/ConnectingBanner.tsx
+msgid "the server responded but server.lock has no port yet"
+msgstr "استجاب الخادم لكن server.lock لا يحتوي على منفذ بعد"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"

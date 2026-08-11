@@ -54,7 +54,6 @@ beforeAll(async () => {
     quiet: true,
     gitEnabled: false,
     skipAutoInit: true,
-    attachUiSibling: false,
     idleShutdownMs: IDLE_SHUTDOWN_MS,
   });
   lockPath = resolve(contentDir, OK_DIR, LOCAL_DIR, 'server.lock');

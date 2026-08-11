@@ -3,7 +3,7 @@
  *
  * Lifecycle:
  *   1. Module load: register IPC + signal handlers, start parent-death poll
- *   2. `init` IPC from main → call `bootServer({ ...opts, attachUiSibling: false, idleShutdownMs: null })`
+ *   2. `init` IPC from main → call `bootServer({ ...opts, idleShutdownMs: null })`
  *   3. On `bootedServer.ready` → post `{ type: 'ready', port, apiOrigin }` back to main
  *   4. On `shutdown` IPC OR SIGTERM/SIGINT OR parent death → drain + exit
  *
@@ -347,7 +347,6 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         contentDir: prepared.contentDir,
         contentRoot: prepared.contentRoot,
         config: prepared.config,
-        attachUiSibling: false, // No `ok ui` sibling under Electron
         idleShutdownMs: null, // BrowserWindow lifecycle owns utility lifetime
         skipAutoInit: true,
         autoInitFn: undefined,

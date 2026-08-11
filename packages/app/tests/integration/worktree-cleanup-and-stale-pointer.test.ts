@@ -44,7 +44,6 @@ describe('git worktree remove cleans up the per-worktree shadow (FR6)', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     await booted.ready;
     expect(existsSync(shadowHead)).toBe(true);
@@ -94,7 +93,6 @@ describe('MalformedGitPointerError at boot when .git pointer is stale (FR7)', ()
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -119,7 +117,6 @@ describe('MalformedGitPointerError at boot when .git pointer is stale (FR7)', ()
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       await booted.ready;
@@ -152,7 +149,6 @@ describe('MalformedGitPointerError at boot when .git pointer is stale (FR7)', ()
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       firstAttemptError = err;
@@ -180,7 +176,6 @@ describe('MalformedGitPointerError at boot when .git pointer is stale (FR7)', ()
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       await booted.ready;

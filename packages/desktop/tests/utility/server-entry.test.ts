@@ -134,7 +134,6 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
 
     // Asserts the opt-outs plus the autoInit decoupling
     const callArgs = bootServer.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
-    expect(callArgs?.attachUiSibling).toBe(false);
     expect(callArgs?.idleShutdownMs).toBe(null);
     expect(callArgs?.skipAutoInit).toBe(true);
     expect(callArgs?.autoInitFn).toBeUndefined();

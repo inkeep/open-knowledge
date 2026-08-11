@@ -97,8 +97,8 @@ export function encodeSkillRoute(scope: string, name: string): string {
  *     to attach a browser. Server tracks `__system__` subscribers so the
  *     hint fires at most once per session in the fresh-start case.
  *   - `start-ui` — `previewUrl` is null; no UI is running anywhere for this
- *     project. Agent advises the user to start one (`ok ui`
- *     from a terminal, `ok start`, or open the project in OK Electron).
+ *     project. Agent advises the user to start one (`ok start` from a
+ *     terminal, or open the project in OK Electron).
  *
  * Both pin the same `previewUrl` field so a single agent-side branch can
  * read either: if non-null → open; if null → tell user to start a UI.
@@ -127,7 +127,7 @@ type PreviewAttachWarning =
     };
 
 const START_UI_MESSAGE =
-  'No UI is running for this project. Start one to see the preview: `ok ui` (terminal), `ok start`, or open the project in OK Electron.';
+  'No UI is running for this project. Start one to see the preview: `ok start` (terminal), or open the project in OK Electron.';
 const ATTACH_PREVIEW_ONCE_MESSAGE =
   "No browser is attached to the preview. Open it in your host's surface: `preview_url`, then drive your in-app browser (Claude Code Desktop: `preview_start({url})` to open the pane, then `navigate({url})` to move; Cursor: `Navigate`; Codex desktop: `@Browser`); on a stdio CLI with no browser, `ok open <doc>`.";
 
@@ -247,13 +247,11 @@ export function resolveUiInfo(ctx: PreviewUrlContext): UiInfo {
 }
 
 /**
- * Poll `resolveUiInfo` until the UI lock binds (`port > 0`) or the deadline
- * passes. Used by `preview_url` right after a fresh backend spawn: `ok start`
- * spawns its `ok ui` sibling asynchronously, so `ui.lock` lags `server.lock`
- * by up to a few seconds on a cold start (the server's own sibling wait is
- * `uiBindTimeoutMs` in `bootStartServer`). Also rides out the desktop
- * single-origin window where `ui.lock` exists at port 0 until the server
- * binds and calls `updateUiLockPort`.
+ * Poll `resolveUiInfo` until a UI origin binds or the deadline passes. Used
+ * by `preview_url` right after a fresh backend spawn: the locks exist at
+ * port 0 from acquire (pre-listen) until the server binds and stamps the
+ * real port, so the ui-capable origin lags the locks' appearance by up to a
+ * few seconds on a cold start.
  */
 export async function awaitUiBaseUrl(
   ctx: PreviewUrlContext,

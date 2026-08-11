@@ -118,7 +118,7 @@ function isUnsafeName(name: string): boolean {
 function noTargetError(deps: OpenDeps): number {
   deps.error(
     'No OpenKnowledge desktop app found and no UI is running. ' +
-      'Install OK Desktop, or start a UI with `ok ui`, then retry.',
+      'Install OK Desktop, or run `ok start` to serve the editor, then retry.',
   );
   return 1;
 }

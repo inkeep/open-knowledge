@@ -19,8 +19,8 @@
  * Opening a preview counts as demand for a backend: when the registration
  * threads `serverUrl` (the global stdio MCP does), the handler runs the same
  * backend-ensure the server-backed tools use — a live `server.lock` resolves
- * immediately; otherwise the resolver auto-spawns `ok start` (which spawns
- * the `ok ui` sibling) under the `OK_MCP_AUTOSTART` gate and spawn timeout.
+ * immediately; otherwise the resolver auto-spawns `ok start` (which serves
+ * the UI itself) under the `OK_MCP_AUTOSTART` gate and spawn timeout.
  * Registrations without server authority (no `serverUrl` in deps) answer
  * from disk alone, as before.
  *
@@ -127,10 +127,10 @@ interface GetPreviewUrlDeps {
 }
 
 /**
- * How long to wait for the freshly spawned backend's `ok ui` sibling to bind
- * before reporting no-UI. Mirrors `uiBindTimeoutMs` in `bootStartServer` —
- * the server's own wait for the same sibling — so the two surfaces give up
- * at the same horizon.
+ * How long to wait for a freshly spawned backend's UI advertisement to bind
+ * before reporting no-UI — the window between `server.lock` appearing and the
+ * listener binding its real port (+ the legacy sibling window on locks from
+ * older binaries).
  */
 const UI_BIND_WAIT_TIMEOUT_MS = 3000;
 const UI_BIND_WAIT_POLL_MS = 100;
@@ -205,27 +205,24 @@ const OutputSchema = outputSchemaWithText({
 /**
  * Recovery hints for the three distinguishable no-UI states.
  *
- * `NO_UI_SERVER_RUNNING_MESSAGE` is the TRANSIENT case: a live pre-v2 / legacy
- * sibling-topology server whose `ok ui` sibling hasn't bound its `ui.lock`
- * yet. "Retry" is the right first move (it's binding), and `ok ui` is the tool
- * that topology uses — advising `ok start` here would be wrong, since under
- * spawn-or-reuse a second `ok start` just reports the running server's URL and
- * exits 0 without adding a UI. (Post-flip note: bare `ok start` no longer
- * collides — it reuses — but that doesn't make it a way to attach a UI.)
+ * `NO_UI_SERVER_RUNNING_MESSAGE` is the TRANSIENT case: a live server whose
+ * UI advertisement hasn't landed yet (lock still binding, or a legacy
+ * sibling-topology holder from an older binary). "Retry" is the right first
+ * move; a second bare `ok start` would just reuse the running server without
+ * adding anything, so the terminal remedy is OK Electron.
  *
  * `NO_SERVER_MESSAGE` advises `ok start`, which brings up the server serving
  * the UI on one port.
  */
 const NO_UI_SERVER_RUNNING_MESSAGE =
-  'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or start one: `ok ui` (terminal) or open the project in OK Electron.';
+  'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or open the project in OK Electron.';
 // Permanent-state sibling of the message above: the live server advertises NO
 // `ui` capability (started `--only server`, or a degraded API-only boot), so a
-// UI will never bind on its own — "retry" would loop forever. Steer to the
-// Wave 3 way to attach a UI to a running server: `ok start --only ui
-// --server-url` (NOT deprecated `ok ui`; NOT bare `ok start`, which would just
-// reuse the headless server without adding a UI).
+// UI will never bind on its own — "retry" would loop forever. The remedy is
+// restarting with plain `ok start` (serves the editor) or OK Electron; bare
+// `ok start` against the live holder would just reuse it, hence "restart".
 const NO_UI_NONE_MOUNTED_MESSAGE =
-  'The OK server is running but no preview UI is mounted (e.g. it was started with `--only server`). Add one against it: `ok start --only ui --server-url <server-url>`, or open the project in OK Electron.';
+  'The OK server is running but no preview UI is mounted (e.g. it was started with `--only server`). Restart it with plain `ok start` to serve the editor, or open the project in OK Electron.';
 const NO_SERVER_MESSAGE =
   'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), or open the project in OK Electron.';
 const AUTOSTART_DISABLED_NOTE = ' Auto-start is disabled (OK_MCP_AUTOSTART=0).';
@@ -443,11 +440,11 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       // Demand-ensure: when this registration has server authority, run the
       // same backend-ensure the server-backed tools use. A live `server.lock`
       // resolves immediately (lock read, no HTTP); otherwise the resolver
-      // auto-spawns `ok start` — which spawns the `ok ui` sibling — under the
+      // auto-spawns `ok start` — which serves the UI itself — under the
       // `OK_MCP_AUTOSTART` gate and spawn timeout. Runs unconditionally (not
-      // just when `ui.lock` is missing) so the orphan-UI state — a surviving
-      // pane-spawned `ok ui` whose server idle-shut-down — gets its backend
-      // back; the orphan re-attaches via its own `server.lock` polling.
+      // just when the UI advertisement is missing) so an orphaned legacy UI
+      // process whose server idle-shut-down gets its backend back; the orphan
+      // re-attaches via its own `server.lock` polling.
       const serverWasLive = isServerLive(lockDir);
       let autoStartDisabled = false;
       if (deps.serverUrl !== undefined) {
@@ -477,10 +474,10 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
 
       let { baseUrl } = resolveUiInfo(ctx);
       if (baseUrl === null && !serverWasLive && isServerLive(lockDir)) {
-        // The backend came up during this call, so its `ok ui` sibling is
-        // still binding — `ui.lock` lags `server.lock` by up to a few
-        // seconds. Wait it out instead of reporting a no-UI state that is
-        // about to stop being true.
+        // The backend came up during this call, so its UI advertisement is
+        // still binding — the ui-capable origin lags `server.lock`'s
+        // appearance by up to a few seconds. Wait it out instead of
+        // reporting a no-UI state that is about to stop being true.
         baseUrl = await awaitUiBaseUrl(ctx, {
           timeoutMs: deps.uiBindWait?.timeoutMs ?? UI_BIND_WAIT_TIMEOUT_MS,
           pollIntervalMs: deps.uiBindWait?.pollIntervalMs ?? UI_BIND_WAIT_POLL_MS,

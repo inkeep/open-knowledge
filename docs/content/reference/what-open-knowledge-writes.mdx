@@ -105,7 +105,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/local/server.lock` (and `.ok/local/ui.lock` on the legacy `--ui-port` path) | Advertise the running server's URL; `ok start` now serves the UI from the same server, so `ui.lock` is written only by the deprecated sibling path | In-project, gitignored |
+| `.ok/local/server.lock` (and `.ok/local/ui.lock`, a compatibility advertisement) | Advertise the running server's URL; `ui.lock` is kept for older readers and the deprecated `--only ui` split mode, and retires in a future release | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
 | `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the UI sibling's error log | In-project, gitignored |
@@ -219,7 +219,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/local/server.lock` (and `.ok/local/ui.lock` on the legacy `--ui-port` path) | Advertise the running server's URL; `ok start` now serves the UI from the same server, so `ui.lock` is written only by the deprecated sibling path | In-project, gitignored |
+| `.ok/local/server.lock` (and `.ok/local/ui.lock`, a compatibility advertisement) | Advertise the running server's URL; `ui.lock` is kept for older readers and the deprecated `--only ui` split mode, and retires in a future release | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
 | `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the UI sibling's error log | In-project, gitignored |

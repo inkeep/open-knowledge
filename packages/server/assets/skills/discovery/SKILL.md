@@ -98,7 +98,7 @@ you genuinely have one; never pop a browser tab on a host that has none.
   means navigate your browser — don't just print the URL and stop. This is also
   the only way to view it in a browser when the OK Desktop app is installed
   (`ok open` prefers the Desktop app). Get the URL from `preview_url` only —
-  never hunt for it via `ok ps` / `ok status` / `ok ui` / `ok start` or a guessed
+  never hunt for it via `ok ps` / `ok status` / `ok start` or a guessed
   port.
 - **No in-app browser** (a pure-stdio CLI) — run
   `ok open /abs/path/to/file.md`: it opens the Desktop app when installed, else a

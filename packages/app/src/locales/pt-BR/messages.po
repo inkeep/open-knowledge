@@ -7494,8 +7494,8 @@ msgid "Network error — please try again"
 msgstr "Erro de rede — tente de novo"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok ui` running?)"
-msgstr "erro de rede (o `ok ui` está rodando?)"
+msgid "network error (is `ok start` running?)"
+msgstr "erro de rede (o `ok start` está em execução?)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -8145,10 +8145,6 @@ msgstr "OK Desktop"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "Da última vez o OK deixou esta pasta como {0} — algo fora do OK mudou isso desde então. O estado exibido é o que está no disco agora; o seu próximo Vincular/Desvincular prevalece."
-
-#: src/components/ConnectingBanner.tsx
-msgid "ok ui responded but server.lock has no port yet"
-msgstr "o ok ui respondeu, mas o server.lock ainda não tem porta"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -12106,6 +12102,10 @@ msgstr "O diretório do clone original do repositório"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "O arquivo de esquema não existe ou falhou ao carregar — adicionar um campo o cria."
+
+#: src/components/ConnectingBanner.tsx
+msgid "the server responded but server.lock has no port yet"
+msgstr "o servidor respondeu, mas o server.lock ainda não tem porta"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"

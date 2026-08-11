@@ -135,7 +135,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
 
     try {
@@ -176,7 +175,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
 
     try {
@@ -219,7 +217,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       try {
         const restored = calls.find((l) => {
@@ -255,7 +252,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
 
     try {
@@ -284,7 +280,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
 
     try {

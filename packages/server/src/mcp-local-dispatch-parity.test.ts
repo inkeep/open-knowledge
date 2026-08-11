@@ -94,7 +94,6 @@ beforeAll(async () => {
     quiet: true,
     gitEnabled: false,
     idleShutdownMs: null,
-    attachUiSibling: false,
   });
   await booted.ready;
 

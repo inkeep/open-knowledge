@@ -15,8 +15,8 @@ import { acquireUiLock, readUiLock, releaseUiLock, updateUiLockPort } from './ui
  *
  *   <projectDir>/.ok/local/ui.lock  →  http://localhost:<ui.lock.port>
  *
- * The contract the readers (preview-url tools, `ok ui` collision resolver,
- * `decideUiSpawn`, the data-server 404 hint) rely on:
+ * The contract the remaining readers (preview-url tools, the `--only ui`
+ * split-mode collision resolver, `off-cwd-resolver`) rely on:
  *
  *   1. FIELDS — every real lock carries pid, hostname, port, startedAt,
  *      worktreeRoot, protocolVersion, runtimeVersion. The optional
@@ -29,12 +29,13 @@ import { acquireUiLock, readUiLock, releaseUiLock, updateUiLockPort } from './ui
  *      it proceeds without owning the lock, leaves the peer's advertisement
  *      untouched (including on its own destroy), and emits a structured
  *      yield event.
- *   4. DISCOVERY HINT — a data server not serving the shell points humans
- *      at `ui.lock.port` in its 404 body.
+ *   4. DISCOVERY HINT — a data server not serving the shell tells humans in
+ *      its 404 body how to get the editor (restart with plain `ok start`).
  *
- * Whatever replaces the `ok ui` sibling must keep all four observable
- * behaviors (or migrate every reader in the same release): the preview-pane
- * flow is downstream of `ui.lock`, not of which process serves the shell.
+ * The ui.lock removal wave must keep (or deliberately re-pin) all four
+ * observable behaviors and migrate every remaining reader in the same
+ * release: the preview-pane flow is downstream of `ui.lock` until then, not
+ * of which process serves the shell.
  */
 
 describe('ui.lock — the Desktop attach advertisement', () => {
@@ -148,7 +149,7 @@ describe('ui.lock — the Desktop attach advertisement', () => {
     }
   }, 30_000);
 
-  test('a data server without the shell points the 404 at ui.lock.port', async () => {
+  test('a data server without the shell 404s with the no-UI restart hint', async () => {
     const tmp = await mkdtemp(resolve(tmpdir(), 'ok-attach-hint-'));
     try {
       const booted = await bootCompositionRig(tmp);
@@ -157,8 +158,8 @@ describe('ui.lock — the Desktop attach advertisement', () => {
         const res = await fetch(`http://127.0.0.1:${booted.port}/`);
         expect(res.status).toBe(404);
         const body = parseProblem(await res.text());
-        expect(body.detail).toContain('ok ui');
-        expect(body.detail).toContain('ui.lock');
+        expect(body.detail).toContain('running without the web UI');
+        expect(body.detail).toContain('ok start');
         expect(existsSync(resolve(tmp, '.ok', 'local', 'ui.lock'))).toBe(false);
       } finally {
         await booted.destroy();

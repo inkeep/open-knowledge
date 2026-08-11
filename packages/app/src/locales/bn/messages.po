@@ -7494,8 +7494,8 @@ msgid "Network error — please try again"
 msgstr "নেটওয়ার্ক ত্রুটি — অনুগ্রহ করে আবার চেষ্টা করুন"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok ui` running?)"
-msgstr "নেটওয়ার্ক ত্রুটি (`ok ui` কি চলছে?)"
+msgid "network error (is `ok start` running?)"
+msgstr "নেটওয়ার্ক ত্রুটি (`ok start` কি চলছে?)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -8145,10 +8145,6 @@ msgstr "OK Desktop"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "OK শেষবার এই ফোল্ডারটি {0}-এ নির্ধারণ করেছিল — এরপর OK-এর বাইরের কিছু সেটি বদলে দিয়েছে। দেখানো অবস্থাটি এখন ডিস্কে যা আছে তাই; আপনার পরবর্তী Symlink/Unlink কার্যকর হবে।"
-
-#: src/components/ConnectingBanner.tsx
-msgid "ok ui responded but server.lock has no port yet"
-msgstr "ok ui সাড়া দিয়েছে কিন্তু server.lock-এ এখনও কোনো পোর্ট নেই"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -12106,6 +12102,10 @@ msgstr "রিপোজিটরির মূল ক্লোন ডিরেক
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "স্কিমা ফাইলটি নেই বা লোড করা যায়নি — একটি ফিল্ড যোগ করলে সেটি তৈরি হয়।"
+
+#: src/components/ConnectingBanner.tsx
+msgid "the server responded but server.lock has no port yet"
+msgstr "সার্ভার সাড়া দিয়েছে কিন্তু server.lock-এ এখনো কোনো পোর্ট নেই"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"

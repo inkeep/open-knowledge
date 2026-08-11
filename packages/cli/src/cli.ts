@@ -69,7 +69,6 @@ import { runStartCommand, startCommand } from './commands/start.ts';
 import { statusCommand } from './commands/status.ts';
 import { stopCommand } from './commands/stop.ts';
 import { syncCommand } from './commands/sync.ts';
-import { uiCommand } from './commands/ui.ts';
 import { uninstallCommand } from './commands/uninstall.ts';
 import { PACKAGE_VERSION } from './constants.ts';
 import { loadConfig } from './index.ts';
@@ -256,10 +255,23 @@ program.addCommand(lintCommand(() => resolvedConfig));
 // the running project server; CLI sibling of the `audit` MCP tool
 program.addCommand(auditCommand(() => resolvedConfig));
 
-// ui command — deprecated sibling UI server; kept functional for the Desktop
-// version-skew window (plain `ok start` now serves the UI itself).
-const ui = uiCommand(() => resolvedConfig);
-program.addCommand(ui);
+// ui command tombstone — `ok ui` (the sibling UI server) was removed; the
+// project server serves the editor itself. Without this stub the argv falls
+// through to the default command's arity error ("too many arguments"), which
+// tells a user with the old command in muscle memory (or a stale script)
+// nothing actionable. Hidden from --help; drop at the removed-command horizon.
+const uiTombstone = new Command('ui')
+  .description('Removed: the editor UI is served by `ok start`')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .argument('[args...]')
+  .action(() => {
+    console.error(
+      '`ok ui` was removed — the editor UI is served by the project server. Run `ok start` instead.',
+    );
+    process.exit(1);
+  });
+program.addCommand(uiTombstone, { hidden: true });
 
 // open command — open a doc in the OK Desktop app (folders open in the
 // browser). The action for the no-preview-browser rung of the skill's

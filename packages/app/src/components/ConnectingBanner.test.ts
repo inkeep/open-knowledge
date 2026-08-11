@@ -66,13 +66,13 @@ describe('describeError', () => {
 
   test('null-collab kind names server.lock as the culprit', () => {
     expect(describeError({ kind: 'null-collab' })).toBe(
-      'ok ui responded but server.lock has no port yet',
+      'the server responded but server.lock has no port yet',
     );
   });
 
-  test('network error points at missing ok ui', () => {
+  test('network error points at missing ok start', () => {
     expect(describeError({ kind: 'error', code: 'network' })).toBe(
-      'network error (is `ok ui` running?)',
+      'network error (is `ok start` running?)',
     );
   });
 

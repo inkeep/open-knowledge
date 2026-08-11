@@ -28,7 +28,7 @@ import { fallbackPaths } from '@inkeep/open-knowledge-server';
  * (`resolveHelperBundleBinary`) live in
  * `@inkeep/open-knowledge-core/helper-bundle.ts` so the CLI self-spawn
  * site (`packages/cli/src/commands/self-spawn.ts`, covering the
- * `ok mcp → ok start` and `ok start → ok ui` auto-spawn paths) shares the
+ * `ok mcp → ok start` auto-spawn path) shares the
  * same path-arithmetic source of truth as this resolver. The CLI's
  * redirect predicate is colocated with its sole consumer there because
  * it encodes a CLI-only heuristic (`.app/Contents/MacOS/` regex + an

@@ -1,14 +1,13 @@
 import type { spawn as NativeSpawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
-import { hostname, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   applyConfigOverlay,
   idleShutdownToMs,
-  LOCAL_DIR,
   requiresExternalConsent,
   resolveEnvConfigLayer,
   resolveServerRuntimeConfig,
@@ -16,14 +15,9 @@ import {
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-  awaitUiSiblingPort,
   type BootedStartServer,
   bootStartServer,
-  buildIdleShutdownHandler,
   coerceRemoteBindHost,
-  computeConnectExitCode,
-  connectUiSibling,
-  decideUiSpawn,
   deriveServerProcessTitle,
   expandRemoteAlias,
   formatServerReuseNotice,
@@ -41,18 +35,13 @@ import {
   resolveStartConsoleLevel,
   resolveStartShellDir,
   scopeRemoteAliasConsentToBind,
-  shouldConnectToExistingServer,
   shouldOpenBrowser,
   shouldWarnHostOverridesMultiBind,
-  spawnOkUi,
   startCommand,
-  teardownUiSibling,
   tryDescribeLockCollision,
-  type UiSpawnDecision,
   withEphemeralTempDirReap,
   withIdleShutdownProcessExit,
 } from './start.ts';
-import { closeHttpServers, startUiServer, type UiServerHandle } from './ui.ts';
 
 describe('resolveHost', () => {
   test('returns --host flag when --bind is absent (second priority, after --bind)', () => {
@@ -310,424 +299,6 @@ describe('deriveServerProcessTitle', () => {
   });
 });
 
-describe('decideUiSpawn', () => {
-  test('absent lock → spawn(absent)', () => {
-    const result = decideUiSpawn({ uiLock: null, isAlive: () => true });
-    expect(result).toEqual<UiSpawnDecision>({ action: 'spawn', reason: 'absent' });
-  });
-
-  test('lock with dead pid → spawn(stale)', () => {
-    const result = decideUiSpawn({
-      uiLock: { pid: 999999, port: 3000 },
-      isAlive: () => false,
-    });
-    expect(result).toEqual<UiSpawnDecision>({
-      action: 'spawn',
-      reason: 'stale',
-      stalePid: 999999,
-    });
-  });
-
-  test('lock with live pid → skip(alive)', () => {
-    const result = decideUiSpawn({
-      uiLock: { pid: 4242, port: 3001 },
-      isAlive: (pid) => pid === 4242,
-    });
-    expect(result).toEqual<UiSpawnDecision>({
-      action: 'skip',
-      reason: 'alive',
-      pid: 4242,
-      port: 3001,
-    });
-  });
-
-  test('isAlive probe receives the lock pid', () => {
-    const seen: number[] = [];
-    decideUiSpawn({
-      uiLock: { pid: 7777, port: 3000 },
-      isAlive: (pid) => {
-        seen.push(pid);
-        return true;
-      },
-    });
-    expect(seen).toEqual([7777]);
-  });
-});
-
-describe('buildIdleShutdownHandler', () => {
-  test('SIGTERMs UI sibling; if it exits within grace, awaits destroy', async () => {
-    const events: string[] = [];
-    // Simulate a well-behaved UI: stays alive initially, exits after SIGTERM.
-    let alive = true;
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => ({ pid: 1234, port: 3000 }),
-      spawnedUiPid: () => 1234,
-      isAlive: () => alive,
-      killPid: (pid, sig) => {
-        events.push(`kill:${pid}:${sig}`);
-        if (sig === 'SIGTERM') alive = false;
-      },
-      destroy: async () => {
-        events.push('destroy');
-      },
-      sigtermGraceMs: 100,
-      sigtermPollIntervalMs: 5,
-      sleep: async () => {},
-    });
-    await onShutdown();
-    expect(events).toEqual(['kill:1234:SIGTERM', 'destroy']);
-  });
-
-  test('escalates to SIGKILL when SIGTERM grace expires', async () => {
-    const events: string[] = [];
-    // Simulate a wedged UI: stays alive through SIGTERM, never exits.
-    const warned: object[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => ({ pid: 1234, port: 3000 }),
-      spawnedUiPid: () => 1234,
-      isAlive: () => true,
-      killPid: (pid, sig) => {
-        events.push(`kill:${pid}:${sig}`);
-      },
-      destroy: async () => {
-        events.push('destroy');
-      },
-      sigtermGraceMs: 20,
-      sigtermPollIntervalMs: 5,
-      sleep: async () => {},
-      log: {
-        info: () => {},
-        warn: (obj) => warned.push(obj),
-        error: () => {},
-      },
-    });
-    await onShutdown();
-    expect(events).toEqual(['kill:1234:SIGTERM', 'kill:1234:SIGKILL', 'destroy']);
-    expect(warned.find((w) => (w as { pid?: number }).pid === 1234)).toBeDefined();
-  });
-
-  test('skips kill when UI lock absent', async () => {
-    const events: string[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => null,
-      spawnedUiPid: () => 1234,
-      isAlive: () => true,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      destroy: async () => {
-        events.push('destroy');
-      },
-    });
-    await onShutdown();
-    expect(events).toEqual(['destroy']);
-  });
-
-  test('skips kill when UI process is dead (stale lock)', async () => {
-    const events: string[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => ({ pid: 4242, port: 3000 }),
-      spawnedUiPid: () => 4242,
-      isAlive: () => false,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      destroy: async () => {
-        events.push('destroy');
-      },
-    });
-    await onShutdown();
-    expect(events).toEqual(['destroy']);
-  });
-
-  test('still calls destroy when killPid throws', async () => {
-    const events: string[] = [];
-    const warned: object[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => ({ pid: 4242, port: 3000 }),
-      spawnedUiPid: () => 4242,
-      isAlive: () => true,
-      killPid: () => {
-        throw new Error('EPERM');
-      },
-      destroy: async () => {
-        events.push('destroy');
-      },
-      log: {
-        info: () => {},
-        warn: (obj) => warned.push(obj),
-        error: () => {},
-      },
-    });
-    await onShutdown();
-    expect(events).toEqual(['destroy']);
-    expect(warned[0]).toMatchObject({ pid: 4242 });
-  });
-
-  test('still calls destroy when readUiLock throws', async () => {
-    const events: string[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => {
-        throw new Error('lock read failed');
-      },
-      spawnedUiPid: () => null,
-      isAlive: () => true,
-      killPid: () => {},
-      destroy: async () => {
-        events.push('destroy');
-      },
-      log: { info: () => {}, warn: () => {}, error: () => {} },
-    });
-    await onShutdown();
-    expect(events).toEqual(['destroy']);
-  });
-
-  test('leaves a live ui.lock holder alone when this process spawned no sibling', async () => {
-    // The incident shape: a stale server goes WS-idle while a desktop-spawned
-    // server (which advertises ITS OWN pid in ui.lock while serving the React
-    // shell) is live with active clients. The stale server must not kill it.
-    const events: string[] = [];
-    const infos: object[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => ({ pid: 52425, port: 64430 }),
-      spawnedUiPid: () => null,
-      isAlive: () => true,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      destroy: async () => {
-        events.push('destroy');
-      },
-      log: {
-        info: (obj) => infos.push(obj),
-        warn: () => {},
-        error: () => {},
-      },
-    });
-    await onShutdown();
-    expect(events).toEqual(['destroy']);
-    expect(infos.find((entry) => (entry as { pid?: number }).pid === 52425)).toBeDefined();
-  });
-
-  test('leaves a live ui.lock holder alone when it is not the spawned sibling', async () => {
-    // Our spawned sibling died and another process now holds the lock (or the
-    // lock was rewritten by a newer session). Not ours — leave it alone.
-    const events: string[] = [];
-    const onShutdown = buildIdleShutdownHandler({
-      readUiLock: () => ({ pid: 9999, port: 3000 }),
-      spawnedUiPid: () => 1234,
-      isAlive: () => true,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      destroy: async () => {
-        events.push('destroy');
-      },
-      log: { info: () => {}, warn: () => {}, error: () => {} },
-    });
-    await onShutdown();
-    expect(events).toEqual(['destroy']);
-  });
-});
-
-describe('teardownUiSibling (signal-driven ok start teardown)', () => {
-  test('SIGTERMs the owned sibling and returns once it exits within grace', async () => {
-    const events: string[] = [];
-    let alive = true;
-    await teardownUiSibling({
-      readUiLock: () => ({ pid: 1234, port: 3000 }),
-      spawnedUiPid: () => 1234,
-      isAlive: () => alive,
-      killPid: (pid, sig) => {
-        events.push(`kill:${pid}:${sig}`);
-        if (sig === 'SIGTERM') alive = false;
-      },
-      sigtermGraceMs: 100,
-      sigtermPollIntervalMs: 5,
-      sleep: async () => {},
-      reason: 'shutdown',
-    });
-    expect(events).toEqual(['kill:1234:SIGTERM']);
-  });
-
-  test('escalates to SIGKILL when the owned sibling ignores SIGTERM', async () => {
-    const events: string[] = [];
-    await teardownUiSibling({
-      readUiLock: () => ({ pid: 1234, port: 3000 }),
-      spawnedUiPid: () => 1234,
-      isAlive: () => true,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      sigtermGraceMs: 20,
-      sigtermPollIntervalMs: 5,
-      sleep: async () => {},
-      reason: 'shutdown',
-    });
-    expect(events).toEqual(['kill:1234:SIGTERM', 'kill:1234:SIGKILL']);
-  });
-
-  // The regression guard: on the signal path too, a live ui.lock holder that is
-  // NOT the pid we spawned must be left untouched. This is the exact incident
-  // (a stale/idle server SIGTERMing a live desktop-spawned or other-session
-  // server that merely holds ui.lock) the spawnedUiPid guard exists to prevent.
-  test('leaves a live ui.lock holder alone when it is not the spawned sibling', async () => {
-    const events: string[] = [];
-    const infos: object[] = [];
-    await teardownUiSibling({
-      readUiLock: () => ({ pid: 9999, port: 3000 }),
-      spawnedUiPid: () => 1234,
-      isAlive: () => true,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      log: { info: (obj) => infos.push(obj), warn: () => {}, error: () => {} },
-      reason: 'shutdown',
-    });
-    expect(events).toEqual([]);
-    expect(infos.find((entry) => (entry as { pid?: number }).pid === 9999)).toBeDefined();
-  });
-
-  // Defense-in-depth: even if a null ownPid reaches teardownUiSibling (the
-  // signal handler's `!== null` guard means it normally can't), a live lock
-  // holder routes through the ownership-guard "leave it alone" branch — a null
-  // ownPid never equals a real pid — so nothing is killed.
-  test('leaves a live lock holder alone when ownPid is null (routes through the ownership guard)', async () => {
-    const events: string[] = [];
-    await teardownUiSibling({
-      readUiLock: () => ({ pid: 52425, port: 64430 }),
-      spawnedUiPid: () => null,
-      isAlive: () => true,
-      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
-      log: { info: () => {}, warn: () => {}, error: () => {} },
-      reason: 'shutdown',
-    });
-    expect(events).toEqual([]);
-  });
-});
-
-describe('spawnOkUi', () => {
-  let tmpDir: string;
-  let lockDir: string;
-
-  beforeEach(async () => {
-    tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-start-spawnui-'));
-    lockDir = resolve(tmpDir, '.ok', LOCAL_DIR);
-  });
-  afterEach(async () => {
-    await rm(tmpDir, { recursive: true, force: true });
-  });
-
-  test('creates lockDir if missing and opens last-spawn-error.log', () => {
-    const calls: Array<{ cmd: string; args: readonly string[]; opts: object }> = [];
-    spawnOkUi({
-      lockDir,
-      cwd: tmpDir,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal mock matches ChildProcess shape
-      spawn: ((cmd: string, args: readonly string[], opts: any) => {
-        calls.push({ cmd, args, opts });
-        return { unref: () => {}, on: () => {}, kill: () => {} } as unknown as ReturnType<
-          typeof spawnOkUi
-        >;
-      }) as never,
-    });
-
-    expect(existsSync(lockDir)).toBe(true);
-    expect(existsSync(join(lockDir, 'last-spawn-error.log'))).toBe(true);
-    expect(calls.length).toBe(1);
-    // Re-exec via the current CLI binary (not npx) — see self-spawn.ts.
-    expect(calls[0]?.cmd).toBe(process.execPath);
-    const callArgs = calls[0]?.args ?? [];
-    expect(callArgs[callArgs.length - 1]).toBe('ui');
-  });
-
-  test('passes detached + ignore stdio + cwd to spawn', () => {
-    const calls: Array<{ opts: { detached?: boolean; cwd?: string; stdio?: unknown[] } }> = [];
-    spawnOkUi({
-      lockDir,
-      cwd: tmpDir,
-      spawn: ((_cmd: string, _args: readonly string[], opts: object) => {
-        calls.push({ opts: opts as never });
-        return { unref: () => {}, on: () => {}, kill: () => {} } as unknown as ReturnType<
-          typeof spawnOkUi
-        >;
-      }) as never,
-    });
-
-    const opts = calls[0]?.opts;
-    expect(opts?.detached).toBe(true);
-    expect(opts?.cwd).toBe(tmpDir);
-    expect(Array.isArray(opts?.stdio)).toBe(true);
-    expect(opts?.stdio?.[0]).toBe('ignore');
-    expect(opts?.stdio?.[1]).toBe('ignore');
-    // The third stdio entry is a numeric file descriptor.
-    expect(typeof opts?.stdio?.[2]).toBe('number');
-  });
-
-  test('honors custom args (e.g. testable arg list)', () => {
-    const calls: Array<{ args: readonly string[] }> = [];
-    spawnOkUi({
-      lockDir,
-      cwd: tmpDir,
-      args: ['ui', '--port', '9999'],
-      spawn: ((_cmd: string, args: readonly string[]) => {
-        calls.push({ args });
-        return { unref: () => {}, on: () => {}, kill: () => {} } as unknown as ReturnType<
-          typeof spawnOkUi
-        >;
-      }) as never,
-    });
-    // Re-exec mode (self-spawn.ts): args[0] is the CLI entry script, followed
-    // by the subcommand args in order.
-    expect(calls[0]?.args.slice(-3)).toEqual(['ui', '--port', '9999']);
-  });
-
-  test('strips PORT env from the spawned child (QA-007 — prevents same-port bind race)', () => {
-    const originalPort = process.env.PORT;
-    try {
-      process.env.PORT = '51234';
-      const calls: Array<{ env: NodeJS.ProcessEnv | undefined }> = [];
-      spawnOkUi({
-        lockDir,
-        cwd: tmpDir,
-        spawn: ((_cmd: string, _args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
-          calls.push({ env: options.env });
-          return {
-            unref: () => {},
-            on: () => {},
-            kill: () => {},
-          } as unknown as ReturnType<typeof spawnOkUi>;
-        }) as never,
-      });
-
-      const childEnv = calls[0]?.env;
-      expect(childEnv).toBeDefined();
-      // PORT must be stripped so the child does NOT inherit the parent's
-      // bind port — otherwise both processes race to bind the same port.
-      expect(childEnv?.PORT).toBeUndefined();
-      // Other env vars propagate normally so the child can locate npx,
-      // node, HOME, etc.
-      expect(typeof childEnv?.PATH).toBe('string');
-      // Explicit `'1'` keeps Electron's CLI bin in Node mode under the
-      // packaged-app spawn path; silent reversion would re-introduce the
-      // Dock-tile leak.
-      expect(childEnv?.ELECTRON_RUN_AS_NODE).toBe('1');
-    } finally {
-      if (originalPort === undefined) {
-        delete process.env.PORT;
-      } else {
-        process.env.PORT = originalPort;
-      }
-    }
-  });
-
-  test('truncates last-spawn-error.log on each invocation', () => {
-    const errorLog = join(lockDir, 'last-spawn-error.log');
-    mkdirSync(lockDir, { recursive: true });
-    writeFileSync(errorLog, 'previous run error\n', 'utf-8');
-    expect(readFileSync(errorLog, 'utf-8')).toBe('previous run error\n');
-
-    spawnOkUi({
-      lockDir,
-      cwd: tmpDir,
-      spawn: ((_cmd: string, _args: readonly string[]) =>
-        ({ unref: () => {}, on: () => {}, kill: () => {} }) as unknown as ReturnType<
-          typeof spawnOkUi
-        >) as never,
-    });
-
-    expect(readFileSync(errorLog, 'utf-8')).toBe('');
-  });
-});
-
 // ----------------------------------------------------------------------------
 // bootStartServer (integration)
 // ----------------------------------------------------------------------------
@@ -775,45 +346,18 @@ function fetchText(
   });
 }
 
-describe('resolveCollabPort (collab vs UI-sibling port suppression)', () => {
+describe('resolveCollabPort (env PORT suppression)', () => {
   test('explicit --port always wins', () => {
-    expect(resolveCollabPort(5000, 6000, 39848)).toBe(5000);
-    expect(resolveCollabPort(5000, undefined, undefined)).toBe(5000);
+    expect(resolveCollabPort(4111, 5555, true)).toBe(4111);
+    expect(resolveCollabPort(4111, 5555, false)).toBe(4111);
   });
-  test('with --ui-port set, env PORT is suppressed (collab kernel-allocates)', () => {
-    expect(resolveCollabPort(undefined, 39848, 39848)).toBeUndefined();
-    expect(resolveCollabPort(undefined, 6000, 39848)).toBeUndefined();
-  });
-  test('without --ui-port, env PORT flows through to the collab server', () => {
-    expect(resolveCollabPort(undefined, 6000, undefined)).toBe(6000);
-  });
-  test('nothing set → undefined (kernel-allocated)', () => {
-    expect(resolveCollabPort(undefined, undefined, undefined)).toBeUndefined();
-  });
-  test('with remote enabled, platform-injected env PORT is suppressed (tunnel targets remote.port)', () => {
-    expect(resolveCollabPort(undefined, 6000, undefined, true)).toBeUndefined();
-  });
-  test('with remote enabled, explicit --port still wins (deliberate override)', () => {
-    expect(resolveCollabPort(5000, 6000, undefined, true)).toBe(5000);
-  });
-  test('with remote enabled and nothing else set → undefined (caller falls back to remote.port)', () => {
-    expect(resolveCollabPort(undefined, undefined, undefined, true)).toBeUndefined();
-  });
-});
 
-describe('shouldConnectToExistingServer (main-checkout connect guard)', () => {
-  test('true only when --ui-port set AND a live server.lock exists', () => {
-    expect(shouldConnectToExistingServer(39848, { port: 49530 })).toBe(true);
+  test('env PORT flows through for a plain local start', () => {
+    expect(resolveCollabPort(undefined, 5555, false)).toBe(5555);
   });
-  test('false without --ui-port (plain terminal `ok start` keeps boot/exit-1)', () => {
-    expect(shouldConnectToExistingServer(undefined, { port: 49530 })).toBe(false);
-  });
-  test('false when no live server (fresh worktree → boot)', () => {
-    expect(shouldConnectToExistingServer(39848, null)).toBe(false);
-    expect(shouldConnectToExistingServer(39848, { port: 0 })).toBe(false);
-  });
-  test('false for a draining server (teardown in progress — boot path waits it out)', () => {
-    expect(shouldConnectToExistingServer(39848, { port: 49530, draining: true })).toBe(false);
+
+  test('remote mode drops env PORT (PaaS edge-proxy injection)', () => {
+    expect(resolveCollabPort(undefined, 5555, true)).toBeUndefined();
   });
 });
 
@@ -895,24 +439,6 @@ describe('withIdleShutdownProcessExit (idle-path zombie prevention)', () => {
   });
 });
 
-describe('computeConnectExitCode (connect-sibling exit mapping)', () => {
-  test('clean numeric exit passes through', () => {
-    expect(computeConnectExitCode(0, null, false)).toBe(0);
-    expect(computeConnectExitCode(3, null, false)).toBe(3);
-  });
-  test('forwarded teardown (intentional signal) → 0', () => {
-    expect(computeConnectExitCode(null, 'SIGTERM', true)).toBe(0);
-    expect(computeConnectExitCode(null, 'SIGINT', true)).toBe(0);
-  });
-  test('unexpected signal death (external kill) → 1', () => {
-    expect(computeConnectExitCode(null, 'SIGKILL', false)).toBe(1);
-    expect(computeConnectExitCode(null, 'SIGTERM', false)).toBe(1);
-  });
-  test('null code with no signal → 0 (defensive)', () => {
-    expect(computeConnectExitCode(null, null, false)).toBe(0);
-  });
-});
-
 describe('isServerLockCollision (D1/C3 gate)', () => {
   class FakeServerLockErr extends Error {}
   const fakeModule = {
@@ -929,99 +455,6 @@ describe('isServerLockCollision (D1/C3 gate)', () => {
   test('false (never throws) when the module lacks the class export', () => {
     const empty = {} as unknown as typeof import('@inkeep/open-knowledge-server');
     expect(isServerLockCollision(new Error('boom'), empty)).toBe(false);
-  });
-});
-
-describe('connectUiSibling (D1/C3 connect fallback)', () => {
-  // A minimal ChildProcess stand-in. `exit` fires `(code, signal)` and `error`
-  // fires `(err)` asynchronously so the awaited promise resolves. Exactly one of
-  // `code`/`signal`/`error` shapes the outcome under test.
-  function fakeChild(
-    opts: { code?: number | null; signal?: NodeJS.Signals | null; error?: Error } = {},
-  ) {
-    return {
-      on(ev: string, cb: (...args: unknown[]) => void) {
-        if (ev === 'exit' && opts.error === undefined) {
-          queueMicrotask(() => cb(opts.code ?? null, opts.signal ?? null));
-        }
-        if (ev === 'error' && opts.error !== undefined) {
-          queueMicrotask(() => cb(opts.error));
-        }
-        return this;
-      },
-      kill() {},
-      unref() {},
-    };
-  }
-
-  test('spawns `ok ui --port <P>` foreground (stdio inherit, ELECTRON_RUN_AS_NODE, PORT stripped)', async () => {
-    const calls: Array<{
-      cmd: string;
-      args: readonly string[];
-      opts: { stdio?: unknown; cwd?: string; env?: NodeJS.ProcessEnv };
-    }> = [];
-    const fakeSpawn = ((cmd: string, args: readonly string[], opts: object) => {
-      calls.push({ cmd, args, opts: opts as never });
-      return fakeChild({ code: 0 });
-    }) as never;
-
-    const prevPort = process.env.PORT;
-    process.env.PORT = '51234';
-    try {
-      await connectUiSibling({ cwd: '/tmp/wt', uiPort: 39848, spawn: fakeSpawn });
-    } finally {
-      if (prevPort === undefined) delete process.env.PORT;
-      else process.env.PORT = prevPort;
-    }
-
-    expect(calls.length).toBe(1);
-    // Re-exec via the current CLI binary (self-spawn.ts), same as spawnOkUi.
-    expect(calls[0]?.cmd).toBe(process.execPath);
-    expect(calls[0]?.args.slice(-3)).toEqual(['ui', '--port', '39848']);
-    // Foreground-tied: stdio inherited (NOT detached) so the pane keeps watching
-    // this `ok start` process while the child serves/proxies the UI.
-    expect(calls[0]?.opts.stdio).toBe('inherit');
-    expect(calls[0]?.opts.cwd).toBe('/tmp/wt');
-    expect(calls[0]?.opts.env?.ELECTRON_RUN_AS_NODE).toBe('1');
-    // PORT stripped so the child resolves its port from `--port`, not the env.
-    expect(calls[0]?.opts.env?.PORT).toBeUndefined();
-  });
-
-  test('propagates a clean numeric child exit code to process.exitCode', async () => {
-    const prev = process.exitCode;
-    try {
-      const fakeSpawn = (() => fakeChild({ code: 3 })) as never;
-      await connectUiSibling({ cwd: '/tmp/wt', uiPort: 5173, spawn: fakeSpawn });
-      expect(process.exitCode).toBe(3);
-    } finally {
-      process.exitCode = prev;
-    }
-  });
-
-  test('maps an UNEXPECTED signal death (no forwarded teardown) to exit 1', async () => {
-    const prev = process.exitCode;
-    process.exitCode = 0;
-    try {
-      // No SIGINT/SIGTERM forwarded → forwardedShutdown stays false → an external
-      // SIGKILL (code null, signal set) surfaces as failure rather than success.
-      const fakeSpawn = (() => fakeChild({ code: null, signal: 'SIGKILL' })) as never;
-      await connectUiSibling({ cwd: '/tmp/wt', uiPort: 5173, spawn: fakeSpawn });
-      expect(process.exitCode).toBe(1);
-    } finally {
-      process.exitCode = prev;
-    }
-  });
-
-  test('maps a spawn `error` event to exit 1', async () => {
-    const prev = process.exitCode;
-    process.exitCode = 0;
-    try {
-      const fakeSpawn = (() => fakeChild({ error: new Error('ENOENT') })) as never;
-      await connectUiSibling({ cwd: '/tmp/wt', uiPort: 5173, spawn: fakeSpawn });
-      expect(process.exitCode).toBe(1);
-    } finally {
-      process.exitCode = prev;
-    }
   });
 });
 
@@ -1071,7 +504,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       // PinoLogger is silent in NODE_ENV=test by default; no override needed.
     });
     const res = await fetchText(booted.port, '/');
@@ -1082,7 +514,7 @@ describe('bootStartServer (integration)', () => {
     expect(body.type).toBe('urn:ok:error:not-found');
     expect(body.title).toBe('Not found.');
     expect(body.status).toBe(404);
-    expect(body.detail).toContain('React UI is served by `ok ui`');
+    expect(body.detail).toContain('This server is running without the web UI');
     expect(body.detail).toContain('/');
   });
 
@@ -1098,7 +530,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       idleThresholdMs: null,
     });
     expect(booted.port).toBeGreaterThan(0);
@@ -1114,7 +545,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       // PinoLogger is silent in NODE_ENV=test by default; no override needed.
     });
     const res = await fetchText(booted.port, '/assets/main-abcdef.js');
@@ -1123,7 +553,7 @@ describe('bootStartServer (integration)', () => {
     const body = JSON.parse(res.body);
     expect(body.type).toBe('urn:ok:error:not-found');
     expect(body.title).toBe('Not found.');
-    expect(body.detail).toContain('React UI is served by `ok ui`');
+    expect(body.detail).toContain('This server is running without the web UI');
     expect(body.detail).toContain('/assets/main-abcdef.js');
   });
 
@@ -1133,7 +563,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       // PinoLogger is silent in NODE_ENV=test by default; no override needed.
     });
     await booted.ready;
@@ -1141,7 +570,7 @@ describe('bootStartServer (integration)', () => {
     // /api/document is the canonical health-check endpoint exposed by the API
     // extension. The exact response body depends on persistence's docName
     // semantics, but importantly the response MUST NOT be the
-    // 'React UI is served by `ok ui`' pointer — that would mean the request
+    // 'This server is running without the web UI' pointer — that would mean the request
     // fell through to the catch-all branch instead of hitting the API hook.
     const res = await fetchText(booted.port, '/api/document?docName=integration-test-doc');
     if (res.body.length > 0 && res.headers['content-type']?.toString().includes('json')) {
@@ -1153,7 +582,7 @@ describe('bootStartServer (integration)', () => {
         }
       })();
       if (parsed && typeof parsed.error === 'string') {
-        expect(parsed.error).not.toContain('React UI is served by `ok ui`');
+        expect(parsed.error).not.toContain('This server is running without the web UI');
       }
     }
     // Status is whatever the API extension chose — we accept 200, 404, or any
@@ -1168,7 +597,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       // PinoLogger is silent in NODE_ENV=test by default; no override needed.
     });
     await booted.ready;
@@ -1185,142 +613,12 @@ describe('bootStartServer (integration)', () => {
     expect(body.detail).toContain('/api/totally-nonexistent-xyz');
   });
 
-  test('auto-spawn ok ui when ui.lock absent — invokes spawn with correct args', async () => {
-    const spawnCalls: Array<{ cmd: string; args: readonly string[] }> = [];
-    const fakeSpawn: typeof NativeSpawn = ((cmd: string, args: readonly string[]) => {
-      spawnCalls.push({ cmd, args });
-      return {
-        unref: () => {},
-        on: () => {},
-        kill: () => {},
-      } as unknown as ReturnType<typeof NativeSpawn>;
-    }) as never;
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      // Note: skipUiAutoSpawn is intentionally false — we WANT the spawn to fire.
-      spawn: fakeSpawn,
-      // PinoLogger is silent in NODE_ENV=test by default; no override needed.
-    });
-
-    expect(spawnCalls.length).toBe(1);
-    // Re-exec via the current CLI binary (not npx) — see self-spawn.ts.
-    expect(spawnCalls[0]?.cmd).toBe(process.execPath);
-    const spawnCallArgs = spawnCalls[0]?.args ?? [];
-    expect(spawnCallArgs[spawnCallArgs.length - 1]).toBe('ui');
-    expect(booted.uiSpawnDecision).toEqual({ action: 'spawn', reason: 'absent' });
-  });
-
-  test('threads uiPort into the ok ui sibling spawn args (worktree-preview core)', async () => {
-    // The whole worktree-preview feature hinges on this: `--ui-port` must reach
-    // the auto-spawned `ok ui` as `['ui', '--port', '<P>']`, else the pane
-    // watches a port nobody is serving on.
-    const spawnCalls: Array<{ args: readonly string[] }> = [];
-    const fakeSpawn: typeof NativeSpawn = ((_cmd: string, args: readonly string[]) => {
-      spawnCalls.push({ args });
-      return {
-        unref: () => {},
-        on: () => {},
-        kill: () => {},
-      } as unknown as ReturnType<typeof NativeSpawn>;
-    }) as never;
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      uiPort: 39848,
-      spawn: fakeSpawn,
-    });
-
-    expect(spawnCalls.length).toBe(1);
-    expect(spawnCalls[0]?.args.slice(-3)).toEqual(['ui', '--port', '39848']);
-  });
-
-  test('skip auto-spawn when ui.lock alive (idempotent re-acquire path)', async () => {
-    // Pre-populate ui.lock with the test process' own pid (which is alive).
-    // process-lock treats same-pid as idempotent, so this simulates a
-    // pre-existing live UI sibling without actually spawning one.
-    const lockDir = join(tmpDir, '.ok', LOCAL_DIR);
-    mkdirSync(lockDir, { recursive: true });
-    writeFileSync(
-      join(lockDir, 'ui.lock'),
-      JSON.stringify({
-        pid: process.pid,
-        hostname: hostname(),
-        port: 9876,
-        startedAt: new Date().toISOString(),
-        worktreeRoot: tmpDir,
-      }),
-    );
-
-    const spawnCalls: Array<{ cmd: string }> = [];
-    const fakeSpawn: typeof NativeSpawn = ((cmd: string) => {
-      spawnCalls.push({ cmd });
-      return {
-        unref: () => {},
-        on: () => {},
-        kill: () => {},
-      } as unknown as ReturnType<typeof NativeSpawn>;
-    }) as never;
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      spawn: fakeSpawn,
-      // PinoLogger is silent in NODE_ENV=test by default; no override needed.
-    });
-
-    expect(spawnCalls.length).toBe(0);
-    expect(booted.uiSpawnDecision).toEqual({
-      action: 'skip',
-      reason: 'alive',
-      pid: process.pid,
-      port: 9876,
-    });
-  });
-
-  test('skipUiAutoSpawn=true bypasses spawn even when ui.lock is absent', async () => {
-    const spawnCalls: Array<{ cmd: string }> = [];
-    const fakeSpawn: typeof NativeSpawn = ((cmd: string) => {
-      spawnCalls.push({ cmd });
-      return {
-        unref: () => {},
-        on: () => {},
-        kill: () => {},
-      } as unknown as ReturnType<typeof NativeSpawn>;
-    }) as never;
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      skipUiAutoSpawn: true,
-      spawn: fakeSpawn,
-      // PinoLogger is silent in NODE_ENV=test by default; no override needed.
-    });
-
-    expect(spawnCalls.length).toBe(0);
-    // Decision is still 'spawn(absent)' — the gate is only on the ACTION,
-    // not the decision. This lets the booted handle still report what would
-    // have been done (useful for tests + potentially for `ok status`).
-    expect(booted.uiSpawnDecision).toEqual({ action: 'spawn', reason: 'absent' });
-  });
-
   test('destroy() is idempotent — second call is a no-op', async () => {
     booted = await bootStartServer({
       config: makeTestConfig(),
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       // PinoLogger is silent in NODE_ENV=test by default; no override needed.
     });
     await booted.destroy();
@@ -1335,7 +633,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       // PinoLogger is silent in NODE_ENV=test by default; no override needed.
     });
     expect(booted.port).toBeGreaterThan(0);
@@ -1356,7 +653,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
     });
 
     const ws = new WebSocket(`ws://127.0.0.1:${booted.port}/collab/keepalive?pid=${process.pid}`);
@@ -1391,7 +687,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       repairMcpConfigsFn: (opts) => {
         captured.push(opts as { projectDir: string });
       },
@@ -1408,7 +703,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       repairMcpConfigsFn: () => {
         throw new Error('synthetic repair failure');
       },
@@ -1423,7 +717,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       repairLaunchJsonFn: (opts) => {
         captured.push(opts as { projectDir: string });
       },
@@ -1439,7 +732,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       repairLaunchJsonFn: () => {
         throw new Error('synthetic launch-json repair failure');
       },
@@ -1454,7 +746,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       repairSkillsFn: async (opts) => {
         captured.push(opts as { projectDir: string; reclaimDisableEnv: string | null });
       },
@@ -1469,7 +760,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       repairSkillsFn: () => {
         throw new Error('synthetic skill repair failure');
       },
@@ -1489,7 +779,6 @@ describe('bootStartServer (integration)', () => {
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: true,
-        skipUiAutoSpawn: true,
         repairMcpConfigsFn: (opts) => {
           mcpCaptures.push(opts as { reclaimDisableEnv: string | null });
         },
@@ -1520,7 +809,6 @@ describe('bootStartServer (integration)', () => {
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: true,
-        skipUiAutoSpawn: true,
         repairMcpConfigsFn: (opts) => {
           captured.push(opts as { reclaimDisableEnv: string | null });
         },
@@ -1554,7 +842,6 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
     });
 
     const res = await fetchText(booted.port, '/specs/nested/mockup.png');
@@ -1567,7 +854,7 @@ describe('bootStartServer (integration)', () => {
 
   test('serveContentAssets: false — content paths return the SPA-pointer 404', async () => {
     // Explicit opt-out: no /<contentDir-relative> middleware, so the request
-    // falls through to the "React UI is served by `ok ui`" pointer.
+    // falls through to the "This server is running without the web UI" pointer.
     writeFileSync(join(tmpDir, 'fixture-asset.png'), 'fake-png-bytes', 'utf-8');
 
     booted = await bootStartServer({
@@ -1575,17 +862,16 @@ describe('bootStartServer (integration)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: true,
-      skipUiAutoSpawn: true,
       serveContentAssets: false,
     });
 
     const res = await fetchText(booted.port, '/fixture-asset.png');
     expect(res.status).toBe(404);
     const body = JSON.parse(res.body);
-    expect(body.detail).toContain('React UI is served by `ok ui`');
+    expect(body.detail).toContain('This server is running without the web UI');
   });
 
-  test('reactShellDistDir — server serves the shell on /, auto-suppresses ok ui sibling', async () => {
+  test('reactShellDistDir — server serves the shell on /', async () => {
     // Build a synthetic React-shell dist: just an index.html that sirv
     // (with single: true) serves on / and as the SPA fallback for unknown
     // routes.
@@ -1611,7 +897,7 @@ describe('bootStartServer (integration)', () => {
         skipAutoInit: true,
         // Intentionally NOT skipping UI auto-spawn — the point of this test
         // is that --react-shell-dist-dir suppresses the sibling spawn
-        // automatically, regardless of skipUiAutoSpawn.
+        // automatically.
         spawn: fakeSpawn,
         reactShellDistDir: shellDir,
       });
@@ -1657,7 +943,6 @@ describe('bootStartServer (integration)', () => {
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: true,
-        skipUiAutoSpawn: true,
         serveContentAssets: true,
         reactShellDistDir: shellDir,
       });
@@ -1719,7 +1004,6 @@ describe('bootStartServer — no auto git-init from ok start (US-004)', () => {
       cwd: tmpDir,
       host: TEST_HOST,
       skipAutoInit: false,
-      skipUiAutoSpawn: true,
     });
 
     // ok start never runs git init — .git/HEAD must not exist
@@ -1735,7 +1019,6 @@ describe('bootStartServer — no auto git-init from ok start (US-004)', () => {
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: false,
-        skipUiAutoSpawn: true,
       });
       // The shadow-repo init runs in async boot (`initAsync`); `degraded` is only
       // stable after `ready` resolves. Await it while PATH is still narrowed so
@@ -1784,7 +1067,6 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: false,
-        skipUiAutoSpawn: true,
       }),
     ).rejects.toBeInstanceOf(OkDirMissingError);
   });
@@ -1796,7 +1078,6 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: false,
-        skipUiAutoSpawn: true,
       }),
     ).rejects.toThrow('ok init');
 
@@ -1811,7 +1092,6 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: false,
-        skipUiAutoSpawn: true,
       }),
     ).rejects.toBeInstanceOf(OkDirMissingError);
     expect(existsSync(join(tmpDir, '.ok', 'config.yml'))).toBe(false);
@@ -1828,7 +1108,6 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: false,
-        skipUiAutoSpawn: true,
       }),
     ).rejects.toBeInstanceOf(OkDirMissingError);
     expect(existsSync(join(tmpDir, '.ok', 'config.yml'))).toBe(false);
@@ -1849,303 +1128,11 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
         cwd: tmpDir,
         host: TEST_HOST,
         skipAutoInit: true,
-        skipUiAutoSpawn: true,
       });
       expect(booted.port).toBeGreaterThan(0);
     } finally {
       if (booted) await booted.destroy();
     }
-  });
-});
-
-// ----------------------------------------------------------------------------
-// awaitUiSiblingPort — pure poll helper
-// ----------------------------------------------------------------------------
-
-describe('awaitUiSiblingPort', () => {
-  test('returns the bound port immediately when ui.lock has port > 0 on first read', async () => {
-    const port = await awaitUiSiblingPort({
-      readUiLock: () => ({ port: 51887 }),
-      // `now` stays constant — the first read returns a good value so the
-      // loop exits before the deadline is re-checked.
-      now: () => 0,
-      sleep: async () => {},
-      timeoutMs: 3000,
-      pollIntervalMs: 50,
-    });
-    expect(port).toBe(51887);
-  });
-
-  test('returns null when the lock never populates before the timeout', async () => {
-    let t = 0;
-    const port = await awaitUiSiblingPort({
-      readUiLock: () => null,
-      now: () => t,
-      // Virtual clock: every sleep advances `t` by exactly its duration, so
-      // the poll deterministically hits the deadline in a bounded number of
-      // iterations without any real wall-clock wait.
-      sleep: async (ms) => {
-        t += ms;
-      },
-      timeoutMs: 200,
-      pollIntervalMs: 50,
-    });
-    expect(port).toBeNull();
-  });
-
-  test('skips port=0 sentinel (child is binding) and returns once port > 0', async () => {
-    let t = 0;
-    let reads = 0;
-    const port = await awaitUiSiblingPort({
-      readUiLock: () => {
-        reads++;
-        if (reads === 1) return null; //                lock not written yet
-        if (reads === 2) return { port: 0 }; //         acquired, not bound
-        return { port: 9999 }; //                        bound
-      },
-      now: () => t,
-      sleep: async (ms) => {
-        t += ms;
-      },
-      timeoutMs: 1000,
-      pollIntervalMs: 50,
-    });
-    expect(port).toBe(9999);
-    expect(reads).toBeGreaterThanOrEqual(3);
-  });
-
-  test('reads once more after the loop exits, catching a lock that lands in the grace window', async () => {
-    let t = 0;
-    let reads = 0;
-    const port = await awaitUiSiblingPort({
-      readUiLock: () => {
-        reads++;
-        // First two reads in-loop return null; after the deadline check
-        // exits the loop the post-loop read sees the populated lock.
-        return reads >= 3 ? { port: 4444 } : null;
-      },
-      now: () => t,
-      sleep: async (ms) => {
-        t += ms;
-      },
-      // Loop runs ~twice (50ms sleeps vs 100ms budget), then falls through
-      // to the final read which returns the populated lock.
-      timeoutMs: 100,
-      pollIntervalMs: 50,
-    });
-    expect(port).toBe(4444);
-  });
-});
-
-// ----------------------------------------------------------------------------
-// Regression: "unable to get any documents to load" on packaged CLI
-// ----------------------------------------------------------------------------
-//
-// running
-//     $ bun run packages/cli/dist/cli.mjs start
-// produced a banner pointing the user at http://localhost:3000, but
-// nothing listened there. Documents never loaded because the React app
-// never loaded.
-//
-// Empirical repro:
-//   1. ok start auto-spawns ok ui via `spawnOkUi`, which strips PORT from
-//      the child env. The child resolves its bind port via
-//      `resolveRequestedPort` → undefined flag + undefined env → 0 (
-//      default, kernel-allocated).
-//   2. Kernel assigns a free port to ok ui (e.g. 54281) and writes it to
-//      `<contentDir>/.ok/local/ui.lock`.
-//   3. Meanwhile ok start's banner had hardcoded port 3000 on the spawn
-//      branch — leftover from before changed ok ui's default to 0.
-//   4. Banner prints http://localhost:3000; user follows it; ECONNREFUSED.
-//
-// Fix: bootStartServer now polls `ui.lock` after spawn and exposes
-// `resolvedUiPort` on `BootedStartServer`. The banner uses that instead
-// of a hardcoded default, so the printed URL always reaches the port the
-// child actually bound (or falls back to the API URL on timeout).
-//
-// The `bun run dev` path is unaffected because the Vite plugin serves
-// everything same-origin on one port — no banner mismatch possible.
-
-describe('bootStartServer — resolvedUiPort tracks the port ok ui actually binds', () => {
-  let tmpDir: string;
-  let booted: BootedStartServer | null = null;
-  let uiHandle: UiServerHandle | null = null;
-  let originalHome: string | undefined;
-
-  beforeEach(async () => {
-    tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-start-banner-'));
-    // skipAutoInit suppresses initContent across these tests; pre-listen
-    // check requires .ok/config.yml on disk.
-    const okDir = resolve(tmpDir, '.ok');
-    mkdirSync(okDir, { recursive: true });
-    writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
-    writeFileSync(resolve(okDir, '.gitignore'), '', 'utf-8');
-    // Isolate HOME so the MCP repair sweep targets an empty tempdir.
-    originalHome = process.env.HOME;
-    process.env.HOME = tmpDir;
-    booted = null;
-    uiHandle = null;
-  });
-
-  afterEach(async () => {
-    if (booted) {
-      try {
-        await booted.destroy();
-      } catch {
-        // idempotent
-      }
-      booted = null;
-    }
-    if (uiHandle) {
-      uiHandle.release();
-      await closeHttpServers(uiHandle.httpServers);
-      uiHandle = null;
-    }
-    if (originalHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = originalHome;
-    }
-    await rm(tmpDir, { recursive: true, force: true });
-  });
-
-  test('auto-spawn path: resolvedUiPort matches the in-process ok ui that the fake spawn brought up', async () => {
-    // Simulate the production detached-spawn flow hermetically: the `spawn`
-    // hook, instead of execing a real `ok ui` subprocess, fires up ok ui
-    // IN-PROCESS against the same lockDir. The in-process UI writes ui.lock
-    // with a kernel-assigned port (default), so bootStartServer's new
-    // `awaitUiSiblingPort` poll sees a real port appear.
-    const cfg = ConfigSchema.parse({});
-    const fakeSpawn: typeof NativeSpawn = ((_cmd: string, args: readonly string[]) => {
-      const lastArg = args[args.length - 1];
-      if (lastArg === 'ui') {
-        // Fire-and-forget — production spawn also returns immediately and
-        // the child binds asynchronously. We record the handle so afterEach
-        // can tear it down.
-        void startUiServer({
-          config: cfg,
-          cwd: tmpDir,
-          port: 0,
-          host: '127.0.0.1',
-          safetyNetMs: 0,
-        }).then((handle) => {
-          uiHandle = handle;
-        });
-      }
-      return {
-        unref: () => {},
-        on: () => {},
-        kill: () => {},
-      } as unknown as ReturnType<typeof NativeSpawn>;
-    }) as never;
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      spawn: fakeSpawn,
-      // Generous timeout in case the CI event loop is under load — typical
-      // in-process bind is <50 ms.
-      uiBindTimeoutMs: 10_000,
-    });
-
-    expect(booted.uiSpawnDecision).toEqual({ action: 'spawn', reason: 'absent' });
-    expect(booted.resolvedUiPort).not.toBeNull();
-    expect(booted.resolvedUiPort).not.toBe(3000);
-    // Wait for the fire-and-forget in-process UI handle to settle so
-    // afterEach can tear it down; also lets us cross-check ports. The
-    // explicit deadline produces a specific failure message if the handle
-    // never populates, instead of relying on Bun's generic test timeout.
-    const handleDeadline = Date.now() + 5_000;
-    while (uiHandle === null) {
-      if (Date.now() > handleDeadline) {
-        throw new Error('in-process UI handle never settled within 5s');
-      }
-      await wait(10);
-    }
-    expect(booted.resolvedUiPort).toBe(uiHandle.port);
-
-    // End-to-end proof: the port bootStartServer reports as `resolvedUiPort`
-    // is a working UI — /api/config returns the shape the React app boots
-    // from. This is the invariant the banner URL depends on.
-    const configRes = await fetch(`http://127.0.0.1:${booted.resolvedUiPort}/api/config`);
-    expect(configRes.status).toBe(200);
-    const configBody = (await configRes.json()) as { port: number };
-    expect(configBody.port).toBe(booted.resolvedUiPort);
-  });
-
-  test('skip path: resolvedUiPort reflects the pre-existing ok ui lock port', async () => {
-    // Pre-populate ui.lock with a live pid (this process) + a non-zero port.
-    // decideUiSpawn returns {action: 'skip', ...} and bootStartServer
-    // short-circuits the poll, using the lock's port directly.
-    const lockDir = join(tmpDir, '.ok', LOCAL_DIR);
-    mkdirSync(lockDir, { recursive: true });
-    writeFileSync(
-      join(lockDir, 'ui.lock'),
-      JSON.stringify({
-        pid: process.pid,
-        hostname: hostname(),
-        port: 57890,
-        startedAt: new Date().toISOString(),
-        worktreeRoot: tmpDir,
-      }),
-    );
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-    });
-
-    expect(booted.uiSpawnDecision).toEqual({
-      action: 'skip',
-      reason: 'alive',
-      pid: process.pid,
-      port: 57890,
-    });
-    expect(booted.resolvedUiPort).toBe(57890);
-  });
-
-  test('spawn-skipped path: resolvedUiPort is null when skipUiAutoSpawn=true and no prior sibling', async () => {
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      skipUiAutoSpawn: true,
-    });
-
-    // Decision is still 'spawn(absent)' — the gate is only on the ACTION —
-    // but no UI was actually started, so there's no port to report.
-    expect(booted.uiSpawnDecision).toEqual({ action: 'spawn', reason: 'absent' });
-    expect(booted.resolvedUiPort).toBeNull();
-  });
-
-  test('timeout path: resolvedUiPort is null when the spawned UI never binds in time', async () => {
-    // The fake spawn never starts an in-process UI, so ui.lock never gains
-    // a port. bootStartServer's poll should give up cleanly and report null
-    // — the banner falls back to the API URL.
-    const silentSpawn: typeof NativeSpawn = ((_cmd: string, _args: readonly string[]) => {
-      return {
-        unref: () => {},
-        on: () => {},
-        kill: () => {},
-      } as unknown as ReturnType<typeof NativeSpawn>;
-    }) as never;
-
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      spawn: silentSpawn,
-      uiBindTimeoutMs: 200,
-    });
-
-    expect(booted.uiSpawnDecision).toEqual({ action: 'spawn', reason: 'absent' });
-    expect(booted.resolvedUiPort).toBeNull();
   });
 });
 
@@ -2443,8 +1430,6 @@ describe('resolveStartShellDir (the Wave 3 default-flip decision)', () => {
       resolveStartShellDir({
         explicitDir: undefined,
         only: undefined,
-        uiPortSet: false,
-        remoteEnabled: false,
         findBundledDir: bundled,
       }),
     ).toEqual({ dir: '/bundled/dist', missingBundle: false });
@@ -2455,8 +1440,6 @@ describe('resolveStartShellDir (the Wave 3 default-flip decision)', () => {
       resolveStartShellDir({
         explicitDir: '/explicit',
         only: undefined,
-        uiPortSet: true,
-        remoteEnabled: false,
         findBundledDir: noBundle,
       }).dir,
     ).toBe('/explicit');
@@ -2467,35 +1450,9 @@ describe('resolveStartShellDir (the Wave 3 default-flip decision)', () => {
       resolveStartShellDir({
         explicitDir: undefined,
         only: 'server',
-        uiPortSet: false,
-        remoteEnabled: false,
         findBundledDir: bundled,
       }),
     ).toEqual({ dir: undefined, missingBundle: false });
-  });
-
-  test('--ui-port keeps the legacy sibling model (worktree-preview recipe)', () => {
-    expect(
-      resolveStartShellDir({
-        explicitDir: undefined,
-        only: undefined,
-        uiPortSet: true,
-        remoteEnabled: false,
-        findBundledDir: bundled,
-      }),
-    ).toEqual({ dir: undefined, missingBundle: false });
-  });
-
-  test('remote overrides the --ui-port opt-out — one tunnel covers everything', () => {
-    expect(
-      resolveStartShellDir({
-        explicitDir: undefined,
-        only: undefined,
-        uiPortSet: true,
-        remoteEnabled: true,
-        findBundledDir: bundled,
-      }).dir,
-    ).toBe('/bundled/dist');
   });
 
   test('missing bundle degrades (API/MCP-only) and is flagged for the warning', () => {
@@ -2503,8 +1460,6 @@ describe('resolveStartShellDir (the Wave 3 default-flip decision)', () => {
       resolveStartShellDir({
         explicitDir: undefined,
         only: undefined,
-        uiPortSet: false,
-        remoteEnabled: false,
         findBundledDir: noBundle,
       }),
     ).toEqual({ dir: undefined, missingBundle: true });
@@ -2534,7 +1489,6 @@ describe('shouldOpenBrowser (interactive-loopback default open)', () => {
     legacyOpen: false,
     host: '127.0.0.1',
     isTTY: true,
-    remoteEnabled: false,
     ephemeral: false,
     only: undefined,
     servesUi: true,
@@ -2980,5 +1934,16 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
     const { code, output } = await captureRemoteRefusal(['--remote', 'http://tunnel.example.com']);
     expect(code).toBe(78);
     expect(output).toContain('must be https');
+  });
+
+  test('--only ui prints the deprecation notice even on the missing --server-url refusal', async () => {
+    // Same contract as the --remote notice: the operator learns the
+    // successor spelling (`ok start`) from the same run that errors, exactly
+    // once, on stderr.
+    const { code, output } = await captureRemoteRefusal(['--only', 'ui']);
+    expect(code).toBe(2);
+    expect(output).toContain("'--only ui' requires '--server-url");
+    expect(output.split('`--only ui` is deprecated').length - 1).toBe(1);
+    expect(output).toContain('ok start');
   });
 });

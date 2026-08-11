@@ -7,31 +7,23 @@
  * the Desktop attach contract). A second `ok start` against a live server
  * reports that URL and exits 0 (spawn-or-reuse) instead of colliding.
  *
- * The legacy two-process model (`ok ui` sibling serving the shell and
- * proxying `/api` + `/collab`, advertised via `ui.lock`) survives on two
- * paths only, for the Desktop version-skew window:
- * - `--ui-port` (the worktree-preview recipe) keeps the sibling model.
- * - `ok ui` remains functional as a deprecated fallback.
- * Idle-shutdown SIGTERMs a spawned sibling before releasing our own lock.
- *
- * `--only server` suppresses the UI module entirely; `--only ui` (with
- * `--server-url`) runs just the shell-serving proxy — explicit operator
- * module selection against the same composition, never a separate topology.
+ * The legacy two-process model (an `ok ui` sibling serving the shell and
+ * proxying `/api` + `/collab`, advertised via `ui.lock`) is gone: the `ok ui`
+ * command and the sibling auto-spawn were removed once the Desktop attach
+ * re-point shipped stable. `--only server` suppresses the UI module entirely;
+ * `--only ui` (with `--server-url`) runs just the shell-serving proxy — a
+ * deprecated split-mode that retires together with ui.lock.
  *
  * The Commander action is a thin wrapper around `bootStartServer` — that
  * boot function returns a `BootedStartServer` handle (`{httpServer, destroy,
  * port, ready, ...}`) so integration tests can drive the same composed boot
  * path the CLI uses, without process-level signal coupling.
  */
-import {
-  type ChildProcess,
-  type spawn as NativeSpawn,
-  spawn as nativeSpawn,
-} from 'node:child_process';
-import { closeSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync, openSync } from 'node:fs';
+import { spawn as nativeSpawn } from 'node:child_process';
+import { existsSync as fsExistsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import type { Server as HttpServer } from 'node:http';
-import { basename, join, resolve as pathResolve } from 'node:path';
+import { basename, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   applyConfigOverlay,
@@ -45,9 +37,6 @@ import {
   resolveEnvConfigLayer,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
-  DEFAULT_SIGTERM_GRACE_MS as SHARED_DEFAULT_SIGTERM_GRACE_MS,
-  DEFAULT_SIGTERM_POLL_MS as SHARED_DEFAULT_SIGTERM_POLL_MS,
-  SPAWN_ERROR_LOG,
 } from '@inkeep/open-knowledge-core';
 import {
   type BootedServer,
@@ -68,7 +57,6 @@ import {
   launchDesktop,
   notFoundMessage,
 } from './desktop-dispatch.ts';
-import { resolveSelfSpawn } from './self-spawn.ts';
 
 /** 30 minutes — default threshold. */
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
@@ -123,24 +111,16 @@ export function resolveBundledReactShellDir(
  *
  * - an explicit `--react-shell-dist-dir` always wins;
  * - `--only server` opts out of the UI module entirely;
- * - `--ui-port` (the worktree-preview recipe) keeps the legacy sibling model
- *   until its retirement — EXCEPT under `--remote`, which always serves the
- *   shell on the tunneled port;
  * - otherwise the bundled shell is resolved and served by default. A missing
- *   bundle (source checkout without an app build) degrades to API/MCP-only —
- *   the `ok ui` sibling would be serving the same missing bundle, so falling
- *   back to it could never help.
+ *   bundle (source checkout without an app build) degrades to API/MCP-only.
  */
 export function resolveStartShellDir(input: {
   explicitDir: string | undefined;
   only: OnlyModule | undefined;
-  uiPortSet: boolean;
-  remoteEnabled: boolean;
   findBundledDir: () => string | undefined;
 }): { dir: string | undefined; missingBundle: boolean } {
   if (input.explicitDir !== undefined) return { dir: input.explicitDir, missingBundle: false };
   if (input.only === 'server') return { dir: undefined, missingBundle: false };
-  if (input.uiPortSet && !input.remoteEnabled) return { dir: undefined, missingBundle: false };
   const dir = input.findBundledDir();
   return { dir, missingBundle: dir === undefined };
 }
@@ -401,322 +381,22 @@ export class OkDirMissingError extends Error {
   }
 }
 
-export type UiSpawnDecision =
-  | { action: 'spawn'; reason: 'absent' }
-  | { action: 'spawn'; reason: 'stale'; stalePid: number }
-  | { action: 'skip'; reason: 'alive'; pid: number; port: number };
-
-interface DecideUiSpawnInput {
-  uiLock: { pid: number; port: number } | null;
-  isAlive: (pid: number) => boolean;
-}
-
-/**
- * Pure decision function. The caller feeds the current `ui.lock` contents
- * (or null) and an `isProcessAlive` probe; we return one of three verdicts.
- * No side effects — tests drive it directly without a filesystem.
- */
-export function decideUiSpawn(input: DecideUiSpawnInput): UiSpawnDecision {
-  if (!input.uiLock) return { action: 'spawn', reason: 'absent' };
-  if (!input.isAlive(input.uiLock.pid)) {
-    return { action: 'spawn', reason: 'stale', stalePid: input.uiLock.pid };
-  }
-  return { action: 'skip', reason: 'alive', pid: input.uiLock.pid, port: input.uiLock.port };
-}
-
-interface SpawnOkUiOptions {
-  lockDir: string;
-  cwd: string;
-  /** Override for tests — defaults to `node:child_process#spawn`. */
-  spawn?: typeof NativeSpawn;
-  /** Args to pass after the CLI entry — defaults to `['ui']`. */
-  args?: string[];
-}
-
-/**
- * Spawn `ok ui` as a detached sibling. Child's stderr is redirected at the
- * kernel layer to `<lockDir>/last-spawn-error.log` — matches the MCP spawn
- * template so the same log consumer can surface failures.
- *
- * Re-execs the current CLI binary rather than shelling out via
- * `npx @inkeep/open-knowledge` to avoid cross-version lockfile-ABI drift and
- * the live-registry-fetch / supply-chain surface. See `self-spawn.ts`.
- *
- * **PORT env hygiene:** the child `ok ui` resolves its bind port via
- * `--port` flag > `PORT` env > default 0 (kernel-allocated) — flag-first,
- * matching `resolveRequestedPort` and the strip note below. When `ok
- * start` itself was invoked with `PORT=<X>` (e.g. operator override), we
- * must NOT inherit that to the child — both processes would try to bind
- * the same port. Stripping `PORT` means the child falls through to its
- * default, which is kernel-allocation — each auto-spawned UI gets a
- * unique port and multi-project concurrency is mechanically true, not just
- * aspirational. If the caller needs a specific UI port, they should invoke
- * `ok ui --port <X>` directly.
- */
-export function spawnOkUi(opts: SpawnOkUiOptions): ChildProcess {
-  if (!fsExistsSync(opts.lockDir)) fsMkdirSync(opts.lockDir, { recursive: true });
-  const stderrPath = join(opts.lockDir, SPAWN_ERROR_LOG);
-  const stderrFd = openSync(stderrPath, 'w');
-  const spawnFn = opts.spawn ?? nativeSpawn;
-  const { PORT: _strippedPort, ...childEnv } = process.env;
-  const self = resolveSelfSpawn();
-  try {
-    const child = spawnFn(self.command, [...self.prefixArgs, ...(opts.args ?? ['ui'])], {
-      detached: true,
-      stdio: ['ignore', 'ignore', stderrFd],
-      windowsHide: true,
-      cwd: opts.cwd,
-      env: {
-        ...childEnv,
-        // Under the packaged .app, `self.command` is the Electron helper
-        // binary; without this flag it launches as a full Electron app
-        // (Dock-tile leak class). node/bun ignore it. Set explicitly so a
-        // future env-scrub can't silently drop the inherited value.
-        ELECTRON_RUN_AS_NODE: '1',
-      },
-    });
-    child.unref();
-    return child;
-  } finally {
-    // Child now owns the fd — close our copy so the parent does not keep it open.
-    try {
-      closeSync(stderrFd);
-    } catch {
-      // Best-effort: some mocks may not hand back a real fd.
-    }
-  }
-}
-
 /**
  * Resolve the collab server's port from the three sources, for `runStartCommand`.
- * An explicit `--port` always wins. Otherwise env `PORT` is dropped in two
- * cases: when `--ui-port` is set (the worktree-preview recipe) it is the UI
- * sibling's intended port, NOT the collab server's — drop it so the brain
- * kernel-allocates and the two can't contend; and when remote access is
- * enabled, because PaaS platforms (Railway, Fly, Render) inject `PORT` for
- * their own edge proxy — honoring it would silently move the server off the
- * stable `remote.port` the tunnel's port mapping targets, leaving the
- * tunnel dialing a dead port. Pure so both suppression rules are tested
- * directly.
+ * An explicit `--port` always wins. Otherwise env `PORT` is dropped when
+ * remote access is enabled, because PaaS platforms (Railway, Fly, Render)
+ * inject `PORT` for their own edge proxy — honoring it would silently move
+ * the server off the stable `remote.port` the tunnel's port mapping targets,
+ * leaving the tunnel dialing a dead port. Pure so the suppression rule is
+ * tested directly.
  */
 export function resolveCollabPort(
   portFromCli: number | undefined,
   portFromEnv: number | undefined,
-  requestedUiPort: number | undefined,
   remoteEnabled = false,
 ): number | undefined {
-  return portFromCli ?? (requestedUiPort !== undefined || remoteEnabled ? undefined : portFromEnv);
+  return portFromCli ?? (remoteEnabled ? undefined : portFromEnv);
 }
-
-/**
- * Should `ok start` connect to an already-live server instead of booting one?
- * True only on the worktree-preview path (`--ui-port` set) when a live
- * `server.lock` exists for this folder — the main-checkout case, where booting
- * would collide and exit 1. Pure so this safety decision is unit-tested.
- * (`readServerLock` already filters dead/cross-machine locks, so a non-null
- * `liveServer` with `port > 0` is a genuinely-live same-machine server —
- * unless it is `draining`, i.e. seconds from exit. Connecting to a draining
- * server would bind the preview to a dying backend, so fall through to the
- * boot path, whose drain-wait handles the handoff.)
- */
-export function shouldConnectToExistingServer(
-  requestedUiPort: number | undefined,
-  liveServer: { port: number; draining?: boolean } | null,
-): boolean {
-  return (
-    requestedUiPort !== undefined &&
-    liveServer !== null &&
-    liveServer.port > 0 &&
-    liveServer.draining !== true
-  );
-}
-
-/**
- * Compute `process.exitCode` for the connect-sibling child. A clean numeric exit
- * passes through; a signal death we initiated (a teardown we forwarded) is
- * intentional → 0; an unexpected signal death (external kill) → 1. Pure so both
- * the forwarded-teardown (→0) and external-kill (→1) paths are unit-tested
- * without emitting real process signals.
- */
-export function computeConnectExitCode(
-  code: number | null,
-  signal: NodeJS.Signals | null,
-  forwardedShutdown: boolean,
-): number {
-  return code ?? (signal != null && !forwardedShutdown ? 1 : 0);
-}
-
-interface ConnectUiSiblingOptions {
-  cwd: string;
-  /** Port the preview pane passed — the UI sibling is pinned to it. */
-  uiPort: number;
-  /** Override for tests — defaults to `node:child_process#spawn`. */
-  spawn?: typeof NativeSpawn;
-}
-
-/**
- * Connect fallback. When `ok start --ui-port P` finds the collab
- * server.lock already held by a live process — the main checkout (server
- * always running), or a lost TOCTOU race against a concurrent start — we must
- * NOT exit 1, because `ok start --ui-port P` is run identically in the main
- * checkout and every worktree, and a non-zero exit would break a caller that
- * expects connect-on-collision. Instead we "connect": run `ok ui --port P`
- * in this folder, exactly reproducing what the prior bare-`ok ui` recipe did.
- *
- * On main that `ok ui --port P` hits the existing UI's `ui.lock` and enters
- * proxy mode (P → the live UI's real port) — the same path that served main's
- * preview previously. The collab server it advertises via `/api/config` is the
- * already-running one, so the pane connects immediately.
- *
- * The child is foreground-tied (stdio inherited, NOT detached): the pane
- * watches THIS `ok start` process for liveness, so we stay alive until the
- * child exits and forward SIGINT/SIGTERM so the pane's teardown reaches the
- * `ok ui` proxy. Returns when the child exits; `process.exitCode` is the child's
- * numeric exit code, or 0 for a signal death we initiated (forwarded teardown),
- * or 1 for an unexpected signal death (external kill) — so a genuine `ok ui`
- * failure surfaces while normal pane teardown stays clean.
- *
- * `ok ui` honors `--port` over any inherited `PORT` env (`resolveRequestedPort`
- * checks the flag first); we strip `PORT` from the child env anyway to keep the
- * two spawn sites uniform.
- */
-export async function connectUiSibling(opts: ConnectUiSiblingOptions): Promise<void> {
-  const spawnFn = opts.spawn ?? nativeSpawn;
-  const self = resolveSelfSpawn();
-  // Strip `PORT` from the child env (mirrors spawnOkUi): we pin the UI port via
-  // the explicit `--port` flag, and `ok ui` honors `--port` over `PORT` today —
-  // stripping `PORT` keeps the two spawn sites uniform and removes any latent
-  // dependence on that flag-vs-env precedence never flipping.
-  const { PORT: _strippedPort, ...parentEnv } = process.env;
-  const child = spawnFn(self.command, [...self.prefixArgs, 'ui', '--port', String(opts.uiPort)], {
-    cwd: opts.cwd,
-    stdio: 'inherit',
-    windowsHide: true,
-    env: {
-      ...parentEnv,
-      // Mirror spawnOkUi: under the packaged .app `self.command` is the
-      // Electron helper, which needs this flag to run as plain node rather
-      // than launching a full Electron app (Dock-tile leak class).
-      ELECTRON_RUN_AS_NODE: '1',
-    },
-  });
-
-  // Track whether WE forwarded a shutdown signal so the exit handler can tell
-  // an intentional teardown from an unexpected external kill.
-  let forwardedShutdown = false;
-  const forward = (signal: NodeJS.Signals): void => {
-    forwardedShutdown = true;
-    try {
-      child.kill(signal);
-    } catch {
-      // best-effort — child may already be gone.
-    }
-  };
-  const forwardSigint = () => forward('SIGINT');
-  const forwardSigterm = () => forward('SIGTERM');
-  process.once('SIGINT', forwardSigint);
-  process.once('SIGTERM', forwardSigterm);
-
-  await new Promise<void>((done) => {
-    child.on('exit', (code, signal) => {
-      // `code` is null when the child was killed by a signal. A signal death we
-      // initiated (pane teardown → we forwarded SIGINT/SIGTERM) is intentional →
-      // exit 0. A signal death we did NOT initiate (OOM SIGKILL, a concurrent
-      // `ok stop`) is unexpected → surface as failure (1) rather than a silent
-      // success. A clean numeric exit code passes through verbatim.
-      process.exitCode = computeConnectExitCode(code, signal, forwardedShutdown);
-      done();
-    });
-    child.on('error', (err) => {
-      console.error(
-        `[start] connect fallback: failed to spawn ok ui — ${err instanceof Error ? err.message : String(err)}`,
-      );
-      process.exitCode = 1;
-      done();
-    });
-  });
-
-  process.removeListener('SIGINT', forwardSigint);
-  process.removeListener('SIGTERM', forwardSigterm);
-}
-
-interface AwaitUiSiblingPortInput {
-  /** Read the current ui.lock contents. Returns null when absent/stale. */
-  readUiLock: () => { port: number } | null;
-  /** Virtual clock. Production: `Date.now`. */
-  now: () => number;
-  /** Sleep between polls. Production: `setTimeout`-based promise. */
-  sleep: (ms: number) => Promise<void>;
-  /** Abandon the poll after this wall-clock elapses. */
-  timeoutMs: number;
-  /** Poll interval in ms. */
-  pollIntervalMs: number;
-}
-
-/**
- * Poll `ui.lock` until the spawned `ok ui` child finishes binding its port
- * (or the timeout expires). Returns the bound port, or `null` on timeout.
- *
- * The child `ok ui` writes an initial lockfile with `port: 0` when it starts
- * (sentinel for "binding"), then calls `updateUiLockPort` with the real
- * kernel-assigned port once `listen()` resolves. Port > 0 is the signal that
- * the sibling is serving requests.
- *
- * Precedent #13b (implicit time-coupling is a test smell): all time + IO deps
- * are injected so `start.test.ts` can drive the loop with a virtual clock
- * without touching the filesystem.
- */
-export async function awaitUiSiblingPort(deps: AwaitUiSiblingPortInput): Promise<number | null> {
-  const deadline = deps.now() + deps.timeoutMs;
-  while (deps.now() < deadline) {
-    const lock = deps.readUiLock();
-    if (lock && lock.port > 0) return lock.port;
-    await deps.sleep(deps.pollIntervalMs);
-  }
-  // One final read after the last sleep so a lock that appeared within the
-  // grace window isn't missed solely because we raced the deadline check.
-  const lock = deps.readUiLock();
-  if (lock && lock.port > 0) return lock.port;
-  return null;
-}
-
-interface BuildIdleShutdownHandlerInput {
-  readUiLock: () => { pid: number; port: number } | null;
-  /**
-   * Pid of the `ok ui` child THIS process spawned, or null when it spawned
-   * none (sibling reused, auto-spawn skipped, or desktop single-origin mode).
-   * The idle handler only ever signals this pid — `ui.lock` is advertisement,
-   * not ownership: a desktop-spawned server serving the React shell holds it
-   * with its OWN pid, and a stale server blindly killing the lock holder was
-   * exactly how a live server (active ACP threads, MCP sessions, keepalive)
-   * got SIGTERMed mid-session.
-   */
-  spawnedUiPid: () => number | null;
-  isAlive: (pid: number) => boolean;
-  killPid: (pid: number, signal: NodeJS.Signals) => void;
-  destroy: () => Promise<void>;
-  /** Poll `isAlive(pid)` every this many ms while waiting for SIGTERM to take. */
-  sigtermPollIntervalMs?: number;
-  /** Abandon SIGTERM and escalate to SIGKILL after this wall-clock elapses. */
-  sigtermGraceMs?: number;
-  /** Injectable sleep for deterministic tests. */
-  sleep?: (ms: number) => Promise<void>;
-  log?: {
-    info: (obj: object, msg: string) => void;
-    warn: (obj: object, msg: string) => void;
-    error: (obj: object, msg: string) => void;
-  };
-}
-
-/** 10s grace before SIGKILL escalation — long enough for a healthy UI to
- * release its lock + close sockets; short enough that a wedged UI (GC
- * pause, downstream fetch hang) doesn't stall idle-shutdown indefinitely. */
-// Re-export so existing call sites in this file continue to reference the
-// constants without an import-name churn. Sourced from the shared core
-// module so the CLI's idle-shutdown UI-sibling termination and the
-// desktop's `stopAllOwnedServers` use the same numbers.
-const DEFAULT_SIGTERM_GRACE_MS = SHARED_DEFAULT_SIGTERM_GRACE_MS;
-const DEFAULT_SIGTERM_POLL_MS = SHARED_DEFAULT_SIGTERM_POLL_MS;
 
 /**
  * Wrap an idle-shutdown handler so that, after the server is destroyed, the
@@ -829,84 +509,6 @@ export function withIdleShutdownProcessExit(
   };
 }
 
-/**
- * Signal the auto-spawned `ok ui` sibling to exit: SIGTERM, poll its liveness
- * up to `sigtermGraceMs`, then escalate to SIGKILL if it's wedged. Shared by
- * idle-shutdown and the signal-driven `ok start` teardown so BOTH honor the
- * same ownership guard — a live lock holder whose pid is not `spawnedUiPid()`
- * is left alone (see that field's docstring for the incident class this
- * prevents). `reason` prefixes the log lines to identify the calling path
- * (`idle-shutdown` | `shutdown`; defaults to `teardown` when omitted).
- * Best-effort throughout: a failed lookup/kill is logged, never thrown, so the
- * caller's own teardown (destroy / server.lock release) always proceeds.
- */
-export async function teardownUiSibling(
-  input: Omit<BuildIdleShutdownHandlerInput, 'destroy'> & { reason?: string },
-): Promise<void> {
-  const graceMs = input.sigtermGraceMs ?? DEFAULT_SIGTERM_GRACE_MS;
-  const pollMs = input.sigtermPollIntervalMs ?? DEFAULT_SIGTERM_POLL_MS;
-  const sleep = input.sleep ?? ((ms: number) => wait(ms));
-  const reason = input.reason ?? 'teardown';
-
-  try {
-    const lock = input.readUiLock();
-    const ownPid = input.spawnedUiPid();
-    if (lock && input.isAlive(lock.pid) && lock.pid !== ownPid) {
-      // The lock holder is alive but is NOT the sibling we spawned — a
-      // desktop-spawned server advertising its shell, or another session's
-      // UI. It is not ours to kill; it has its own lifecycle (idle-shutdown
-      // or the `ok ui` 12h safety net).
-      input.log?.info(
-        { pid: lock.pid, port: lock.port, spawnedUiPid: ownPid },
-        `${reason}: ui.lock holder is not our spawned sibling — leaving it alone`,
-      );
-    } else if (lock && input.isAlive(lock.pid)) {
-      try {
-        input.killPid(lock.pid, 'SIGTERM');
-        input.log?.info({ pid: lock.pid, port: lock.port }, `${reason}: SIGTERM UI sibling`);
-        // Wait up to graceMs for the UI process to exit under SIGTERM.
-        const deadline = Date.now() + graceMs;
-        while (Date.now() < deadline) {
-          if (!input.isAlive(lock.pid)) break;
-          await sleep(pollMs);
-        }
-        if (input.isAlive(lock.pid)) {
-          // Grace expired — escalate to SIGKILL. Operators see this at WARN.
-          try {
-            input.killPid(lock.pid, 'SIGKILL');
-            input.log?.warn(
-              { pid: lock.pid, graceMs },
-              `${reason}: SIGTERM grace expired — escalated to SIGKILL`,
-            );
-          } catch (err) {
-            input.log?.error({ pid: lock.pid, err }, `${reason}: SIGKILL failed`);
-          }
-        }
-      } catch (err) {
-        input.log?.warn({ pid: lock.pid, err }, `${reason}: failed to SIGTERM UI sibling`);
-      }
-    }
-  } catch (err) {
-    input.log?.warn({ err }, `${reason}: UI lookup failed; proceeding`);
-  }
-}
-
-/**
- * The idle-shutdown `onShutdown` closure: tear down the UI sibling (guarded by
- * `spawnedUiPid`), then `destroy()` — which releases `server.lock` as its final
- * step. A thin adapter over `teardownUiSibling`; the escalation logic lives
- * there.
- */
-export function buildIdleShutdownHandler(
-  input: BuildIdleShutdownHandlerInput,
-): () => Promise<void> {
-  const { destroy, ...teardown } = input;
-  return async () => {
-    await teardownUiSibling({ ...teardown, reason: 'idle-shutdown' });
-    await destroy();
-  };
-}
-
 interface BootStartServerOptions {
   config: Config;
   cwd: string;
@@ -926,18 +528,6 @@ interface BootStartServerOptions {
    */
   port?: number;
   /**
-   * Explicit UI-sibling port. When set, the auto-spawned `ok ui` sibling is
-   * pinned to this port (`ok ui --port <uiPort>`) instead of falling through
-   * to `DEFAULT_UI_PORT` / kernel-allocation. This is a SEPARATE channel from
-   * `PORT` (which `spawnOkUi` strips, to keep the collab server and its UI
-   * sibling off the same env-port) so the worktree-preview path can pin the
-   * sibling to the port the preview pane passed without that collision.
-   * Threaded straight into `spawnOkUi`'s `args` (`['ui','--port',<uiPort>]`)
-   * via the existing `opts.args ?? ['ui']` seam — `ok ui` already honors
-   * `--port` over the stripped `PORT`, so no `ok ui` change is needed.
-   */
-  uiPort?: number;
-  /**
    * When `true`, bypasses the init-required guard — `bootStartServer` will not
    * throw `OkDirMissingError` even when `.ok/config.yml` is absent. Integration
    * tests that pre-seed `.ok/config.yml` manually should still pass
@@ -945,10 +535,6 @@ interface BootStartServerOptions {
    * no-config rejection should omit this or set it to `false`.
    */
   skipAutoInit?: boolean;
-  /** Skip the auto-spawn-of-ok-ui-sibling step entirely (does not call `spawnOkUi`). */
-  skipUiAutoSpawn?: boolean;
-  /** Override for `spawnOkUi`'s underlying spawn — passed through to it. */
-  spawn?: typeof NativeSpawn;
   /** Override idle-shutdown threshold; default 30 min. `null` disables idle
    *  shutdown entirely (`--idle-shutdown off`). Tests use small values. */
   idleThresholdMs?: number | null;
@@ -971,14 +557,6 @@ interface BootStartServerOptions {
    * this — the default would take down the test runner.
    */
   idleExit?: (code: number) => void;
-  /**
-   * Max wall-clock to wait for the auto-spawned `ok ui` to bind its port
-   * (populated via `updateUiLockPort`). Default 3 000 ms — ample for a
-   * subprocess to bind on kernel-allocated port 0 + single-socket loopback.
-   * On timeout we fall back to the API URL for the banner so the user still
-   * sees something actionable.
-   */
-  uiBindTimeoutMs?: number;
   /**
    * Logger override — defaults to `getLogger('start')`. PinoLogger is
    * already silent in test mode (`NODE_ENV === 'test'` → level: 'silent'),
@@ -1023,23 +601,20 @@ interface BootStartServerOptions {
    * When `true` (the `bootServer` default), the server serves
    * content-directory assets (images/video/PDF/file attachments) at their
    * `/<contentDir-relative>` paths via `createAssetServeMiddleware` —
-   * matching the Vite dev plugin and `ok ui`. On by default so a desktop
-   * window that ATTACHES to this server (MCP-autostarted or terminal
-   * `ok start` — its renderer fetches assets from the same origin as
-   * `/api/*` and `/collab*`) renders inline images; the `ok ui` sibling
-   * still serves assets for browser mode. Forwards directly to
+   * matching the Vite dev plugin. On by default so a desktop window that
+   * ATTACHES to this server (MCP-autostarted or terminal `ok start` — its
+   * renderer fetches assets from the same origin as `/api/*` and `/collab*`)
+   * renders inline images. Forwards directly to
    * `BootServerOptions.serveContentAssets`.
    */
   serveContentAssets?: boolean;
   /**
    * Absolute path to a bundled React shell directory (Vite's `build.outDir`
    * for `@inkeep/open-knowledge-app`). When set, the server serves the
-   * shell on `/` (and `/assets/*` etc.) via sirv's SPA fallback, AND the
-   * `ok ui` sibling is auto-suppressed (the server is now self-sufficient
-   * — no second process required). The desktop passes its bundled shell
-   * path so external agent in-app browsers (Claude Desktop, Cursor) can
-   * render the UI at the same origin as `/api/*`. Forwards directly to
-   * `BootServerOptions.reactShellDistDir`.
+   * shell on `/` (and `/assets/*` etc.) via sirv's SPA fallback. The
+   * desktop passes its bundled shell path so external agent in-app browsers
+   * (Claude Desktop, Cursor) can render the UI at the same origin as
+   * `/api/*`. Forwards directly to `BootServerOptions.reactShellDistDir`.
    */
   reactShellDistDir?: string;
   /**
@@ -1080,31 +655,6 @@ export interface BootedStartServer {
   ready: Promise<void>;
   /** Subsystems that failed to initialize — read AFTER `ready` for a stable list. */
   degraded: readonly string[];
-  /** What we decided about the UI sibling at boot — for tests + status output. */
-  uiSpawnDecision: UiSpawnDecision;
-  /**
-   * Pid of the `ok ui` child THIS process spawned, or null when none was
-   * spawned (sibling reused, auto-spawn skipped, or desktop single-origin).
-   * The signal-driven teardown in `runStartCommand` passes this to
-   * `teardownUiSibling` so it only signals the sibling we own — the same
-   * ownership guard the idle-shutdown closure applies via `spawnedUiPid`.
-   */
-  spawnedUiPid: number | null;
-  /**
-   * The port `ok ui` is actually serving on, resolved end-to-end:
-   *   - `action: 'skip'` (sibling already alive) → `uiSpawnDecision.port`
-   *   - `action: 'spawn'` and the child bound within `uiBindTimeoutMs` →
-   *     the bound port (read from `ui.lock` after `updateUiLockPort`)
-   *   - `action: 'spawn'` and the child did not bind in time → `null`
-   *   - `skipUiAutoSpawn: true` on the spawn branch → `null`
-   *
-   * The banner in `startCommand` uses this instead of a hardcoded port so
-   * `http://localhost:<port>` always reaches the actually-bound UI. `ok ui`
-   * binds `DEFAULT_UI_PORT` when free and falls back to kernel-allocation
-   * on collision, so the real port is only knowable after the child binds
-   * and writes `ui.lock`.
-   */
-  resolvedUiPort: number | null;
 }
 
 /**
@@ -1114,13 +664,12 @@ export interface BootedStartServer {
  *
  * The HTTP + WebSocket + listen + lock + idle-shutdown plumbing lives in
  * `@inkeep/open-knowledge-server`'s `bootServer()`; this wrapper adds
- * CLI-specific concerns (init-required guard, resolveContentDir, UI-sibling
- * spawn via `spawnOkUi`, open-browser-on-first-agent-edit).
+ * CLI-specific concerns (init-required guard, resolveContentDir,
+ * open-browser-on-first-agent-edit).
  */
 export async function bootStartServer(opts: BootStartServerOptions): Promise<BootedStartServer> {
   const { config, cwd, host } = opts;
   const skipAutoInit = opts.skipAutoInit ?? false;
-  const skipUiAutoSpawn = opts.skipUiAutoSpawn ?? false;
   // Explicit undefined check (not `??`): `null` means "idle shutdown OFF"
   // (`--idle-shutdown off`) and must not fall back to the 30-min default.
   const idleThresholdMs =
@@ -1128,15 +677,8 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
 
   const { existsSync, mkdirSync } = await import('node:fs');
   const { basename, dirname } = await import('node:path');
-  const {
-    bootServer,
-    getLogger,
-    isProcessAlive,
-    readUiLock,
-    resolveContentDir,
-    resolveLockDir,
-    waitForServerLockDrain,
-  } = await import('@inkeep/open-knowledge-server');
+  const { bootServer, getLogger, resolveContentDir, resolveLockDir, waitForServerLockDrain } =
+    await import('@inkeep/open-knowledge-server');
 
   const log = opts.log ?? getLogger('start');
 
@@ -1240,62 +782,6 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     log.info({ contentDir }, 'Created content directory');
   }
 
-  // Capture uiSpawnDecision from inside the spawnUiSiblingFn callback so we
-  // can return it on the BootedStartServer handle for tests + status output.
-  let uiSpawnDecision: UiSpawnDecision | null = null;
-  // Pid of the `ok ui` child this boot actually spawned — the ONLY pid the
-  // idle-shutdown handler may signal. Stays null on reuse/skip paths.
-  let spawnedUiPid: number | null = null;
-  const spawnUiSiblingFn = async ({
-    lockDir: resolvedLockDir,
-  }: {
-    lockDir: string;
-    log: PinoLogger;
-  }) => {
-    const uiLockBefore = readUiLock(resolvedLockDir);
-    uiSpawnDecision = decideUiSpawn({
-      uiLock: uiLockBefore,
-      isAlive: isProcessAlive,
-    });
-    if (uiSpawnDecision.action === 'spawn' && !skipUiAutoSpawn) {
-      try {
-        // Pin the sibling to an explicit `--port` when the caller threaded a
-        // UI port (the worktree-preview path passes the preview pane's port).
-        // Falls back to the default `['ui']` args otherwise, so terminal
-        // `ok start` keeps kernel-allocated sibling ports.
-        const uiArgs =
-          opts.uiPort !== undefined ? ['ui', '--port', String(opts.uiPort)] : undefined;
-        const uiChild = spawnOkUi({
-          lockDir: resolvedLockDir,
-          cwd,
-          spawn: opts.spawn,
-          args: uiArgs,
-        });
-        spawnedUiPid = uiChild.pid ?? null;
-        log.info(
-          { reason: uiSpawnDecision.reason, uiPort: opts.uiPort },
-          '[start] auto-spawned ok ui sibling',
-        );
-      } catch (err) {
-        console.warn(
-          `[start] failed to auto-spawn ok ui: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    } else if (uiSpawnDecision.action === 'skip') {
-      log.info(
-        { port: uiSpawnDecision.port, pid: uiSpawnDecision.pid },
-        `UI already running at port ${uiSpawnDecision.port}`,
-      );
-    }
-  };
-
-  // The server serves the React shell whenever it has a dist dir, which is
-  // the default for plain `ok start` — so the single-origin composition is
-  // the norm and the `ok ui` sibling is auto-suppressed. A sibling is spawned
-  // only on the legacy two-process paths that reach here without a shell dir
-  // (the `--ui-port` worktree-preview recipe).
-  const attachUiSibling = opts.reactShellDistDir === undefined;
-
   // Push-permission probe auth wiring — LAZY token store. Keyring init is
   // deferred to the first probe call (and time-boxed at 2s with file-backend
   // fallback) so `await bootServer(...)` cannot be blocked by a slow native
@@ -1376,23 +862,12 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
       probeOwnManagedEditorMcpEntry(editorId, agentCwd),
     // CLI-specific opt-ins
-    attachUiSibling,
     idleShutdownMs: idleThresholdMs,
     ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),
     ...(opts.bind !== undefined ? { bind: opts.bind } : {}),
     skipAutoInit: true, // Guard already ran above; no scaffold fn to pass
-    ...(attachUiSibling ? { spawnUiSiblingFn } : {}),
     idleShutdownHandler: (destroyServer) => {
-      const handler = buildIdleShutdownHandler({
-        readUiLock: () => readUiLock(booted.lockDir),
-        spawnedUiPid: () => spawnedUiPid,
-        isAlive: isProcessAlive,
-        killPid: (pid, signal) => {
-          process.kill(pid, signal);
-        },
-        destroy: destroyServer,
-        log,
-      });
+      const handler = destroyServer;
       const reaped = ephemeral ? withEphemeralTempDirReap(handler, ephemeralProjectDir) : handler;
       // Outermost: the exit fires only after destroy AND the ephemeral temp
       // dir reap have both run.
@@ -1401,50 +876,12 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     log,
     // Content assets serve by default (bootServer default-on). The React
     // shell dir is passed through when present — the default for plain
-    // `ok start` — so the one-listener composition is the norm; it is absent
-    // only on the legacy `--ui-port` sibling path.
+    // `ok start` — so the one-listener composition is the norm.
     ...(opts.serveContentAssets !== undefined
       ? { serveContentAssets: opts.serveContentAssets }
       : {}),
     ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),
   });
-
-  // Either `attachUiSibling: false` (this server serves the React shell
-  // itself, no sibling needed) or bootServer skipped the callback for
-  // some other reason. Sentinel-mark as "skip / no sibling" so the
-  // `BootedStartServer` handle is type-complete and the banner falls
-  // back to `apiUrl` (which IS the React-shell origin in this mode).
-  uiSpawnDecision ||= { action: 'skip', reason: 'alive', pid: 0, port: 0 };
-
-  // Resolve the port `ok ui` is actually serving on — the banner uses this
-  // instead of a hardcoded default. `ok ui` binds `DEFAULT_UI_PORT` when
-  // free and falls back to kernel-allocation when busy, so the real port
-  // is only knowable after the child finishes binding.
-  //
-  // The `const` snapshot is required — `uiSpawnDecision` is a `let` captured
-  // by `spawnUiSiblingFn`'s closure, which defeats TS narrowing across the
-  // await boundary.
-  const decisionAtBoot: UiSpawnDecision = uiSpawnDecision;
-  let resolvedUiPort: number | null = null;
-  if (decisionAtBoot.action === 'skip') {
-    // Sibling was already alive — the lock already had its port.
-    resolvedUiPort = decisionAtBoot.port > 0 ? decisionAtBoot.port : null;
-  } else if (!skipUiAutoSpawn) {
-    const uiBindTimeoutMs = opts.uiBindTimeoutMs ?? 3000;
-    resolvedUiPort = await awaitUiSiblingPort({
-      readUiLock: () => readUiLock(booted.lockDir),
-      now: Date.now,
-      sleep: (ms) => wait(ms),
-      timeoutMs: uiBindTimeoutMs,
-      pollIntervalMs: 50,
-    });
-    if (resolvedUiPort === null) {
-      log.warn(
-        { timeoutMs: uiBindTimeoutMs },
-        '[start] ok ui did not bind within timeout — banner falls back to API URL',
-      );
-    }
-  }
 
   return {
     httpServer: booted.httpServer,
@@ -1454,9 +891,6 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     port: booted.port,
     ready: booted.ready,
     degraded: booted.degraded,
-    uiSpawnDecision,
-    spawnedUiPid,
-    resolvedUiPort,
   };
 }
 
@@ -1465,14 +899,6 @@ type StartMode = 'browser' | 'app';
 
 interface StartCommandOptions {
   port?: string | number;
-  /**
-   * From `--ui-port`: pin the auto-spawned `ok ui` sibling to this exact port
-   * (the worktree-preview path passes the preview pane's port). Also flips the
-   * live-lock collision behavior to "connect" (serve the UI on this port via
-   * `ok ui`) instead of exit-1, so the same committed recipe is safe on both
-   * the main checkout and a fresh worktree. Absent → today's behavior.
-   */
-  uiPort?: string | number;
   /** From repeatable `--bind <address>`. First value wins today; >1 rejected at the action layer. */
   bind?: string[];
   /** From the deprecated `-H, --host` alias of `--bind`. */
@@ -1537,21 +963,6 @@ interface StartCommandOptions {
 function parseStartMode(value: string): StartMode {
   if (value === 'browser' || value === 'app') return value;
   throw new InvalidArgumentError("--mode must be 'browser' or 'app'");
-}
-
-/**
- * Validator for `--ui-port` — rejects non-numeric / out-of-range values at the
- * parent's arg-parse layer (clean `InvalidArgumentError` exit) rather than
- * letting a bad value flow through as `String(NaN)` into the spawned `ok ui`,
- * which would surface as a confusing child spawn failure. Matters more here
- * than for `--port` because `--ui-port` also gates the connect-vs-exit-1 fork.
- */
-function parseUiPort(value: string): number {
-  const port = Number.parseInt(value, 10);
-  if (Number.isNaN(port) || port < 1 || port > 65535) {
-    throw new InvalidArgumentError('--ui-port must be a port number between 1 and 65535');
-  }
-  return port;
 }
 
 /**
@@ -1798,15 +1209,8 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   const portFromEnv = envLayer.overrides.find((o) => o.envVar === 'PORT')?.value as
     | number
     | undefined;
-  const requestedUiPort = opts.uiPort !== undefined ? Number(opts.uiPort) : undefined;
-  // When `--ui-port` is set, the preview pane's `PORT` env is the UI sibling's
-  // intended port, NOT the collab server's — honoring it for the collab port
-  // would make the brain and its UI sibling fight over the same port. Ignore
-  // env `PORT` for the collab in that case so the brain kernel-allocates; an
-  // explicit `--port` still wins if the caller really wants a fixed collab
-  // port. (Defense-in-depth: the recipe shell chain also unsets `PORT`.)
-  // An explicit --port still wins everywhere; in remote mode the config port
-  // fills the default slot and env PORT is suppressed (see resolveCollabPort).
+  // An explicit --port wins everywhere; in remote mode the config port fills
+  // the default slot and env PORT is suppressed (see resolveCollabPort).
   // A stable port matters in remote mode because the tailscale serve/funnel
   // mapping names a fixed target port — a kernel-assigned ephemeral port would
   // break the tunnel on every restart.
@@ -1825,38 +1229,18 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     );
   }
   const port =
-    resolveCollabPort(portFromCli, portFromEnv, requestedUiPort, remoteEnabled) ??
+    resolveCollabPort(portFromCli, portFromEnv, remoteEnabled) ??
     (remoteEnabled ? (remotePort ?? DEFAULT_REMOTE_PORT) : localPort);
 
-  // Fast path: when `--ui-port` is set (the worktree-preview recipe), a
-  // live collab server already in this folder means we must NOT boot a second
-  // one — that's the main checkout, where `ok start` would collide and exit 1.
-  // Short-circuit straight to "connect" (serve the UI on the preview's port
-  // via `ok ui`, which reuses / proxies the existing UI) so main behaves
-  // exactly as the prior bare-`ok ui` recipe did, with no doomed boot attempt.
-  // The post-boot catch below is the TOCTOU backstop for the narrow race where
-  // a server appears between this check and bootServer's lock acquisition.
-  if (requestedUiPort !== undefined) {
-    const { readServerLock, resolveLockDir } = await import('@inkeep/open-knowledge-server');
-    const liveServer = readServerLock(resolveLockDir(cwd));
-    if (shouldConnectToExistingServer(requestedUiPort, liveServer)) {
-      await connectUiSibling({ cwd, uiPort: requestedUiPort });
-      return;
-    }
-  }
-
   // The default composition serves the SPA from the server's own port (`/` =
-  // UI, `/api`, `/mcp`, `/collab` — one listener, one origin), which also
-  // auto-suppresses the `ok ui` sibling. `resolveStartShellDir` holds the
-  // decision table (explicit dir wins; `--only server` and the `--ui-port`
-  // worktree-preview recipe opt out; remote always serves the shell so one
-  // tunnel covers everything). A missing bundle degrades to API/MCP-only with
-  // a warning rather than failing the start.
+  // UI, `/api`, `/mcp`, `/collab` — one listener, one origin).
+  // `resolveStartShellDir` holds the decision table (explicit dir wins;
+  // `--only server` opts out; everything else — remote included — serves the
+  // shell by default). A missing bundle degrades to API/MCP-only with a
+  // warning rather than failing the start.
   const shell = resolveStartShellDir({
     explicitDir: opts.reactShellDistDir,
     only: opts.only,
-    uiPortSet: requestedUiPort !== undefined,
-    remoteEnabled,
     findBundledDir: resolveBundledReactShellDir,
   });
   const reactShellDistDir = shell.dir;
@@ -1878,15 +1262,10 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       // Full bind list for the multi-listener bind — already collapsed to the
       // coerced loopback host in remote mode (see `bindList` above).
       bind: bindList,
-      ...(requestedUiPort !== undefined ? { uiPort: requestedUiPort } : {}),
       ...(opts.serveContentAssets !== undefined
         ? { serveContentAssets: opts.serveContentAssets }
         : {}),
       ...(reactShellDistDir ? { reactShellDistDir } : {}),
-      // No sibling spawn when the UI module is off (`--only server`) or the
-      // bundle is missing — a spawned `ok ui` would be serving the same
-      // missing bundle, and the warning above already promised API/MCP-only.
-      ...(opts.only === 'server' || shell.missingBundle ? { skipUiAutoSpawn: true } : {}),
       // Flag > env/file/derived, resolved uniformly: both the flag value and
       // the resolver's idleShutdown are duration strings ('off' | '90s' | …) —
       // the resolver's covers OK_IDLE_SHUTDOWN, the config leaf, and the
@@ -1942,24 +1321,12 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       process.exit(1);
     }
 
-    // TOCTOU backstop: the worktree-preview recipe (`--ui-port` set) lost
-    // a race — a server appeared between the fast-path check above and
-    // bootServer's lock acquisition (the MCP-shim autostart, or a second
-    // preview-open). The boot threw a server-lock collision. Don't exit 1 (that
-    // breaks the pane); fall back to connect, exactly like the fast path. Gated
-    // on `--ui-port` so plain terminal `ok start` keeps its "already running"
-    // message below.
-    if (requestedUiPort !== undefined && isServerLockCollision(err, serverModule)) {
-      await connectUiSibling({ cwd, uiPort: requestedUiPort });
-      return;
-    }
-
     // Spawn-or-reuse: a plain `ok start` that collided with a live server
     // reads the holder's advertisement, reports its URL, and exits 0 — a
     // second start attaches to the running composition instead of failing.
     // Falls through to the tailored/generic error path (exit 1) only when the
     // lock can't be resolved to a usable address within the poll window.
-    if (requestedUiPort === undefined && isServerLockCollision(err, serverModule)) {
+    if (isServerLockCollision(err, serverModule)) {
       const lockDir = serverModule.resolveLockDir(cwd);
       // A lock read can throw mid-poll (EMFILE, a JSON rewrite caught in
       // flight). Contain it so a transient disk error degrades to the tailored
@@ -2025,34 +1392,6 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     for (const line of details) {
       console.log(dim(`  ${line}`));
     }
-    // Tear down the detached `ok ui` sibling BEFORE destroy releases
-    // server.lock — same order as idle-shutdown. Without this, Ctrl+C left the
-    // UI child running until its 12h safety timer, holding its port. Two
-    // distinct guards: the outer `!== null` skips the whole block (and its
-    // import) when we spawned no sibling; `teardownUiSibling`'s internal
-    // `spawnedUiPid` comparison confirms the CURRENT lock holder is still the
-    // pid we spawned, so a holder we didn't spawn (desktop shell, another
-    // session) is left alone. Wrapped so a failure here never bypasses
-    // destroy() — the best-effort teardown contract idle-shutdown also honors.
-    if (booted.spawnedUiPid !== null) {
-      try {
-        const { getLogger, isProcessAlive, readUiLock } = await import(
-          '@inkeep/open-knowledge-server'
-        );
-        await teardownUiSibling({
-          readUiLock: () => readUiLock(booted.lockDir),
-          spawnedUiPid: () => booted.spawnedUiPid,
-          isAlive: isProcessAlive,
-          killPid: (pid, sig) => process.kill(pid, sig),
-          log: getLogger('start'),
-          reason: 'shutdown',
-        });
-      } catch (err) {
-        console.error(
-          `${error('ui sibling teardown failed:')} ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
-        );
-      }
-    }
     try {
       await booted.destroy();
     } catch (err) {
@@ -2078,20 +1417,15 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   const networkUrl =
     host === '0.0.0.0' || host === '::' ? `http://0.0.0.0:${booted.port}` : undefined;
 
-  // On the default one-listener path the server serves the shell itself, so
-  // `resolvedUiPort` is null and `localUrl` IS `apiUrl` — the editor URL, not
-  // a degraded fallback. `resolvedUiPort` is non-null only on the legacy
-  // `--ui-port` sibling path, where bootStartServer polls `ui.lock`
-  // end-to-end for the port the sibling actually bound.
-  const uiPort = booted.resolvedUiPort;
-  const localUrl = uiPort !== null && uiPort > 0 ? `http://${urlHost}:${uiPort}` : apiUrl;
+  // One-listener composition: the server serves the shell itself, so the
+  // editor URL IS the API URL.
+  const localUrl = apiUrl;
 
   console.log(
     renderBanner({
       name: 'open-knowledge',
       version: PACKAGE_VERSION,
       localUrl,
-      apiUrl: localUrl !== apiUrl ? apiUrl : undefined,
       networkUrl,
       nextSteps: ['Open the Editor URL in your browser to start editing.'],
     }),
@@ -2296,11 +1630,6 @@ export function startCommand(getConfig: () => Config): Command {
     .description('Start the OpenKnowledge server (UI + API + MCP + collab on one port)')
     .option('-p, --port <port>', 'Server port', undefined)
     .option(
-      '--ui-port <port>',
-      'Pin the ok ui sibling to <port> and connect (not exit) if a server already runs here — the worktree-preview recipe path',
-      parseUiPort,
-    )
-    .option(
       '--bind <address>',
       'Bind address (repeatable; default 127.0.0.1 — loopback only)',
       (value: string, prev: string[] | undefined) => [...(prev ?? []), value],
@@ -2335,10 +1664,7 @@ export function startCommand(getConfig: () => Config): Command {
       '--serve-content-assets',
       'Serve content assets from this server (now the default; kept for compatibility)',
     )
-    .option(
-      '--react-shell-dist-dir <path>',
-      'Serve React shell from <path> (suppresses ok ui sibling)',
-    )
+    .option('--react-shell-dist-dir <path>', 'Serve React shell from <path>')
     .option(
       '--single-file <path>',
       'No-project ephemeral single-file mode: scope the server to one markdown file (git + MCP off)',
@@ -2396,9 +1722,22 @@ export function startCommand(getConfig: () => Config): Command {
       }
 
       // `--only ui`: run just the shell-serving proxy against an explicit
-      // upstream — the operator split-mode replacement for bare `ok ui`
-      // (which discovers its upstream via server.lock instead).
+      // upstream — the operator split-mode replacement for the removed
+      // `ok ui` (which discovered its upstream via server.lock instead).
       if (opts.only === 'ui') {
+        // Deprecation notice FIRST, before any refusal below — the operator
+        // should learn the successor spelling from the same run that errors
+        // (mirrors the --remote notice ordering). Stderr so stdout stays
+        // parseable for callers that scrape the "listening on" line. The
+        // split-mode proxy retires together with ui.lock in a later release.
+        {
+          const { warning } = await import('../ui/colors.ts');
+          console.error(
+            warning(
+              '[start] `--only ui` is deprecated — plain `ok start` serves the editor UI, API, and MCP on one port. The split-mode proxy will be removed in a future release.',
+            ),
+          );
+        }
         if (opts.serverUrl === undefined) {
           process.stderr.write(
             "error: '--only ui' requires '--server-url <url>' (where the project server runs)\n",
@@ -2451,7 +1790,6 @@ export function startCommand(getConfig: () => Config): Command {
         // can grep for it without crashing.
         const ignored: string[] = [];
         if (opts.port !== undefined) ignored.push('--port');
-        if (opts.uiPort !== undefined) ignored.push('--ui-port');
         if (opts.bind !== undefined) ignored.push('--bind');
         if (opts.host !== undefined) ignored.push('--host');
         if (opts.only !== undefined) ignored.push('--only');

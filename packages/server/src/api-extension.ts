@@ -494,7 +494,6 @@ import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-r
 import { readSkillInstallStateSnapshot } from './skill-state.ts';
 import { handleSpawnCursor } from './spawn-cursor-api.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
-import { readUiLock } from './ui-lock.ts';
 import { HashingPassThrough, mintTempUploadPath } from './upload-streaming.ts';
 
 /** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
@@ -732,6 +731,7 @@ import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { getDocumentHistory, getFolderTimeline } from './timeline-query.ts';
 import { recordTimelineCoalesced } from './timeline-telemetry.ts';
+import { resolveUiRedirectPort } from './ui-redirect-port.ts';
 import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
 
 // Lazy-init so the counter registers against a real meter post-initTelemetry
@@ -10370,70 +10370,46 @@ export function createApiExtension(
     });
   }
 
+  const SERVER_WITHOUT_UI_ERROR =
+    'A server is already running for this directory without a web UI (started with `--only server`, or from a build without the bundled editor). Restart it with plain `ok start` from an install that includes the web UI.';
+
   /**
-   * Spawn a detached OpenKnowledge server at `dir` and poll the server.lock
-   * until a real port appears. Used by the clone handler to chain
-   * clone → server-start → redirect.
+   * Ensure a live project server at `dir` and return its browser-navigable
+   * port. Resolution goes through `resolveUiRedirectPort` — server.lock
+   * (`ui` capability) first, the still-supported `ui.lock` advertisement
+   * second — so this surface agrees with `resolveUiInfo` on what "no UI"
+   * means through the ui.lock compatibility window.
+   *
+   * Three cases:
+   *   1. a live UI origin resolves → reuse its port.
+   *   2. definitive no-UI (`--only server` holder, no sibling) → error.
+   *   3. Nothing live → spawn `ok start` detached (it serves the shell by
+   *      default) and poll for a bound ui-capable port.
    *
    * NOTE: The CLI's `start` command has no `--content-dir` flag — it derives
    * the content dir from cwd + config. So we spawn with `cwd: dir` instead
    * of passing a flag.
    */
-  /**
-   * Ensure both the collab server (`ok start`) and the React UI (`ok ui`) are
-   * live for `dir`, and return the UI port — that's the browser-navigable
-   * redirect target post-lifecycle-split. `ok start` serves only the collab
-   * API/WebSocket and returns 404 at `/` with an `ok ui`-pointing message.
-   *
-   * Three cases:
-   *   1. `ui.lock` is live → reuse its port (UI already running in that dir).
-   *   2. `server.lock` live but `ui.lock` absent/stale → spawn `ok ui` alone;
-   *      `ok start` won't re-spawn its UI sibling when the server-lock is held.
-   *   3. Nothing live → spawn `ok start`; it auto-spawns `ok ui` as a sibling
-   *      (see `start.ts`, "auto-spawned ok ui sibling").
-   *
-   * Polls `ui.lock` (not `server.lock`) because only `ui.lock.port` hosts the
-   * React bundle. Single polling loop covers cases 2 and 3 uniformly.
-   */
   async function startServerAtDirAndGetPort(
     dir: string,
-    port?: number,
   ): Promise<{ port: number } | { error: string }> {
     const absDir = resolve(expandTilde(dir));
     const lockDir = getLocalDir(absDir);
 
-    // Case 1: UI already live — reuse. (Honors a requested `port` only when a
-    // fresh UI is spawned below; an already-live UI keeps its bound port.)
-    const existingUi = readUiLock(lockDir);
-    if (existingUi && existingUi.port > 0) {
-      return { port: existingUi.port };
-    }
+    // Cases 1 + 2: something is already live — reuse its port, or refuse on
+    // a definitive no-UI topology.
+    const existing = resolveUiRedirectPort(lockDir);
+    if (existing === 'no-ui') return { error: SERVER_WITHOUT_UI_ERROR };
+    if (existing !== null) return { port: existing };
 
-    // Build the args for a given dispatch command, threading the requested UI
-    // port: `ok ui --port P` (connect) or `ok start --ui-port P` (start, which
-    // pins its UI sibling to P via the separate `--ui-port` channel — `PORT` is
-    // stripped from the sibling env so the collab server and the sibling don't
-    // collide). Omitting `port` reproduces the legacy kernel-allocated behavior.
     const [cmd, ...baseArgs] = localOpCliArgs;
-    const buildArgs = (cliCmd: 'ui' | 'start'): string[] => {
-      const portFlag =
-        port !== undefined
-          ? cliCmd === 'ui'
-            ? ['--port', String(port)]
-            : ['--ui-port', String(port)]
-          : [];
-      return [...baseArgs, cliCmd, ...portFlag];
-    };
 
-    // Spawn `ok <cliCmd>` detached at `absDir` and poll `ui.lock` for a bound
-    // port. Returns the port, or `{ exited }` when the child died before
-    // binding (so the caller can decide whether to fall back to connect).
-    const spawnAndAwaitUi = async (
-      cliCmd: 'ui' | 'start',
-    ): Promise<{ port: number } | { error: string; exited: boolean }> => {
+    // Case 3: spawn `ok start` detached at `absDir` (it serves the shell by
+    // default) and poll `server.lock` for a bound ui-capable port.
+    const spawnAndAwaitServer = async (): Promise<{ port: number } | { error: string }> => {
       const child = spawn(
         cmd,
-        buildArgs(cliCmd),
+        [...baseArgs, 'start'],
         withHiddenWindowsConsole({
           ...LOCAL_OP_STDERR_ONLY_OPTIONS,
           cwd: absDir,
@@ -10449,7 +10425,7 @@ export function createApiExtension(
       child.stderr?.on('data', (chunk: Buffer) => {
         stderrChunks.push(chunk);
         log.warn(
-          { cwd: absDir, cliCmd, msg: chunk.toString('utf-8').trim() },
+          { cwd: absDir, msg: chunk.toString('utf-8').trim() },
           '[local-op/clone] child stderr',
         );
       });
@@ -10463,14 +10439,14 @@ export function createApiExtension(
       });
       // A failed `spawn` (ENOENT: binary not found, EACCES: not executable)
       // emits `error` and NEVER `exit`. Without this handler `earlyExitCode`
-      // stays null, the loop polls the full timeout, and the early-exit return
-      // — which the TOCTOU connect-fallback keys off via `exited: true` — never
-      // fires, so a broken install bypasses the fallback and reads as a timeout.
-      // Trip the early-exit path on the next poll tick instead.
+      // stays null, the loop polls the full timeout, and the early-exit
+      // branch — including its lock re-check for a concurrent winner — never
+      // fires, so a broken install reads as a timeout. Trip the early-exit
+      // path on the next poll tick instead.
       child.on('error', (err) => {
         spawnErrorMessage = err.message;
         earlyExitCode = -1;
-        log.error({ cwd: absDir, cliCmd, err }, '[local-op/clone] failed to spawn child');
+        log.error({ cwd: absDir, err }, '[local-op/clone] failed to spawn child');
       });
 
       // `unref` so the child survives past the parent. Do it after attaching
@@ -10480,10 +10456,9 @@ export function createApiExtension(
       const deadline = Date.now() + LOCAL_OP_OPEN_TIMEOUT_MS;
       while (Date.now() < deadline) {
         await wait(500);
-        const uiLock = readUiLock(lockDir);
-        if (uiLock && uiLock.port > 0) {
-          return { port: uiLock.port };
-        }
+        const state = resolveUiRedirectPort(lockDir);
+        if (state === 'no-ui') return { error: SERVER_WITHOUT_UI_ERROR };
+        if (state !== null) return { port: state };
         if (earlyExitCode !== null) {
           const stderr = Buffer.concat(stderrChunks).toString('utf-8').trim();
           // Name the real cause: spawn failure, signal kill, or exit code — so
@@ -10495,49 +10470,28 @@ export function createApiExtension(
             : earlyExitSignal
               ? `killed by ${earlyExitSignal}`
               : `code ${earlyExitCode}`;
+          // TOCTOU collision-fallback: the spawn can lose a race to a
+          // concurrent start (the MCP-shim autostart, a second preview-open)
+          // that acquired `server.lock` between our liveness check and the
+          // child's own acquisition; the child exits (typically a
+          // ProcessLockCollisionError) while the winner keeps serving. Key
+          // off the observable signature — child exited AND a live lock now
+          // exists — and redirect to the winner instead of failing the pane.
+          const winner = resolveUiRedirectPort(lockDir);
+          if (winner === 'no-ui') return { error: SERVER_WITHOUT_UI_ERROR };
+          if (winner !== null) return { port: winner };
           return {
-            error: `\`ok ${cliCmd}\` exited (${cause})${stderr ? ` — ${stderr}` : ''}`,
-            exited: true,
+            error: `\`ok start\` exited (${cause})${stderr ? ` — ${stderr}` : ''}`,
           };
         }
       }
       const stderr = Buffer.concat(stderrChunks).toString('utf-8').trim();
       return {
-        error: `UI did not start within the expected time${stderr ? ` — ${stderr}` : ''}`,
-        exited: false,
+        error: `Server did not start within the expected time${stderr ? ` — ${stderr}` : ''}`,
       };
     };
 
-    // Case 2 vs 3: pick which CLI command to spawn based on whether the
-    // collab server is already live. `ok ui` alone is correct and necessary
-    // when `server.lock` is held (can't re-run `ok start` under a live lock).
-    const existingServer = readServerLock(lockDir);
-    const cliCmd = existingServer && existingServer.port > 0 ? 'ui' : 'start';
-    const result = await spawnAndAwaitUi(cliCmd);
-
-    // TOCTOU collision-fallback. A `start` spawn can lose a race to a concurrent
-    // server start (the MCP-shim autostart, a second preview-open) that acquired
-    // `server.lock` between the `readServerLock` check above and the child's own
-    // acquisition; the child then exits (typically a ProcessLockCollisionError).
-    // We key off the observable signature rather than the exit reason: if the
-    // `start` child exited early AND a live `server.lock` now exists, connect to
-    // it via `ok ui`. This also harmlessly covers a non-collision early exit that
-    // happens to coincide with a live lock — the right move there is still to
-    // connect to the running server. Net: a lost race degrades to "connect",
-    // never a failed pane.
-    if (cliCmd === 'start' && 'error' in result && result.exited) {
-      const nowServer = readServerLock(lockDir);
-      if (nowServer && nowServer.port > 0) {
-        const connectResult = await spawnAndAwaitUi('ui');
-        if ('port' in connectResult) return connectResult;
-        // Preserve both legs for diagnostics: why `start` exited AND why the
-        // connect fallback then failed.
-        return { error: `${result.error}; connect fallback failed: ${connectResult.error}` };
-      }
-    }
-
-    if ('port' in result) return result;
-    return { error: result.error };
+    return spawnAndAwaitServer();
   }
 
   /**
@@ -20507,11 +20461,11 @@ export function createApiExtension(
     },
   );
 
-  // `/api/config` — collab-bootstrap payload for the React shell. In the
-  // desktop / worktree-as-project-server topology this collab server is what
-  // serves the SPA, so the shell fetches `/api/config` here rather than from a
-  // separate `ok ui` front. The JSON shape matches `ok ui` (api-config.ts
-  // consumes it identically): GET returns `{collabUrl, previewUrl, port}`. GET
+  // `/api/config` — collab-bootstrap payload for the React shell. This server
+  // serves the SPA itself, so the shell fetches `/api/config` from the same
+  // origin (api-config.ts consumes it; the `--only ui` split-mode proxy in
+  // `packages/cli` emits the same shape): GET returns
+  // `{collabUrl, previewUrl, port}`. GET
   // stays open like the other read-only bootstrap endpoints
   // (document/pages/backlinks) — it carries no PII and only reflects the
   // client's own Host back to itself. `lockDir` is the project's
@@ -20528,7 +20482,8 @@ export function createApiExtension(
         // Host value is the client's own header reflected back to itself (the
         // Origin CORS gate in `onRequest` already refused cross-origin
         // browsers); it is not independently vetted here. A genuinely absent
-        // Host yields a null collabUrl — a deliberate divergence from `ok ui`'s
+        // Host yields a null collabUrl — a deliberate divergence from the
+        // split-mode UI proxy's
         // `?? localhost:${resolvedPort}` fallback: this server has no single
         // canonical advertised port to substitute, and the client falls back
         // to a same-origin WS URL on a null. Node HTTP/1.1 always populates

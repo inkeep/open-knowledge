@@ -63,12 +63,12 @@ describe('route dispatch and precedence — normal mode (no React shell)', () =>
     expect(body.title).toBe('Not found.');
   });
 
-  test('unknown non-API path 404s with the ok-ui hint when no shell is mounted', async () => {
+  test('unknown non-API path 404s with the no-UI hint when no shell is mounted', async () => {
     const res = await fetch(`http://127.0.0.1:${normal.port}/definitely/not/here`);
     expect(res.status).toBe(404);
     const body = parseProblem(await res.text());
     expect(body.type).toBe('urn:ok:error:not-found');
-    expect(body.detail).toContain('ok ui');
+    expect(body.detail).toContain('running without the web UI');
   });
 
   test('/mcp is mounted at the exact path only', async () => {

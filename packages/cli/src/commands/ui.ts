@@ -1,13 +1,12 @@
 /**
- * `open-knowledge ui` — serves the React editor UI as a sibling to `ok start`.
+ * Sibling UI server — the engine behind `ok start --only ui --server-url`
+ * (the deprecated explicit split-mode, which passes `upstreamUrl` instead of
+ * discovering the upstream via `server.lock`).
  *
- * DEPRECATED as a user-facing command: plain `ok start` now serves the shell
- * from the project server on one port. This command remains functional for
- * the Desktop version-skew window (older desktop builds attach through it and
- * `ui.lock`) and as the engine behind `ok start --only ui --server-url` (the
- * explicit split-mode, which passes `upstreamUrl` instead of discovering the
- * upstream via `server.lock`). Do not remove until the Desktop attach
- * re-point has shipped in a stable release.
+ * The `ok ui` command that used to front this engine has been removed: plain
+ * `ok start` serves the shell from the project server on one port, and the
+ * Desktop attaches via server.lock v2. This module retires together with
+ * `--only ui` and `ui.lock` in the follow-up removal wave.
  *
  * Default port `DEFAULT_UI_PORT` (39847 — quirky, IANA-unassigned, unlikely to
  * collide with other dev servers); `PORT` env and `--port` flag override. When the
@@ -51,7 +50,6 @@ import {
   type Scheduler,
 } from '@inkeep/open-knowledge-core';
 import type { Config } from '@inkeep/open-knowledge-server';
-import { Command } from 'commander';
 import { emitProblem } from './ui-problem.ts';
 import {
   type ProxyServerHandle,
@@ -1006,34 +1004,6 @@ export async function runUiCommand(config: Config, opts: RunUiCommandOptions): P
     process.once('SIGINT', () => shutdown('SIGINT'));
     process.once('SIGTERM', () => shutdown('SIGTERM'));
   }
-}
-
-export function uiCommand(getConfig: () => Config): Command {
-  return new Command('ui')
-    .description(
-      'Deprecated: serve the React editor UI as a sibling process (plain `ok start` now serves the UI itself)',
-    )
-    .option(
-      '-p, --port <port>',
-      `UI port (default: $PORT env or ${DEFAULT_UI_PORT}, kernel-allocated fallback if busy)`,
-    )
-    .option(
-      '-H, --host <host>',
-      'UI host. Default: two-socket loopback bind (`[::1]` + `127.0.0.1`) so cross-family collisions fail loud. Pass an explicit host (e.g. `127.0.0.1`, `0.0.0.0`) to bind a single socket on that host.',
-    )
-    .action(async (opts: { port?: string; host?: string }) => {
-      // Deprecation notice on stderr — stdout stays parseable for callers
-      // that scrape the "listening on" line, and Desktop preview panes that
-      // spawn `ok ui` keep working untouched (removal is a later release,
-      // after the Desktop attach re-point ships).
-      const { warning } = await import('../ui/colors.ts');
-      console.error(
-        warning(
-          '[ui] Deprecated: use `ok start` instead — it now serves the editor UI on one port. `ok ui` remains for older desktop builds and will be removed in a future release.',
-        ),
-      );
-      await runUiCommand(getConfig(), opts);
-    });
 }
 
 // Exported for tests.

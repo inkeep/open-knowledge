@@ -232,8 +232,8 @@ describe(`CLI Linux e2e (${SUT_MODE} SUT)`, () => {
     expect(H.server.exitCode, 'server exited during startup').toBeNull();
 
     // Liveness via a TCP connect to the lock port — route-agnostic proof the
-    // server is bound. We don't GET `/` (the static SPA is served by the sibling
-    // `ok ui`, not the bare `ok start` server); the MCP round-trip below is the
+    // server is bound. We don't GET `/` (this rig may run without a built
+    // React bundle, so `/` can be a 404); the MCP round-trip below is the
     // functional proof.
     const reachable = await waitFor(() => tcpReachable(port as number), { timeoutMs: 15_000 });
     expect(reachable, 'server port never accepted a TCP connection').toBe(true);

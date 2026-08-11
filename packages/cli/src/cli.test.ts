@@ -40,6 +40,32 @@ describe('CLI argv parsing', () => {
   }, 30_000);
 });
 
+describe('ok ui tombstone', () => {
+  test('`ok ui` prints the removal pointer and exits non-zero (not the default-command arity error)', () => {
+    const result = Bun.spawnSync({
+      cmd: [
+        'node',
+        '--import',
+        'tsx',
+        '--conditions=development',
+        '-e',
+        `
+        process.argv = [process.execPath, process.cwd() + '/src/cli.ts', 'ui', '--port', '39847'];
+        await import('./src/cli.ts');
+        `,
+      ],
+      cwd: CLI_PACKAGE_ROOT,
+      env: { ...process.env, NO_COLOR: '1' },
+    });
+
+    const stderr = result.stderr.toString();
+    expect(result.exitCode).toBe(1);
+    expect(stderr).toContain('`ok ui` was removed');
+    expect(stderr).toContain('ok start');
+    expect(stderr).not.toContain('too many arguments');
+  }, 30_000);
+});
+
 describe('CLI --version notice', () => {
   test('--version emits the version plus the GPL copyright / free-software / no-warranty trio', () => {
     // Exercises the wired surface — `.version(buildVersionNotice(...))` in cli.ts

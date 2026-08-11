@@ -12,11 +12,10 @@
  * a single tested orchestrator.
  *
  * Opt-outs (Electron utility uses these):
- *   - `attachUiSibling: false` — suppress UI-sibling spawn flow
  *   - `idleShutdownMs: null` — disable idle-shutdown entirely
  *   - `skipAutoInit: true` — skip the pre-createServer scaffold hook
  *
- * CLI-specific concerns (`initContent`, `spawnOkUi`, banner, signal handlers)
+ * CLI-specific concerns (`initContent`, banner, signal handlers)
  * are NOT part of bootServer — the CLI wrapper layers them on top via
  * injected callbacks + post-return orchestration.
  */
@@ -270,15 +269,6 @@ export interface BootServerOptions
    */
   probeHarnessManagedMcpEntry?: AcpThreadManagerOptions['probeHarnessManagedMcpEntry'];
   /**
-   * If false, UI-sibling callbacks (`spawnUiSiblingFn` / `onSkipUiSpawn`) are
-   * NOT invoked regardless of `spawnUiSiblingFn` presence. Default true —
-   * preserves CLI back-compat when the flag is omitted.
-   *
-   * Electron utility sets this to `false`: the BrowserWindow IS the UI
-   * surface; there is no `ok ui` sibling to spawn.
-   */
-  attachUiSibling?: boolean;
-  /**
    * Idle-shutdown threshold in milliseconds. `null` disables idle-shutdown
    * entirely (Electron utility sets this to `null` — window lifecycle
    * owns utility lifetime). Default 30 * 60 * 1000.
@@ -338,16 +328,9 @@ export interface BootServerOptions
    */
   autoInitFn?: () => boolean | Promise<boolean>;
   /**
-   * CLI-specific UI-sibling spawn orchestration. Called once after the server
-   * has bound a port IF `attachUiSibling !== false`. Receives `lockDir` so the
-   * CLI's spawn helper can read the current ui.lock + decide whether to spawn.
-   */
-  spawnUiSiblingFn?: (ctx: { lockDir: string; log: PinoLogger }) => void | Promise<void>;
-  /**
    * Idle-shutdown handler — run when the server has been idle past the
-   * threshold. The CLI passes a handler that SIGTERMs the `ok ui` sibling
-   * before calling `destroyServer()`; the desktop utility never wires this
-   * handler because `idleShutdownMs: null`.
+   * threshold. The desktop utility never wires this handler because
+   * `idleShutdownMs: null`.
    */
   idleShutdownHandler?: (destroyServer: () => Promise<void>) => () => Promise<void>;
   /** Injectable logger. Defaults to `getLogger('boot')`. */
@@ -568,7 +551,6 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
 
 async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const skipAutoInit = opts.skipAutoInit ?? false;
-  const attachUi = opts.attachUiSibling ?? true;
   const log = opts.log ?? getLogger('boot');
 
   // The resolved server.* runtime. The CLI passes its fully-layered
@@ -873,9 +855,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       });
 
   // HTTP server — `mountMcpAndApi` installs the `/mcp` + `/api/*` request
-  // routing and the `/collab` + `/collab/keepalive` upgrade handler. Static
-  // React assets are served separately by `ok ui` (a CLI wrapper concern, not
-  // modeled here).
+  // routing and the `/collab` + `/collab/keepalive` upgrade handler; the
+  // React shell mounts below when `reactShellDistDir` is set.
   const httpServer = createHttpServer();
   // Resource-exhaustion bounds (defense-in-depth): cap headers + full
   // request lifetimes so a slow client cannot dribble bytes below the 1 MB
@@ -1086,9 +1067,9 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   };
 
   // Idle-shutdown wiring — suppressed entirely when idleShutdownMs is null.
-  // The CLI uses this to tear down both its own server and the `ok ui` sibling
-  // after 30 min of zero WS clients; the Electron utility disables it because
-  // window-close IS the shutdown trigger.
+  // The CLI uses this to tear the server down after 30 min of zero WS
+  // clients; the Electron utility disables it because window-close IS the
+  // shutdown trigger.
   let idleHandle: IdleShutdownHandle | null = null;
   if (opts.idleShutdownMs !== null) {
     const idleMs = opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS;
@@ -1240,16 +1221,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     // a reachable URL. Only writes if we still own the lock (paranoia in
     // case an out-of-band release happened between acquire and listen).
     updateUiLockPort(lockDir, realPort, boundBaseUrl);
-  }
-
-  // UI-sibling spawn — CLI wrapper injects `spawnUiSiblingFn`; desktop leaves
-  // `attachUiSibling: false` and this flow is suppressed.
-  if (attachUi && opts.spawnUiSiblingFn) {
-    try {
-      await opts.spawnUiSiblingFn({ lockDir, log });
-    } catch (err) {
-      log.warn({ err }, 'spawnUiSiblingFn failed');
-    }
   }
 
   let destroyed = false;

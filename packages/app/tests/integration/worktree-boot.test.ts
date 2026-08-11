@@ -42,7 +42,6 @@ describe('bootServer in a linked git worktree (FR2)', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       // Shadow init is async — runs inside `ready` (createServer's initAsync).
@@ -75,7 +74,6 @@ describe('bootServer pre-listen check in a linked worktree (FR3)', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -104,7 +102,6 @@ describe('bootServer pre-listen check in a linked worktree (FR3)', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -136,7 +133,6 @@ describe('bootServer pre-listen check in a linked worktree (FR3)', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       const bootWarnings = warnSpy.mock.calls
         .map((call) => String(call[1] ?? ''))
@@ -189,7 +185,6 @@ describe('bootServer ok.boot span attributes against a real linked worktree', ()
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       const spans = exporter?.getFinishedSpans() ?? [];
@@ -256,7 +251,6 @@ describe('bootServer pre-listen check on main worktree (FR3)', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -287,7 +281,6 @@ describe('bootServer pre-listen check on main worktree (FR3)', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;

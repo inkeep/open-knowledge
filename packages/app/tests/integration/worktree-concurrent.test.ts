@@ -46,7 +46,6 @@ describe('Two linked worktrees boot in parallel with isolated state (D13)', () =
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       }),
       bootServer({
         host: '127.0.0.1',
@@ -56,7 +55,6 @@ describe('Two linked worktrees boot in parallel with isolated state (D13)', () =
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       }),
     ]);
 

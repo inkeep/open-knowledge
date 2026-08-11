@@ -189,6 +189,7 @@
     "2IYGkU": [
       "Dokumen ini punya perubahan yang belum dikirim. Penerima akan melihat versi terakhir yang dikirim."
     ],
+    "2L8aeZ": ["kesalahan jaringan (apakah `ok start` sedang berjalan?)"],
     "2M0JF6": ["Pembaruan otomatis"],
     "2O5Z0r": ["Sembunyikan ", ["appName"]],
     "2QM24L": ["Semua tag"],
@@ -1979,7 +1980,6 @@
     ],
     "TEEPPF": ["Akan menggantikan entri OpenKnowledge yang sudah ada"],
     "TEJiKw": ["OpenKnowledge memeriksa ", ["subject"]],
-    "TJnkyf": ["ok ui merespons tetapi server.lock belum punya port"],
     "TKQ7K-": ["Pasang"],
     "TLIO3j": ["Menyalakan atau mematikan format miring."],
     "TMLAx2": ["Wajib"],
@@ -2586,7 +2586,6 @@
     "akmOT9": ["Sunting komentar ini"],
     "anmUZq": ["Ada fitur yang kurang"],
     "aoT2xX": ["Komentar ini berlaku untuk seluruh properti"],
-    "aoa6xA": ["galat jaringan (apakah `ok ui` sedang berjalan?)"],
     "arUUsK": ["Kabar terbaru produk"],
     "ax9kie": ["Pengaturan pratinjau tautan belum dimuat — coba lagi sebentar"],
     "axQ1h6": ["Ada yang ingin Anda tambahkan? (opsional)"],
@@ -3969,6 +3968,7 @@
     "txUHO8": [["localizedMessage"], " pada baris ", ["displayLine"]],
     "tzGWeg": ["Bersiap mencopot OpenKnowledge"],
     "tzZ6ha": ["Hubungkan ke GitHub Enterprise Server"],
+    "tz_FDV": ["server merespons tetapi server.lock belum memiliki port"],
     "u-9fWA": ["Lihat <0>Arsitektur</0> untuk ikhtisar sistemnya."],
     "u3BOHd": [["fileCount", "plural", { "other": ["#", " berkas"] }]],
     "u3YnKw": ["URL berbagi tidak dapat disusun."],

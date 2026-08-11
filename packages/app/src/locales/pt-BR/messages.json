@@ -209,6 +209,7 @@
     "2IYGkU": [
       "Este documento tem alterações não enviadas. Quem receber vai ver a última versão enviada."
     ],
+    "2L8aeZ": ["erro de rede (o `ok start` está em execução?)"],
     "2M0JF6": ["Atualização automática"],
     "2O5Z0r": ["Ocultar ", ["appName"]],
     "2QM24L": ["Todas as tags"],
@@ -2227,7 +2228,6 @@
     ],
     "TEEPPF": ["Vai substituir a entrada existente do OpenKnowledge"],
     "TEJiKw": ["OpenKnowledge verificou ", ["subject"]],
-    "TJnkyf": ["o ok ui respondeu, mas o server.lock ainda não tem porta"],
     "TKQ7K-": ["Instalar"],
     "TLIO3j": ["Liga ou desliga o itálico."],
     "TMLAx2": ["Obrigatório"],
@@ -2887,7 +2887,6 @@
     "akmOT9": ["Editar este comentário"],
     "anmUZq": ["Faltava um recurso"],
     "aoT2xX": ["Este comentário é sobre a propriedade inteira"],
-    "aoa6xA": ["erro de rede (o `ok ui` está rodando?)"],
     "arUUsK": ["Novidades do produto"],
     "ax9kie": [
       "As configurações de pré-visualização de links ainda não carregaram — tente de novo em instantes"
@@ -4423,6 +4422,7 @@
     "txUHO8": [["localizedMessage"], " na linha ", ["displayLine"]],
     "tzGWeg": ["Preparando a desinstalação do OpenKnowledge"],
     "tzZ6ha": ["Conectar ao GitHub Enterprise Server"],
+    "tz_FDV": ["o servidor respondeu, mas o server.lock ainda não tem porta"],
     "u-9fWA": ["Veja <0>Arquitetura</0> para uma visão geral do sistema."],
     "u3BOHd": [
       [

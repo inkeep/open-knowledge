@@ -14,7 +14,6 @@
  *
  * Call sites:
  * - `ok mcp` spawning `ok start` (MCP-mediated auto-start)
- * - `ok start` spawning `ok ui` (sibling UI at startup)
  *
  * Packaged-Electron Dock-tile redirect: when the current process is the
  * packaged macOS app's Electron main binary, a detached spawn of
@@ -88,7 +87,7 @@ export interface ResolveSelfSpawnDeps {
 
 /**
  * Returns the `(command, prefixArgs)` pair that re-invokes the current CLI.
- * The caller appends subcommand-specific args (e.g. `['start']`, `['ui']`).
+ * The caller appends subcommand-specific args (e.g. `['start']`).
  */
 export function resolveSelfSpawn(deps: ResolveSelfSpawnDeps = {}): {
   command: string;
@@ -117,7 +116,7 @@ export function resolveSelfSpawn(deps: ResolveSelfSpawnDeps = {}): {
     // `repair-mcp-configs.ts` / `repair-launch-json.ts`) so the engine-aware
     // sort in npm's `npm-pick-manifest` can't silently route the sibling
     // process to a years-stale release. `-y` suppresses the install-confirm
-    // prompt under the non-TTY spawn paths (MCP shim, `spawnOkUi`). The
+    // prompt under the non-TTY spawn paths (MCP shim). The
     // cross-version-pairing surface that re-exec was fixing still applies —
     // pinning only closes the silent-downgrade half, the registry round-trip
     // remains.

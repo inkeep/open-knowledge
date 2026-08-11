@@ -39,7 +39,6 @@ export async function bootCompositionRig(
     quiet: true,
     gitEnabled: false,
     idleShutdownMs: null,
-    attachUiSibling: false,
     ...overrides,
   });
 }

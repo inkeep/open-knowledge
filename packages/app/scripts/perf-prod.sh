@@ -20,19 +20,14 @@
 #
 # What it does (precedent #22 shell-script conventions):
 #   1. Runs `pnpm run build` from repo root (turbo-cached; no-op when clean).
-#   2. Starts TWO CLI processes on kernel-assigned ports:
-#        a. `open-knowledge start --port 0` — collab server (Hocuspocus +
-#           /api/*). Polls `.ok/server.lock` for bound port.
-#        b. `open-knowledge ui --port 0` — React asset server + /api/config
-#           proxy. Reads server.lock to derive collab URL for the SPA.
-#           Polls `.ok/ui.lock` for bound port.
-#      Post-2026-04-16 CLI split: `ok start` is collab-only (no static
-#      assets), `ok ui` is the sole server of the React bundle. Playwright
-#      must navigate against the UI port, NOT the collab port.
-#   3. Runs `pnpm run perf:profile --scenario=<name> --target=http://localhost:<ui-port> --headless`
+#   2. Starts ONE CLI process on a kernel-assigned port:
+#        `open-knowledge start --port 0` — the project server (React shell +
+#        Hocuspocus + /api/* on one listener). Polls `.ok/local/server.lock`
+#        for the bound port. Playwright navigates against that same port.
+#   3. Runs `pnpm run perf:profile --scenario=<name> --target=http://localhost:<port> --headless`
 #      N times. Results land at `packages/app/tests/perf/results/<scenario>.<ts>.json`.
-#   4. Sends SIGTERM to both processes; CLI's CC8 shutdown ordering releases
-#      both locks cleanly. Waits up to 5s for both locks to disappear.
+#   4. Sends SIGTERM; the CLI's shutdown ordering releases the lock cleanly.
+#      Waits up to 5s for the lock to disappear.
 #   5. Parses the N most recent result files, extracts the scenario's
 #      primary metric, reports individual values + median.
 #
@@ -90,8 +85,7 @@ require_jq
 REPO_ROOT="$(resolve_repo_root)"
 
 CLI_BIN="$REPO_ROOT/packages/cli/dist/cli.mjs"
-SERVER_LOCK="$REPO_ROOT/.ok/server.lock"
-UI_LOCK="$REPO_ROOT/.ok/ui.lock"
+SERVER_LOCK="$REPO_ROOT/.ok/local/server.lock"
 RESULTS_DIR="$REPO_ROOT/packages/app/tests/perf/results"
 
 # ── 1. Build (turbo-cached) ──────────────────────────────────────────────────
@@ -109,22 +103,15 @@ if [[ ! -x "$CLI_BIN" && ! -f "$CLI_BIN" ]]; then
   exit 2
 fi
 
-# ── 2. Start both CLI processes in background ───────────────────────────────
+# ── 2. Start the CLI in background ──────────────────────────────────────────
 #
-# Post-2026-04-16 CLI split: `ok start` is the collab server (Hocuspocus +
-# /api/*), `ok ui` is a sibling process that serves the built React bundle
-# from packages/app/dist + proxies /api/config pointing at the start lock.
-# Neither is sufficient alone — the app needs ui's static assets to load the
-# SPA, and ui needs start's server.lock to bootstrap HocuspocusProvider.
-# Playwright must navigate against the UI port, NOT the collab port.
-#
-# Start `ok start` first so its server.lock exists before `ok ui` runs its
-# /api/config derivation. A silently-failing ui (no collab target) would
-# produce a React app that paints but never hydrates content.
+# One listener, one origin: `ok start` serves the React shell, /api/*, and
+# the collab WebSocket on a single kernel-assigned port, advertised via
+# `.ok/local/server.lock`. Playwright navigates against that port.
 
 # Remove stale locks from crashed prior runs. The CLI has stale-PID recovery
 # but starting clean is simpler; skip only when the lock references a live pid.
-for lock in "$SERVER_LOCK" "$UI_LOCK"; do
+for lock in "$SERVER_LOCK"; do
   if [[ -f "$lock" ]]; then
     STALE_PID="$(jq -r '.pid // "0"' "$lock" 2>/dev/null || echo "0")"
     if [[ "$STALE_PID" != "0" ]] && ! kill -0 "$STALE_PID" 2>/dev/null; then
@@ -135,16 +122,13 @@ for lock in "$SERVER_LOCK" "$UI_LOCK"; do
 done
 
 SERVER_LOG="$(mktemp -t perf-prod-server.XXXXXX.log)"
-UI_LOG="$(mktemp -t perf-prod-ui.XXXXXX.log)"
 
 # Pre-flight WORKAROUND for the totalist/sirv broken-symlink crash.
 #
-# `ok ui` serves its content tree via `sirv` → `totalist@3.0.1`, which
+# The server serves its content tree via `sirv` → `totalist@3.0.1`, which
 # does synchronous statSync on every entry and propagates ENOENT. A
-# single broken symlink anywhere under the walked tree crashes the UI
-# on startup before it binds a port — leaving an orphan `ui.lock` with
-# `port: 0` and the misleading error "UI did not bind within 2s; run
-# `ok clean`". `/review-local`'s plugin bundle at
+# single broken symlink anywhere under the walked tree crashes the
+# static-serve path before it binds a port. `/review-local`'s plugin bundle at
 # `tmp/ship/pr-review-plugin/skills/` routinely creates broken symlinks
 # (relative paths like `../../../plugins/eng/skills/<name>` that assume
 # a non-monorepo layout).
@@ -166,7 +150,7 @@ if [[ -d "$REPO_ROOT/tmp" ]]; then
     fi
   done < <(find "$REPO_ROOT/tmp" -type l -print0 2>/dev/null)
   if (( ${#BROKEN_LINKS[@]} > 0 )); then
-    echo "[perf-prod] Removing ${#BROKEN_LINKS[@]} broken symlink(s) under tmp/ (would crash ok ui):"
+    echo "[perf-prod] Removing ${#BROKEN_LINKS[@]} broken symlink(s) under tmp/ (would crash the static serve):"
     for link in "${BROKEN_LINKS[@]}"; do
       echo "  $link"
       rm -f "$link"
@@ -174,52 +158,37 @@ if [[ -d "$REPO_ROOT/tmp" ]]; then
   fi
 fi
 
-echo "[perf-prod] Starting open-knowledge (collab server) on kernel-assigned port…"
+echo "[perf-prod] Starting open-knowledge (project server) on kernel-assigned port…"
 node "$CLI_BIN" start --port 0 >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
   local ec=$?
-  for proc in "UI:$UI_PID" "SERVER:$SERVER_PID"; do
-    local label="${proc%%:*}"
-    local pid="${proc##*:}"
-    [[ -z "$pid" || "$pid" == "$proc" ]] && continue
-    if kill -0 "$pid" 2>/dev/null; then
-      echo "[perf-prod] Stopping $label (pid $pid)…"
-      kill -TERM "$pid" 2>/dev/null || true
-    fi
-  done
-  # Wait up to 5s for both to exit + locks to release. Termination order
-  # doesn't matter — each owns its own lock and releases it on SIGTERM per
-  # the CLI's CC8 shutdown protocol.
+  if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "[perf-prod] Stopping server (pid $SERVER_PID)…"
+    kill -TERM "$SERVER_PID" 2>/dev/null || true
+  fi
+  # Wait up to 5s for the process to exit + the lock to release per the
+  # CLI's shutdown protocol.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    local alive=0
-    [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null && alive=$((alive + 1))
-    [[ -n "${UI_PID:-}" ]] && kill -0 "$UI_PID" 2>/dev/null && alive=$((alive + 1))
-    if (( alive == 0 )) && [[ ! -f "$SERVER_LOCK" && ! -f "$UI_LOCK" ]]; then break; fi
+    if ! kill -0 "${SERVER_PID:-0}" 2>/dev/null && [[ ! -f "$SERVER_LOCK" ]]; then break; fi
     sleep 0.5
   done
-  # Force-kill any remaining processes.
-  for pid in "${UI_PID:-}" "${SERVER_PID:-}"; do
-    [[ -z "$pid" ]] && continue
-    if kill -0 "$pid" 2>/dev/null; then
-      echo "[perf-prod] WARN: pid $pid did not exit on SIGTERM; sending SIGKILL" >&2
-      kill -KILL "$pid" 2>/dev/null || true
-    fi
-  done
+  if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "[perf-prod] WARN: pid $SERVER_PID did not exit on SIGTERM; sending SIGKILL" >&2
+    kill -KILL "$SERVER_PID" 2>/dev/null || true
+  fi
   if [[ $ec -ne 0 ]]; then
-    echo "[perf-prod] Script exited non-zero ($ec). Logs:" >&2
+    echo "[perf-prod] Script exited non-zero ($ec). Log:" >&2
     echo "  server: $SERVER_LOG" >&2
-    echo "  ui:     $UI_LOG" >&2
   else
-    rm -f "$SERVER_LOG" "$UI_LOG" 2>/dev/null || true
+    rm -f "$SERVER_LOG" 2>/dev/null || true
   fi
   exit $ec
 }
-UI_PID=""
 trap cleanup EXIT INT TERM
 
-# ── 3. Wait for server lock, then start ui, then wait for ui lock ────────────
+# ── 3. Wait for the server lock ──────────────────────────────────────────────
 
 wait_for_lock() {
   local lock="$1"
@@ -252,24 +221,13 @@ wait_for_lock() {
 }
 
 echo "[perf-prod] Waiting for $SERVER_LOCK with a bound port…"
-COLLAB_PORT="$(wait_for_lock "$SERVER_LOCK" "$SERVER_PID" "collab server" "$SERVER_LOG")" || exit 3
-
-# Now start the UI server. It reads server.lock (already populated) to derive
-# /api/config's collabUrl. Use port 0 for kernel-assigned; respects
-# resolveUiLockCollision (US-005 lock handling).
-echo "[perf-prod] Starting open-knowledge ui (React asset server) on kernel-assigned port…"
-node "$CLI_BIN" ui --port 0 >"$UI_LOG" 2>&1 &
-UI_PID=$!
-
-echo "[perf-prod] Waiting for $UI_LOCK with a bound port…"
-PORT="$(wait_for_lock "$UI_LOCK" "$UI_PID" "ui server" "$UI_LOG")" || exit 3
+PORT="$(wait_for_lock "$SERVER_LOCK" "$SERVER_PID" "server" "$SERVER_LOG")" || exit 3
 
 # ── 4. Run perf:profile N times ──────────────────────────────────────────────
 
 APP_DIR="$REPO_ROOT/packages/app"
 cd "$APP_DIR"
 
-run_start_ts="$(epoch_ms)"
 run_failures=0
 for i in $(seq 1 "$RUNS"); do
   echo "[perf-prod] Run $i/$RUNS — scenario=$SCENARIO target=http://localhost:$PORT"
@@ -317,9 +275,9 @@ case "$SCENARIO" in
   *)                       METRIC="" ;;
 esac
 
-# Find the N most-recent result files for this scenario that were
-# modified AFTER run_start_ts (the script's launch epoch). Excludes
-# pre-existing results from older measurement sessions.
+# Take the N most-recent result files for this scenario (mtime order). If an
+# older measurement session left more than N files, only the freshest N — the
+# ones this run just produced — feed the median.
 cd "$RESULTS_DIR"
 # shellcheck disable=SC2012  # ls with -t is intentional; file names have no spaces/newlines.
 latest_files="$(ls -t "$SCENARIO".*.json 2>/dev/null | head -n "$RUNS" || true)"

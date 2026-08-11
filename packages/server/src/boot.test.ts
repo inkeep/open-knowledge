@@ -81,7 +81,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -115,7 +114,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -152,7 +150,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       expect(booted.port).toBeGreaterThan(0);
     } finally {
@@ -182,7 +179,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -213,7 +209,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       const bootWarnings = warnSpy.mock.calls
         .map((call) => String(call[1] ?? ''))
@@ -254,7 +249,6 @@ describe('bootServer — runtime state lives at projectDir, not contentDir', () 
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       // Wait for async init (loadPrincipal, state-manifest write) to settle.
@@ -301,7 +295,6 @@ describe('bootServer — tolerance-telemetry writer wired through the real boot 
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       await booted.ready;
@@ -345,7 +338,6 @@ describe('bootServer — idle-shutdown runs full destroy', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: 50,
-      attachUiSibling: false,
     });
 
     try {
@@ -392,7 +384,6 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
       reactShellDistDir: shellDistDir,
     });
     try {
@@ -422,7 +413,6 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       await booted.ready;
@@ -468,7 +458,6 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
       reactShellDistDir: shellDistDir,
     });
     try {
@@ -539,7 +528,6 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
       reactShellDistDir: shellDistDir,
     });
     try {
@@ -583,7 +571,6 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
       reactShellDistDir: shellDistDir,
     });
     await booted1.ready;
@@ -605,7 +592,6 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
       reactShellDistDir: shellDistDir,
     });
     try {
@@ -681,7 +667,6 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
       serveContentAssets: true,
       reactShellDistDir: shellDistDir,
     });
@@ -802,7 +787,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       const spans = exporter?.getFinishedSpans() ?? [];
@@ -852,7 +836,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       const spans = exporter?.getFinishedSpans() ?? [];
@@ -882,7 +865,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
     } catch (err) {
       caught = err;
@@ -915,7 +897,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     await bootedMain.destroy();
 
@@ -947,7 +928,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     await bootedLinked.destroy();
 
@@ -991,7 +971,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       const bootSpan = (exporter?.getFinishedSpans() ?? []).find((s) => s.name === 'ok.boot');
       expect(bootSpan).toBeDefined();
@@ -1023,7 +1002,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       expect(booted.port).toBeGreaterThan(0);
       const bootSpan = (exporter?.getFinishedSpans() ?? []).find((s) => s.name === 'ok.boot');
@@ -1054,7 +1032,6 @@ describe('bootServer — boot timings recorded end-to-end', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       await booted.ready;
@@ -1166,7 +1143,6 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       await booted.destroy();
     } catch (err) {
@@ -1258,7 +1234,6 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
         quiet: true,
         gitEnabled: false,
         idleShutdownMs: null,
-        attachUiSibling: false,
       });
       await booted.destroy();
     } catch (e) {
@@ -1286,7 +1261,6 @@ describeEvenOnCI('bootServer — multi-address bind', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       expect(booted.port).toBeGreaterThan(0);
@@ -1315,7 +1289,6 @@ describeEvenOnCI('bootServer — multi-address bind', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       const res = await fetch(`http://127.0.0.1:${booted.port}/healthz`);

@@ -17,9 +17,8 @@ interface BannerOptions {
   networkUrl?: string;
   /**
    * Secondary URL for the collab/API server. When set, the primary `localUrl`
-   * is labeled "Editor:" (pointing at `ok ui`) and this field is rendered as
-   * "API:" (pointing at `ok start`). this gives operators
-   * the URL they actually want to click.
+   * is labeled "Editor:" and this field is rendered as "API:". This gives
+   * operators the URL they actually want to click.
    */
   apiUrl?: string;
   /**

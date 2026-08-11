@@ -298,14 +298,14 @@ describe('preview_url tool — no UI running', () => {
     expect(result.structuredContent?.autoOpen).toBe(true);
   });
 
-  test('server alive but no UI: advises ok ui, not ok start', async () => {
+  test('server alive but no UI: transient retry hint, no spawn advice', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
     bindTestServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.structuredContent?.running).toBe(false);
     expect(result.content[0]?.text).toContain('OK server is running');
-    expect(result.content[0]?.text).toContain('`ok ui`');
+    expect(result.content[0]?.text).toContain('Retry in a few seconds');
     expect(result.content[0]?.text).not.toContain('`ok start`');
   });
 
@@ -318,8 +318,8 @@ describe('preview_url tool — no UI running', () => {
     expect(result.structuredContent?.running).toBe(false);
     expect(result.content[0]?.text).toContain('no preview UI is mounted');
     expect(result.content[0]?.text).toContain('--only server');
-    // Steer to the non-deprecated Wave 3 split-mode command, not `ok ui`.
-    expect(result.content[0]?.text).toContain('--only ui --server-url');
+    // Steer to restarting with plain `ok start` (serves the editor).
+    expect(result.content[0]?.text).toContain('Restart it with plain `ok start`');
     expect(result.content[0]?.text).not.toContain('`ok ui`');
     // The whole point: "retry" would loop forever against a UI-less server.
     expect(result.content[0]?.text).not.toContain('Retry');
@@ -426,7 +426,7 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent?.running).toBe(false);
     expect(result.content[0]?.text).toContain('OK server is running');
-    expect(result.content[0]?.text).toContain('`ok ui`');
+    expect(result.content[0]?.text).toContain('Retry in a few seconds');
     // Symmetric with the no-server branch: a hint-selector regression that
     // emitted the wrong-state message would advise `ok start` here.
     expect(result.content[0]?.text).not.toContain('`ok start`');

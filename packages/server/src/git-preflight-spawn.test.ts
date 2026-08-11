@@ -111,7 +111,6 @@ describe('bootServer() preflight survives the subprocess boundary (FR6 / US-005)
             quiet: true,
             gitEnabled: true,
             idleShutdownMs: null,
-            attachUiSibling: false,
             gitPreflight: () => { throw new GitNotAvailableError('linux', guidance); },
           });
         } catch (err) {
@@ -204,7 +203,6 @@ describe('bootServer() preflight survives the subprocess boundary (FR6 / US-005)
             quiet: true,
             gitEnabled: true,
             idleShutdownMs: null,
-            attachUiSibling: false,
             gitPreflight: () => {
               throw new GitTooOldError('linux', '2.20.0', '2.31.0', '/usr/bin/git', guidance);
             },

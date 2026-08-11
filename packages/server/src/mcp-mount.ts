@@ -116,8 +116,8 @@ export interface MountMcpAndApiOptions {
    * the SPA shell only handles routes the content middleware didn't claim).
    * Used by OK Electron's utility process so external agent in-app browsers
    * can render the bundled React app from the same HTTP port the API runs
-   * on. The CLI / test harness leave it undefined — `ok ui` already serves
-   * the shell on its own port.
+   * on. The CLI wires it through `bootServer`'s `reactShellDistDir`; test
+   * harnesses leave it undefined.
    */
   reactShellMiddleware?: (req: IncomingMessage, res: ServerResponse, next: () => void) => void;
   /**
@@ -389,13 +389,12 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
       runMiddleware(reactShellMiddleware, 'react-shell', onMiss);
     const notFound = (): void => {
       if (res.writableEnded || res.headersSent) return;
-      // When this server doesn't serve the React shell (CLI / MCP-spawned —
-      // content assets mount by default but the UI lives on the `ok ui`
-      // sibling), keep the operator hint so a human loading `/` in a browser
-      // is pointed at the right port.
+      // When this server doesn't serve the React shell (`--only server` /
+      // API-only profile), keep the operator hint so a human loading `/` in a
+      // browser learns how to get the editor.
       const uiHint =
         reactShellMiddleware === undefined
-          ? 'The React UI is served by `ok ui` (run `ok ui` and check `ui.lock.port`). '
+          ? 'This server is running without the web UI. Restart it with plain `ok start` to serve the editor. '
           : '';
       errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
         handler: 'mcp-mount',
@@ -412,7 +411,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     // already fall through, which is why only fonts/images regressed. Try the
     // shell first for this prefix; fall through to the content middleware on a
     // miss so user uploads at `<contentDir>/assets/*` still serve. Mirrors
-    // `ok ui`'s `/assets/`-first branch in `commands/ui.ts`.
+    // the split-mode UI proxy's `/assets/`-first branch in `commands/ui.ts`.
     if (reactShellMiddleware !== undefined && url?.startsWith('/assets/')) {
       runShell(() => runContent(notFound));
       return;
@@ -426,12 +425,11 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
       runContent(() => runShell(notFound));
       return;
     }
-    // Neither middleware wired (CLI / test harness) — catch-all 404. Static
-    // React assets are served by `ok ui` (a CLI wrapper concern, not modeled
-    // here); every other path lands here.
+    // Neither middleware wired (test harness / degraded API-only boot) —
+    // catch-all 404.
     errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
       handler: 'mcp-mount',
-      detail: `The React UI is served by \`ok ui\` (run \`ok ui\` and check \`ui.lock.port\`). No handler for ${url ?? '/'}`,
+      detail: `This server is running without the web UI. Restart it with plain \`ok start\` to serve the editor. No handler for ${url ?? '/'}`,
     });
   };
 

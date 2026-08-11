@@ -165,7 +165,7 @@ export function runCollabUrlPoll(deps: CollabPollDeps): CollabPollHandle {
       } else if (result.status === 'ok') {
         if (!nullCollabLogged) {
           nullCollabLogged = true;
-          log.info('[collab-url] ok ui responded but server.lock has no port yet — retrying');
+          log.info('[collab-url] server responded but server.lock has no port yet — retrying');
         }
         lastError = { kind: 'null-collab' };
       } else if (result.status === 'error') {

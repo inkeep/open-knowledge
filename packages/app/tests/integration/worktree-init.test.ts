@@ -71,7 +71,6 @@ describe('initContent in a linked worktree (FR4 / D7)', () => {
       quiet: true,
       gitEnabled: false,
       idleShutdownMs: null,
-      attachUiSibling: false,
     });
     try {
       await booted.ready;

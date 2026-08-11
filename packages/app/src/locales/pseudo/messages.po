@@ -7494,7 +7494,7 @@ msgid "Network error — please try again"
 msgstr ""
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok ui` running?)"
+msgid "network error (is `ok start` running?)"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -8144,10 +8144,6 @@ msgstr ""
 #. placeholder {0}: o.expected ?? ''
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
-msgstr ""
-
-#: src/components/ConnectingBanner.tsx
-msgid "ok ui responded but server.lock has no port yet"
 msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
@@ -12105,6 +12101,10 @@ msgstr ""
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
+msgstr ""
+
+#: src/components/ConnectingBanner.tsx
+msgid "the server responded but server.lock has no port yet"
 msgstr ""
 
 #: src/components/SkillInstallMenu.tsx

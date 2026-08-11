@@ -213,6 +213,7 @@
     "2IYGkU": [
       "Este documento tiene cambios sin subir. Quien lo reciba verá la última versión subida."
     ],
+    "2L8aeZ": ["error de red (¿está `ok start` en ejecución?)"],
     "2M0JF6": ["Actualización automática"],
     "2O5Z0r": ["Ocultar ", ["appName"]],
     "2QM24L": ["Todas las etiquetas"],
@@ -2251,7 +2252,6 @@
     ],
     "TEEPPF": ["Sustituirá la entrada existente de OpenKnowledge"],
     "TEJiKw": ["OpenKnowledge revisó ", ["subject"]],
-    "TJnkyf": ["ok ui respondió, pero server.lock todavía no tiene puerto"],
     "TKQ7K-": ["Instalar"],
     "TLIO3j": ["Activa o desactiva la cursiva."],
     "TMLAx2": ["Obligatorio"],
@@ -2944,7 +2944,6 @@
     "akmOT9": ["Editar este comentario"],
     "anmUZq": ["Faltaba una función"],
     "aoT2xX": ["Este comentario es sobre toda la propiedad"],
-    "aoa6xA": ["error de red (¿está `ok ui` en marcha?)"],
     "arUUsK": ["Novedades del producto"],
     "ax9kie": [
       "Los ajustes de vista previa de enlaces aún no se han cargado; inténtalo de nuevo en un momento"
@@ -4510,6 +4509,7 @@
     "txUHO8": [["localizedMessage"], " en la línea ", ["displayLine"]],
     "tzGWeg": ["Preparando la desinstalación de OpenKnowledge"],
     "tzZ6ha": ["Conectar con GitHub Enterprise Server"],
+    "tz_FDV": ["el servidor respondió pero server.lock aún no tiene puerto"],
     "u-9fWA": ["Consulta <0>Arquitectura</0> para ver una visión general del sistema."],
     "u3BOHd": [
       [

@@ -140,7 +140,7 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
   {
     path: ['preview', 'baseUrl'],
     redirect: [
-      'preview URLs now resolve only to the running UI process — start one with `ok ui`.',
+      'preview URLs now resolve only to the running server — start one with `ok start`.',
       MIGRATE_HINT,
     ].join(' '),
   },
