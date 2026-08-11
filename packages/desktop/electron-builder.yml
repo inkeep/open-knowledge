@@ -9,7 +9,7 @@ copyright: Copyright © 2026 Inkeep
 # "electron" devDep in packages/desktop/package.json — that devDep is
 # pinned exact (no caret) so the packaged runtime and the version used by
 # electron-rebuild / native-module ABI compilation cannot drift.
-electronVersion: "41.2.1"
+electronVersion: "41.9.1"
 
 # @electron/rebuild runs for mac and Windows from this config: mac needs
 # node-pty's ABI rebuilt, Windows cross-builds its per-arch binaries.

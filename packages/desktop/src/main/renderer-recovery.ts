@@ -324,16 +324,20 @@ export function createRendererRecovery(deps: RendererRecoveryDeps): RendererReco
         },
         'renderer died — reloading the window automatically',
       );
-      // The reload MUST NOT run on the caller's stack. Electron emits
+      // The reload MUST NOT run on the caller's stack. Electron emitted
       // `render-process-gone` synchronously from inside Chromium's
-      // process-death observer loop, and reloading from there re-enters
+      // process-death observer loop, and reloading from there re-entered
       // `RenderProcessHostImpl::Init()` mid-iteration; the relaunched renderer
-      // then fails a CHECK and takes the whole browser process down. A
+      // then failed a CHECK and took the whole browser process down. A
       // try/catch cannot contain it — the CHECK fires a turn later, long after
       // `reload()` has returned normally. Deferring by one task lets the
-      // notification unwind first. Fixed upstream in electron/electron#51900
-      // (backported to 41-x-y as #51917, after the 41.2.1 this app pins), so
-      // this stays until the pin moves past it.
+      // notification unwind first. Upstream fixed the re-entrancy in
+      // electron/electron#51900 (backported to 41-x-y as #51917, shipped in
+      // the 41.9.1 this app pins). The deferral deliberately outlives that
+      // fix: staying off the observer stack is cheap insurance against an
+      // upstream regression, and the deferral window is observable contract
+      // (the reload-abandoned branch below) — removing it is its own
+      // decision, not a version-bump side effect.
       deps.defer(() => {
         // The whole body is guarded, not just the reload. This runs on a later
         // task, so nothing above is on the stack to catch it and an escaping
