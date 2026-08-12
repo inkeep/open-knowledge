@@ -5693,10 +5693,42 @@ html.electron-mode [data-slot="sidebar-inner"] {
    sibling to 8000px and producing bottom whitespace on short docs. The
    consuming dual-editor wrapper must be `position: relative` so this
    absolute positioning resolves against it (see `EditorActivityPool.tsx`).
-   `pointer-events: none` guards against stray hit-tests reaching hidden
-   descendants before content-visibility's own hit-test skip applies. */
+   Paint-lock scheduling (renderer-survival contract): Blink hard-CHECKs —
+   killing the whole renderer process — when a mouse press's hit-tested
+   node gains a paint-locked ancestor within one input dispatch
+   (`hit_test_result.cc`, `DisplayLockUtilities::LockedAncestorPreventingPaint`;
+   the CHECK is present at Chromium HEAD). React discrete updates flush
+   inside event dispatch, so the className swap that applies this class can
+   land exactly there. `transition: content-visibility 0s 32ms allow-discrete`
+   defers the lock to a rendering update: discrete transitions flip TO
+   `hidden` at 100% of the transition (MDN transition-behavior), and the
+   document timeline's currentTime is fixed for the duration of a script
+   execution block (Web Animations), so a style recalc forced mid-dispatch
+   always computes the before-change value (`visible`) — the lock can only
+   form at "update the rendering", which never interleaves with an input
+   dispatch. Scope: the deferral covers the className-swap-on-existing-
+   element path (the crashing one). An element INSERTED already carrying
+   this class takes the lock in its first style recalc — transitions do
+   not start for an element absent from the previous style change event
+   (CSS Transitions §3) and there is no `@starting-style` here. That
+   first-insertion path is click-safe by construction (a freshly inserted
+   node cannot be an ancestor of a node hit-tested earlier in the same
+   dispatch), but do not rely on the deferral for newly mounted subtrees.
+   That deferred scheduling is the same rendering-update lock scheduling
+   `content-visibility: auto` has natively (see `.ok-chunk-wrapper` below).
+   `visibility: hidden` covers the deferral window: it removes the subtree
+   from hit-testing entirely (unlike `pointer-events: none`, which does not
+   invalidate a hit test captured earlier in the same dispatch), and it
+   stops the deactivated pane's paint at the same recalc that reveals the
+   activated sibling, keeping the flip flash-free while the lock is
+   pending. Do not drop any of the trio (content-visibility: hidden +
+   deferring transition + visibility: hidden) — the pairing is pinned by
+   `globals.cv-paint-lock.test.ts` and exercised at Playwright fidelity by
+   `tests/stress/cv-paint-lock-click.e2e.ts`. */
 .ok-mode-hidden {
   content-visibility: hidden;
+  transition: content-visibility 0s 32ms allow-discrete;
+  visibility: hidden;
   contain-intrinsic-size: 0 8000px;
   position: absolute;
   inset: 0;
@@ -5764,7 +5796,15 @@ html.electron-mode [data-slot="sidebar-inner"] {
    descendant CV:auto is moot until the ancestor returns to visible.
 
    Scoped to `.ProseMirror` so source-mode CodeMirror DOM is untouched
-   (CM6 has its own line-oriented viewport rendering). */
+   (CM6 has its own line-oriented viewport rendering).
+
+   Click-safety: cv:auto is safe under clicks because its lock state
+   changes only at rendering updates (never synchronously inside an input
+   dispatch) and hit-testing skips already-locked subtrees. Do not replace
+   `auto` with `hidden` here without the same deferred-lock + visibility
+   pair `.ok-mode-hidden` carries — an undeferred paint lock over
+   hit-testable editor content trips Blink's display-lock CHECK (see the
+   `.ok-mode-hidden` comment above). */
 .ProseMirror .ok-chunk-wrapper {
   content-visibility: auto;
   contain-intrinsic-size: 0 var(--ok-cv-h, 80px);

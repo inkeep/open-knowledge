@@ -1457,7 +1457,9 @@ function ActivityEntry({
                   Stacking: the wrapper is position:relative + h-full. The
                   non-active child carries `.ok-mode-hidden`, which sets
                   `position:absolute; inset:0; pointer-events:none` alongside
-                  `content-visibility:hidden + contain-intrinsic-size`. That
+                  `visibility:hidden` plus a rendering-update-deferred
+                  `content-visibility:hidden` lock + `contain-intrinsic-size`
+                  (full contract in globals.css §.ok-mode-hidden). That
                   takes the hidden editor out of normal flow so its 8000px
                   reserved intrinsic size doesn't size the wrapper or any
                   shared grid row (earlier grid-based stacking sized rows to
