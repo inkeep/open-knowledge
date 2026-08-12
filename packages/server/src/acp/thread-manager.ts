@@ -50,6 +50,7 @@ import {
   OK_HOSTED_AGENT_ENV,
 } from '@inkeep/open-knowledge-core';
 import type {
+  AttachmentPart,
   QueuedMessage,
   SteerMessage,
   ThreadAgentInfo,
@@ -71,6 +72,7 @@ import {
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
+import { buildPromptBlocks } from './attachment-blocks.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
   AgentLaunchError,
@@ -220,6 +222,18 @@ class AuthenticateTimeoutError extends Error {
   constructor() {
     super('authenticate timed out');
     this.name = 'AuthenticateTimeoutError';
+  }
+}
+
+/**
+ * A Stop landed while the async prompt-block build was still in flight, so
+ * we never sent `session/prompt`. Thrown from the build-then-dispatch chain
+ * so the existing catch (which honors `cancelRequested`) handles cleanup.
+ */
+class PromptCancelledBeforeDispatchError extends Error {
+  constructor() {
+    super('prompt build cancelled before dispatch');
+    this.name = 'PromptCancelledBeforeDispatchError';
   }
 }
 
@@ -613,6 +627,12 @@ export class AcpThreadManager {
   async createThread(params: {
     agent: { source: 'registry' | 'custom'; id: string };
     prompt?: string;
+    /**
+     * Attachment parts for the launch prompt. Rides `sendPrompt` alongside
+     * the text — server converts each to the ACP content block the agent
+     * advertised support for; drops with a log warning otherwise.
+     */
+    attachments?: readonly AttachmentPart[];
     docName?: string;
     titleHint?: string;
     /**
@@ -1256,6 +1276,7 @@ export class AcpThreadManager {
     params: {
       agent: { source: 'registry' | 'custom'; id: string };
       prompt?: string;
+      attachments?: readonly AttachmentPart[];
       settings?: { config?: Record<string, string | boolean>; modeId?: string };
     },
     custom: CustomAgentEntry | null,
@@ -1293,8 +1314,16 @@ export class AcpThreadManager {
       '[acp-threads] agent ready',
     );
 
-    if (params.prompt !== undefined && params.prompt !== '') {
-      this.sendPrompt(record.info.threadId, params.prompt);
+    // Same gate resumeThread now uses: attachment-only creates count as
+    // content ("attachments alone ARE the message"). Not currently reachable
+    // from any in-tree call site (all `create` frames carry text today), but
+    // the wire accepts create.attachments — a version-skewed client would
+    // otherwise silently lose them.
+    const hasContent =
+      (params.prompt !== undefined && params.prompt !== '') ||
+      (params.attachments !== undefined && params.attachments.length > 0);
+    if (hasContent) {
+      this.sendPrompt(record.info.threadId, params.prompt ?? '', params.attachments);
     }
   }
 
@@ -1386,7 +1415,11 @@ export class AcpThreadManager {
    * with `resume-unsupported`. Unlike `createThread`, resolves only once the
    * thread is ready (or rejects) — status events stream progress meanwhile.
    */
-  async resumeThread(threadId: string, prompt?: string): Promise<ThreadInfo> {
+  async resumeThread(
+    threadId: string,
+    prompt?: string,
+    attachments?: readonly AttachmentPart[],
+  ): Promise<ThreadInfo> {
     if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
     const t = this.mustGet(threadId);
     if (t.info.archived !== true) {
@@ -1428,7 +1461,15 @@ export class AcpThreadManager {
         t.midTurnOnDisk = false;
         this.appendEvent(t, { kind: 'turn_ended', stopReason: 'cancelled', ts: Date.now() });
       }
-      if (prompt !== undefined && prompt !== '') {
+      // Attachment-only prompts (image drop with no text) count as content
+      // — the message is the picture. `prompt === '' && attachments.length > 0`
+      // is a legitimate send and must ride the same optimistic-echo + later
+      // dispatch path a text prompt does. Both-empty stays a no-op resume
+      // (Reopen with no send).
+      const hasContent =
+        (prompt !== undefined && prompt !== '') ||
+        (attachments !== undefined && attachments.length > 0);
+      if (hasContent) {
         // Optimistic echo: the message lands in the transcript (and every
         // subscriber's view) NOW, not after the multi-second respawn +
         // handshake — otherwise the composer clears and nothing visibly
@@ -1436,7 +1477,7 @@ export class AcpThreadManager {
         // handshake skips its own echo to match. Flushed synchronously so
         // the echo frame always precedes the `resumed` response, not just
         // usually (the coalescing timer could lose to a fast handshake).
-        this.echoUserMessage(t, prompt);
+        this.echoUserMessage(t, prompt ?? '', attachments);
         this.flushBroadcast(t);
       }
       this.emitStatus(t, 'installing');
@@ -1498,8 +1539,8 @@ export class AcpThreadManager {
           },
           '[acp-threads] thread resumed',
         );
-        if (prompt !== undefined && prompt !== '') {
-          this.dispatchPrompt(t, prompt, { echo: false });
+        if (hasContent) {
+          this.dispatchPrompt(t, prompt ?? '', attachments, { echo: false });
         }
         return { ...t.info };
       } catch (err) {
@@ -1743,7 +1784,7 @@ export class AcpThreadManager {
     }
   }
 
-  sendPrompt(threadId: string, content: string): void {
+  sendPrompt(threadId: string, content: string, attachments?: readonly AttachmentPart[]): void {
     const t = this.mustGet(threadId);
     if (t.info.archived === true) {
       throw new ThreadOpError('not-ready', 'the thread is archived — resume it first');
@@ -1770,12 +1811,14 @@ export class AcpThreadManager {
           `${MAX_QUEUED_PROMPTS} messages are already waiting — let the agent catch up`,
         );
       }
-      t.info.queue = [...queue, { id: crypto.randomUUID(), content, ts: Date.now() }];
+      const entry: QueuedMessage = { id: crypto.randomUUID(), content, ts: Date.now() };
+      if (attachments !== undefined && attachments.length > 0) entry.attachments = attachments;
+      t.info.queue = [...queue, entry];
       t.info.lastActivityAt = Date.now();
       this.emitInfo(t);
       return;
     }
-    this.dispatchPrompt(t, content, { echo: true });
+    this.dispatchPrompt(t, content, attachments, { echo: true });
   }
 
   /**
@@ -1788,7 +1831,7 @@ export class AcpThreadManager {
    * If the agent never stops, {@link demoteStalledSteer} converts it into an
    * ordinary queued message rather than leaving it stranded.
    */
-  steerPrompt(threadId: string, content: string): void {
+  steerPrompt(threadId: string, content: string, attachments?: readonly AttachmentPart[]): void {
     const t = this.mustGet(threadId);
     if (t.info.archived === true) {
       throw new ThreadOpError('not-ready', 'the thread is archived — resume it first');
@@ -1805,13 +1848,15 @@ export class AcpThreadManager {
     if (!t.turnActive) {
       // Nothing to steer away from — a correction with no run to correct is
       // just a message.
-      this.dispatchPrompt(t, content, { echo: true });
+      this.dispatchPrompt(t, content, attachments, { echo: true });
       return;
     }
     // Latest correction wins: a second steer replaces the parked one (and its
     // countdown) rather than lining up behind it.
     this.clearSteer(t);
-    t.info.steer = { content, ts: Date.now() };
+    const steer: SteerMessage = { content, ts: Date.now() };
+    if (attachments !== undefined && attachments.length > 0) steer.attachments = attachments;
+    t.info.steer = steer;
     t.info.lastActivityAt = Date.now();
     this.emitInfo(t);
     const timer = setTimeout(() => this.demoteStalledSteer(t), this.steerStallMs);
@@ -1836,10 +1881,19 @@ export class AcpThreadManager {
     // Deliberately allowed to exceed MAX_QUEUED_PROMPTS by one. That cap gates
     // NEW sends; dropping a correction the user already committed to (or
     // evicting someone else's queued message to make room) is the worse trade.
-    t.info.queue = [
-      { id: crypto.randomUUID(), content: steer.content, ts: steer.ts },
-      ...(t.info.queue ?? []),
-    ];
+    // Preserve steer.attachments — the user attached files to the correction,
+    // and a demotion that dropped them would send a different message than
+    // the one they typed. Optional so the wire shape matches other queued
+    // messages that ride without attachments.
+    const demoted: QueuedMessage = {
+      id: crypto.randomUUID(),
+      content: steer.content,
+      ts: steer.ts,
+    };
+    if (steer.attachments !== undefined && steer.attachments.length > 0) {
+      demoted.attachments = steer.attachments;
+    }
+    t.info.queue = [demoted, ...(t.info.queue ?? [])];
     this.emitInfo(t);
   }
 
@@ -1908,7 +1962,7 @@ export class AcpThreadManager {
     if (t.info.archived === true || t.sessionId === null || t.conn === null) return;
     const next = this.takeNextQueued(t);
     if (next === null) return;
-    this.dispatchPrompt(t, next.content, { echo: true });
+    this.dispatchPrompt(t, next.content, next.attachments, { echo: true });
   }
 
   /** Pop the next dispatchable queued prompt, or null. Held entries are
@@ -1927,7 +1981,11 @@ export class AcpThreadManager {
   }
 
   /** Adopt-title + append the `user_message` transcript event for a prompt. */
-  private echoUserMessage(t: ThreadRecord, content: string): void {
+  private echoUserMessage(
+    t: ThreadRecord,
+    content: string,
+    attachments?: readonly AttachmentPart[],
+  ): void {
     // The single choke point for every user message (launch prompt, interactive
     // prompt, resume prompt) — mark the thread as touched so a later close
     // archives it rather than discarding it as never-used.
@@ -1942,7 +2000,9 @@ export class AcpThreadManager {
       this.appendEvent(t, { kind: 'title_changed', title: t.info.title, ts: Date.now() });
       this.emitInfo(t);
     }
-    this.appendEvent(t, { kind: 'user_message', content, ts: Date.now() });
+    const event: ThreadEvent = { kind: 'user_message', content, ts: Date.now() };
+    if (attachments !== undefined && attachments.length > 0) event.attachments = attachments;
+    this.appendEvent(t, event);
   }
 
   /**
@@ -1977,12 +2037,17 @@ export class AcpThreadManager {
    * resume path, whose optimistic echo already put the user message (and
    * title adoption) in the transcript at resume start.
    */
-  private dispatchPrompt(t: ThreadRecord, content: string, opts: { echo: boolean }): void {
+  private dispatchPrompt(
+    t: ThreadRecord,
+    content: string,
+    attachments: readonly AttachmentPart[] | undefined,
+    opts: { echo: boolean },
+  ): void {
     if (t.sessionId === null || t.conn === null) {
       throw new ThreadOpError('not-ready', 'thread has no live agent session');
     }
     if (opts.echo) {
-      this.echoUserMessage(t, content);
+      this.echoUserMessage(t, content, attachments);
     }
     // Wire-only injection: the transcript (echo above) keeps the user's text;
     // the agent additionally receives the environment note ahead of the first
@@ -2003,11 +2068,63 @@ export class AcpThreadManager {
     this.emitStatus(t, 'running');
 
     const sessionId = t.sessionId;
-    t.conn.agent
-      .request(acpMethods.agent.session.prompt, {
+    // Build the ACP prompt payload. Attachment conversion (fs reads,
+    // capability gating, base64 encoding) is async; the outbound ACP
+    // request has to wait for it, but the turn-started event has already
+    // fired so the user sees the run as engaged.
+    const promptBuild = buildPromptBlocks(
+      wireText,
+      attachments,
+      t.info.promptCapabilities,
+      (requested) => this.confinePath(requested).then(({ abs, rel }) => ({ abs, rel })),
+    );
+    const requestPromise = promptBuild.then((built) => {
+      if (built.dropped.length > 0) {
+        this.opts.log.warn(
+          {
+            threadId: t.info.threadId,
+            dropped: built.dropped.map((d) => ({ kind: d.part.kind, reason: d.reason })),
+          },
+          '[acp-threads] dropped attachment parts before session/prompt',
+        );
+        // Surface each drop in the transcript so the user learns WHY an
+        // attachment they meant to send went missing (path escape, stat
+        // failure, missing capability). The server-only log is fine for
+        // post-mortem but invisible in the moment. Uses `agent_stderr`
+        // per the `attachment-blocks.ts` contract — soft, non-fatal,
+        // transcript-visible, the same surface the agent's own stderr rides.
+        const dropTs = Date.now();
+        for (const d of built.dropped) {
+          const label =
+            d.part.kind === 'image' || d.part.kind === 'blob'
+              ? d.part.name
+              : d.part.name || d.part.path;
+          this.appendEvent(t, {
+            kind: 'agent_stderr',
+            line: `[attachment dropped] ${label}: ${d.reason}`,
+            ts: dropTs,
+          });
+        }
+      }
+      if (t.sessionId === null || t.conn === null) {
+        throw new ThreadOpError('not-ready', 'thread has no live agent session');
+      }
+      // A Stop that lands while we're building the payload (fs realpath +
+      // stat per file/folder attachment) races the outbound send. Without
+      // this guard the cancel notification would fire against a session
+      // that hasn't received session/prompt yet, and the prompt would then
+      // arrive and run to completion — the exact turn the user cancelled.
+      // Throwing routes cleanup through the existing catch, which honors
+      // `cancelRequested` and emits `turn_ended cancelled`.
+      if (t.cancelRequested) {
+        throw new PromptCancelledBeforeDispatchError();
+      }
+      return t.conn.agent.request(acpMethods.agent.session.prompt, {
         sessionId,
-        prompt: [{ type: 'text', text: wireText }],
-      })
+        prompt: [...built.blocks],
+      });
+    });
+    requestPromise
       .then((response) => {
         t.turnActive = false;
         if (t.closed) return;
@@ -2025,12 +2142,12 @@ export class AcpThreadManager {
           // for it, so it cannot wait behind messages queued before it.
           const steer = this.takeSteer(t);
           if (steer !== null) {
-            this.dispatchPrompt(t, steer.content, { echo: true });
+            this.dispatchPrompt(t, steer.content, steer.attachments, { echo: true });
             return;
           }
           const next = this.takeNextQueued(t);
           if (next !== null) {
-            this.dispatchPrompt(t, next.content, { echo: true });
+            this.dispatchPrompt(t, next.content, next.attachments, { echo: true });
             return;
           }
         }
@@ -2046,7 +2163,7 @@ export class AcpThreadManager {
         if (t.sessionId !== null && t.conn !== null) {
           const steer = this.takeSteer(t);
           if (steer !== null) {
-            this.dispatchPrompt(t, steer.content, { echo: true });
+            this.dispatchPrompt(t, steer.content, steer.attachments, { echo: true });
             return;
           }
         }

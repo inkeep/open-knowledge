@@ -1180,7 +1180,7 @@ describe('ThreadView message queue', () => {
     expect((send as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(send);
-    expect(prompt).toHaveBeenCalledWith('thread-1', 'queued while running');
+    expect(prompt).toHaveBeenCalledWith('thread-1', 'queued while running', undefined);
   });
 
   test('Escape cancels the turn while a draft holds the action slot', () => {
@@ -1580,7 +1580,7 @@ describe('ThreadView steer now', () => {
     expect(steerButton.getAttribute('aria-label')).toBe('Steer now');
 
     fireEvent.click(steerButton);
-    expect(steer).toHaveBeenCalledWith('thread-1', 'actually, do this instead');
+    expect(steer).toHaveBeenCalledWith('thread-1', 'actually, do this instead', undefined);
     expect(prompt).not.toHaveBeenCalled();
     expect(composer.value).toBe('');
   });
@@ -1593,7 +1593,7 @@ describe('ThreadView steer now', () => {
     fireEvent.change(composer, { target: { value: 'queue me' } });
     fireEvent.keyDown(composer, { key: 'Enter' });
 
-    expect(prompt).toHaveBeenCalledWith('thread-1', 'queue me');
+    expect(prompt).toHaveBeenCalledWith('thread-1', 'queue me', undefined);
     expect(steer).not.toHaveBeenCalled();
   });
 

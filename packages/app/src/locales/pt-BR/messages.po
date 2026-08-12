@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr " · apenas referências (sem conteúdo incorporado)"
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr " ou "
@@ -441,6 +445,10 @@ msgstr "{agentName} não conseguiu iniciar uma conversa."
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
 msgstr "{agentName} não conseguiu iniciar."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
+msgstr "{agentName} não aceita anexos de imagem."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -1719,6 +1727,10 @@ msgstr "Sugestões de recursos"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "Recurso: {title}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
+msgstr "Anexar um arquivo"
 
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
@@ -3525,6 +3537,10 @@ msgstr "Não deu para contatar o endpoint. Verifique a URL e se o servidor está
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Não deu para contatar o servidor do Open Knowledge para enviar {fileName}."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr "Não foi possível ler {fileName}."
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "Não deu para ler {fileName}. Ele pode ter sido movido, excluído ou não terminou de baixar. Tente adicioná-lo de novo."
@@ -4463,6 +4479,10 @@ msgstr "Arraste {patternText} para reordenar"
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
 msgstr "Arraste o item {0} para reordenar"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
+msgstr "Solte um arquivo para anexar"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -6187,6 +6207,10 @@ msgstr "Imagem não encontrada"
 msgid "Image not found: {errorLabel}"
 msgstr "Imagem não encontrada: {errorLabel}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr "Pré-visualização de imagem"
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr "O destino da imagem \"{shown}\" não pôde ser resolvido como um arquivo local do projeto."
@@ -6194,6 +6218,10 @@ msgstr "O destino da imagem \"{shown}\" não pôde ser resolvido como um arquivo
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "O destino da imagem \"{shown}\" não corresponde a um arquivo existente."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
+msgstr "Imagens de qualquer lugar · arquivos que não são imagens devem estar no espaço de trabalho"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -9526,6 +9554,14 @@ msgstr "Cópia somente leitura de um bloco MirrorSource de outro documento. Edit
 msgid "Read-only file in the {name} skill"
 msgstr "Arquivo somente leitura na habilidade {name}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr "Lendo de {tail}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr "Lendo deste espaço de trabalho"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Lendo…"
@@ -9696,6 +9732,8 @@ msgid "Remove"
 msgstr "Remover"
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr "Remover {0}"

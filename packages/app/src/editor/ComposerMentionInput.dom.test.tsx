@@ -64,7 +64,11 @@ describe('serializeComposerContent / isComposerEmpty', () => {
     const editor = makeEditor();
     try {
       expect(isComposerEmpty(editor)).toBe(true);
-      expect(serializeComposerContent(editor)).toEqual({ instruction: '', mentions: [] });
+      expect(serializeComposerContent(editor)).toEqual({
+        instruction: '',
+        mentions: [],
+        attachments: [],
+      });
     } finally {
       editor.destroy();
     }
@@ -129,6 +133,7 @@ describe('serializeComposerContent / isComposerEmpty', () => {
       expect(serializeComposerContent(editor)).toEqual({
         instruction: '/review the diff',
         mentions: [],
+        attachments: [],
       });
       expect(isComposerEmpty(editor)).toBe(false);
     } finally {
@@ -139,7 +144,11 @@ describe('serializeComposerContent / isComposerEmpty', () => {
   test('plain prose carries no mentions', () => {
     const editor = makeEditor(paragraph({ type: 'text', text: 'just words' }));
     try {
-      expect(serializeComposerContent(editor)).toEqual({ instruction: 'just words', mentions: [] });
+      expect(serializeComposerContent(editor)).toEqual({
+        instruction: 'just words',
+        mentions: [],
+        attachments: [],
+      });
     } finally {
       editor.destroy();
     }
@@ -200,7 +209,11 @@ describe('ComposerMentionInput (component)', () => {
       />,
     );
     ref.current?.setText('a research wiki');
-    expect(ref.current?.getContent()).toEqual({ instruction: 'a research wiki', mentions: [] });
+    expect(ref.current?.getContent()).toEqual({
+      instruction: 'a research wiki',
+      mentions: [],
+      attachments: [],
+    });
   });
 
   test('appendText fills an empty field, mapping newlines to paragraphs', () => {

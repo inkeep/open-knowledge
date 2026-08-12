@@ -12,6 +12,7 @@
  * de-duplicated `@path` list that rides the holistic assembler's `mentions`.
  */
 
+import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t } from '@lingui/core/macro';
 import { type Editor, Extension, mergeAttributes, Node } from '@tiptap/core';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -39,14 +40,18 @@ import {
   type SlashCommandItem,
 } from './composer-slash-command';
 
-/** A resolved mention suggestion: the doc identity, its display title, and the
- *  workspace-relative `@path` the chip serializes to. */
+/** A resolved mention suggestion: the doc identity, its display title, the
+ *  workspace-relative `@path` the chip serializes to, and whether the target
+ *  is a file or a folder — the folder distinction drives the ACP attachment
+ *  block's mimetype and disables embedded-contents embedding. */
 export interface MentionItem {
   /** Stable identity / list key — the page docName (extension-less) or asset path. */
   readonly docName: string;
   readonly title: string;
   /** Workspace-relative path the chip serializes to (e.g. `notes.md`). */
   readonly path: string;
+  /** File (page or asset) or folder — pulled from the underlying `PageItem`. */
+  readonly kind: 'file' | 'folder';
 }
 
 /** Cap mirrors the wiki-link picker — 8 fits the popup and leaves ranking room. */
@@ -136,6 +141,10 @@ const ComposerMention = Node.create({
     return {
       path: { default: '' },
       label: { default: '' },
+      // File is the default so older serialized state (from before the
+      // attachment work) still round-trips as a file — the pre-existing
+      // `mentions` list only produced page/asset chips.
+      mentionKind: { default: 'file' as const },
     };
   },
 
@@ -330,7 +339,12 @@ export function createMentionCorpus(fetch: () => Promise<PageItem[]> = fetchPage
         }
       }
       return filterPages(cachedPages, query)
-        .map((page) => ({ docName: page.docName, title: page.title, path: pageItemToPath(page) }))
+        .map((page) => ({
+          docName: page.docName,
+          title: page.title,
+          path: pageItemToPath(page),
+          kind: page.kind === 'folder' ? ('folder' as const) : ('file' as const),
+        }))
         .filter((item) => item.path !== '');
     },
 
@@ -366,7 +380,10 @@ function configureComposerMentionSuggestion(editor: Editor) {
           .focus()
           .deleteRange(range)
           .insertContent([
-            { type: 'composerMention', attrs: { path: item.path, label: item.title } },
+            {
+              type: 'composerMention',
+              attrs: { path: item.path, label: item.title, mentionKind: item.kind },
+            },
             { type: 'text', text: ' ' },
           ])
           .run();
@@ -499,16 +516,33 @@ function configureComposerMentionSuggestion(editor: Editor) {
 }
 
 /**
+ * A composer-authored attachment ready to ride an ACP prompt. `file` /
+ * `folder` come from `@`-picker chips; the server converts each to the
+ * matching ACP content block. Image-part production doesn't live here (the
+ * chip node has no image variant); the host composer contributes those from
+ * its own drop/paste state and concatenates them with this list before
+ * sending.
+ */
+// Extract keeps this in lock-step with the wire type: if AttachmentPart's
+// file/folder variants gain fields, this alias picks them up automatically
+// instead of silently drifting.
+export type ComposerAttachmentPart = Extract<AttachmentPart, { kind: 'file' | 'folder' }>;
+
+/**
  * Walk the composer doc into the dispatch payload. `instruction` is the typed
  * prose with each chip inline as `@path`; `mentions` is the ordered,
  * first-occurrence-de-duplicated `@path` list the assembler budgets and never
- * trims. Paragraphs join with newlines; hard breaks are newlines.
+ * trims; `attachments` carries the same chip set as typed parts (file/folder)
+ * for the ACP send path. Paragraphs join with newlines; hard breaks are
+ * newlines.
  */
 export function serializeComposerContent(editor: Editor): {
   instruction: string;
   mentions: string[];
+  attachments: ComposerAttachmentPart[];
 } {
   const mentions: string[] = [];
+  const attachments: ComposerAttachmentPart[] = [];
   const seen = new Set<string>();
   const lines: string[] = [];
 
@@ -522,6 +556,10 @@ export function serializeComposerContent(editor: Editor): {
           if (!seen.has(path)) {
             seen.add(path);
             mentions.push(path);
+            const label = String(inline.attrs.label ?? '');
+            const kind =
+              inline.attrs.mentionKind === 'folder' ? ('folder' as const) : ('file' as const);
+            attachments.push({ kind, path, name: label !== '' ? label : path });
           }
         }
       } else if (inline.type.name === 'composerCommand') {
@@ -537,7 +575,7 @@ export function serializeComposerContent(editor: Editor): {
     lines.push(line);
   });
 
-  return { instruction: lines.join('\n').trim(), mentions };
+  return { instruction: lines.join('\n').trim(), mentions, attachments };
 }
 
 /** True when the composer holds no instruction text and no chips. */

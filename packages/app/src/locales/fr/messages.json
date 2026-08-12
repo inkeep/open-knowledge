@@ -361,6 +361,9 @@
         }
       ]
     ],
+    "3uSzeS": [
+      "Images de n'importe où · les fichiers non-image doivent être dans l'espace de travail"
+    ],
     "3v62tp": ["Populaires sur skills.sh"],
     "3wiBAs": ["Où doit-elle résider ?"],
     "3y6XTb": ["Recherche sémantique"],
@@ -756,6 +759,7 @@
     "90-wKT": ["OpenKnowledge a lu l'historique de ", ["subject"]],
     "92rbk2": ["Chargement du miroir <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Masquer les agents"],
+    "95bl6Q": ["Lecture depuis cet espace de travail"],
     "96G6Re": ["Nouveau dossier"],
     "96pApd": ["Fichier en lecture seule dans la compétence ", ["name"]],
     "96w9hU": ["Une erreur s'est produite à l'ouverture de ce fichier (HTTP ", ["status"], ")."],
@@ -1545,6 +1549,7 @@
     "Ix0K8o": ["Masquer les nœuds d'URL externes"],
     "IxHMdF": ["Impossible de supprimer ce commentaire."],
     "IxyZXD": ["Capture d'écran"],
+    "Izh19j": ["Lecture depuis ", ["tail"]],
     "J1XRO3": ["Couleurs du thème"],
     "J2Mv98": ["Nom (par ex. ", ["login"], ")"],
     "J2_JuX": ["rien (", ["0"], " ne peut correspondre à aucun document)"],
@@ -1709,6 +1714,7 @@
     "LXdWeS": ["Titre de section moyen."],
     "LXfNU-": ["Navigation et suggestions"],
     "LYufDw": ["Échec de l'activation de la recherche sémantique — ", ["detail"]],
+    "LZe2vX": [" · références seulement (pas de contenu intégré)"],
     "LaskKp": ["Envoyer dans la discussion (", ["0"], ")"],
     "Lbl6KA": ["Impossible d'installer depuis ", ["0"], " : ", ["1"]],
     "LbmLyU": ["Impossible de modifier en toute sécurité la configuration de cet outil"],
@@ -2099,6 +2105,7 @@
     "QGWzup": ["Chargement des compétences OpenKnowledge"],
     "QHCx0c": ["Historique des rapports de bug"],
     "QIrBIx": ["Développer tous les fichiers"],
+    "QIzioS": [["agentName"], " n'accepte pas les pièces jointes d'image."],
     "QKgePK": [["editor"], " aligné sur la source (ses octets sont sauvegardés)"],
     "QLgdT6": ["tout document nommé ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
@@ -3339,6 +3346,7 @@
       "Marque un bloc comme source de vérité. Les miroirs situés ailleurs se mettent à jour en direct pendant que vous le modifiez."
     ],
     "erenF-": ["Impossible de supprimer des fichiers dont les conflits ne sont pas résolus"],
+    "euGaS0": ["Impossible de lire ", ["fileName"], "."],
     "euc6Ns": ["Dupliquer"],
     "evHlIg": [
       "Suivre ne pousse ni ne valide jamais vos modifications locales. Elles restent uniquement sur cette machine."
@@ -3681,6 +3689,7 @@
       ["2"],
       " automatiquement."
     ],
+    "ij-Elv": ["Aperçu de l'image"],
     "ijLc3m": ["Liste à puces"],
     "ilodsp": ["Laisser les agents utiliser OpenKnowledge sans demander"],
     "ioMn4Z": ["Nouveau à partir d'un modèle…"],
@@ -4041,6 +4050,7 @@
       "Choisissez une palette pour le mode clair et une pour le mode sombre. Le réglage de thème dans les Préférences choisit entre les deux — sur « Système », c'est votre système d'exploitation qui décide."
     ],
     "mo22UP": ["Bascule la mise en forme code en ligne."],
+    "moUeZ_": ["Déposez un fichier pour le joindre"],
     "mqSwZH": [
       "<0>Ancre de miroir introuvable.</0> Aucun <1>",
       ["mirrorSourceTag"],
@@ -4566,6 +4576,7 @@
     ],
     "tA2-xC": ["« ", ["0"], " » avait déjà été ajouté (contenu identique)."],
     "tAPZEx": ["En dessous"],
+    "tCyvAw": ["Joindre un fichier"],
     "tHKQ6j": ["Renommage"],
     "tKlWWY": ["Émoji"],
     "tLX6LY": ["OpenKnowledge a écrit un document"],

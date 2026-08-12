@@ -343,6 +343,9 @@
         }
       ]
     ],
+    "3uSzeS": [
+      "Imagens de qualquer lugar · arquivos que não são imagens devem estar no espaço de trabalho"
+    ],
     "3v62tp": ["Populares no skills.sh"],
     "3wiBAs": ["Onde ela deve ficar?"],
     "3y6XTb": ["Busca semântica"],
@@ -724,6 +727,7 @@
     "90-wKT": ["OpenKnowledge leu o histórico de ", ["subject"]],
     "92rbk2": ["O espelho está carregando <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Ocultar Agentes"],
+    "95bl6Q": ["Lendo deste espaço de trabalho"],
     "96G6Re": ["Nova pasta"],
     "96pApd": ["Arquivo somente leitura na habilidade ", ["name"]],
     "96w9hU": ["Algo deu errado ao abrir este arquivo (HTTP ", ["status"], ")."],
@@ -1502,6 +1506,7 @@
     "Ix0K8o": ["Ocultar os nós de URL externa"],
     "IxHMdF": ["Não deu para excluir esse comentário."],
     "IxyZXD": ["Captura de tela"],
+    "Izh19j": ["Lendo de ", ["tail"]],
     "J1XRO3": ["Cores do tema"],
     "J2Mv98": ["Nome (ex.: ", ["login"], ")"],
     "J2_JuX": ["nada (", ["0"], " não pode corresponder a um documento)"],
@@ -1658,6 +1663,7 @@
     "LXdWeS": ["Título de seção médio."],
     "LXfNU-": ["Navegação e sugestões"],
     "LYufDw": ["Falha ao ativar a busca semântica — ", ["detail"]],
+    "LZe2vX": [" · apenas referências (sem conteúdo incorporado)"],
     "LaskKp": ["Enviar para o chat (", ["0"], ")"],
     "Lbl6KA": ["Não deu para instalar a partir de ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Não é seguro editar a configuração desta ferramenta"],
@@ -2046,6 +2052,7 @@
     "QGWzup": ["Carregando as habilidades do OpenKnowledge"],
     "QHCx0c": ["Histórico de relatórios de erro"],
     "QIrBIx": ["Expandir todos os arquivos"],
+    "QIzioS": [["agentName"], " não aceita anexos de imagem."],
     "QKgePK": [["editor"], " alinhado ao código fonte (os bytes dele têm backup)"],
     "QLgdT6": ["qualquer documento chamado ", ["0"]],
     "QM3SBZ": ["Plano (", ["done"], "/", ["0"], ")"],
@@ -3236,6 +3243,7 @@
       "Marca um bloco como fonte da verdade. Os espelhos em outros lugares se atualizam ao vivo enquanto você o edita."
     ],
     "erenF-": ["Não é possível excluir arquivos com conflitos não resolvidos"],
+    "euGaS0": ["Não foi possível ler ", ["fileName"], "."],
     "euc6Ns": ["Duplicar"],
     "evHlIg": [
       "Acompanhar nunca envia nem faz commit das suas alterações locais. Elas ficam só neste computador."
@@ -3572,6 +3580,7 @@
       ["2"],
       " automaticamente."
     ],
+    "ij-Elv": ["Pré-visualização de imagem"],
     "ijLc3m": ["Lista com marcadores"],
     "ilodsp": ["Deixar os agentes usarem o OpenKnowledge sem perguntar"],
     "ioMn4Z": ["Novo a partir de um modelo…"],
@@ -3924,6 +3933,7 @@
       "Escolha uma paleta para o modo claro e outra para o escuro. A opção de tema em Preferências escolhe entre elas — em “Sistema”, quem escolhe é o seu SO."
     ],
     "mo22UP": ["Liga ou desliga o código em linha."],
+    "moUeZ_": ["Solte um arquivo para anexar"],
     "mqSwZH": [
       "<0>Âncora do espelho não encontrada.</0> Não existe nenhum <1>",
       ["mirrorSourceTag"],
@@ -4423,6 +4433,7 @@
     "tA0b9E": ["a pasta de habilidades padrão (o caminho exato aparece depois de salvar)"],
     "tA2-xC": ["\"", ["0"], "\" já tinha sido adicionado (conteúdo idêntico)."],
     "tAPZEx": ["Abaixo"],
+    "tCyvAw": ["Anexar um arquivo"],
     "tHKQ6j": ["Renomeando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escreveu um documento"],

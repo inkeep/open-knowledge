@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr ""
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr ""
@@ -440,6 +444,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -1718,6 +1726,10 @@ msgstr ""
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
@@ -3525,6 +3537,10 @@ msgstr ""
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr ""
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr ""
@@ -4462,6 +4478,10 @@ msgstr ""
 #. placeholder {0}: index + 1
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -6187,12 +6207,20 @@ msgstr ""
 msgid "Image not found: {errorLabel}"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr ""
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr ""
 
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
 msgstr ""
 
 #: src/components/ImportSkillForm.tsx
@@ -9526,6 +9554,14 @@ msgstr ""
 msgid "Read-only file in the {name} skill"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr ""
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr ""
@@ -9696,6 +9732,8 @@ msgid "Remove"
 msgstr ""
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr ""

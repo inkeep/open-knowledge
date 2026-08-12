@@ -347,6 +347,9 @@
         }
       ]
     ],
+    "3uSzeS": [
+      "Imágenes desde cualquier lugar · los archivos que no son imágenes deben estar en el espacio de trabajo"
+    ],
     "3v62tp": ["Populares en skills.sh"],
     "3wiBAs": ["¿Dónde debería vivir?"],
     "3y6XTb": ["Búsqueda semántica"],
@@ -728,6 +731,7 @@
     "90-wKT": ["OpenKnowledge leyó el historial de ", ["subject"]],
     "92rbk2": ["El espejo está cargando <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Ocultar Agentes"],
+    "95bl6Q": ["Leyendo desde este espacio de trabajo"],
     "96G6Re": ["Carpeta nueva"],
     "96pApd": ["Archivo de solo lectura en la habilidad ", ["name"]],
     "96w9hU": ["Algo salió mal al abrir este archivo (HTTP ", ["status"], ")."],
@@ -1518,6 +1522,7 @@
     "Ix0K8o": ["Ocultar los nodos de URL externas"],
     "IxHMdF": ["No se pudo eliminar ese comentario."],
     "IxyZXD": ["Captura de pantalla"],
+    "Izh19j": ["Leyendo desde ", ["tail"]],
     "J1XRO3": ["Colores del tema"],
     "J2Mv98": ["Nombre (p. ej. ", ["login"], ")"],
     "J2_JuX": ["nada (", ["0"], " no puede coincidir con un documento)"],
@@ -1678,6 +1683,7 @@
     "LXdWeS": ["Encabezado de sección mediano."],
     "LXfNU-": ["Navegación y sugerencias"],
     "LYufDw": ["No se pudo activar la búsqueda semántica — ", ["detail"]],
+    "LZe2vX": [" · solo referencias (sin contenido incrustado)"],
     "LaskKp": ["Enviar al chat (", ["0"], ")"],
     "Lbl6KA": ["No se pudo instalar desde ", ["0"], ": ", ["1"]],
     "LbmLyU": ["No se puede editar con seguridad la configuración de esta herramienta"],
@@ -2066,6 +2072,7 @@
     "QGWzup": ["Cargando las habilidades de OpenKnowledge"],
     "QHCx0c": ["Historial de informes de error"],
     "QIrBIx": ["Expandir todos los archivos"],
+    "QIzioS": [["agentName"], " no acepta adjuntos de imagen."],
     "QKgePK": [
       "Se alineó ",
       ["editor"],
@@ -3302,6 +3309,7 @@
       "Marca un bloque como fuente de verdad. Los espejos de otros sitios se actualizan en vivo mientras lo editas."
     ],
     "erenF-": ["No se pueden eliminar archivos con conflictos sin resolver"],
+    "euGaS0": ["No se pudo leer ", ["fileName"], "."],
     "euc6Ns": ["Duplicar"],
     "evHlIg": [
       "Seguir nunca hace push ni commit de tus cambios locales. Se quedan solo en este equipo."
@@ -3644,6 +3652,7 @@
       ["2"],
       " automáticamente."
     ],
+    "ij-Elv": ["Vista previa de imagen"],
     "ijLc3m": ["Lista con viñetas"],
     "ilodsp": ["Dejar que los agentes usen OpenKnowledge sin preguntar"],
     "ioMn4Z": ["Nuevo desde plantilla…"],
@@ -4000,6 +4009,7 @@
       "Elige una paleta para el modo claro y otra para el oscuro. El ajuste de tema en Preferencias elige entre ambas; en “Sistema”, lo hace tu SO."
     ],
     "mo22UP": ["Activa o desactiva el código en línea."],
+    "moUeZ_": ["Suelta un archivo para adjuntarlo"],
     "mqSwZH": [
       "<0>No se encontró el ancla del espejo.</0> No existe ningún <1>",
       ["mirrorSourceTag"],
@@ -4507,6 +4517,7 @@
     "tA0b9E": ["la carpeta de habilidades por defecto (la ruta exacta aparece al guardar)"],
     "tA2-xC": ["\"", ["0"], "\" ya se había añadido (contenido idéntico)."],
     "tAPZEx": ["Abajo"],
+    "tCyvAw": ["Adjuntar un archivo"],
     "tHKQ6j": ["Renombrando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escribió un documento"],

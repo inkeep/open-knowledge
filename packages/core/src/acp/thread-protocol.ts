@@ -104,6 +104,60 @@ export interface ThreadAgentInfo {
 }
 
 /**
+ * One attached part on a user prompt — a workspace file, folder reference,
+ * or a pasted/dropped image. The server converts each into the matching ACP
+ * `ContentBlock` (files under `promptCapabilities.embeddedContext` become
+ * `EmbeddedResource` with the file's contents; otherwise a `resource_link`
+ * reference; folders always a `resource_link`; images an `ImageContent`
+ * block when the agent advertises `promptCapabilities.image`) and appends
+ * them to the outbound `session/prompt` alongside the text block. Files and
+ * folders address workspace-relative paths; image data is base64 already.
+ */
+export type AttachmentPart =
+  | {
+      readonly kind: 'file';
+      /** Workspace-relative path (matches @-chip's `path` attribute). */
+      readonly path: string;
+      /** Display name — the last path segment, or the picker's title. */
+      readonly name: string;
+    }
+  | {
+      readonly kind: 'folder';
+      readonly path: string;
+      readonly name: string;
+    }
+  | {
+      readonly kind: 'image';
+      /** Base64-encoded image bytes (no data-URI prefix). */
+      readonly data: string;
+      /** MIME type, e.g. `image/png`. */
+      readonly mimeType: string;
+      /** File name or paste-derived label — shown in the transcript chip. */
+      readonly name: string;
+      /** Original size in bytes, for the client-side display + soft-cap check. */
+      readonly sizeBytes?: number;
+    }
+  | {
+      /**
+       * A file the user dropped or picked from the OS filesystem (Finder,
+       * downloads, anywhere outside the project). Bytes ride the wire — the
+       * server can't confine an external path — so the server wraps it as
+       * an `EmbeddedResource` block instead of a `resource_link`. `image/*`
+       * mimes still ride the `image` variant above for the fast
+       * `ImageContent` path.
+       */
+      readonly kind: 'blob';
+      /** Base64-encoded bytes (no data-URI prefix) OR raw UTF-8 text — the
+       *  encoding follows `textPayload`: true = utf-8 string, false = base64. */
+      readonly data: string;
+      /** True when `data` is a UTF-8 string, false when base64 bytes. */
+      readonly textPayload: boolean;
+      readonly mimeType: string;
+      readonly name: string;
+      readonly sizeBytes?: number;
+    };
+
+/**
  * A prompt waiting behind the active turn. Queue state is ephemeral —
  * in-memory only, dropped on cancel/error/exit and never persisted — so it
  * rides the `ThreadInfo` snapshot (meta channel), NOT the event log: a
@@ -113,6 +167,8 @@ export interface QueuedMessage {
   /** Server-assigned id — the handle `queue_edit` / `queue_remove` target. */
   id: string;
   content: string;
+  /** Optional attachment parts frozen at queue time; the drain replays them. */
+  attachments?: readonly AttachmentPart[];
   ts: number;
   /**
    * Parked: the drain skips this entry and moves to the next one, but the
@@ -132,6 +188,8 @@ export interface QueuedMessage {
  */
 export interface SteerMessage {
   content: string;
+  /** Attachment parts frozen at steer time. */
+  attachments?: readonly AttachmentPart[];
   ts: number;
 }
 
@@ -199,7 +257,17 @@ export interface ThreadInfo {
 
 /** One entry in a thread's event log. */
 export type ThreadEvent =
-  | { kind: 'user_message'; content: string; ts: number }
+  | {
+      kind: 'user_message';
+      content: string;
+      /**
+       * Attachments frozen at send time — the transcript re-renders them as
+       * chips beside the user's text so a replayed thread still shows what
+       * was handed to the agent, not just the typed prose.
+       */
+      attachments?: readonly AttachmentPart[];
+      ts: number;
+    }
   | { kind: 'session_update'; update: SessionUpdate; ts: number }
   | {
       kind: 'permission_request';
@@ -309,6 +377,13 @@ export type ThreadClientFrame =
       agent: { source: 'registry' | 'custom'; id: string };
       /** Optional first prompt, sent as soon as the session is ready. */
       prompt?: string;
+      /**
+       * Optional attachment parts for the first prompt (files/folders from
+       * @-picker, images from paste/drop). Server gates each against the
+       * agent's `promptCapabilities` and either embeds contents, sends a
+       * reference, or drops the part with a warning on `agent_stderr`.
+       */
+      attachments?: readonly AttachmentPart[];
       /** Optional doc context: extension-less docName the launch came from. */
       docName?: string;
       /**
@@ -335,7 +410,13 @@ export type ThreadClientFrame =
     }
   | { op: 'subscribe'; threadId: string; sinceSeq?: number }
   | { op: 'unsubscribe'; threadId: string }
-  | { op: 'prompt'; threadId: string; reqId: string; content: string }
+  | {
+      op: 'prompt';
+      threadId: string;
+      reqId: string;
+      content: string;
+      attachments?: readonly AttachmentPart[];
+    }
   | {
       /**
        * Stop the running turn and send this instead. The correction parks on
@@ -346,6 +427,7 @@ export type ThreadClientFrame =
       threadId: string;
       reqId: string;
       content: string;
+      attachments?: readonly AttachmentPart[];
     }
   | {
       /**
@@ -431,6 +513,8 @@ export type ThreadClientFrame =
       threadId: string;
       reqId: string;
       prompt?: string;
+      /** Attachments for the resume-carried first prompt. */
+      attachments?: readonly AttachmentPart[];
     }
   | {
       /**
@@ -547,6 +631,50 @@ const CLIENT_OPS = new Set([
 ]);
 
 /**
+ * Structural check for an inbound `attachments` array. WS frames land in
+ * `parseThreadClientFrame` as untyped JSON, so `attachments` — like every
+ * other field — needs shape validation before being handed to the manager.
+ * Rejects when the value is anything other than an array of well-formed
+ * AttachmentPart values; returns `true` for `undefined` and for `[]`.
+ *
+ * Kept intentionally small — no depth beyond the immediate variant shape.
+ * Downstream code (`partToBlock`, `applyManagedRename`, etc.) still guards
+ * on its own invariants; this is the trust-boundary gate, not a schema.
+ */
+function isValidAttachmentPartArray(value: unknown): value is readonly AttachmentPart[] {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  for (const part of value) {
+    if (typeof part !== 'object' || part === null) return false;
+    const p = part as Record<string, unknown>;
+    if (p.kind === 'file' || p.kind === 'folder') {
+      if (typeof p.path !== 'string' || typeof p.name !== 'string') return false;
+    } else if (p.kind === 'image') {
+      if (
+        typeof p.data !== 'string' ||
+        typeof p.mimeType !== 'string' ||
+        typeof p.name !== 'string'
+      )
+        return false;
+      if (p.sizeBytes !== undefined && typeof p.sizeBytes !== 'number') return false;
+    } else if (p.kind === 'blob') {
+      if (
+        typeof p.data !== 'string' ||
+        typeof p.textPayload !== 'boolean' ||
+        typeof p.mimeType !== 'string' ||
+        typeof p.name !== 'string'
+      ) {
+        return false;
+      }
+      if (p.sizeBytes !== undefined && typeof p.sizeBytes !== 'number') return false;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Parse a raw WS message into a `ThreadClientFrame`, or `null` when the
  * bytes are not a recognizable frame. Structural (per-op field presence)
  * only — semantic validation (thread existence, status) is the manager's.
@@ -589,6 +717,7 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
         }
         if (settings.modeId !== undefined && typeof settings.modeId !== 'string') return null;
       }
+      if (!isValidAttachmentPartArray(frame.attachments)) return null;
       return frame as unknown as ThreadClientFrame;
     }
     case 'subscribe':
@@ -597,12 +726,20 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       return frame as unknown as ThreadClientFrame;
     case 'prompt':
       if (!str('threadId') || !str('reqId') || typeof frame.content !== 'string') return null;
+      if (!isValidAttachmentPartArray(frame.attachments)) return null;
       return frame as unknown as ThreadClientFrame;
-    // Unlike `prompt`, empty content is refused: a steer cancels a running
-    // turn, and doing that for nothing is a Stop wearing the wrong name.
-    case 'steer':
-      if (!str('threadId') || !str('reqId') || !str('content')) return null;
+    // A steer cancels a running turn — doing it for nothing is a Stop
+    // wearing the wrong name. But content-empty + attachments-non-empty
+    // carries meaning (drop a file, hit send), so what we actually refuse
+    // is BOTH empty: no text AND no attachments.
+    case 'steer': {
+      if (!str('threadId') || !str('reqId')) return null;
+      if (typeof frame.content !== 'string') return null;
+      if (!isValidAttachmentPartArray(frame.attachments)) return null;
+      const hasAttachments = Array.isArray(frame.attachments) && frame.attachments.length > 0;
+      if (frame.content === '' && !hasAttachments) return null;
       return frame as unknown as ThreadClientFrame;
+    }
     case 'queue_edit':
       if (!str('threadId') || !str('id') || !str('content')) return null;
       if (frame.reqId !== undefined && !str('reqId')) return null;
@@ -646,6 +783,7 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
     case 'resume':
       if (!str('threadId') || !str('reqId')) return null;
       if (frame.prompt !== undefined && typeof frame.prompt !== 'string') return null;
+      if (!isValidAttachmentPartArray(frame.attachments)) return null;
       return frame as unknown as ThreadClientFrame;
     case 'retry':
       if (!str('threadId') || !str('reqId')) return null;

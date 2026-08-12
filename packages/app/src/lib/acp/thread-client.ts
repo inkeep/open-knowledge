@@ -15,6 +15,7 @@
  */
 
 import type {
+  AttachmentPart,
   ThreadClientFrame,
   ThreadEvent,
   ThreadInfo,
@@ -197,6 +198,7 @@ export class AgentThreadClient {
   async createThread(params: {
     agent: { source: 'registry' | 'custom'; id: string };
     prompt?: string;
+    attachments?: readonly AttachmentPart[];
     docName?: string;
     titleHint?: string;
   }): Promise<ThreadInfo> {
@@ -237,9 +239,22 @@ export class AgentThreadClient {
     return promise;
   }
 
-  prompt(threadId: string, content: string): void {
+  prompt(threadId: string, content: string, attachments?: readonly AttachmentPart[]): void {
+    const trimmed = content.trim();
+    const hasAttachments = attachments !== undefined && attachments.length > 0;
+    // Refuse both-empty at the client so a no-op frame doesn't open an
+    // empty turn — matches the guard steer() has. Server's `prompt` parser
+    // accepts empty strings (attachment-only prompts are legitimate), so
+    // this side is where the guard lives.
+    if (trimmed === '' && !hasAttachments) return;
     this.reqCounter += 1;
-    this.send({ op: 'prompt', threadId, reqId: `prompt-${this.reqCounter}`, content });
+    this.send({
+      op: 'prompt',
+      threadId,
+      reqId: `prompt-${this.reqCounter}`,
+      content: trimmed,
+      ...(hasAttachments ? { attachments } : {}),
+    });
   }
 
   /**
@@ -247,11 +262,18 @@ export class AgentThreadClient {
    * like `prompt`: the refreshed `info` (carrying the parked `steer`) is the
    * confirmation, and a refusal comes back as an `error` frame on the reqId.
    */
-  steer(threadId: string, content: string): void {
+  steer(threadId: string, content: string, attachments?: readonly AttachmentPart[]): void {
     const trimmed = content.trim();
-    if (trimmed === '') return;
+    const hasAttachments = attachments !== undefined && attachments.length > 0;
+    if (trimmed === '' && !hasAttachments) return;
     this.reqCounter += 1;
-    this.send({ op: 'steer', threadId, reqId: `steer-${this.reqCounter}`, content: trimmed });
+    this.send({
+      op: 'steer',
+      threadId,
+      reqId: `steer-${this.reqCounter}`,
+      content: trimmed,
+      ...(hasAttachments ? { attachments } : {}),
+    });
   }
 
   /**
@@ -375,7 +397,11 @@ export class AgentThreadClient {
    * `code === 'resume-unsupported'` means the agent can't continue old
    * sessions and the UI should offer a fresh thread.
    */
-  async resumeThread(threadId: string, prompt?: string): Promise<ThreadInfo> {
+  async resumeThread(
+    threadId: string,
+    prompt?: string,
+    attachments?: readonly AttachmentPart[],
+  ): Promise<ThreadInfo> {
     this.connectNow();
     await this.waitForOpen(CHANNEL_WAIT_MS);
     this.reqCounter += 1;
@@ -387,7 +413,13 @@ export class AgentThreadClient {
       }, RESUME_TIMEOUT_MS);
       this.pendingResumes.set(reqId, { resolve, reject, timer });
     });
-    this.send({ op: 'resume', threadId, reqId, prompt });
+    this.send({
+      op: 'resume',
+      threadId,
+      reqId,
+      prompt,
+      ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
+    });
     return promise;
   }
 

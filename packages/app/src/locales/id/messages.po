@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr " · hanya referensi (tanpa konten tertanam)"
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr " atau "
@@ -441,6 +445,10 @@ msgstr "{agentName} tidak dapat memulai percakapan."
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
 msgstr "{agentName} tidak dapat dijalankan."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
+msgstr "{agentName} tidak menerima lampiran gambar."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -1719,6 +1727,10 @@ msgstr "Saran aset"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "Aset: {title}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
+msgstr "Lampirkan berkas"
 
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
@@ -3525,6 +3537,10 @@ msgstr "Endpoint tidak bisa dihubungi. Periksa URL-nya dan pastikan servernya me
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Server Open Knowledge tidak bisa dihubungi untuk mengunggah {fileName}."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr "Tidak dapat membaca {fileName}."
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "{fileName} tidak bisa dibaca. Mungkin ia sudah dipindahkan, dihapus, atau belum selesai diunduh. Coba tambahkan lagi."
@@ -4463,6 +4479,10 @@ msgstr "Seret {patternText} untuk menata ulang"
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
 msgstr "Seret item {0} untuk menata ulang"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
+msgstr "Lepaskan berkas untuk melampirkan"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -6187,6 +6207,10 @@ msgstr "Gambar tidak ditemukan"
 msgid "Image not found: {errorLabel}"
 msgstr "Gambar tidak ditemukan: {errorLabel}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr "Pratinjau gambar"
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr "Target gambar \"{shown}\" tidak dapat dicocokkan dengan file lokal proyek."
@@ -6194,6 +6218,10 @@ msgstr "Target gambar \"{shown}\" tidak dapat dicocokkan dengan file lokal proye
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "Target gambar \"{shown}\" tidak merujuk ke file yang ada."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
+msgstr "Gambar dari mana saja · berkas non-gambar harus berada di ruang kerja"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -9526,6 +9554,14 @@ msgstr "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di su
 msgid "Read-only file in the {name} skill"
 msgstr "Berkas hanya-baca di keterampilan {name}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr "Membaca dari {tail}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr "Membaca dari ruang kerja ini"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Membaca…"
@@ -9696,6 +9732,8 @@ msgid "Remove"
 msgstr "Hapus"
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr "Hapus {0}"

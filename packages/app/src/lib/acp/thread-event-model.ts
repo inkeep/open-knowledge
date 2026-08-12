@@ -34,6 +34,10 @@ interface RenderedMessage {
   role: 'user' | 'agent' | 'thought';
   text: string;
   messageId: string;
+  /** Attachment parts that rode this message on send — user turns only, and
+   *  omitted for the streaming agent variants. Frozen at send time by the
+   *  server so a replayed transcript renders exactly what was sent. */
+  attachments?: readonly import('@inkeep/open-knowledge-core/acp/thread-protocol').AttachmentPart[];
 }
 
 export interface RenderedToolCall {
@@ -241,12 +245,16 @@ export class ThreadRenderModelBuilder {
     this.dirty = true;
     switch (event.kind) {
       case 'user_message': {
-        this.items.push({
+        const message: RenderedMessage = {
           kind: 'message',
           role: 'user',
           text: event.content,
           messageId: `user-${this.items.length}`,
-        });
+        };
+        if (event.attachments !== undefined && event.attachments.length > 0) {
+          message.attachments = event.attachments;
+        }
+        this.items.push(message);
         // A user turn resets streaming message coalescing.
         this.messageIndex.clear();
         break;

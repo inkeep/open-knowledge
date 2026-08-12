@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr " · 僅引用（無嵌入內容）"
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr " 或 "
@@ -441,6 +445,10 @@ msgstr "{agentName} 無法開始對話。"
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
 msgstr "{agentName} 無法啟動。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
+msgstr "{agentName} 不接受圖片附件。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -1723,6 +1731,10 @@ msgstr "資源建議"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "資產：{title}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
+msgstr "附加檔案"
 
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
@@ -3529,6 +3541,10 @@ msgstr "無法連上這個端點。請檢查 URL，並確認伺服器已啟動�
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "無法連上 Open Knowledge 伺服器來上傳 {fileName}。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr "無法讀取 {fileName}。"
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "無法讀取 {fileName}。它可能已被移動、刪除，或還沒下載完。請試著重新加入。"
@@ -4467,6 +4483,10 @@ msgstr "拖曳 {patternText} 以重新排序"
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
 msgstr "拖曳項目 {0} 以重新排序"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
+msgstr "拖放檔案以附加"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -6191,6 +6211,10 @@ msgstr "找不到圖片"
 msgid "Image not found: {errorLabel}"
 msgstr "找不到圖片：{errorLabel}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr "圖片預覽"
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr "無法將圖片目標「{shown}」解析為專案本機檔案。"
@@ -6198,6 +6222,10 @@ msgstr "無法將圖片目標「{shown}」解析為專案本機檔案。"
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "圖片目標「{shown}」未指向現有檔案。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
+msgstr "圖片可以來自任何地方 · 非圖片檔案必須位於工作區中"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -9530,6 +9558,14 @@ msgstr "來自另一份文件的 MirrorSource 區塊的唯讀副本。在來源�
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 技能中的唯讀檔案"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr "從 {tail} 讀取"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr "從此工作區讀取"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "閱讀中…"
@@ -9700,6 +9736,8 @@ msgid "Remove"
 msgstr "移除"
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr "移除 {0}"

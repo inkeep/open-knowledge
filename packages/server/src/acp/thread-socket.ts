@@ -67,6 +67,7 @@ export function attachAcpThreadSocket(
             const info = await manager.createThread({
               agent: frame.agent,
               prompt: frame.prompt,
+              attachments: frame.attachments,
               docName: frame.docName,
               titleHint: frame.titleHint,
               settings: frame.settings,
@@ -82,7 +83,11 @@ export function attachAcpThreadSocket(
             return;
           }
           case 'resume': {
-            const info = await manager.resumeThread(frame.threadId, frame.prompt);
+            const info = await manager.resumeThread(
+              frame.threadId,
+              frame.prompt,
+              frame.attachments,
+            );
             send({ op: 'resumed', reqId: frame.reqId, info });
             // Resuming implies interest, same as create. Usually a no-op —
             // the client opened (and subscribed to) the archived tab first.
@@ -118,11 +123,11 @@ export function attachAcpThreadSocket(
             return;
           }
           case 'prompt': {
-            manager.sendPrompt(frame.threadId, frame.content);
+            manager.sendPrompt(frame.threadId, frame.content, frame.attachments);
             return;
           }
           case 'steer': {
-            manager.steerPrompt(frame.threadId, frame.content);
+            manager.steerPrompt(frame.threadId, frame.content, frame.attachments);
             return;
           }
           case 'queue_edit': {

@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr " · مراجع فقط (بدون محتوى مضمن)"
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr " أو "
@@ -441,6 +445,10 @@ msgstr "تعذّر على {agentName} بدء محادثة."
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
 msgstr "تعذّر تشغيل {agentName}."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
+msgstr "{agentName} لا يقبل مرفقات الصور."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -1723,6 +1731,10 @@ msgstr "اقتراحات الأصول"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "الأصل: {title}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
+msgstr "إرفاق ملف"
 
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
@@ -3529,6 +3541,10 @@ msgstr "تعذّر الوصول إلى نقطة النهاية. تحقق من ا
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "تعذّر الوصول إلى خادم Open Knowledge لرفع {fileName}."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr "تعذّرت قراءة {fileName}."
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "تعذّرت قراءة {fileName}. ربما نُقل أو حُذف أو لم يكتمل تنزيله. حاول إضافته مرة أخرى."
@@ -4467,6 +4483,10 @@ msgstr "اسحب {patternText} لإعادة الترتيب"
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
 msgstr "اسحب العنصر {0} لإعادة الترتيب"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
+msgstr "أفلت ملفًا لإرفاقه"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -6191,6 +6211,10 @@ msgstr "الصورة غير موجودة"
 msgid "Image not found: {errorLabel}"
 msgstr "الصورة غير موجودة: {errorLabel}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr "معاينة الصورة"
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr "تعذّر تحويل هدف الصورة \"{shown}\" إلى ملف محلي في المشروع."
@@ -6198,6 +6222,10 @@ msgstr "تعذّر تحويل هدف الصورة \"{shown}\" إلى ملف مح
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "هدف الصورة \"{shown}\" لا يشير إلى ملف موجود."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
+msgstr "صور من أي مكان · يجب أن تكون الملفات غير المصورة داخل مساحة العمل"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -9530,6 +9558,14 @@ msgstr "نسخة للقراءة فقط من كتلة MirrorSource في مستن�
 msgid "Read-only file in the {name} skill"
 msgstr "ملف للقراءة فقط في مهارة {name}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr "القراءة من {tail}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr "القراءة من مساحة العمل هذه"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "يجري القراءة…"
@@ -9700,6 +9736,8 @@ msgid "Remove"
 msgstr "إزالة"
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr "إزالة {0}"

@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr " · references only (no embedded contents)"
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr " or "
@@ -441,6 +445,10 @@ msgstr "{agentName} couldn't start a conversation."
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
 msgstr "{agentName} couldn't start."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
+msgstr "{agentName} doesn't accept image attachments."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -1723,6 +1731,10 @@ msgstr "Asset suggestions"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "Asset: {title}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
+msgstr "Attach a file"
 
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
@@ -3529,6 +3541,10 @@ msgstr "Couldn't reach the endpoint. Check the URL and that the server is up."
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Couldn't reach the Open Knowledge server to upload {fileName}."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr "Couldn't read {fileName}."
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
@@ -4467,6 +4483,10 @@ msgstr "Drag {patternText} to reorder"
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
 msgstr "Drag item {0} to reorder"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
+msgstr "Drop a file to attach"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -6191,6 +6211,10 @@ msgstr "Image not found"
 msgid "Image not found: {errorLabel}"
 msgstr "Image not found: {errorLabel}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr "Image preview"
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr "Image target \"{shown}\" could not be resolved to a project-local file."
@@ -6198,6 +6222,10 @@ msgstr "Image target \"{shown}\" could not be resolved to a project-local file."
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "Image target \"{shown}\" does not resolve to an existing file."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
+msgstr "Images from anywhere · non-image files must be in the workspace"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -9530,6 +9558,14 @@ msgstr "Read-only copy of a MirrorSource block from another doc. Edit at the sou
 msgid "Read-only file in the {name} skill"
 msgstr "Read-only file in the {name} skill"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr "Reading from {tail}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr "Reading from this workspace"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Reading…"
@@ -9700,6 +9736,8 @@ msgid "Remove"
 msgstr "Remove"
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr "Remove {0}"

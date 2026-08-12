@@ -67,7 +67,12 @@ export function MockComposerMentionInput({
       el.value = el.value.trim() === '' ? text : `${el.value.replace(/\s+$/, '')}\n\n${text}`;
       notify();
     },
-    getContent: () => ({ instruction: localRef.current?.value ?? '', mentions: [] }),
+    getContent: () => ({
+      instruction: localRef.current?.value ?? '',
+      mentions: [],
+      attachments: [],
+    }),
+    openMentionPicker: () => {},
   }));
   return (
     <textarea

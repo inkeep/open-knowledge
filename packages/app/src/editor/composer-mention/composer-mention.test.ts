@@ -56,6 +56,25 @@ describe('createMentionCorpus — fetch retry contract', () => {
     expect(corpus.snapshot()).toEqual({ loaded: true, error: false });
   });
 
+  test('the corpus assigns `kind: file` to pages/assets and `kind: folder` to folders', async () => {
+    const items: PageItem[] = [
+      { kind: 'page', docName: 'notes', title: 'Notes' },
+      { kind: 'asset', docName: '/assets/logo.png', title: 'logo.png' },
+      { kind: 'folder', docName: 'specs', title: 'specs' },
+    ];
+    const corpus = createMentionCorpus(() => Promise.resolve(items));
+    const first = await corpus.getItems('');
+    // The kind rides on to the chip attributes and on into the ACP attachment
+    // part, so the wire faithfully distinguishes file references from folder
+    // references — folders can't embed contents, and their block carries the
+    // inode/directory mimetype.
+    expect(first.map((i) => ({ path: i.path, kind: i.kind }))).toEqual([
+      { path: 'notes.md', kind: 'file' },
+      { path: 'assets/logo.png', kind: 'file' },
+      { path: 'specs', kind: 'folder' },
+    ]);
+  });
+
   test('a successful fetch loads once and caches — no re-fetch on the next @', async () => {
     let calls = 0;
     const fetch = () => {

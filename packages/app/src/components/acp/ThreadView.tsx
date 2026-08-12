@@ -12,6 +12,7 @@
 
 import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
 import type {
+  AttachmentPart,
   QueuedMessage,
   SessionConfigOption,
   ThreadFailureDetail,
@@ -32,6 +33,7 @@ import {
   Link2,
   ListPlus,
   MousePointer2,
+  Plus,
   RotateCcw,
   Search,
   Settings2,
@@ -48,9 +50,11 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  createContext,
   Fragment,
   type ReactNode,
   type RefObject,
+  use,
   useEffect,
   useEffectEvent,
   useId,
@@ -76,6 +80,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -116,6 +121,12 @@ import {
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
+import {
+  collectAllFiles,
+  collectImageFiles,
+  describeImageError,
+  fileToAttachment,
+} from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
@@ -197,6 +208,15 @@ function agentDisplayName(name: string): string {
   return name.replace(/\s+Agent$/i, '');
 }
 
+/** Payload for the shared image-preview lightbox. `src` is a data URL for
+ *  base64 payloads (image AttachmentParts on both sent + unsent tiles). */
+type ImagePreview = { readonly src: string; readonly name: string };
+
+/** Panel-scoped context for the shared image-preview dialog. `null` when a
+ *  descendant renders outside the ThreadView provider (test harness, etc.);
+ *  tile components render as non-interactive in that case. */
+const ImagePreviewContext = createContext<((preview: ImagePreview) => void) | null>(null);
+
 /**
  * Failures a fresh launch can plausibly clear — mirrors the server's
  * `retryThread` guards (a thread that never opened a session). Everything
@@ -236,9 +256,125 @@ export function ThreadView({
   // component reads it at each send via the imperative handle and seeds it via
   // `appendText` — there is no draft string in React state anymore.
   const composerRef = useRef<ComposerMentionInputHandle>(null);
+  // Image parts (dropped/pasted) live on the ThreadView side rather than
+  // inside the shared composer so they survive a placement swap without a
+  // schema change. Cleared on send/clear alongside the composer text.
+  // Files/images the user dropped or picked. Union of image + generic blob
+  // parts — the composer's own @-picker chips ride the wire separately via
+  // `serializeComposerContent().attachments`, so this list is the OS-file
+  // half. Cleared on send/clear alongside the composer text.
+  const [pendingAttachments, setPendingAttachments] = useState<readonly AttachmentPart[]>([]);
+  // Full-size image preview modal shared by the pending strip (unsent) and
+  // the transcript chips (sent). Kept at ThreadView scope so a sent chip
+  // dismisses cleanly even if the composer re-renders — one dialog per panel.
+  const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
+  const openImagePreview = (preview: ImagePreview) => setImagePreview(preview);
+  const [pendingUploads, setPendingUploads] = useState<
+    readonly { readonly id: string; readonly name: string; readonly mimeType: string }[]
+  >([]);
+  // Visual state for the drop overlay on the outer chat panel: rises as
+  // soon as any dragenter carrying files hits it, drops on drop / dragleave
+  // from the root.
+  const [dragActive, setDragActive] = useState(false);
+  // Pessimistic match to the server's gate: an agent that advertised no
+  // capabilities at all (`promptCapabilities` undefined) doesn't accept
+  // images. Being optimistic here (accept unless `false`) drops the image
+  // silently server-side with only a log entry — the user sees the send
+  // succeed and no image reaches the agent. The narrow window between
+  // connect and first `info` event where a real image-capable agent reads
+  // as unknown is the accepted cost of matching server behavior.
+  const imagesAccepted = info.promptCapabilities?.image === true;
   // The current serialized draft: typed prose with chips inline as `@path`.
   // Called from event handlers only (a render must not read the ref).
   const composerText = (): string => composerRef.current?.getContent().instruction.trim() ?? '';
+  // The union of file/folder chips (from the composer's own serializer) and
+  // the host-owned image attachments. Deferred to send time so a change to
+  // either half doesn't re-render the composer.
+  const composerAttachments = (): readonly AttachmentPart[] => {
+    const chips = composerRef.current?.getContent().attachments ?? [];
+    return [...chips, ...pendingAttachments];
+  };
+  /**
+   * Validate + encode a batch of dropped, pasted, or picked files, then
+   * extend `pendingAttachments`. Failures raise a per-file toast; a single
+   * event with multiple bad files gets one toast per file rather than one
+   * aggregated — the errors carry different reasons and fusing loses that
+   * specificity. Images become `image` parts (fast-path via ImageContent);
+   * non-image files become `file` parts pointing at a workspace-relative
+   * path — the server resolves those to `EmbeddedResource` (text under the
+   * embed cap) or `ResourceLink` (binaries + oversized).
+   */
+  const ingestFiles = async (files: readonly File[]): Promise<void> => {
+    // Electron exposes `webUtils.getPathForFile` — the only reliable way to
+    // recover the on-disk path of a dropped File (browsers hide it for
+    // security). Web hosts land at `undefined`, and non-image files are
+    // refused there because the workspace-containment check can't run.
+    const absPathOf =
+      typeof window !== 'undefined' && window.okDesktop
+        ? window.okDesktop.getPathForFile
+        : undefined;
+    const workspaceContentDir = workspace?.contentDir;
+    const pathSeparator = workspace?.pathSeparator;
+    // Refuse image files up front for an agent that didn't advertise image
+    // capability — otherwise they'd thumbnail in the composer and be dropped
+    // silently server-side (see `imagesAccepted` derivation above). Both drop
+    // and picker paths flow through here, so the refusal covers both.
+    const accepted: File[] = [];
+    let rejectedImageCount = 0;
+    for (const file of files) {
+      const isImage = (file.type || '').startsWith('image/');
+      if (isImage && !imagesAccepted) {
+        rejectedImageCount += 1;
+      } else {
+        accepted.push(file);
+      }
+    }
+    if (rejectedImageCount > 0) {
+      // Bind as `agentName` so this msgid is byte-identical to the paste
+      // handler below — Lingui keys by substitution name.
+      const agentName = agentDisplayName(info.agent.name);
+      toast.error(t`${agentName} doesn't accept image attachments.`);
+    }
+    if (accepted.length === 0) return;
+    const placeholders = accepted.map((file) => ({
+      id: `${file.name}:${file.size}:${file.lastModified ?? 0}:${Math.random().toString(36).slice(2, 8)}`,
+      name: file.name || 'attachment',
+      mimeType: file.type || '',
+    }));
+    setPendingUploads((previous) => [...previous, ...placeholders]);
+    for (let i = 0; i < accepted.length; i += 1) {
+      const file = accepted[i];
+      const placeholderId = placeholders[i]?.id;
+      if (file === undefined || placeholderId === undefined) continue;
+      // Try/catch here (not just inside fileToAttachment) so a rejected
+      // FileReader — corrupted file, OS I/O failure mid-drag, browser
+      // memory pressure — clears its placeholder instead of leaving a
+      // permanent spinner (and doesn't abort the remaining files either).
+      try {
+        const outcome = await fileToAttachment(file, {
+          absPathOf,
+          workspaceContentDir,
+          pathSeparator,
+        });
+        setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
+        if (outcome.ok) {
+          setPendingAttachments((previous) => [...previous, outcome.part]);
+        } else {
+          toast.error(describeImageError(outcome.error));
+        }
+      } catch (err) {
+        setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
+        const fileName = file.name || 'attachment';
+        // Log before toasting so post-incident diagnosis has something to
+        // grep — the toast only tells the user "something failed", not what.
+        console.error('[ingestFiles] failed to read attachment', fileName, err);
+        toast.error(t`Couldn't read ${fileName}.`);
+      }
+    }
+  };
+  const removePendingAttachment = (index: number): void => {
+    setPendingAttachments((previous) => previous.filter((_, i) => i !== index));
+  };
   const [followFile, setFollowFile] = useState(loadFollowFilePref);
   // Captured by ScrollToEndBridge (a child of the scroller Provider) so send/
   // resume can imperatively jump to the live edge; null until the bridge mounts.
@@ -375,9 +511,12 @@ export function ThreadView({
    */
   const requestSteer = (): void => {
     const text = composerText();
-    if (text === '') return;
-    client.steer(info.threadId, text);
+    const attachments = composerAttachments();
+    if (text === '' && attachments.length === 0) return;
+    client.steer(info.threadId, text, attachments.length > 0 ? attachments : undefined);
     composerRef.current?.clear();
+    setPendingAttachments([]);
+    setPendingUploads([]);
     scrollApiRef.current?.scrollToEnd();
   };
 
@@ -489,9 +628,11 @@ export function ThreadView({
      * and re-attaching the still-queued batch there is the retry.
      */
     failureText: string | null = text,
+    attachments: readonly AttachmentPart[] = [],
   ): Promise<boolean> => {
+    const parts = attachments.length > 0 ? attachments : undefined;
     if (!archived) {
-      client.prompt(info.threadId, text);
+      client.prompt(info.threadId, text, parts);
       // Sending re-engages the live edge even if the reader had scrolled up.
       scrollApiRef.current?.scrollToEnd();
       return Promise.resolve(true);
@@ -501,7 +642,7 @@ export function ThreadView({
     setFailedPrompt(null);
     scrollApiRef.current?.scrollToEnd();
     return client
-      .resumeThread(info.threadId, text)
+      .resumeThread(info.threadId, text, parts)
       .then(() => true)
       .catch((err) => {
         setResumeError(
@@ -517,6 +658,7 @@ export function ThreadView({
 
   const submit = (): void => {
     const text = composerText();
+    const attachments = composerAttachments();
     // `canQueue` rides alongside `canPrompt`: a busy thread accepts a queued
     // message rather than refusing the send.
     if (!(canPrompt || canQueue)) return;
@@ -533,9 +675,14 @@ export function ThreadView({
       });
       return;
     }
-    if (text === '') return;
-    void sendText(text);
+    // Attachments alone (image drop with no typed prose) still count as
+    // content — the message is the picture. Otherwise a bare-empty draft
+    // stays gated.
+    if (text === '' && attachments.length === 0) return;
+    void sendText(text, text, attachments);
     composerRef.current?.clear();
+    setPendingAttachments([]);
+    setPendingUploads([]);
   };
 
   /**
@@ -679,195 +826,238 @@ export function ThreadView({
   }
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
-      data-agent-thread-root=""
-    >
-      <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-      {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
-      {model === null || model.items.length === 0 ? (
-        // No messages yet: the empty state centers itself via `h-full`, which needs
-        // a plain definite-height block host. The scroller's managed flex layout
-        // won't provide one, so only real transcripts go through the scroller.
-        <div
-          className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
-          data-testid="agent-thread-transcript"
-        >
-          <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
-        </div>
-      ) : (
-        // autoScroll = stick-to-bottom that yields to reader intent; last-anchor
-        // reopens archived/resumed threads at the final turn. The bridge lifts the
-        // scroller's imperative API up so send/resume can jump to the live edge.
-        <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
-          <ScrollToEndBridge apiRef={scrollApiRef} />
-          <MessageScroller className="min-h-0 flex-1">
-            <MessageScrollerViewport
-              // Overrides the primitive's hardcoded "Messages" — this focusable
-              // region is one agent's transcript, and its name must translate.
-              aria-label={t`Agent transcript`}
-              className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
-              data-testid="agent-thread-transcript"
-            >
-              <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                {model.items.map((item, index) => {
-                  const id = transcriptItemId(item, index);
-                  return (
-                    <MessageScrollerItem
-                      key={id}
-                      messageId={id}
-                      // Each item hosts its own flex column so per-message alignment
-                      // (the user bubble's ml-auto hug-and-right) survives the wrapper
-                      // the scroller requires for anchoring/measurement.
-                      className="flex flex-col"
-                      // A new user turn is the anchor the scroller peeks above.
-                      scrollAnchor={item.kind === 'message' && item.role === 'user'}
-                      // Re-hosts the adjacent-tool-call spacing selector on the wrapper.
-                      data-tool-call={item.kind === 'tool_call' ? '' : undefined}
-                    >
-                      <ThreadItem
-                        item={item}
-                        threadId={info.threadId}
-                        agent={info.agent}
-                        // Thread liveness, not turn liveness: the server keeps an
-                        // unanswered request answerable until its timeout even after
-                        // the prompt settles (and some agents ask outside a turn) —
-                        // only a dead thread makes answering impossible.
-                        actionable={!archived && status !== 'exited' && status !== 'error'}
-                        streaming={turnActive && index === model.items.length - 1}
-                        terminals={model.terminals}
-                        permissionsByToolCall={model.permissionsByToolCall}
-                        showRetry={index === retryNoticeIndex}
-                        retryPending={retryPending}
-                        onRetry={retryThread}
-                        // Sign-in belongs to the same notice Retry does, and
-                        // only while the thread is still waiting on it.
-                        showAuth={index === retryNoticeIndex && status === 'auth_required'}
-                        onAuthenticate={authenticateThread}
+    <ImagePreviewContext.Provider value={openImagePreview}>
+      <ImagePreviewDialog
+        preview={imagePreview}
+        onOpenChange={(open) => !open && setImagePreview(null)}
+      />
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: drop-target — keyboard/AT users have the + picker button in the composer; drop is a pointer-only affordance. */}
+      <div
+        className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
+        data-agent-thread-root=""
+        onDragEnter={(event) => {
+          // `types.includes('Files')` — filter DOM drags (text, page elements)
+          // out; only real file drops raise the overlay. `preventDefault` on
+          // dragenter keeps the browser from opening the file in a new tab
+          // when the drop misses our handlers below.
+          if (event.dataTransfer?.types.includes('Files')) {
+            event.preventDefault();
+            setDragActive(true);
+          }
+        }}
+        onDragOver={(event) => {
+          if (event.dataTransfer?.types.includes('Files')) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+          }
+        }}
+        onDragLeave={(event) => {
+          // Only dismiss when the drag actually leaves the whole panel — child
+          // dragleaves (crossing between the overlay and inner UI) fire this
+          // too, and dropping the overlay mid-drag flickers.
+          if (event.currentTarget === event.target) setDragActive(false);
+        }}
+        onDrop={(event) => {
+          const files = collectAllFiles(event.dataTransfer);
+          if (files.length === 0) return;
+          event.preventDefault();
+          setDragActive(false);
+          void ingestFiles(files);
+        }}
+      >
+        <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
+        {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
+        {model === null || model.items.length === 0 ? (
+          // No messages yet: the empty state centers itself via `h-full`, which needs
+          // a plain definite-height block host. The scroller's managed flex layout
+          // won't provide one, so only real transcripts go through the scroller.
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
+            data-testid="agent-thread-transcript"
+          >
+            <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
+          </div>
+        ) : (
+          // autoScroll = stick-to-bottom that yields to reader intent; last-anchor
+          // reopens archived/resumed threads at the final turn. The bridge lifts the
+          // scroller's imperative API up so send/resume can jump to the live edge.
+          <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+            <ScrollToEndBridge apiRef={scrollApiRef} />
+            <MessageScroller className="min-h-0 flex-1">
+              <MessageScrollerViewport
+                // Overrides the primitive's hardcoded "Messages" — this focusable
+                // region is one agent's transcript, and its name must translate.
+                aria-label={t`Agent transcript`}
+                className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                data-testid="agent-thread-transcript"
+              >
+                <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
+                  {model.items.map((item, index) => {
+                    const id = transcriptItemId(item, index);
+                    return (
+                      <MessageScrollerItem
+                        key={id}
+                        messageId={id}
+                        // Each item hosts its own flex column so per-message alignment
+                        // (the user bubble's ml-auto hug-and-right) survives the wrapper
+                        // the scroller requires for anchoring/measurement.
+                        className="flex flex-col"
+                        // A new user turn is the anchor the scroller peeks above.
+                        scrollAnchor={item.kind === 'message' && item.role === 'user'}
+                        // Re-hosts the adjacent-tool-call spacing selector on the wrapper.
+                        data-tool-call={item.kind === 'tool_call' ? '' : undefined}
+                      >
+                        <ThreadItem
+                          item={item}
+                          threadId={info.threadId}
+                          agent={info.agent}
+                          // Thread liveness, not turn liveness: the server keeps an
+                          // unanswered request answerable until its timeout even after
+                          // the prompt settles (and some agents ask outside a turn) —
+                          // only a dead thread makes answering impossible.
+                          actionable={!archived && status !== 'exited' && status !== 'error'}
+                          streaming={turnActive && index === model.items.length - 1}
+                          terminals={model.terminals}
+                          permissionsByToolCall={model.permissionsByToolCall}
+                          showRetry={index === retryNoticeIndex}
+                          retryPending={retryPending}
+                          onRetry={retryThread}
+                          // Sign-in belongs to the same notice Retry does, and
+                          // only while the thread is still waiting on it.
+                          showAuth={index === retryNoticeIndex && status === 'auth_required'}
+                          onAuthenticate={authenticateThread}
+                        />
+                      </MessageScrollerItem>
+                    );
+                  })}
+                  {turnActive ? (
+                    status === 'awaiting_permission' ? (
+                      <div
+                        className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                        data-testid="agent-thread-awaiting-permission"
+                      >
+                        <span>{t`Waiting for your approval`}</span>
+                      </div>
+                    ) : (
+                      <WorkingAvatar
+                        status={workingStatusText(activeToolKind(model.items), thinkingLine)}
+                        className="px-1 py-1"
+                        testId="agent-thread-working"
                       />
-                    </MessageScrollerItem>
-                  );
-                })}
-                {turnActive ? (
-                  status === 'awaiting_permission' ? (
+                    )
+                  ) : status === 'installing' || status === 'spawning' ? (
+                    // A resume respawning its agent: the optimistic message echo is
+                    // already in the transcript above — show that the agent is on
+                    // its way rather than a silent gap until the turn opens.
                     <div
-                      className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                      data-testid="agent-thread-awaiting-permission"
+                      className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                      data-testid="agent-thread-starting"
                     >
-                      <span>{t`Waiting for your approval`}</span>
-                    </div>
-                  ) : (
-                    <WorkingAvatar
-                      status={workingStatusText(activeToolKind(model.items), thinkingLine)}
-                      className="px-1 py-1"
-                      testId="agent-thread-working"
-                    />
-                  )
-                ) : status === 'installing' || status === 'spawning' ? (
-                  // A resume respawning its agent: the optimistic message echo is
-                  // already in the transcript above — show that the agent is on
-                  // its way rather than a silent gap until the turn opens.
-                  <div
-                    className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
-                    data-testid="agent-thread-starting"
-                  >
-                    <Spinner className="size-3.5" aria-hidden="true" />
-                    {/* `shimmer` sets `color: transparent`, which a container
+                      <Spinner className="size-3.5" aria-hidden="true" />
+                      {/* `shimmer` sets `color: transparent`, which a container
                         would inherit into the spinner's currentColor stroke —
                         keep it scoped to the text. */}
-                    <span className="shimmer">{t`Starting the agent…`}</span>
-                  </div>
-                ) : null}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <MessageScrollerButton direction="end" />
-          </MessageScroller>
-        </MessageScrollerProvider>
-      )}
-      {info.steer !== undefined && !archived ? (
-        <div
-          className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
-          data-testid="agent-thread-steer-pending"
-        >
-          <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
-          <span className="min-w-0 flex-1 truncate text-foreground/80">{info.steer.content}</span>
-        </div>
-      ) : null}
-      {cancelStalled && turnActive ? (
-        <div
-          className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-          data-testid="agent-thread-cancel-stalled"
-        >
-          <span className="flex-1">
-            {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="h-6 text-xs"
-            onClick={() => client.closeThread(info.threadId)}
-            data-testid="agent-thread-force-stop"
+                      <span className="shimmer">{t`Starting the agent…`}</span>
+                    </div>
+                  ) : null}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton direction="end" />
+            </MessageScroller>
+          </MessageScrollerProvider>
+        )}
+        {info.steer !== undefined && !archived ? (
+          <div
+            className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+            data-testid="agent-thread-steer-pending"
           >
-            {t`Force stop`}
-          </Button>
-        </div>
-      ) : null}
-      {archived && resumeError !== null ? (
-        <div
-          className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-          data-testid="agent-thread-resume-failed"
-        >
-          <span className="flex-1">
-            {resumeError.code === 'resume-unsupported'
-              ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
-              : t`Couldn't resume this chat: ${resumeError.message}`}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-6 shrink-0 text-xs"
-            onClick={startFreshThread}
-            data-testid="agent-thread-resume-fallback-new"
+            <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
+            <span className="min-w-0 flex-1 truncate text-foreground/80">{info.steer.content}</span>
+          </div>
+        ) : null}
+        {cancelStalled && turnActive ? (
+          <div
+            className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+            data-testid="agent-thread-cancel-stalled"
           >
-            {t`New chat with ${info.agent.name}`}
-          </Button>
-        </div>
-      ) : null}
-      <ThreadComposer
-        info={info}
-        composerRef={composerRef}
-        onSubmit={submit}
-        canPrompt={canPrompt}
-        canQueue={canQueue}
-        turnActive={turnActive}
-        cancelPending={cancelPending}
-        onCancel={requestCancel}
-        onSteer={requestSteer}
-        status={status}
-        archived={archived}
-        resumePending={resumePending}
-        usage={model?.tokenUsage ?? null}
-        queuedComments={queuedComments}
-        selectedCommentCount={selectedCommentCount}
-        hasQueuedComments={hasQueuedComments}
-        commentsExpanded={commentsExpanded}
-        onAttachComments={() => {
-          setCommentsAttached(true);
-          // Deselection is sticky, so re-attaching has to re-check the queue —
-          // otherwise this puts an empty batch on the message and the chip
-          // bounces straight back to detached.
-          selectAllQueued();
-        }}
-        onToggleCommentsExpanded={() => setCommentsExpanded((open) => !open)}
-        onDismissComments={() => {
-          setCommentsAttached(false);
-          setCommentsExpanded(false);
-        }}
-      />
-    </div>
+            <span className="flex-1">
+              {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-6 text-xs"
+              onClick={() => client.closeThread(info.threadId)}
+              data-testid="agent-thread-force-stop"
+            >
+              {t`Force stop`}
+            </Button>
+          </div>
+        ) : null}
+        {archived && resumeError !== null ? (
+          <div
+            className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+            data-testid="agent-thread-resume-failed"
+          >
+            <span className="flex-1">
+              {resumeError.code === 'resume-unsupported'
+                ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
+                : t`Couldn't resume this chat: ${resumeError.message}`}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-6 shrink-0 text-xs"
+              onClick={startFreshThread}
+              data-testid="agent-thread-resume-fallback-new"
+            >
+              {t`New chat with ${info.agent.name}`}
+            </Button>
+          </div>
+        ) : null}
+        <ThreadComposer
+          info={info}
+          composerRef={composerRef}
+          onSubmit={submit}
+          canPrompt={canPrompt}
+          canQueue={canQueue}
+          turnActive={turnActive}
+          cancelPending={cancelPending}
+          onCancel={requestCancel}
+          onSteer={requestSteer}
+          status={status}
+          archived={archived}
+          resumePending={resumePending}
+          usage={model?.tokenUsage ?? null}
+          queuedComments={queuedComments}
+          selectedCommentCount={selectedCommentCount}
+          hasQueuedComments={hasQueuedComments}
+          commentsExpanded={commentsExpanded}
+          onAttachComments={() => {
+            setCommentsAttached(true);
+            // Deselection is sticky, so re-attaching has to re-check the queue —
+            // otherwise this puts an empty batch on the message and the chip
+            // bounces straight back to detached.
+            selectAllQueued();
+          }}
+          onToggleCommentsExpanded={() => setCommentsExpanded((open) => !open)}
+          onDismissComments={() => {
+            setCommentsAttached(false);
+            setCommentsExpanded(false);
+          }}
+          pendingAttachments={pendingAttachments}
+          pendingUploads={pendingUploads}
+          imagesAccepted={imagesAccepted}
+          onIngestImageFiles={ingestFiles}
+          onIngestAllFiles={ingestFiles}
+          onRemovePendingAttachment={removePendingAttachment}
+        />
+        {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+      </div>
+    </ImagePreviewContext.Provider>
   );
 }
 
@@ -1840,6 +2030,7 @@ function MessageBubble({
     return <ThoughtBlock item={item} streaming={streaming === true} />;
   }
   const isUser = item.role === 'user';
+  const attachments = isUser ? item.attachments : undefined;
   return (
     <div
       className={cn(
@@ -1857,6 +2048,131 @@ function MessageBubble({
       data-testid={isUser ? 'agent-thread-user-message' : 'agent-thread-agent-message'}
     >
       {isUser ? item.text : <AgentMarkdown text={item.text} />}
+      {attachments !== undefined && attachments.length > 0 ? (
+        <UserMessageAttachments attachments={attachments} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Full-image preview overlay opened by clicking an image tile. Uses the
+ *  shared shadcn Dialog; wider than the settings default so a screenshot
+ *  isn't squeezed. `object-contain` preserves the image's own aspect ratio;
+ *  capped at ~90 vw / 90 dvh so it never leaves the window. Radix requires
+ *  a DialogTitle for AT — the image `name` supplies it, sr-only so the
+ *  panel reads image-first. */
+function ImagePreviewDialog({
+  preview,
+  onOpenChange,
+}: {
+  preview: ImagePreview | null;
+  onOpenChange: (open: boolean) => void;
+}): ReactNode {
+  const { t } = useLingui();
+  return (
+    <Dialog open={preview !== null} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[min(90dvh,900px)] items-center justify-center bg-background p-2 sm:max-w-[min(90vw,1000px)]"
+        data-testid="agent-thread-image-preview"
+      >
+        <DialogTitle className="sr-only">{preview?.name ?? t`Image preview`}</DialogTitle>
+        {preview !== null ? (
+          <img
+            src={preview.src}
+            alt={preview.name}
+            className="max-h-[min(85dvh,850px)] max-w-full rounded object-contain"
+            draggable={false}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Object-identity → stable React key mapping for attachments. `@`-mention +
+ * drop can produce two `AttachmentPart` values with identical `kind`, `path`,
+ * and `name` on the same message; hashing their content collides. Object
+ * identity is the only field that distinguishes them, so we key off it via a
+ * WeakMap that the GC drains as sent messages fall out of the transcript
+ * window. Assigned on first read so per-attachment keys stay stable across
+ * re-renders of the same message.
+ */
+const attachmentKeys = new WeakMap<object, string>();
+let attachmentKeyCounter = 0;
+function keyForAttachment(attachment: AttachmentPart): string {
+  const existing = attachmentKeys.get(attachment);
+  if (existing !== undefined) return existing;
+  attachmentKeyCounter += 1;
+  const key = `att-${attachmentKeyCounter}`;
+  attachmentKeys.set(attachment, key);
+  return key;
+}
+
+/**
+ * Read-only chip strip beside a sent user message. Files/folders render as
+ * `@path` pills (matching the composer's chip look), images as small square
+ * thumbnails. Never removable — a sent message is frozen.
+ */
+function UserMessageAttachments({
+  attachments,
+}: {
+  attachments: readonly AttachmentPart[];
+}): ReactNode {
+  const openPreview = use(ImagePreviewContext);
+  return (
+    <div
+      className="mt-1.5 flex flex-wrap justify-end gap-1.5"
+      data-testid="agent-thread-user-message-attachments"
+    >
+      {attachments.map((attachment) => {
+        const key = keyForAttachment(attachment);
+        if (attachment.kind === 'image') {
+          const src = `data:${attachment.mimeType};base64,${attachment.data}`;
+          return (
+            <Button
+              key={key}
+              type="button"
+              variant="ghost"
+              onClick={() => openPreview?.({ src, name: attachment.name })}
+              disabled={openPreview === null}
+              className="inline-flex size-10 items-center justify-center overflow-hidden rounded-md border border-input bg-background p-0 hover:bg-background focus-visible:ring-2"
+              title={attachment.name}
+              aria-label={attachment.name}
+              data-attachment-kind="image"
+            >
+              <img
+                src={src}
+                alt={attachment.name}
+                className="h-full w-full object-cover"
+                draggable={false}
+              />
+            </Button>
+          );
+        }
+        if (attachment.kind === 'blob') {
+          return (
+            <span
+              key={key}
+              className="composer-mention-chip"
+              title={attachment.name}
+              data-attachment-kind="blob"
+            >
+              <span className="composer-mention-label">{attachment.name}</span>
+            </span>
+          );
+        }
+        return (
+          <span
+            key={key}
+            className="composer-mention-chip"
+            title={attachment.path}
+            data-attachment-kind={attachment.kind}
+          >
+            <span className="composer-mention-label">@{attachment.name || attachment.path}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -2772,6 +3088,12 @@ function ThreadComposer({
   onAttachComments,
   onToggleCommentsExpanded,
   onDismissComments,
+  pendingAttachments,
+  pendingUploads,
+  imagesAccepted,
+  onIngestImageFiles,
+  onIngestAllFiles,
+  onRemovePendingAttachment,
 }: {
   info: ThreadInfo;
   /** The parent's handle to the shared composer input — ThreadView reads the
@@ -2810,6 +3132,22 @@ function ThreadComposer({
   onAttachComments: () => void;
   onToggleCommentsExpanded: () => void;
   onDismissComments: () => void;
+  /** Files/images the user dropped, pasted, or picked; parent owns the array. */
+  pendingAttachments: readonly AttachmentPart[];
+  /** Encoding-in-flight placeholders. */
+  pendingUploads: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly mimeType: string;
+  }[];
+  /** False iff the agent's `promptCapabilities.image` was explicitly `false`. */
+  imagesAccepted: boolean;
+  /** Image-only ingest for the paste path — refused when the agent doesn't
+   *  accept images (drop uses `onIngestAllFiles` and takes anything). */
+  onIngestImageFiles: (files: readonly File[]) => Promise<void>;
+  /** Ingest ANY file (image or blob) — the drop-zone + `+` picker path. */
+  onIngestAllFiles: (files: readonly File[]) => Promise<void>;
+  onRemovePendingAttachment: (index: number) => void;
 }): ReactNode {
   const { t } = useLingui();
   // Naming the agent in the placeholder ("Message Claude") beats a generic
@@ -2841,7 +3179,7 @@ function ThreadComposer({
   // What the action slot keys off. Both the Stop/Send choice and Send's disabled
   // state read this, or the two disagree. An attached batch counts as content:
   // the comments are the ask, so a send with nothing typed is a real send.
-  const hasSendableContent = !isEmpty || hasQueuedComments;
+  const hasSendableContent = !isEmpty || hasQueuedComments || pendingAttachments.length > 0;
 
   // Mid-turn the same control queues rather than sends, so it stops wearing the
   // send arrow — an aria-label the sighted user never reads was the only thing
@@ -2875,10 +3213,26 @@ function ThreadComposer({
           up on focus. Every control is a real in-flow sibling (natural Tab order,
           own focus ring) and the send button lives on its own row, so there's no
           reserved text gutter narrowing the input on multi-line drafts. */}
+      <WorkspaceReachHint info={info} />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
       <div
         onMouseDown={(event) => focusComposerInputOnCardPointer(event, composerRef)}
-        className="cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
+        onPaste={(event) => {
+          // Paste is composer-focus-local (the outer drop-zone can't catch it
+          // without stealing paste from every other focusable element on the
+          // panel), so it lives here. Image-only guard mirrors the drop path
+          // for images; a non-image clipboard content passes through to the
+          // input's own paste handling.
+          const files = collectImageFiles(event.clipboardData);
+          if (files.length === 0) return;
+          event.preventDefault();
+          if (!imagesAccepted) {
+            toast.error(t`${agentName} doesn't accept image attachments.`);
+            return;
+          }
+          void onIngestImageFiles(files);
+        }}
+        className="relative cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
       >
         {/* Queued comments as a context chip above the field, the same control
             the Ask AI composer carries — detached it is a `+ Comments` add
@@ -2905,6 +3259,13 @@ function ThreadComposer({
               <QueuedCommentsList threads={queuedComments} />
             ) : null}
           </ComposerContextChips>
+        ) : null}
+        {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
+          <PendingImageStrip
+            images={pendingAttachments}
+            uploads={pendingUploads}
+            onRemove={onRemovePendingAttachment}
+          />
         ) : null}
         <ComposerMentionInput
           ref={composerRef}
@@ -2960,6 +3321,7 @@ function ThreadComposer({
             options, showing a disabled trigger instead of vanishing). */}
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
           <AgentSettingsPopover info={info} />
+          <AttachFilesButton onFiles={onIngestAllFiles} />
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
@@ -3218,5 +3580,222 @@ function QueuedMessageRow({
         <X className="size-3.5" aria-hidden="true" />
       </Button>
     </div>
+  );
+}
+
+/** Derive the short chip label from a filename or mime (`report.pdf` → `pdf`,
+ *  `image/png` → `png`). Falls back to `file` when neither carries a hint. */
+function extensionLabel(name: string, mimeType: string): string {
+  const dot = name.lastIndexOf('.');
+  if (dot > 0 && dot < name.length - 1) return name.slice(dot + 1).toLowerCase();
+  const slash = mimeType.lastIndexOf('/');
+  if (slash > 0 && slash < mimeType.length - 1) return mimeType.slice(slash + 1).toLowerCase();
+  return 'file';
+}
+
+/**
+ * Preview row for pending image attachments — thumbnails rendered from the
+ * base64 payload, each with a remove control. Sits above the composer text
+ * area (mirroring `ComposerContextChips`'s placement) and shares its `px-3
+ * pt-2 pb-1` gutter so the two chip systems read as one.
+ */
+function PendingImageStrip({
+  images,
+  uploads,
+  onRemove,
+}: {
+  images: readonly AttachmentPart[];
+  uploads: readonly { readonly id: string; readonly name: string; readonly mimeType: string }[];
+  onRemove: (index: number) => void;
+}): ReactNode {
+  const { t } = useLingui();
+  const openPreview = use(ImagePreviewContext);
+  return (
+    <div className="flex flex-wrap gap-2 px-3 pt-2 pb-1" data-testid="agent-thread-pending-images">
+      {images.map((image, index) => {
+        // Per-kind key + label: `image` carries base64 data (unique per
+        // upload); `file`/`folder` carry a workspace path (also stable per
+        // upload); `blob` carries base64 too. Keys stay collision-free.
+        const key =
+          image.kind === 'image' || image.kind === 'blob'
+            ? `${image.name}:${image.data.slice(0, 24)}`
+            : `${image.name}:${image.path}`;
+        const src = image.kind === 'image' ? `data:${image.mimeType};base64,${image.data}` : null;
+        const label =
+          image.kind === 'file' || image.kind === 'folder'
+            ? extensionLabel(image.name, '')
+            : extensionLabel(image.name, image.mimeType);
+        return (
+          // Two sibling buttons instead of nested — nesting <button> in
+          // <button> is invalid HTML. The preview button fills the whole
+          // tile; the remove button sits on top absolutely and its click
+          // stops bubbling so the preview doesn't also open.
+          <div key={key} className="group relative inline-flex size-14" title={image.name}>
+            {src !== null ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => openPreview?.({ src, name: image.name })}
+                disabled={openPreview === null}
+                className="size-full items-center justify-center overflow-hidden rounded-md border border-input bg-muted p-0 hover:bg-muted"
+                aria-label={image.name}
+                data-testid="agent-thread-pending-image-preview"
+              >
+                <img
+                  src={src}
+                  alt={image.name}
+                  className="h-full w-full object-cover"
+                  draggable={false}
+                />
+              </Button>
+            ) : (
+              <div className="inline-flex size-full items-center justify-center overflow-hidden rounded-md border border-input bg-muted">
+                <span className="text-muted-foreground text-xs uppercase">{label}</span>
+              </div>
+            )}
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove(index);
+              }}
+              aria-label={t`Remove ${image.name}`}
+              className="absolute top-0.5 right-0.5 size-5 rounded-full border border-border bg-background/80 p-0 shadow-sm opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              data-testid="agent-thread-pending-image-remove"
+            >
+              <X className="size-3" aria-hidden="true" />
+            </Button>
+          </div>
+        );
+      })}
+      {uploads.map((upload) => (
+        <div
+          key={upload.id}
+          className="relative inline-flex size-14 items-center justify-center overflow-hidden rounded-md border border-input bg-muted"
+          title={upload.name}
+          data-testid="agent-thread-pending-upload"
+        >
+          <Spinner className="size-4 text-muted-foreground" aria-hidden="true" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Panel-wide dashed drop-zone overlay — shown whenever a file drag is over
+ * the whole chat panel. Accepts any file (image → ImageContent, everything
+ * else → EmbeddedResource); per-file rejection surfaces as a toast after
+ * drop rather than gating the overlay. `onDismiss` fires on a click so the
+ * user can escape a stuck overlay without a second drop.
+ */
+function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNode {
+  const { t } = useLingui();
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: transient drop overlay — keyboard/AT users never see it (drag-only surface), and click-to-dismiss is a safety escape for a stuck overlay.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: same reason — the overlay is drag-only, never keyboard-reachable, so a keyboard handler would be dead code.
+    <div
+      className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-sm"
+      onClick={onDismiss}
+      data-testid="agent-thread-drop-overlay"
+    >
+      <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-primary/70 border-dashed bg-background/90 px-8 py-6 text-center text-primary shadow-lg">
+        <Plus className="size-8" aria-hidden="true" />
+        <div className="flex flex-col gap-1">
+          <span className="font-medium text-base">{t`Drop a file to attach`}</span>
+          <span className="text-muted-foreground text-xs">
+            {t`Images from anywhere · non-image files must be in the workspace`}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Small footer line above the composer showing the workspace root the
+ * agent can reach — so the user knows which folder they're referencing
+ * before they attach anything. Falls back to a warmup label until
+ * `useWorkspace` resolves on web hosts.
+ */
+function WorkspaceReachHint({ info }: { info: ThreadInfo }): ReactNode {
+  const { t } = useLingui();
+  const workspace = useWorkspace();
+  const caps = info.promptCapabilities;
+  // Show only the last two path segments — the full absolute path is noisy
+  // and rarely differs from what the tab title already tells the user.
+  const workspaceLabel =
+    workspace === null
+      ? t`Reading from this workspace`
+      : (() => {
+          const sep = workspace.pathSeparator === '\\' ? '\\' : '/';
+          const parts = workspace.contentDir.split(sep).filter((p) => p !== '');
+          const tail = parts.slice(-2).join(sep);
+          return t`Reading from ${tail}`;
+        })();
+  const embedNote =
+    caps !== null && caps !== undefined && caps.embeddedContext !== true
+      ? t` · references only (no embedded contents)`
+      : '';
+  return (
+    <div
+      className="px-2 pb-1 text-[11px] text-muted-foreground"
+      data-testid="agent-thread-workspace-reach"
+    >
+      {workspaceLabel}
+      {embedNote}
+    </div>
+  );
+}
+
+/**
+ * OS file-picker trigger for the composer action bar — the keyboard-and-AT
+ * counterpart to drag-and-drop. A `+` icon button opens the picker via an
+ * imperatively-created `<input type="file" multiple>`; picked files ride
+ * the same `onIngestAllFiles` path drops use, so validation + toasts +
+ * preview all behave identically. Imperative creation keeps the raw DOM
+ * primitive out of the JSX tree — the shadcn-first UI-primitives rule bans
+ * raw `<input>` in packages/app tsx files, and shadcn's `Input` is a
+ * styled text field, not a file trigger.
+ */
+function AttachFilesButton({
+  onFiles,
+}: {
+  onFiles: (files: readonly File[]) => Promise<void>;
+}): ReactNode {
+  const { t } = useLingui();
+  const openFilePicker = () => {
+    // Detached element — `HTMLInputElement.click()` opens the OS picker on
+    // an element with no parent, so a cancelled picker leaves nothing to
+    // remove from the DOM. The input holds only its own listeners; once
+    // no reference survives this closure, the GC collects it.
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files ?? []);
+      if (files.length > 0) void onFiles(files);
+    });
+    input.click();
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          className="rounded-lg"
+          onClick={openFilePicker}
+          aria-label={t`Attach a file`}
+          data-testid="agent-thread-attach-files"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{t`Attach a file`}</TooltipContent>
+    </Tooltip>
   );
 }

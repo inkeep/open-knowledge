@@ -296,6 +296,7 @@
         { "one": ["Show ", "#", " more tool"], "other": ["Show ", "#", " more tools"] }
       ]
     ],
+    "3uSzeS": ["Images from anywhere · non-image files must be in the workspace"],
     "3v62tp": ["Popular on skills.sh"],
     "3wiBAs": ["Where should it live?"],
     "3y6XTb": ["Semantic search"],
@@ -633,6 +634,7 @@
     "90-wKT": ["OpenKnowledge read the history of ", ["subject"]],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Hide Agents"],
+    "95bl6Q": ["Reading from this workspace"],
     "96G6Re": ["New folder"],
     "96pApd": ["Read-only file in the ", ["name"], " skill"],
     "96w9hU": ["Something went wrong opening this file (HTTP ", ["status"], ")."],
@@ -1306,6 +1308,7 @@
     "Ix0K8o": ["Hide external URL nodes"],
     "IxHMdF": ["Couldn't delete that comment."],
     "IxyZXD": ["Screenshot"],
+    "Izh19j": ["Reading from ", ["tail"]],
     "J1XRO3": ["Theme colors"],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2_JuX": ["nothing (", ["0"], " cannot match a doc)"],
@@ -1451,6 +1454,7 @@
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
+    "LZe2vX": [" · references only (no embedded contents)"],
     "LaskKp": ["Send to chat (", ["0"], ")"],
     "Lbl6KA": ["Couldn't install from ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Can't safely edit this tool's config"],
@@ -1807,6 +1811,7 @@
     "QGWzup": ["Loading OpenKnowledge skills"],
     "QHCx0c": ["Bug report history"],
     "QIrBIx": ["Expand all files"],
+    "QIzioS": [["agentName"], " doesn't accept image attachments."],
     "QKgePK": ["Aligned ", ["editor"], " to the source (its bytes are backed up)"],
     "QLgdT6": ["any doc named ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
@@ -2843,6 +2848,7 @@
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
     ],
     "erenF-": ["Cannot delete files with unresolved conflicts"],
+    "euGaS0": ["Couldn't read ", ["fileName"], "."],
     "euc6Ns": ["Duplicate"],
     "evHlIg": [
       "Follow never pushes or commits your local changes. They stay only on this machine."
@@ -3142,6 +3148,7 @@
       ["2"],
       " automatically."
     ],
+    "ij-Elv": ["Image preview"],
     "ijLc3m": ["Bullet list"],
     "ilodsp": ["Let agents use OpenKnowledge without asking"],
     "ioMn4Z": ["New from Template…"],
@@ -3460,6 +3467,7 @@
       "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
     ],
     "mo22UP": ["Toggle inline code formatting."],
+    "moUeZ_": ["Drop a file to attach"],
     "mqSwZH": [
       "<0>Mirror anchor not found.</0> No <1>",
       ["mirrorSourceTag"],
@@ -3917,6 +3925,7 @@
     "tA0b9E": ["the default skills folder (the exact path appears once saved)"],
     "tA2-xC": ["\"", ["0"], "\" was already added (identical content)."],
     "tAPZEx": ["Below"],
+    "tCyvAw": ["Attach a file"],
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge wrote a document"],

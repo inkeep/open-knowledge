@@ -287,6 +287,7 @@
     "3oh0nQ": ["Galat .okignore bersarang di ", ["path"]],
     "3pU8e-": ["Sematkan tab"],
     "3s-k7L": [["0", "plural", { "other": ["Tampilkan ", "#", " alat lagi"] }]],
+    "3uSzeS": ["Gambar dari mana saja · berkas non-gambar harus berada di ruang kerja"],
     "3v62tp": ["Populer di skills.sh"],
     "3wiBAs": ["Di mana ia sebaiknya berada?"],
     "3y6XTb": ["Pencarian semantik"],
@@ -636,6 +637,7 @@
     "90-wKT": ["OpenKnowledge membaca riwayat ", ["subject"]],
     "92rbk2": ["Cermin memuat <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Sembunyikan Agen"],
+    "95bl6Q": ["Membaca dari ruang kerja ini"],
     "96G6Re": ["Folder baru"],
     "96pApd": ["Berkas hanya-baca di keterampilan ", ["name"]],
     "96w9hU": ["Ada yang tidak beres saat membuka berkas ini (HTTP ", ["status"], ")."],
@@ -1312,6 +1314,7 @@
     "Ix0K8o": ["Sembunyikan simpul URL eksternal"],
     "IxHMdF": ["Komentar itu tidak bisa dihapus."],
     "IxyZXD": ["Tangkapan layar"],
+    "Izh19j": ["Membaca dari ", ["tail"]],
     "J1XRO3": ["Warna tema"],
     "J2Mv98": ["Nama (mis. ", ["login"], ")"],
     "J2_JuX": ["tidak apa pun (", ["0"], " tidak bisa cocok dengan sebuah dokumen)"],
@@ -1464,6 +1467,7 @@
     "LXdWeS": ["Judul bagian sedang."],
     "LXfNU-": ["Navigasi dan saran"],
     "LYufDw": ["Gagal mengaktifkan pencarian semantik — ", ["detail"]],
+    "LZe2vX": [" · hanya referensi (tanpa konten tertanam)"],
     "LaskKp": ["Kirim ke obrolan (", ["0"], ")"],
     "Lbl6KA": ["Tidak bisa memasang dari ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Konfigurasi alat ini tidak bisa disunting dengan aman"],
@@ -1822,6 +1826,7 @@
     "QGWzup": ["Memuat keterampilan OpenKnowledge"],
     "QHCx0c": ["Riwayat laporan bug"],
     "QIrBIx": ["Bentangkan semua berkas"],
+    "QIzioS": [["agentName"], " tidak menerima lampiran gambar."],
     "QKgePK": [["editor"], " diselaraskan dengan sumbernya (bitanya sudah dicadangkan)"],
     "QLgdT6": ["dokumen mana pun bernama ", ["0"]],
     "QM3SBZ": ["Rencana (", ["done"], "/", ["0"], ")"],
@@ -2867,6 +2872,7 @@
       "Menandai sebuah blok sebagai sumber kebenaran. Cermin di tempat lain diperbarui langsung saat Anda menyuntingnya."
     ],
     "erenF-": ["Tidak dapat menghapus berkas yang konfliknya belum diselesaikan"],
+    "euGaS0": ["Tidak dapat membaca ", ["fileName"], "."],
     "euc6Ns": ["Gandakan"],
     "evHlIg": [
       "Ikuti tidak pernah melakukan push atau commit pada perubahan lokal Anda. Semuanya hanya tinggal di komputer ini."
@@ -3174,6 +3180,7 @@
       ["2"],
       " secara otomatis."
     ],
+    "ij-Elv": ["Pratinjau gambar"],
     "ijLc3m": ["Daftar berpoin"],
     "ilodsp": ["Biarkan agen memakai OpenKnowledge tanpa bertanya"],
     "ioMn4Z": ["Baru dari Templat…"],
@@ -3501,6 +3508,7 @@
       "Pilih satu palet untuk mode terang dan satu untuk mode gelap. Pengaturan tema di Preferensi memilih di antara keduanya — pada “Sistem”, sistem operasi Anda yang memilih."
     ],
     "mo22UP": ["Menyalakan atau mematikan format kode sebaris."],
+    "moUeZ_": ["Lepaskan berkas untuk melampirkan"],
     "mqSwZH": [
       "<0>Jangkar cermin tidak ditemukan.</0> Tidak ada <1>",
       ["mirrorSourceTag"],
@@ -3949,6 +3957,7 @@
     "tA0b9E": ["folder keterampilan bawaan (jalur persisnya muncul setelah disimpan)"],
     "tA2-xC": ["\"", ["0"], "\" sudah ditambahkan sebelumnya (isinya sama)."],
     "tAPZEx": ["Di bawah"],
+    "tCyvAw": ["Lampirkan berkas"],
     "tHKQ6j": ["Mengganti nama"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge menulis sebuah dokumen"],

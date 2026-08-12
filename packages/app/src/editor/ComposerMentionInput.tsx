@@ -23,6 +23,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { clearComposerDraft } from '@/components/composer-draft-store';
 import {
+  type ComposerAttachmentPart,
   composerMentionExtensions,
   composerMentionSuggestionKey,
   isComposerEmpty,
@@ -81,9 +82,20 @@ export interface ComposerMentionInputHandle {
    *  cancelled turn's rescued queue) use this rather than read-modify-`setText`,
    *  which would flatten chips to literal `@path` text. */
   appendText: (text: string) => void;
-  /** The dispatch payload: instruction prose (chips inline as `@path`) + the
-   *  ordered, de-duplicated `@path` mention list. */
-  getContent: () => { instruction: string; mentions: string[] };
+  /** The dispatch payload: instruction prose (chips inline as `@path`), the
+   *  ordered, de-duplicated `@path` mention list, and the same chip set as
+   *  typed attachment parts (file/folder) that ride an ACP send alongside
+   *  host-owned image parts. */
+  getContent: () => {
+    instruction: string;
+    mentions: string[];
+    attachments: ComposerAttachmentPart[];
+  };
+  /** Focus the field and insert `@` at the caret, triggering the mention
+   *  picker the way typing `@` does. Exposed so a host can programmatically
+   *  open the project file picker; the ACP composer's `+` button is a
+   *  separate OS file-picker path and does not call this. */
+  openMentionPicker: () => void;
 }
 
 /** Map plain text onto the composer schema: one paragraph per line, blank
@@ -398,7 +410,15 @@ export function ComposerMentionInput({
         );
       },
       getContent: () =>
-        editor ? serializeComposerContent(editor) : { instruction: '', mentions: [] },
+        editor
+          ? serializeComposerContent(editor)
+          : { instruction: '', mentions: [], attachments: [] },
+      openMentionPicker: () => {
+        if (!editor) return;
+        // Insert `@` at the caret and let the Suggestion plugin listening for
+        // that trigger raise the popup — same code path as a keyboard `@`.
+        editor.chain().focus().insertContent('@').run();
+      },
     }),
     [editor],
   );

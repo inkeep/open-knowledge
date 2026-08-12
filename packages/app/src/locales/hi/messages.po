@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/acp/ThreadView.tsx
+msgid " · references only (no embedded contents)"
+msgstr " · केवल संदर्भ (कोई एम्बेडेड सामग्री नहीं)"
+
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
 msgstr " या "
@@ -441,6 +445,10 @@ msgstr "{agentName} बातचीत शुरू नहीं कर सक�
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start."
 msgstr "{agentName} शुरू नहीं हो सका।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} doesn't accept image attachments."
+msgstr "{agentName} छवि अनुलग्नक स्वीकार नहीं करता।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -1719,6 +1727,10 @@ msgstr "एसेट सुझाव"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Asset: {title}"
 msgstr "एसेट: {title}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Attach a file"
+msgstr "फ़ाइल संलग्न करें"
 
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
@@ -3525,6 +3537,10 @@ msgstr "एंडपॉइंट तक नहीं पहुँचा जा �
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "{fileName} अपलोड करने के लिए Open Knowledge सर्वर तक नहीं पहुँचा जा सका।"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't read {fileName}."
+msgstr "{fileName} पढ़ नहीं सका।"
+
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 msgstr "{fileName} नहीं पढ़ी जा सकी। शायद इसे हिलाया गया, हटाया गया, या इसका डाउनलोड पूरा नहीं हुआ। इसे फिर से जोड़ने की कोशिश करें।"
@@ -4463,6 +4479,10 @@ msgstr "क्रम बदलने के लिए {patternText} खींच
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Drag item {0} to reorder"
 msgstr "क्रम बदलने के लिए आइटम {0} खींचें"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Drop a file to attach"
+msgstr "संलग्न करने के लिए फ़ाइल छोड़ें"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -6187,6 +6207,10 @@ msgstr "छवि नहीं मिली"
 msgid "Image not found: {errorLabel}"
 msgstr "छवि नहीं मिली: {errorLabel}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Image preview"
+msgstr "छवि पूर्वावलोकन"
+
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" could not be resolved to a project-local file."
 msgstr "चित्र लक्ष्य \"{shown}\" को प्रोजेक्ट की स्थानीय फ़ाइल के रूप में हल नहीं किया जा सका।"
@@ -6194,6 +6218,10 @@ msgstr "चित्र लक्ष्य \"{shown}\" को प्रोजे
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "चित्र लक्ष्य \"{shown}\" किसी मौजूदा फ़ाइल पर हल नहीं होता।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Images from anywhere · non-image files must be in the workspace"
+msgstr "छवियाँ कहीं से भी · गैर-छवि फ़ाइलें कार्यक्षेत्र में होनी चाहिए"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
@@ -9526,6 +9554,14 @@ msgstr "किसी दूसरे दस्तावेज़ के MirrorSo
 msgid "Read-only file in the {name} skill"
 msgstr "{name} स्किल में केवल पढ़ने योग्य फ़ाइल"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from {tail}"
+msgstr "{tail} से पढ़ रहे हैं"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Reading from this workspace"
+msgstr "इस कार्यक्षेत्र से पढ़ रहे हैं"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "पढ़ा जा रहा है…"
@@ -9696,6 +9732,8 @@ msgid "Remove"
 msgstr "हटाएँ"
 
 #. placeholder {0}: file.name
+#. placeholder {0}: image.name
+#: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Remove {0}"
 msgstr "{0} हटाएँ"
