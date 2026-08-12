@@ -698,70 +698,52 @@ jobs:
           # the workspace-wide on-disk override step above is what makes
           # them match the tag. See PRD-6650.
           #
-          # Retry the build on TRANSIENT signing/notarize/download failures
-          # only. All of these are infrastructure flakes outside our control
-          # that leave no durable artifact and clear on a re-run:
-          #   - codesign's timestamp step calling Apple's TSA (timestamp.apple.com)
-          #     returning "A timestamp was expected but was not found" or the TSA
-          #     being unavailable. This is the class that stuck v0.30.2 as a draft
-          #     (run 29445364406): each `codesign --timestamp` is a single, un-retried
-          #     shell-out inside electron-builder, so a dropped TSA response aborts
-          #     the whole build. electron-builder has NO knob to retry it — the only
-          #     lever we have is re-running the whole invocation.
+          # Packaging is retried on TRANSIENT signing/notarize/download failures
+          # only, through the shared wrapper. The macOS-specific classes it
+          # covers, none of which electron-builder will retry itself:
+          #   - codesign's timestamp step calling Apple's TSA (timestamp.apple.com).
+          #     Each `codesign --timestamp` is a single un-retried shell-out, so a
+          #     dropped TSA response aborts the whole build. This is the class that
+          #     stuck v0.30.2 as a draft (run 29445364406).
           #   - @electron/notarize's notarytool HTTP round-trip to
           #     appstoreconnect.apple.com timing out (NSURLError -1001 /
-          #     HTTPError(statusCode: nil)). This is what failed attempt 1 of the
-          #     same run before the TSA flake killed attempt 2.
+          #     HTTPError(statusCode: nil)), which failed attempt 1 of that same run.
           #   - a bare EOF fetching the Electron runtime zip during packaging
           #     (app-builder's DownloadNoRetry path aborts on one dropped connection).
-          # (The GitHub-upload signatures that used to sit alongside these are
-          # kept in the allowlist for the day uploads ever return here, but
-          # can no longer match — this invocation performs no uploads; the
-          # fan-in publish-assets job owns upload retries now.)
-          #
-          # CRITICAL: retry is gated on a transient-signature allowlist matched
-          # against the captured build output. Anything NOT on the allowlist — an
-          # expired/invalid cert, a notarization REJECTION (status Invalid), an
-          # entitlements error, an Apple developer-agreement 403, or a real
-          # build/compile error — is a hard failure that fails LOUD on the first
-          # attempt and is never masked by a blind retry.
+          # Re-running the whole invocation is the only lever available. The
+          # allowlist that gates the retry — and the guarantee that a real
+          # cert/notary/entitlements/build failure fails LOUD on the first attempt
+          # rather than being masked — lives in the wrapper.
           set -uo pipefail
-          # Extended-regex allowlist of transient infra-flake signatures (matched
-          # case-insensitively against combined stdout+stderr). Keep this list
-          # narrow: every entry must be an out-of-our-control infra flake, never a
-          # signature a real cert/notary/entitlements/build error could emit.
-          transient_signatures='A timestamp was expected but was not found|The timestamp service is not available|HTTPError\(statusCode: nil|The request timed out|NSURLErrorDomain Code=-100[13459]|kCFErrorDomainCFNetwork|The network connection was lost|Could not connect to the server|ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|Client network socket disconnected|unexpected EOF|502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out|You have exceeded a secondary rate limit|abuse detection mechanism|was submitted too quickly'
-          attempt=1
-          max_attempts=3
-          while true; do
-            echo "::group::electron-builder attempt ${attempt}/${max_attempts}"
-            attempt_log="${RUNNER_TEMP:-/tmp}/electron-builder-attempt-${attempt}.log"
-            # `pipefail` (set above) makes the `if` see the electron-builder exit
-            # code through `tee`; tee mirrors output to the CI log AND captures it
-            # for the transient-vs-real classification below.
-            if { pnpm run build:desktop && pnpm exec electron-builder --mac --publish never \
-              --config.extraMetadata.version="${BUILD_VERSION}" \
-              --config.publish.channel="${BUILD_CHANNEL}" ; } 2>&1 | tee "${attempt_log}"; then
-              echo "::endgroup::"
-              echo "electron-builder succeeded on attempt ${attempt}."
-              break
+          # The wrapper is CI tooling, not release content, so take it from the
+          # workflow's own SHA when the release checkout predates it — same
+          # reasoning as the smoke harness below. This is not a rare path:
+          # promote-stable tags the stable at the soaked beta's SHA, which is by
+          # definition older than any fix landed since. Best-effort: if it cannot
+          # be obtained, package WITHOUT retry rather than block the release.
+          WRAPPER="${GITHUB_WORKSPACE}/.github/scripts/retry-transient.mjs"
+          if [[ ! -f "$WRAPPER" ]]; then
+            # The fetch/checkout pair sits in an `if` CONDITION deliberately.
+            # Steps run under errexit, and bash exempts only the NON-final
+            # commands of an `&&` list — so a bare failing checkout would exit
+            # the shell before reaching the fallback below, defeating the
+            # best-effort behavior this exists for. A condition is exempt.
+            if git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
+               git -C "${GITHUB_WORKSPACE}" checkout "$GITHUB_SHA" -- .github/scripts/retry-transient.mjs 2>/dev/null; then
+              echo "::notice::Retry wrapper taken from ${GITHUB_SHA} rather than the release ref."
             fi
-            echo "::endgroup::"
-            # Fail hard on anything that is NOT a known transient infra flake so a
-            # real cert/notary/entitlements/build failure is never hidden by a retry.
-            if ! grep -qiE "${transient_signatures}" "${attempt_log}"; then
-              echo "::error::electron-builder failed on attempt ${attempt} with a NON-transient error (no known infra-flake signature matched). Not retrying — a real signing/notarize/cert/entitlements/build failure must fail loud, not be masked. See the log above."
-              exit 1
-            fi
-            if [ "${attempt}" -ge "${max_attempts}" ]; then
-              echo "::error::electron-builder failed after ${max_attempts} attempts; the last failure matched a transient signing/notarize signature but retries are exhausted."
-              exit 1
-            fi
-            backoff=$((attempt * 30))
-            echo "::warning::electron-builder attempt ${attempt} failed with a transient infra signature; retrying in ${backoff}s (bounded transient-only retry)."
-            sleep "${backoff}"
-            attempt=$((attempt + 1))
-          done
+          fi
+          # Defined once, single-quoted ON PURPOSE: it is handed to the wrapper as
+          # a literal string and expanded by the inner shell, which inherits this
+          # step's env. Expanding here would bake attempt 1's values into retries.
+          # shellcheck disable=SC2016
+          PKG_CMD='pnpm run build:desktop && pnpm exec electron-builder --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}"'
+          if [[ -f "$WRAPPER" ]]; then
+            node "$WRAPPER" --label "electron-builder (macOS)" --shell -- "$PKG_CMD"
+          else
+            echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
+            bash -c "$PKG_CMD"
+          fi
 
       # FR5b — smoke the signed DMG before anything about this release becomes
       # visible or installable. Under the fan-in topology this job failing on
@@ -979,13 +961,31 @@ jobs:
             exit 1
           fi
           echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
-          pnpm exec electron-builder --win --publish never \
-            --config.extraMetadata.version="${BUILD_VERSION}" \
-            --config.publish.channel="${BUILD_CHANNEL}" \
-            --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" \
-            --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" \
-            --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" \
-            --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"
+          # Signing here is a network round-trip to the Azure Trusted Signing
+          # endpoint, so this invocation carries the same transient exposure the
+          # macOS job does. The wrapper still fails loud on a real signing
+          # rejection or build error — only allowlisted infra flakes retry.
+          # Wrapper sourcing + single-quoting rationale: see the macOS step.
+          WRAPPER="${GITHUB_WORKSPACE}/.github/scripts/retry-transient.mjs"
+          if [[ ! -f "$WRAPPER" ]]; then
+            # The fetch/checkout pair sits in an `if` CONDITION deliberately.
+            # Steps run under errexit, and bash exempts only the NON-final
+            # commands of an `&&` list — so a bare failing checkout would exit
+            # the shell before reaching the fallback below, defeating the
+            # best-effort behavior this exists for. A condition is exempt.
+            if git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
+               git -C "${GITHUB_WORKSPACE}" checkout "$GITHUB_SHA" -- .github/scripts/retry-transient.mjs 2>/dev/null; then
+              echo "::notice::Retry wrapper taken from ${GITHUB_SHA} rather than the release ref."
+            fi
+          fi
+          # shellcheck disable=SC2016
+          PKG_CMD='pnpm exec electron-builder --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
+          if [[ -f "$WRAPPER" ]]; then
+            node "$WRAPPER" --label "electron-builder (Windows)" --shell -- "$PKG_CMD"
+          else
+            echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
+            bash -c "$PKG_CMD"
+          fi
 
       # Fail before staging an installer that cannot start. An asar packed
       # without `node_modules` produces a binary that dies on its first bare
@@ -1193,9 +1193,35 @@ jobs:
       # emulation or system fpm is involved.
       - name: Package ${{ matrix.targets }}
         working-directory: packages/desktop
+        env:
+          LINUX_TARGETS: ${{ matrix.targets }}
         run: |
-          pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never \
-            --config electron-builder.release-linux.yml
+          # electron-builder downloads its fpm packaging backend on first use,
+          # and a dropped connection there aborts the whole build. That is what
+          # blocked the v0.52.2 and v0.52.3 cuts, on a step that had no retry
+          # while the macOS job had carried one for months.
+          set -uo pipefail
+          # Wrapper sourcing + single-quoting rationale: see the macOS step.
+          WRAPPER="${GITHUB_WORKSPACE}/.github/scripts/retry-transient.mjs"
+          if [[ ! -f "$WRAPPER" ]]; then
+            # The fetch/checkout pair sits in an `if` CONDITION deliberately.
+            # Steps run under errexit, and bash exempts only the NON-final
+            # commands of an `&&` list — so a bare failing checkout would exit
+            # the shell before reaching the fallback below, defeating the
+            # best-effort behavior this exists for. A condition is exempt.
+            if git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
+               git -C "${GITHUB_WORKSPACE}" checkout "$GITHUB_SHA" -- .github/scripts/retry-transient.mjs 2>/dev/null; then
+              echo "::notice::Retry wrapper taken from ${GITHUB_SHA} rather than the release ref."
+            fi
+          fi
+          # shellcheck disable=SC2016
+          PKG_CMD='pnpm exec electron-builder --linux ${LINUX_TARGETS} --publish never --config electron-builder.release-linux.yml'
+          if [[ -f "$WRAPPER" ]]; then
+            node "$WRAPPER" --label "electron-builder (Linux ${LINUX_TARGETS})" --shell -- "$PKG_CMD"
+          else
+            echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
+            bash -c "$PKG_CMD"
+          fi
 
       # Fail before staging an installer that cannot start (see the Windows
       # step for the full rationale). This is the control that would have
@@ -1805,18 +1831,62 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SMOKE_VERDICT: ${{ needs.build-macos.outputs.smoke_verdict }}
           SMOKE_REASON: ${{ needs.build-macos.outputs.smoke_reason }}
+          RESULT_PREPARE: ${{ needs.prepare.result }}
+          RESULT_MACOS: ${{ needs.build-macos.result }}
+          RESULT_WINDOWS: ${{ needs.build-windows.result }}
+          RESULT_LINUX: ${{ needs.build-linux.result }}
+          RESULT_PUBLISH: ${{ needs.publish-assets.result }}
+          RESULT_FINALIZE: ${{ needs.finalize.result }}
+          # Under the escape valve a NON-required platform can fail while
+          # publish-assets and finalize still run, so platform failures are only
+          # blockers when the platform is actually required.
+          REQUIRED_PLATFORMS: ${{ needs.prepare.outputs.required }}
         run: |
           set -uo pipefail
           # A skipped gate (ref predates the harness) is not a blocked release,
-          # and neither is a failure before the DMG was even built — or a
-          # Windows/Linux packaging failure, where the smoke never speaks at
-          # all. All of those leave the verdict empty or 'skipped'; report
-          # them as `error` so the message never implies the app itself
-          # failed a test it never ran.
-          VERDICT="${SMOKE_VERDICT:-}"
-          if [[ "$VERDICT" != "fail" ]]; then
+          # and neither is a failure before the DMG was even built. Both leave
+          # the verdict empty or 'skipped'; report those as `error` so the
+          # message never implies the app failed a test it never ran.
+          #
+          # A PASS is passed through untouched. The packaging jobs are
+          # independent, so Linux or Windows can fail while the smoke runs to a
+          # clean pass — coercing that to `error` is what produced pages reading
+          # "DMG smoke ERRORED — all 13 executed smoke tests passed".
+          VERDICT="${SMOKE_VERDICT:-error}"
+          if [[ "$VERDICT" == "skipped" || -z "$VERDICT" ]]; then
             VERDICT="error"
           fi
+          # Name the jobs that actually FAILED. Downstream jobs that merely
+          # skipped are consequences, not causes, so they are not listed.
+          #
+          # A platform counts only when it is REQUIRED for this cut: under the
+          # escape valve a non-required platform can fail while publish-assets
+          # and finalize still run, and naming it would send the responder to a
+          # job that was correctly excluded from the publish decision — and
+          # would mask a genuine finalize failure behind it.
+          REQUIRED="${REQUIRED_PLATFORMS:-mac,windows,linux}"
+          is_required() { case ",${REQUIRED}," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+          blocked=()
+          [[ "${RESULT_PREPARE}" == "failure" ]] && blocked+=("release preparation")
+          if [[ "${RESULT_MACOS}" == "failure" ]] && is_required mac; then
+            blocked+=("macOS packaging")
+          fi
+          if [[ "${RESULT_WINDOWS}" == "failure" ]] && is_required windows; then
+            blocked+=("Windows packaging")
+          fi
+          if [[ "${RESULT_LINUX}" == "failure" ]] && is_required linux; then
+            blocked+=("Linux packaging")
+          fi
+          [[ "${RESULT_PUBLISH}" == "failure" ]] && blocked+=("asset publication")
+          # finalize is the alert's own trigger, so it is only worth naming when
+          # nothing blocking upstream failed — otherwise every page would list it.
+          if [[ ${#blocked[@]} -eq 0 && "${RESULT_FINALIZE}" == "failure" ]]; then
+            blocked+=("finalize")
+          fi
+          BLOCKED_BY=""
+          for b in ${blocked[@]+"${blocked[@]}"}; do
+            BLOCKED_BY="${BLOCKED_BY:+${BLOCKED_BY}, }${b}"
+          done
           REASON="${SMOKE_REASON:-the release pipeline failed before completing — see the run}"
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           post() {
@@ -1830,13 +1900,14 @@ jobs:
             # workflow's own copy when it exists at all.
             if [[ -f .github/scripts/build-smoke-alert-payload.mjs ]]; then
               payload="$(node .github/scripts/build-smoke-alert-payload.mjs --tag "$RELEASE_TAG" \
-                --verdict "$VERDICT" --reason "$REASON" --run-url "$RUN_URL" || true)"
+                --verdict "$VERDICT" --reason "$REASON" --run-url "$RUN_URL" \
+                --blocked-by "$BLOCKED_BY" || true)"
             fi
             if [[ -z "$payload" ]]; then
               # Never go silent. Losing the formatting is a degradation; losing
               # the page is the outage this step exists to prevent.
               echo "::warning::Smoke-alert payload builder unavailable for ${RELEASE_TAG}; sending the plain-text alert."
-              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} pipeline ${VERDICT} — nothing shipped. ${REASON} ${RUN_URL}" '{text: $t}')"
+              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} — ${BLOCKED_BY:-pipeline ${VERDICT}} — nothing shipped. ${REASON} ${RUN_URL}" '{text: $t}')"
             fi
             # The failing curl sits in an `if` condition, so a webhook outage
             # routes to the warning instead of masking the failure.
@@ -1850,7 +1921,7 @@ jobs:
           post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack
           # The annotation is emitted IN ADDITION to the page, so the run page
           # tells the same story as the channel.
-          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} pipeline ${VERDICT} — ${REASON}. The Release stays a draft and npm latest is untouched."
+          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} — ${BLOCKED_BY:-pipeline ${VERDICT}} — ${REASON}. The Release stays a draft and npm latest is untouched."
 
       # Lightweight discoverability for stuck-draft state. NOT a substitute
       # for full paging observability — this is a zero-cost log marker that
