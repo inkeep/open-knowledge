@@ -575,7 +575,11 @@ export const WIKI_EMBED_EXTENSIONS: ReadonlySet<string> = new Set([
   'mobi',
 ]);
 
-export type InlineAssetMediaKind = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'mermaid';
+<<<<<<< Updated upstream
+export type InlineAssetMediaKind = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'mermaid' | 'tldraw';
+=======
+export type InlineAssetMediaKind = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'mermaid' | 'excalidraw';
+>>>>>>> Stashed changes
 
 // Sidebar-clickable asset extensions, grouped by inline-render path.
 // Each set is a STRICT subset of its canonical-class set (asserted below),
@@ -669,7 +673,7 @@ assertSubset(
 // allowlist boundary. Instead, they resolve to mediaKind:'text' here, and
 // AssetPreview fetches their bytes via the ungated /api/asset-text endpoint.
 // /api/asset keeps returning 415 for them (serve allowlist is unchanged).
-export const TEXT_VIEWER_FALLBACK_EXTENSIONS: ReadonlySet<string> = new Set(['base', 'canvas']);
+export const TEXT_VIEWER_FALLBACK_EXTENSIONS: ReadonlySet<string> = new Set(['base']);
 
 // Standalone Mermaid diagram source files (mermaid-cli's input format;
 // GitHub linguist registers `.mmd`/`.mermaid` as the Mermaid language).
@@ -680,6 +684,9 @@ export const TEXT_VIEWER_FALLBACK_EXTENSIONS: ReadonlySet<string> = new Set(['ba
 // `.mmd`, which shares the extension) falls back to the read-only source
 // view in the app-side viewer, so the file always reads.
 export const MERMAID_FILE_EXTENSIONS: ReadonlySet<string> = new Set(['mmd', 'mermaid']);
+
+// Standalone Excalidraw drawing canvas files. Rendered via the editor's `<Excalidraw>` component.
+export const EXCALIDRAW_FILE_EXTENSIONS: ReadonlySet<string> = new Set(['excalidraw', 'canvas', 'okdraw']);
 
 /**
  * True when a path/docName names a standalone Mermaid source file. Pure string
@@ -696,6 +703,15 @@ export function isMermaidDocFile(path: string): boolean {
   const lastDot = path.lastIndexOf('.');
   if (lastDot < 0) return false;
   return MERMAID_FILE_EXTENSIONS.has(path.slice(lastDot + 1).toLowerCase());
+}
+
+/**
+ * True when a path/docName names a standalone Excalidraw source file.
+ */
+export function isExcalidrawDocFile(path: string): boolean {
+  const lastDot = path.lastIndexOf('.');
+  if (lastDot < 0) return false;
+  return EXCALIDRAW_FILE_EXTENSIONS.has(path.slice(lastDot + 1).toLowerCase());
 }
 
 // Code-file extensions live in a sibling module so the
@@ -718,6 +734,11 @@ export const LINKABLE_ASSET_EXTENSIONS: ReadonlySet<string> = new Set([
   ...ASSET_EXTENSIONS,
   ...TEXT_VIEWER_FALLBACK_EXTENSIONS,
   ...MERMAID_FILE_EXTENSIONS,
+<<<<<<< Updated upstream
+  ...TLDRAW_FILE_EXTENSIONS,
+=======
+  ...EXCALIDRAW_FILE_EXTENSIONS,
+>>>>>>> Stashed changes
 ]);
 
 /**
@@ -739,6 +760,11 @@ export function mediaKindForSidebarAssetExtension(ext: string): InlineAssetMedia
   if (SIDEBAR_TEXT_ASSET_EXTENSIONS.has(normalized)) return 'text';
   if (TEXT_VIEWER_FALLBACK_EXTENSIONS.has(normalized)) return 'text';
   if (MERMAID_FILE_EXTENSIONS.has(normalized)) return 'mermaid';
+<<<<<<< Updated upstream
+  if (TLDRAW_FILE_EXTENSIONS.has(normalized)) return 'tldraw';
+=======
+  if (EXCALIDRAW_FILE_EXTENSIONS.has(normalized)) return 'excalidraw';
+>>>>>>> Stashed changes
   // Files whose extension matches a codeblock-supported language
   // (`ts` / `py` / `go` / ...) open by default in the read-only
   // text viewer with syntax highlighting — same kind dispatch as

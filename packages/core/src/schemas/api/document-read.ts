@@ -88,7 +88,7 @@ export const DocumentListEntrySchema = z
     // path within the content directory.
     path: z.string().min(1).optional(),
     assetExt: z.string().min(1).optional(),
-    mediaKind: z.enum(['image', 'video', 'audio', 'pdf', 'text', 'mermaid']).nullable().optional(),
+    mediaKind: z.enum(['image', 'video', 'audio', 'pdf', 'text', 'mermaid', 'excalidraw']).nullable().optional(),
     referencedBy: z.array(z.string().min(1)).optional(),
     // Folder-only. True when the folder contains at least one non-skipped child
     // entry. The depth-1 children variant of GET /api/documents
@@ -212,24 +212,6 @@ export const BacklinkCountsSuccessSchema = z
 export type BacklinkCountsSuccess = z.infer<typeof BacklinkCountsSuccessSchema>;
 
 /**
- * Success body for `GET /api/comment-counts?docNames=a,b,c` or `?prefix=folder`
- * — unresolved comment threads per doc, the read-side signal MCP enrichment
- * folds into `exec` output.
- *
- * Same `{ counts }` shape as backlink-counts, with the two modes differing in
- * density: `docNames` answers for exactly the docs asked about (0 included, so
- * "no comments" is distinguishable from "not asked"), while `prefix` returns
- * only the docs under it that carry threads — a folder with no comments
- * anywhere yields `{}` rather than a row per file.
- */
-export const CommentCountsSuccessSchema = z
-  .object({
-    counts: z.record(z.string().min(1), z.number().int().nonnegative()),
-  })
-  .loose() satisfies StandardSchemaV1;
-export type CommentCountsSuccess = z.infer<typeof CommentCountsSuccessSchema>;
-
-/**
  * Single forward-link entry returned by `/api/forward-links`. Discriminated
  * by `kind`: `'doc'` carries `docName` + optional `anchor`; `'external'`
  * carries `url`. `title` falls back to the docName / URL when no
@@ -262,74 +244,11 @@ export const ForwardLinkEntrySchema = z.discriminatedUnion('kind', [
 ]) satisfies StandardSchemaV1;
 export type ForwardLinkEntry = z.infer<typeof ForwardLinkEntrySchema>;
 
-/**
- * One local file or image reference a document authors, carried in the optional
- * `localTargets` sibling of the forward-links response and rendered in the Links
- * panel's Local files section. It is NOT a member of the `forwardLinks`
- * document/external union — files and images are resources, not document graph
- * edges — and it comes from the server's local-target assessment index, not from
- * reclassified graph rows.
- *
- * One row per authored occurrence: two references to the same file produce two
- * rows, each with its own `range`, so repeated uses stay individually navigable
- * rather than collapsing to graph cardinality.
- *
- * Value domains (kept as open `z.string()` enums so a client on an older schema
- * tolerates a value the server adds later, exactly like the `source` field on
- * validation diagnostics):
- * - `role`: `'link' | 'image'`
- * - `sourceForm`: `'markdown-inline' | 'markdown-reference' | 'html-img'`
- * - `targetKind`: `'file'` for a resolvable file/image, `'unknown'` for an image
- *   whose path escapes the content root (documents are excluded from this list)
- * - `status`: `'exact' | 'fallback' | 'missing' | 'unresolvable'`
- * - `reason`: `'no-such-file' | 'unresolvable'`, or null when the target exists
- * - `resolutionMethod`: `'source-relative' | 'root-relative' | 'tolerant' | 'none'`
- */
-export const ForwardLinkLocalTargetSchema = z
-  .object({
-    role: z.string().min(1),
-    sourceForm: z.string().min(1),
-    targetKind: z.string().min(1),
-    href: z.string(),
-    // Content-root-relative identity the authored href resolves to, or null when
-    // unresolvable. For a `missing` target this is the identity that is absent.
-    resolvedTarget: z.string().nullable(),
-    status: z.string().min(1),
-    reason: z.string().nullable(),
-    resolutionMethod: z.string().min(1),
-    // Present only for `status: 'fallback'` — the existing target tolerant
-    // navigation reaches; files never carry one. Null otherwise.
-    fallbackTarget: z.string().nullable().default(null),
-    // Exact source range of the authored occurrence; `source.slice(start, end)`
-    // reproduces it verbatim and the editor scrolls here to navigate to it.
-    range: z.object({
-      start: z.number().int().nonnegative(),
-      end: z.number().int().nonnegative(),
-    }),
-    line: z.number().int().nonnegative(),
-    column: z.number().int().nonnegative(),
-    // Reference-style repair pointer: the shared `[label]` definition every use
-    // points at. Null for inline / HTML forms.
-    definition: z
-      .object({ label: z.string(), line: z.number().int().nonnegative() })
-      .nullable()
-      .default(null),
-  })
-  .loose() satisfies StandardSchemaV1;
-export type ForwardLinkLocalTarget = z.infer<typeof ForwardLinkLocalTargetSchema>;
-
-/**
- * Success body for `GET /api/forward-links?docName=...`. `localTargets` is an
- * additive sibling collection kept OUT of the `forwardLinks` document/external
- * union so document relationship semantics stay pure. Absent on legacy responses
- * (an older server omits it); a current server always sends it, possibly empty.
- * Separately versionable from `forwardLinks`.
- */
+/** Success body for `GET /api/forward-links?docName=...`. */
 export const ForwardLinksSuccessSchema = z
   .object({
     docName: z.string().min(1),
     forwardLinks: z.array(ForwardLinkEntrySchema),
-    localTargets: z.array(ForwardLinkLocalTargetSchema).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type ForwardLinksSuccess = z.infer<typeof ForwardLinksSuccessSchema>;
