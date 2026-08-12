@@ -3,11 +3,13 @@
  *
  * Two jobs no zod `.default()` can do:
  *
- *  1. **Alias-read of the superseded `remote.*` keys.** `remote.url` is read
- *     only while `server.publicUrl` is absent; `remote.port` only while
- *     `server.port` is absent — the same shape as the `autoSync.enabled` →
- *     `autoSync.mode` alias. This resolver is the single alias-read point;
- *     no other reader should consult `remote.*` for these values.
+ *  1. **Alias-read of the superseded keys.** `server.publicUrl` (the former
+ *     name of `server.externalUrl`) is read only while `server.externalUrl`
+ *     is absent; `remote.url` only while both are absent; `remote.port` only
+ *     while `server.port` is absent — the same shape as the
+ *     `autoSync.enabled` → `autoSync.mode` alias. This resolver is the single
+ *     alias-read point; no other reader should consult `remote.*` or
+ *     `server.publicUrl` for these values.
  *
  *  2. **Derived defaults.** `openBrowser` and `idleShutdown` default off the
  *     resolved bind: a loopback-only server pops the UI and idles out after
@@ -39,17 +41,26 @@ export interface ServerRuntimeConfig {
    * Canonical external origin; `undefined` means derive
    * `http://localhost:<port>` for a loopback server.
    */
-  publicUrl: string | undefined;
+  externalUrl: string | undefined;
   /**
-   * Where `publicUrl` came from: the successor key (`'server'`) or the
-   * superseded `remote.url` alias (`'remote-alias'`); `undefined` when unset.
+   * Where `externalUrl` came from: the `server.*` section (`'server'` — the
+   * canonical `server.externalUrl` key or its deprecated `server.publicUrl`
+   * spelling, which are the same key under two names) or the superseded
+   * `remote.url` alias (`'remote-alias'`); `undefined` when unset.
    * Load-bearing distinction: a `remote.url` left in config does NOT arm
    * anything by itself (`ok start --remote` is the explicit opt-in), so
-   * consumers that treat a declared public origin as an exposure signal —
+   * consumers that treat a declared external origin as an exposure signal —
    * the consent interlock, issued-URL preference — must key off `'server'`
    * only and leave the alias to the legacy remote flow.
    */
-  publicUrlSource: 'server' | 'remote-alias' | undefined;
+  externalUrlSource: 'server' | 'remote-alias' | undefined;
+  /**
+   * True when `externalUrl` was read from the deprecated `server.publicUrl`
+   * spelling (i.e. `server.externalUrl` itself was absent) — the CLI's signal
+   * to print the rename notice. Never true for the `remote.url` alias, which
+   * carries its own deprecation flow (`--remote`).
+   */
+  externalUrlFromDeprecatedKey: boolean;
   /** Exposure consent interlock (see `requiresExternalConsent`). */
   allowExternal: boolean;
   /** Open the UI in a browser at start. Derived when not set explicitly. */
@@ -86,16 +97,16 @@ export function isLoopbackOnlyBind(bind: readonly string[]): boolean {
 /**
  * The single predicate behind the exposure interlock: consent is required
  * when THE SERVER'S OWN BIND reaches beyond this machine — i.e. a non-loopback
- * `server.bind`. `server.publicUrl` deliberately does NOT trip it on its own:
- * publicUrl is a project-scoped, committed, SHARED key (a team deploying to a
+ * `server.bind`. `server.externalUrl` deliberately does NOT trip it on its own:
+ * externalUrl is a project-scoped, committed, SHARED key (a team deploying to a
  * VPS legitimately commits `https://notes.example.com`), so refusing to boot
  * whenever it is set would lock out every teammate who clones that repo and
  * opens it locally (loopback bind) — especially in desktop, where
  * config-derived consent is forced off. Under a loopback bind a committed
- * publicUrl is inert metadata: nothing external reaches the server directly,
+ * externalUrl is inert metadata: nothing external reaches the server directly,
  * and a same-box reverse proxy's forwarded requests are still gated at request
  * time (the forwarded-header tripwire refuses them without consent). Only the
- * actual bind exposing the port is a boot-time consent question; publicUrl's
+ * actual bind exposing the port is a boot-time consent question; externalUrl's
  * consent need surfaces at request time where a proxy actually appears.
  *
  * The boot path that enforces this MUST resolve `allowExternal`
@@ -146,19 +157,22 @@ export function resolveServerRuntimeConfig(config: Config | undefined): ServerRu
   // `remote.url` reads as unset (matching the CLI's `expandRemoteAlias`).
   const port = server?.port ?? remote?.port;
   const legacyUrl = remote?.url === '' ? undefined : remote?.url;
-  const publicUrl = server?.publicUrl ?? legacyUrl;
-  const publicUrlSource =
-    server?.publicUrl !== undefined
+  const externalUrl = server?.externalUrl ?? server?.publicUrl ?? legacyUrl;
+  const externalUrlSource =
+    server?.externalUrl !== undefined || server?.publicUrl !== undefined
       ? ('server' as const)
       : legacyUrl !== undefined
         ? ('remote-alias' as const)
         : undefined;
+  const externalUrlFromDeprecatedKey =
+    server?.externalUrl === undefined && server?.publicUrl !== undefined;
 
   return {
     port,
     bind,
-    publicUrl,
-    publicUrlSource,
+    externalUrl,
+    externalUrlSource,
+    externalUrlFromDeprecatedKey,
     allowExternal: server?.allowExternal ?? false,
     openBrowser: server?.openBrowser ?? loopbackOnly,
     idleShutdown: server?.idleShutdown ?? (loopbackOnly ? DEFAULT_LOOPBACK_IDLE_SHUTDOWN : 'off'),

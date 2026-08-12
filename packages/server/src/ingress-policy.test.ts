@@ -4,7 +4,7 @@ import {
   buildIngressPolicy,
   getIngressContext,
   hasForwardingHeaders,
-  hostHeaderMatchesPublicHost,
+  hostHeaderMatchesExternalHost,
   isHostAdmitted,
   isOriginAdmitted,
   isPeerAdmitted,
@@ -17,8 +17,9 @@ function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeCon
   return {
     port: undefined,
     bind: ['127.0.0.1'],
-    publicUrl: undefined,
-    publicUrlSource: undefined,
+    externalUrl: undefined,
+    externalUrlSource: undefined,
+    externalUrlFromDeprecatedKey: false,
     allowExternal: false,
     openBrowser: true,
     idleShutdown: '30m',
@@ -32,8 +33,8 @@ function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeCon
  * origin + consent on a loopback bind — no dedicated tunnel shape.
  */
 const REMOTE_ALIAS_RUNTIME: Partial<ServerRuntimeConfig> = {
-  publicUrl: 'https://myproject.ngrok.app',
-  publicUrlSource: 'server',
+  externalUrl: 'https://myproject.ngrok.app',
+  externalUrlSource: 'server',
   allowExternal: true,
   idleShutdown: 'off',
   openBrowser: false,
@@ -44,7 +45,7 @@ describe('buildIngressPolicy', () => {
     const policy = buildIngressPolicy({});
     expect(policy.allowExternal).toBe(false);
     expect(policy.bindLiterals).toEqual([]);
-    expect(policy.publicOrigin).toBeUndefined();
+    expect(policy.externalOrigin).toBeUndefined();
     expect(policy.tolerateForwardedHeaders).toBe(false);
   });
 
@@ -58,24 +59,24 @@ describe('buildIngressPolicy', () => {
     expect(policy.bindLiterals).toEqual(['100.64.0.7', '2001:db8::1']);
   });
 
-  test('publicOrigin comes from the successor key only, never the remote alias', () => {
+  test('externalOrigin comes from the successor key only, never the remote alias', () => {
     const explicit = buildIngressPolicy({
       serverRuntime: runtime({
-        publicUrl: 'http://laptop.tail:55222',
-        publicUrlSource: 'server',
+        externalUrl: 'http://laptop.tail:55222',
+        externalUrlSource: 'server',
       }),
     });
-    expect(explicit.publicOrigin).toEqual({ host: 'laptop.tail:55222', protocol: 'http:' });
+    expect(explicit.externalOrigin).toEqual({ host: 'laptop.tail:55222', protocol: 'http:' });
     const aliased = buildIngressPolicy({
       serverRuntime: runtime({
-        publicUrl: 'https://kb.example.com',
-        publicUrlSource: 'remote-alias',
+        externalUrl: 'https://kb.example.com',
+        externalUrlSource: 'remote-alias',
       }),
     });
-    expect(aliased.publicOrigin).toBeUndefined();
+    expect(aliased.externalOrigin).toBeUndefined();
   });
 
-  test('forwarded headers are tolerated only under consent + declared publicUrl', () => {
+  test('forwarded headers are tolerated only under consent + declared externalUrl', () => {
     // The --remote alias lands exactly here: its expansion carries both keys.
     expect(
       buildIngressPolicy({ serverRuntime: runtime(REMOTE_ALIAS_RUNTIME) }).tolerateForwardedHeaders,
@@ -84,25 +85,26 @@ describe('buildIngressPolicy', () => {
       buildIngressPolicy({
         serverRuntime: runtime({
           allowExternal: true,
-          publicUrl: 'https://kb.example.com',
-          publicUrlSource: 'server',
+          externalUrl: 'https://kb.example.com',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
         }),
       }).tolerateForwardedHeaders,
     ).toBe(true);
     // Consent without a declared public origin does NOT relax the tripwire —
-    // a proxy in front of a bind-exposed server still needs publicUrl.
+    // a proxy in front of a bind-exposed server still needs externalUrl.
     expect(
       buildIngressPolicy({
         serverRuntime: runtime({ allowExternal: true, loopbackOnly: false }),
       }).tolerateForwardedHeaders,
     ).toBe(false);
-    // A declared publicUrl without consent never tolerates them either
+    // A declared externalUrl without consent never tolerates them either
     // (that combination is a boot refusal once the interlock enforces).
     expect(
       buildIngressPolicy({
         serverRuntime: runtime({
-          publicUrl: 'https://kb.example.com',
-          publicUrlSource: 'server',
+          externalUrl: 'https://kb.example.com',
+          externalUrlSource: 'server',
         }),
       }).tolerateForwardedHeaders,
     ).toBe(false);
@@ -132,13 +134,13 @@ describe('isPeerAdmitted — consent relaxes the peer gate ONLY', () => {
 
 describe('isHostAdmitted — names validate in every mode, never widened by consent', () => {
   const case2 = buildIngressPolicy({
-    // Deck Case 2: tailnet bind + consent, publicUrl per the corrected deck.
+    // Deck Case 2: tailnet bind + consent, externalUrl per the corrected deck.
     serverRuntime: runtime({
       bind: ['127.0.0.1', '100.64.0.7'],
       loopbackOnly: false,
       allowExternal: true,
-      publicUrl: 'http://laptop.tail:55222',
-      publicUrlSource: 'server',
+      externalUrl: 'http://laptop.tail:55222',
+      externalUrlSource: 'server',
     }),
   });
 
@@ -148,7 +150,7 @@ describe('isHostAdmitted — names validate in every mode, never widened by cons
     expect(isHostAdmitted('100.64.0.7', case2)).toBe(true);
   });
 
-  test('the declared publicUrl host is admitted exactly (host:port)', () => {
+  test('the declared externalUrl host is admitted exactly (host:port)', () => {
     expect(isHostAdmitted('laptop.tail:55222', case2)).toBe(true);
     // A different port is a different name — refused.
     expect(isHostAdmitted('laptop.tail:9999', case2)).toBe(false);
@@ -180,13 +182,13 @@ describe('isHostAdmitted — names validate in every mode, never widened by cons
   });
 });
 
-describe('isOriginAdmitted — if present, must match; scheme-matched for publicUrl', () => {
+describe('isOriginAdmitted — if present, must match; scheme-matched for externalUrl', () => {
   const case3 = buildIngressPolicy({
-    // Deck Case 3: loopback bind behind a proxy, https publicUrl + consent.
+    // Deck Case 3: loopback bind behind a proxy, https externalUrl + consent.
     serverRuntime: runtime({
       allowExternal: true,
-      publicUrl: 'https://notes.example.com',
-      publicUrlSource: 'server',
+      externalUrl: 'https://notes.example.com',
+      externalUrlSource: 'server',
     }),
   });
 
@@ -196,12 +198,12 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for public
     expect(isOriginAdmitted('https://evil.example.com', case3)).toBe(false);
   });
 
-  test('an http publicUrl admits its http origin (tailnet/LAN posture)', () => {
+  test('an http externalUrl admits its http origin (tailnet/LAN posture)', () => {
     const httpPublic = buildIngressPolicy({
       serverRuntime: runtime({
         allowExternal: true,
-        publicUrl: 'http://laptop.tail:55222',
-        publicUrlSource: 'server',
+        externalUrl: 'http://laptop.tail:55222',
+        externalUrlSource: 'server',
       }),
     });
     expect(isOriginAdmitted('http://laptop.tail:55222', httpPublic)).toBe(true);
@@ -231,7 +233,7 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for public
 
   test('a malformed / unparseable Origin fails closed under consent', () => {
     // A garbage Origin must not fall through to admission — even under consent
-    // with a declared publicUrl, an Origin that `new URL()` cannot parse is
+    // with a declared externalUrl, an Origin that `new URL()` cannot parse is
     // refused rather than loosely compared.
     expect(isOriginAdmitted('http://[not-closed', case3)).toBe(false);
     expect(isOriginAdmitted('://missing-scheme', case3)).toBe(false);
@@ -267,20 +269,20 @@ describe('the --remote alias shape — tunnel admission via the ratified keys', 
   });
 });
 
-describe('normalizeHostHeader / hostHeaderMatchesPublicHost', () => {
+describe('normalizeHostHeader / hostHeaderMatchesExternalHost', () => {
   test('matches the public host, with or without default-port suffix, case-insensitively', () => {
     expect(normalizeHostHeader('MyProject.NGROK.app:443')).toBe('myproject.ngrok.app');
     expect(normalizeHostHeader('host.example:8080')).toBe('host.example:8080');
-    expect(hostHeaderMatchesPublicHost('myproject.ngrok.app', 'myproject.ngrok.app')).toBe(true);
-    expect(hostHeaderMatchesPublicHost('myproject.ngrok.app:443', 'myproject.ngrok.app')).toBe(
+    expect(hostHeaderMatchesExternalHost('myproject.ngrok.app', 'myproject.ngrok.app')).toBe(true);
+    expect(hostHeaderMatchesExternalHost('myproject.ngrok.app:443', 'myproject.ngrok.app')).toBe(
       true,
     );
-    expect(hostHeaderMatchesPublicHost('MyProject.NGROK.app', 'myproject.ngrok.app')).toBe(true);
+    expect(hostHeaderMatchesExternalHost('MyProject.NGROK.app', 'myproject.ngrok.app')).toBe(true);
   });
 
   test('refuses other hosts and missing Host', () => {
-    expect(hostHeaderMatchesPublicHost('evil.example.com', 'myproject.ngrok.app')).toBe(false);
-    expect(hostHeaderMatchesPublicHost(undefined, 'myproject.ngrok.app')).toBe(false);
+    expect(hostHeaderMatchesExternalHost('evil.example.com', 'myproject.ngrok.app')).toBe(false);
+    expect(hostHeaderMatchesExternalHost(undefined, 'myproject.ngrok.app')).toBe(false);
   });
 });
 
@@ -300,8 +302,8 @@ describe('tripsForwardedHeaderTripwire', () => {
     const consented = buildIngressPolicy({
       serverRuntime: runtime({
         allowExternal: true,
-        publicUrl: 'https://notes.example.com',
-        publicUrlSource: 'server',
+        externalUrl: 'https://notes.example.com',
+        externalUrlSource: 'server',
       }),
     });
     expect(tripsForwardedHeaderTripwire(req, consented)).toBe(false);

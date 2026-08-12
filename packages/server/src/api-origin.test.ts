@@ -24,10 +24,10 @@ describe('API origin guards', () => {
 });
 
 // Tunnel/public origins are an ingress-policy concern now — `isOriginAdmitted`
-// admits the declared `server.publicUrl` origin (see ingress-policy.test.ts);
+// admits the declared `server.externalUrl` origin (see ingress-policy.test.ts);
 // this helper stays loopback-only.
 describe('isAllowedApiOrigin stays loopback-only', () => {
-  test('refuses a tunnel origin — publicUrl admission lives in the ingress policy', () => {
+  test('refuses a tunnel origin — externalUrl admission lives in the ingress policy', () => {
     expect(isAllowedApiOrigin('https://myproject.ngrok.app')).toBe(false);
     expect(isAllowedApiOrigin('http://localhost:5173')).toBe(true);
   });

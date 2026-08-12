@@ -88,7 +88,7 @@ export const DEFAULT_SERVER_BIND: readonly string[] = Object.freeze(['127.0.0.1'
 export const IDLE_SHUTDOWN_DURATION_RE = /^[1-9]\d*(s|m|h)$/;
 
 /**
- * `server.publicUrl` scheme guard, paired with the runtime `z.url({ protocol })`
+ * `server.externalUrl` scheme guard, paired with the runtime `z.url({ protocol })`
  * check. Zod's URL `protocol` option validates at runtime but does NOT
  * serialize through `z.toJSONSchema` (which emits only `format: "uri"`, a
  * scheme it would accept `ftp:`/`javascript:` under). Attaching this as a
@@ -1199,7 +1199,7 @@ export const ConfigSchema = z.looseObject({
   // `agentSettable: false` everywhere so an agent can't self-expose the box.
   //
   // SUPERSEDED by the `server.*` section below: `remote.url` by
-  // `server.publicUrl`, `remote.port` by `server.port`. Each is alias-read
+  // `server.externalUrl`, `remote.port` by `server.port`. Each is alias-read
   // only while its successor is absent (`resolveServerRuntimeConfig` — the
   // same shape as the `autoSync.enabled` → `autoSync.mode` alias). The keys
   // stay readable so existing configs keep working; removal (REMOVED_KEYS +
@@ -1220,7 +1220,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project',
           description:
-            'Superseded by server.publicUrl — read only while server.publicUrl is absent. Public URL your tunnel gives you, e.g. https://myproject.ngrok.app. Used only with `ok start --remote` (config alone never enables remote access); its host is admitted through the Host-header allowlist. There is no server-side auth, so restrict access at the tunnel (ngrok OAuth, Cloudflare Access, Tailscale ACLs).',
+            'Superseded by server.externalUrl — read only while server.externalUrl (and its deprecated server.publicUrl spelling) is absent. Public URL your tunnel gives you, e.g. https://myproject.ngrok.app. Used only with `ok start --remote` (config alone never enables remote access); its host is admitted through the Host-header allowlist. There is no server-side auth, so restrict access at the tunnel (ngrok OAuth, Cloudflare Access, Tailscale ACLs).',
         })
         .optional(),
       port: z
@@ -1245,7 +1245,7 @@ export const ConfigSchema = z.looseObject({
   // target that drifts from the values that actually matter; "hosted" is
   // just what a non-loopback bind, a public URL, and consent look like.
   //
-  // Scopes: `port` / `bind` / `publicUrl` are PROJECT — the committed,
+  // Scopes: `port` / `bind` / `externalUrl` are PROJECT — the committed,
   // reviewed shape of this knowledge base's server. `openBrowser` /
   // `idleShutdown` are PROJECT-LOCAL — personal workflow, like the sidebar
   // toggles. `allowExternal` is PROJECT-LOCAL consent, the same posture as
@@ -1290,7 +1290,7 @@ export const ConfigSchema = z.looseObject({
             'Addresses the server binds, e.g. [127.0.0.1] or [0.0.0.0]. Default loopback-only ([127.0.0.1]): nothing off this machine can connect. A non-loopback bind additionally requires the server.allowExternal consent interlock. Lists replace, never merge. Read at server start; changing it requires a restart.',
         })
         .default([...DEFAULT_SERVER_BIND]),
-      publicUrl: z
+      externalUrl: z
         .url({ protocol: /^https?$/ })
         // Runtime protocol check + the JSON-schema-serializable pattern (see
         // HTTP_URL_SCHEME_RE) — together they keep the published schema and the
@@ -1302,7 +1302,22 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project',
           description:
-            'Canonical external origin the server is reached at, e.g. https://kb.example.com — drives issued URLs and CORS. Unset by default: a loopback server derives http://localhost:<port>. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Supersedes remote.url (still read while this key is absent). Read at server start; changing it requires a restart.',
+            'Canonical external origin the server is reached at, e.g. https://kb.example.com — drives issued URLs and CORS. Unset by default: a loopback server derives http://localhost:<port>. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Supersedes server.publicUrl (its former name) and remote.url — both still read while this key is absent. Read at server start; changing it requires a restart.',
+        })
+        .optional(),
+      // The former name of `server.externalUrl`, shipped in stable 0.51.x —
+      // kept as a deprecated alias (alias-read in `resolveServerRuntimeConfig`,
+      // same shape as `remote.url`), removed only after a deprecation window.
+      publicUrl: z
+        .url({ protocol: /^https?$/ })
+        .regex(HTTP_URL_SCHEME_RE)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'project',
+          description:
+            'Deprecated alias of server.externalUrl (the former name of that key) — read only while server.externalUrl is absent, with identical semantics. Use server.externalUrl instead; if this config is committed and shared, keep both keys until every collaborator has upgraded (older versions read only server.publicUrl).',
         })
         .optional(),
       allowExternal: z
@@ -1313,7 +1328,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project-local',
           description:
-            'Exposure consent interlock. Once the unified server boot lands, a non-loopback server.bind or a server.publicUrl without allowExternal: true will be refused at boot with a one-line fix. Default off. Per-machine (project-local) — consent never travels via git, clone, or share; containers consent via the environment instead.',
+            'Exposure consent interlock. Once the unified server boot lands, a non-loopback server.bind or a server.externalUrl without allowExternal: true will be refused at boot with a one-line fix. Default off. Per-machine (project-local) — consent never travels via git, clone, or share; containers consent via the environment instead.',
         })
         .default(false),
       openBrowser: z

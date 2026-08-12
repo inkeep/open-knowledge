@@ -245,7 +245,7 @@ export interface BootServerOptions
    */
   skipAutoInit?: boolean;
   /**
-   * The resolved `server.*` runtime (bind list, publicUrl, consent, derived
+   * The resolved `server.*` runtime (bind list, externalUrl, consent, derived
    * defaults). The CLI passes the fully-layered resolution (flags > env >
    * project-local > project > user); callers that omit it get a files-only
    * resolution from `opts.config`. One resolution feeds every consumer —
@@ -562,7 +562,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // correct load exists to prevent). Config-derived consent is therefore
   // untrusted here: force `allowExternal` off so only a caller that resolved
   // it scope-correctly (the CLI's explicit `serverRuntime`) can consent. A
-  // committed non-loopback bind or `publicUrl` then trips the interlock below
+  // committed non-loopback bind or `externalUrl` then trips the interlock below
   // — the correct refusal, not a silent exposure. Desktop's own consent path
   // (the network pane writes project-local, and this boot reads all three
   // layers) is a follow-up; until then desktop is loopback-only by construction.
@@ -588,7 +588,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // The exposure consent interlock: a NON-LOOPBACK bind reaches beyond this
   // machine, and the server refuses to boot without recorded consent. Checked
   // against the EFFECTIVE bind (above) AND the resolved serverRuntime — either
-  // being non-loopback trips it. A committed server.publicUrl under a loopback
+  // being non-loopback trips it. A committed server.externalUrl under a loopback
   // bind is inert metadata and does NOT trip this (see requiresExternalConsent)
   // — that would lock out a teammate who clones a VPS-deploy repo and opens it
   // locally. Enforced here — the single boot chokepoint every launcher goes
@@ -611,7 +611,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // ONE ingress policy for the whole listener — HTTP gates, WS upgrade
   // admission, config-doc admission, and the local-op checks all consult this
   // object. Built from the resolved server.* runtime (consent, declared bind
-  // literals, publicUrl); `ok start --remote` reaches here through the same
+  // literals, externalUrl); `ok start --remote` reaches here through the same
   // runtime, expanded by the CLI into these keys.
   //
   // The policy's admitted Host names come from `serverRuntime.bind` — the
@@ -629,26 +629,26 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   if (
     serverRuntime.allowExternal &&
     !serverRuntime.loopbackOnly &&
-    serverRuntime.publicUrlSource !== 'server'
+    serverRuntime.externalUrlSource !== 'server'
   ) {
     if (ingressPolicy.bindLiterals.length === 0) {
       // Wildcard bind (0.0.0.0 / ::) contributes NO admissible Host name, and
-      // with no server.publicUrl the Host allowlist is loopback-only — so
+      // with no server.externalUrl the Host allowlist is loopback-only — so
       // every external request 403s and the server is externally unusable
       // despite consent. This is a misconfiguration, not a refusal (a
       // container behind a platform edge that rewrites Host is legitimate),
       // so warn loudly and name the fix.
       log.warn(
         { bind: serverRuntime.bind },
-        '[ingress] server.allowExternal is set on a wildcard bind (0.0.0.0/::) with no server.publicUrl — external requests will be REFUSED (403 host-not-allowed) because no external Host name is admitted. Set server.publicUrl to the public origin clients dial (e.g. behind a reverse proxy or platform edge), or bind a specific address instead of a wildcard.',
+        '[ingress] server.allowExternal is set on a wildcard bind (0.0.0.0/::) with no server.externalUrl — external requests will be REFUSED (403 host-not-allowed) because no external Host name is admitted. Set server.externalUrl to the public origin clients dial (e.g. behind a reverse proxy or platform edge), or bind a specific address instead of a wildcard.',
       );
     } else {
       // A specific non-loopback bind (e.g. a tailnet IP) IS admissible as a
       // Host literal, so direct-IP access works; only friendly names need
-      // server.publicUrl.
+      // server.externalUrl.
       log.info(
         { bind: serverRuntime.bind },
-        '[ingress] server.allowExternal is set with no server.publicUrl — the bind-address literals are admitted as Host names (direct IP access). Set server.publicUrl to admit a hostname.',
+        '[ingress] server.allowExternal is set with no server.externalUrl — the bind-address literals are admitted as Host names (direct IP access). Set server.externalUrl to admit a hostname.',
       );
     }
   }
@@ -836,8 +836,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // issued URLs, and the server.lock URL stays loopback below: the lock is
   // same-machine discovery by contract.
   const issuedBaseUrl = (): string =>
-    serverRuntime.publicUrlSource === 'server' && serverRuntime.publicUrl !== undefined
-      ? serverRuntime.publicUrl.replace(/\/+$/, '')
+    serverRuntime.externalUrlSource === 'server' && serverRuntime.externalUrl !== undefined
+      ? serverRuntime.externalUrl.replace(/\/+$/, '')
       : `http://${mcpHost}:${boundPort}`;
   // No-project ephemeral single-file mode mounts NO MCP endpoint:
   // there are no agent capabilities. `mountMcpAndApi` leaves `/mcp`

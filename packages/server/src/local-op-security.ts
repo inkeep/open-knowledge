@@ -228,7 +228,7 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
  * header is allowed (same-origin browser requests / CLI tools).
  *
  * The admitted set beyond loopback comes from the ingress policy: the
- * declared `publicUrl` origin (scheme-matched) and the bind literals — an
+ * declared `externalUrl` origin (scheme-matched) and the bind literals — an
  * empty policy keeps the historical loopback-only set.
  *
  * Parses the URL and compares hostname exactly; a raw `startsWith` would
@@ -253,9 +253,9 @@ export function hasValidLocalOpOrigin(req: IncomingMessage, policy?: IngressPoli
     }
     if (policy === undefined) return false;
     if (
-      policy.publicOrigin !== undefined &&
-      url.protocol === policy.publicOrigin.protocol &&
-      normalizeOriginHost(url.host) === policy.publicOrigin.host
+      policy.externalOrigin !== undefined &&
+      url.protocol === policy.externalOrigin.protocol &&
+      normalizeOriginHost(url.host) === policy.externalOrigin.host
     ) {
       return true;
     }

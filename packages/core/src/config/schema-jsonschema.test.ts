@@ -188,22 +188,22 @@ const FIXTURES: Fixture[] = [
     shouldAccept: false,
   },
   {
-    name: 'server.publicUrl https URL accepted',
-    input: { server: { publicUrl: 'https://kb.example.com' } },
+    name: 'server.externalUrl https URL accepted',
+    input: { server: { externalUrl: 'https://kb.example.com' } },
     shouldAccept: true,
   },
   {
-    name: 'server.publicUrl non-URL rejected',
-    input: { server: { publicUrl: 'not a url' } },
+    name: 'server.externalUrl non-URL rejected',
+    input: { server: { externalUrl: 'not a url' } },
     shouldAccept: false,
   },
   {
     // The protocol restriction must appear in the published JSON schema, not
     // just at runtime — otherwise a $schema-aware editor green-lights a scheme
-    // (ftp:, javascript:) that ConfigSchema rejects at boot. publicUrl drives
+    // (ftp:, javascript:) that ConfigSchema rejects at boot. externalUrl drives
     // CORS + URL issuance, so the divergence is security-relevant.
-    name: 'server.publicUrl ftp:// rejected in both validators (protocol pattern serializes)',
-    input: { server: { publicUrl: 'ftp://kb.example.com' } },
+    name: 'server.externalUrl ftp:// rejected in both validators (protocol pattern serializes)',
+    input: { server: { externalUrl: 'ftp://kb.example.com' } },
     shouldAccept: false,
   },
   {

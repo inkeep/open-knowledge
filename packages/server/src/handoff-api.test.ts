@@ -483,15 +483,16 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
         return scheme === 'claude' || scheme === 'cursor';
       },
       // Declared remote deployment: the /api read gate admits only loopback +
-      // bind literals + the publicUrl host, so the remote-web capability-tier
+      // bind literals + the externalUrl host, so the remote-web capability-tier
       // Hosts below must be declared names to reach the handler at all (an
       // undeclared foreign Host is refused at the gate; see the gate test).
       ingressPolicy: buildIngressPolicy({
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1', '192.168.1.100'],
-          publicUrl: 'http://example.com:5173',
-          publicUrlSource: 'server',
+          externalUrl: 'http://example.com:5173',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -588,7 +589,7 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   // dialog be the truth signal). The remote-web case is normally reached via
   // SSH tunnels / reverse proxies where the connection still terminates on
   // loopback. Since the read-posture hardening, a non-loopback Host reaches
-  // the handler only when the deployment DECLARES it (`server.publicUrl` /
+  // the handler only when the deployment DECLARES it (`server.externalUrl` /
   // `server.bind`) — the rig's policy above declares both test Hosts, and an
   // undeclared one is pinned as refused at the gate below.
 

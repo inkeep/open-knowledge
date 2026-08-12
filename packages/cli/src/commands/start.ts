@@ -238,7 +238,7 @@ export function coerceRemoteBindHost(
 
 /** The `server.*` keys `--remote` expands into — nothing beyond the ratified surface. */
 interface RemoteAliasServerOverlay {
-  publicUrl: string;
+  externalUrl: string;
   allowExternal: true;
   idleShutdown: 'off';
 }
@@ -261,14 +261,14 @@ export type RemoteAliasExpansion =
 export function scopeRemoteAliasConsentToBind(
   serverOverlay: RemoteAliasServerOverlay,
   bindList: readonly string[],
-): { publicUrl: string; idleShutdown: 'off'; allowExternal?: true } {
+): { externalUrl: string; idleShutdown: 'off'; allowExternal?: true } {
   if (isLoopbackOnlyBind(bindList)) return serverOverlay;
-  return { publicUrl: serverOverlay.publicUrl, idleShutdown: serverOverlay.idleShutdown };
+  return { externalUrl: serverOverlay.externalUrl, idleShutdown: serverOverlay.idleShutdown };
 }
 
 /**
  * `--remote [url]` is a deprecated thin alias over the ratified `server.*`
- * networking keys: it expands to `server.publicUrl` = the tunnel url (its
+ * networking keys: it expands to `server.externalUrl` = the tunnel url (its
  * host joins the Host/Origin allowlists), a loopback bind (tunnels proxy to
  * `127.0.0.1` — the deployer's tunnel agent covers ingress, see
  * `coerceRemoteBindHost`), and `server.allowExternal` consent, which
@@ -313,26 +313,53 @@ export function expandRemoteAlias(
   return {
     ok: true,
     url: normalizedUrl,
-    serverOverlay: { publicUrl: normalizedUrl, allowExternal: true, idleShutdown: 'off' },
+    serverOverlay: { externalUrl: normalizedUrl, allowExternal: true, idleShutdown: 'off' },
   };
 }
 
 /**
- * Validator for Commander's `--public-url` parser — the flag-layer setter for
- * `server.publicUrl`, matching the schema leaf's http(s)-origin shape so a
- * flag value can never smuggle in what the config file would reject.
+ * Validator shared by the `--external-url` parser and its deprecated
+ * `--public-url` spelling — the flag-layer setter for `server.externalUrl`,
+ * matching the schema leaf's http(s)-origin shape so a flag value can never
+ * smuggle in what the config file would reject. `flagName` keeps the error
+ * text naming the flag the user actually typed.
  */
-export function parsePublicUrlFlag(value: string): string {
+function parseHttpOriginFlag(flagName: string, value: string): string {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    throw new InvalidArgumentError(`--public-url is not a valid URL: ${value}`);
+    throw new InvalidArgumentError(`${flagName} is not a valid URL: ${value}`);
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new InvalidArgumentError(`--public-url must be an http(s) origin (got: ${value})`);
+    throw new InvalidArgumentError(`${flagName} must be an http(s) origin (got: ${value})`);
   }
   return value;
+}
+
+export function parseExternalUrlFlag(value: string): string {
+  return parseHttpOriginFlag('--external-url', value);
+}
+
+/**
+ * The flag-layer external-URL fold: `--external-url` wins, the deprecated
+ * `--public-url` spelling fills in when it is the only one given (the two
+ * flags cannot legally co-occur — the action guard exits 2 — so the `??` is
+ * precedence bookkeeping, not conflict resolution). Extracted so a test pins
+ * that the deprecated flag keeps setting `server.externalUrl` through its
+ * removal window: dropping the fallback would silently strand `--public-url`
+ * operators on `externalUrl: undefined` (no CORS/Host admission, no issued
+ * URLs) with no parse error to signal it.
+ */
+export function resolveFlagExternalUrl(
+  opts: Pick<StartCommandOptions, 'externalUrl' | 'publicUrl'>,
+): string | undefined {
+  return opts.externalUrl ?? opts.publicUrl;
+}
+
+/** Parser for the deprecated `--public-url` alias of `--external-url`. */
+export function parsePublicUrlFlag(value: string): string {
+  return parseHttpOriginFlag('--public-url', value);
 }
 
 /** Hard cap on the project-name suffix in `process.title` to keep `ps`/Activity Monitor lines readable. */
@@ -951,7 +978,9 @@ interface StartCommandOptions {
    * `remote.url` in config.
    */
   remote?: string | boolean;
-  /** From `--public-url <url>`: flag-layer `server.publicUrl` for this run. */
+  /** From `--external-url <url>`: flag-layer `server.externalUrl` for this run. */
+  externalUrl?: string;
+  /** From the deprecated `--public-url` alias of `--external-url`. */
   publicUrl?: string;
 }
 
@@ -1046,7 +1075,33 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   if (remoteFlagSet) {
     console.warn(
       warning(
-        '--remote is deprecated — use `OK_IDLE_SHUTDOWN=off OK_ALLOW_EXTERNAL=1 ok start --public-url <url>` instead (add --bind to serve a non-loopback address; keep OK_IDLE_SHUTDOWN=off — the idle timer only counts WS clients and would tear the server down under a live remote MCP client). The flag now just expands to those server.* keys and will be removed in a later release.',
+        '--remote is deprecated — use `OK_IDLE_SHUTDOWN=off OK_ALLOW_EXTERNAL=1 ok start --external-url <url>` instead (add --bind to serve a non-loopback address; keep OK_IDLE_SHUTDOWN=off — the idle timer only counts WS clients and would tear the server down under a live remote MCP client). The flag now just expands to those server.* keys and will be removed in a later release.',
+      ),
+    );
+  }
+
+  // Same ordering contract as the --remote notice above: the rename notices
+  // print even when a later step refuses, so the operator learns the
+  // successor spelling from the same run.
+  if (opts.publicUrl !== undefined) {
+    console.warn(
+      warning(
+        '--public-url is deprecated — use --external-url <url> (same value and semantics; the key was renamed to server.externalUrl). The old spelling will be removed in a later release.',
+      ),
+    );
+  }
+
+  // Config-file rename notice, keyed off the FILE layers (before the env/flag
+  // overlay — those spellings write the successor key and warn on their own,
+  // and a masking override doesn't make the stale file key any less stale).
+  if (resolveServerRuntimeConfig(config).externalUrlFromDeprecatedKey) {
+    // "Use X instead", not "rename it": in a committed shared config, keeping
+    // BOTH keys is the sanctioned mixed-version state — older app versions
+    // read only server.publicUrl and silently ignore server.externalUrl, so
+    // a literal rename would 403 collaborators who have not upgraded.
+    console.warn(
+      warning(
+        '[config] server.publicUrl is deprecated — use server.externalUrl instead (same value and semantics). If this config is committed and shared, keep both keys until every collaborator has upgraded — older versions read only server.publicUrl; see https://openknowledge.ai/docs/reference/configuration. The old key will be removed in a later release.',
       ),
     );
   }
@@ -1153,9 +1208,11 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // loopback yet still trips ExposureConsentError off the uncoerced list.
   const bindList = remoteEnabled ? [host] : requestedBind;
   // The flag-layer overlay, applied ABOVE the env layer: the resolved bind
-  // list, the `--remote` alias expansion (publicUrl + allowExternal +
+  // list, the `--remote` alias expansion (externalUrl + allowExternal +
   // idleShutdown 'off' — the SAME server.* resolution path any other exposure
-  // route uses), and `--public-url`. Nothing here is remote-specific
+  // route uses), and `--external-url` (or its deprecated `--public-url`
+  // spelling — both write the successor key so the flag layer keeps its
+  // precedence over env and file layers). Nothing here is remote-specific
   // machinery; the alias is only these keys. Self-consent is loopback-scoped
   // (see scopeRemoteAliasConsentToBind) — a non-loopback bind under --remote
   // still needs explicit consent, so the interlock refusal below matches the
@@ -1169,12 +1226,13 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       ),
     );
   }
+  const flagExternalUrl = resolveFlagExternalUrl(opts);
   const runtime: ServerRuntimeConfig = resolveServerRuntimeConfig(
     applyConfigOverlay(envConfig, {
       server: {
         bind: bindList,
         ...aliasOverlay,
-        ...(opts.publicUrl !== undefined ? { publicUrl: opts.publicUrl } : {}),
+        ...(flagExternalUrl !== undefined ? { externalUrl: flagExternalUrl } : {}),
       },
     }) as Config,
   );
@@ -1185,10 +1243,10 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // surface (clone, GitHub sign-in, PAT storage, repo spawn) to every external
   // peer, with NO server-side auth. Fire whenever consent is armed AND there is
   // a real exposure vector — a non-loopback bind (direct) or a declared
-  // publicUrl (a same-host reverse proxy forwards to a loopback bind). The
+  // externalUrl (a same-host reverse proxy forwards to a loopback bind). The
   // --remote flow prints its own warning, so skip the duplicate there.
-  if (!remoteEnabled && runtime.allowExternal && (!runtime.loopbackOnly || runtime.publicUrl)) {
-    const reach = runtime.publicUrl ?? runtime.bind.join(', ');
+  if (!remoteEnabled && runtime.allowExternal && (!runtime.loopbackOnly || runtime.externalUrl)) {
+    const reach = runtime.externalUrl ?? runtime.bind.join(', ');
     console.warn(
       warning(
         [
@@ -1301,7 +1359,7 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       process.exit(78);
     }
 
-    // Exposure without consent (non-loopback bind or publicUrl set while
+    // Exposure without consent (non-loopback bind or externalUrl set while
     // server.allowExternal is off) — the interlock's message IS the one-line
     // fix. EX_CONFIG, same contract as the other config-shaped boot errors.
     if (err instanceof serverModule.ExposureConsentError) {
@@ -1674,13 +1732,18 @@ export function startCommand(getConfig: () => Config): Command {
       'Throwaway project root for --single-file (where ephemeral .ok/ state lives)',
     )
     .option(
+      '--external-url <url>',
+      'Canonical external origin clients dial (sets server.externalUrl for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (OK_ALLOW_EXTERNAL=1 or server.allowExternal).',
+      parseExternalUrlFlag,
+    )
+    .option(
       '--public-url <url>',
-      'Canonical external origin clients dial (sets server.publicUrl for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (OK_ALLOW_EXTERNAL=1 or server.allowExternal).',
+      'Deprecated alias of --external-url (the former name of that flag) — same value and semantics.',
       parsePublicUrlFlag,
     )
     .option(
       '--remote [url]',
-      'Deprecated alias: expands to --public-url <url> + OK_ALLOW_EXTERNAL consent on a loopback bind. Serves through a tunnel with NO server-side auth (anyone who can reach the URL has full control — restrict access at the tunnel with edge auth). Bare --remote uses remote.url from .ok/config.yml; --remote <url> supplies it for this run.',
+      'Deprecated alias: expands to --external-url <url> + OK_ALLOW_EXTERNAL consent on a loopback bind. Serves through a tunnel with NO server-side auth (anyone who can reach the URL has full control — restrict access at the tunnel with edge auth). Bare --remote uses remote.url from .ok/config.yml; --remote <url> supplies it for this run.',
     )
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();
@@ -1691,11 +1754,26 @@ export function startCommand(getConfig: () => Config): Command {
         process.exit(2);
       }
 
-      // `--remote` IS a `--public-url` (plus consent) — combining them would
-      // make one silently win. Fail loud; pass one.
-      if (opts.publicUrl !== undefined && opts.remote !== undefined && opts.remote !== false) {
+      // `--external-url` and its deprecated `--public-url` spelling are the
+      // same flag under two names — combining them would make one silently
+      // win. Fail loud; pass one.
+      if (opts.externalUrl !== undefined && opts.publicUrl !== undefined) {
         process.stderr.write(
-          "error: option '--remote' cannot be combined with '--public-url' (--remote is a deprecated alias that sets server.publicUrl)\n",
+          "error: option '--public-url' cannot be combined with '--external-url' (--public-url is a deprecated alias of --external-url)\n",
+        );
+        process.exit(2);
+      }
+
+      // `--remote` IS an `--external-url` (plus consent) — combining them
+      // would make one silently win. Fail loud; pass one.
+      if (
+        (opts.externalUrl !== undefined || opts.publicUrl !== undefined) &&
+        opts.remote !== undefined &&
+        opts.remote !== false
+      ) {
+        const conflicting = opts.externalUrl !== undefined ? '--external-url' : '--public-url';
+        process.stderr.write(
+          `error: option '--remote' cannot be combined with '${conflicting}' (--remote is a deprecated alias that sets server.externalUrl)\n`,
         );
         process.exit(2);
       }
@@ -1796,6 +1874,7 @@ export function startCommand(getConfig: () => Config): Command {
         if (opts.serverUrl !== undefined) ignored.push('--server-url');
         if (opts.idleShutdown !== undefined) ignored.push('--idle-shutdown');
         if (opts.openBrowser === false) ignored.push('--no-open-browser');
+        if (opts.externalUrl !== undefined) ignored.push('--external-url');
         if (opts.publicUrl !== undefined) ignored.push('--public-url');
         if (opts.remote !== undefined && opts.remote !== false) ignored.push('--remote');
         if (ignored.length > 0) {

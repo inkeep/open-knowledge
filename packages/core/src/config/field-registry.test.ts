@@ -267,11 +267,12 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'lossCapture.maxBytes',
       'remote.port',
       'remote.url',
-      // `server.{port,bind,publicUrl}` are the committed, reviewed shape of
+      // `server.{port,bind,externalUrl}` are the committed, reviewed shape of
       // this knowledge base's server — project scope, like the `remote.*`
       // keys they supersede. Their consent/workflow siblings are
       // project-local (below).
       'server.bind',
+      'server.externalUrl',
       'server.port',
       'server.publicUrl',
       'telemetry.localSink.attributeDenylist',
@@ -380,6 +381,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'remote.url',
       'server.allowExternal',
       'server.bind',
+      'server.externalUrl',
       'server.openBrowser',
       'server.port',
       'server.publicUrl',

@@ -142,7 +142,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
   const { log, ephemeral, table } = opts;
   const policy = opts.policy ?? buildIngressPolicy({});
   // The policy's Host predicate: loopback names plus every admitted public
-  // name (bind literals, declared publicUrl, legacy tunnel host) — the same
+  // name (bind literals, declared externalUrl, legacy tunnel host) — the same
   // widening the api-extension applies to its route-level Host gates.
   const isAllowedWorkspaceHostHeader = (host: string | undefined): boolean =>
     isHostAdmitted(host, policy);
@@ -339,7 +339,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     // tag so its counters stay continuous, while normal-mode refusals tag
     // `api-read-gate` so the universalized posture's fire rate is observable
     // in isolation. Native clients (curl, MCP) are unaffected: they dial an
-    // admitted name (loopback, bind literal, or publicUrl host), and Origin
+    // admitted name (loopback, bind literal, or externalUrl host), and Origin
     // logic is untouched.
     if (url.startsWith('/api/')) {
       const gateHandler = ephemeral ? 'api-ephemeral-gate' : 'api-read-gate';

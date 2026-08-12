@@ -26,17 +26,17 @@ let tmpRoot: string;
 let case2: BootedServer;
 let case3: BootedServer;
 
-/** Case 2 env, exactly as the deck draws it (publicUrl per the corrected slide). */
+/** Case 2 env, exactly as the deck draws it (externalUrl per the corrected slide). */
 const CASE2_ENV = {
   OK_BIND: '127.0.0.1 100.64.0.7',
   OK_ALLOW_EXTERNAL: '1',
-  OK_PUBLIC_URL: 'http://laptop.tail:55222',
+  OK_EXTERNAL_URL: 'http://laptop.tail:55222',
 };
 
 /** Case 3 env, exactly as the deck draws it. */
 const CASE3_ENV = {
   PORT: '8080',
-  OK_PUBLIC_URL: 'https://notes.example.com',
+  OK_EXTERNAL_URL: 'https://notes.example.com',
   OK_ALLOW_EXTERNAL: '1',
 };
 
@@ -79,36 +79,36 @@ afterAll(async () => {
 });
 
 describe('deck env spellings resolve to the booted config', () => {
-  test('Case 2: OK_BIND (space-separated) + OK_ALLOW_EXTERNAL=1 + OK_PUBLIC_URL', () => {
+  test('Case 2: OK_BIND (space-separated) + OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL', () => {
     expect(resolveEnvConfigLayer(CASE2_ENV).layer).toEqual({
       server: {
         bind: ['127.0.0.1', '100.64.0.7'],
         allowExternal: true,
-        publicUrl: 'http://laptop.tail:55222',
+        externalUrl: 'http://laptop.tail:55222',
       },
     });
   });
 
-  test('Case 3: platform PORT + OK_PUBLIC_URL + OK_ALLOW_EXTERNAL=1', () => {
+  test('Case 3: platform PORT + OK_EXTERNAL_URL + OK_ALLOW_EXTERNAL=1', () => {
     expect(resolveEnvConfigLayer(CASE3_ENV).layer).toEqual({
       server: {
         port: 8080,
-        publicUrl: 'https://notes.example.com',
+        externalUrl: 'https://notes.example.com',
         allowExternal: true,
       },
     });
   });
 });
 
-describe('Case 2 — tailnet bind + consent + publicUrl', () => {
-  test("a teammate's browser read under the publicUrl Host answers", async () => {
+describe('Case 2 — tailnet bind + consent + externalUrl', () => {
+  test("a teammate's browser read under the externalUrl Host answers", async () => {
     const res = await rawRequest(case2.port, '/api/server-info', {
       headers: { Host: 'laptop.tail:55222' },
     });
     expect(res.status).toBe(200);
   });
 
-  test("a teammate's mutating write is admitted (Host + Origin from publicUrl)", async () => {
+  test("a teammate's mutating write is admitted (Host + Origin from externalUrl)", async () => {
     const res = await rawRequest(case2.port, '/api/create-page', {
       method: 'POST',
       headers: {
@@ -138,7 +138,7 @@ describe('Case 2 — tailnet bind + consent + publicUrl', () => {
     expect(write.status).toBe(200);
   });
 
-  test('an MCP client (no Origin header) is admitted under the publicUrl Host', async () => {
+  test('an MCP client (no Origin header) is admitted under the externalUrl Host', async () => {
     const res = await rawRequest(case2.port, '/api/create-page', {
       method: 'POST',
       headers: { Host: 'laptop.tail:55222', 'Content-Type': 'application/json' },
@@ -170,7 +170,7 @@ describe('Case 2 — tailnet bind + consent + publicUrl', () => {
   });
 });
 
-describe('Case 3 — loopback bind behind a reverse proxy + publicUrl + consent', () => {
+describe('Case 3 — loopback bind behind a reverse proxy + externalUrl + consent', () => {
   /** What Caddy/nginx deliver: loopback peer, public Host, forwarding headers. */
   const proxied = (extra: Record<string, string> = {}) => ({
     Host: 'notes.example.com',

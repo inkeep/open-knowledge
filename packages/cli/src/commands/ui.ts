@@ -282,7 +282,7 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
         // Loopback-only, matching this surface's `/api` gate. `ok ui`'s API
         // gate is `rejectIfNotLoopbackApi` (loopback-shaped Host only, never
         // policy-aware), so the content-serve gate must admit no wider a set —
-        // otherwise a config-declared `publicUrl` would serve content assets
+        // otherwise a config-declared `externalUrl` would serve content assets
         // to a Host that every `/api` call on the same surface 403s, a
         // half-broken app. `ok ui` is a loopback sidecar; the data server
         // (`ok start`) is the exposable surface and builds the real policy.

@@ -87,7 +87,7 @@ export function admitRequestSurface(
       res,
       403,
       'urn:ok:error:host-not-allowed',
-      'Proxied request refused: this server has not consented to external exposure. Set OK_PUBLIC_URL to the public origin and OK_ALLOW_EXTERNAL=1 (or server.publicUrl + server.allowExternal in config), or restart with `ok start --remote <url>`.',
+      'Proxied request refused: this server has not consented to external exposure. Set OK_EXTERNAL_URL to the public origin and OK_ALLOW_EXTERNAL=1 (or server.externalUrl + server.allowExternal in config), or restart with `ok start --remote <url>`.',
       { handler },
     );
     return false;
@@ -95,7 +95,7 @@ export function admitRequestSurface(
   // Gate 2 runs whenever the surface is EXPOSED (`allowExternal` consent).
   // This covers every surface the prelude fronts: `/mcp`, `/api/*`, the
   // static shell, and project-mode content assets. The predicate is the
-  // consolidated one (loopback + bind literals + publicUrl), identical to the
+  // consolidated one (loopback + bind literals + externalUrl), identical to the
   // `/api` pipeline gate, so direct-IP access to the shell/content matches
   // what the API admits. Pure-local (no exposure) skips this SURFACE-wide
   // gate on purpose — the read-sensitive legs behind it carry their own

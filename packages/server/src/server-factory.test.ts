@@ -2732,8 +2732,9 @@ describe('createServer() — config-doc admission guard', () => {
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1'],
-          publicUrl: 'https://myproject.ngrok.app',
-          publicUrlSource: 'server',
+          externalUrl: 'https://myproject.ngrok.app',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',

@@ -319,8 +319,8 @@ export function hocuspocusPlugin(): Plugin {
         // the browser actually sends. Known dev-mode limitation: under
         // `vite --host` (LAN testing from a phone/second machine) content
         // assets 403 while the shell still loads, so images render broken —
-        // there is no dev-side publicUrl to admit the LAN Host. For LAN/tailnet
-        // testing use `ok start --bind <ip>` + `OK_PUBLIC_URL`, which builds a
+        // there is no dev-side externalUrl to admit the LAN Host. For LAN/tailnet
+        // testing use `ok start --bind <ip>` + `OK_EXTERNAL_URL`, which builds a
         // real policy that admits the declared Host.
         ingressPolicy: buildIngressPolicy({}),
       });

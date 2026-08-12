@@ -169,15 +169,15 @@ describe('createCollaborationHost', () => {
     expect(raw.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
     // Posture flip: the tripwire hint names the consent surface
-    // (OK_ALLOW_EXTERNAL + OK_PUBLIC_URL) now that it exists, with the
+    // (OK_ALLOW_EXTERNAL + OK_EXTERNAL_URL) now that it exists, with the
     // legacy --remote flow as the alternative.
     expect(log.warn).toHaveBeenCalledWith(
       { url: '/collab', host: 'localhost' },
-      '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_PUBLIC_URL, or start with `ok start --remote <url>`',
+      '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL, or start with `ok start --remote <url>`',
     );
   });
 
-  test('uses the tunnel-shape admission (publicUrl + consent) for bare collaboration upgrades', () => {
+  test('uses the tunnel-shape admission (externalUrl + consent) for bare collaboration upgrades', () => {
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -189,8 +189,9 @@ describe('createCollaborationHost', () => {
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1'],
-          publicUrl: 'https://myproject.ngrok.app',
-          publicUrlSource: 'server',
+          externalUrl: 'https://myproject.ngrok.app',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -222,7 +223,7 @@ describe('createCollaborationHost', () => {
     // The #5 gap: before, plain /collab was gated only under legacy --remote,
     // so consented exposure (allowExternal, no --remote) left it ungated and
     // any Host reached full CRDT read/write. It now runs the consolidated
-    // admit gate — loopback + bind literals + publicUrl — under consent too.
+    // admit gate — loopback + bind literals + externalUrl — under consent too.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -232,8 +233,9 @@ describe('createCollaborationHost', () => {
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
-          publicUrl: undefined,
-          publicUrlSource: undefined,
+          externalUrl: undefined,
+          externalUrlSource: undefined,
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -276,7 +278,7 @@ describe('createCollaborationHost', () => {
 
   test('under allowExternal consent, plain /collab refuses a foreign Origin (CSWSH defense)', () => {
     // CWE-1275: WS upgrades bypass CORS, so a page on a foreign origin can open
-    // wss://<publicUrl>/collab — the Host passes (publicUrl) and, under consent,
+    // wss://<externalUrl>/collab — the Host passes (externalUrl) and, under consent,
     // so does the relaxed peer gate. A present-but-foreign Origin is the only
     // signal separating that cross-site hijack from a first-party client, so it
     // MUST be refused here exactly as /collab/thread refuses it. A missing
@@ -290,8 +292,9 @@ describe('createCollaborationHost', () => {
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
-          publicUrl: 'https://kb.example.com',
-          publicUrlSource: 'server',
+          externalUrl: 'https://kb.example.com',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -300,7 +303,7 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Attack: the publicUrl Host is admitted, but the foreign Origin is not.
+    // Attack: the externalUrl Host is admitted, but the foreign Origin is not.
     const attacker = createSocket();
     expect(
       host.handleUpgrade(
@@ -312,7 +315,7 @@ describe('createCollaborationHost', () => {
     expect(attacker.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
 
-    // A first-party page on the publicUrl origin is admitted.
+    // A first-party page on the externalUrl origin is admitted.
     const firstPartyWs = new EventEmitter();
     callbackUpgrade(host, firstPartyWs);
     const sameOrigin = createSocket();
@@ -401,8 +404,9 @@ describe('createCollaborationHost', () => {
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
-          publicUrl: 'https://kb.example.com',
-          publicUrlSource: 'server',
+          externalUrl: 'https://kb.example.com',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -411,7 +415,7 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Attack: publicUrl Host is admitted, but the foreign Origin is refused.
+    // Attack: externalUrl Host is admitted, but the foreign Origin is refused.
     const attacker = createSocket();
     host.handleUpgrade(
       request(
@@ -452,8 +456,9 @@ describe('createCollaborationHost', () => {
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
-          publicUrl: 'https://kb.example.com',
-          publicUrlSource: 'server',
+          externalUrl: 'https://kb.example.com',
+          externalUrlSource: 'server',
+          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -462,7 +467,7 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Attack: the publicUrl Host is admitted, but the foreign Origin is refused.
+    // Attack: the externalUrl Host is admitted, but the foreign Origin is refused.
     const attacker = createSocket();
     host.handleUpgrade(
       request('/collab/thread', 'kb.example.com', 'https://evil.example'),
@@ -472,7 +477,7 @@ describe('createCollaborationHost', () => {
     expect(attacker.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
 
-    // A first-party thread on the publicUrl origin is admitted (message wired).
+    // A first-party thread on the externalUrl origin is admitted (message wired).
     const threadWs = new EventEmitter() as EventEmitter & { close: () => void; send: () => void };
     threadWs.close = () => {};
     threadWs.send = () => {};

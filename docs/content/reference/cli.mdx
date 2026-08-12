@@ -118,8 +118,8 @@ Serve this project's web UI and `/mcp` endpoint to your other devices through an
 
 | Command | What it does |
 | --- | --- |
-| `ok start --public-url <url>` | Declare the canonical external origin clients dial (sets `server.publicUrl` for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (`OK_ALLOW_EXTERNAL=1` or `server.allowExternal`). For remote MCP use also set `OK_IDLE_SHUTDOWN=off` — the idle timer only counts editor (WS) connections and would stop the server under a live remote agent |
-| `ok start --remote [url]` | Deprecated alias for `--public-url <url>` plus `OK_ALLOW_EXTERNAL` consent on a loopback bind. Starts the server admitting requests from the tunnel URL (no server-side auth; restrict reach at the tunnel). Bare `--remote` uses `remote.url` from `.ok/config.yml` |
+| `ok start --external-url <url>` | Declare the canonical external origin clients dial (sets `server.externalUrl` for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (`OK_ALLOW_EXTERNAL=1` or `server.allowExternal`). For remote MCP use also set `OK_IDLE_SHUTDOWN=off` — the idle timer only counts editor (WS) connections and would stop the server under a live remote agent. `--public-url` (the flag's former name) remains a deprecated alias |
+| `ok start --remote [url]` | Deprecated alias for `--external-url <url>` plus `OK_ALLOW_EXTERNAL` consent on a loopback bind. Starts the server admitting requests from the tunnel URL (no server-side auth; restrict reach at the tunnel). Bare `--remote` uses `remote.url` from `.ok/config.yml` |
 
 ## More commands
 

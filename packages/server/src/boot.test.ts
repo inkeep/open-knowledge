@@ -1161,35 +1161,35 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
     expect(e.message).toContain('.ok/local/config.yml');
   });
 
-  test('a committed publicUrl under a loopback bind is inert — boots, no lockout (CLI path)', async () => {
-    // publicUrl is project-scoped (committed, shared); a team commits their VPS
+  test('a committed externalUrl under a loopback bind is inert — boots, no lockout (CLI path)', async () => {
+    // externalUrl is project-scoped (committed, shared); a team commits their VPS
     // origin. Under a loopback bind it must NOT trip the interlock, or every
     // teammate cloning that repo and opening it locally would be locked out.
-    const err = await tryBoot({ publicUrl: 'https://notes.example.com' }, true);
+    const err = await tryBoot({ externalUrl: 'https://notes.example.com' }, true);
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
-  test('a committed publicUrl under a loopback bind is inert — boots on the desktop / embedder path too', async () => {
+  test('a committed externalUrl under a loopback bind is inert — boots on the desktop / embedder path too', async () => {
     // Same, with NO explicit serverRuntime (the desktop utility path). A repo
-    // committing publicUrl for its VPS deploy opens fine in desktop.
-    const err = await tryBoot({ publicUrl: 'https://notes.example.com' });
+    // committing externalUrl for its VPS deploy opens fine in desktop.
+    const err = await tryBoot({ externalUrl: 'https://notes.example.com' });
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
-  test('a loopback-only server with no publicUrl never trips the interlock', async () => {
+  test('a loopback-only server with no externalUrl never trips the interlock', async () => {
     // Reaches past the interlock and boots; success is the absence of an
     // ExposureConsentError (any later failure would be a different class).
     const err = await tryBoot({});
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
-  test('the --remote alias shape (publicUrl + consent on a loopback bind) boots outright', async () => {
+  test('the --remote alias shape (externalUrl + consent on a loopback bind) boots outright', async () => {
     // `ok start --remote <url>` expands to exactly this runtime with NO
     // OK_ALLOW_EXTERNAL in the environment — the alias carries its own
     // consent. Historically the flag WAS the consent; if this shape ever
     // trips the interlock, every existing --remote user breaks at boot.
     const err = await tryBoot(
-      { publicUrl: 'https://myproject.ngrok.app', allowExternal: true },
+      { externalUrl: 'https://myproject.ngrok.app', allowExternal: true },
       true,
     );
     expect(err).toBeNull();

@@ -8,7 +8,7 @@ import { admitRequestSurface } from './http-app.ts';
 // BEFORE dispatch for EVERY request — /mcp, /api, the static SPA shell, and
 // project content assets. These pin the #6 fix: under `allowExternal` consent
 // (no legacy --remote), it validates Host with the consolidated predicate
-// (loopback + bind literals + publicUrl), so a rebound / foreign Host cannot
+// (loopback + bind literals + externalUrl), so a rebound / foreign Host cannot
 // read the static shell or content while the peer is admitted.
 
 function req(
@@ -44,8 +44,9 @@ const consentPolicy = buildIngressPolicy({
   serverRuntime: {
     port: undefined,
     bind: ['127.0.0.1', '100.64.0.7'],
-    publicUrl: 'http://laptop.tail:55222',
-    publicUrlSource: 'server',
+    externalUrl: 'http://laptop.tail:55222',
+    externalUrlSource: 'server',
+    externalUrlFromDeprecatedKey: false,
     allowExternal: true,
     openBrowser: false,
     idleShutdown: 'off',
@@ -54,7 +55,7 @@ const consentPolicy = buildIngressPolicy({
 });
 
 describe('admitRequestSurface under allowExternal consent', () => {
-  test('admits loopback, the bind literal, and the declared publicUrl host', () => {
+  test('admits loopback, the bind literal, and the declared externalUrl host', () => {
     for (const host of ['localhost:5173', '100.64.0.7:55222', 'laptop.tail:55222']) {
       const { res, status } = fakeRes();
       expect(admitRequestSurface(req(host), res, consentPolicy, 'test')).toBe(true);
@@ -85,10 +86,10 @@ describe('admitRequestSurface under allowExternal consent', () => {
     expect(status()).toBe(403);
   });
 
-  test('Gate 1: a consented policy with a publicUrl tolerates forwarding headers', () => {
-    // Under consent with a declared publicUrl the server sits behind a reverse
+  test('Gate 1: a consented policy with a externalUrl tolerates forwarding headers', () => {
+    // Under consent with a declared externalUrl the server sits behind a reverse
     // proxy / tunnel on purpose, so forwarded headers are expected and
-    // tolerated; the Host still gates in Gate 2 (admitted here via publicUrl).
+    // tolerated; the Host still gates in Gate 2 (admitted here via externalUrl).
     const { res, status } = fakeRes();
     expect(
       admitRequestSurface(

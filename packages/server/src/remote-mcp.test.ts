@@ -9,7 +9,7 @@
  * transport itself is the only untested hop.
  *
  * The ingress policy is built from the SAME `server.*` runtime shape the
- * `ok start --remote <url>` alias expands to (`server.publicUrl` + consent
+ * `ok start --remote <url>` alias expands to (`server.externalUrl` + consent
  * on a loopback bind); these tests are the behavior-preservation pins for
  * the legacy tunnel contract now that the dedicated remote topology is
  * gone. With the tunnel shape armed there is ONE gate: Host on the
@@ -39,14 +39,14 @@ import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';
 import { type MountMcpAndApiHandle, mountMcpAndApi } from './mcp-mount.ts';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
-const PUBLIC_URL = 'https://myproject.ngrok.app';
-const PUBLIC_HOST = 'myproject.ngrok.app';
+const EXTERNAL_URL = 'https://myproject.ngrok.app';
+const EXTERNAL_HOST = 'myproject.ngrok.app';
 
 /** What any tunnel's local agent delivers: public Host over a loopback socket. */
-const TUNNEL_HEADERS = { host: PUBLIC_HOST };
+const TUNNEL_HEADERS = { host: EXTERNAL_HOST };
 /** Same, with the forwarding headers mainstream tunnels inject. */
 const TUNNEL_FORWARDED_HEADERS = {
-  host: PUBLIC_HOST,
+  host: EXTERNAL_HOST,
   'x-forwarded-for': '203.0.113.7',
   'x-forwarded-proto': 'https',
 };
@@ -87,7 +87,7 @@ interface RigExtras {
   acpThreadManager?: unknown;
 }
 
-async function bootRemoteRig(publicUrl: string | null, extras: RigExtras = {}): Promise<Rig> {
+async function bootRemoteRig(externalUrl: string | null, extras: RigExtras = {}): Promise<Rig> {
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-remote-mcp-'));
   const localDir = join(contentDir, '.ok', 'local');
   mkdirSync(localDir, { recursive: true });
@@ -95,7 +95,7 @@ async function bootRemoteRig(publicUrl: string | null, extras: RigExtras = {}): 
   // origin + consent; the rig's listener stays loopback like the coerced
   // remote bind.
   const config = ConfigSchema.parse(
-    publicUrl === null ? {} : { server: { publicUrl, allowExternal: true } },
+    externalUrl === null ? {} : { server: { externalUrl, allowExternal: true } },
   );
   const port = await getFreeLoopbackPort();
   const handler: McpHttpHandler = createMcpHttpHandler({
@@ -300,7 +300,7 @@ function attemptCollabUpgrade(
 
 describe('remote enabled — trust-the-tunnel admission', () => {
   test('tunnel-Host /mcp is admitted with the full tool set (no server-side auth tier)', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const names = await listToolNames(rig.port, TUNNEL_HEADERS);
     expect(names).toContain('exec');
     expect(names).toContain('search');
@@ -308,13 +308,13 @@ describe('remote enabled — trust-the-tunnel admission', () => {
   });
 
   test('local loopback sessions keep the full tool set when remote is enabled', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const names = await listToolNames(rig.port, { host: `127.0.0.1:${rig.port}` });
     for (const tool of WRITE_TOOLS) expect(names).toContain(tool);
   });
 
   test('wrong Host is refused everywhere (DNS-rebinding shape)', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const mcp = await raw(rig.port, {
       method: 'POST',
       path: '/mcp',
@@ -327,7 +327,7 @@ describe('remote enabled — trust-the-tunnel admission', () => {
   });
 
   test('non-/mcp surfaces are reachable under the tunnel Host (one gate for everything)', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     // The mocked hocuspocus answers nothing, so the mount's own 404 backstop
     // responding at all (vs a 403) proves admission.
     const api = await raw(rig.port, { path: '/api/pages', headers: TUNNEL_HEADERS });
@@ -337,17 +337,17 @@ describe('remote enabled — trust-the-tunnel admission', () => {
   });
 
   test('forwarding headers are fine when remote is enabled (tunnels always inject them)', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const api = await raw(rig.port, { path: '/api/pages', headers: TUNNEL_FORWARDED_HEADERS });
     expect(api.status).toBe(404);
   });
 
   test('vendor identity/marker headers are inert — admission is Host-only', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     // Pre-R0 these headers switched tiers (tailnet/funnel). Now they must
     // change nothing: same Host, same admission, same tool set.
     const names = await listToolNames(rig.port, {
-      host: PUBLIC_HOST,
+      host: EXTERNAL_HOST,
       'tailscale-funnel-request': '?1',
       'tailscale-user-login': 'someone@example',
     });
@@ -355,17 +355,17 @@ describe('remote enabled — trust-the-tunnel admission', () => {
   });
 
   test('/collab upgrade admits the tunnel Host and drops wrong Hosts', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
-    await expect(attemptCollabUpgrade(rig.port, { Host: PUBLIC_HOST })).resolves.toBe('upgraded');
+    const rig = await bootRemoteRig(EXTERNAL_URL);
+    await expect(attemptCollabUpgrade(rig.port, { Host: EXTERNAL_HOST })).resolves.toBe('upgraded');
     await expect(attemptCollabUpgrade(rig.port, { Host: 'evil.example.com' })).resolves.toBe(
       'closed',
     );
   });
 
   test('/collab/keepalive upgrade admits the tunnel Host and drops wrong Hosts', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     await expect(
-      attemptCollabUpgrade(rig.port, { Host: PUBLIC_HOST }, '/collab/keepalive'),
+      attemptCollabUpgrade(rig.port, { Host: EXTERNAL_HOST }, '/collab/keepalive'),
     ).resolves.toBe('upgraded');
     await expect(
       attemptCollabUpgrade(rig.port, { Host: 'evil.example.com' }, '/collab/keepalive'),
@@ -376,9 +376,9 @@ describe('remote enabled — trust-the-tunnel admission', () => {
     // The stub thread manager only clears the fail-closed `acp == null` guard;
     // the socket touches it solely when a client sends a frame (this raw
     // upgrade never does), so admission is the only thing under test.
-    const rig = await bootRemoteRig(PUBLIC_URL, { acpThreadManager: { listThreads: () => [] } });
+    const rig = await bootRemoteRig(EXTERNAL_URL, { acpThreadManager: { listThreads: () => [] } });
     await expect(
-      attemptCollabUpgrade(rig.port, { Host: PUBLIC_HOST }, '/collab/thread'),
+      attemptCollabUpgrade(rig.port, { Host: EXTERNAL_HOST }, '/collab/thread'),
     ).resolves.toBe('upgraded');
     await expect(
       attemptCollabUpgrade(rig.port, { Host: 'evil.example.com' }, '/collab/thread'),
@@ -387,17 +387,17 @@ describe('remote enabled — trust-the-tunnel admission', () => {
     await expect(
       attemptCollabUpgrade(
         rig.port,
-        { Host: PUBLIC_HOST, Origin: 'https://evil.example.com' },
+        { Host: EXTERNAL_HOST, Origin: 'https://evil.example.com' },
         '/collab/thread',
       ),
     ).resolves.toBe('closed');
   });
 
   test('default-port Host suffix still matches', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const api = await raw(rig.port, {
       path: '/api/pages',
-      headers: { host: `${PUBLIC_HOST}:443` },
+      headers: { host: `${EXTERNAL_HOST}:443` },
     });
     expect(api.status).toBe(404);
   });
@@ -452,7 +452,7 @@ describe('remote disabled — the forwarding-header tripwire', () => {
     const res = await raw(rig.port, {
       method: 'POST',
       path: '/mcp',
-      headers: { host: PUBLIC_HOST },
+      headers: { host: EXTERNAL_HOST },
     });
     expect(res.status).toBe(403);
   });
@@ -469,7 +469,7 @@ describe('remote enabled — UI over the same port', () => {
   };
 
   test('the shell serves at / and /assets/* under the tunnel Host', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL, { reactShellMiddleware: shell });
+    const rig = await bootRemoteRig(EXTERNAL_URL, { reactShellMiddleware: shell });
     const root = await raw(rig.port, { path: '/', headers: TUNNEL_HEADERS });
     expect(root.status).toBe(200);
     expect(root.body).toContain('SHELL /');
@@ -481,26 +481,26 @@ describe('remote enabled — UI over the same port', () => {
   });
 
   test('the shell is refused under a wrong Host', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL, { reactShellMiddleware: shell });
+    const rig = await bootRemoteRig(EXTERNAL_URL, { reactShellMiddleware: shell });
     const res = await raw(rig.port, { path: '/', headers: { host: 'evil.example.com' } });
     expect(res.status).toBe(403);
   });
 
   test('a browser Origin from the tunnel host is admitted on /mcp', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const names = await listToolNames(rig.port, {
-      host: PUBLIC_HOST,
-      origin: `https://${PUBLIC_HOST}`,
+      host: EXTERNAL_HOST,
+      origin: `https://${EXTERNAL_HOST}`,
     });
     expect(names).toContain('search');
   });
 
   test('a foreign browser Origin is still refused on /mcp', async () => {
-    const rig = await bootRemoteRig(PUBLIC_URL);
+    const rig = await bootRemoteRig(EXTERNAL_URL);
     const res = await raw(rig.port, {
       method: 'POST',
       path: '/mcp',
-      headers: { host: PUBLIC_HOST, origin: 'https://evil.example.com' },
+      headers: { host: EXTERNAL_HOST, origin: 'https://evil.example.com' },
     });
     expect(res.status).toBe(403);
   });

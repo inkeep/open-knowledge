@@ -287,7 +287,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
       log.warn(
         { url: req.url, host: req.headers.host },
-        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_PUBLIC_URL, or start with `ok start --remote <url>`',
+        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL, or start with `ok start --remote <url>`',
       );
       socket.destroy();
       return true;
@@ -338,7 +338,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     //     header, and axis (1) refuses the foreign-Origin shape
     //     unconditionally. Under consent the loopback bind no longer implies
     //     a loopback peer, so `admitted()` (loopback + bind literals +
-    //     publicUrl, identical to the HTTP API gate) keeps direct-IP access
+    //     externalUrl, identical to the HTTP API gate) keeps direct-IP access
     //     matching what `/api` accepts.
     const foreignOrigin =
       req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy);

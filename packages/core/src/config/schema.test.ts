@@ -396,7 +396,7 @@ describe('server.* (canonical listener/exposure surface)', () => {
     // No schema default: unset means dynamic locally / platform PORT env in
     // images, and keeps the remote.port alias-read detectable.
     expect(config.server.port).toBeUndefined();
-    expect(config.server.publicUrl).toBeUndefined();
+    expect(config.server.externalUrl).toBeUndefined();
     // Derived defaults resolve in resolveServerRuntimeConfig, not here.
     expect(config.server.openBrowser).toBeUndefined();
     expect(config.server.idleShutdown).toBeUndefined();
@@ -420,17 +420,27 @@ describe('server.* (canonical listener/exposure surface)', () => {
     expect(ConfigSchema.safeParse({ server: { bind: '127.0.0.1' } }).success).toBe(false);
   });
 
-  test('publicUrl accepts http(s) URLs and rejects other schemes or non-URLs', () => {
+  test('the deprecated publicUrl spelling still validates with the same URL shape', () => {
     expect(
       ConfigSchema.parse({ server: { publicUrl: 'https://kb.example.com' } }).server.publicUrl,
     ).toBe('https://kb.example.com');
-    expect(
-      ConfigSchema.parse({ server: { publicUrl: 'http://localhost:8080' } }).server.publicUrl,
-    ).toBe('http://localhost:8080');
     expect(ConfigSchema.safeParse({ server: { publicUrl: 'not a url' } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ server: { publicUrl: 'ftp://kb.example.com' } }).success).toBe(
       false,
     );
+  });
+
+  test('externalUrl accepts http(s) URLs and rejects other schemes or non-URLs', () => {
+    expect(
+      ConfigSchema.parse({ server: { externalUrl: 'https://kb.example.com' } }).server.externalUrl,
+    ).toBe('https://kb.example.com');
+    expect(
+      ConfigSchema.parse({ server: { externalUrl: 'http://localhost:8080' } }).server.externalUrl,
+    ).toBe('http://localhost:8080');
+    expect(ConfigSchema.safeParse({ server: { externalUrl: 'not a url' } }).success).toBe(false);
+    expect(
+      ConfigSchema.safeParse({ server: { externalUrl: 'ftp://kb.example.com' } }).success,
+    ).toBe(false);
   });
 
   test("idleShutdown accepts 'off' and s/m/h durations, rejects bare numbers and other units", () => {

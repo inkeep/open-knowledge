@@ -8,7 +8,7 @@
  * WS halves of the server can never disagree about who is admitted.
  *
  * The `ok start --remote <url>` flag is CLI sugar over the same keys (it
- * expands to `server.publicUrl` + loopback `server.bind` +
+ * expands to `server.externalUrl` + loopback `server.bind` +
  * `server.allowExternal`) — there is no separate tunnel policy shape.
  *
  * The three predicates and what governs each:
@@ -19,17 +19,17 @@
  *    may trust non-loopback peers". Nothing else relaxes it.
  *  - HOST (`isHostAdmitted`) — the name the client dialed (DNS-rebinding
  *    defense). Always validates, in every mode, against loopback names + the
- *    non-loopback bind-address literals + the declared `server.publicUrl`
+ *    non-loopback bind-address literals + the declared `server.externalUrl`
  *    host. Consent does NOT widen this set: an unconfigured name stays
  *    refused, so a rebound page presenting the attacker's domain is refused
  *    no matter what the peer looks like.
  *  - ORIGIN (`isOriginAdmitted`) — browser CSRF defense; "if present, must
  *    match" (curl and MCP clients send none). Admits the loopback set, the
  *    null/file:// Electron shapes, the bind literals, and the declared
- *    public origin scheme-matched against `publicUrl`'s own scheme.
+ *    public origin scheme-matched against `externalUrl`'s own scheme.
  *
  * Wildcard binds (`0.0.0.0`, `::`) contribute no Host names — they are not
- * nameable addresses. A deployment binding wide needs `server.publicUrl` for
+ * nameable addresses. A deployment binding wide needs `server.externalUrl` for
  * any non-loopback name to be admitted; the boot hint says so.
  */
 
@@ -44,8 +44,11 @@ export function normalizeHostHeader(host: string): string {
 }
 
 /** True when a raw `Host` names the declared public host — for the Host gates. */
-export function hostHeaderMatchesPublicHost(host: string | undefined, publicHost: string): boolean {
-  return host !== undefined && normalizeHostHeader(host) === publicHost;
+export function hostHeaderMatchesExternalHost(
+  host: string | undefined,
+  externalHost: string,
+): boolean {
+  return host !== undefined && normalizeHostHeader(host) === externalHost;
 }
 
 /**
@@ -81,7 +84,7 @@ export function hasForwardingHeaders(req: Pick<IncomingMessage, 'headers'>): boo
  * `host-not-allowed` so the guidance never drifts between sites.
  */
 export const HOST_NOT_ADMITTED_REMEDIATION =
-  'Add this host to server.bind or set server.publicUrl to it, then restart. Loopback (localhost/127.0.0.1/[::1]) is always admitted.';
+  'Add this host to server.bind or set server.externalUrl to it, then restart. Loopback (localhost/127.0.0.1/[::1]) is always admitted.';
 
 export interface IngressPolicy {
   /**
@@ -98,12 +101,12 @@ export interface IngressPolicy {
    */
   bindLiterals: readonly string[];
   /**
-   * The declared canonical origin — the EXPLICIT `server.publicUrl` only
-   * (`publicUrlSource === 'server'`). `host` is `host[:port]` with default
+   * The declared canonical origin — the EXPLICIT `server.externalUrl` only
+   * (`externalUrlSource === 'server'`). `host` is `host[:port]` with default
    * ports stripped; `protocol` is `http:`/`https:`, matched exactly for
    * Origin checks since the key admits http for tailnet/LAN deployments.
    */
-  publicOrigin: { host: string; protocol: string } | undefined;
+  externalOrigin: { host: string; protocol: string } | undefined;
   /**
    * Proxy-forwarding headers tolerated (never trusted — addressing and
    * identity stay socket/config-derived). True under consent with a declared
@@ -115,7 +118,7 @@ export interface IngressPolicy {
 
 /**
  * Boot refusal from the exposure consent interlock: the resolved runtime
- * declares external exposure (non-loopback bind, or `server.publicUrl`)
+ * declares external exposure (non-loopback bind, or `server.externalUrl`)
  * without `server.allowExternal`. The message IS the one-line fix; the CLI
  * maps it to EX_CONFIG like the other config-shaped boot errors.
  */
@@ -147,20 +150,20 @@ export function buildIngressPolicy(input: BuildIngressPolicyInput): IngressPolic
           .map(normalizeBindLiteral)
           .filter((addr) => !NON_NAMEABLE_BINDS.has(addr) && !addr.startsWith('127.'));
 
-  let publicOrigin: IngressPolicy['publicOrigin'];
-  if (runtime?.publicUrlSource === 'server' && runtime.publicUrl !== undefined) {
+  let externalOrigin: IngressPolicy['externalOrigin'];
+  if (runtime?.externalUrlSource === 'server' && runtime.externalUrl !== undefined) {
     // The schema guarantees a parseable http(s) URL; a throw here would be a
     // schema/resolver drift bug, so let it propagate loudly at boot.
-    const parsed = new URL(runtime.publicUrl);
-    publicOrigin = { host: normalizeHostHeader(parsed.host), protocol: parsed.protocol };
+    const parsed = new URL(runtime.externalUrl);
+    externalOrigin = { host: normalizeHostHeader(parsed.host), protocol: parsed.protocol };
   }
 
   const allowExternal = runtime?.allowExternal === true;
   return {
     allowExternal,
     bindLiterals,
-    publicOrigin,
-    tolerateForwardedHeaders: allowExternal && publicOrigin !== undefined,
+    externalOrigin,
+    tolerateForwardedHeaders: allowExternal && externalOrigin !== undefined,
   };
 }
 
@@ -187,7 +190,7 @@ function hostnameOfHostHeader(host: string): string | null {
 
 /**
  * HOST gate: loopback names, the bind literals (any port), and the declared
- * `publicUrl` host (exact host[:port] after default-port normalization).
+ * `externalUrl` host (exact host[:port] after default-port normalization).
  * Never widened by consent.
  */
 export function isHostAdmitted(host: string | undefined, policy: IngressPolicy): boolean {
@@ -198,14 +201,15 @@ export function isHostAdmitted(host: string | undefined, policy: IngressPolicy):
     if (hostname !== null && policy.bindLiterals.includes(hostname)) return true;
   }
   return (
-    policy.publicOrigin !== undefined && hostHeaderMatchesPublicHost(host, policy.publicOrigin.host)
+    policy.externalOrigin !== undefined &&
+    hostHeaderMatchesExternalHost(host, policy.externalOrigin.host)
   );
 }
 
 /**
  * ORIGIN gate ("if present, must match" — callers skip when absent): the
  * loopback/null/file:// set, the declared public origin (scheme-matched
- * against `publicUrl`'s own scheme), and the bind literals over http or
+ * against `externalUrl`'s own scheme), and the bind literals over http or
  * https.
  */
 export function isOriginAdmitted(origin: string, policy: IngressPolicy): boolean {
@@ -218,9 +222,9 @@ export function isOriginAdmitted(origin: string, policy: IngressPolicy): boolean
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   if (
-    policy.publicOrigin !== undefined &&
-    parsed.protocol === policy.publicOrigin.protocol &&
-    normalizeHostHeader(parsed.host) === policy.publicOrigin.host
+    policy.externalOrigin !== undefined &&
+    parsed.protocol === policy.externalOrigin.protocol &&
+    normalizeHostHeader(parsed.host) === policy.externalOrigin.host
   ) {
     return true;
   }

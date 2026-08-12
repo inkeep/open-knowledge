@@ -726,8 +726,9 @@ describe('hasValidLocalOpOrigin with a remote public host', () => {
       serverRuntime: {
         port: undefined,
         bind: ['127.0.0.1'],
-        publicUrl: 'https://myproject.ngrok.app',
-        publicUrlSource: 'server',
+        externalUrl: 'https://myproject.ngrok.app',
+        externalUrlSource: 'server',
+        externalUrlFromDeprecatedKey: false,
         allowExternal: true,
         openBrowser: false,
         idleShutdown: 'off',
@@ -759,8 +760,9 @@ describe('hasValidLocalOpOrigin with a remote public host', () => {
       serverRuntime: {
         port: undefined,
         bind: ['100.64.0.7'],
-        publicUrl: undefined,
-        publicUrlSource: undefined,
+        externalUrl: undefined,
+        externalUrlSource: undefined,
+        externalUrlFromDeprecatedKey: false,
         allowExternal: true,
         openBrowser: false,
         idleShutdown: 'off',

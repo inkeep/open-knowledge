@@ -66,7 +66,7 @@ describe('/api admission over the composed listener — normal mode', () => {
 
   test('read route under a rebound Host is refused (read-posture hardening)', async () => {
     // Flipped pin: reads are Host-gated in every mode now, same predicate the
-    // mutating gate uses (loopback names + bind literals + publicUrl host).
+    // mutating gate uses (loopback names + bind literals + externalUrl host).
     // A DNS-rebound page's no-Origin fetch can no longer read /api bodies —
     // the no-auth compensating control.
     const res = await rawRequest(normal.port, '/api/server-info', {

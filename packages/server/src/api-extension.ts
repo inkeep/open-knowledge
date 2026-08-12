@@ -2833,7 +2833,7 @@ export function createApiExtension(
   ): boolean => checkLocalOpSecurityBase(req, res, { ...opts, policy: ingressPolicy });
   // Same shadow for the route-level Host gates (principal, workspace, metrics,
   // the write-path gates): every admitted public name (bind literals,
-  // declared publicUrl, legacy tunnel host) is as legitimate as a loopback
+  // declared externalUrl, legacy tunnel host) is as legitimate as a loopback
   // name — the mount's admit gate already vetted the surface.
   const isAllowedWorkspaceHostHeader = (host: string | undefined): boolean =>
     isHostAdmitted(host, ingressPolicy);

@@ -58,7 +58,7 @@ describe('resolveServerRuntimeConfig — defaults', () => {
     expect(resolved.bind).toEqual(['127.0.0.1']);
     expect(resolved.loopbackOnly).toBe(true);
     expect(resolved.port).toBeUndefined();
-    expect(resolved.publicUrl).toBeUndefined();
+    expect(resolved.externalUrl).toBeUndefined();
     expect(resolved.allowExternal).toBe(false);
     // Loopback-only derivations: a laptop start pops the UI and idles out.
     expect(resolved.openBrowser).toBe(true);
@@ -102,25 +102,73 @@ describe('resolveServerRuntimeConfig — remote.* alias-reads', () => {
     ).toBe(8080);
   });
 
-  test('remote.url fills server.publicUrl only while it is absent', () => {
+  test('remote.url fills server.externalUrl only while it is absent', () => {
     const legacyOnly = resolveServerRuntimeConfig(
       parse({ remote: { url: 'https://kb.example.com' } }),
     );
-    expect(legacyOnly.publicUrl).toBe('https://kb.example.com');
+    expect(legacyOnly.externalUrl).toBe('https://kb.example.com');
 
     const both = resolveServerRuntimeConfig(
       parse({
-        server: { publicUrl: 'https://new.example.com' },
+        server: { externalUrl: 'https://new.example.com' },
         remote: { url: 'https://old.example.com' },
       }),
     );
-    expect(both.publicUrl).toBe('https://new.example.com');
+    expect(both.externalUrl).toBe('https://new.example.com');
   });
 
   test('an empty-string remote.url reads as unset', () => {
     const resolved = resolveServerRuntimeConfig(parse({ remote: { url: '' } }));
-    expect(resolved.publicUrl).toBeUndefined();
+    expect(resolved.externalUrl).toBeUndefined();
     expect(requiresExternalConsent(resolved)).toBe(false);
+  });
+});
+
+describe('resolveServerRuntimeConfig — deprecated server.publicUrl spelling', () => {
+  test('server.publicUrl fills externalUrl with full successor semantics (source stays server)', () => {
+    // The old spelling is the SAME key, not the remote.* legacy flow: consumers
+    // keying exposure decisions off `externalUrlSource === 'server'` (interlock,
+    // issued URLs, Host/Origin admission) must see a 0.51.x config behave
+    // exactly as it did before the rename.
+    const resolved = resolveServerRuntimeConfig(
+      parse({ server: { publicUrl: 'https://kb.example.com' } }),
+    );
+    expect(resolved.externalUrl).toBe('https://kb.example.com');
+    expect(resolved.externalUrlSource).toBe('server');
+    expect(resolved.externalUrlFromDeprecatedKey).toBe(true);
+  });
+
+  test('server.externalUrl wins over the deprecated spelling when both are set', () => {
+    const resolved = resolveServerRuntimeConfig(
+      parse({
+        server: {
+          externalUrl: 'https://new.example.com',
+          publicUrl: 'https://old.example.com',
+        },
+      }),
+    );
+    expect(resolved.externalUrl).toBe('https://new.example.com');
+    expect(resolved.externalUrlSource).toBe('server');
+    expect(resolved.externalUrlFromDeprecatedKey).toBe(false);
+  });
+
+  test('the deprecated spelling still wins over the remote.url legacy alias', () => {
+    const resolved = resolveServerRuntimeConfig(
+      parse({
+        server: { publicUrl: 'https://renamed.example.com' },
+        remote: { url: 'https://legacy.example.com' },
+      }),
+    );
+    expect(resolved.externalUrl).toBe('https://renamed.example.com');
+    expect(resolved.externalUrlSource).toBe('server');
+  });
+
+  test('externalUrlFromDeprecatedKey is false for unset and for the remote.url alias', () => {
+    expect(resolveServerRuntimeConfig(parse({})).externalUrlFromDeprecatedKey).toBe(false);
+    const aliased = resolveServerRuntimeConfig(
+      parse({ remote: { url: 'https://kb.example.com' } }),
+    );
+    expect(aliased.externalUrlFromDeprecatedKey).toBe(false);
   });
 });
 
@@ -134,24 +182,24 @@ describe('requiresExternalConsent', () => {
     expect(requiresExternalConsent(resolved)).toBe(true);
   });
 
-  test('a committed publicUrl under a loopback bind is inert — does NOT trip the interlock', () => {
-    // publicUrl is project-scoped (committed, shared): a team deploying to a
+  test('a committed externalUrl under a loopback bind is inert — does NOT trip the interlock', () => {
+    // externalUrl is project-scoped (committed, shared): a team deploying to a
     // VPS commits it. Under a loopback bind it is inert metadata — nothing
     // external reaches the server directly, and a same-box proxy's forwarded
     // requests are still gated at request time. Tripping the boot interlock on
-    // publicUrl alone would lock out every teammate who clones the repo and
+    // externalUrl alone would lock out every teammate who clones the repo and
     // opens it locally (loopback), especially in desktop where config-derived
     // consent is forced off. Only a non-loopback bind is a boot-time question.
     const explicit = resolveServerRuntimeConfig(
-      parse({ server: { publicUrl: 'https://kb.example.com' } }),
+      parse({ server: { externalUrl: 'https://kb.example.com' } }),
     );
-    expect(explicit.publicUrlSource).toBe('server');
+    expect(explicit.externalUrlSource).toBe('server');
     expect(explicit.loopbackOnly).toBe(true);
     expect(requiresExternalConsent(explicit)).toBe(false);
 
-    // A non-loopback bind WITH a publicUrl still trips it (the bind exposes).
+    // A non-loopback bind WITH a externalUrl still trips it (the bind exposes).
     const exposedWithUrl = resolveServerRuntimeConfig(
-      parse({ server: { bind: ['0.0.0.0'], publicUrl: 'https://kb.example.com' } }),
+      parse({ server: { bind: ['0.0.0.0'], externalUrl: 'https://kb.example.com' } }),
     );
     expect(requiresExternalConsent(exposedWithUrl)).toBe(true);
 
@@ -159,7 +207,7 @@ describe('requiresExternalConsent', () => {
     const aliased = resolveServerRuntimeConfig(
       parse({ remote: { url: 'https://kb.example.com' } }),
     );
-    expect(aliased.publicUrlSource).toBe('remote-alias');
+    expect(aliased.externalUrlSource).toBe('remote-alias');
     expect(requiresExternalConsent(aliased)).toBe(false);
   });
 
