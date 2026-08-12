@@ -8,7 +8,7 @@ OpenKnowledge treats assets (images, PDFs, video, audio) as first-class content 
 
 ## Adding files
 
-Drag files into the editor or paste them — screenshots paste straight from the clipboard, and any file type is accepted. The file uploads into the project and the matching block is inserted. Uploads land beside the document by default; point [`content.attachmentFolderPath`](/docs/reference/configuration) at a different folder to change that. Dropping a file whose bytes already exist in the target folder reuses the existing file rather than writing a duplicate. You can also insert an image, video, or audio block from the `/` insert menu and upload from its settings.
+Drag files into the editor or paste them — screenshots paste straight from the clipboard, and any file type is accepted. The file uploads into the project and the matching block is inserted. Uploads land beside the document by default; point [`content.attachmentFolderPath`](/docs/reference/configuration) at a different folder to change that. A configured attachment folder is also a sync scope: in shared projects, linkable files inside it auto-sync to teammates even when no document sits beside them. Dropping a file whose bytes already exist in the target folder reuses the existing file rather than writing a duplicate. You can also insert an image, video, or audio block from the `/` insert menu and upload from its settings.
 
 AI agents add assets through the MCP [`write`](/docs/reference/mcp) tool's `asset` target, passing exactly one of `content` (the bytes as base64, for small files) or `source` (a local filesystem path the server reads — use it for large files).
 

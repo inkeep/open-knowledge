@@ -590,6 +590,77 @@ describe('formatTrackedRemediation', () => {
   });
 });
 
+describe('shared -> local-only transition with tracked shareable .ok artifacts', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = uniqueDir('tracked-artifact-transition-test');
+    initGitRepo(dir);
+    mkdirSync(join(dir, '.ok', 'schemas'), { recursive: true });
+    mkdirSync(join(dir, '.ok', 'templates'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n', 'utf-8');
+    writeFileSync(join(dir, '.ok', 'schemas', 'lint.json'), '{}\n', 'utf-8');
+    writeFileSync(join(dir, '.ok', 'templates', 'note.md'), '# t\n', 'utf-8');
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function commitOkArtifacts(): void {
+    execFileSync(
+      'git',
+      ['add', '.ok/config.yml', '.ok/schemas/lint.json', '.ok/templates/note.md'],
+      { cwd: dir },
+    );
+    execFileSync('git', ['commit', '-m', 'share ok artifacts'], {
+      cwd: dir,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+  }
+
+  it('refuses via the tracked-paths probe and leaves the project shared (no silent exclude)', () => {
+    commitOkArtifacts();
+    writeExclude(dir, '');
+    expect(readSharingMode(dir)).toBe('shared');
+
+    const result = addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
+    expect(result.kind).toBe('refused-tracked');
+    if (result.kind !== 'refused-tracked') throw new Error('unreachable');
+    // Dir-form granularity: one `.ok/` entry stands in for every tracked
+    // artifact beneath it, so the remediation names the recursive untrack.
+    expect(result.tracked).toEqual(['.ok/']);
+    expect(result.remediation).toContain('git rm --cached -r .ok');
+    expect(result.remediation).toContain('your teammates will see a deletion on their next pull');
+    // The exclude file is untouched and the project stays shared.
+    expect(readExclude(dir)).toBe('');
+    expect(readSharingMode(dir)).toBe('shared');
+  });
+
+  it('proceeds when the artifacts exist on disk but are untracked', () => {
+    writeExclude(dir, '');
+    const result = addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
+    expect(result.kind).toBe('updated');
+    expect(readSharingMode(dir)).toBe('local-only');
+  });
+
+  it('unblocks after the remediation command untracks the artifacts', () => {
+    commitOkArtifacts();
+    writeExclude(dir, '');
+    const refused = addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
+    expect(refused.kind).toBe('refused-tracked');
+
+    execFileSync('git', ['rm', '--cached', '-r', '.ok'], {
+      cwd: dir,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+
+    const retried = addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
+    expect(retried.kind).toBe('updated');
+    expect(readSharingMode(dir)).toBe('local-only');
+    // Untracked, not deleted: the artifacts stay on disk for local use.
+    expect(existsSync(join(dir, '.ok', 'config.yml'))).toBe(true);
+  });
+});
+
 describe('setSkillsShared / readSkillsShared (skills carve-out)', () => {
   let dir: string;
   beforeEach(() => {
@@ -685,5 +756,75 @@ describe('setSkillsShared / readSkillsShared (skills carve-out)', () => {
     expect(readSharingMode(dir)).toBe('shared');
     const content = readExclude(dir);
     expect(content).not.toContain('.ok/');
+  });
+
+  it('hides every shareable .ok artifact class while re-including only skills', () => {
+    mkdirSync(join(dir, '.ok', 'skills', 'my-skill'), { recursive: true });
+    mkdirSync(join(dir, '.ok', 'schemas'), { recursive: true });
+    mkdirSync(join(dir, '.ok', 'templates'), { recursive: true });
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    mkdirSync(join(dir, 'docs', '.ok', 'templates'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'skills', 'my-skill', 'SKILL.md'), '# s\n');
+    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n');
+    writeFileSync(join(dir, '.ok', '.gitignore'), 'local/\nworktrees/\n');
+    writeFileSync(join(dir, '.ok', 'schemas', 'lint.json'), '{}\n');
+    writeFileSync(join(dir, '.ok', 'templates', 'note.md'), '# t\n');
+    writeFileSync(join(dir, '.ok', 'local', 'state.json'), '{}\n');
+    writeFileSync(join(dir, 'docs', '.ok', 'frontmatter.yml'), 'icon: x\n');
+    writeFileSync(join(dir, 'docs', '.ok', 'templates', 'note.md'), '# ft\n');
+    writeFileSync(join(dir, 'docs', 'readme.md'), '# d\n');
+
+    writeExclude(dir, '.ok/\n');
+    setSkillsShared(dir, true);
+
+    const files = untracked();
+    // Positive controls: the re-included skills tree and plain content stay
+    // visible, so the hidden-set assertions below cannot pass vacuously.
+    expect(files).toContain('.ok/skills/my-skill/SKILL.md');
+    expect(files).toContain('docs/readme.md');
+    // The carve carries no re-include for the team-shareable artifact classes:
+    // under local-only(+skills-shared) they stay hidden, same as the blanket.
+    for (const hidden of [
+      '.ok/config.yml',
+      '.ok/.gitignore',
+      '.ok/schemas/lint.json',
+      '.ok/templates/note.md',
+      'docs/.ok/frontmatter.yml',
+      'docs/.ok/templates/note.md',
+      '.ok/local/state.json',
+    ]) {
+      expect(files).not.toContain(hidden);
+    }
+  });
+
+  it('keeps toggling when shareable .ok artifacts are tracked upstream (cloned-project state)', () => {
+    // Cloned projects arrive in exactly this state: the clone guardrail writes
+    // the blanket exclude while the cloned history already tracks shareable
+    // `.ok/` artifacts, so tracked-artifact + local-only is a normal
+    // combination the toggle must tolerate.
+    mkdirSync(join(dir, '.ok', 'skills', 'my-skill'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n');
+    writeFileSync(join(dir, '.ok', 'skills', 'my-skill', 'SKILL.md'), '# s\n');
+    execFileSync('git', ['add', '.ok/config.yml'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'upstream tracks ok config'], {
+      cwd: dir,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    writeExclude(dir, '.ok/\n');
+
+    const on = setSkillsShared(dir, true);
+    expect(on.kind).toBe('updated');
+    expect(readSkillsShared(dir)).toBe(true);
+    expect(readSharingMode(dir)).toBe('local-only');
+    expect(untracked()).toContain('.ok/skills/my-skill/SKILL.md');
+
+    const off = setSkillsShared(dir, false);
+    expect(off.kind).toBe('updated');
+    expect(readSkillsShared(dir)).toBe(false);
+    expect(readSharingMode(dir)).toBe('local-only');
+    // Exclude spellings are inert against tracked files: the committed
+    // artifact stays tracked through both toggles.
+    const lsFiles = execFileSync('git', ['ls-files'], { cwd: dir, encoding: 'utf-8' });
+    expect(lsFiles).toContain('.ok/config.yml');
   });
 });

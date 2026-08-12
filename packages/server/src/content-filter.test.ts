@@ -20,6 +20,19 @@ import {
 } from './content-filter.ts';
 import { installTestLoggers, loggerFactory } from './logger.ts';
 
+type ExclusionReadOpts = NonNullable<Parameters<ContentFilter['isExcluded']>[1]>;
+type PathReadOpts = NonNullable<Parameters<ContentFilter['isPathIgnored']>[1]>;
+
+// @ts-expect-error — sync admission and Show All Files are mutually exclusive.
+const _combinedSyncAndBypass: ExclusionReadOpts = {
+  bypassFilters: true,
+  syncScope: { pathBase: 'project' },
+};
+// @ts-expect-error — asset serving never accepts the sync-only capability.
+const _syncScopedAssetServe: PathReadOpts = { syncScope: { pathBase: 'project' } };
+void _combinedSyncAndBypass;
+void _syncScopedAssetServe;
+
 describe('ContentFilter', () => {
   let projectDir: string;
   // Isolate from the developer's actual `~/.config/git/ignore` — the
@@ -355,7 +368,7 @@ describe('ContentFilter', () => {
   });
 
   describe('getWatcherIgnoreGlobs', () => {
-    test('returns gitignore + okignore patterns, dropping negation/comment lines', () => {
+    test('retains ordinary user watcher bounds while stripping managed-content blockers', () => {
       writeFileSync(join(projectDir, '.gitignore'), 'dist/\ntmp/\n# comment\n!keep\n');
       writeFileSync(join(projectDir, '.okignore'), 'drafts/\n!important.md\n');
 
@@ -371,10 +384,33 @@ describe('ContentFilter', () => {
       expect(globs).not.toContain('# comment');
     });
 
-    test('returns empty array when no patterns', () => {
-      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+    test('retains ordinary user watcher bounds in the async factory', async () => {
+      writeFileSync(join(projectDir, '.gitignore'), 'target/\nsecrets/\n');
 
-      expect(filter.getWatcherIgnoreGlobs()).toEqual([]);
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+
+      expect(filter.getWatcherIgnoreGlobs()).toEqual(
+        expect.arrayContaining(['target/', 'secrets/']),
+      );
+    });
+
+    test('injects structural watcher bounds when no ignore files exist', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      const globs = filter.getWatcherIgnoreGlobs();
+      for (const structural of [
+        '.git',
+        '**/.git/**',
+        'node_modules',
+        '**/node_modules/**',
+        '.ok/local',
+        '**/.ok/local/**',
+        '.ok/worktrees',
+        '**/.ok/worktrees/**',
+      ]) {
+        expect(globs).toContain(structural);
+      }
+      expect(globs.some((glob) => glob === '.ok' || glob === '.ok/**')).toBe(false);
+      expect(globs.some((glob) => glob.startsWith('.claude'))).toBe(false);
     });
 
     test('drops blanket .ok globs so the OS watcher can reach .ok/skills (skills-as-content)', () => {
@@ -382,7 +418,9 @@ describe('ContentFilter', () => {
       // would make the @parcel/watcher backend (Linux default) never deliver
       // external edits to project skills under `.ok/skills/**`. The non-skill
       // `.ok` children stay pruned downstream by the function predicates.
-      mkdirSync(join(projectDir, '.git', 'info'), { recursive: true });
+      // Real `git init` — the git-extras loader probes `git rev-parse` and
+      // silently skips `info/exclude` under a bare mkdir'd `.git`.
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
       writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
       writeFileSync(join(projectDir, '.gitignore'), 'dist/\n.ok\nnode_modules/\n');
 
@@ -397,6 +435,121 @@ describe('ContentFilter', () => {
       // …while unrelated excludes are preserved.
       expect(globs).toContain('dist/');
       expect(globs).toContain('node_modules/');
+    });
+
+    // The local-only+skills-shared exclude spelling in the CLI's git-exclude
+    // REPLACES the blanket `.ok/` with a children-exclude plus a skills
+    // re-include (git cannot re-include under an excluded parent dir).
+    // Negation lines never survive into the watcher list, so a surviving
+    // children-exclude would prune every `.ok` child from the parcel backend —
+    // the re-included skills tree along with the admitted template/config
+    // leaves — with nothing left to re-admit them.
+    function assertCarveChildrenExcludeStripped(filter: ContentFilter) {
+      const globs = filter.getWatcherIgnoreGlobs();
+      expect(globs).not.toContain('**/.ok/*');
+      expect(globs).not.toContain('!**/.ok/skills/');
+      expect(globs).toContain('dist/');
+    }
+
+    test('drops the children-exclude the skills-sharing carve writes (sync)', () => {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '**/.ok/*\n!**/.ok/skills/\n');
+      writeFileSync(join(projectDir, '.gitignore'), 'dist/\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertCarveChildrenExcludeStripped(filter);
+    });
+    test('drops the children-exclude the skills-sharing carve writes (async)', async () => {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '**/.ok/*\n!**/.ok/skills/\n');
+      writeFileSync(join(projectDir, '.gitignore'), 'dist/\n');
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertCarveChildrenExcludeStripped(filter);
+    });
+
+    function assertInPlaceSkillWatcherAdmission(filter: ContentFilter) {
+      expect(filter.isExcluded('.claude/skills/demo/SKILL.md')).toBe(false);
+      const globs = filter.getWatcherIgnoreGlobs();
+      expect(globs).not.toContain('.claude/*');
+      for (const editorRoot of ['.claude', '.cursor', '.codex', '.agents', '.opencode', '.pi']) {
+        expect(globs.some((glob) => glob === editorRoot || glob.startsWith(`${editorRoot}/`))).toBe(
+          false,
+        );
+      }
+    }
+
+    test('strips an editor-host blocker for an admitted in-place skill (sync)', () => {
+      mkdirSync(join(projectDir, '.claude', 'skills', 'demo'), { recursive: true });
+      writeFileSync(join(projectDir, '.claude', 'skills', 'demo', 'SKILL.md'), '# Demo\n');
+      writeFileSync(join(projectDir, '.gitignore'), '.claude/*\n!.claude/skills/\n');
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        inPlaceSkillDirs: new Set(['.claude/skills/demo']),
+      });
+      assertInPlaceSkillWatcherAdmission(filter);
+    });
+
+    test('strips an editor-host blocker for an admitted in-place skill (async)', async () => {
+      mkdirSync(join(projectDir, '.claude', 'skills', 'demo'), { recursive: true });
+      writeFileSync(join(projectDir, '.claude', 'skills', 'demo', 'SKILL.md'), '# Demo\n');
+      writeFileSync(join(projectDir, '.gitignore'), '.claude/*\n!.claude/skills/\n');
+      const filter = await createContentFilterAsync({
+        projectDir,
+        contentDir: projectDir,
+        inPlaceSkillDirs: new Set(['.claude/skills/demo']),
+      });
+      assertInPlaceSkillWatcherAdmission(filter);
+    });
+
+    // Umbrella pin for the shareable `.ok` leaves (config.yml, .ok/.gitignore,
+    // schemas/, templates/, `<folder>/.ok/templates/`, `<folder>/.ok/
+    // frontmatter.yml`): with every OK-produced `.ok` glob shape present at
+    // once, the only `.ok`-referencing globs that survive are the deliberately
+    // specific `.ok/local` family — which reaches none of those leaves — so the
+    // parcel backend (which consults these globs, not the carve-out predicates)
+    // can deliver events for all of them.
+    function assertShareableOkLeavesUnblocked(filter: ContentFilter) {
+      const globs = filter.getWatcherIgnoreGlobs();
+      for (const blocker of [
+        'docs/.ok/templates/',
+        'packages/app/.ok/templates/',
+        '.*',
+        '.ok/**/*',
+        '**/.ok/**/*',
+        '.ok/templates/',
+        '.ok/local/../templates',
+        'node_modules/../docs',
+      ]) {
+        expect(globs, blocker).not.toContain(blocker);
+      }
+      expect(globs.filter((glob) => glob === '.ok/local')).toHaveLength(1);
+      expect(globs.filter((glob) => glob === '.ok/local/**')).toHaveLength(1);
+      expect(globs).toContain('**/.ok/local/**');
+      expect(globs).toContain('.ok/worktrees/**');
+      expect(globs).toContain('**/.ok/worktrees/**');
+      expect(globs).toContain('dist/');
+      expect(globs).toContain('node_modules/**');
+    }
+
+    test('watcher globs never block the shareable .ok leaves; .ok/local stays pruned (sync)', () => {
+      writeFileSync(
+        join(projectDir, '.gitignore'),
+        'dist/\nnode_modules/**\ndocs/.ok/templates/\npackages/app/.ok/templates/\n.*\n.ok\n.ok/**\n.ok/**/*\n**/.ok\n**/.ok/**\n**/.ok/**/*\n.ok/*\n**/.ok/*\n.ok/templates/\n.ok/local\n.ok/local/**\n.ok/local/../templates\nnode_modules/../docs\n',
+      );
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertShareableOkLeavesUnblocked(filter);
+    });
+    test('watcher globs never block the shareable .ok leaves; .ok/local stays pruned (async)', async () => {
+      writeFileSync(
+        join(projectDir, '.gitignore'),
+        'dist/\nnode_modules/**\ndocs/.ok/templates/\npackages/app/.ok/templates/\n.*\n.ok\n.ok/**\n.ok/**/*\n**/.ok\n**/.ok/**\n**/.ok/**/*\n.ok/*\n**/.ok/*\n.ok/templates/\n.ok/local\n.ok/local/**\n.ok/local/../templates\nnode_modules/../docs\n',
+      );
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertShareableOkLeavesUnblocked(filter);
     });
   });
 
@@ -851,10 +1004,10 @@ describe('ContentFilter', () => {
 
     // The watcher-ignore glob strip drops the four blanket `.ok` forms so the
     // @parcel/watcher backend (which consults globs, not the function predicates)
-    // still delivers external edits under `<folder>/.ok/templates/`. The rename
-    // of the strip helper kept this exact set; a more specific `.ok/local` glob
-    // does not block the carve-out trees and is preserved, as are unrelated
-    // ignores.
+    // still delivers external edits under `<folder>/.ok/templates/`. A more
+    // specific `.ok/local` glob does not block the carve-out trees and is
+    // preserved, as are unrelated ignores; the children-exclude forms have
+    // their own pins in the getWatcherIgnoreGlobs suite.
     function assertGlobStripSet(filter: ContentFilter) {
       const globs = filter.getWatcherIgnoreGlobs();
       for (const blanket of ['.ok', '.ok/**', '**/.ok', '**/.ok/**']) {
@@ -922,6 +1075,310 @@ describe('ContentFilter', () => {
     test('skip-dir ancestor excluded from admission and serve path (async)', async () => {
       const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
       assertSkipDirAncestorExcluded(filter);
+    });
+  });
+
+  describe('shareable .ok artifact sync scope (allow-list)', () => {
+    // The sync engine's gather + head-listing paths pass `syncScope` so
+    // team-shareable `.ok` state stages and deletion-tracks; every other
+    // consumer omits it and must see byte-identical behavior. Same sync+async
+    // twin matrix as the templates carve-out: createContentFilterAsync is a
+    // full structural copy of createContentFilter, so a predicate edited in
+    // one factory but not the other is only caught by the twin.
+    const SYNC = { syncScope: { pathBase: 'project' } } as const;
+
+    // The exact allow-list: project config + the seeded `.ok/.gitignore` +
+    // flat root schemas + templates (root and folder) + folder
+    // frontmatter.yml. The root shape `.ok/frontmatter.yml` is included
+    // because the project root's own folder metadata lives there
+    // (readFolderFrontmatter treats '' / '.' / '/' as the root folder).
+    function assertSyncScopeAdmission(filter: ContentFilter) {
+      expect(filter.isExcluded('.ok/config.yml', SYNC)).toBe(false);
+      expect(filter.isExcluded('.ok/.gitignore', SYNC)).toBe(false);
+      expect(filter.isExcluded('.ok/schemas/lint.json', SYNC)).toBe(false);
+      // `.json` matches case-insensitively, like listProjectSchemaFiles.
+      expect(filter.isExcluded('.ok/schemas/LINT.JSON', SYNC)).toBe(false);
+      expect(filter.isExcluded('.ok/templates/daily.md', SYNC)).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md', SYNC)).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/frontmatter.yml', SYNC)).toBe(false);
+      expect(filter.isExcluded('a/b/c/.ok/frontmatter.yml', SYNC)).toBe(false);
+      expect(filter.isExcluded('.ok/frontmatter.yml', SYNC)).toBe(false);
+    }
+
+    test('sync scope admits exactly the shareable artifact shapes (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSyncScopeAdmission(filter);
+    });
+    test('sync scope admits exactly the shareable artifact shapes (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSyncScopeAdmission(filter);
+    });
+
+    function assertSubfolderPathCoordinates(filter: ContentFilter) {
+      const contentScope = { syncScope: { pathBase: 'content' } } as const;
+      const projectScope = { syncScope: { pathBase: 'project' } } as const;
+
+      // These paths are relative to content/, so their project coordinates
+      // are content/.ok/* rather than the project-root artifact shapes.
+      expect(filter.isExcluded('.ok/config.yml', contentScope)).toBe(true);
+      expect(filter.isExcluded('.ok/.gitignore', contentScope)).toBe(true);
+      expect(filter.isExcluded('.ok/schemas/lint.json', contentScope)).toBe(true);
+      expect(filter.isDirExcluded('.ok/schemas', contentScope)).toBe(true);
+
+      // The project-root walk uses project coordinates and admits the same
+      // raw spellings as the allow-list contract.
+      expect(filter.isExcluded('.ok/config.yml', projectScope)).toBe(false);
+      expect(filter.isExcluded('.ok/.gitignore', projectScope)).toBe(false);
+      expect(filter.isExcluded('.ok/schemas/lint.json', projectScope)).toBe(false);
+      expect(filter.isDirExcluded('.ok/schemas', projectScope)).toBe(false);
+
+      // Root-anchored ignore rules evaluate against project coordinates for
+      // both walks. Folder templates remain shareable, while the explicitly
+      // ignored folder metadata and ordinary note are refused.
+      expect(filter.isExcluded('.ok/templates/daily.md', contentScope)).toBe(false);
+      expect(filter.isExcluded('.ok/frontmatter.yml', contentScope)).toBe(true);
+      expect(filter.isExcluded('note.md', contentScope)).toBe(true);
+    }
+
+    test('subfolder content and project walks use distinct path coordinates (sync)', () => {
+      const contentDir = join(projectDir, 'content');
+      mkdirSync(contentDir);
+      writeFileSync(
+        join(projectDir, '.gitignore'),
+        '/content/note.md\n/content/.ok/frontmatter.yml\n',
+      );
+      const filter = createContentFilter({ projectDir, contentDir });
+      assertSubfolderPathCoordinates(filter);
+    });
+
+    test('subfolder content and project walks use distinct path coordinates (async)', async () => {
+      const contentDir = join(projectDir, 'content');
+      mkdirSync(contentDir);
+      writeFileSync(
+        join(projectDir, '.gitignore'),
+        '/content/note.md\n/content/.ok/frontmatter.yml\n',
+      );
+      const filter = await createContentFilterAsync({ projectDir, contentDir });
+      assertSubfolderPathCoordinates(filter);
+    });
+
+    // Positive list only: `.ok` state that must never sync stays excluded
+    // WITH the scope — `local/`, `worktrees/`, the legacy pre-`local/` root
+    // state files, and any `.ok` child not on the list. Folder-scoped copies
+    // of the root-only shapes (config, .gitignore, schemas) stay excluded
+    // too: only the root instances are project artifacts.
+    function assertSyncScopeIsNarrow(filter: ContentFilter) {
+      for (const path of [
+        '.ok/local/server.lock',
+        '.ok/local/cache/embeddings.json',
+        '.ok/worktrees/wt1/notes.md',
+        '.ok/principal.json',
+        '.ok/state.json',
+        '.ok/server.lock',
+        '.ok/ui.lock',
+        '.ok/sync-state.json',
+        '.ok/last-spawn-error.log',
+        '.ok/AGENTS.md',
+        '.ok/schemas/nested/deep.json',
+        '.ok/schemas/readme.md',
+        'docs/.ok/config.yml',
+        'docs/.ok/.gitignore',
+        'docs/.ok/schemas/lint.json',
+      ]) {
+        expect(filter.isExcluded(path, SYNC), path).toBe(true);
+      }
+    }
+
+    test('sync scope never becomes a blanket .ok admission (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSyncScopeIsNarrow(filter);
+    });
+    test('sync scope never becomes a blanket .ok admission (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSyncScopeIsNarrow(filter);
+    });
+
+    // The secret floor evaluates above the carve-out at every consultation
+    // site, so a credential inside an admitted directory is refused even with
+    // the scope. Control: the sibling `.json` IS admitted, proving the
+    // rejection is the floor rather than the allow-list shape.
+    function assertSecretFloorPrecedesSyncScope(filter: ContentFilter) {
+      for (const secret of ['.ok/schemas/foo.key', '.ok/schemas/service.pem', '.ok/schemas/.env']) {
+        expect(filter.isExcluded(secret, SYNC), secret).toBe(true);
+      }
+      expect(filter.isDirExcluded('.ok/.ssh', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/schemas/foo.json', SYNC)).toBe(false);
+    }
+
+    test('secret floor wins over the sync scope (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSecretFloorPrecedesSyncScope(filter);
+    });
+    test('secret floor wins over the sync scope (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSecretFloorPrecedesSyncScope(filter);
+    });
+
+    // Descendability under the scope: a walk must reach `.ok/schemas` leaves,
+    // while the repo-scale children (`local/`, `worktrees/`), subdirs under
+    // the flat schemas dir, and skip-dir-vendored `.ok` dirs stay pruned so
+    // the walk stays bounded.
+    function assertSyncScopeDirAncestors(filter: ContentFilter) {
+      expect(filter.isDirExcluded('.ok', SYNC)).toBe(false);
+      expect(filter.isDirExcluded('.ok/schemas', SYNC)).toBe(false);
+      expect(filter.isDirExcluded('.ok/templates', SYNC)).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok', SYNC)).toBe(false);
+      expect(filter.isDirExcluded('meetings/.ok/templates', SYNC)).toBe(false);
+      expect(filter.isDirExcluded('.ok/schemas/sub', SYNC)).toBe(true);
+      expect(filter.isDirExcluded('.ok/local', SYNC)).toBe(true);
+      expect(filter.isDirExcluded('.ok/worktrees', SYNC)).toBe(true);
+      expect(filter.isDirExcluded('node_modules/pkg/.ok', SYNC)).toBe(true);
+      expect(filter.isDirExcluded('docs/.ok/schemas', SYNC)).toBe(true);
+    }
+
+    test('sync scope keeps the schemas dir descendable, bounded (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSyncScopeDirAncestors(filter);
+    });
+    test('sync scope keeps the schemas dir descendable, bounded (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSyncScopeDirAncestors(filter);
+    });
+
+    // The folder-scoped shapes inherit the templates skip-dir bound: the head
+    // listing consults these predicates on flat full paths (no top-down
+    // prune), so a vendored or worktree-nested shape must not enter sync
+    // scope. The bound is the skip-dir ancestor, not depth.
+    function assertSyncScopeSkipDirBound(filter: ContentFilter) {
+      for (const vendored of [
+        'node_modules/pkg/.ok/frontmatter.yml',
+        'dist/.ok/frontmatter.yml',
+        '.ok/worktrees/wt1/docs/.ok/frontmatter.yml',
+        '.ok/worktrees/wt1/.ok/config.yml',
+        '.OK/local/cache/.ok/frontmatter.yml',
+        '.OK/worktrees/wt1/docs/.ok/frontmatter.yml',
+        'node_modules/pkg/.ok/templates/x.md',
+      ]) {
+        expect(filter.isExcluded(vendored, SYNC), vendored).toBe(true);
+      }
+      expect(filter.isExcluded('a/b/c/.ok/frontmatter.yml', SYNC)).toBe(false);
+    }
+
+    test('skip-dir ancestors stay excluded from sync scope (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertSyncScopeSkipDirBound(filter);
+    });
+    test('skip-dir ancestors stay excluded from sync scope (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertSyncScopeSkipDirBound(filter);
+    });
+
+    // Allow-listed but git-ignored stays refused — the gather walk and
+    // `git add` must agree (precedent #55). A blanket `.ok/` exclude is
+    // exactly the local-only sharing arrangement, so with it in force the
+    // scope admits nothing; a narrower exclude refuses only its own subtree.
+    function assertGitignoredArtifactsRefused(filter: ContentFilter) {
+      expect(filter.isExcluded('.ok/config.yml', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/.gitignore', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/schemas/lint.json', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/frontmatter.yml', SYNC)).toBe(true);
+    }
+
+    test('gitignored artifacts are NOT admitted, even with the scope (sync)', () => {
+      writeFileSync(join(projectDir, '.gitignore'), '.ok/\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertGitignoredArtifactsRefused(filter);
+    });
+    test('gitignored artifacts are NOT admitted, even with the scope (async)', async () => {
+      writeFileSync(join(projectDir, '.gitignore'), '.ok/\n');
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertGitignoredArtifactsRefused(filter);
+    });
+
+    test('a narrower gitignore refuses only its own subtree (sync)', () => {
+      writeFileSync(join(projectDir, '.gitignore'), '.ok/schemas/\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      expect(filter.isExcluded('.ok/schemas/lint.json', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/config.yml', SYNC)).toBe(false);
+    });
+    test('a narrower gitignore refuses only its own subtree (async)', async () => {
+      writeFileSync(join(projectDir, '.gitignore'), '.ok/schemas/\n');
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      expect(filter.isExcluded('.ok/schemas/lint.json', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/config.yml', SYNC)).toBe(false);
+    });
+
+    // Without the scope, every allow-list path keeps its exclusion — the file
+    // index and sidebar never see `.ok` config artifacts. Templates stay
+    // admitted through their own carve-out, scope or not.
+    function assertNoScopeBehaviorUnchanged(filter: ContentFilter) {
+      expect(filter.isExcluded('.ok/config.yml')).toBe(true);
+      expect(filter.isExcluded('.ok/.gitignore')).toBe(true);
+      expect(filter.isExcluded('.ok/schemas/lint.json')).toBe(true);
+      expect(filter.isExcluded('meetings/.ok/frontmatter.yml')).toBe(true);
+      expect(filter.isExcluded('.ok/frontmatter.yml')).toBe(true);
+      expect(filter.isDirExcluded('.ok/schemas')).toBe(true);
+      expect(filter.isExcluded('.ok/templates/daily.md')).toBe(false);
+      expect(filter.isExcluded('meetings/.ok/templates/standup.md')).toBe(false);
+    }
+
+    test('without the scope the index/sidebar view is unchanged (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertNoScopeBehaviorUnchanged(filter);
+    });
+    test('without the scope the index/sidebar view is unchanged (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertNoScopeBehaviorUnchanged(filter);
+    });
+
+    // isPathIgnored has no sync capability: sync admission must not widen what
+    // the asset-serve middleware will serve over HTTP.
+    function assertServeFloorHolds(filter: ContentFilter) {
+      expect(filter.isPathIgnored('.ok/config.yml')).toBe(true);
+      expect(filter.isPathIgnored('.ok/.gitignore')).toBe(true);
+      expect(filter.isPathIgnored('.ok/schemas/lint.json')).toBe(true);
+      expect(filter.isPathIgnored('meetings/.ok/frontmatter.yml')).toBe(true);
+    }
+
+    test('the asset-serve gate ignores the scope (sync)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      assertServeFloorHolds(filter);
+    });
+    test('the asset-serve gate ignores the scope (async)', async () => {
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      assertServeFloorHolds(filter);
+    });
+
+    // Single-file mode (`?docPath=`) serves ONLY the target doc; the scope
+    // must not leak artifacts into it.
+    function assertSingleFileScopeHolds(filter: ContentFilter) {
+      expect(filter.isExcluded('notes.md', SYNC)).toBe(false);
+      expect(filter.isExcluded('.ok/config.yml', SYNC)).toBe(true);
+      expect(filter.isExcluded('.ok/schemas/lint.json', SYNC)).toBe(true);
+    }
+
+    test('single-file scope excludes shareable artifacts (sync)', () => {
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        singleDocRelPath: 'notes.md',
+      });
+      assertSingleFileScopeHolds(filter);
+    });
+    test('single-file scope excludes shareable artifacts (async)', async () => {
+      const filter = await createContentFilterAsync({
+        projectDir,
+        contentDir: projectDir,
+        singleDocRelPath: 'notes.md',
+      });
+      assertSingleFileScopeHolds(filter);
+    });
+
+    test('sync scope and bypass remain separate runtime modes', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      expect(filter.isExcluded('.ok/config.yml', SYNC)).toBe(false);
+      expect(filter.isExcluded('.ok/config.yml', { bypassFilters: true })).toBe(true);
+      expect(filter.isPathIgnored('.ok/config.yml', { bypassFilters: true })).toBe(true);
     });
   });
 
@@ -1164,8 +1621,12 @@ describe('ContentFilter', () => {
       // a case-sensitive lookahead would reveal the runtime state.
       expect(filter.isDirExcluded('.ok/Worktrees', REVEAL)).toBe(true);
       expect(filter.isDirExcluded('.ok/Local', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.OK/worktrees', REVEAL)).toBe(true);
+      expect(filter.isDirExcluded('.OK/local', REVEAL)).toBe(true);
       expect(filter.isDirExcluded('.ok/LOCAL/cache', REVEAL)).toBe(true);
       expect(filter.isExcluded('.ok/Local/server.lock', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.OK/local/server.lock', REVEAL)).toBe(true);
+      expect(filter.isExcluded('.OK/worktrees/wt/.ok/frontmatter.yml', REVEAL)).toBe(true);
       expect(filter.isExcluded('meetings/.ok/WORKTREES/checkout/README.md', REVEAL)).toBe(true);
 
       // Files under revealed `.ok` admit; under the excluded children they
@@ -1382,6 +1843,170 @@ describe('ContentFilter', () => {
       const filter = createContentFilter({ projectDir, contentDir: projectDir });
 
       expect(filter.isExcluded('assets/foo.png')).toBe(true);
+    });
+
+    function assertConfiguredAttachmentFolderAdmission(filter: ContentFilter): void {
+      expect(filter.isExcluded('assets/foo.png')).toBe(false);
+      expect(filter.isExcluded('assets/nested/photo.jpg')).toBe(false);
+      // A fixed content-root folder does not admit same-named folders elsewhere.
+      expect(filter.isExcluded('notes/assets/foo.png')).toBe(true);
+      // The configured folder is still an attachment allow-list, not a blanket
+      // extension bypass for executable or arbitrary files.
+      expect(filter.isExcluded('assets/script.js')).toBe(true);
+    }
+
+    test('configured fixed attachment folder admits linkable assets without a sibling doc (sync)', () => {
+      mkdirSync(join(projectDir, 'assets'), { recursive: true });
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        attachmentFolderPath: 'assets',
+      });
+
+      assertConfiguredAttachmentFolderAdmission(filter);
+    });
+
+    test('configured fixed attachment folder admits linkable assets without a sibling doc (async)', async () => {
+      mkdirSync(join(projectDir, 'assets'), { recursive: true });
+      const filter = await createContentFilterAsync({
+        projectDir,
+        contentDir: projectDir,
+        attachmentFolderPath: 'assets',
+      });
+
+      assertConfiguredAttachmentFolderAdmission(filter);
+    });
+
+    test('doc-relative attachment folder admits the shape beneath note directories in both factories', async () => {
+      mkdirSync(join(projectDir, 'notes'), { recursive: true });
+      mkdirSync(join(projectDir, 'a', 'b'), { recursive: true });
+      writeFileSync(join(projectDir, 'root.md'), '# Root');
+      writeFileSync(join(projectDir, 'notes', 'note.md'), '# Note');
+      writeFileSync(join(projectDir, 'a', 'b', 'note.md'), '# Deep');
+      const filters = [
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: './assets',
+        }),
+        await createContentFilterAsync({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: './assets',
+        }),
+      ];
+
+      for (const filter of filters) {
+        expect(filter.isExcluded('assets/root.png')).toBe(false);
+        expect(filter.isExcluded('notes/assets/nested.png')).toBe(false);
+        expect(filter.isExcluded('a/b/assets/deep.webp')).toBe(false);
+        expect(filter.isExcluded('a/b/other/deep.webp')).toBe(true);
+        // The shape alone is insufficient: `./assets` is relative to a note,
+        // so a doc-less parent is not a configured destination in practice.
+        expect(filter.isExcluded('orphan/assets/unowned.png')).toBe(true);
+      }
+    });
+
+    test('content-root attachment folder admits only root-level assets in both factories', async () => {
+      const filters = [
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: '/',
+        }),
+        await createContentFilterAsync({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: '/',
+        }),
+      ];
+
+      for (const filter of filters) {
+        expect(filter.isExcluded('root.png')).toBe(false);
+        expect(filter.isExcluded('assets/nested.png')).toBe(true);
+      }
+    });
+
+    test('gitignore, secret, and .ok floors override configured attachment admission in both factories', async () => {
+      writeFileSync(join(projectDir, '.gitignore'), 'assets/private/\n');
+      const filters = [
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: 'assets',
+        }),
+        await createContentFilterAsync({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: 'assets',
+        }),
+      ];
+
+      for (const filter of filters) {
+        expect(filter.isExcluded('assets/public.png')).toBe(false);
+        expect(filter.isExcluded('assets/private/ignored.png')).toBe(true);
+        expect(filter.isExcluded('assets/signing.key')).toBe(true);
+      }
+
+      const okFilter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        attachmentFolderPath: '.ok/assets',
+      });
+      expect(okFilter.isDirExcluded('.ok/assets')).toBe(true);
+      expect(okFilter.isExcluded('.ok/assets/private.png')).toBe(true);
+    });
+
+    test('live attachment-folder updates replace the previous admission shape in both factories', async () => {
+      const filters = [
+        createContentFilter({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: 'assets',
+        }),
+        await createContentFilterAsync({
+          projectDir,
+          contentDir: projectDir,
+          attachmentFolderPath: 'assets',
+        }),
+      ];
+
+      for (const filter of filters) {
+        expect(filter.isExcluded('assets/one.png')).toBe(false);
+        expect(filter.isExcluded('media/two.png')).toBe(true);
+        filter.setAttachmentFolderPath('media');
+        expect(filter.isExcluded('assets/one.png')).toBe(true);
+        expect(filter.isExcluded('media/two.png')).toBe(false);
+        expect(() => filter.setAttachmentFolderPath('../escape')).toThrow(
+          'Invalid attachment folder path',
+        );
+        expect(filter.isExcluded('media/two.png')).toBe(false);
+      }
+    });
+
+    test('explicit default keeps the historical sibling-only rule', () => {
+      mkdirSync(join(projectDir, 'assets'), { recursive: true });
+      writeFileSync(join(projectDir, 'root.md'), '# Root');
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        attachmentFolderPath: './',
+      });
+
+      expect(filter.isExcluded('root.png')).toBe(false);
+      expect(filter.isExcluded('assets/not-a-sibling.png')).toBe(true);
+    });
+
+    test('nested fixed attachment folder is content-root-relative', () => {
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        attachmentFolderPath: 'media/uploads',
+      });
+
+      expect(filter.isExcluded('media/uploads/photo.png')).toBe(false);
+      expect(filter.isExcluded('media/uploads/nested/photo.png')).toBe(false);
+      expect(filter.isExcluded('notes/media/uploads/photo.png')).toBe(true);
     });
 
     test('excludes non-allowlisted extension even with sibling .md', () => {
@@ -1639,16 +2264,18 @@ describe('ContentFilter', () => {
     });
 
     test('refreshes watcher globs when patterns change', async () => {
-      writeFileSync(join(projectDir, '.okignore'), 'drafts/\n');
+      writeFileSync(join(projectDir, '.okignore'), 'drafts/\ndist/\n');
       const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      expect(filter.getWatcherIgnoreGlobs()).toContain('dist/');
       expect(filter.getWatcherIgnoreGlobs()).toContain('drafts/');
 
-      writeFileSync(join(projectDir, '.okignore'), 'archive/\n');
+      writeFileSync(join(projectDir, '.okignore'), 'archive/\nnode_modules/\n');
       await filter.rebuildIgnorePatterns();
 
       const globs = filter.getWatcherIgnoreGlobs();
+      expect(globs).toContain('node_modules/');
+      expect(globs).not.toContain('dist/');
       expect(globs).toContain('archive/');
-      expect(globs).not.toContain('drafts/');
     });
 
     test('refreshes sibling-asset dirCount against new exclusions', async () => {
@@ -1684,6 +2311,19 @@ describe('ContentFilter', () => {
       expect(result.bytes).toBeGreaterThan(0);
       expect(typeof result.durationMs).toBe('number');
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    test('async factory reports root ignore pattern count, not retained watcher globs', async () => {
+      writeFileSync(join(projectDir, '.okignore'), 'drafts/\nscratch/\n');
+
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+      const result = await filter.rebuildIgnorePatterns();
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      expect(result.patternCount).toBe(2);
+      expect(filter.getWatcherIgnoreGlobs()).toContain('drafts/');
+      expect(filter.getWatcherIgnoreGlobs()).toContain('scratch/');
     });
 
     test('counts nested ignore files correctly', async () => {
@@ -1758,7 +2398,7 @@ describe('ContentFilter', () => {
     });
 
     test('rolls back state on error (ig + watcherGlobs + dirCount)', async () => {
-      writeFileSync(join(projectDir, '.okignore'), 'drafts/\n');
+      writeFileSync(join(projectDir, '.okignore'), 'drafts/\ndist/\n');
       mkdirSync(join(projectDir, 'docs'));
       writeFileSync(join(projectDir, 'docs', 'guide.md'), '# Guide');
 
@@ -1766,7 +2406,7 @@ describe('ContentFilter', () => {
       // Sanity: pre-rebuild visible-set
       expect(filter.isExcluded('drafts/x.md')).toBe(true);
       expect(filter.isExcluded('docs/screenshot.png')).toBe(false);
-      expect(filter.getWatcherIgnoreGlobs()).toContain('drafts/');
+      expect(filter.getWatcherIgnoreGlobs()).toContain('dist/');
 
       // Force the rebuild to fail.
       const sampleProto = Object.getPrototypeOf(ignore());
@@ -1776,7 +2416,7 @@ describe('ContentFilter', () => {
 
       // Mutate the disk state so a SUCCESSFUL rebuild WOULD diverge — proves
       // the rollback restored the old state, not just failed silently.
-      writeFileSync(join(projectDir, '.okignore'), 'archive/\n');
+      writeFileSync(join(projectDir, '.okignore'), 'archive/\nnode_modules/\n');
 
       try {
         const result = await filter.rebuildIgnorePatterns();
@@ -1792,8 +2432,8 @@ describe('ContentFilter', () => {
           }),
         ).toBe(true);
         // watcherGlobs reflects the OLD patterns.
-        expect(filter.getWatcherIgnoreGlobs()).toContain('drafts/');
-        expect(filter.getWatcherIgnoreGlobs()).not.toContain('archive/');
+        expect(filter.getWatcherIgnoreGlobs()).toContain('dist/');
+        expect(filter.getWatcherIgnoreGlobs()).not.toContain('node_modules/');
         // dirCount for docs/ still admits sibling assets.
         expect(filter.isExcluded('docs/screenshot.png')).toBe(false);
       } finally {

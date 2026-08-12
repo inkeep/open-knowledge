@@ -698,7 +698,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   const setBatchInProgress = (value: boolean) => durabilityState.setBatchInProgress(value);
   const isBatchInProgress = () => durabilityState.isBatchInProgress();
 
-  function readProjectAttachmentFolderPath(): string {
+  function readProjectAttachmentFolderPath(options?: { requireValid?: boolean }): string {
     const project = readConfigSafely({
       absPath: resolveConfigPath('project', projectDir),
       sideline: false,
@@ -714,6 +714,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       if (attachmentIssues.length > 0) {
         const details = attachmentIssues.map((issue) => issue.message).join('; ');
         throw new Error(`Invalid content.attachmentFolderPath in project config: ${details}`);
+      }
+      // Throw BEFORE the "using default" warn: a `requireValid` caller keeps
+      // its previous admission instead of falling back, so the warn would
+      // misreport what happens next.
+      if (options?.requireValid) {
+        throw new Error('Project config is invalid', { cause: project.error });
       }
       log.warn(
         {},
@@ -886,6 +892,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
   }
 
+  // Last attachment folder actually applied to the content filter (seeded at
+  // boot). Lets the config-apply path log only genuine changes, not the
+  // re-apply that runs on every project-config persist.
+  let lastAppliedAttachmentFolderPath: string | undefined;
+
   // Re-apply a just-persisted config to the live in-process consumers by
   // re-reading it fresh from disk. Shared by two entry points: the producer-side
   // `onConfigPersisted` notification (self-originated Y.Doc writes) and the
@@ -935,6 +946,32 @@ export function createServer(options: ServerOptions): ServerInstance {
     // debounced pure hint, so the producer-notify + watcher-echo double-fire
     // this function documents is safe.
     if (configDocName === CONFIG_DOC_NAME_PROJECT) {
+      try {
+        const nextAttachmentFolderPath = readProjectAttachmentFolderPath({ requireValid: true });
+        contentFilter?.setAttachmentFolderPath(nextAttachmentFolderPath);
+        if (
+          lastAppliedAttachmentFolderPath !== undefined &&
+          nextAttachmentFolderPath !== lastAppliedAttachmentFolderPath
+        ) {
+          // Assets already tracked under the previous folder freeze in place
+          // on the remote — nothing deletes them, but they stop syncing.
+          // Breadcrumb for anyone diagnosing why old assets stopped updating.
+          log.warn(
+            { previous: lastAppliedAttachmentFolderPath, next: nextAttachmentFolderPath },
+            '[content-filter] attachment folder changed — files under the previous folder no longer sync',
+          );
+        }
+        lastAppliedAttachmentFolderPath = nextAttachmentFolderPath;
+      } catch (err) {
+        // Any project-config invalidity lands here (YAML parse error, an
+        // unrelated field) — `err` carries the real cause. Admission
+        // deliberately keeps the previous shape rather than resetting to the
+        // default: a transient bad write must not drop attachment syncing.
+        log.warn(
+          { err },
+          '[content-filter] project config invalid — keeping previous attachment admission',
+        );
+      }
       cc1Broadcaster?.signal('lint-config');
     }
     log.info(
@@ -1345,10 +1382,25 @@ export function createServer(options: ServerOptions): ServerInstance {
   };
 
   try {
+    let initialAttachmentFolderPath = DEFAULT_ATTACHMENT_FOLDER_PATH;
+    try {
+      // No `requireValid`: a generically-invalid config already resolves to the
+      // sibling default inside the read (one accurate warn). Only a
+      // specifically-invalid `content.attachmentFolderPath` throws, so this
+      // catch's attribution is truthful.
+      initialAttachmentFolderPath = readProjectAttachmentFolderPath();
+    } catch (err) {
+      log.warn(
+        { err },
+        '[content-filter] invalid attachment folder at boot — using sibling admission',
+      );
+    }
+    lastAppliedAttachmentFolderPath = initialAttachmentFolderPath;
     contentFilter = createContentFilter({
       projectDir,
       contentDir,
       singleDocRelPath,
+      attachmentFolderPath: initialAttachmentFolderPath,
       // In-place skill versioning: admit editor-dir skills (`.claude/skills/**`,
       // …) as content, deduped to one canonical per skill. Scanned at boot and
       // re-scanned on every filter rebuild (the raw-batch trigger below fires

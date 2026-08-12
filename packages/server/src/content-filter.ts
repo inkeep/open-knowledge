@@ -25,8 +25,11 @@ import { homedir } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
+  DEFAULT_ATTACHMENT_FOLDER_PATH,
+  isValidAttachmentFolderPath,
   LEGACY_SKILL_STORE_ROOT,
   LINKABLE_ASSET_EXTENSIONS,
+  normalizeAttachmentFolderPath,
   OK_DIR,
 } from '@inkeep/open-knowledge-core';
 import ignore, { type Ignore } from 'ignore';
@@ -76,6 +79,8 @@ const execFileAsync = promisify(execFileCb);
  *   Applications — macOS app bundles; never user markdown
  *   .Trash      — OS recycle bin; symlink-heavy, contents irrelevant
  */
+const EDITOR_HOST_DIRS = ['.claude', '.cursor', '.codex', '.agents', '.opencode', '.pi'] as const;
+
 const BUILTIN_SKIP_DIRS = new Set([
   // Package managers / language runtimes
   'node_modules',
@@ -105,12 +110,7 @@ const BUILTIN_SKIP_DIRS = new Set([
   // Editor host dirs — hold OK's skill PROJECTIONS (`.{editor}/skills/<name>/`)
   // plus MCP config / launch.json. OK-managed tool artifacts, never KB content,
   // so skill projections stay out of the note/content index.
-  '.claude',
-  '.cursor',
-  '.codex',
-  '.agents',
-  '.opencode',
-  '.pi',
+  ...EDITOR_HOST_DIRS,
   // OS-managed (macOS)
   'Library',
   'Applications',
@@ -137,12 +137,7 @@ const ALWAYS_SKIP_DIRS = new Set<string>([
   '.openknowledge',
   // Editor host dirs hold OK's skill projections — OK-managed tool artifacts,
   // never user content, kept out of even the Show All Files walk.
-  '.claude',
-  '.cursor',
-  '.codex',
-  '.agents',
-  '.opencode',
-  '.pi',
+  ...EDITOR_HOST_DIRS,
 ]);
 
 /**
@@ -153,6 +148,67 @@ const ALWAYS_SKIP_DIRS = new Set<string>([
  * paths.
  */
 const OK_ALWAYS_SKIP_CHILDREN = new Set(['worktrees', 'local']);
+
+type AttachmentFolderShape =
+  | { kind: 'sibling' }
+  | { kind: 'content-root' }
+  | { kind: 'fixed'; path: string }
+  | { kind: 'doc-relative'; path: string };
+
+function attachmentFolderShape(value: string): AttachmentFolderShape {
+  const normalized = normalizeAttachmentFolderPath(value);
+  if (!isValidAttachmentFolderPath(normalized)) {
+    throw new Error('Invalid attachment folder path');
+  }
+  if (normalized === './') return { kind: 'sibling' };
+  if (normalized === '/' || normalized === '.') return { kind: 'content-root' };
+
+  const docRelative = normalized.startsWith('./');
+  const path = (docRelative ? normalized.slice(2) : normalized)
+    .split('/')
+    .filter((segment) => segment !== '' && segment !== '.')
+    .join('/');
+  if (path === '') return docRelative ? { kind: 'sibling' } : { kind: 'content-root' };
+  return { kind: docRelative ? 'doc-relative' : 'fixed', path };
+}
+
+/**
+ * Exhaustiveness guard for `AttachmentFolderShape` dispatch. A new variant
+ * must produce a TypeScript error here rather than silently inheriting the
+ * doc-relative sliding-window logic as a fall-through.
+ */
+function assertNeverAttachmentShape(shape: never): never {
+  throw new Error(`[AttachmentFolderShape] unhandled variant: ${JSON.stringify(shape)}`);
+}
+
+function isConfiguredAttachmentAsset(
+  relativePath: string,
+  shape: AttachmentFolderShape,
+  hasDocumentInDir: (dir: string) => boolean,
+): boolean {
+  const ext = extname(relativePath).slice(1).toLowerCase();
+  if (!LINKABLE_ASSET_EXTENSIONS.has(ext) || shape.kind === 'sibling') return false;
+
+  const lastSlash = relativePath.lastIndexOf('/');
+  const fileDir = lastSlash === -1 ? '' : relativePath.slice(0, lastSlash);
+  if (shape.kind === 'content-root') return fileDir === '';
+  if (shape.kind === 'fixed') {
+    return fileDir === shape.path || fileDir.startsWith(`${shape.path}/`);
+  }
+  if (shape.kind === 'doc-relative') {
+    const dirSegments = fileDir === '' ? [] : fileDir.split('/');
+    const shapeSegments = shape.path.split('/');
+    for (let start = 0; start <= dirSegments.length - shapeSegments.length; start++) {
+      if (!shapeSegments.every((segment, offset) => dirSegments[start + offset] === segment)) {
+        continue;
+      }
+      const parentDir = dirSegments.slice(0, start).join('/');
+      if (hasDocumentInDir(parentDir)) return true;
+    }
+    return false;
+  }
+  return assertNeverAttachmentShape(shape);
+}
 
 /**
  * True when any segment of `relativePath` is an always-skip directory. Called
@@ -170,10 +226,11 @@ function pathHasAlwaysSkipSegment(relativePath: string, showOk?: boolean): boole
   const segments = relativePath.split('/');
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    if (!ALWAYS_SKIP_DIRS.has(segment)) continue;
+    const canonicalSegment = segment.toLowerCase() === OK_DIR ? OK_DIR : segment;
+    if (!ALWAYS_SKIP_DIRS.has(canonicalSegment)) continue;
     if (
       showOk &&
-      segment === OK_DIR &&
+      canonicalSegment === OK_DIR &&
       !OK_ALWAYS_SKIP_CHILDREN.has((segments[i + 1] ?? '').toLowerCase())
     ) {
       continue;
@@ -229,22 +286,120 @@ function isSkillContentAncestorDir(relativePath: string): boolean {
 
 /**
  * True for a watcher-ignore glob that would stop the OS file-watcher from
- * seeing `.ok/` content the carve-outs admit: `.ok/skills/**` and the template
- * leaves under any `<folder>/.ok/templates/`. The watcher-ignore list is
- * glob-derived from `.gitignore` / `.okignore` / `.git/info/exclude` (e.g. clone
- * appends `.ok/`), and the @parcel/watcher backend consults THESE globs — not
- * the function predicates (`isDirExcluded` / `isExcluded`) that carry the
+ * seeing `.ok/` content the carve-outs admit: `.ok/skills/**`, the template
+ * leaves under any `<folder>/.ok/templates/`, and the shareable sync
+ * artifacts (`.ok/config.yml`, `.ok/.gitignore`, `.ok/schemas/*.json`, folder
+ * `frontmatter.yml`). The watcher-ignore list is glob-derived from
+ * `.gitignore` / `.okignore` / `.git/info/exclude` (e.g. clone appends
+ * `.ok/`), and the @parcel/watcher backend consults THESE globs — not the
+ * function predicates (`isDirExcluded` / `isExcluded`) that carry the
  * carve-outs and that the chokidar backend uses. So a blanket `.ok` ignore glob
  * makes parcel (the default backend on Linux) never deliver external edits to
- * project skills or templates. Dropping the blanket-`.ok` globs lets the watcher
- * reach them; the non-carve-out `.ok` children (`.ok/local`, config, …) are
- * still pruned downstream by the function predicates in `handleRawEvents`, so
- * they never reach the index. A more specific glob like `.ok/local` does NOT
- * block the carve-out trees and is kept.
+ * project skills, templates, or the shareable artifacts. Dropping the
+ * blanket-`.ok` globs lets the watcher reach them; `.ok` children still never
+ * reach the file index — `handleRawEvents` consults the unscoped predicates,
+ * which admit only the skill/template leaves and keep pruning `.ok/local`,
+ * config, and the rest (the shareable artifacts are a sync-scope carve-out,
+ * not an index one: staging walks them directly under `syncScope` rather
+ * than riding watcher events). The `.ok` children-exclude forms are dropped
+ * too: the skills-sharing carve in the CLI's git-exclude replaces the blanket
+ * with a children-exclude (`OK_CARVE_CHILDREN`) plus a skills re-include
+ * (`OK_CARVE_SKILLS_REINCLUDE`), and negation lines never survive into this
+ * list — a surviving children-exclude would prune the re-included skills tree
+ * (and the admitted template/config leaves) with nothing left to re-admit
+ * them. Sanitization probes the managed roots directly. Ordinary user
+ * exclusions remain watcher bounds; otherwise a large ignored tree can
+ * exhaust the recursive backend's watch budget before downstream predicates
+ * run.
  */
-function globBlocksOkContent(pattern: string): boolean {
-  const p = pattern.replace(/^\/+/, '').replace(/\/+$/, '').trim();
-  return p === '.ok' || p === '.ok/**' || p === '**/.ok' || p === '**/.ok/**';
+
+const WATCHER_CARVE_OUT_CAPABLE_DIRS = new Set<string>([OK_DIR, ...EDITOR_HOST_DIRS]);
+const WATCHER_SAFE_BUILTIN_SKIP_DIRS = new Set(
+  [...BUILTIN_SKIP_DIRS].filter((dir) => !WATCHER_CARVE_OUT_CAPABLE_DIRS.has(dir)),
+);
+
+const WATCHER_STRUCTURAL_IGNORE_GLOBS = [
+  '.git',
+  '.git/**',
+  '**/.git',
+  '**/.git/**',
+  'node_modules',
+  'node_modules/**',
+  '**/node_modules',
+  '**/node_modules/**',
+  '.ok/local',
+  '.ok/local/**',
+  '**/.ok/local',
+  '**/.ok/local/**',
+  '.ok/worktrees',
+  '.ok/worktrees/**',
+  '**/.ok/worktrees',
+  '**/.ok/worktrees/**',
+] as const;
+
+function watcherPatternIsConfinedToAlwaysSkippedTree(pattern: string): boolean {
+  const segments = pattern.replace(/^\/+/, '').replace(/\/+$/, '').split('/');
+  if (segments.includes('..')) return false;
+
+  // An exact watcher-safe skip segment bounds every match beneath a tree the
+  // content predicates reject without carve-outs. Wildcard lookalikes are not
+  // enough: `dist*` could also match a normal user folder.
+  if (segments.some((segment) => WATCHER_SAFE_BUILTIN_SKIP_DIRS.has(segment))) {
+    return true;
+  }
+
+  // `.ok` as a whole contains admitted leaves, but its runtime and worktree
+  // children never do. Case-fold these two names because the skip floor does
+  // the same for case-preserved paths on case-insensitive filesystems.
+  return segments.some(
+    (segment, index) =>
+      segment.toLowerCase() === OK_DIR &&
+      OK_ALWAYS_SKIP_CHILDREN.has((segments[index + 1] ?? '').toLowerCase()),
+  );
+}
+
+const WATCHER_MANAGED_CONTENT_PROBES = [
+  '.gitignore',
+  '.ok',
+  '.ok/config.yml',
+  '.ok/.gitignore',
+  '.ok/schemas/frontmatter.json',
+  '.ok/templates/example.md',
+  '.ok/skills/example/SKILL.md',
+  'docs/.ok',
+  'docs/.ok/frontmatter.yml',
+  'docs/.ok/templates/example.md',
+  ...EDITOR_HOST_DIRS.flatMap((dir) => [dir, `${dir}/skills/example/SKILL.md`]),
+] as const;
+
+function patternIsUnsafeForWatcherIgnore(pattern: string): boolean {
+  const candidate = pattern.trim();
+  if (!candidate || candidate.startsWith('!') || candidate.startsWith('#')) return false;
+  const segments = candidate.replace(/^\/+/, '').replace(/\/+$/, '').split('/');
+  if (segments.includes('..')) return true;
+  if (watcherPatternIsConfinedToAlwaysSkippedTree(candidate)) return false;
+  if (segments.some((segment) => WATCHER_CARVE_OUT_CAPABLE_DIRS.has(segment))) return true;
+
+  try {
+    const matcher = ignore().add(candidate);
+    return WATCHER_MANAGED_CONTENT_PROBES.some((path) => matcher.ignores(path));
+  } catch {
+    // Parcel and node-ignore need not reject malformed glob syntax in the
+    // same way. Omitting an ambiguous fast-path rule preserves correctness;
+    // the content predicates still enforce it after an event arrives.
+    return true;
+  }
+}
+
+function buildWatcherIgnoreGlobs(patterns: readonly string[]): string[] {
+  const retained = patterns.filter(
+    (pattern) =>
+      pattern.length > 0 &&
+      !pattern.startsWith('!') &&
+      !pattern.startsWith('#') &&
+      !patternIsUnsafeForWatcherIgnore(pattern),
+  );
+  return [...new Set([...retained, ...WATCHER_STRUCTURAL_IGNORE_GLOBS])];
 }
 
 /*
@@ -269,7 +424,7 @@ function globBlocksOkContent(pattern: string): boolean {
  */
 function templateFolderPrefixIsSkipped(segments: string[], okIndex: number): boolean {
   for (let i = 0; i < okIndex; i++) {
-    if (BUILTIN_SKIP_DIRS.has(segments[i])) return true;
+    if (BUILTIN_SKIP_DIRS.has(segments[i]) || segments[i].toLowerCase() === OK_DIR) return true;
   }
   return false;
 }
@@ -313,6 +468,67 @@ function isTemplateContentAncestorDir(relativePath: string): boolean {
     return !templateFolderPrefixIsSkipped(segments, n - 2);
   }
   return false;
+}
+
+/*
+ * Shareable `.ok` artifact family (the two predicates below). Team-shareable
+ * OK state — project `config.yml`, the seeded `.ok/.gitignore`, frontmatter
+ * lint schemas, note templates, folder `frontmatter.yml` — must reach the git
+ * auto-sync engine's staging and deletion-tracking walks, while the
+ * index-facing consumers keep hiding every member except templates, which are
+ * already ordinary index content via their own carve-out (consulted first in
+ * `isExcluded`, so the sync-scope block never sees them). Admission is
+ * therefore gated on the `syncScope` read-opt; without the opt the
+ * non-template members keep their normal exclusion. The list is POSITIVE and
+ * exact: ContentFilter deliberately never loads `.ok/.gitignore` (the `.ok`
+ * dir is skipped before nested ignore files are read), so a subtractive ".ok
+ * minus its self-ignored children" shape would gather paths that file tells
+ * `git add` to refuse.
+ */
+
+/**
+ * True for a FILE on the shareable `.ok` artifact allow-list:
+ *   - `.ok/config.yml` and `.ok/.gitignore`, project root only
+ *   - `.ok/schemas/<name>.json`, project root only, flat — `.json` matched
+ *     case-insensitively like the schema enumerator's filter
+ *   - `<folder>/.ok/templates/<name>.md` at any depth, root included
+ *   - `<folder>/.ok/frontmatter.yml` at any depth — root included, because
+ *     the project root's own folder metadata lives at `.ok/frontmatter.yml`
+ *
+ * The folder-scoped shapes inherit the templates family's skip-dir bound:
+ * these predicates are consulted on flat full paths (head listings, raw
+ * watcher events), not only via the top-down walk that prunes skip-dir roots
+ * first, so a `frontmatter.yml` vendored under `node_modules/` — or inside
+ * `.ok/worktrees/<wt>/…`, whose prefix contains the skip-dir `.ok` — must
+ * not leak in.
+ */
+function isShareableOkArtifact(relativePath: string): boolean {
+  const segments = relativePath.split('/');
+  const n = segments.length;
+  if (segments[0] === OK_DIR) {
+    if (n === 2 && (segments[1] === 'config.yml' || segments[1] === '.gitignore')) return true;
+    if (n === 3 && segments[1] === 'schemas' && segments[2].toLowerCase().endsWith('.json')) {
+      return true;
+    }
+  }
+  if (isTemplateContentFile(relativePath)) return true;
+  if (n >= 2 && segments[n - 1] === 'frontmatter.yml' && segments[n - 2] === OK_DIR) {
+    return !templateFolderPrefixIsSkipped(segments, n - 2);
+  }
+  return false;
+}
+
+/**
+ * True for the directories that must stay DESCENDABLE under `syncScope` so a
+ * walk reaches every shareable artifact: `.ok` itself, the flat
+ * `.ok/schemas`, and — delegated to the template ancestors — any bounded
+ * `<folder>/.ok` (also where `frontmatter.yml` leaves sit) plus
+ * `<folder>/.ok/templates`. A subdirectory under `.ok/schemas` is NOT an
+ * ancestor: schemas are flat, so the walk stays bounded.
+ */
+function isShareableOkArtifactAncestorDir(relativePath: string): boolean {
+  if (relativePath === OK_DIR || relativePath === `${OK_DIR}/schemas`) return true;
+  return isTemplateContentAncestorDir(relativePath);
 }
 
 /**
@@ -675,6 +891,12 @@ export interface ContentFilterOptions {
    */
   singleDocRelPath?: string;
   /**
+   * Resolved `content.attachmentFolderPath`. Linkable assets inside this
+   * explicit destination are content even when the directory has no markdown
+   * sibling. Omitted uses the historical `./` sibling placement.
+   */
+  attachmentFolderPath?: string;
+  /**
    * In-place skill admission (spec: in-place skill versioning). The set of
    * contentDir-relative CANONICAL skill bundle dirs (`<editor>/skills/<name>`)
    * to admit as content. A gitignored bundle is NOT admitted: the user has said
@@ -734,15 +956,8 @@ export type RebuildResult =
       error: { message: string };
     };
 
-/**
- * Read-method opts shared by the three exclusion predicates. `bypassFilters:
- * true` skips user-configurable rules (`.gitignore` / `.okignore` /
- * `BUILTIN_SKIP_DIRS`) but PRESERVES the synthetic system + config doc gate
- * (STOP rule — even in bypass mode, `__system__` / `__config__` /
- * `__user__` / `__local__` doc names MUST stay hidden).
- */
-interface ContentFilterReadOpts {
-  bypassFilters?: boolean;
+/** Options shared by ordinary, bypass, and sync-scoped filter reads. */
+interface ContentFilterCommonReadOpts {
   /**
    * Keep `.okignore` rules active while bypassing `.gitignore` and
    * `BUILTIN_SKIP_DIRS`. Used by the all-files sidebar: files normally hidden
@@ -763,6 +978,45 @@ interface ContentFilterReadOpts {
   showOk?: boolean;
 }
 
+/**
+ * Ordinary reads plus the Show All Files bypass. `syncScope?: never` keeps the
+ * bypass and sync capabilities mutually exclusive at the call boundary.
+ */
+type ContentFilterOrdinaryReadOpts = ContentFilterCommonReadOpts & {
+  bypassFilters?: boolean;
+  syncScope?: never;
+};
+
+/**
+ * Sync-engine-only admission. The bypass capability is deliberately absent:
+ * combining the two would make the allow-list's effective boundary depend on
+ * branch order inside the predicates instead of the type contract.
+ */
+type ContentFilterSyncReadOpts = ContentFilterCommonReadOpts & {
+  bypassFilters?: never;
+  /**
+   * Admit the shareable `.ok` artifact allow-list (`isShareableOkArtifact`)
+   * so the sync engine can stage and deletion-track team-shareable OK state
+   * — `isExcluded` / `isDirExcluded` only; `isPathIgnored` (the asset-serve
+   * gate) keeps the absolute floor, so sync admission never makes these
+   * paths HTTP-servable. Paths the unified ignore rules reject stay refused
+   * even with the scope: the gather walk and `git add` must agree on every
+   * path (precedent #55), and a local-only project's blanket `.ok/` exclude
+   * covers exactly this set. Sync-engine staging + head-listing use only —
+   * index, sidebar, watcher-event, and conflict-partition callers must not
+   * pass it, so these artifacts never surface as documents and their merge
+   * conflicts keep the non-content auto-resolve class. Independent of
+   * `showOk`. The type contract prevents combining this capability with
+   * `bypassFilters`.
+   */
+  syncScope: { pathBase: 'content' | 'project' };
+};
+
+type ContentFilterReadOpts = ContentFilterOrdinaryReadOpts | ContentFilterSyncReadOpts;
+
+/** Asset-serve reads never accept the sync-only admission capability. */
+type ContentFilterPathReadOpts = Omit<ContentFilterOrdinaryReadOpts, 'syncScope'>;
+
 export interface ContentFilter {
   /** True if the file at relativePath should be excluded from the document system. */
   isExcluded(relativePath: string, opts?: ContentFilterReadOpts): boolean;
@@ -782,7 +1036,7 @@ export interface ContentFilter {
    * honor user-rejected paths but should not drop assets that live in a
    * directory without a sibling `.md` file).
    */
-  isPathIgnored(relativePath: string, opts?: ContentFilterReadOpts): boolean;
+  isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean;
   /** Relative glob patterns for @parcel/watcher ignore option (best-effort). */
   getWatcherIgnoreGlobs(): string[];
   /** Increment refcount for a directory containing an included .md file. */
@@ -798,6 +1052,13 @@ export interface ContentFilter {
    * that would have kept the count current.
    */
   rebuildDirCount(): void;
+  /**
+   * Apply the live project attachment destination without rebuilding the
+   * filter. Throws `Invalid attachment folder path` on a value that fails
+   * attachment-path validation, leaving the previous admission shape in
+   * place — callers applying untrusted config must guard.
+   */
+  setAttachmentFolderPath(value: string): void;
   /**
    * Re-read root + nested `.gitignore` / `.okignore` files and replace the
    * internal `ignore`-lib instance, watcher-glob list, and sibling-asset
@@ -830,6 +1091,9 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   // feature off (editor host dirs stay fully skipped). Refreshed per rebuild
   // via `rescanInPlaceSkillDirs` when provided (live re-scan).
   let inPlaceSkillDirs: ReadonlySet<string> = opts.inPlaceSkillDirs ?? new Set();
+  let configuredAttachmentFolder = attachmentFolderShape(
+    opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
+  );
 
   // Precompute the contentDir-to-projectDir prefix for path conversion.
   // When contentDir is outside projectDir, the relative path starts with ".."
@@ -932,9 +1196,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     // Watcher-ignore globs derived from root patterns (best-effort).
     // Skip negation (!) and comment (#) lines — they aren't directly usable
     // as fast-path globs for the OS watcher.
-    const newWatcherGlobs = newRootPatterns.filter(
-      (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksOkContent(p),
-    );
+    const newWatcherGlobs = buildWatcherIgnoreGlobs(newRootPatterns);
 
     // Atomic swap.
     ig = newIg;
@@ -957,12 +1219,29 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
 
   const dirCount = new Map<string, number>();
 
-  function isIgnored(relativePath: string): boolean {
-    // When contentDir is outside projectDir, ignore rules from projectDir
-    // do not apply — and the `ignore` library rejects paths starting with `..`.
-    if (contentOutsideProject) return false;
-    const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
+  function isIgnored(
+    relativePath: string,
+    syncScope?: ContentFilterReadOpts['syncScope'],
+  ): boolean {
+    // Unscoped paths and content-based sync walks are contentDir-relative;
+    // the project-root sync walk is already project-relative. Converting at
+    // this boundary keeps root-anchored ignore rules in git's coordinates.
+    if (contentOutsideProject && syncScope?.pathBase !== 'project') return false;
+    const projectRelPath =
+      syncScope?.pathBase === 'project' || !contentRelPrefix
+        ? relativePath
+        : `${contentRelPrefix}/${relativePath}`;
+    if (projectRelPath.startsWith('..')) return false;
     return ig.ignores(projectRelPath);
+  }
+
+  function syncProjectRelPath(
+    relativePath: string,
+    syncScope: NonNullable<ContentFilterReadOpts['syncScope']>,
+  ): string {
+    return syncScope.pathBase === 'project' || !contentRelPrefix
+      ? relativePath
+      : `${contentRelPrefix}/${relativePath}`;
   }
 
   function isOkIgnored(relativePath: string): boolean {
@@ -1077,6 +1356,30 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         return false;
       }
 
+      // (0b'') Shareable `.ok` artifacts, sync scope only — project config,
+      // `.ok/.gitignore`, schemas, folder `frontmatter.yml` stage and
+      // deletion-track so team-shareable state propagates. (Template leaves
+      // are shareable too, but the ignore-blind carve-out above already
+      // returned for them — they never reach this block, and in a local-only
+      // project the sync engine's git-side staging probe, not this filter,
+      // keeps the gathered templates out of `git add`.) Admission is
+      // by allow-list membership alone: `.yml` / `.json` / `.gitignore`
+      // leaves pass neither the doc-extension gate nor the sibling-asset
+      // rule below. The `!isIgnored` conjunct keeps the gather walk and
+      // `git add` agreed (precedent #55): under a local-only project's
+      // blanket `.ok/` exclude these paths are git-refused, so gathering
+      // them would strand the push. Without `syncScope` they fall to the
+      // always-skip floor — the index and sidebar never see them.
+      if (
+        !opts?.bypassFilters &&
+        opts?.syncScope !== undefined &&
+        isShareableOkArtifact(syncProjectRelPath(relativePath, opts.syncScope)) &&
+        !isIgnored(relativePath, opts.syncScope)
+      ) {
+        if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
+        return false;
+      }
+
       // (0c) Always-skip floor — VCS / dependency / OK-state dirs stay
       // excluded even under bypass. Defense-in-depth: the showAll walk gates
       // directories via `isDirExcluded`, but any caller enumerating files
@@ -1112,6 +1415,19 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       //     so this filter behaves correctly when called in isolation.
       if (isSupportedDocFile(relativePath)) return false;
 
+      // (2a) Explicit attachment destination. A configured folder is itself
+      // the evidence that these linkable assets belong to the project; it does
+      // not need a markdown sibling. Configurable ignore rules already ran, so
+      // `.gitignore` / `.okignore` and built-in boundaries still win.
+      if (
+        isConfiguredAttachmentAsset(
+          relativePath,
+          configuredAttachmentFolder,
+          (dir) => (dirCount.get(dir) ?? 0) > 0,
+        )
+      )
+        return false;
+
       // (3) Sibling-asset rule: extension in LINKABLE_ASSET_EXTENSIONS AND dir has an included doc.
       const ext = extname(relativePath).slice(1).toLowerCase();
       if (LINKABLE_ASSET_EXTENSIONS.has(ext)) {
@@ -1139,11 +1455,15 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // of `.ok/` excluded. Gated on `!bypassFilters`: under Show All Files the
       // always-skip floor below must still prune `.ok` (it's an internal dir,
       // not user content — surfacing it as a folder broke the showAll
-      // folder-listing contract and the hasFolders gate).
+      // folder-listing contract and the hasFolders gate). Under `syncScope`
+      // the flat `.ok/schemas` joins the descendable set so the sync gather
+      // reaches schema leaves.
       if (
         !opts?.bypassFilters &&
         (isSkillContentAncestorDir(relativePath) ||
           isTemplateContentAncestorDir(relativePath) ||
+          (opts?.syncScope !== undefined &&
+            isShareableOkArtifactAncestorDir(syncProjectRelPath(relativePath, opts.syncScope))) ||
           isInPlaceSkillAncestorDir(relativePath, inPlaceSkillDirs))
       )
         return false;
@@ -1181,13 +1501,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         if (BUILTIN_SKIP_DIRS.has(segment)) return true;
       }
       if (contentOutsideProject) return false;
-      const projectRelPath = contentRelPrefix
-        ? `${contentRelPrefix}/${relativePath}`
-        : relativePath;
-      return ig.ignores(projectRelPath) || ig.ignores(`${projectRelPath}/`);
+      return (
+        isIgnored(relativePath, opts?.syncScope) || isIgnored(`${relativePath}/`, opts?.syncScope)
+      );
     },
 
-    isPathIgnored(relativePath: string, opts?: ContentFilterReadOpts): boolean {
+    isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
       // Same shape as `isExcluded` for the STOP gate + bypass branch but
       // without the sibling-asset admission step — admits referenced assets
       // in directories that happen to have no sibling `.md`.
@@ -1253,6 +1572,10 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
           'content-filter rebuildDirCount walk failed — retaining previous counts',
         );
       }
+    },
+
+    setAttachmentFolderPath(value: string): void {
+      configuredAttachmentFolder = attachmentFolderShape(value);
     },
 
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
@@ -1588,6 +1911,9 @@ async function initContentDirStateAsync(
 export async function createContentFilterAsync(opts: ContentFilterOptions): Promise<ContentFilter> {
   const { projectDir, contentDir, onAfterRebuild, singleDocRelPath } = opts;
   let inPlaceSkillDirs: ReadonlySet<string> = opts.inPlaceSkillDirs ?? new Set();
+  let configuredAttachmentFolder = attachmentFolderShape(
+    opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
+  );
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
   const contentOutsideProject = contentRelPrefix.startsWith('..');
@@ -1596,6 +1922,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
   let ig = ignore();
   let okignoreIg = ignore();
   let watcherIgnoreGlobs: string[] = [];
+  let lastPatternCount = 0;
 
   const dirCount = new Map<string, number>();
 
@@ -1607,10 +1934,26 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     populateDirCount(contentDir, '', isIgnored, dirCount);
   };
 
-  function isIgnored(relativePath: string): boolean {
-    if (contentOutsideProject) return false;
-    const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
+  function isIgnored(
+    relativePath: string,
+    syncScope?: ContentFilterReadOpts['syncScope'],
+  ): boolean {
+    if (contentOutsideProject && syncScope?.pathBase !== 'project') return false;
+    const projectRelPath =
+      syncScope?.pathBase === 'project' || !contentRelPrefix
+        ? relativePath
+        : `${contentRelPrefix}/${relativePath}`;
+    if (projectRelPath.startsWith('..')) return false;
     return ig.ignores(projectRelPath);
+  }
+
+  function syncProjectRelPath(
+    relativePath: string,
+    syncScope: NonNullable<ContentFilterReadOpts['syncScope']>,
+  ): string {
+    return syncScope.pathBase === 'project' || !contentRelPrefix
+      ? relativePath
+      : `${contentRelPrefix}/${relativePath}`;
   }
 
   function isOkIgnored(relativePath: string): boolean {
@@ -1706,9 +2049,8 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     // Atomic swap.
     ig = newIg;
     okignoreIg = newOkignoreIg;
-    watcherIgnoreGlobs = newRootPatterns.filter(
-      (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksOkContent(p),
-    );
+    watcherIgnoreGlobs = buildWatcherIgnoreGlobs(newRootPatterns);
+    lastPatternCount = newRootPatterns.length;
     dirCount.clear();
     for (const [k, v] of newDirCount) dirCount.set(k, v);
   }
@@ -1747,6 +2089,17 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
         return false;
       }
+      // Shareable `.ok` artifacts, sync scope only (see sync variant for the
+      // allow-list rationale and the precedent #55 `!isIgnored` conjunct).
+      if (
+        !opts?.bypassFilters &&
+        opts?.syncScope !== undefined &&
+        isShareableOkArtifact(syncProjectRelPath(relativePath, opts.syncScope)) &&
+        !isIgnored(relativePath, opts.syncScope)
+      ) {
+        if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
+        return false;
+      }
       // Always-skip floor — survives bypass; `showOk` re-admits `.ok` minus
       // `worktrees`/`local` (see sync variant for rationale).
       if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
@@ -1759,6 +2112,14 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       }
       if (isRejectedByConfigurableRules(relativePath)) return true;
       if (isSupportedDocFile(relativePath)) return false;
+      if (
+        isConfiguredAttachmentAsset(
+          relativePath,
+          configuredAttachmentFolder,
+          (dir) => (dirCount.get(dir) ?? 0) > 0,
+        )
+      )
+        return false;
       const ext = extname(relativePath).slice(1).toLowerCase();
       if (LINKABLE_ASSET_EXTENSIONS.has(ext)) {
         const dir = dirname(relativePath);
@@ -1776,11 +2137,14 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // Skills- and templates-as-content: keep `.ok` / `.ok/skills[/**]` and any
       // `<folder>/.ok/templates` descendable for the NORMAL index walk only (see
       // sync variant); under bypass the always-skip floor below keeps `.ok`
-      // pruned.
+      // pruned. Under `syncScope` the flat `.ok/schemas` joins the descendable
+      // set (see sync variant).
       if (
         !opts?.bypassFilters &&
         (isSkillContentAncestorDir(relativePath) ||
           isTemplateContentAncestorDir(relativePath) ||
+          (opts?.syncScope !== undefined &&
+            isShareableOkArtifactAncestorDir(syncProjectRelPath(relativePath, opts.syncScope))) ||
           isInPlaceSkillAncestorDir(relativePath, inPlaceSkillDirs))
       )
         return false;
@@ -1803,13 +2167,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         if (BUILTIN_SKIP_DIRS.has(segment)) return true;
       }
       if (contentOutsideProject) return false;
-      const projectRelPath = contentRelPrefix
-        ? `${contentRelPrefix}/${relativePath}`
-        : relativePath;
-      return ig.ignores(projectRelPath) || ig.ignores(`${projectRelPath}/`);
+      return (
+        isIgnored(relativePath, opts?.syncScope) || isIgnored(`${relativePath}/`, opts?.syncScope)
+      );
     },
 
-    isPathIgnored(relativePath: string, opts?: ContentFilterReadOpts): boolean {
+    isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
       if (isReservedDocName(relativePath)) return true;
       // Secret-bearing floor (see sync variant). Mirrored so `kind:'file'`
       // admission going through the async factory inherits the same egress
@@ -1868,6 +2231,10 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       }
     },
 
+    setAttachmentFolderPath(value: string): void {
+      configuredAttachmentFolder = attachmentFolderShape(value);
+    },
+
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
       // Refresh the in-place skill allow-list first (live re-scan) — mirrors
       // the sync factory; a provider throw keeps the previous set.
@@ -1889,7 +2256,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
           await buildAndSwapPatternState();
           const durationMs = Date.now() - startedAt;
           span.setAttributes({
-            'ok.ignore.pattern_count': watcherIgnoreGlobs.length,
+            'ok.ignore.pattern_count': lastPatternCount,
             'ok.ignore.nested_file_count': 0,
             'ok.ignore.bytes': 0,
           });
@@ -1908,7 +2275,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
 
           return {
             ok: true as const,
-            patternCount: watcherIgnoreGlobs.length,
+            patternCount: lastPatternCount,
             nestedFileCount: 0,
             bytes: 0,
             durationMs,

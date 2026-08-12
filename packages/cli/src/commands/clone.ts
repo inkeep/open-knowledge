@@ -429,11 +429,12 @@ export async function runClone(
  * tracked-files refusal probe.
  *
  * Behavior contract: this is the per-clone protection guardrail, independent
- * of user-chosen sharing mode. Clone-time we always append `.ok/`; sharing-mode toggles can add
- * MORE paths on top later. Migration onto the new module also fixes a worktree-
- * blind bug: clones inside a linked worktree previously wrote nothing because
- * the hard-coded `<projectDir>/.git/info/exclude` doesn't exist when `.git`
- * is a pointer file.
+ * of user-chosen sharing mode. Clone-time we append `.ok/` only when none of
+ * that tree is already tracked upstream; tracked `.ok` artifacts make the
+ * shared intent authoritative and the exclusion write refuses atomically.
+ * Sharing-mode toggles can add MORE paths on top later. The shared writer also
+ * resolves linked-worktree gitdir pointers; a hard-coded
+ * `<projectDir>/.git/info/exclude` is invalid when `.git` is a pointer file.
  *
  * The legacy three-state return is preserved — callers branch on it for
  * stderr / JSON disclosure. The new module reports per-path classification
@@ -446,11 +447,10 @@ export async function runClone(
  *     `malformed-pointer`, `inaccessible`) OR the resolved gitdir has no
  *     `info/` subdir (`no-info-dir`).
  *
- * `TrackedRefusal` is unreachable here: `.ok/` is the OK-owned dir we just
- * created during auto-init; it cannot be tracked upstream at clone-time
- * because we just wrote it ourselves. The branch is defended against
- * defensively and collapsed to `no-exclude`-shaped output rather than
- * letting a typed refusal value leak out as an unhandled state.
+ * `TrackedRefusal` is expected when the upstream already shares any `.ok`
+ * artifact. The wrapper preserves its legacy return type by collapsing that
+ * refusal to `already-present`; no exclusion was written, and the upstream's
+ * tracked sharing posture remains intact.
  */
 export function ensureOkExcludedFromGit(
   projectDir: string,

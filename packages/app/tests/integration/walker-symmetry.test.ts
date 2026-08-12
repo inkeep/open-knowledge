@@ -22,6 +22,8 @@ const corpus = [
   '.claude/settings.local.json',
 ];
 
+const syncOnlyArtifacts = new Set(['.ok/config.yml']);
+
 let contentDir: string | null = null;
 let server: TestServer | null = null;
 
@@ -40,7 +42,7 @@ afterEach(async () => {
 });
 
 describe('walker symmetry', () => {
-  test('sync-engine disk gather and file-watcher seed walk admit the same corpus', async () => {
+  test('sync-engine and file-watcher walks agree outside sync-only artifacts', async () => {
     contentDir = mkdtempSync(join(tmpdir(), 'ok-walker-symmetry-'));
     mkdirSync(join(contentDir, '.ok'), { recursive: true });
     writeFileSync(join(contentDir, '.ok', 'config.yml'), '', 'utf-8');
@@ -79,10 +81,62 @@ describe('walker symmetry', () => {
     for (const path of corpus) {
       const syncHas = syncEngineSet.has(path);
       const watcherHas = fileWatcherSet.has(path);
-      if (syncHas !== watcherHas)
+      if (syncOnlyArtifacts.has(path)) {
+        if (!syncHas || watcherHas)
+          diagnostics.push(`${path}: sync-engine=${syncHas} file-watcher=${watcherHas}`);
+      } else if (syncHas !== watcherHas) {
         diagnostics.push(`${path}: sync-engine=${syncHas} file-watcher=${watcherHas}`);
+      }
     }
 
     expect(diagnostics).toEqual([]);
+  });
+
+  test('subfolder sync walks distinguish content and project path coordinates', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-walker-subfolder-'));
+    contentDir = projectDir;
+    const nestedContentDir = join(projectDir, 'content');
+    mkdirSync(join(projectDir, '.ok', 'schemas'), { recursive: true });
+    mkdirSync(join(nestedContentDir, '.ok', 'schemas'), { recursive: true });
+    mkdirSync(join(nestedContentDir, '.ok', 'templates'), { recursive: true });
+    mkdirSync(join(nestedContentDir, 'docs', '.ok'), { recursive: true });
+    writeFileSync(join(projectDir, '.gitignore'), '/content/ignored.md\n', 'utf-8');
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), 'content:\n  dir: content\n', 'utf-8');
+    writeFileSync(join(projectDir, '.ok', '.gitignore'), 'local/\n', 'utf-8');
+    writeFileSync(join(projectDir, '.ok', 'schemas', 'root.json'), '{}\n', 'utf-8');
+    writeFileSync(join(nestedContentDir, '.ok', 'config.yml'), 'not: root\n', 'utf-8');
+    writeFileSync(join(nestedContentDir, '.ok', '.gitignore'), 'local/\n', 'utf-8');
+    writeFileSync(join(nestedContentDir, '.ok', 'schemas', 'nested.json'), '{}\n', 'utf-8');
+    writeFileSync(join(nestedContentDir, '.ok', 'templates', 'daily.md'), '# Daily\n', 'utf-8');
+    writeFileSync(join(nestedContentDir, 'docs', '.ok', 'frontmatter.yml'), 'icon: book\n');
+    writeFileSync(join(nestedContentDir, 'ignored.md'), '# Ignored\n', 'utf-8');
+
+    const contentFilter = createContentFilter({ projectDir, contentDir: nestedContentDir });
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: nestedContentDir,
+      contentFilter,
+      contentRoot: 'content',
+      syncEnabled: true,
+    });
+    const gathered = new Set(
+      (
+        engine as unknown as {
+          gatherContentFilesSync: () => Array<{ projectRelPath: string }>;
+        }
+      )
+        .gatherContentFilesSync()
+        .map((entry) => entry.projectRelPath),
+    );
+
+    expect(gathered).toEqual(
+      new Set([
+        '.ok/.gitignore',
+        '.ok/config.yml',
+        '.ok/schemas/root.json',
+        'content/.ok/templates/daily.md',
+        'content/docs/.ok/frontmatter.yml',
+      ]),
+    );
   });
 });

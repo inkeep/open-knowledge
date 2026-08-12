@@ -221,7 +221,9 @@ describe('worktree-service', () => {
       if (res.ok) return;
       expect(res.reason).toBe('empty-repo');
       // git's own words survive to the renderer rather than being swallowed.
-      expect(res.message).toContain('invalid reference');
+      // The wording varies by git version (`invalid reference` on current git,
+      // `not a valid object name` on 2.39-era Apple Git), so accept either.
+      expect(res.message).toMatch(/invalid reference|not a valid object name/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -266,8 +268,8 @@ describe('worktree-service', () => {
       expect(res.ok).toBe(false);
       if (res.ok) return;
       expect(res.reason).not.toBe('empty-repo');
-      // The generic arm still carries git's own words.
-      expect(res.message).toContain('invalid reference');
+      // The generic arm still carries git's own words (either version's wording).
+      expect(res.message).toMatch(/invalid reference|not a valid object name/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -28,6 +28,7 @@ import {
   tryLineLevelCombine,
 } from '@inkeep/open-knowledge-core';
 import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
+import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { resolveGitDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import type { CC1Broadcaster } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
@@ -77,6 +78,15 @@ const log = getLogger('sync-engine');
 const SHA_HEX_40 = /^[0-9a-f]{40}$/i;
 
 const execFileAsync = promisify(execFile);
+
+class ShareableOkEnumerationError extends Error {
+  constructor(relDir: string, cause: unknown) {
+    super(`Shareable .ok subtree "${relDir}" could not be fully enumerated; sync staging aborted`, {
+      cause,
+    });
+    this.name = 'ShareableOkEnumerationError';
+  }
+}
 
 /**
  * Why a `git merge --ff-only` refused. `git` distinguishes the two causes by
@@ -248,6 +258,20 @@ interface ContentFileEntry {
   /** Path relative to projectDir (git root) — used for git add/rm commands. */
   projectRelPath: string;
 }
+
+/**
+ * ContentFilter read-opts for the two staging-path consultations
+ * (`gatherContentFilesSync`, `listHeadContentPaths`): admits the shareable
+ * `.ok` artifact allow-list for staging and deletion tracking. Both paths
+ * must consult the identical predicate — a HEAD path the head listing admits
+ * but the gather walk refuses would be committed as a spurious deletion on
+ * every push cycle (precedent #55). The conflict partition
+ * (`isContentConflictPath` / `handleMergeConflict`) deliberately stays
+ * unscoped so these artifacts keep the non-content auto-resolve class.
+ */
+const CONTENT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'content' } } as const;
+const PROJECT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'project' } } as const;
+type SyncStagingScope = typeof CONTENT_SYNC_STAGING_SCOPE | typeof PROJECT_SYNC_STAGING_SCOPE;
 
 /** Persisted state (sync-state.json). */
 interface PersistedSyncState {
@@ -426,6 +450,14 @@ export class SyncEngine {
   private contentDir: string;
   private contentFilter: ContentFilter;
   private contentRoot: string;
+  /**
+   * True when the project-root `.ok/` directory sits outside the contentDir
+   * walk (content.dir configured as a subfolder). The push cycle then runs a
+   * second enumeration rooted at the project root so shareable `.ok`
+   * artifacts still stage and deletion-track; gather and head listing consult
+   * this flag in lock-step (precedent #55).
+   */
+  private rootOkOutsideContentWalk: boolean;
   private pullIntervalSeconds: number;
   private pushIntervalSeconds: number;
   /**
@@ -517,6 +549,9 @@ export class SyncEngine {
     this.contentDir = options.contentDir;
     this.contentFilter = options.contentFilter;
     this.contentRoot = options.contentRoot ?? '';
+    this.rootOkOutsideContentWalk = toPosix(
+      relative(this.contentDir, join(this.projectDir, OK_DIR)),
+    ).startsWith('..');
     this.pullIntervalSeconds = options.pullIntervalSeconds ?? 30;
     this.pushIntervalSeconds = options.pushIntervalSeconds ?? 60;
     // `mode` wins; fall back to the legacy boolean so callers that still pass
@@ -2380,9 +2415,6 @@ export class SyncEngine {
 
   /** @param retriesLeft - Max inline fetch+merge+retry attempts on non-fast-forward. */
   private async doPushCycle(retriesLeft = 0): Promise<void> {
-    // Gather content-filtered files that exist on disk — never git add .
-    const contentFiles = this.gatherContentFilesSync();
-
     // Temp index file for GIT_INDEX_FILE isolation
     const tmpIndexPath = join(tmpdir(), `ok-sync-idx-${process.pid}-${Date.now()}.idx`);
     let commitSha: string | null = null;
@@ -2390,6 +2422,9 @@ export class SyncEngine {
     this.transitionTo('pushing');
 
     try {
+      // Gather after entering the guarded cycle so an unreadable staging root
+      // is surfaced as a push failure instead of escaping the state machine.
+      const contentFiles = this.gatherContentFilesSync();
       await withParentLock(async () => {
         // Create handle with isolated index so we never disturb the user's real index
         const handle = this.gitHandle(tmpIndexPath);
@@ -2628,6 +2663,9 @@ export class SyncEngine {
       }
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
+      if (err instanceof ShareableOkEnumerationError) {
+        log.warn({ err }, '[sync] push cycle: staging error detail');
+      }
       const classified = classifyGitError(err);
       if (classified.class === 'semantic' && classified.subclass === 'non-fast-forward') {
         if (retriesLeft > 0) {
@@ -2659,6 +2697,8 @@ export class SyncEngine {
             );
             if (mc.class === 'semantic' && mc.subclass === 'merge-conflict') {
               await this.handleMergeConflict();
+            } else if (mergeErr instanceof ShareableOkEnumerationError) {
+              throw mergeErr;
             } else {
               this.handleError(mc, 'pull');
             }
@@ -2958,31 +2998,61 @@ export class SyncEngine {
   }
 
   /**
-   * Recursively walk contentDir and return all files that pass ContentFilter.
-   * Uses synchronous FS because this runs under the parentGitMutex.
+   * Recursively walk contentDir and return all files that pass ContentFilter
+   * under the sync staging scope (regular content plus shareable `.ok`
+   * artifacts). Uses synchronous FS because this runs under the
+   * parentGitMutex.
    */
   private gatherContentFilesSync(): ContentFileEntry[] {
     const results: ContentFileEntry[] = [];
+    const failUnreadableOkSubtree = (err: unknown, dir: string) => {
+      const relDir = toPosix(relative(this.projectDir, dir)) || '.';
+      throw new ShareableOkEnumerationError(relDir, err);
+    };
 
-    const walk = (dir: string) => {
+    const walk = (
+      dir: string,
+      filterBase: string,
+      stagingScope: SyncStagingScope,
+      onError?: (err: unknown, dir: string) => void,
+    ) => {
       let entries: Dirent[];
       try {
         entries = readdirSync(dir, { withFileTypes: true });
-      } catch {
+      } catch (err) {
+        // Ordinary content frames stay best-effort because mid-walk deletions
+        // are routine. Admitted `.ok` frames carry a fatal handler because a
+        // partial enumeration is indistinguishable from artifact deletion.
+        onError?.(err, dir);
         return;
       }
       for (const entry of entries) {
         const fullPath = join(dir, entry.name);
         if (entry.isDirectory()) {
-          const dirRelPath = toPosix(relative(this.contentDir, fullPath));
+          const dirRelPath = toPosix(relative(filterBase, fullPath));
           // Dir-level early-skip delegates to ContentFilter (BUILTIN_SKIP_DIRS + ignore files).
-          if (!dirRelPath.startsWith('..') && this.contentFilter.isDirExcluded(dirRelPath))
+          if (
+            !dirRelPath.startsWith('..') &&
+            this.contentFilter.isDirExcluded(dirRelPath, stagingScope)
+          )
             continue;
-          walk(fullPath);
+          const entersOkSubtree = dirRelPath
+            .split('/')
+            .some((segment) => segment.toLowerCase() === OK_DIR);
+          walk(
+            fullPath,
+            filterBase,
+            stagingScope,
+            onError ?? (entersOkSubtree ? failUnreadableOkSubtree : undefined),
+          );
         } else if (entry.isFile() || entry.isSymbolicLink()) {
-          const contentRelPath = toPosix(relative(this.contentDir, fullPath));
-          // Only include files inside contentDir that pass the filter
-          if (!contentRelPath.startsWith('..') && !this.contentFilter.isExcluded(contentRelPath)) {
+          const filterRelPath = toPosix(relative(filterBase, fullPath));
+          // Only include files inside the walk root that pass the filter
+          if (
+            !filterRelPath.startsWith('..') &&
+            !this.contentFilter.isExcluded(filterRelPath, stagingScope)
+          ) {
+            const contentRelPath = toPosix(relative(this.contentDir, fullPath));
             const projectRelPath = toPosix(relative(this.projectDir, fullPath));
             results.push({ contentRelPath, projectRelPath });
           }
@@ -2991,7 +3061,21 @@ export class SyncEngine {
     };
 
     if (existsSync(this.contentDir)) {
-      walk(this.contentDir);
+      walk(this.contentDir, this.contentDir, CONTENT_SYNC_STAGING_SCOPE);
+    }
+    // The project-root shareable `.ok` set lives outside the contentDir walk
+    // when content.dir is a subfolder — enumerate it from the project root,
+    // with admission still fully delegated to ContentFilter (precedent #55).
+    if (this.rootOkOutsideContentWalk) {
+      const rootOkDir = join(this.projectDir, OK_DIR);
+      if (
+        existsSync(rootOkDir) &&
+        !this.contentFilter.isDirExcluded(OK_DIR, PROJECT_SYNC_STAGING_SCOPE)
+      ) {
+        // A partial project-root enumeration is unsafe because HEAD deletion
+        // tracking cannot distinguish unreadable artifacts from deleted ones.
+        walk(rootOkDir, this.projectDir, PROJECT_SYNC_STAGING_SCOPE, failUnreadableOkSubtree);
+      }
     }
     return results;
   }
@@ -3003,7 +3087,17 @@ export class SyncEngine {
       for (const projRelPath of headPaths) {
         const absPath = join(this.projectDir, projRelPath);
         const contentRelPath = toPosix(relative(this.contentDir, absPath));
-        if (!contentRelPath.startsWith('..') && !this.contentFilter.isExcluded(contentRelPath)) {
+        const inContentWalk =
+          !contentRelPath.startsWith('..') &&
+          !this.contentFilter.isExcluded(contentRelPath, CONTENT_SYNC_STAGING_SCOPE);
+        // Mirror of the gather walk's project-root enumeration: without this
+        // term, a tracked project-root artifact would be misread as deleted
+        // on every push cycle in subfolder-content.dir projects.
+        const inRootOkWalk =
+          this.rootOkOutsideContentWalk &&
+          projRelPath.startsWith(`${OK_DIR}/`) &&
+          !this.contentFilter.isExcluded(projRelPath, PROJECT_SYNC_STAGING_SCOPE);
+        if (inContentWalk || inRootOkWalk) {
           paths.add(projRelPath);
         }
       }
@@ -3105,13 +3199,7 @@ export class SyncEngine {
     const nonContentConflicts: string[] = [];
 
     for (const file of conflictedFiles) {
-      const absPath = join(this.projectDir, file);
-      const contentRelPath = toPosix(relative(this.contentDir, absPath));
-      if (
-        !contentRelPath.startsWith('..') &&
-        isSupportedDocFile(contentRelPath) &&
-        !this.contentFilter.isExcluded(contentRelPath)
-      ) {
+      if (this.isContentConflictPath(file)) {
         contentConflicts.push(file);
       } else {
         nonContentConflicts.push(file);
@@ -3127,11 +3215,25 @@ export class SyncEngine {
     // escalating into the ConflictStore. The user resolves the file in
     // their terminal; the next pull tick re-attempts cleanly.
     const nonContentResolveFailures: Array<{ file: string; err: unknown }> = [];
+    // Theirs-resolve discards the local side. For most non-content files that
+    // loss is benign, but `.ok/config.yml` holds the user's own project
+    // settings, so that one file logs at warn to leave a findable breadcrumb
+    // for otherwise-silent local-config loss.
+    const projectConfigRelPath = toPosix(
+      relative(this.projectDir, resolveConfigPath('project', this.projectDir)),
+    );
     for (const file of nonContentConflicts) {
       try {
         await handle.git.raw(['checkout', '--theirs', '--', file]);
         await handle.git.raw(['add', '--', file]);
-        log.info({ file }, '[sync] auto-resolved non-content conflict with theirs');
+        if (file.toLowerCase() === projectConfigRelPath.toLowerCase()) {
+          log.warn(
+            { file },
+            '[sync] auto-resolved .ok/config.yml conflict with theirs: local project config edits were overwritten by the remote version',
+          );
+        } else {
+          log.info({ file }, '[sync] auto-resolved non-content conflict with theirs');
+        }
       } catch (e) {
         log.warn(
           { err: e, file },

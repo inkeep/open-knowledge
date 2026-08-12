@@ -2114,6 +2114,9 @@ export interface CreateSyncWiredServerOptions {
   /** Files committed to `origin/main` before the follower clone (so the clone
    *  starts with them). Default seeds one document. */
   originSeed?: Record<string, string>;
+  /** Verbatim YAML written to the follower's project `.ok/config.yml` before
+   *  server boot. Defaults to an empty config. */
+  projectConfigYml?: string;
   /** Engine pull cadence (seconds). Default: parked far out of the way. */
   pullIntervalSeconds?: number;
   /** Engine push cadence (seconds). Default: parked far out of the way. */
@@ -2172,7 +2175,7 @@ export async function createSyncWiredTestServer(
   // project-local file lives under `.ok/local/` (git-ignored runtime state), so
   // it never enters the working tree the engine fast-forwards.
   mkdirSync(join(contentDir, '.ok', LOCAL_DIR), { recursive: true });
-  writeFileSync(join(contentDir, '.ok', 'config.yml'), '', 'utf-8');
+  writeFileSync(join(contentDir, '.ok', 'config.yml'), options.projectConfigYml ?? '', 'utf-8');
   writeFileSync(
     join(contentDir, '.ok', LOCAL_DIR, 'config.yml'),
     `autoSync:\n  mode: ${mode}\n`,

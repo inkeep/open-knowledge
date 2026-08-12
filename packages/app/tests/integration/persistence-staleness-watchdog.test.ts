@@ -120,9 +120,10 @@ describe('persistence staleness watchdog (integration)', () => {
 
     // Positive proof the WATCHDOG ran and chose to stand down (not merely
     // that the file-watcher reconciled first): the stood-down counter must
-    // advance. If the watcher's ingest wins the race instead, memory
-    // converges to the external bytes and no stand-down fires — accept
-    // that interleaving only when the doc has genuinely converged.
+    // advance. The production watcher can legitimately win this race in two
+    // ways: ingest the external bytes, or classify the dirty-memory/external-
+    // disk divergence as a conflict. Both preserve the disk authority that
+    // this test protects.
     const watchdogStoodDown = await pollUntil(
       () => getMetrics().persistenceStalenessStoodDown > stoodDownBefore,
       2_000,
@@ -131,10 +132,13 @@ describe('persistence staleness watchdog (integration)', () => {
       const state = await fetch(
         `http://127.0.0.1:${server.port}/api/document?docName=${encodeURIComponent(docName)}`,
       );
-      // Watcher-reconciled interleaving: server must now hold the external
-      // bytes (so there was nothing for the watchdog to stand down on).
       expect(state.ok).toBe(true);
-      expect(await state.text()).toContain('external native edit');
+      const watcherReconciled = (await state.text()).includes('external native edit');
+      const lifecycle = server.instance.hocuspocus.documents.get(docName)?.getMap('lifecycle');
+      const watcherSurfacedConflict =
+        lifecycle?.get('status') === 'conflict' &&
+        lifecycle.get('reason') === 'merged-with-markers';
+      expect(watcherReconciled || watcherSurfacedConflict).toBe(true);
     }
 
     // Either way, the external bytes must win on disk and no forced store

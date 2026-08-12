@@ -1127,6 +1127,7 @@ describe('createServer() — config file watcher (US-007)', () => {
   });
 
   afterEach(() => {
+    loggerFactory.reset();
     rmSync(testProjectDir, { recursive: true, force: true });
     rmSync(testHomedir, { recursive: true, force: true });
   });
@@ -1165,6 +1166,7 @@ describe('createServer() — config file watcher (US-007)', () => {
   });
 
   test('external broken-YAML write keeps Y.Text at LKG and does not crash the server', async () => {
+    const logs = captureAllLoggers();
     // Pre-seed a valid project config so the watcher's first read populates
     // LKG with valid content; then write broken YAML and assert Y.Text stays.
     const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
@@ -1194,11 +1196,17 @@ describe('createServer() — config file watcher (US-007)', () => {
 
     // Externally write broken YAML. Watcher fires, validation rejects;
     // Y.Text MUST stay at LKG.
-    writeFileSync(configPath, 'mcp:\n  autoStart: !!!!!!!\n', 'utf-8');
+    writeFileSync(configPath, 'content: [unclosed\n', 'utf-8');
     // Give the watcher a generous window to fire + reject.
-    await new Promise((r) => setTimeout(r, 1_500));
+    const warningLogged = await waitFor(
+      () => logs.getCalls('warn', 'project config invalid').length > 0,
+    );
 
+    expect(warningLogged).toBe(true);
     expect(ytext.toString()).toBe(validContent);
+    const warning = logs.getCalls('warn', 'project config invalid').at(-1);
+    expect(warning?.payload.err).toBeInstanceOf(Error);
+    expect((warning?.payload.err as Error).cause).toMatchObject({ code: 'YAML_PARSE' });
 
     await srv.destroy();
   });

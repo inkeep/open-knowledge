@@ -61,6 +61,17 @@ const OK_BLANKET = `${OK_DIR}/`;
 // re-include. Both are `**/`-prefixed so they stay content.dir-independent and
 // reach folder-nested `.ok/` dirs, matching OK_BLANKET's reach. A plain
 // `!.ok/skills/` after `.ok/` does NOT re-include (git prunes the excluded dir).
+//
+// The carve re-includes ONLY skills, deliberately. The other team-shareable
+// `.ok/` artifacts (config.yml, `.ok/.gitignore`, schemas/, templates/, folder
+// frontmatter.yml) are admitted for sync in SHARED mode by a content-filter
+// scope that honors these excludes (precedent #55), so under the carve they
+// stay local exactly as under the blanket: skills sharing is its own
+// user-visible switch, not a general `.ok/` re-include. Any future re-include
+// of that set must follow the parent-dir rule above: re-include the directory
+// (`!**/.ok/schemas/`), never only a file pattern beneath it
+// (`!**/.ok/schemas/*.json` silently no-ops because the `schemas` dir itself
+// matches the children-exclude).
 const OK_CARVE_CHILDREN = `**/${OK_DIR}/*`;
 const OK_CARVE_SKILLS_REINCLUDE = `!**/${LEGACY_SKILL_STORE_ROOT}/`;
 
