@@ -16,9 +16,9 @@
  */
 
 import {
-  classifyWikiLinkTarget,
   getWikiLinkText,
   normalizeNullableString,
+  resolveWikiLinkTarget,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/core';
@@ -331,7 +331,15 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
     pagesByBasename,
     loading,
   } = usePageList();
-  const classifiedTarget = classifyWikiLinkTarget(target, anchor);
+  // Resolve against the same corpus the chip uses, so the destination this
+  // panel reports is the one a click actually reaches.
+  const classifiedTarget = resolveWikiLinkTarget(target, anchor, {
+    pages,
+    pagesBySlug,
+    pagesByBasename,
+    assetPaths,
+    filePaths,
+  });
   const externalTarget = classifiedTarget?.kind === 'external' ? classifiedTarget : null;
   // Mirror handlePrimary's asset resolution (wiki-link.ts): when the target
   // isn't in the known asset paths, fall back to the stripped raw URL so an

@@ -406,3 +406,48 @@ test('a link to a doc that actually exists is not flagged (admitted-set membersh
   const doc = docResult(result.structuredContent);
   expect(doc.brokenLinks).toEqual([]);
 });
+
+test('bare-name wiki links are validated the way the editor navigates them', async () => {
+  const session = await openMcpSession(server.port);
+  const suffix = randomUUID().slice(0, 8);
+  const folder = `vault-${suffix}`;
+  const dotted = `${folder}/acp.daemon`;
+  const plain = `${folder}/analysis`;
+  const sourceDoc = `notes-${suffix}/index`;
+
+  for (const target of [dotted, plain]) {
+    await callTool(
+      server.port,
+      session,
+      'write',
+      { document: { path: target, content: '# Target\n\nBody.\n', position: 'replace' } },
+      server.contentDir,
+    );
+    await awaitFileWatcherIndexed(server, target);
+  }
+
+  const result = await callTool(
+    server.port,
+    session,
+    'write',
+    {
+      document: {
+        path: sourceDoc,
+        content: `# Index\n\nSee [[acp.daemon]], [[analysis]], and [[nowhere-${suffix}]].\n`,
+        position: 'replace',
+      },
+    },
+    server.contentDir,
+  );
+  expect(result.isError ?? false).toBe(false);
+
+  // Both targets sit in another folder, so neither matches its written name as
+  // a key — yet both are what a reader clicking the link opens. Only the name
+  // that resolves to nothing is reported. Before the write response agreed with
+  // the editor it named the two working links and said nothing at all about the
+  // dotted one, which was read as a file of type `daemon`.
+  const doc = docResult(result.structuredContent);
+  expect(doc.brokenLinks).toEqual([
+    { href: `[[nowhere-${suffix}]]`, resolvedTo: `nowhere-${suffix}`, reason: 'no-such-doc' },
+  ]);
+});

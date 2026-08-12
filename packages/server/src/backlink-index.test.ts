@@ -483,6 +483,204 @@ describe('BacklinkIndex', () => {
     }
   });
 
+  test('a wikilink to a dotted-filename document is recorded and is not reported dead', async () => {
+    // `acp.daemon` reads as a file named `acp` with extension `daemon` to the
+    // syntactic classifier, so index-time classification cannot tell it from an
+    // asset. The raw target is recorded regardless and the corpus decides at
+    // query time.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dotted-doc-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'notes'), { recursive: true });
+    try {
+      writeFileSync(join(contentDir, 'index.md'), '# Index\n\nSee [[acp.daemon]].\n', 'utf-8');
+      writeFileSync(join(contentDir, 'notes', 'acp.daemon.md'), '# Daemon\n\nBody.\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      expect(index.getForwardLinks('index')).toContain('acp.daemon');
+      expect(index.getDeadLinks(['index', 'notes/acp.daemon'])).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('an undecided raw target stays undecided across a cache save/load', async () => {
+    // The raw flag is what keeps an asset embed out of the dead-link report,
+    // and it is carried in the snapshot rather than recomputed. If it were
+    // dropped on the way to disk the report would look right until the first
+    // restart, then fill with false positives on every vault that embeds an
+    // asset — a failure that unit-level checks of the live index cannot see.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-raw-roundtrip-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'notes'), { recursive: true });
+    try {
+      writeFileSync(
+        join(contentDir, 'index.md'),
+        '# Index\n\nSee [[acp.daemon]] and ![[diagram.png]].\n',
+        'utf-8',
+      );
+      writeFileSync(join(contentDir, 'notes', 'acp.daemon.md'), '# Daemon\n\nBody.\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+      await index.saveToDisk();
+
+      const reloaded = new BacklinkIndex({ projectDir, contentDir });
+      expect(await reloaded.loadFromDisk()).toBe(true);
+      expect(reloaded.getDeadLinks(['index', 'notes/acp.daemon'])).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a bare wikilink the editor reaches by basename is not reported dead', async () => {
+    // The dotted case above is decided by the raw-target filter. This is the
+    // undotted one, which classifies as a document at index time and so is
+    // never flagged raw — the audit has to resolve it through the same chain
+    // the editor uses, or it reports a link the reader can click and reach.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-bare-basename-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'research'), { recursive: true });
+    try {
+      writeFileSync(join(contentDir, 'index.md'), '# Index\n\nSee [[analysis]].\n', 'utf-8');
+      writeFileSync(join(contentDir, 'research', 'analysis.md'), '# A\n\nBody.\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      expect(index.getDeadLinks(['index', 'research/analysis'])).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a bare wikilink naming no document is still reported dead', async () => {
+    // The guard rail for the test above: leniency comes from membership, so a
+    // target the corpus cannot resolve stays reported. A relaxation that
+    // silenced this would trade a false positive for a silent broken link.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-bare-missing-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'research'), { recursive: true });
+    try {
+      writeFileSync(join(contentDir, 'index.md'), '# Index\n\nSee [[nowhere]].\n', 'utf-8');
+      writeFileSync(join(contentDir, 'research', 'analysis.md'), '# A\n\nBody.\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      expect(index.getDeadLinks(['index', 'research/analysis']).map((e) => e.target)).toEqual([
+        'nowhere',
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('the neighborhood view admits the same documents as the whole graph', async () => {
+    // Recording wiki targets verbatim puts asset embeds in the forward index,
+    // so every reader of it has to apply the same admission or the two graph
+    // views disagree about which documents exist — the neighborhood drawing a
+    // node for `diagram.png` that the whole graph omits.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-neighborhood-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'notes'), { recursive: true });
+    try {
+      writeFileSync(
+        join(contentDir, 'index.md'),
+        '# Index\n\n![[diagram.png]] and [[acp.daemon]].\n',
+        'utf-8',
+      );
+      writeFileSync(join(contentDir, 'notes', 'acp.daemon.md'), '# Daemon\n\nBody.\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      const neighborhood = index.getLinkGraphNeighborhood('index', 2).nodes.map((n) => n.id);
+      const whole = index.getLinkGraph().nodes.map((n) => n.id);
+
+      // The embed is a document in neither view.
+      expect(neighborhood).not.toContain('diagram.png');
+      expect(whole).not.toContain('diagram.png');
+      // The dotted document is present in both.
+      expect(neighborhood).toContain('acp.daemon');
+      expect(whole).toContain('acp.daemon');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a markdown href is not basename-resolved by the dead-link audit', async () => {
+    // Only wiki targets get the chain. A markdown href is a path, so a wrong
+    // one must stay reported even when some other folder holds that basename —
+    // otherwise the leniency above would start hiding real mistakes.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-md-exact-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'research'), { recursive: true });
+    try {
+      writeFileSync(join(contentDir, 'index.md'), '# Index\n\n[A](./analysis.md)\n', 'utf-8');
+      writeFileSync(join(contentDir, 'research', 'analysis.md'), '# A\n\nBody.\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      expect(index.getDeadLinks(['index', 'research/analysis']).map((e) => e.target)).toEqual([
+        'analysis',
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a wiki asset embed is neither reported dead nor minted as a graph node', async () => {
+    // Recording every wiki target verbatim puts asset embeds into the graph for
+    // the first time. Without suppression every vault that embeds an asset
+    // would fill with dead links and phantom documents.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-asset-embed-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      writeFileSync(
+        join(contentDir, 'notes.md'),
+        '# Notes\n\n![[diagram.png]]\n\nSee [[report.pdf]].\n',
+        'utf-8',
+      );
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      expect(index.getDeadLinks(['notes'])).toEqual([]);
+
+      const graph = index.getLinkGraph();
+      expect(graph.nodes.map((node) => node.id)).toEqual(['notes']);
+      expect(graph.links).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a dotted target becomes a graph node once its document is indexed', () => {
+    // The lookup query-time resolution reads is cached against the graph's
+    // epoch; a stale cache would leave this target suppressed forever.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dotted-late-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocument('index', [
+        { target: 'acp.daemon', anchor: null, snippet: null, rawWikiTarget: true },
+      ]);
+
+      expect(index.getLinkGraph().nodes.map((node) => node.id)).toEqual(['index']);
+
+      index.updateDocument('notes/acp.daemon', []);
+
+      expect(index.getLinkGraph().nodes.map((node) => node.id)).toContain('acp.daemon');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('getIndexedDocNames returns one entry per indexed doc and never a referenced-but-missing target', () => {
     // The additive existence oracle unions into `collectAdmittedDocNames`.
     // A doc whose body was indexed is a forward node (even with zero links); a
@@ -1879,6 +2077,62 @@ describe('computeBrokenOutboundLinks', () => {
     expect(computeBrokenOutboundLinks(md, 'meetings/2026-01-01', admitted)).toEqual<
       BrokenOutboundLink[]
     >([{ href: '[[people/bob-jones]]', resolvedTo: 'people/bob-jones', reason: 'no-such-doc' }]);
+  });
+
+  test('a bare-name wiki-link resolving to a subfolder doc is not broken; an unresolvable one is', () => {
+    // The editor navigates `[[analysis]]` to `research/analysis` by basename,
+    // so reporting it broken on write contradicts what the reader sees. The
+    // ghost in the same body is the control: leniency must not silence a name
+    // that resolves to nothing.
+    const md = 'See [[analysis]] and [[nowhere]].';
+    const admitted = new Set(['research/analysis', 'notes/a']);
+    expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual<BrokenOutboundLink[]>([
+      { href: '[[nowhere]]', resolvedTo: 'nowhere', reason: 'no-such-doc' },
+    ]);
+  });
+
+  test('a dotted-filename document target is not reported broken', () => {
+    // `acp.daemon` reads as extension `daemon` to the classifier, so the strict
+    // check never saw it. Now it promotes to a doc on membership — and the
+    // existence question has to be asked of the resolution chain, not of the
+    // raw key: `notes/acp.daemon` is what exists, `acp.daemon` is what's written.
+    const md = 'See [[acp.daemon]] here.';
+    const admitted = new Set(['notes/acp.daemon', 'notes/a']);
+    expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual([]);
+  });
+
+  test('wiki asset embeds and dotted non-doc targets produce no broken links', () => {
+    const md = [
+      'Embed ![[diagram.png]] and ![[chart.v2.png]].',
+      'Link [[meeting.pdf]] and [[report.v3.xlsx]].',
+    ].join('\n');
+    // `meeting.pdf` is the docName a `meeting.pdf.md` file produces, so it
+    // promotes and resolves; the other three name nothing. Neither class may
+    // enter the response — minting a broken link for an embed that resolves to
+    // nothing would fire on every vault that embeds assets.
+    const admitted = new Set(['meeting.pdf', 'notes/a']);
+    expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual([]);
+  });
+
+  test('resolving many wiki links scans the corpus a bounded number of times', () => {
+    // The slug and basename maps are corpus-wide. Building them per link would
+    // be correct and quadratic, and every other test here would still pass.
+    class ScanCountingSet extends Set<string> {
+      scans = 0;
+      [Symbol.iterator](): SetIterator<string> {
+        this.scans += 1;
+        return super[Symbol.iterator]();
+      }
+    }
+    const admitted = new ScanCountingSet(['research/analysis', 'archive/summary', 'notes/a']);
+    const md = Array.from({ length: 12 }, (_, i) => `[[analysis]] [[summary]] [[gone-${i}]]`).join(
+      '\n',
+    );
+
+    const broken = computeBrokenOutboundLinks(md, 'notes/a', admitted);
+
+    expect(broken).toHaveLength(12);
+    expect(admitted.scans).toBeLessThanOrEqual(2);
   });
 
   test('skips external URLs, image embeds, and anchors; file links skipped when no oracle is passed', () => {

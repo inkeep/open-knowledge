@@ -17,7 +17,7 @@
  * wikiLink suggestion popover is closed remain orthogonal to the chip
  * rendering.
  */
-import { WikiLink as BaseWikiLink, classifyWikiLinkTarget } from '@inkeep/open-knowledge-core';
+import { WikiLink as BaseWikiLink, resolveWikiLinkTarget } from '@inkeep/open-knowledge-core';
 import { createElement } from 'react';
 import { openExternalUrl } from '@/lib/external-link';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
@@ -172,7 +172,10 @@ export function getWikiLinkResolutionState(
   cache: PageListCacheSnapshot | null,
 ): string | null {
   if (!target) return null;
-  const classified = classifyWikiLinkTarget(target, anchor);
+  // Same composed resolution the activation path uses, and fed the same cold-
+  // cache stand-in, so the colour and the destination cannot disagree about
+  // whether a target is a document.
+  const classified = resolveWikiLinkTarget(target, anchor, cache ?? new Set<string>());
   if (!classified) return null;
   if (classified.kind === 'external') return 'external';
   if (!cache) return 'loading';
@@ -332,10 +335,17 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
         const liveTarget = typeof live.target === 'string' ? live.target : '';
         if (!liveTarget) return false;
         const liveAnchor = typeof live.anchor === 'string' ? live.anchor : null;
-        const classified = classifyWikiLinkTarget(liveTarget, liveAnchor);
+        // A cold cache resolves nothing, so an asset-shaped target stays an
+        // asset until the page list arrives — the same window every bare-name
+        // chip already sits in.
+        const cache = getPageListCache();
+        const classified = resolveWikiLinkTarget(
+          liveTarget,
+          liveAnchor,
+          cache ?? new Set<string>(),
+        );
         if (!classified) return false;
         if (classified.kind === 'doc') {
-          const cache = getPageListCache();
           const intent = resolveLinkTargetIntent(liveTarget, {
             pages: cache?.pages ?? new Set<string>(),
             folderPaths: cache?.folderPaths ?? new Set<string>(),
@@ -365,7 +375,6 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
           // wiki-link to a tracked non-asset file would resolve to the bare
           // `classified.url.replace(/^\//, '')` and the chip would render as
           // unresolved — even though the file IS tracked.
-          const cache = getPageListCache();
           const assetPath =
             resolveWikiLinkAssetTarget(
               classified.url,

@@ -1884,3 +1884,14 @@ export {
   wikiLinkHref,
 } from './utils/slug.ts';
 export { expandTagToHierarchy, tagsMatchingPrefix } from './utils/tag-rollup.ts';
+export {
+  buildPagesByBasenameIndex,
+  buildPagesBySlugIndex,
+  getWikiLinkResolutionCandidates,
+  isResolvedWikiLinkTarget,
+  resolveWikiLinkAssetTarget,
+  resolveWikiLinkTarget,
+  resolveWikiLinkTargetDocName,
+  type WikiLinkLookupIndex,
+  type WikiLinkPagesInput,
+} from './utils/wiki-link-resolve.ts';

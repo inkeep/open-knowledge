@@ -462,6 +462,46 @@ describe('graph endpoints', () => {
     }
   });
 
+  test('the dead-link endpoint stays silent for a dotted-name doc link and an asset embed', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-dead-links-dotted-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'notes'), { recursive: true });
+    try {
+      writeFileSync(
+        join(contentDir, 'alpha.md'),
+        '# Alpha\n\nSee [[acp.daemon]] and ![[diagram.png]] and [[ghost]].\n',
+        'utf-8',
+      );
+      writeFileSync(join(contentDir, 'notes', 'acp.daemon.md'), '# Daemon\n\nBody.\n', 'utf-8');
+
+      const backlinkIndex = new BacklinkIndex({ projectDir, contentDir });
+      await backlinkIndex.rebuildFromDisk();
+
+      const fileIndex = new Map<string, FileIndexEntry>(
+        ['alpha', 'notes/acp.daemon'].map((docName) => [
+          docName,
+          {
+            size: 10,
+            modified: new Date(0).toISOString(),
+            canonicalPath: '',
+            inode: 0,
+            aliases: [],
+          },
+        ]),
+      );
+
+      const dead = JSON.parse(
+        (await callRoute(contentDir, '/api/dead-links', fileIndex, backlinkIndex)).body,
+      ) as { deadLinks: Array<{ target: string }> };
+
+      // The dotted doc link resolves and the asset embed names no document, so
+      // neither is reported — while the genuinely-missing target still is.
+      expect(dead.deadLinks.map((entry) => entry.target)).toEqual(['ghost']);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('returns 503 when the backlink index is unavailable', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-dead-links-unavailable-'));
     const contentDir = join(projectDir, 'content');

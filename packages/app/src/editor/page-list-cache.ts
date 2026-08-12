@@ -36,6 +36,13 @@
  * @see packages/app/src/editor/extensions/mark-interaction-bridge.ts
  */
 
+import { buildPagesByBasenameIndex, buildPagesBySlugIndex } from '@inkeep/open-knowledge-core';
+
+// The derived-index builders moved to core alongside the resolution chain that
+// reads them, so the fast-path index and the resolver's tie-break can't drift.
+// Re-exported here because the provider and its tests import them from this path.
+export { buildPagesByBasenameIndex, buildPagesBySlugIndex };
+
 export interface PageListCacheSnapshot {
   readonly pages: ReadonlySet<string>;
   readonly folderPaths: ReadonlySet<string>;
@@ -90,10 +97,12 @@ export interface PageListCacheSnapshot {
    * backward compatibility — callers fall back to slug + exact match
    * when the index is absent.
    *
-   * Tie-break is alphabetical-first by full docName: if two files
-   * share a basename (`a/foo.md`, `b/foo.md`), the lexicographically
-   * smaller path wins (`a/foo`). Matches `resolveWikiLinkAssetTarget`'s
-   * basename-with-alphabetical-first behavior for assets.
+   * Tie-break is code-unit-lowest by full docName: if two files share a
+   * basename (`a/foo.md`, `b/foo.md`), the smaller path wins (`a/foo`).
+   * Locale-independent on purpose, so the client and the server can't name
+   * different documents for one bare name — see `buildPagesByBasenameIndex`
+   * in core for why. Note that code-unit order sorts every uppercase letter
+   * before every lowercase one.
    *
    * Consulted only after `pages.has` and `pagesBySlug.get` miss, and
    * only when the target contains no slash — `[[foo/bar]]` keeps
@@ -165,55 +174,6 @@ function pageIconsEqual(
     if ((b as ReadonlyMap<string, string>).get(key) !== value) return false;
   }
   return true;
-}
-
-/**
- * Build the slug-keyed index from a pages set. First-wins on slug collision
- * (Map insertion order preserved; iteration order of a Set follows insertion
- * order per ES spec). Accepts the slug function as a parameter so this
- * module stays free of a `@inkeep/open-knowledge-core` import (the actual
- * slugger lives there); callers pass `toWikiLinkSlug`.
- *
- * Tie-break is deliberately insertion-order, not alphabetical — the slug
- * key already encodes the full docName, so collisions are rare and
- * insertion-order matches the Set's iteration semantics. The sibling
- * `buildPagesByBasenameIndex` sorts alphabetically before insertion
- * because basename collisions across folders are expected and the
- * alphabetical-first tie-break mirrors `resolveWikiLinkAssetTarget`'s
- * prior art for assets.
- */
-export function buildPagesBySlugIndex(
-  pages: ReadonlySet<string>,
-  slugFn: (text: string) => string,
-): ReadonlyMap<string, string> {
-  const index = new Map<string, string>();
-  for (const page of pages) {
-    const key = slugFn(page);
-    if (key && !index.has(key)) index.set(key, page);
-  }
-  return index;
-}
-
-/**
- * Build the basename-keyed index from a pages set. Keys by the slug of
- * each docName's leaf segment (the part after the last `/`). Sorts
- * input alphabetically before insertion so first-wins on basename
- * collision becomes alphabetical-first by full docName — matches the
- * tie-break in `resolveWikiLinkAssetTarget` for assets.
- */
-export function buildPagesByBasenameIndex(
-  pages: ReadonlySet<string>,
-  slugFn: (text: string) => string,
-): ReadonlyMap<string, string> {
-  const index = new Map<string, string>();
-  const sorted = [...pages].sort((a, b) => a.localeCompare(b));
-  for (const page of sorted) {
-    const slash = page.lastIndexOf('/');
-    const basename = slash === -1 ? page : page.slice(slash + 1);
-    const key = slugFn(basename);
-    if (key && !index.has(key)) index.set(key, page);
-  }
-  return index;
 }
 
 /**

@@ -3,6 +3,8 @@ import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import {
   type BrokenLinkReason,
+  buildPagesByBasenameIndex,
+  buildPagesBySlugIndex,
   classifyMarkdownHref,
   classifyWikiLinkTarget,
   extractSkillRefs,
@@ -16,8 +18,12 @@ import {
   resolveAssetProjectPath,
   resolveInternalHref,
   resolveSkillBundleWikiTarget,
+  resolveWikiLinkTarget,
+  resolveWikiLinkTargetDocName,
   skillLiveDocName,
   stripFrontmatter,
+  toWikiLinkSlug,
+  type WikiLinkLookupIndex,
 } from '@inkeep/open-knowledge-core';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
@@ -36,6 +42,7 @@ interface InlineWikiLinkOccurrence {
   anchor: string | null;
   start: number;
   end: number;
+  rawWikiTarget?: boolean;
 }
 
 /**
@@ -100,6 +107,23 @@ export interface ExtractedWikiLink {
    * and leading list/heading prefixes are collapsed before offsets are taken).
    */
   column?: number;
+  /**
+   * The target was recorded verbatim because index time could not decide what
+   * it names. The syntactic classifier reads anything ending in a dot-suffix as
+   * a file (`acp.daemon` = an `acp` with extension `daemon`), which is right for
+   * `[[diagram.png]]` and wrong for a document literally named `acp.daemon.md`.
+   * Telling them apart needs the corpus, and the corpus is only complete at
+   * query time — deciding here would make the answer depend on file ordering and
+   * would let the mtime-keyed cache persist a stale verdict across restarts.
+   *
+   * Consumers must treat such a target as UNDECIDED, never as a missing
+   * document: it is resolved against the document set at query time, and a
+   * target that resolves to nothing stays silent rather than being reported
+   * broken. Absent/false means the target is already a resolved docName (a
+   * markdown href, or a wiki target the classifier called a document), which
+   * keeps its existing report-when-missing behaviour.
+   */
+  rawWikiTarget?: boolean;
 }
 
 interface ExtractedExternalLink {
@@ -174,6 +198,8 @@ interface BackwardLinkMeta {
   sourceForm?: 'wiki' | 'markdown';
   line?: number;
   column?: number;
+  /** See {@link ExtractedWikiLink.rawWikiTarget}. */
+  rawWikiTarget?: boolean;
 }
 
 interface BranchGraphState {
@@ -187,6 +213,19 @@ interface BranchGraphState {
    *  so an edge appears the moment the referenced skill is indexed, without
    *  re-parsing the referencing doc. */
   skillRefs: Map<string, Set<string>>;
+  /**
+   * Bumped on every `forward` mutation, which is a superset of the key-set
+   * changes the cache below actually depends on — re-indexing a doc whose
+   * links changed but whose name did not still invalidates. Conservative in
+   * the safe direction: it rebuilds more often than strictly needed, never
+   * less. The derived slug/basename
+   * lookup query-time resolution reads is O(docs) with a slug computation per
+   * doc, so it is cached against this counter rather than rebuilt per query —
+   * rebuilding it inside the per-target scan would make that scan O(docs ×
+   * targets). Not persisted: a reloaded snapshot is a fresh state object, and
+   * the cache is keyed by object identity.
+   */
+  epoch: number;
 }
 
 /**
@@ -202,7 +241,7 @@ const SNAPSHOT_VERSION = 1;
 
 interface SerializedBranchGraphState {
   version?: number;
-  backward: Record<string, Array<BacklinkEntry>>;
+  backward: Record<string, Array<BacklinkEntry & { rawWikiTarget?: boolean }>>;
   forward: Record<string, string[]>;
   externalForward: Record<
     string,
@@ -238,7 +277,23 @@ function createEmptyState(): BranchGraphState {
     externalForward: new Map(),
     externalBackward: new Map(),
     skillRefs: new Map(),
+    epoch: 0,
   };
+}
+
+/**
+ * Whether every source that references `target` recorded it as an undecided raw
+ * wiki target (see {@link ExtractedWikiLink.rawWikiTarget}). A target reached by
+ * even one resolved docName — a markdown href, or a wiki target the classifier
+ * called a document — is decided, and keeps its report-when-missing behaviour.
+ */
+function isUndecidedTarget(state: BranchGraphState, target: string): boolean {
+  const sources = state.backward.get(target);
+  if (!sources || sources.size === 0) return false;
+  for (const meta of sources.values()) {
+    if (meta.rawWikiTarget !== true) return false;
+  }
+  return true;
 }
 
 /**
@@ -295,6 +350,9 @@ function mergeLinkMeta(
     sourceForm: existing.sourceForm ?? next.sourceForm,
     line: positioned.line,
     column: positioned.column,
+    // One decided occurrence settles the target for this source: a doc named
+    // outright is a doc no matter how many undecided occurrences sit beside it.
+    rawWikiTarget: existing.rawWikiTarget === true && next.rawWikiTarget === true,
   };
 }
 
@@ -461,6 +519,17 @@ function extractWikiLinksFromLine(
             anchor: classified.anchor,
             start,
             end: start + label.length,
+          });
+        } else if (classified?.kind === 'asset') {
+          // Undecidable here — see `ExtractedWikiLink.rawWikiTarget`. Record the
+          // target verbatim so a document whose name carries a dot stops being
+          // invisible to link reporting, and let the query side resolve it.
+          occurrences.push({
+            target: classified.url,
+            anchor: wikiLink.anchor?.trim() || null,
+            start,
+            end: start + label.length,
+            rawWikiTarget: true,
           });
         }
         idx = wikiLink.nextIndex;
@@ -815,7 +884,8 @@ export function extractWikiLinksFromMarkdown(
       } else {
         const extracted = extractWikiLinksFromLine(line, sourceDocName);
         links.push(
-          ...extracted.occurrences.map(({ target, anchor, start, end }) => ({
+          ...extracted.occurrences.map(({ target, anchor, start, end, rawWikiTarget }) => ({
+            rawWikiTarget,
             target,
             anchor,
             snippet: snippetAround(extracted.text, start, end),
@@ -936,9 +1006,21 @@ export interface BrokenOutboundLink {
  * not by relative path, so the depth footgun doesn't apply and the path-pure
  * resolver here can't answer them.
  *
+ * Wiki-link doc targets go through the shared composed resolution, so what
+ * counts as existing here is what the editor actually navigates to. The report
+ * this retracts is the bare name: `[[analysis]]` reaching `research/analysis`
+ * by basename was flagged broken while the reader clicked it and arrived. A
+ * dotted name now reaches that same chain instead of being read as a file
+ * extension, though its verdict here is unchanged either way — a name that
+ * promotes has by definition resolved, and one that doesn't stays silent like
+ * any other asset. That asymmetry is the safety property: this can only ever
+ * retract a report, never add one.
+ *
  * Marginal cost is one doc's extraction + one `Set.has` (docs) or one
- * `fileExists` call (files) per distinct outbound link — no corpus scan.
- * Duplicate raw hrefs collapse to a single entry.
+ * `fileExists` call (files) per distinct outbound link. A wiki target that
+ * misses on exact name additionally builds the slug and basename maps — once
+ * per call, memoized, never per link. Duplicate raw hrefs collapse to a single
+ * entry.
  *
  * @param markdown        the full just-written source (frontmatter is stripped here)
  * @param sourceDocName   the doc being written (relative hrefs resolve against its dir)
@@ -1009,15 +1091,43 @@ export function computeBrokenOutboundLinks(
     // External URLs aren't a local link target — not our concern.
   };
 
+  // Built on first read, not per call: the two maps cost a pass over the
+  // admitted corpus each, and a body with no wiki links — or whose wiki links
+  // all name their target exactly — never needs them, because
+  // `resolveWikiLinkTargetDocName` tries `pages.has` before any map. Memoized,
+  // so a body with many unresolved wiki links still builds each map once
+  // rather than once per link.
+  let pagesBySlug: ReadonlyMap<string, string> | undefined;
+  let pagesByBasename: ReadonlyMap<string, string> | undefined;
+  const wikiLookup: WikiLinkLookupIndex = {
+    pages: admitted,
+    get pagesBySlug() {
+      pagesBySlug ??= buildPagesBySlugIndex(admitted, toWikiLinkSlug);
+      return pagesBySlug;
+    },
+    get pagesByBasename() {
+      pagesByBasename ??= buildPagesByBasenameIndex(admitted, toWikiLinkSlug);
+      return pagesByBasename;
+    },
+  };
+
   const recordWikiLink = (target: string, anchor: string | null): void => {
-    const classified = classifyWikiLinkTarget(target, anchor);
-    // Only doc targets are validated. A wiki-link asset embed (`![[x.pdf]]`)
-    // resolves by vault-wide basename, not by relative path, so the depth
-    // footgun doesn't apply and the path-pure resolver here can't answer it —
-    // unlike a markdown `[text](path.ext)`, which IS file-validated above.
-    if (!classified || classified.kind !== 'doc') return;
-    if (!admitted.has(classified.docName)) {
-      record(`[[${target}${anchor ? `#${anchor}` : ''}]]`, classified.docName, 'no-such-doc');
+    const resolved = resolveWikiLinkTarget(target, anchor, wikiLookup);
+    // Only doc targets are validated. A target naming an asset — a `![[x.pdf]]`
+    // embed, or a link to a tracked non-markdown file — resolves by vault-wide
+    // basename rather than by relative path, so the depth footgun doesn't apply
+    // and the path-pure resolver here can't answer it (unlike a markdown
+    // `[text](path.ext)`, which IS file-validated above). A target naming
+    // nothing stays classified as an asset and is therefore silent too, which
+    // is what the dead-link query does with a recorded target that resolves to
+    // nothing — reporting those would flood every vault that embeds assets.
+    if (!resolved || resolved.kind !== 'doc') return;
+    // Existence through the chain the editor navigates with, not an exact-key
+    // hit. `[[analysis]]` reaching `research/analysis` by basename is a working
+    // link, and the strict check reported exactly those as broken while staying
+    // silent about the genuinely broken ones.
+    if (resolveWikiLinkTargetDocName(resolved.docName, wikiLookup) === undefined) {
+      record(`[[${target}${anchor ? `#${anchor}` : ''}]]`, resolved.docName, 'no-such-doc');
     }
   };
 
@@ -1085,6 +1195,11 @@ function serializeState(state: BranchGraphState): SerializedBranchGraphState {
           sourceForm: meta.sourceForm,
           line: meta.line,
           column: meta.column,
+          // Persisted because it is not recoverable from the target string: a
+          // markdown href can resolve to a docName that looks exactly like an
+          // undecided wiki target (`notes/report.v2`). Losing it across a
+          // restart would turn every asset embed into a dead link.
+          ...(meta.rawWikiTarget === true ? { rawWikiTarget: true as const } : {}),
         })),
       ]),
     ),
@@ -1171,6 +1286,7 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
               // wire) so a stale/corrupt file degrades to "position unknown".
               line: cachePosition(entry.line),
               column: cachePosition(entry.column),
+              rawWikiTarget: entry.rawWikiTarget === true,
             },
           ]),
         ),
@@ -1184,6 +1300,7 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
     skillRefs: new Map(
       Object.entries(data.skillRefs ?? {}).map(([source, names]) => [source, new Set(names)]),
     ),
+    epoch: 0,
   };
 }
 
@@ -1199,6 +1316,16 @@ export class BacklinkIndex {
    * files whose mtime is unchanged.
    */
   private readonly mtimesByBranch = new Map<string, Map<string, number>>();
+  /**
+   * Cached slug/basename lookup per graph state, rebuilt only when that state's
+   * `epoch` moves. Keyed by state object identity so a branch switch or a
+   * snapshot reload (both of which install a fresh state) can never be served a
+   * previous state's index.
+   */
+  private readonly documentLookups = new WeakMap<
+    BranchGraphState,
+    { epoch: number; lookup: WikiLinkLookupIndex }
+  >();
   private activeBranch = 'main';
 
   constructor(options: BacklinkIndexOptions) {
@@ -1380,6 +1507,7 @@ export class BacklinkIndex {
       if (sources.size === 0) state.externalBackward.delete(url);
     }
     state.forward.set(docName, new Set());
+    state.epoch++;
     state.externalForward.set(docName, new Map());
   }
 
@@ -1431,6 +1559,7 @@ export class BacklinkIndex {
     const nextTargets = new Set<string>();
     const nextExternalTargets = new Map<string, { label: string | null; snippet: string | null }>();
     state.forward.set(docName, nextTargets);
+    state.epoch++;
     state.externalForward.set(docName, nextExternalTargets);
 
     for (const link of links) {
@@ -1449,6 +1578,7 @@ export class BacklinkIndex {
           sourceForm: link.sourceForm,
           line: link.line,
           column: link.column,
+          rawWikiTarget: link.rawWikiTarget === true,
         }),
       );
     }
@@ -1523,6 +1653,7 @@ export class BacklinkIndex {
       if (sources.size === 0) state.externalBackward.delete(url);
     }
     state.forward.delete(docName);
+    state.epoch++;
     state.externalForward.delete(docName);
     state.skillRefs.delete(docName);
   }
@@ -1705,6 +1836,31 @@ export class BacklinkIndex {
       .map(([target, sources]) => ({
         target,
         sources: [...sources.entries()]
+          // An undecided raw wiki occurrence is never evidence of a broken
+          // link. It either names a document the corpus knows under another
+          // spelling (`[[acp.daemon]]` → `notes/acp.daemon.md`), or it names
+          // nothing the graph can see — an asset embed, a tracked non-markdown
+          // file — and then it stays silent exactly as it did when index time
+          // discarded it outright. Reporting that second class is the
+          // regression this filter exists to avoid: every vault that embeds an
+          // asset would fill with dead links. A target left with no decided
+          // occurrence drops out below.
+          .filter(([, meta]) => meta.rawWikiTarget !== true)
+          // The existence test above compares literal names, but a wiki target
+          // reaches its document through the whole chain — slug, folder index,
+          // basename. Without this, `[[analysis]]` naming `research/analysis`
+          // is reported broken while clicking it arrives, which is the
+          // contradiction between the audit and the editor that this work
+          // exists to remove. Markdown hrefs are deliberately excluded: they
+          // are paths, and no surface basename-resolves them, so relaxing them
+          // here would hide genuinely wrong ones. Membership is what makes this
+          // safe to apply — a target naming nothing still resolves to
+          // `undefined` and is still reported.
+          .filter(
+            ([, meta]) =>
+              meta.sourceForm !== 'wiki' ||
+              resolveWikiLinkTargetDocName(target, this.documentLookup(branch)) === undefined,
+          )
           .filter(([source]) => !sourceDocSet || sourceDocSet.has(source))
           .map(([source, meta]) => ({
             source,
@@ -1724,6 +1880,37 @@ export class BacklinkIndex {
       );
   }
 
+  /**
+   * The document set query-time wiki-link resolution runs against: every doc the
+   * graph has indexed. Built once per {@link BranchGraphState.epoch} and reused,
+   * so a scan over many targets pays for it once.
+   */
+  private documentLookup(branch = this.activeBranch): WikiLinkLookupIndex {
+    const state = this.getState(branch);
+    const cached = this.documentLookups.get(state);
+    if (cached?.epoch === state.epoch) return cached.lookup;
+
+    const pages = new Set(state.forward.keys());
+    const lookup: WikiLinkLookupIndex = {
+      pages,
+      pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+      pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+    };
+    this.documentLookups.set(state, { epoch: state.epoch, lookup });
+    return lookup;
+  }
+
+  /**
+   * Whether an undecided raw wiki target names a real document after all. The
+   * shared resolver owns the rule — asset first, document membership only when
+   * no asset matches — so the graph and the editor promote the same targets.
+   * The graph has no asset oracle, so anything that isn't a document here stays
+   * an asset and is dropped rather than minted as a node.
+   */
+  private undecidedTargetResolves(target: string, branch = this.activeBranch): boolean {
+    return resolveWikiLinkTarget(target, null, this.documentLookup(branch))?.kind === 'doc';
+  }
+
   getLinkGraph(branch = this.activeBranch): {
     nodes: GraphNode[];
     links: Array<{ source: string; target: string }>;
@@ -1740,6 +1927,12 @@ export class BacklinkIndex {
         anchor: getRepresentativeAnchor(state.backward.get(source)),
       });
       for (const target of targets) {
+        // An asset embed (`![[diagram.png]]`) is recorded like any other wiki
+        // target but names no document, and minting a node for it would put a
+        // phantom doc in the graph for every asset a vault embeds.
+        if (isUndecidedTarget(state, target) && !this.undecidedTargetResolves(target, branch)) {
+          continue;
+        }
         nodes.set(target, {
           kind: 'doc',
           id: target,
@@ -1830,6 +2023,16 @@ export class BacklinkIndex {
         }
       } else {
         for (const target of state.forward.get(current.nodeId) ?? new Set<string>()) {
+          // Same admission the whole-graph view applies. Recording every wiki
+          // target verbatim means an asset embed reaches here as an ordinary
+          // target, and without this the neighborhood mints a document node
+          // the whole graph suppresses — two views of one graph disagreeing
+          // about which documents exist. Traversal is the right place for it:
+          // an unadmitted target never enters `visited`, so it can't return as
+          // a node or as an edge endpoint below.
+          if (isUndecidedTarget(state, target) && !this.undecidedTargetResolves(target, branch)) {
+            continue;
+          }
           neighbors.add(target);
         }
         for (const url of state.externalForward.get(current.nodeId)?.keys() ?? []) {
@@ -2021,6 +2224,7 @@ export class BacklinkIndex {
         const targets = new Set<string>();
         const externalTargets = new Map<string, { label: string | null; snippet: string | null }>();
         state.forward.set(docName, targets);
+        state.epoch++;
         state.externalForward.set(docName, externalTargets);
         for (const link of links) {
           if (!link.target) continue;
@@ -2038,6 +2242,7 @@ export class BacklinkIndex {
               sourceForm: link.sourceForm,
               line: link.line,
               column: link.column,
+              rawWikiTarget: link.rawWikiTarget === true,
             }),
           );
         }

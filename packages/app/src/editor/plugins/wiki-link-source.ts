@@ -23,10 +23,16 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
-import { classifyWikiLinkTarget, type HeadingEntry } from '@inkeep/open-knowledge-core';
+import {
+  buildPagesByBasenameIndex,
+  buildPagesBySlugIndex,
+  type HeadingEntry,
+  resolveWikiLinkTarget,
+  type WikiLinkLookupIndex,
+} from '@inkeep/open-knowledge-core';
 import { openExternalUrl } from '@/lib/external-link';
 import { hashFromAssetPath, hashFromDocName } from '../../lib/doc-hash';
-import { resolveWikiLinkAssetTarget } from '../extensions/wiki-link-helpers';
+import { resolveWikiLinkAssetTarget, toWikiLinkSlug } from '../extensions/wiki-link-helpers';
 import {
   fetchHeadings,
   fetchPages,
@@ -36,7 +42,7 @@ import {
   type PageItem,
   type WikiLinkContext,
 } from '../extensions/wiki-link-suggestion';
-import { openInternalHashHrefInNewTab, shouldOpenInNewTab } from '../internal-link-helpers';
+import { openHashHrefInNewTab, shouldOpenInNewTab } from '../internal-link-helpers';
 import {
   isLinkValidationVisible,
   subscribeToLinkValidationPolicy,
@@ -54,6 +60,14 @@ const PAGES_CACHE_TTL_MS = 5_000;
 let pagesCache: PageItem[] | null = null;
 let pagesCacheTime = 0;
 let knownTargetSet: Set<string> | null = null;
+let wikiLinkLookup: WikiLinkLookupIndex | null = null;
+
+const EMPTY_WIKI_LINK_LOOKUP: WikiLinkLookupIndex = {
+  pages: new Set(),
+  pagesBySlug: new Map(),
+  pagesByBasename: new Map(),
+  assetPaths: new Set(),
+};
 const headingsCache = new Map<string, { headings: HeadingEntry[]; time: number }>();
 // Per-docName link-graph context for autocomplete re-ranking, TTL-cached like
 // pages so the per-keystroke completion source doesn't refetch backlinks on
@@ -76,6 +90,7 @@ async function getPages(): Promise<PageItem[]> {
   pagesCache = await fetchPages();
   pagesCacheTime = now;
   knownTargetSet = buildKnownWikilinkTargetSet(pagesCache);
+  wikiLinkLookup = buildSourceWikiLinkLookup(pagesCache);
   return pagesCache;
 }
 
@@ -136,6 +151,65 @@ export function buildKnownWikilinkTargetSet(pages: PageItem[]): Set<string> {
     }
   }
   return s;
+}
+
+/**
+ * Derive the lookup that Cmd/Ctrl+click resolves against. Documents and assets
+ * arrive in one `PageItem[]`: documents carry `kind:'page'`, while both
+ * referenced assets and tracked files arrive as `kind:'asset'` with a leading
+ * slash, and folders are neither.
+ *
+ * Built once per page-cache refresh rather than per click — the slug and
+ * basename maps cost a pass over the corpus plus a slug computation each, which
+ * a mousedown handler must not pay.
+ *
+ * Exported for unit tests — the plugin builds it internally.
+ */
+export function buildSourceWikiLinkLookup(pages: PageItem[]): WikiLinkLookupIndex {
+  const docNames = new Set<string>();
+  const assetPaths = new Set<string>();
+  for (const page of pages) {
+    if (page.kind === 'asset') assetPaths.add(page.docName.replace(/^\//, ''));
+    else if (page.kind !== 'folder') docNames.add(page.docName);
+  }
+  return {
+    pages: docNames,
+    assetPaths,
+    pagesBySlug: buildPagesBySlugIndex(docNames, toWikiLinkSlug),
+    pagesByBasename: buildPagesByBasenameIndex(docNames, toWikiLinkSlug),
+  };
+}
+
+export type SourceWikiLinkDestination =
+  | { kind: 'external'; url: string }
+  | { kind: 'hash'; href: string };
+
+/**
+ * Where a source-mode wiki-link activation goes. Returns null when the target
+ * names nothing openable, in which case the click is left to CodeMirror.
+ *
+ * Documents route to the raw target rather than a resolved docName: the app's
+ * hash router runs the same bare-name resolution on the way in, so resolving
+ * here would only duplicate it.
+ *
+ * Exported for unit tests — the mousedown handler around it is layout-bound
+ * (`posAtCoords` needs real geometry) and is covered by Playwright.
+ */
+export function resolveSourceWikiLinkDestination(
+  target: string,
+  anchor: string | null,
+  lookup: WikiLinkLookupIndex,
+): SourceWikiLinkDestination | null {
+  const classified = resolveWikiLinkTarget(target, anchor, lookup);
+  if (!classified) return null;
+  if (classified.kind === 'external') return { kind: 'external', url: classified.url };
+  if (classified.kind === 'asset') {
+    const assetPath =
+      resolveWikiLinkAssetTarget(classified.url, lookup.assetPaths ?? new Set<string>()) ??
+      classified.url.replace(/^\//, '');
+    return { kind: 'hash', href: hashFromAssetPath(assetPath) };
+  }
+  return { kind: 'hash', href: hashFromDocName(classified.docName, classified.anchor) };
 }
 
 /** Extract the target page name from a wikilink's inner text (the part between
@@ -251,36 +325,28 @@ const wikiLinkClickHandler = EditorView.domEventHandlers({
         const target = m[1]?.trim();
         const anchor = m[2]?.trim() || null;
         if (target) {
-          const classified = classifyWikiLinkTarget(target, anchor);
-          if (!classified) return false;
+          // A cold cache resolves nothing, so an asset-shaped target stays an
+          // asset until the page list arrives — the same window every bare-name
+          // wikilink already sits in.
+          const destination = resolveSourceWikiLinkDestination(
+            target,
+            anchor,
+            wikiLinkLookup ?? EMPTY_WIKI_LINK_LOOKUP,
+          );
+          if (!destination) return false;
           event.preventDefault();
-          if (classified.kind === 'external') {
+          if (destination.kind === 'external') {
             // Route through the desktop bridge so the OS default browser opens
             // the URL (web falls back to window.open) — symmetric with the
-            // WYSIWYG wiki-link chip. classifyWikiLinkTarget admits any URI
-            // scheme via isExternalHref; openExternalUrl refuses unsafe
-            // schemes internally, so an authored javascript:/data: href is
-            // dropped there (the event is already consumed via preventDefault).
-            openExternalUrl(classified.url);
-          } else if (classified.kind === 'asset') {
-            const assetPath =
-              resolveWikiLinkAssetTarget(
-                classified.url,
-                new Set(
-                  (pagesCache ?? [])
-                    .filter((item) => item.kind === 'asset')
-                    .map((item) => item.docName.replace(/^\//, '')),
-                ),
-              ) ?? classified.url.replace(/^\//, '');
-            if (shouldOpenInNewTab(event)) {
-              window.open(hashFromAssetPath(assetPath), '_blank', 'noopener,noreferrer');
-            } else {
-              window.location.hash = hashFromAssetPath(assetPath);
-            }
+            // WYSIWYG wiki-link chip. Classification admits any URI scheme via
+            // isExternalHref; openExternalUrl refuses unsafe schemes
+            // internally, so an authored javascript:/data: href is dropped
+            // there (the event is already consumed via preventDefault).
+            openExternalUrl(destination.url);
           } else if (shouldOpenInNewTab(event)) {
-            openInternalHashHrefInNewTab(classified);
+            openHashHrefInNewTab(destination.href);
           } else {
-            window.location.hash = hashFromDocName(classified.docName, classified.anchor);
+            window.location.hash = destination.href;
           }
         }
         return true;

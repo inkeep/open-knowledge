@@ -182,8 +182,9 @@ function slugResolve(
 /**
  * Bare-name basename fallback. When the target has no path separator,
  * look up its slug against the basename-keyed index so `[[analysis]]`
- * resolves to `andrew-data/project-x/analysis`. Alphabetical-first on
- * basename collision is baked into the index build. Targets containing
+ * resolves to `andrew-data/project-x/analysis`. The tie-break on basename
+ * collision is baked into the index build, so this resolver and the chip's
+ * resolver cannot disagree about the winner. Targets containing
  * `/` skip this branch — a typed path that doesn't exact-match must
  * not silently rewrite to a same-leaf file in a different folder.
  */
