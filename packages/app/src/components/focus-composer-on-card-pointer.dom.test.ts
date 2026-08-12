@@ -26,7 +26,10 @@ function harness() {
 
   let prevented = 0;
   let focused = 0;
-  const inputRef = { current: { focus: () => (focused += 1) } };
+  let focusedEnd = 0;
+  const inputRef: { current: { focus: () => void; focusEnd?: () => void } } = {
+    current: { focus: () => (focused += 1) },
+  };
   const press = (target: HTMLElement) => {
     focusComposerInputOnCardPointer(
       { target, currentTarget: card, preventDefault: () => (prevented += 1) },
@@ -39,7 +42,10 @@ function harness() {
     control,
     portaledRow,
     press,
-    counts: () => ({ prevented, focused }),
+    withFocusEnd: () => {
+      inputRef.current.focusEnd = () => (focusedEnd += 1);
+    },
+    counts: () => ({ prevented, focused, focusedEnd }),
   };
 }
 
@@ -53,13 +59,23 @@ describe('the composer card pointer affordance', () => {
     // text-selection drag starts on the padding.
     const { padding, press, counts } = harness();
     press(padding);
-    expect(counts()).toEqual({ prevented: 1, focused: 1 });
+    expect(counts()).toEqual({ prevented: 1, focused: 1, focusedEnd: 0 });
+  });
+
+  test('a handle offering focusEnd gets the caret-at-end path, not plain focus', () => {
+    // Clicking dead space means "continue typing" — the real composer handle
+    // (which offers focusEnd) must land the caret at the END of the draft,
+    // never wherever the last selection sat (e.g. before a leading pill).
+    const { padding, press, withFocusEnd, counts } = harness();
+    withFocusEnd();
+    press(padding);
+    expect(counts()).toEqual({ prevented: 1, focused: 0, focusedEnd: 1 });
   });
 
   test("a press on a control the card owns is the control's", () => {
     const { control, press, counts } = harness();
     press(control);
-    expect(counts()).toEqual({ prevented: 0, focused: 0 });
+    expect(counts()).toEqual({ prevented: 0, focused: 0, focusedEnd: 0 });
   });
 
   test('a press inside a portaled floater is left alone', () => {
@@ -67,6 +83,6 @@ describe('the composer card pointer affordance', () => {
     // submenu layer before the row's `click` landed — so the pick was lost.
     const { portaledRow, press, counts } = harness();
     press(portaledRow);
-    expect(counts()).toEqual({ prevented: 0, focused: 0 });
+    expect(counts()).toEqual({ prevented: 0, focused: 0, focusedEnd: 0 });
   });
 });

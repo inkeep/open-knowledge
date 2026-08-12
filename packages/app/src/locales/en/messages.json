@@ -434,6 +434,7 @@
     "62bOuM": ["Latest edit"],
     "636K3K": ["Delete adjacent chip"],
     "64sesb": ["Callouts draw attention to key information."],
+    "67Dpmh": ["Slash command suggestions"],
     "67TEhP": [
       "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
     ],
@@ -650,6 +651,7 @@
     "9KooKn": ["Run a project audit from the Problems panel."],
     "9NJWgv": ["Backlinks"],
     "9OIqw4": ["You don't have write access to this repo."],
+    "9OPs7U": ["This agent hasn't announced its commands yet"],
     "9PQysm": ["Hide advanced"],
     "9R7pRC": ["No tags match \"", ["trimmed"], "\". Continue typing to create one."],
     "9UQ730": ["Clone"],
@@ -1788,6 +1790,7 @@
     "Q7cNKe": ["Skills are now shared. Commit .ok/skills to share them with your team."],
     "Q7xfEj": ["done"],
     "Q8A-U_": ["Connected to"],
+    "Q9AxTM": ["This agent doesn't offer slash commands — your message will be sent as plain text"],
     "QASTNu": [
       "The ",
       ["editor"],
@@ -1828,6 +1831,7 @@
     "QlAG4m": ["Tell us more (optional)"],
     "QlkiD5": ["Re-place on selected text"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
+    "QohqVL": ["This agent doesn't offer slash commands"],
     "QpSqAP": [
       "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
     ],
@@ -3402,6 +3406,7 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
     "mAzs2H": ["Disable ", ["file"]],
+    "mBK8zm": ["/", ["0"], " isn't a command this agent offers — it will be sent as plain text"],
     "mBltnd": ["Path suggestions"],
     "mCB6Je": ["Select All"],
     "mGaZwZ": ["See the full install guide"],
@@ -3589,6 +3594,7 @@
       "The terminal is turned off for this project. Turn it back on to run commands here."
     ],
     "oZUYMv": ["Couldn’t restore ", ["0"], ". That name is already in use."],
+    "odYWGJ": ["No matching commands"],
     "of3tF-": [
       "You picked ~/Documents. OpenKnowledge will index every markdown file under it. If you only want to manage a sub-folder, choose a smaller scope."
     ],

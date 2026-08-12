@@ -499,6 +499,7 @@
     "62bOuM": ["Última edição"],
     "636K3K": ["Excluir o chip ao lado"],
     "64sesb": ["Os destaques chamam atenção para as informações principais."],
+    "67Dpmh": ["Sugestões de comandos de barra"],
     "67TEhP": [
       "Suas pastas de habilidades de nível de usuário — disponíveis em todos os projetos deste computador. O menu de instalação de cada habilidade controla onde ela fica."
     ],
@@ -741,6 +742,7 @@
     "9KooKn": ["Rode uma auditoria do projeto pelo painel Problemas."],
     "9NJWgv": ["Retrolinks"],
     "9OIqw4": ["Você não tem acesso de escrita a este repositório."],
+    "9OPs7U": ["Este agente ainda não anunciou seus comandos"],
     "9PQysm": ["Ocultar as opções avançadas"],
     "9R7pRC": [
       "Nenhuma tag corresponde a \"",
@@ -2023,6 +2025,9 @@
     ],
     "Q7xfEj": ["pronto"],
     "Q8A-U_": ["Conectado a"],
+    "Q9AxTM": [
+      "Este agente não oferece comandos de barra — sua mensagem será enviada como texto simples"
+    ],
     "QASTNu": [
       "A pasta do ",
       ["editor"],
@@ -2069,6 +2074,7 @@
     "QlAG4m": ["Conte mais (opcional)"],
     "QlkiD5": ["Reposicionar no texto selecionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
+    "QohqVL": ["Este agente não oferece comandos de barra"],
     "QpSqAP": [
       "O shell real está desativado para este projeto. Ativá-lo faz os comandos rodarem com todo o acesso da sua conta de usuário."
     ],
@@ -3847,6 +3853,11 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["O conteúdo do painel ativo da aba selecionada aparece aqui."],
     "mAzs2H": ["Desativar ", ["file"]],
+    "mBK8zm": [
+      "/",
+      ["0"],
+      " não é um comando oferecido por este agente — será enviado como texto simples"
+    ],
     "mBltnd": ["Sugestões de caminho"],
     "mCB6Je": ["Selecionar tudo"],
     "mGaZwZ": ["Ver o guia de instalação completo"],
@@ -4052,6 +4063,7 @@
     ],
     "oYepHb": ["O terminal está desligado neste projeto. Ligue de novo para rodar comandos aqui."],
     "oZUYMv": ["Não foi possível restaurar ", ["0"], ". Esse nome já está em uso."],
+    "odYWGJ": ["Nenhum comando correspondente"],
     "of3tF-": [
       "Você escolheu ~/Documents. O OpenKnowledge vai indexar todos os arquivos markdown que estiverem lá dentro. Se quiser cuidar só de uma subpasta, escolha um escopo menor."
     ],

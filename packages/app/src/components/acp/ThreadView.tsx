@@ -2937,6 +2937,11 @@ function ThreadComposer({
                 : t`Message ${agentName}`
           }
           disabled={composerDisabled}
+          // The advertised slash-command corpus: null until the agent's
+          // `available_commands_update` arrives, then the live list. Passing it
+          // (vs omitting) is what mounts the `/` autocomplete — only this
+          // surface dispatches to an agent that can execute commands.
+          slashCommands={info.availableCommands ?? null}
           // The wrapper alone renders the field chrome and focus ring; this is a
           // bare scrolling text region sized to the old textarea (single slim
           // line at rest, capped growth). Full width — the action bar sits on

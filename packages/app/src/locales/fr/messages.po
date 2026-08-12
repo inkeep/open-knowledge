@@ -886,6 +886,11 @@ msgstr "{userName}, {tabCount, plural, one {# onglet simultané} many {# onglets
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, one {mot} many {mots} other {mots}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} n'est pas une commande proposée par cet agent — elle sera envoyée comme texte brut"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// note"
@@ -7876,6 +7881,10 @@ msgstr "Aucune correspondance. Certains fichiers sont exclus de la recherche (fi
 msgid "No matching branches."
 msgstr "Aucune branche correspondante."
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "Aucune commande correspondante"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "Aucune commande correspondante."
@@ -11230,6 +11239,10 @@ msgstr "Téléchargement de {0} ignoré."
 msgid "Slash command menu"
 msgstr "Menu des commandes slash"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "Suggestions de commandes slash"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "Commandes slash"
@@ -12307,6 +12320,18 @@ msgstr "Ce {targetNoun} a été partagé depuis la branche <0>{shareBranch}</0>.
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "Ce {targetNoun} a été partagé depuis la branche <0>{shareBranch}</0>. Vous êtes actuellement sur <1>{currentLabel}</1>."
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "Cet agent ne propose pas de commandes slash"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "Cet agent ne propose pas de commandes slash — votre message sera envoyé comme texte brut"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "Cet agent n'a pas encore annoncé ses commandes"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

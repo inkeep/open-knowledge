@@ -886,6 +886,11 @@ msgstr "{userName}，{tabCount, plural, other {# 个并发标签页}}"
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, other {词}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} 不是此智能体提供的命令 — 将作为纯文本发送"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// 注释"
@@ -7876,6 +7881,10 @@ msgstr "没有匹配项。部分文件不参与搜索（隐藏或被忽略的文
 msgid "No matching branches."
 msgstr "没有匹配的分支。"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "没有匹配的命令"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "没有匹配的命令。"
@@ -11230,6 +11239,10 @@ msgstr "已跳过下载 {0}。"
 msgid "Slash command menu"
 msgstr "斜杠命令菜单"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "斜杠命令建议"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "斜杠命令"
@@ -12307,6 +12320,18 @@ msgstr "这个{targetNoun}是从 <0>{shareBranch}</0> 分支共享的。它在�
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "这个{targetNoun}是从 <0>{shareBranch}</0> 分支共享的。你当前在 <1>{currentLabel}</1> 上。"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "此智能体不提供斜杠命令"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "此智能体不提供斜杠命令 — 你的消息将作为纯文本发送"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "此智能体尚未公布其命令"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

@@ -17,6 +17,7 @@
  */
 
 import type {
+  AvailableCommand,
   ContentBlock,
   PermissionOption,
   PromptCapabilities,
@@ -161,6 +162,15 @@ export interface ThreadInfo {
    * `config_option_update` / set response replaces it wholesale.
    */
   configOptions?: SessionConfigOption[] | null;
+  /**
+   * Slash commands the agent advertised over `available_commands_update`
+   * (the composer's `/` autocomplete corpus). Each update replaces the list
+   * wholesale — it is the agent's authoritative current set. `[]` means the
+   * agent said it has zero commands; null or absent means no update has
+   * arrived yet — "not yet known" is a different answer than "none", and the
+   * composer renders the two differently.
+   */
+  availableCommands?: AvailableCommand[] | null;
   /** Last event seq in the server's retained log (replay upper bound). */
   lastSeq: number;
   /**
@@ -658,6 +668,7 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
 
 /** Type-only re-exports the app's renderer needs alongside the frames. */
 export type {
+  AvailableCommand,
   ContentBlock,
   PermissionOption,
   PromptCapabilities,

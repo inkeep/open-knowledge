@@ -886,6 +886,11 @@ msgstr "{userName}, {tabCount, plural, one {# একযোগে ট্যাব
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, one {শব্দ} other {শব্দ}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} এই এজেন্টের দেওয়া কোনো কমান্ড নয় — এটি সাধারণ টেক্সট হিসেবে পাঠানো হবে"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// নোট"
@@ -7872,6 +7877,10 @@ msgstr "কোনো মিল নেই। কিছু ফাইল অনু�
 msgid "No matching branches."
 msgstr "মিলে যাওয়া কোনো ব্রাঞ্চ নেই।"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "কোনো মিলে যাওয়া কমান্ড নেই"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "মিলে যাওয়া কোনো কমান্ড নেই।"
@@ -11226,6 +11235,10 @@ msgstr "{0} ডাউনলোড এড়িয়ে যাওয়া হ�
 msgid "Slash command menu"
 msgstr "স্ল্যাশ কমান্ড মেনু"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "স্ল্যাশ কমান্ডের প্রস্তাবনা"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "স্ল্যাশ কমান্ড"
@@ -12303,6 +12316,18 @@ msgstr "এই {targetNoun} ব্রাঞ্চ <0>{shareBranch}</0> থেক
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "এই {targetNoun} ব্রাঞ্চ <0>{shareBranch}</0> থেকে ভাগ করা হয়েছিল। আপনি এখন <1>{currentLabel}</1>-এ আছেন।"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "এই এজেন্ট স্ল্যাশ কমান্ড দেয় না"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "এই এজেন্ট স্ল্যাশ কমান্ড দেয় না — আপনার বার্তা সাধারণ টেক্সট হিসেবে পাঠানো হবে"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "এই এজেন্ট এখনও তার কমান্ড ঘোষণা করেনি"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

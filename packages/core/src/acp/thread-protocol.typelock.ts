@@ -10,6 +10,7 @@
 
 import type {
   AuthMethod,
+  AvailableCommand,
   ClientCapabilities,
   CreateTerminalRequest,
   EnvVariable,
@@ -49,6 +50,25 @@ export type PinSessionUpdateKinds = Expect<
     | 'session_info_update'
     | 'usage_update'
   >
+>;
+
+// Dependents: the thread manager forwards `availableCommands` verbatim onto
+// `ThreadInfo.availableCommands`, and the composer's `/` autocomplete filters
+// on `name` and renders `description` per row. `name` going optional would
+// break token recognition; a reshaped update would silently stop the capture.
+type AvailableCommandsUpdate = Extract<
+  SessionUpdate,
+  { sessionUpdate: 'available_commands_update' }
+>;
+export type PinAvailableCommandsList = Expect<
+  Equal<AvailableCommandsUpdate['availableCommands'], AvailableCommand[]>
+>;
+export type PinAvailableCommandName = Expect<Equal<AvailableCommand['name'], string>>;
+export type PinAvailableCommandDescription = Expect<Equal<AvailableCommand['description'], string>>;
+// The composer's in-field ghost text prefers `input.hint` (ACP's "hint to
+// display when the input hasn't been provided yet") over the description.
+export type PinAvailableCommandInputHint = Expect<
+  Equal<Extract<NonNullable<AvailableCommand['input']>, { hint: string }>['hint'], string>
 >;
 
 // Dependents: `resolvePermissionOutcome` classifies by kind PREFIX

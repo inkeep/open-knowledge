@@ -886,6 +886,11 @@ msgstr "{userName}, {tabCount, plural, other {# tab bersamaan}}"
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, other {kata}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} bukan perintah yang ditawarkan agen ini — akan dikirim sebagai teks biasa"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// catatan"
@@ -7872,6 +7877,10 @@ msgstr "Tidak ada kecocokan. Sebagian berkas dikecualikan dari pencarian (berkas
 msgid "No matching branches."
 msgstr "Tidak ada cabang yang cocok."
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "Tidak ada perintah yang cocok"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "Tidak ada perintah yang cocok."
@@ -11226,6 +11235,10 @@ msgstr "Unduhan {0} dilewati."
 msgid "Slash command menu"
 msgstr "Menu perintah garis miring"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "Saran perintah garis miring"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "Perintah garis miring"
@@ -12303,6 +12316,18 @@ msgstr "{targetNoun} ini dibagikan dari cabang <0>{shareBranch}</0>. Ia tidak ad
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "{targetNoun} ini dibagikan dari cabang <0>{shareBranch}</0>. Anda sekarang berada di <1>{currentLabel}</1>."
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "Agen ini tidak menawarkan perintah garis miring"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "Agen ini tidak menawarkan perintah garis miring — pesan Anda akan dikirim sebagai teks biasa"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "Agen ini belum mengumumkan perintahnya"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

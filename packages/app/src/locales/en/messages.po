@@ -886,6 +886,11 @@ msgstr "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurren
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, one {word} other {words}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} isn't a command this agent offers — it will be sent as plain text"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// note"
@@ -7876,6 +7881,10 @@ msgstr "No matches. Some files are excluded from search (hidden or ignored files
 msgid "No matching branches."
 msgstr "No matching branches."
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "No matching commands"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "No matching commands."
@@ -11230,6 +11239,10 @@ msgstr "Skipped downloading {0}."
 msgid "Slash command menu"
 msgstr "Slash command menu"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "Slash command suggestions"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "Slash commands"
@@ -12307,6 +12320,18 @@ msgstr "This {targetNoun} was shared from branch <0>{shareBranch}</0>. It doesn'
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "This agent doesn't offer slash commands"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "This agent doesn't offer slash commands — your message will be sent as plain text"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "This agent hasn't announced its commands yet"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

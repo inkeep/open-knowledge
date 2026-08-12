@@ -86,7 +86,7 @@ export function ComposerMentionMenu({
           id={listboxId}
           aria-label={t`Doc mention suggestions`}
           tabIndex={-1}
-          className="max-h-64 overflow-y-auto subtle-scrollbar"
+          className="max-h-64 overflow-y-auto overscroll-contain subtle-scrollbar"
         >
           {/*
             Live region announces the selected item on arrow navigation.

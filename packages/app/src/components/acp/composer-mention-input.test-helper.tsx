@@ -46,6 +46,12 @@ export function MockComposerMentionInput({
   const notify = () => onEmptyChange((localRef.current?.value.trim() ?? '') === '');
   useImperativeHandle(ref, () => ({
     focus: () => localRef.current?.focus(),
+    focusEnd: () => {
+      const el = localRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    },
     blur: () => localRef.current?.blur(),
     clear: () => {
       if (localRef.current) localRef.current.value = '';

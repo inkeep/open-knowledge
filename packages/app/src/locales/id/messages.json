@@ -435,6 +435,7 @@
     "62bOuM": ["Suntingan terakhir"],
     "636K3K": ["Hapus chip di sebelahnya"],
     "64sesb": ["Kotak sorot menarik perhatian ke informasi penting."],
+    "67Dpmh": ["Saran perintah garis miring"],
     "67TEhP": [
       "Folder keterampilan tingkat pengguna Anda — tersedia di setiap proyek pada komputer ini. Menu pemasangan tiap keterampilan menentukan di mana ia berada."
     ],
@@ -653,6 +654,7 @@
     "9KooKn": ["Jalankan audit proyek dari panel Masalah."],
     "9NJWgv": ["Tautan balik"],
     "9OIqw4": ["Anda tidak punya akses tulis ke repo ini."],
+    "9OPs7U": ["Agen ini belum mengumumkan perintahnya"],
     "9PQysm": ["Sembunyikan opsi lanjutan"],
     "9R7pRC": [
       "Tidak ada tag yang cocok dengan \"",
@@ -1799,6 +1801,9 @@
     ],
     "Q7xfEj": ["selesai"],
     "Q8A-U_": ["Terhubung ke"],
+    "Q9AxTM": [
+      "Agen ini tidak menawarkan perintah garis miring — pesan Anda akan dikirim sebagai teks biasa"
+    ],
     "QASTNu": [
       "Folder ",
       ["editor"],
@@ -1841,6 +1846,7 @@
     "QlAG4m": ["Ceritakan lebih banyak (opsional)"],
     "QlkiD5": ["Tempatkan ulang pada teks terpilih"],
     "QlxHAH": ["Menampilkan hasil untuk \"", ["semanticResultsLabel"], "\""],
+    "QohqVL": ["Agen ini tidak menawarkan perintah garis miring"],
     "QpSqAP": [
       "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
     ],
@@ -3440,6 +3446,11 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Isi panel aktif untuk tab yang dipilih muncul di sini."],
     "mAzs2H": ["Nonaktifkan ", ["file"]],
+    "mBK8zm": [
+      "/",
+      ["0"],
+      " bukan perintah yang ditawarkan agen ini — akan dikirim sebagai teks biasa"
+    ],
     "mBltnd": ["Saran jalur"],
     "mCB6Je": ["Pilih Semua"],
     "mGaZwZ": ["Lihat panduan pemasangan lengkap"],
@@ -3621,6 +3632,7 @@
       "Terminal dimatikan untuk proyek ini. Nyalakan lagi untuk menjalankan perintah di sini."
     ],
     "oZUYMv": [["0"], " tidak dapat dipulihkan. Nama itu sudah digunakan."],
+    "odYWGJ": ["Tidak ada perintah yang cocok"],
     "of3tF-": [
       "Anda memilih ~/Documents. OpenKnowledge akan mengindeks setiap berkas markdown di bawahnya. Jika Anda hanya ingin mengelola sebuah subfolder, pilih cakupan yang lebih kecil."
     ],

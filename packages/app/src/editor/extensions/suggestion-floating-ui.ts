@@ -7,6 +7,33 @@ export interface SuggestionPositionState {
 }
 
 /**
+ * How many selectable items the currently-open suggestion picker holds, keyed
+ * by the ProseMirror view it is attached to. The COMPOSER pickers (`@` and
+ * `/`) publish this so the composer's Enter guard can defer to the picker only
+ * when there is something to commit: the suggestion plugin's `active` state is
+ * regex-derived and stays true over an EMPTY result list, and a deferred Enter
+ * with nothing to select falls through to TipTap's core `splitBlock` — the
+ * user reads "press Enter to send", presses it, and gets a blank line instead.
+ * At most one picker is open per view (distinct trigger chars), so a single
+ * slot per view suffices. Document-editor pickers don't publish: their Enter
+ * fallthrough is a real newline, which is correct there.
+ */
+const suggestionSelectableCounts = new WeakMap<object, number>();
+
+export function setSuggestionSelectableCount(view: object, count: number): void {
+  suggestionSelectableCounts.set(view, count);
+}
+
+export function clearSuggestionSelectableCount(view: object): void {
+  suggestionSelectableCounts.delete(view);
+}
+
+/** True when the open picker on this view has at least one selectable item. */
+export function suggestionHasSelectableItem(view: object): boolean {
+  return (suggestionSelectableCounts.get(view) ?? 0) > 0;
+}
+
+/**
  * Create a positioned suggestion popup element and its positioning helpers.
  * Shared by slash-command and wiki-link suggestion menus.
  *

@@ -523,6 +523,7 @@
     "62bOuM": ["Dernière modification"],
     "636K3K": ["Supprimer la puce adjacente"],
     "64sesb": ["Les encadrés attirent l'attention sur les informations essentielles."],
+    "67Dpmh": ["Suggestions de commandes slash"],
     "67TEhP": [
       "Vos dossiers de compétences au niveau utilisateur — disponibles dans tous les projets de cette machine. Le menu d'installation de chaque compétence détermine où elle réside."
     ],
@@ -773,6 +774,7 @@
     "9KooKn": ["Lancez un audit du projet depuis le panneau Problèmes."],
     "9NJWgv": ["Rétroliens"],
     "9OIqw4": ["Vous n'avez pas d'accès en écriture à ce dépôt."],
+    "9OPs7U": ["Cet agent n'a pas encore annoncé ses commandes"],
     "9PQysm": ["Masquer les options avancées"],
     "9R7pRC": [
       "Aucune étiquette ne correspond à « ",
@@ -2076,6 +2078,9 @@
     ],
     "Q7xfEj": ["terminé"],
     "Q8A-U_": ["Connecté à"],
+    "Q9AxTM": [
+      "Cet agent ne propose pas de commandes slash — votre message sera envoyé comme texte brut"
+    ],
     "QASTNu": [
       "Le dossier ",
       ["editor"],
@@ -2122,6 +2127,7 @@
     "QlAG4m": ["Dites-nous en plus (facultatif)"],
     "QlkiD5": ["Replacer sur le texte sélectionné"],
     "QlxHAH": ["Résultats pour « ", ["semanticResultsLabel"], " »"],
+    "QohqVL": ["Cet agent ne propose pas de commandes slash"],
     "QpSqAP": [
       "Le vrai shell est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur."
     ],
@@ -3964,6 +3970,11 @@
     "m2T1Xj": ["Étiquette #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Le contenu du panneau actif de l'onglet sélectionné s'affiche ici."],
     "mAzs2H": ["Désactiver ", ["file"]],
+    "mBK8zm": [
+      "/",
+      ["0"],
+      " n'est pas une commande proposée par cet agent — elle sera envoyée comme texte brut"
+    ],
     "mBltnd": ["Suggestions de chemins"],
     "mCB6Je": ["Tout sélectionner"],
     "mGaZwZ": ["Voir le guide d'installation complet"],
@@ -4169,6 +4180,7 @@
       "Le terminal est désactivé pour ce projet. Réactivez-le pour exécuter des commandes ici."
     ],
     "oZUYMv": ["Impossible de restaurer ", ["0"], ". Ce nom est déjà utilisé."],
+    "odYWGJ": ["Aucune commande correspondante"],
     "of3tF-": [
       "Vous avez choisi ~/Documents. OpenKnowledge indexera chaque fichier markdown qui s'y trouve. Si vous ne voulez gérer qu'un sous-dossier, choisissez une portée plus restreinte."
     ],

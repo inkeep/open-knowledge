@@ -501,6 +501,7 @@
     "62bOuM": ["Última edición"],
     "636K3K": ["Eliminar el chip contiguo"],
     "64sesb": ["Los avisos destacan la información clave."],
+    "67Dpmh": ["Sugerencias de comandos de barra"],
     "67TEhP": [
       "Tus carpetas de habilidades de nivel de usuario: disponibles en todos los proyectos de este equipo. El menú de instalación de cada habilidad controla dónde vive."
     ],
@@ -745,6 +746,7 @@
     "9KooKn": ["Ejecuta una auditoría del proyecto desde el panel Problemas."],
     "9NJWgv": ["Retroenlaces"],
     "9OIqw4": ["No tienes acceso de escritura a este repositorio."],
+    "9OPs7U": ["Este agente aún no ha anunciado sus comandos"],
     "9PQysm": ["Ocultar opciones avanzadas"],
     "9R7pRC": [
       "Ninguna etiqueta coincide con \"",
@@ -2045,6 +2047,9 @@
     ],
     "Q7xfEj": ["listo"],
     "Q8A-U_": ["Conectado a"],
+    "Q9AxTM": [
+      "Este agente no ofrece comandos de barra — tu mensaje se enviará como texto sin formato"
+    ],
     "QASTNu": [
       "La carpeta de ",
       ["editor"],
@@ -2093,6 +2098,7 @@
     "QlAG4m": ["Cuéntanos más (opcional)"],
     "QlkiD5": ["Volver a colocar sobre el texto seleccionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
+    "QohqVL": ["Este agente no ofrece comandos de barra"],
     "QpSqAP": [
       "El shell real está desactivado para este proyecto. Al activarlo, los comandos se ejecutan con todo el acceso de tu cuenta de usuario."
     ],
@@ -3923,6 +3929,11 @@
     "m2T1Xj": ["Etiqueta #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Aquí se muestra el contenido del panel activo de la pestaña seleccionada."],
     "mAzs2H": ["Desactivar ", ["file"]],
+    "mBK8zm": [
+      "/",
+      ["0"],
+      " no es un comando que ofrezca este agente — se enviará como texto sin formato"
+    ],
     "mBltnd": ["Sugerencias de rutas"],
     "mCB6Je": ["Seleccionar todo"],
     "mGaZwZ": ["Ver la guía de instalación completa"],
@@ -4130,6 +4141,7 @@
       "La terminal está desactivada en este proyecto. Vuelve a activarla para ejecutar comandos aquí."
     ],
     "oZUYMv": ["No se pudo restaurar ", ["0"], ". Ese nombre ya está en uso."],
+    "odYWGJ": ["No hay comandos coincidentes"],
     "of3tF-": [
       "Elegiste ~/Documents. OpenKnowledge indexará todos los archivos markdown que haya debajo. Si solo quieres gestionar una subcarpeta, elige un alcance más pequeño."
     ],

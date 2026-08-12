@@ -1383,6 +1383,39 @@
   text-overflow: ellipsis; /* truncate */
 }
 
+/* The composer's leading `/command` token (decoration-styled text, not a chip
+   node — see composer-slash-command.ts). Both states pair a SHAPE cue with the
+   color so recognized vs unrecognized never rides color alone: recognized is a
+   filled pill (like a chip), unrecognized a dashed underline (the "unresolved
+   reference" idiom); the hint line under the field carries the textual
+   explanation. */
+.composer-slash-token {
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.composer-slash-token-known {
+  background-color: color-mix(in oklab, var(--primary) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 28%, transparent);
+  color: var(--foreground);
+  padding: 0.0625rem 0.125rem;
+}
+.composer-slash-token-unknown {
+  color: var(--muted-foreground);
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+}
+/* In-field argument-hint ghost after a bare recognized /command (the
+   terminal-CLI idiom): inert, dimmed, never a pointer target, gone the moment
+   an argument is typed (the decoration recomputes per transaction). */
+.composer-slash-ghost {
+  margin-left: 0.5ch;
+  color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+}
+
 .ProseMirror [data-mark-view-content] {
   @apply truncate;
 }

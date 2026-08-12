@@ -180,6 +180,25 @@ const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
  */
 const AUTH_REQUIRED_CODE = -32000;
 
+/**
+ * Environment note prepended (on the wire only — the transcript echoes the
+ * user's text) to the first NON-COMMAND prompt of every NEW agent session.
+ * Agents assume they run inside their own terminal app and confidently
+ * recommend host features that don't exist here (Claude suggesting `/tasks`,
+ * `Ctrl+O`). Telling the agent where it actually runs reduces those bad
+ * recommendations — it cannot eliminate them (steering a model, not
+ * sandboxing it). A prompt opening with `/` defers the note (ACP command
+ * dispatch is prefix-based; prepending would break the invocation), and
+ * resumed sessions are skipped: their first turn already carried it.
+ */
+export const ACP_ENVIRONMENT_NOTE =
+  'Note on your environment: you are running inside the OpenKnowledge app, ' +
+  'connected over ACP (Agent Client Protocol) — not inside your own terminal app. ' +
+  "Your host CLI's terminal UI is not present, so its built-in slash commands " +
+  '(such as /tasks or /bashes) and keyboard shortcuts (such as Ctrl+O) do not ' +
+  'exist here; never recommend them. The only slash commands available to the ' +
+  'user are the ones you advertise over ACP.';
+
 export class ThreadOpError extends Error {
   readonly code:
     | 'unknown-thread'
@@ -307,6 +326,13 @@ interface ThreadRecord {
    * falls back to the prompt content.
    */
   titleHint?: string;
+  /**
+   * The next dispatched prompt is the first of a NEW agent session and must
+   * carry {@link ACP_ENVIRONMENT_NOTE} on the wire. Set when `session/new`
+   * succeeds, consumed by the first dispatch, never set on resume/load — a
+   * resumed session's first turn already carried the note.
+   */
+  envNotePending: boolean;
 }
 
 /** A `probeHarnessManagedMcpEntry` hit — where OK's own managed entry was found. */
@@ -623,6 +649,7 @@ export class AcpThreadManager {
         promptCapabilities: null,
         modes: null,
         configOptions: null,
+        availableCommands: null,
         lastSeq: -1,
         archived: false,
       },
@@ -661,6 +688,7 @@ export class AcpThreadManager {
       closed: false,
       hadUserMessage: false,
       titleHint: params.titleHint,
+      envNotePending: false,
     };
     this.threads.set(threadId, record);
     this.emitStatus(record, 'installing');
@@ -1286,6 +1314,10 @@ export class AcpThreadManager {
     init: InitializeResponse,
     settings?: { config?: Record<string, string | boolean>; modeId?: string },
   ): Promise<boolean> {
+    // A fresh session invalidates whatever a previous one advertised (retry
+    // and post-authenticate reopen reach here with a dead session's list) —
+    // back to "not yet known" until this session's update arrives.
+    record.info.availableCommands = null;
     const mcpServers = await this.buildMcpServers(record, init);
     try {
       const session = await conn.agent.request(acpMethods.agent.session.new, {
@@ -1293,6 +1325,8 @@ export class AcpThreadManager {
         mcpServers,
       });
       record.sessionId = session.sessionId;
+      // A brand-new session: its first prompt carries the environment note.
+      record.envNotePending = true;
       this.persistence.queueMetaWrite(record.info.threadId, this.buildMeta(record));
       if (session.modes !== undefined && session.modes !== null) {
         record.info.modes = session.modes;
@@ -1383,6 +1417,10 @@ export class AcpThreadManager {
       }
       t.info.agent = agentInfo;
       t.info.archived = false;
+      // The pre-archive command list described a session that no longer
+      // exists — back to "not yet known" until the respawned agent advertises
+      // (there is no resume-response field for commands, unlike modes).
+      t.info.availableCommands = null;
       t.stderrTail = [];
       if (t.midTurnOnDisk) {
         // The persisted log ended inside a turn (crash mid-stream) — close
@@ -1946,6 +1984,19 @@ export class AcpThreadManager {
     if (opts.echo) {
       this.echoUserMessage(t, content);
     }
+    // Wire-only injection: the transcript (echo above) keeps the user's text;
+    // the agent additionally receives the environment note ahead of the first
+    // prompt of a new session. After the echo, so title derivation and the
+    // `user_message` event never see the note. A prompt that OPENS with `/`
+    // is skipped — ACP command dispatch is prefix-based (adapters gate on the
+    // first text block starting with `/`), so prepending anything would turn
+    // a command invocation into prose; the note stays pending and rides the
+    // next non-command prompt instead.
+    let wireText = content;
+    if (t.envNotePending && !content.startsWith('/')) {
+      t.envNotePending = false;
+      wireText = `${ACP_ENVIRONMENT_NOTE}\n\n${content}`;
+    }
     t.turnActive = true;
     t.cancelRequested = false;
     this.appendEvent(t, { kind: 'turn_started', ts: Date.now() });
@@ -1955,7 +2006,7 @@ export class AcpThreadManager {
     t.conn.agent
       .request(acpMethods.agent.session.prompt, {
         sessionId,
-        prompt: [{ type: 'text', text: content }],
+        prompt: [{ type: 'text', text: wireText }],
       })
       .then((response) => {
         t.turnActive = false;
@@ -2456,6 +2507,10 @@ export class AcpThreadManager {
       record.info.configOptions = update.configOptions;
       this.emitInfo(record);
     }
+    if (update.sessionUpdate === 'available_commands_update') {
+      record.info.availableCommands = update.availableCommands;
+      this.emitInfo(record);
+    }
     if (record.suppressUpdates) {
       // A session/load replay — every update duplicates the retained log
       // (which is richer: permission events, statuses). Live state above
@@ -2924,6 +2979,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     // without a fresh prompt must archive again, never discard. Treat every
     // rehydrated record as having received a message.
     hadUserMessage: true,
+    envNotePending: false,
   };
 }
 

@@ -886,6 +886,11 @@ msgstr "{userName}, {tabCount, plural, one {# aba simultânea} many {# abas simu
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, one {palavra} many {palavras} other {palavras}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} não é um comando oferecido por este agente — será enviado como texto simples"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// nota"
@@ -7872,6 +7877,10 @@ msgstr "Sem correspondências. Alguns arquivos ficam fora da busca (arquivos ocu
 msgid "No matching branches."
 msgstr "Nenhum ramo corresponde."
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "Nenhum comando correspondente"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "Nenhum comando corresponde."
@@ -11226,6 +11235,10 @@ msgstr "O download de {0} foi pulado."
 msgid "Slash command menu"
 msgstr "Menu de comandos de barra"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "Sugestões de comandos de barra"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "Comandos de barra"
@@ -12303,6 +12316,18 @@ msgstr "Este {targetNoun} foi compartilhado a partir do ramo <0>{shareBranch}</0
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "Este {targetNoun} foi compartilhado a partir do ramo <0>{shareBranch}</0>. Você está agora em <1>{currentLabel}</1>."
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "Este agente não oferece comandos de barra"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "Este agente não oferece comandos de barra — sua mensagem será enviada como texto simples"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "Este agente ainda não anunciou seus comandos"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

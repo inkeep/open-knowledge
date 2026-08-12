@@ -17,9 +17,10 @@
  * placeholder + send-enabled state.
  */
 
+import { useLingui } from '@lingui/react/macro';
 import type { JSONContent } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
-import { type Ref, useEffect, useImperativeHandle, useRef } from 'react';
+import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { clearComposerDraft } from '@/components/composer-draft-store';
 import {
   composerMentionExtensions,
@@ -27,6 +28,16 @@ import {
   isComposerEmpty,
   serializeComposerContent,
 } from '@/editor/composer-mention/composer-mention';
+import {
+  composerFirstLineText,
+  composerSlashSuggestionKey,
+  getSlashCommands,
+  resolveSlashTokenHint,
+  type SlashCommandItem,
+  type SlashTokenHint,
+  setSlashCommands,
+} from '@/editor/composer-mention/composer-slash-command';
+import { suggestionHasSelectableItem } from '@/editor/extensions/suggestion-floating-ui';
 import { cn } from '@/lib/utils';
 
 /** Whether a seed document has any node with inline content — mirrors the
@@ -52,6 +63,11 @@ interface ComposerEditorView {
 
 export interface ComposerMentionInputHandle {
   focus: () => void;
+  /** Focus with the caret at the END of the draft — the card-whitespace
+   *  affordance ("click the dead space, continue typing"), matching the
+   *  chat-composer convention. Plain `focus()` restores the last selection,
+   *  which after a blur can sit anywhere (including before a leading pill). */
+  focusEnd: () => void;
   blur: () => void;
   clear: () => void;
   /** Replace the field's content with plain text (no chips) — used to prefill a
@@ -92,6 +108,7 @@ export function ComposerMentionInput({
   initialDoc,
   disabled = false,
   testId,
+  slashCommands,
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
@@ -143,7 +160,26 @@ export function ComposerMentionInput({
    *  sessions dock's focus routing address the real textbox. Applied once at
    *  editor creation (it never changes). */
   testId?: string;
+  /**
+   * The host's slash-command corpus — mounts the `/` typeahead + token-state
+   * affordance. Omitted (`undefined`), `/` stays inert text: only surfaces
+   * whose dispatch target can execute commands pass this (the agent-thread
+   * composer). `null` means the corpus is expected but not yet advertised
+   * ("not yet known" — neutral UI); `[]` means the agent advertised zero
+   * commands (an honest "none"). Whether the affordance exists is fixed at
+   * mount; the list itself is live and may change on any render.
+   */
+  slashCommands?: SlashCommandItem[] | null;
 }) {
+  const { t } = useLingui();
+  // What the composer should say about the draft's leading `/token`, resolved
+  // against the live advertised-command list (null = no token, or no slash
+  // affordance on this surface). Recomputed on every edit and on command-list
+  // updates; rendered as the hint line under the field — the textual channel
+  // that says "unsupported" BEFORE submission (the token decoration is the
+  // visual one).
+  const [slashHint, setSlashHint] = useState<SlashTokenHint | null>(null);
+
   // Refs carry the latest callbacks into the editor's once-created handlers so
   // they never go stale, without re-creating the editor (and writing the refs in
   // an effect, not during render, keeps React Compiler happy).
@@ -161,7 +197,7 @@ export function ComposerMentionInput({
   });
 
   const editor = useEditor({
-    extensions: composerMentionExtensions({ placeholder }),
+    extensions: composerMentionExtensions({ placeholder, slashCommands }),
     content: initialDoc ?? undefined,
     immediatelyRender: true,
     editable: !disabled,
@@ -178,9 +214,12 @@ export function ComposerMentionInput({
       },
       handleKeyDown: (view, event) => {
         if (event.key === 'Escape') {
-          // While the `@`-popup is open, Escape closes it (suggestion plugin
-          // owns that) and must not blur the field; otherwise it dismisses.
-          const suggestionActive = composerMentionSuggestionKey.getState(view.state)?.active;
+          // While the `@`- or `/`-popup is open, Escape closes it (the owning
+          // suggestion plugin handles that) and must not blur the field;
+          // otherwise it dismisses.
+          const suggestionActive =
+            composerMentionSuggestionKey.getState(view.state)?.active ||
+            composerSlashSuggestionKey.getState(view.state)?.active;
           if (suggestionActive) return false;
           if (onEscapeRef.current !== undefined) {
             onEscapeRef.current();
@@ -192,11 +231,18 @@ export function ComposerMentionInput({
         // Enter submits; Shift+Enter is left to the hardBreak shortcut. Guard IME
         // composition so a CJK commit Enter does not fire the prompt.
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !view.composing) {
-          // While the `@`-popup is open, Enter commits the highlighted item (the
-          // suggestion plugin's onKeyDown owns that) and must not submit the
-          // prompt; returning false lets that handler run.
-          const suggestionActive = composerMentionSuggestionKey.getState(view.state)?.active;
-          if (suggestionActive) return false;
+          // While the `@`- or `/`-popup is open WITH something to commit,
+          // Enter selects the highlighted item (the owning suggestion plugin's
+          // onKeyDown does that) and must not submit the prompt; returning
+          // false lets that handler run. Over an EMPTY picker (unknown `/`
+          // command, zero-hit `@` query) the plugin's handler declines Enter,
+          // and deferring anyway would fall through to TipTap's core
+          // `splitBlock` — a blank line where the user expected a send. The
+          // pickers publish their live item count for exactly this guard.
+          const suggestionActive =
+            composerMentionSuggestionKey.getState(view.state)?.active ||
+            composerSlashSuggestionKey.getState(view.state)?.active;
+          if (suggestionActive && suggestionHasSelectableItem(view)) return false;
           // Claimed here rather than left to the document's hardBreak binding:
           // this is the composer's own editor instance, so ⌘Enter never reaches
           // the surrounding document keymap.
@@ -210,6 +256,10 @@ export function ComposerMentionInput({
       onEmptyChangeRef.current(isComposerEmpty(editor));
       onContentChangeRef.current?.(editor.getJSON());
       onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
+      // Live command list read through the extension's storage (never a
+      // captured copy) so a mid-draft `available_commands_update` still
+      // resolves the token correctly. No-op surfaces without the extension.
+      setSlashHint(resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)));
     },
   });
 
@@ -266,6 +316,24 @@ export function ComposerMentionInput({
     else view.dom.removeAttribute('aria-disabled');
   }, [editor, disabled]);
 
+  // Carry command-list updates into the live editor: the extension list is
+  // built once, so a mid-session `available_commands_update` swaps the slash
+  // extension's storage (its live channel — options writes land on the fresh
+  // copy TipTap's options getter returns) and dispatches a no-op transaction
+  // so the token decoration recomputes — decorations only refresh on a
+  // transaction, and a list change dispatches none of its own. The hint
+  // re-resolves for the same reason.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (setSlashCommands(editor, slashCommands ?? null)) {
+      const view = (editor as unknown as { editorView?: ComposerEditorView }).editorView;
+      // Changes no document state — cannot enter undo history or fire the
+      // host's onUpdate content callbacks.
+      if (view) view.dispatch(editor.state.tr.setMeta('addToHistory', false));
+    }
+    setSlashHint(resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)));
+  }, [editor, slashCommands]);
+
   // Seed the host's empty-state from the initial draft text. `useEditor` does
   // not fire `onUpdate` for the `content` seed, so without this a restored draft
   // would leave the placeholder showing + Send disabled until the first
@@ -292,6 +360,7 @@ export function ComposerMentionInput({
     ref,
     () => ({
       focus: () => editor?.commands.focus(),
+      focusEnd: () => editor?.commands.focus('end'),
       blur: () => editor?.commands.blur(),
       clear: () => editor?.commands.clearContent(true),
       setText: (text: string) => {
@@ -302,6 +371,9 @@ export function ComposerMentionInput({
         // prefilled starter brief wouldn't carry to the other placement.
         onContentChangeRef.current?.(editor.getJSON());
         onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
+        setSlashHint(
+          resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)),
+        );
       },
       appendText: (text: string) => {
         if (!editor || text === '') return;
@@ -321,6 +393,9 @@ export function ComposerMentionInput({
         onEmptyChangeRef.current(isComposerEmpty(editor));
         onContentChangeRef.current?.(editor.getJSON());
         onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
+        setSlashHint(
+          resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)),
+        );
       },
       getContent: () =>
         editor ? serializeComposerContent(editor) : { instruction: '', mentions: [] },
@@ -328,6 +403,37 @@ export function ComposerMentionInput({
     [editor],
   );
 
-  // biome-ignore lint/plugin/no-unportaled-editor-content: standalone single-instance composer editor — not an Activity-pool document editor, and EditorContent is the sole child of its wrapper, so the H6 cross-doc DOM vacuum the portal guards against (precedent #44) cannot apply here.
-  return <EditorContent editor={editor} className={className} />;
+  return (
+    <>
+      {/* biome-ignore lint/plugin/no-unportaled-editor-content: standalone single-instance composer editor — not an Activity-pool document editor. EditorContent's own wrapper element still exclusively parents view.dom (the slash hint below is a sibling of that wrapper, never inside it), so the H6 cross-doc DOM vacuum the portal guards against (precedent #44) cannot apply here. */}
+      <EditorContent editor={editor} className={className} />
+      {/* The textual token-state channel for the UNRECOGNIZED case only: says
+          "isn't a command / unsupported" BEFORE submission (the in-field
+          decoration is shape+color only). A recognized command needs no line
+          here — its argument hint renders as in-field ghost text (the
+          terminal-CLI idiom) that disappears once arguments are typed. The
+          region is PRE-REGISTERED — mounted empty whenever the surface has a
+          slash corpus — because screen readers generally ignore a live region
+          that is inserted and populated in the same tick, and the first
+          population (the warning) is exactly the one that must land. Empty it
+          carries no padding, so it costs no height at rest. */}
+      {slashCommands !== undefined ? (
+        <p
+          className={cn(
+            'truncate px-2.5 text-xs text-muted-foreground',
+            slashHint?.kind === 'unknown' && 'pb-1',
+          )}
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="composer-slash-hint"
+        >
+          {slashHint?.kind !== 'unknown'
+            ? null
+            : slashHint.agentHasCommands
+              ? t`/${slashHint.name} isn't a command this agent offers — it will be sent as plain text`
+              : t`This agent doesn't offer slash commands — your message will be sent as plain text`}
+        </p>
+      ) : null}
+    </>
+  );
 }

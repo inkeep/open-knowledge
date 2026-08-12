@@ -886,6 +886,11 @@ msgstr "{userName}، {tabCount, plural, zero {# تبويب متزامن} one {ت
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, zero {كلمات} one {كلمة} two {كلمتان} few {كلمات} many {كلمةً} other {كلمة}}"
 
+#. placeholder {0}: slashHint.name
+#: src/editor/ComposerMentionInput.tsx
+msgid "/{0} isn't a command this agent offers — it will be sent as plain text"
+msgstr "/{0} ليس أمرًا يقدمه هذا الوكيل — سيُرسل كنص عادي"
+
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "// note"
 msgstr "// ملاحظة"
@@ -7876,6 +7881,10 @@ msgstr "لا توجد تطابقات. بعض الملفات مستثناة من 
 msgid "No matching branches."
 msgstr "لا توجد فروع مطابقة."
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "No matching commands"
+msgstr "لا توجد أوامر مطابقة"
+
 #: src/components/CommandPalette.tsx
 msgid "No matching commands."
 msgstr "لا توجد أوامر مطابقة."
@@ -11230,6 +11239,10 @@ msgstr "تم تخطي تنزيل {0}."
 msgid "Slash command menu"
 msgstr "قائمة أوامر الشرطة المائلة"
 
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "Slash command suggestions"
+msgstr "اقتراحات أوامر الشرطة المائلة"
+
 #: src/editor/slash-command/SlashCommandMenu.tsx
 msgid "Slash commands"
 msgstr "أوامر الشرطة المائلة"
@@ -12307,6 +12320,18 @@ msgstr "شُورك هذا {targetNoun} من الفرع <0>{shareBranch}</0>. و�
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "شُورك هذا {targetNoun} من الفرع <0>{shareBranch}</0>. وأنت حاليًا على <1>{currentLabel}</1>."
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent doesn't offer slash commands"
+msgstr "هذا الوكيل لا يقدم أوامر الشرطة المائلة"
+
+#: src/editor/ComposerMentionInput.tsx
+msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
+msgstr "هذا الوكيل لا يقدم أوامر الشرطة المائلة — سترسل رسالتك كنص عادي"
+
+#: src/editor/composer-mention/ComposerSlashMenu.tsx
+msgid "This agent hasn't announced its commands yet"
+msgstr "لم يعلن هذا الوكيل عن أوامره بعد"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."

@@ -26,7 +26,7 @@ import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
-import { AcpThreadManager, MAX_QUEUED_PROMPTS } from './thread-manager.ts';
+import { ACP_ENVIRONMENT_NOTE, AcpThreadManager, MAX_QUEUED_PROMPTS } from './thread-manager.ts';
 
 const log = getLogger('acp-thread-test');
 
@@ -537,6 +537,155 @@ process.stdin.on('data', (chunk) => {
 
     await manager.closeThread(info.threadId);
   }, 30_000);
+
+  test('available commands: captured from available_commands_update; env note rides only the first wire prompt', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    // Minimal stdio ACP agent that advertises slash commands right after
+    // session/new, echoes each prompt's WIRE text back as a message chunk (so
+    // the test can see exactly what the agent received), and re-advertises a
+    // grown command list after the first turn (the wholesale-replace contract).
+    const agentPath = join(localDir, 'commands-agent.mjs');
+    writeFileSync(
+      agentPath,
+      `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const notify = (update) =>
+  write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 's1', update } });
+let prompts = 0;
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1' });
+      notify({
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [
+          { name: 'review', description: 'Review the current diff' },
+        ],
+      });
+    } else if (msg.method === 'session/prompt') {
+      prompts += 1;
+      notify({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'received:' + msg.params.prompt[0].text },
+      });
+      if (prompts === 1) {
+        notify({
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [
+            { name: 'review', description: 'Review the current diff' },
+            { name: 'plan', description: 'Draft a plan' },
+          ],
+        });
+      }
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+    );
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'commands-agent', name: 'Commands Agent', command: 'node', args: [agentPath] },
+      ]),
+    );
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'commands-agent' } });
+    // Not yet advertised is null — a different answer than "advertised none".
+    expect(info.availableCommands).toBeNull();
+
+    const events: Array<{ seq: number; event: ThreadEvent }> = [];
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') events.push({ seq: frame.seq, event: frame.event });
+      if (frame.op === 'events') {
+        for (const [i, event] of frame.events.entries()) {
+          events.push({ seq: frame.fromSeq + i, event });
+        }
+      }
+    });
+    const waitFor = async (pred: () => boolean, ms: number): Promise<void> => {
+      const deadline = Date.now() + ms;
+      while (!pred()) {
+        if (Date.now() > deadline) {
+          throw new Error(`timed out; info: ${JSON.stringify(manager.getInfo(info.threadId))}`);
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+
+    await waitFor(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000);
+    await waitFor(
+      () => (manager.getInfo(info.threadId)?.availableCommands ?? []).length > 0,
+      10_000,
+    );
+    expect(manager.getInfo(info.threadId)?.availableCommands).toEqual([
+      { name: 'review', description: 'Review the current diff' },
+    ]);
+
+    const receivedTexts = () =>
+      events
+        .map((e) => e.event)
+        .filter((e) => e.kind === 'session_update')
+        .map((e) => (e.update as { content?: { text?: string } }).content?.text ?? '')
+        .filter((text) => text.startsWith('received:'));
+
+    // A first message that IS a command invocation must reach the agent with
+    // `/` as its first byte — ACP command dispatch is prefix-based, so the
+    // environment note defers rather than break the command.
+    manager.sendPrompt(info.threadId, '/review the diff');
+    await waitFor(() => receivedTexts().length === 1, 15_000);
+    expect(receivedTexts()[0]).toBe('received:/review the diff');
+
+    // The mid-turn re-advertisement replaced the list wholesale.
+    await waitFor(
+      () => (manager.getInfo(info.threadId)?.availableCommands ?? []).length === 2,
+      10_000,
+    );
+
+    await waitFor(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000);
+    // The note survives ANY number of consecutive command-first prompts —
+    // deferral is per-prompt, not one-shot.
+    manager.sendPrompt(info.threadId, '/plan the rollout');
+    await waitFor(() => receivedTexts().length === 2, 15_000);
+    expect(receivedTexts()[1]).toBe('received:/plan the rollout');
+
+    await waitFor(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000);
+    // The deferred note rides the first NON-command prompt: wire text = note +
+    // user text; the transcript echo stays the user's.
+    manager.sendPrompt(info.threadId, 'first hello');
+    await waitFor(() => receivedTexts().length === 3, 15_000);
+    expect(receivedTexts()[2]).toBe(`received:${ACP_ENVIRONMENT_NOTE}\n\nfirst hello`);
+    const userMessages = events
+      .map((e) => e.event)
+      .filter((e) => e.kind === 'user_message')
+      .map((e) => e.content);
+    expect(userMessages).toEqual(['/review the diff', '/plan the rollout', 'first hello']);
+
+    await waitFor(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000);
+    manager.sendPrompt(info.threadId, 'second hello');
+    await waitFor(() => receivedTexts().length === 4, 15_000);
+    // Consumed: the note never rides a later prompt of the same session.
+    expect(receivedTexts()[3]).toBe('received:second hello');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
 });
 
 /**
@@ -575,6 +724,10 @@ process.stdin.on('data', (chunk) => {
       reply({ protocolVersion: 1, agentCapabilities });
     } else if (msg.method === 'session/new') {
       reply({ sessionId: 'sess-fixed' });
+      notify({
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [{ name: 'fresh_only', description: 'advertised on session/new only' }],
+      });
     } else if (msg.method === 'session/prompt') {
       notify({
         sessionUpdate: 'agent_message_chunk',
@@ -665,14 +818,20 @@ describe('AcpThreadManager persistence + resume', () => {
     }
   };
   const kinds = (events: Collected): string[] => events.map((e) => e.event.kind);
+  /** The wire echo of the FIRST prompt of a new session: dispatch prepends the
+   *  environment note (wire-only; the `user_message` event keeps the user's
+   *  text). Later prompts — including everything sent over a resumed session —
+   *  echo bare. */
+  const notedEcho = (text: string): string => `echo:${ACP_ENVIRONMENT_NOTE}\n\n${text}`;
   const agentChunks = (events: Collected): string[] =>
     events
       .map((e) => e.event)
       .filter((e) => e.kind === 'session_update')
-      .map((e) => {
-        const update = (e as { update?: { content?: { text?: string } } }).update;
-        return update?.content?.text ?? '';
-      });
+      .map(
+        (e) => (e as { update?: { sessionUpdate?: string; content?: { text?: string } } }).update,
+      )
+      .filter((update) => update?.sessionUpdate === 'agent_message_chunk')
+      .map((update) => update?.content?.text ?? '');
 
   async function runOneTurn(
     manager: AcpThreadManager,
@@ -771,7 +930,7 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(replayed.length).toBeGreaterThanOrEqual(liveEvents.length);
     expect(replayed.map((e) => e.seq)).toEqual(replayed.map((_, i) => i));
     expect(kinds(replayed)).toContain('user_message');
-    expect(agentChunks(replayed)).toContain('echo:hello there');
+    expect(agentChunks(replayed)).toContain(notedEcho('hello there'));
   }, 45_000);
 
   test('closing a never-prompted thread discards it instead of archiving', async () => {
@@ -869,6 +1028,10 @@ describe('AcpThreadManager persistence + resume', () => {
     const manager = makeManager(contentDir, localDir);
     await manager.init();
     const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+    // The fixture advertises commands after session/new — captured pre-close.
+    expect(manager.getInfo(threadId)?.availableCommands).toEqual([
+      { name: 'fresh_only', description: 'advertised on session/new only' },
+    ]);
     await manager.closeThread(threadId);
     expect(manager.getInfo(threadId)?.archived).toBe(true);
 
@@ -893,7 +1056,11 @@ describe('AcpThreadManager persistence + resume', () => {
       .filter((e): e is Extract<ThreadEvent, { kind: 'user_message' }> => e.kind === 'user_message')
       .map((e) => e.content);
     expect(userMessages).toEqual(['first message', 'second message']);
-    expect(agentChunks(replayed)).toEqual(['echo:first message', 'echo:second message']);
+    expect(agentChunks(replayed)).toEqual([notedEcho('first message'), 'echo:second message']);
+    // session/resume never re-runs session/new, and the fixture advertises
+    // only there — so the pre-archive list must have been RESET to "not yet
+    // known", not carried over as if this session had advertised it.
+    expect(manager.getInfo(threadId)?.availableCommands).toBeNull();
 
     await manager.closeThread(threadId);
   }, 45_000);
@@ -923,7 +1090,7 @@ describe('AcpThreadManager persistence + resume', () => {
     await manager.subscribe(threadId, 0, collector(replayed));
     // The fixture replayed 'old-user'/'old-agent' chunks during session/load —
     // they duplicate the retained log and must NOT appear as new events.
-    expect(agentChunks(replayed)).toEqual(['echo:first message', 'echo:second message']);
+    expect(agentChunks(replayed)).toEqual([notedEcho('first message'), 'echo:second message']);
     expect(agentChunks(replayed)).not.toContain('old-user');
     expect(agentChunks(replayed)).not.toContain('old-agent');
 
@@ -954,7 +1121,7 @@ describe('AcpThreadManager persistence + resume', () => {
     // The transcript survived both failed attempts.
     const replayed: Collected = [];
     await manager.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toContain('echo:first message');
+    expect(agentChunks(replayed)).toContain(notedEcho('first message'));
   }, 45_000);
 
   test('delete refuses live threads, removes archived ones and their files', async () => {
@@ -1001,7 +1168,7 @@ describe('AcpThreadManager persistence + resume', () => {
     );
     const replayed: Collected = [];
     await manager2.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toContain('echo:survives shutdown');
+    expect(agentChunks(replayed)).toContain(notedEcho('survives shutdown'));
     await manager2.closeThread(threadId);
   }, 45_000);
 });

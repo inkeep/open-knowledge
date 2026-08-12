@@ -42,7 +42,7 @@ export function focusComposerInputOnCardPointer(
   // Any focusable input handle — in practice the ProseMirror
   // `ComposerMentionInputHandle`; typed structurally so any `focus()`-bearing
   // handle works.
-  inputRef: RefObject<{ focus: () => void } | null>,
+  inputRef: RefObject<{ focus: () => void; focusEnd?: () => void } | null>,
 ): void {
   if (!(event.target instanceof HTMLElement)) return;
   // React portals bubble synthetic events along the REACT tree, not the DOM
@@ -61,5 +61,12 @@ export function focusComposerInputOnCardPointer(
   }
   if (event.target.closest(INTERACTIVE_TARGET_SELECTOR)) return;
   event.preventDefault();
-  inputRef.current?.focus();
+  const handle = inputRef.current;
+  if (handle === null) return;
+  // Clicking dead space means "continue typing" — caret at the END, the
+  // chat-composer convention. Plain focus() restores the last selection,
+  // which after a blur can sit anywhere (including before a leading command
+  // pill). Handles without focusEnd keep the old restore behavior.
+  if (handle.focusEnd !== undefined) handle.focusEnd();
+  else handle.focus();
 }

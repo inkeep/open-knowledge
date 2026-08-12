@@ -24,13 +24,20 @@ import { X } from 'lucide-react';
 import { fileEntryPathIconToSvgString } from '@/components/file-entry-icon';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 import {
+  clearSuggestionSelectableCount,
   createSuggestionPopup,
   destroySuggestionPopup,
   type SuggestionPositionState,
+  setSuggestionSelectableCount,
 } from '../extensions/suggestion-floating-ui';
 import { fetchPages, filterPages, type PageItem } from '../extensions/wiki-link-suggestion';
 import { lucideIconToSvgString } from '../registry/lucide-svg';
 import { ComposerMentionMenu } from './ComposerMentionMenu';
+import {
+  ComposerCommand,
+  ComposerSlashCommand,
+  type SlashCommandItem,
+} from './composer-slash-command';
 
 /** A resolved mention suggestion: the doc identity, its display title, and the
  *  workspace-relative `@path` the chip serializes to. */
@@ -232,8 +239,14 @@ const ComposerMention = Node.create({
 /** The full extension list for the composer's TipTap editor. An optional
  *  `placeholder` adds the TipTap Placeholder decoration shown while the field is
  *  empty — the bottom composer overlays its own rotating placeholder and passes
- *  none; the create composer passes a static string. */
-export function composerMentionExtensions(options?: { placeholder?: string }) {
+ *  none; the create composer passes a static string. `slashCommands` (even
+ *  `null` — "corpus expected, not yet advertised") mounts the `/` slash-command
+ *  extension; omitting it keeps `/` inert text, which is every surface except
+ *  the agent-thread composer. */
+export function composerMentionExtensions(options?: {
+  placeholder?: string;
+  slashCommands?: SlashCommandItem[] | null;
+}) {
   return [
     ComposerDoc,
     ComposerParagraph,
@@ -241,6 +254,15 @@ export function composerMentionExtensions(options?: { placeholder?: string }) {
     ComposerHardBreak,
     ComposerHistory,
     ComposerMention,
+    // The picked-command pill NODE is registered for every surface even
+    // though only slash-enabled hosts can create one — the shared draft
+    // store restores drafts across composer placements, and a host-gated
+    // schema node would silently drop pill-bearing drafts on the surfaces
+    // whose schema lacked it.
+    ComposerCommand,
+    ...(options?.slashCommands !== undefined
+      ? [ComposerSlashCommand.configure({ commands: options.slashCommands })]
+      : []),
     // Seeds the mount-time value only. Extensions are built once, so the host
     // re-points `options.placeholder` on this instance when the interface
     // language changes — see `ComposerMentionInput`. `showOnlyWhenEditable:
@@ -362,9 +384,20 @@ function configureComposerMentionSuggestion(editor: Editor) {
       const posState: SuggestionPositionState = { popup: null, stopAutoUpdate: null };
       let doPosition: (() => void) | null = null;
       let reveal: (() => void) | null = null;
+      // The view the count was published against, held for onExit —
+      // `currentProps` is nulled before the clear could read it.
+      let publishedView: object | null = null;
 
       const onSelect = (item: MentionItem) => {
         currentProps?.command(item);
+      };
+
+      // Tell the composer's Enter guard whether this picker has anything to
+      // commit — over an empty list (zero-hit query, corpus still loading)
+      // Enter must submit the prompt, not fall through to a paragraph split.
+      const publishSelectableCount = (props: SuggestionProps<MentionItem>) => {
+        publishedView = props.editor.view;
+        setSuggestionSelectableCount(publishedView, (props.items ?? []).length);
       };
 
       const computeMenuProps = (props: SuggestionProps<MentionItem>) => {
@@ -392,6 +425,7 @@ function configureComposerMentionSuggestion(editor: Editor) {
         onBeforeStart(props: SuggestionProps<MentionItem>) {
           currentProps = props;
           selectedIndex = 0;
+          publishSelectableCount(props);
           const result = createSuggestionPopup(() => currentProps, 'composer-mention');
           posState.popup = result.popup;
           doPosition = result.doPosition;
@@ -407,6 +441,7 @@ function configureComposerMentionSuggestion(editor: Editor) {
         onStart(props: SuggestionProps<MentionItem>) {
           currentProps = props;
           selectedIndex = 0;
+          publishSelectableCount(props);
           rerender();
           reveal?.();
         },
@@ -414,6 +449,7 @@ function configureComposerMentionSuggestion(editor: Editor) {
         onUpdate(props: SuggestionProps<MentionItem>) {
           currentProps = props;
           selectedIndex = Math.min(selectedIndex, Math.max(0, props.items.length - 1));
+          publishSelectableCount(props);
           rerender();
           doPosition?.();
         },
@@ -450,6 +486,10 @@ function configureComposerMentionSuggestion(editor: Editor) {
           renderer = null;
           currentProps = null;
           selectedIndex = 0;
+          if (publishedView !== null) {
+            clearSuggestionSelectableCount(publishedView);
+            publishedView = null;
+          }
           // Re-fetch on the next `@` so a freshly-created doc shows up.
           corpus.reset();
         },
@@ -484,6 +524,10 @@ export function serializeComposerContent(editor: Editor): {
             mentions.push(path);
           }
         }
+      } else if (inline.type.name === 'composerCommand') {
+        // The picked pill serializes back to the invocation text the agent's
+        // prefix-based dispatch expects.
+        line += `/${String(inline.attrs.name ?? '')}`;
       } else if (inline.isText) {
         line += inline.text ?? '';
       } else if (inline.type.name === 'hardBreak') {

@@ -26,6 +26,7 @@ import {
   isComposerEmpty,
   serializeComposerContent,
 } from './composer-mention/composer-mention';
+import { suggestionHasSelectableItem } from './extensions/suggestion-floating-ui';
 
 function makeEditor(content?: Content) {
   return new Editor({ extensions: composerMentionExtensions(), content });
@@ -114,6 +115,27 @@ describe('serializeComposerContent / isComposerEmpty', () => {
     }
   });
 
+  test('a picked command pill serializes to /name and counts as content on EVERY surface', () => {
+    // The pill node is registered in the shared schema even for surfaces that
+    // can't create one (this editor has no slash corpus) — a draft holding a
+    // pill must restore and serialize everywhere, never drop to empty.
+    const editor = makeEditor(
+      paragraph(
+        { type: 'composerCommand', attrs: { name: 'review', description: '', hint: '' } },
+        { type: 'text', text: ' the diff' },
+      ),
+    );
+    try {
+      expect(serializeComposerContent(editor)).toEqual({
+        instruction: '/review the diff',
+        mentions: [],
+      });
+      expect(isComposerEmpty(editor)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   test('plain prose carries no mentions', () => {
     const editor = makeEditor(paragraph({ type: 'text', text: 'just words' }));
     try {
@@ -144,6 +166,27 @@ describe('ComposerMentionInput (component)', () => {
 
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  test('focusEnd places the caret at the end of the draft', () => {
+    // The card-whitespace affordance: clicking dead space means "continue
+    // typing", so the caret must land AFTER existing content — plain focus()
+    // restores the last selection, which after a blur can sit anywhere
+    // (including before a leading command pill).
+    const ref = createRef<ComposerMentionInputHandle>();
+    render(
+      <ComposerMentionInput
+        ref={ref}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+        initialDoc={paragraph({ type: 'text', text: 'draft text' }) as JSONContent}
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Ask AI' });
+    const editor = getComposerEditor(box);
+    ref.current?.focusEnd();
+    expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1);
   });
 
   test('setText replaces the field with plain text (read back via getContent)', () => {
@@ -422,16 +465,26 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // The suggestion's async `items` step calls `fetch('/api/pages')`; jsdom has
-    // no backend, so stub it to an empty corpus. The plugin's `active` state
-    // does not depend on the fetch resolving — it is computed synchronously from
-    // the inserted `@`-trigger — so the empty corpus does not affect the assertion.
+    // The suggestion's async `items` step calls `fetch('/api/pages')`; jsdom
+    // has no backend, so stub a one-page corpus that matches the `@foo`
+    // trigger — deferral is keyed on the popup having a SELECTABLE item, so
+    // the tests below need the fetch to actually produce one.
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () =>
-        new Response(JSON.stringify({ pages: [], documents: [] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
+        new Response(
+          JSON.stringify({
+            pages: [
+              {
+                docName: 'foo',
+                title: 'Foo',
+                docExt: '.md',
+                size: 1,
+                modified: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
     );
   });
 
@@ -444,6 +497,16 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
       | { active: boolean }
       | undefined;
     return state?.active ?? false;
+  }
+
+  /** Wait for the async corpus fetch to land in the popup's item list — the
+   *  published selectable count is exactly what the Enter guard reads. */
+  async function waitForSelectableItem(editor: Editor): Promise<void> {
+    for (let i = 0; i < 50; i++) {
+      if (suggestionHasSelectableItem(editor.view)) return;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    throw new Error('mention popup never produced a selectable item');
   }
 
   test('Enter submits while the popup is closed', () => {
@@ -459,7 +522,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  test('Enter does NOT submit while the @-popup is open (defers to the suggestion plugin)', () => {
+  test('Enter does NOT submit while the @-popup holds a selectable item', async () => {
     const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
@@ -467,15 +530,38 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
 
-    // Typing `@foo` opens the mention popup (plugin `active` flips synchronously).
+    // Typing `@foo` opens the mention popup (plugin `active` flips synchronously);
+    // deferral additionally waits on the corpus resolving a selectable item.
     editor.commands.insertContent('@foo');
     expect(isSuggestionActive(editor)).toBe(true);
+    await waitForSelectableItem(editor);
 
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(0);
   });
 
-  test('Enter resumes submitting once the popup closes', () => {
+  test('Enter over an open @-popup with NO selectable item submits — never splits', async () => {
+    // A zero-hit query (or a still-loading corpus) keeps `active` true over an
+    // empty list; a blanket defer would fall through to TipTap's core
+    // splitBlock and turn "Enter to send" into a blank line.
+    const onSubmit = vi.fn(() => {});
+    render(
+      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Ask AI' });
+    const editor = getComposerEditor(box);
+
+    editor.commands.insertContent('@zzz');
+    expect(isSuggestionActive(editor)).toBe(true);
+    // Let the corpus fetch resolve to a zero-hit list.
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(editor.state.doc.childCount).toBe(1);
+  });
+
+  test('Enter resumes submitting once the popup closes', async () => {
     const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
@@ -485,6 +571,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
 
     editor.commands.insertContent('@foo');
     expect(isSuggestionActive(editor)).toBe(true);
+    await waitForSelectableItem(editor);
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(0);
 
