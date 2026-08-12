@@ -22,6 +22,7 @@
 export * from './_envelope.ts';
 export * from './agent-write.ts';
 export * from './client-logs.ts';
+export * from './clip-intake.ts';
 export * from './comments.ts';
 export * from './document-read.ts';
 export * from './embed-detect.ts';

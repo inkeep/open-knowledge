@@ -882,6 +882,8 @@ export {
   ContentDivergenceCurrentStateSchema,
   type ContentDivergenceWarning,
   ContentDivergenceWarningSchema,
+  ClipPayloadSchema,
+  type OkClipPayload,
   type CreateFolderRequest,
   CreateFolderRequestSchema,
   type CreateFolderSuccess,

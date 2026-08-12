@@ -434,6 +434,54 @@ export function parseOpenKnowledgeFileUrl(input: string): ParsedOpenKnowledgeFil
   return { host: 'open', file: resolve(file) };
 }
 
+/** Parsed `openknowledge://clip?destination=<id>` clip-intake deep-link. */
+export interface ParsedClipUrl {
+  readonly host: 'clip';
+  readonly destination: string;
+  readonly clipboard: boolean;
+}
+
+/**
+ * Parse + validate the Web Clipper clip-intake deep-link
+ * `openknowledge://clip?destination=<id>&clipboard=true`.
+ * Returns `null` on any validation failure (missing param, null bytes,
+ * invalid host, `..` traversal in destination ID); never throws.
+ */
+export function parseClipUrl(input: string): ParsedClipUrl | null {
+  if (typeof input !== 'string' || input.length === 0) return null;
+  if (input.includes('\x00') || /%00/i.test(input)) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'openknowledge:') return null;
+  if (parsed.hostname !== 'clip') return null;
+
+  const rawDestination = parsed.searchParams.get('destination');
+  if (!rawDestination) return null;
+
+  let destination: string;
+  try {
+    destination = decodeURIComponent(rawDestination);
+  } catch {
+    return null;
+  }
+
+  if (destination.includes('\x00') || destination.length === 0) return null;
+  if (destination.split(/[/\\]/).includes('..')) return null;
+
+  const clipboard = parsed.searchParams.get('clipboard') === 'true';
+
+  return {
+    host: 'clip',
+    destination,
+    clipboard,
+  };
+}
+
 /**
  * Named app screens reachable via `openknowledge://screen?name=<id>`. Each maps
  * to a renderer URL-hash route (`window.location.hash`, handled in `App.tsx`)
