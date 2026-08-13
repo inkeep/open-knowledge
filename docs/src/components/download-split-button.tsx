@@ -12,7 +12,7 @@ import {
 import {
   classifyDownloadOs,
   type DetectedOs,
-  defaultTargetForOs,
+  downloadHrefForDetectedOs,
   downloadHrefForTarget,
   downloadLabelForOs,
   orderTargetsForOs,
@@ -32,9 +32,10 @@ interface DownloadSplitButtonProps {
 }
 
 /**
- * Download CTA that guesses right and never traps: the primary segment fires
- * the detected OS's default build, the caret opens every other published
- * build plus the browser/npm path.
+ * Download CTA that never guesses an architecture: the primary segment sends
+ * detected Windows and Linux visitors to the download picker, while macOS can
+ * use its sole published build directly. The caret keeps every explicit build
+ * plus the browser/npm path one click away.
  *
  * Server renders the neutral "Download" label pointing at the macOS floor, and
  * hydration swaps in the detected OS. Labelling by OS only after detection
@@ -42,13 +43,13 @@ interface DownloadSplitButtonProps {
  * macOS" flash on a Windows machine — and the pre-hydration href still works
  * with JS off.
  *
- * Every download link stays in the current tab. The redirect route ends at a
- * GitHub asset served `Content-Disposition: attachment`, so the browser starts
- * the download and abandons the navigation, leaving the page untouched.
- * Opening a tab instead would flash a blank window that then closes itself.
+ * Every destination stays in the current tab. A concrete build's redirect ends
+ * at a GitHub asset served `Content-Disposition: attachment`, so the browser
+ * starts the download and leaves the page untouched; Windows/Linux navigate to
+ * the picker normally.
  *
- * Both segments are raw `<a>`/`<button>`, never `next/link`: the download
- * route is a 302 handler, so prefetching it would fire the redirect and
+ * Both segments are raw `<a>`/`<button>`, never `next/link`: the SSR href is a
+ * 302 handler, so prefetching it before OS detection would start a download and
  * double-count.
  */
 export function DownloadSplitButton({
@@ -62,7 +63,6 @@ export function DownloadSplitButton({
     setOs(classifyDownloadOs(readPlatformInput()));
   }, []);
 
-  const primary = defaultTargetForOs(os);
   const chrome = variant === 'compact' ? COMPACT : PILL;
   const osLabel = downloadLabelForOs(os);
 
@@ -75,7 +75,7 @@ export function DownloadSplitButton({
       className={cn('not-prose inline-flex items-stretch', chrome.group, className)}
     >
       <a
-        href={downloadHrefForTarget(cta, primary)}
+        href={downloadHrefForDetectedOs(cta, os)}
         // `noreferrer` is deliberately omitted: the Referer names the page the
         // download came from, which is how the event attributes to a docs page
         // rather than counting as direct traffic.

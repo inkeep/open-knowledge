@@ -7,7 +7,7 @@ import { SplashButtonLabel, splashPrimaryButton } from './splash-buttons';
 import { SplashDownloadSplitButton } from './splash-download-split-button';
 
 interface SplashCtaClusterProps {
-  /** Already carries the detected platform's `?os=&arch=&format=`. */
+  /** Direct build URL, or the query-less share route for Windows/Linux. */
   downloadUrl: string;
   /** Same route without a query, so the panel can mint one link per build. */
   platformBaseUrl: string;
@@ -125,7 +125,7 @@ export function SplashCtaCluster({
           <SplashButtonLabel>{attempting ? 'Opening…' : 'Open in desktop app'}</SplashButtonLabel>
         </a>
 
-        {/* Download + the secondary open-paths (the other builds, copyable CLI
+        {/* Download + the secondary open-paths (the explicit builds, copyable CLI
             commands, GitHub) condensed into one segmented control.
             fallbackCtaRef lands focus on the download segment when the
             deep-link handoff times out. */}

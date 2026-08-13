@@ -18,10 +18,9 @@ const fullStars = new Intl.NumberFormat('en-US');
 export function DocsSidebarCta({ stars }: { stars: number | null }) {
   return (
     <div className="flex gap-2">
-      {/* Docs readers span platforms, so the primary segment follows the
-          visitor's OS and the caret carries the rest. Unlike the old plain link
-          to /download, this routes through the tracked redirect, so sidebar
-          downloads are attributed rather than invisible. */}
+      {/* Docs readers span platforms, so OS detection names the platform but
+          never guesses a Windows/Linux architecture: the primary segment sends
+          those visitors to /download, while the caret carries explicit builds. */}
       {/* The download flexes and the star keeps its natural size: the star's
           width is driven by a live count we don't control, so it gets the space
           it needs and the download absorbs whatever is left. */}

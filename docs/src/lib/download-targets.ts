@@ -4,17 +4,15 @@
  *
  * Two rules shape everything here:
  *
- * 1. **Platform is detectable; architecture is not.** `navigator` reliably
- *    names the OS and nothing else. Apple freezes the macOS UA to "Intel Mac
- *    OS X" on Apple Silicon too, UA Client Hints are Chromium-only and
- *    misreport under Rosetta, and Windows/Linux expose no trustworthy arch
- *    signal at all. So detection picks the OS, a hardcoded guess picks the
- *    arch for the primary click, and every other build stays one click away in
- *    the dropdown.
- * 2. **Clicks flow through the tracked redirect, never straight to GitHub.**
- *    Call sites build hrefs with {@link downloadHrefForTarget}; the
+ * 1. **Platform is broadly detectable; architecture is an enhancement.**
+ *    Chromium can expose architecture and bitness through high-entropy Client
+ *    Hints, but availability is not universal. Docs CTAs therefore route
+ *    Windows/Linux visitors to the picker, which owns any refined default.
+ * 2. **Build clicks flow through the tracked redirect, never straight to
+ *    GitHub.** Explicit build links use {@link downloadHrefForTarget}; the
  *    `/download/stable` route resolves the asset and counts the download.
- *    Linking an asset URL directly loses the event.
+ *    Picker navigation is not a download, so it is counted only after the
+ *    visitor chooses a build there.
  */
 import {
   LINUX_DEB_ARM64_URL,
@@ -129,10 +127,11 @@ export const DOWNLOAD_TARGETS: readonly DownloadTarget[] = [
 ] as const;
 
 /**
- * What the primary button downloads once an OS is detected. x64 wins on
- * Windows and deb-x64 on Linux because those cover the overwhelming majority
- * of desktops; a wrong guess costs one dropdown click, and offering no default
- * costs every visitor one.
+ * The default build when a caller explicitly needs one. Windows and Linux use
+ * x64 (and Linux uses .deb), but ordinary detected-OS CTAs do not fire these
+ * guesses directly — {@link downloadHrefForDetectedOs} routes those visitors
+ * to the picker. The defaults remain useful on the picker itself and for
+ * backwards-compatible redirect resolution.
  */
 const DEFAULT_TARGET_BY_OS: Record<DownloadOs, DownloadTargetId> = {
   macos: 'macos-arm64',
@@ -146,6 +145,20 @@ const DEFAULT_TARGET_BY_OS: Record<DownloadOs, DownloadTargetId> = {
  * installer rather than a listing page.
  */
 const FALLBACK_TARGET_ID: DownloadTargetId = 'macos-arm64';
+
+/**
+ * Production picker host. Absolute so a standalone docs deployment cannot
+ * intercept `/download` with its legacy macOS redirect.
+ */
+const DOWNLOAD_PAGE_ORIGIN = 'https://openknowledge.ai';
+
+/** Picker page used when OS detection cannot safely select an architecture. */
+export const DOWNLOAD_PAGE_HREF = `${DOWNLOAD_PAGE_ORIGIN}/download`;
+
+/** Preserve the originating CTA across the picker hop. */
+export function downloadPageHrefForCta(cta: DownloadCta): string {
+  return `${DOWNLOAD_PAGE_HREF}?utm_content=${encodeURIComponent(cta)}`;
+}
 
 /**
  * Where the "run it in your browser" dropdown row points. Also the Intel-Mac
@@ -165,7 +178,7 @@ export function targetById(id: DownloadTargetId): DownloadTarget {
   return target;
 }
 
-/** The build the primary button fires for a detected OS. */
+/** The default build for an OS when a caller intentionally needs one. */
 export function defaultTargetForOs(os: DetectedOs): DownloadTarget {
   return targetById(os === 'unknown' ? FALLBACK_TARGET_ID : DEFAULT_TARGET_BY_OS[os]);
 }
@@ -256,6 +269,16 @@ export function targetQuery(target: DownloadTarget): string {
 /** Tracked `/download/stable` URL for one build, attributed to one CTA. */
 export function downloadHrefForTarget(cta: DownloadCta, target: DownloadTarget): string {
   return `${downloadRouteForCta(cta)}&${targetQuery(target)}`;
+}
+
+/**
+ * Default href for an OS-detected CTA. Architecture hints are not universal,
+ * so Windows and Linux visitors choose on the download page. macOS still has
+ * one published build; unknown keeps the working SSR floor.
+ */
+export function downloadHrefForDetectedOs(cta: DownloadCta, os: DetectedOs): string {
+  if (os === 'windows' || os === 'linux') return downloadPageHrefForCta(cta);
+  return downloadHrefForTarget(cta, defaultTargetForOs(os));
 }
 
 /**

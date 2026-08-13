@@ -39,38 +39,31 @@ function call(encoded: string, query = ''): Promise<Response> {
 }
 
 describe('GET /d/[encoded]/download', () => {
-  test('valid share: 302 to the DMG, sets the pairing cookie, counts share-splash', async () => {
+  test('picker request carries a valid share to the architecture picker', async () => {
     _viewKind = 'ok';
     _lastCapture = null;
-    const res = await call('valid-share');
+    const res = await call('valid-share', '?picker=1');
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe(SPLASH_URL);
+    expect(res.headers.get('location')).toBe(
+      'https://openknowledge.ai/download?utm_content=share-splash',
+    );
     expect(res.headers.get('set-cookie')).toContain('ok-pending-share=valid-share');
-    expect(_lastCapture?.event).toBe('dmg_downloaded');
-    expect(_lastCapture?.properties?.channel).toBe('stable');
-    // Server-authoritative: overrides the attribution() value.
-    expect(_lastCapture?.properties?.utm_content).toBe('share-splash');
-    expect(_lastCapture?.distinctId).toBe('splash-1');
+    // Reaching the picker is not a download event.
+    expect(_lastCapture).toBeNull();
   });
 
-  test('invalid share: 302 with NO cookie but still counts the download', async () => {
-    _viewKind = 'invalid';
-    _lastCapture = null;
-    const res = await call('bad-share');
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe(SPLASH_URL);
-    expect(res.headers.get('set-cookie')).toBeNull();
-    expect(_lastCapture?.event).toBe('dmg_downloaded');
-    expect(_lastCapture?.properties?.utm_content).toBe('share-splash');
-  });
-
-  test('unsupported-version share: no cookie, still counts', async () => {
-    _viewKind = 'unsupported-version';
-    _lastCapture = null;
-    const res = await call('old-share');
-    expect(res.status).toBe(302);
-    expect(res.headers.get('set-cookie')).toBeNull();
-    expect(_lastCapture?.event).toBe('dmg_downloaded');
+  test('invalid or unsupported picker request reaches the picker without a cookie', async () => {
+    for (const kind of ['invalid', 'unsupported-version'] as const) {
+      _viewKind = kind;
+      _lastCapture = null;
+      const res = await call(`${kind}-share`, '?picker=1');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toBe(
+        'https://openknowledge.ai/download?utm_content=share-splash',
+      );
+      expect(res.headers.get('set-cookie')).toBeNull();
+      expect(_lastCapture).toBeNull();
+    }
   });
 
   test('the full triple picks that exact build, cookie + count intact', async () => {
@@ -104,7 +97,7 @@ describe('GET /d/[encoded]/download', () => {
     expect(_lastCapture?.properties).toMatchObject({ os: 'linux', arch: 'x64', format: 'deb' });
   });
 
-  test('an unrecognized ?os= falls back to the DMG', async () => {
+  test('an unrecognized ?os= retains the legacy macOS floor', async () => {
     _viewKind = 'ok';
     _lastCapture = null;
     const res = await call('valid-share', '?os=beos');
@@ -126,12 +119,12 @@ describe('GET /d/[encoded]/download', () => {
     }
   });
 
-  test('a prefetch still redirects (with cookie) but is NOT counted', async () => {
+  test('a concrete-build prefetch still redirects (with cookie) but is NOT counted', async () => {
     _viewKind = 'ok';
     _lastCapture = null;
     _isPrefetch = true;
     try {
-      const res = await call('valid-share');
+      const res = await call('valid-share', '?os=macos&arch=arm64&format=dmg');
       expect(res.status).toBe(302);
       expect(res.headers.get('location')).toBe(SPLASH_URL);
       expect(_lastCapture).toBeNull();

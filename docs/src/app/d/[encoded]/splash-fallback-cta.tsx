@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react';
 import {
   classifyDownloadOs,
   type DetectedOs,
-  defaultTargetForOs,
+  downloadHrefForDetectedOs,
   readPlatformInput,
-  targetQuery,
 } from '@/lib/download-targets';
 import { SPLASH_INSTALL_COMMAND } from '@/lib/share-splash';
 import { downloadRouteForCta } from '@/lib/site';
@@ -26,14 +25,15 @@ const FALLBACK_DOWNLOAD_URL = downloadRouteForCta('share-splash-fallback');
  *
  * It is the split button rather than a plain link because these visitors are
  * no better at naming their own architecture than anyone else — the primary
- * segment follows the detected OS and the caret carries every other build plus
- * the npm path. There is no separate "Open with CLI" button beside it: that
- * button's panel could only offer a bare install with no share to open, and
+ * segment sends Windows/Linux to the picker and the caret carries every
+ * explicit build plus the npm path. There is no separate "Open with CLI"
+ * button beside it: that button's panel could only offer a bare install with
+ * no share to open, and
  * the npm route already sits one click away in this caret.
  *
  * Mirrors SplashCtaPanel's progressive enhancement — SSR renders the macOS
- * floor and hydration retargets to the detected OS, so the link works with
- * scripting off.
+ * floor and hydration sends architecture-ambiguous platforms to the picker,
+ * so the link works with scripting off without guessing for Windows/Linux.
  */
 export function SplashFallbackCta() {
   const [os, setOs] = useState<DetectedOs>('unknown');
@@ -44,7 +44,7 @@ export function SplashFallbackCta() {
 
   return (
     <SplashDownloadSplitButton
-      downloadUrl={`${FALLBACK_DOWNLOAD_URL}&${targetQuery(defaultTargetForOs(os))}`}
+      downloadUrl={downloadHrefForDetectedOs('share-splash-fallback', os)}
       platformBaseUrl={FALLBACK_DOWNLOAD_URL}
       detectedOs={os}
       installCommand={SPLASH_INSTALL_COMMAND}

@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyDownloadOs,
   type DetectedOs,
+  DOWNLOAD_PAGE_HREF,
   DOWNLOAD_TARGETS,
   defaultTargetForOs,
+  downloadHrefForDetectedOs,
   downloadHrefForTarget,
   downloadLabelForOs,
   orderTargetsForOs,
@@ -84,6 +86,24 @@ describe('downloadLabelForOs', () => {
 
   test('names the detected OS once it is known', () => {
     expect(downloadLabelForOs('windows')).toBe('Download for Windows');
+  });
+});
+
+describe('downloadHrefForDetectedOs', () => {
+  test('sends Windows and Linux to the production picker without losing attribution', () => {
+    const expected = `${DOWNLOAD_PAGE_HREF}?utm_content=docs-sidebar`;
+    expect(downloadHrefForDetectedOs('docs-sidebar', 'windows')).toBe(expected);
+    expect(downloadHrefForDetectedOs('docs-sidebar', 'linux')).toBe(expected);
+    expect(DOWNLOAD_PAGE_HREF).toBe('https://openknowledge.ai/download');
+  });
+
+  test('keeps the sole macOS build and the working SSR floor direct', () => {
+    expect(downloadHrefForDetectedOs('docs-sidebar', 'macos')).toBe(
+      '/download/stable?utm_content=docs-sidebar&os=macos&arch=arm64&format=dmg',
+    );
+    expect(downloadHrefForDetectedOs('docs-sidebar', 'unknown')).toBe(
+      '/download/stable?utm_content=docs-sidebar&os=macos&arch=arm64&format=dmg',
+    );
   });
 });
 
