@@ -92,6 +92,16 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
     },
     onMenuAction: () => () => {},
     onRecentRemovedMissing: () => () => {},
+    integrations: {
+      // CreateProjectDialog seeds its editor checkboxes off this on open.
+      status: async () => ({
+        available: false,
+        editors: [],
+        path: { shellDetected: false, rcFilesToTouch: [], installed: false },
+        skills: [],
+        detectedEditorIds: [],
+      }),
+    },
     project: {
       listRecent: async () => [],
       removeRecent: async () => undefined,

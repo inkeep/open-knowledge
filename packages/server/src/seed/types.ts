@@ -69,8 +69,19 @@ export interface ScaffoldPlan {
    * provenance (the user's own skill happens to share the name): apply will
    * neither install nor clobber it, and callers must surface it instead of
    * reading the pack as already set up.
+   *
+   * `pending` is always false when `packSkillHomeRefusal` is set — see below.
    */
   packSkills?: { name: string; pending: boolean; conflict?: boolean }[];
+  /**
+   * Set when the pack ships skills but this project has no usable skill home,
+   * so apply cannot install any of them (OK never creates an agent folder on
+   * the user's behalf). Nothing is pending in that case — a plan that promised
+   * work apply always declines made `ok seed` report "applied" on every re-run
+   * while doing nothing. Callers should say the skills were not installed and
+   * why, rather than report a clean, complete seed.
+   */
+  packSkillHomeRefusal?: 'no-agent-folder' | 'home-escapes-project';
 }
 
 /**

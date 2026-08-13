@@ -11,6 +11,12 @@
 import { relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import {
+  AGENTS_SKILLS_ROOT,
+  EDITOR_PROJECT_SKILL_ROOT,
+  PROJECT_SKILL_EDITOR_IDS,
+  skillRootActivationPath,
+} from '@inkeep/open-knowledge-core';
+import {
   applySeed,
   DEFAULT_PACK_ID,
   formatPackRationale,
@@ -42,6 +48,30 @@ interface SeedCommandOptions {
   dryRun?: boolean;
   /** Test-only: override stdin for confirmation. */
   confirmStream?: NodeJS.ReadableStream;
+}
+
+/**
+ * Spell out why the pack's skills were not installed — and cannot be, until the
+ * user changes something. `planSeed` sets `packSkillHomeRefusal` only when the
+ * pack ships skills and no usable skill home exists, so this is never
+ * hypothetical: apply refuses every run. Without it "already seeded" reads as a
+ * complete setup while the pack's skills are silently absent.
+ */
+function skillHomeRefusalNote(plan: ScaffoldPlan, packName: string): string {
+  if (plan.packSkillHomeRefusal === undefined) return '';
+  if (plan.packSkillHomeRefusal === 'home-escapes-project') {
+    return `\n${warning('!')} The ${packName} skills were not installed: this project's skill folder is a symlink pointing outside the project, and Open Knowledge will not write through it. Replace it with a real directory inside the project, then run \`ok seed\` again.`;
+  }
+  // Derived from the editor registry, so a newly onboarded host lands in this
+  // list for free rather than making the message quietly wrong.
+  const homes = [
+    ...new Set(
+      [AGENTS_SKILLS_ROOT, ...PROJECT_SKILL_EDITOR_IDS.map((id) => EDITOR_PROJECT_SKILL_ROOT[id])]
+        .filter((root): root is string => root !== null)
+        .map(skillRootActivationPath),
+    ),
+  ].map((home) => `${home}/`);
+  return `\n${warning('!')} The ${packName} skills were not installed: this project has no agent folder for them. Open Knowledge only writes skills into a folder that already exists (${homes.join(', ')}) and never creates one for you. Create the folder your agent uses, then run \`ok seed\` again to install them.`;
 }
 
 function isPackId(value: unknown): value is PackId {
@@ -102,6 +132,8 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
   // A pending pack skill is outstanding work even when every folder/template
   // already exists (see ScaffoldPlan.packSkills) — `applySeed` would still author
   // and install it, so this is not a no-op. SeedDialog folds the same two signals.
+  // Nothing is pending when the project has no usable skill home: apply declines
+  // there, so this stays a no-op run after run and the message says why.
   if (plan.created.length === 0 && !plan.packSkills?.some((s) => s.pending)) {
     const packName = STARTER_PACKS[packId].name;
     // A conflicted skill is present-but-not-ours: "already seeded" would
@@ -113,9 +145,12 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
           `\n${warning('!')} Skill "${s.name}" is your own — the pack's version is not installed. Rename yours to install the pack's version.`,
       )
       .join('');
+    // "Nothing to do" is false when the refusal note just told the user what to
+    // do (create an agent folder, re-run) — drop it rather than contradict it.
+    const refusalNote = skillHomeRefusalNote(plan, packName);
     return {
       status: 'no-op',
-      message: `${success(`Your ${packName} pack is already seeded.`)}${conflictNote}\n${dim('Nothing to do.')}`,
+      message: `${success(`Your ${packName} pack is already seeded.`)}${refusalNote}${conflictNote}${refusalNote === '' ? `\n${dim('Nothing to do.')}` : ''}`,
       plan,
       exitCode: 0,
     };
@@ -191,7 +226,7 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   return {
     status: 'applied',
-    message: `${success(`✓ Seeded ${packName}`)} ${dim(`(${applyResult.applied} entries, ${applyResult.durationMs}ms)`)}${skillLine}${conflictLines}`,
+    message: `${success(`✓ Seeded ${packName}`)} ${dim(`(${applyResult.applied} entries, ${applyResult.durationMs}ms)`)}${skillLine}${skillHomeRefusalNote(plan, packName)}${conflictLines}`,
     plan,
     exitCode: 0,
   };

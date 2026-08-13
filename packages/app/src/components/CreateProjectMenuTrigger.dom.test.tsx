@@ -65,6 +65,16 @@ function makeBridge(): OkDesktopBridge {
     fs: {
       defaultProjectsRoot: async (): Promise<string> => '/Users/test/Projects',
     },
+    integrations: {
+      // CreateProjectDialog seeds its editor checkboxes off this on open.
+      status: async () => ({
+        available: false,
+        editors: [],
+        path: { shellDetected: false, rcFilesToTouch: [], installed: false },
+        skills: [],
+        detectedEditorIds: [],
+      }),
+    },
     project: {
       recordCreateNewBannerShown: async () => undefined,
       createNew: async () => undefined,

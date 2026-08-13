@@ -363,6 +363,12 @@ function seedRequiredFixtureFiles(contentDir: string): void {
   writeFileSync(join(contentDir, 'test-doc.md'), '', 'utf-8');
   mkdirSync(join(contentDir, 'sidebar-folder'), { recursive: true });
   writeFileSync(join(contentDir, 'sidebar-folder', 'nested-doc.md'), '', 'utf-8');
+  // Adopt a harness so project skill create resolves a home. OK never creates
+  // an agent dir on the user's behalf, so a project with no adopted harness
+  // refuses skill authoring with `NO_USABLE_SKILL_HOME`. `.claude` is the
+  // highest-precedence concrete host. Same precedent as the integration
+  // harness's `seedSkillHostRoot` in tests/integration/test-harness.ts.
+  mkdirSync(join(contentDir, '.claude', 'skills'), { recursive: true });
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({

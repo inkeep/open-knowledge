@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -133,6 +133,47 @@ describe('planSeed — nested .ok/ era', () => {
 
   test('rootDir rejects path traversal', async () => {
     await expect(planSeed({ projectDir, rootDir: '../escape' })).rejects.toThrow(SeedRootDirError);
+  });
+
+  // OK never creates an agent home, so `installPackSkill` declines outright in a
+  // project that adopted none. A plan reporting the skills pending there
+  // promises work apply refuses on every run — the seed then claims it did
+  // something forever while doing nothing.
+  test('no agent folder: pack skills are not pending, and the plan says why', async () => {
+    const plan = await planSeed({ projectDir, packId: 'plain-notes' });
+    expect(plan.packSkills?.length).toBeGreaterThan(0);
+    expect(plan.packSkills?.some((s) => s.pending)).toBe(false);
+    expect(plan.packSkillHomeRefusal).toBe('no-agent-folder');
+  });
+
+  test('with an adopted agent folder, an absent pack skill is pending', async () => {
+    mkdirSync(join(projectDir, '.claude'), { recursive: true });
+    const plan = await planSeed({ projectDir, packId: 'plain-notes' });
+    expect(plan.packSkills?.some((s) => s.pending)).toBe(true);
+    expect(plan.packSkillHomeRefusal).toBeUndefined();
+  });
+
+  // The OTHER refusal: an agent folder DOES exist, but it symlinks out of the
+  // project, so authoring through it would write outside the repo. Kept
+  // distinct from `no-agent-folder` because the two need different user
+  // guidance (replace the symlink vs. create a folder), so the plan must
+  // report which one it is rather than collapse both into "no home".
+  test('an agent folder symlinked outside the project refuses with home-escapes-project', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'seed-outside-'));
+    try {
+      // `.claude` resolves outside the project and its `skills` root exists —
+      // the shape `resolveDefaultSkillHomeRel` picks and the escape guard then
+      // refuses.
+      symlinkSync(outside, join(projectDir, '.claude'));
+      mkdirSync(join(outside, 'skills'), { recursive: true });
+
+      const plan = await planSeed({ projectDir, packId: 'plain-notes' });
+
+      expect(plan.packSkillHomeRefusal).toBe('home-escapes-project');
+      expect(plan.packSkills?.some((s) => s.pending)).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 

@@ -27,6 +27,7 @@ import {
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
   SKILL_NAME_REGEX,
+  skillRootActivationPath,
 } from '@inkeep/open-knowledge-core';
 import {
   parseSkillDir,
@@ -66,6 +67,10 @@ const HOST_ROOTS_BY_PRECEDENCE = rootsByPrecedence(EDITOR_PROJECT_SKILL_ROOT);
 
 /** The GLOBAL tier's roots: user-home editor dirs (`~/.claude/skills`, …). */
 export const USER_HOST_ROOTS_BY_PRECEDENCE = rootsByPrecedence(EDITOR_USER_SKILL_ROOT);
+
+function hostRootExists(base: string, skillsRoot: string): boolean {
+  return existsSync(resolve(base, skillRootActivationPath(skillsRoot)));
+}
 
 /** Move a directory; copy+remove fallback ONLY on a cross-device rename. */
 function moveDir(from: string, to: string): void {
@@ -244,15 +249,13 @@ export async function migrateStoreSkillsInPlace(opts: {
 
       // Target = highest-precedence host already carrying the skill (store link
       // or same-hash copy); an unprojected skill falls back to the first root that
-      // ALREADY EXISTS (never inventing `.agents` — hub adoption is the team's
-      // call), else `.claude/skills`.
+      // ALREADY EXISTS. No existing host means the legacy bundle stays put.
       const target =
         states.find((s) => s.state.kind === 'store-link' || s.state.kind === 'same-copy') ??
-        // Reaching here means no root carries the skill, so `absent` is the only
-        // writable kind left. Tested positively, not as "not occupied", so a
-        // state added later fails closed instead of inheriting a write.
-        states.find((s) => s.state.kind === 'absent' && existsSync(resolve(projectDir, s.root))) ??
-        states.find((s) => s.host === 'claude');
+        // An existing host root is authorized even when its skill slot is
+        // occupied; the branch below reports that conflict without inventing a
+        // fallback host.
+        states.find((s) => hostRootExists(projectDir, s.root));
       if (!target) {
         result.skipped.push({ name, reason: 'no-usable-target' });
         continue;

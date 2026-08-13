@@ -18,8 +18,10 @@ import { describe, expect, test } from 'vitest';
 import {
   ALL_EDITOR_IDS,
   EDITOR_PROJECT_SKILL_ROOT,
+  EDITOR_USER_SKILL_ROOT,
   HOSTS_WITH_USER_SKILL_DIR,
   PROJECT_SKILL_EDITOR_IDS,
+  USER_SKILL_HOSTS,
 } from '../constants/editors.ts';
 import { SkillTargetEditorSchema } from './schema.ts';
 
@@ -42,8 +44,8 @@ describe('project-skill editor-id single source', () => {
     // Single source for the host-dir sweep both the CLI and desktop run.
     // editorId set === PROJECT_SKILL_EDITOR_IDS minus the documented Pi and
     // Copilot carve-outs. Their user-global skills dirs do not follow the
-    // `~/<hostDir>/skills` layout this sweep assumes; both read the central
-    // `~/.agents/skills` hub natively. hostDir === the root's top-level dotdir.
+    // `~/<hostDir>/skills` layout this project-shaped sweep assumes. Their
+    // concrete global roots are covered separately by USER_SKILL_HOSTS.
     expect(asStrings(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId))).toEqual(
       asStrings(PROJECT_SKILL_EDITOR_IDS.filter((id) => id !== 'pi' && id !== 'copilot')),
     );
@@ -57,7 +59,7 @@ describe('project-skill editor-id single source', () => {
     // Pi scans project `.pi/skills` natively (trust-gated), so it belongs in
     // the install-projection enum; its user-global layout (`~/.pi/agent/skills`
     // + the central `~/.agents/skills` hub) has no `~/.pi/skills`, so the
-    // user-bundle sweep must not fabricate one.
+    // project-shaped sweep must not fabricate one.
     expect(SkillTargetEditorSchema.options).toContain('pi');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId)).not.toContain('pi');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir)).not.toContain('.pi');
@@ -65,10 +67,25 @@ describe('project-skill editor-id single source', () => {
 
   test('Copilot IS a project-skill install target but NOT a user-global host-dir sweep member', () => {
     // Copilot scans `.github/skills` per project, but keeps global skills at
-    // `~/.copilot/skills`; it also reads the central `~/.agents/skills` hub.
+    // `~/.copilot/skills`, which USER_SKILL_HOSTS preserves directly.
     expect(SkillTargetEditorSchema.options).toContain('copilot');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId)).not.toContain('copilot');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir)).not.toContain('.github');
+  });
+
+  test('USER_SKILL_HOSTS preserves every concrete user-global root', () => {
+    const expected = ALL_EDITOR_IDS.filter((id) => EDITOR_USER_SKILL_ROOT[id] !== null);
+    expect(asStrings(USER_SKILL_HOSTS.map((host) => host.editorId))).toEqual(asStrings(expected));
+    for (const { editorId, hostDir, skillsRoot } of USER_SKILL_HOSTS) {
+      expect(skillsRoot).toBe(EDITOR_USER_SKILL_ROOT[editorId]);
+      expect(hostDir).toBe(skillsRoot.split('/')[0]);
+    }
+    expect(USER_SKILL_HOSTS.find((host) => host.editorId === 'pi')?.skillsRoot).toBe(
+      '.pi/agent/skills',
+    );
+    expect(USER_SKILL_HOSTS.find((host) => host.editorId === 'copilot')?.skillsRoot).toBe(
+      '.copilot/skills',
+    );
   });
 
   test('Claude Desktop is NOT a project-skill install target (user-global only, null root)', () => {

@@ -558,6 +558,15 @@ export interface OkIntegrationsStatus {
     readonly installed: boolean;
     readonly paths: readonly string[];
   }[];
+  /**
+   * Every editor whose host root already exists on this machine — a SUPERSET
+   * of the ids in `editors[]`, which is filtered to targets with a user-global
+   * MCP surface. The Create-new-project dialog seeds its editor checkboxes
+   * from this so a user who never opens "Advanced settings" still gets MCP
+   * config + the project skill for the tools they actually have, and none for
+   * the ones they don't.
+   */
+  readonly detectedEditorIds: readonly OkMcpWiringEditorId[];
 }
 
 /** One toggle for `integrations.setComponent`. */
@@ -1460,8 +1469,8 @@ export interface OkDesktopBridge {
     /**
      * Atomically scaffold a new project under `parent/name` with the
      * user-chosen `editors` set. `editors` is the renderer's exact selection
-     * (default-all unless the user unchecked entries); main never widens or
-     * narrows it.
+     * (seeded from `integrations.status().detectedEditorIds`, minus/plus
+     * anything the user toggled); main never widens or narrows it.
      */
     createNew(args: {
       parent: string;

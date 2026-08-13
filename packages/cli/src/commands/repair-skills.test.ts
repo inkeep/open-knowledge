@@ -625,6 +625,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
 
   it('AC-B2: refreshes central + per-host and advances skill-state when version mismatches', async () => {
     // Seed the per-host roots so they aren't `skipped-host-absent`.
+    mkdirSync(join(scratch.home, '.agents'), { recursive: true });
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     mkdirSync(join(scratch.home, '.cursor'), { recursive: true });
     mkdirSync(join(scratch.home, '.codex'), { recursive: true });
@@ -688,7 +689,11 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     if (result.status !== 'done' || result.user.outcome !== 'done') throw new Error('unreachable');
 
     const centralPath = join(scratch.home, '.agents', 'skills', USER_SKILL_DIR_NAME);
-    expect(existsSync(join(centralPath, 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(centralPath, 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(scratch.home, '.agents'))).toBe(false);
+    expect(
+      existsSync(join(scratch.home, '.claude', 'skills', USER_SKILL_DIR_NAME, 'SKILL.md')),
+    ).toBe(true);
     expect(written).toEqual([{ home: scratch.home, version: '9.9.9' }]);
   });
 
@@ -698,6 +703,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     // skill-state.yml, and the next boot's version-current fast path would
     // permanently skip the central retry until the next CLI release.
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
+    mkdirSync(join(scratch.home, '.agents'), { recursive: true });
     const realFs = await import('node:fs');
     const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
@@ -790,8 +796,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     expect(written).toEqual([{ home: scratch.home, version: '9.9.9' }]);
   });
 
-  it('AC-B4: skips per-host writes when ~/.{host}/ root is absent (no spurious mkdir)', async () => {
-    // Don't create .claude or .cursor — central still writes; per-host skips.
+  it('AC-B4: no existing user-skill host means no host is fabricated', async () => {
     const written: Array<{ home: string; version: string }> = [];
     const result = await repairSkills({
       projectDir: scratch.project,
@@ -806,7 +811,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
       }),
     });
 
-    if (result.status !== 'done' || result.user.outcome !== 'done') throw new Error('unreachable');
+    if (result.status !== 'done') throw new Error('unreachable');
 
     const claudeEntry = result.user.entries.find(
       (e) => e.kind === 'host' && e.editorId === 'claude',
@@ -820,9 +825,57 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     // The host roots stay absent — we don't author them.
     expect(existsSync(join(scratch.home, '.claude'))).toBe(false);
     expect(existsSync(join(scratch.home, '.cursor'))).toBe(false);
+    expect(existsSync(join(scratch.home, '.agents'))).toBe(false);
 
-    // Central still wrote — version advanced.
+    expect(written).toEqual([]);
+  });
+
+  it('repairs an existing Pi user root without creating .agents', async () => {
+    mkdirSync(join(scratch.home, '.pi'), { recursive: true });
+    const written: Array<{ home: string; version: string }> = [];
+    const result = await repairSkills({
+      projectDir: scratch.project,
+      home: scratch.home,
+      deps: depsBuilder({
+        projectBundleDir,
+        discoveryBundleDir,
+        bundledVersion: '9.9.9',
+        recordedVersion: '0.6.0',
+        writtenVersions: written,
+      }),
+    });
+
+    if (result.status !== 'done' || result.user.outcome !== 'done') throw new Error('unreachable');
+    expect(
+      existsSync(join(scratch.home, '.pi', 'agent', 'skills', USER_SKILL_DIR_NAME, 'SKILL.md')),
+    ).toBe(true);
+    expect(existsSync(join(scratch.home, '.agents'))).toBe(false);
     expect(written).toEqual([{ home: scratch.home, version: '9.9.9' }]);
+  });
+
+  it('recognizes current bundles installed only in a concrete Pi root', async () => {
+    for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
+      const dir = join(scratch.home, '.pi', 'agent', 'skills', name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), '# existing');
+    }
+    const written: Array<{ home: string; version: string }> = [];
+    const result = await repairSkills({
+      projectDir: scratch.project,
+      home: scratch.home,
+      deps: depsBuilder({
+        projectBundleDir,
+        discoveryBundleDir,
+        bundledVersion: '9.9.9',
+        recordedVersion: '9.9.9',
+        writtenVersions: written,
+      }),
+    });
+
+    if (result.status !== 'done') throw new Error('unreachable');
+    expect(result.user).toEqual({ outcome: 'skipped', reason: 'version-current' });
+    expect(existsSync(join(scratch.home, '.agents'))).toBe(false);
+    expect(written).toEqual([]);
   });
 
   it('reports skipped:bundle-missing when the discovery bundle dir resolve throws', async () => {
@@ -1151,7 +1204,7 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
     expect(recordedEvents).toHaveLength(0);
   });
 
-  it('emits outcome=failed reason=central-write-failed when central fails AND no per-host dirs exist', async () => {
+  it('emits no failure when no user-skill host exists', async () => {
     // Strictly synthetic existsSync — only paths we name as "present" return
     // true. Lets the test assert "no host dirs visible" deterministically
     // without depending on what the central-write side effects leave on disk.
@@ -1196,13 +1249,10 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       }),
     });
 
-    // No host dirs are present, so every host (claude, cursor, codex) hits
-    // skipped-host-absent. The only failure is the central write itself, so
-    // `central-write-failed` is the precise reason.
+    // No host dirs are present, so every host is skipped. `.agents` is not an
+    // implicit destination, so no write is attempted and no failure is emitted.
     expect(presentPaths.size).toBe(0); // sanity: no host dirs marked present
-    expect(recordedEvents).toHaveLength(1);
-    expect(recordedEvents[0]?.outcome).toBe('failed');
-    expect(recordedEvents[0]?.reason).toBe('central-write-failed');
+    expect(recordedEvents).toHaveLength(0);
   });
 
   it('emits outcome=failed reason=all-writes-failed when central AND per-host writes all throw', async () => {
@@ -1248,9 +1298,68 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       }),
     });
 
-    expect(recordedEvents).toHaveLength(1);
-    expect(recordedEvents[0]?.outcome).toBe('failed');
-    expect(recordedEvents[0]?.reason).toBe('all-writes-failed');
+    // One event per bundle — every gated bundle failed, and each names itself.
+    expect(recordedEvents).toHaveLength(2);
+    expect(recordedEvents.map((e) => e.outcome)).toEqual(['failed', 'failed']);
+    expect(recordedEvents.map((e) => e.reason)).toEqual(['all-writes-failed', 'all-writes-failed']);
+    expect(recordedEvents.map((e) => e.bundle).sort()).toEqual(['discovery', 'write-skill']);
+  });
+
+  it('a bundle that lands nowhere reports failed even when a sibling bundle succeeds', async () => {
+    // `.agents` absent (no central destination) and exactly one host root, so
+    // each bundle has exactly one candidate destination: `~/.claude/skills/…`.
+    mkdirSync(join(scratch.home, '.claude'), { recursive: true });
+    const realFs = await import('node:fs');
+    const failingBundleDir = 'open-knowledge-write-skill';
+    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+      existsSync: (p) => realFs.existsSync(p),
+      isDirectory: (p) => {
+        try {
+          return realFs.statSync(p).isDirectory();
+        } catch {
+          return false;
+        }
+      },
+      readdirSync: (p) => realFs.readdirSync(p),
+      readFileSync: (p) => realFs.readFileSync(p),
+      // Only the write-skill bundle's writes throw; discovery lands normally.
+      writeFileSync: (p, c) => {
+        if (p.includes(failingBundleDir)) throw new Error('synthetic: EACCES');
+        realFs.writeFileSync(p, c);
+      },
+      mkdirSync: (p, o) => {
+        realFs.mkdirSync(p, o);
+      },
+      rmSync: (p, o) => {
+        realFs.rmSync(p, o);
+      },
+    };
+
+    const written: Array<{ home: string; version: string }> = [];
+    const recordedEvents: SkillInstallEvent[] = [];
+
+    await repairSkills({
+      projectDir: scratch.project,
+      home: scratch.home,
+      fs: customFs,
+      deps: depsBuilder({
+        projectBundleDir,
+        discoveryBundleDir,
+        bundledVersion: '9.9.9',
+        recordedVersion: '0.6.0',
+        writtenVersions: written,
+        recordedEvents,
+      }),
+    });
+
+    // The sibling landed, but this bundle reached no destination at all.
+    const writeSkillEvents = recordedEvents.filter((e) => e.bundle === 'write-skill');
+    expect(writeSkillEvents).toHaveLength(1);
+    expect(writeSkillEvents[0]?.outcome).toBe('failed');
+    expect(writeSkillEvents[0]?.reason).toBe('all-writes-failed');
+    expect(recordedEvents.some((e) => e.outcome === 'skip-current')).toBe(false);
+    // Version stays unrecorded so the next boot retries the failed bundle.
+    expect(written).toEqual([]);
   });
 
   it('JSONL emission failures never propagate (telemetry must not affect install outcomes)', async () => {

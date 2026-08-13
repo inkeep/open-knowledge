@@ -28,7 +28,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve, sep } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import {
   LEGACY_SKILL_STORE_ROOT,
   LINEAGE_EPOCH_KEY,
@@ -38,6 +38,7 @@ import {
   parseExternalSkillDocName,
   parseManagedArtifactName,
   SKILL_NAME_REGEX,
+  skillRootActivationPath,
 } from '@inkeep/open-knowledge-core';
 import {
   atomicWriteFile,
@@ -184,9 +185,20 @@ export function managedArtifactTimelinePaths(
  * would double-index every `SKILL.md`. Global skills live at
  * `<home>/.ok/skills`, OUTSIDE contentDir, so this dedicated watch stays their
  * only disk→doc reconcile path.
+ *
+ * Gated on the host dotdir ALREADY existing. The watcher `mkdir -p`s every root
+ * it is handed, so the ungated vocabulary conjured `~/.codex`, `~/.copilot`,
+ * `~/.cursor`, `~/.opencode`, `~/.pi` on a machine with none of those tools
+ * installed — just by booting OK. OK never creates a harness home; an existing
+ * dotdir means the tool IS installed, and creating its `skills/` leaf under it
+ * is expected. A root that appears later is picked up on the next boot, and a
+ * skill installed into it is materialized by the projection path regardless.
  */
 export function managedArtifactSkillsRoots(ctx: ManagedArtifactCtx): string[] {
-  return globalSkillGraphRoots(homeFor(ctx));
+  const home = homeFor(ctx);
+  return globalSkillGraphRoots(home).filter((abs) =>
+    existsSync(resolve(home, skillRootActivationPath(relative(home, abs).split(sep).join('/')))),
+  );
 }
 
 /**
@@ -223,7 +235,7 @@ function managedSkillBundleDir(
   scope: ManagedArtifactScope,
   name: string,
   ctx: ManagedArtifactLocation,
-): string {
+): string | null {
   // Guard 1: slug grammar (rejects `..`, slashes, dots, uppercase, empty).
   if (!SKILL_NAME_REGEX.test(name) || name.length > 64) {
     throw new Error(`managedSkillBundleDir: invalid skill name: ${JSON.stringify(name)}`);
@@ -248,12 +260,10 @@ function managedSkillBundleDir(
   // the bundle-existence check in `storeManagedArtifactDoc`.
   const native = resolveGlobalNativeSkillDir(base, name);
   const storeDir = resolve(base, '.ok', 'skills', name);
-  return (
-    native ??
-    (existsSync(resolve(storeDir, 'SKILL.md'))
-      ? storeDir
-      : resolve(base, resolveDefaultSkillHomeRel(base, 'global'), name))
-  );
+  if (native !== null) return native;
+  if (existsSync(resolve(storeDir, 'SKILL.md'))) return storeDir;
+  const homeRel = resolveDefaultSkillHomeRel(base, 'global');
+  return homeRel === null ? null : resolve(base, homeRel, name);
 }
 
 /**
@@ -312,6 +322,9 @@ export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifac
     throw new Error(`managedArtifactAbsPath: not a managed skill doc name: ${documentName}`);
   }
   const skillDir = managedSkillBundleDir(parsed.scope, parsed.name, ctx);
+  if (skillDir === null) {
+    throw new Error(`managedArtifactAbsPath: no usable skill home for ${documentName}`);
+  }
   let abs: string;
   if (parsed.rel === null) {
     abs = resolve(skillDir, 'SKILL.md');
@@ -562,7 +575,8 @@ export async function storeManagedArtifactDoc(
   // debounce fires against the old path afterwards. This stat is the last thing
   // between a stale doc and a resurrected artifact.
   const containerDir = managedArtifactContainerDir(documentName, ctx);
-  if (containerDir !== null && !existsSync(containerDir)) {
+  if (containerDir === null) return 'no-op';
+  if (!existsSync(containerDir)) {
     log.warn(
       { documentName, containerDir },
       'store: artifact container is gone (deleted or moved); dropping the write rather than resurrecting it',

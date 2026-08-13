@@ -8,6 +8,8 @@ import { readSkillsLockFile } from '../skills-lock-store.ts';
 import {
   classifyPresentPackSkill,
   OLD_PACK_SKILL_NAME,
+  type PackSkillHomeRefusal,
+  resolvePackSkillHome,
   resolvePackSkillSources,
 } from './install-pack-skill.ts';
 import { assertEntryPathInProject } from './path-safety.ts';
@@ -216,7 +218,14 @@ export async function planSeed(opts: SeedOptions = {}): Promise<ScaffoldPlan> {
   //    Presence is scan-based (in-place editor-dir skills, same source of truth
   //    `installPackSkill` dedups against), with the legacy `.ok/skills` store
   //    still honored for pre-inversion projects.
+  //    Nothing is pending when the project has no usable skill home: OK never
+  //    creates an agent folder, so `installPackSkill` declines and re-running
+  //    the seed would change nothing. Reporting work that can never happen made
+  //    every `ok seed` re-run in such a project claim it did something.
   const sources = resolvePackSkillSources(pack.id);
+  const home = sources.length > 0 ? resolvePackSkillHome(projectDir) : null;
+  const homeRefusal: PackSkillHomeRefusal | undefined =
+    home !== null && 'refusal' in home ? home.refusal : undefined;
   const scan = sources.length > 0 ? scanInPlaceSkills(projectDir) : [];
   const inPlaceDirByName = new Map(scan.map((sk) => [sk.name, join(projectDir, sk.dir)]));
   const lock = sources.length > 0 ? readSkillsLockFile(join(projectDir, ...SKILLS_LOCK_REL)) : null;
@@ -252,8 +261,20 @@ export async function planSeed(opts: SeedOptions = {}): Promise<ScaffoldPlan> {
       presentDir !== null &&
       lock !== null &&
       classifyPresentPackSkill(pack.id, presentName, presentDir, lock) === 'foreign';
-    return { name, pending: presentDir === null, ...(conflict ? { conflict: true } : {}) };
+    return {
+      name,
+      pending: presentDir === null && homeRefusal === undefined,
+      ...(conflict ? { conflict: true } : {}),
+    };
   });
 
-  return { created, skipped, warnings, ...(packSkills.length > 0 ? { packSkills } : {}) };
+  return {
+    created,
+    skipped,
+    warnings,
+    ...(packSkills.length > 0 ? { packSkills } : {}),
+    ...(packSkills.length > 0 && homeRefusal !== undefined
+      ? { packSkillHomeRefusal: homeRefusal }
+      : {}),
+  };
 }

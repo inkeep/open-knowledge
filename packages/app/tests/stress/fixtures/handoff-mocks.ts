@@ -530,6 +530,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             editors: [],
             path: { shellDetected: false, rcFilesToTouch: [], installed: false },
             skills: [],
+            detectedEditorIds: [],
           }),
           setComponent: async () => ({
             ok: false as const,
@@ -539,6 +540,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
               editors: [],
               path: { shellDetected: false, rcFilesToTouch: [], installed: false },
               skills: [],
+              detectedEditorIds: [],
             },
           }),
         },

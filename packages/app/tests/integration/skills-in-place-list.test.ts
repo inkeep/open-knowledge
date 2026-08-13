@@ -460,6 +460,71 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     }
   });
 
+  test('global omitted targets project only into host roots that already exist', async () => {
+    const gContent = mkdtempSync(join(tmpdir(), 'ok-global-default-targets-content-'));
+    const home = mkdtempSync(join(tmpdir(), 'ok-global-default-targets-home-'));
+    writeSkill(home, '.codex/skills/globby', '# Native global');
+    mkdirSync(join(home, '.cursor'), { recursive: true });
+    const gServer = await createTestServer({
+      contentDir: gContent,
+      configHomedirOverride: home,
+    });
+    try {
+      // The harness bootstraps its own Claude platform bundle. Remove that
+      // fixture-created root so this request starts from the intended host set.
+      rmSync(join(home, '.claude'), { recursive: true, force: true });
+      rmSync(join(home, '.agents'), { recursive: true, force: true });
+      const res = await fetch(`http://127.0.0.1:${gServer.port}/api/skill/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'globby', scope: 'global' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(existsSync(join(home, '.codex/skills/globby/SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.cursor/skills/globby/SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.claude'))).toBe(false);
+      expect(existsSync(join(home, '.agents'))).toBe(false);
+    } finally {
+      await gServer.cleanup();
+      rmSync(gContent, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('global explicit targets may create a host root that does not exist yet', async () => {
+    const gContent = mkdtempSync(join(tmpdir(), 'ok-global-explicit-target-content-'));
+    const home = mkdtempSync(join(tmpdir(), 'ok-global-explicit-target-home-'));
+    writeSkill(home, '.codex/skills/globby', '# Native global');
+    const gServer = await createTestServer({
+      contentDir: gContent,
+      configHomedirOverride: home,
+    });
+    try {
+      // Keep the explicit-target precondition honest despite the harness's
+      // platform-skill bootstrap.
+      rmSync(join(home, '.claude'), { recursive: true, force: true });
+      rmSync(join(home, '.agents'), { recursive: true, force: true });
+      const res = await fetch(`http://127.0.0.1:${gServer.port}/api/skill/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'globby',
+          scope: 'global',
+          targets: ['codex', 'agents'],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(existsSync(join(home, '.agents/skills/globby/SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.claude'))).toBe(false);
+    } finally {
+      await gServer.cleanup();
+      rmSync(gContent, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('install copies the canonical to a new editor; uncheck removes only the copy', async () => {
     // Check codex: canonical (.claude) stays, .codex gets a real copy.
     const res = await install(['claude', 'codex']);

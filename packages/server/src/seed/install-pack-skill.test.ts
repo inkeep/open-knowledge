@@ -131,13 +131,15 @@ describe('installPackSkill', () => {
     }
   });
 
-  test('no editor set up: the source is still authored at the fallback home', async () => {
+  test('no editor set up: skips skill materialization without creating a host root', async () => {
     const proj = tmpProject();
     const name = orientationName('knowledge-base');
-    // No set-up editor → nothing fanned/labelled, but the source still lands
-    // (default fallback home) so the skill lists for that folder's agent.
-    expect((await installPackSkill(proj, 'knowledge-base')).editors).toEqual([]);
-    expect(existsSync(join(proj, '.claude', 'skills', name, 'SKILL.md'))).toBe(true);
+    const result = await installPackSkill(proj, 'knowledge-base');
+
+    expect(result).toEqual({ editors: [], conflicts: [] });
+    expect(existsSync(join(proj, '.claude'))).toBe(false);
+    expect(existsSync(join(proj, '.agents'))).toBe(false);
+    expect(existsSync(join(proj, '.ok', 'skills', name))).toBe(false);
     expect(readInstalledSkills(proj).skills[name]).toBeUndefined();
   });
 

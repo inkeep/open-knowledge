@@ -177,14 +177,27 @@ const makeDiscoverDeps = (
     }),
 });
 
+/**
+ * Pin the editor set the dialog "proposed" so the telemetry variant does not
+ * depend on which AI tools happen to be installed on the machine running the
+ * suite. Production reads the same set from `detectInstalledEditors`.
+ */
+const withDetected = (
+  detected: readonly string[],
+  base: RunCreateNewDeps = {},
+): RunCreateNewDeps => ({ ...base, detectInstalledEditors: () => detected });
+
 describe('runCreateNew — happy paths', () => {
   test('scaffolds .ok/config.yml and reports default variant', async () => {
     const parent = tmpRoot;
-    const result = await runCreateNew({
-      parent,
-      name: 'My Notes',
-      editors: [...ALL_EDITOR_IDS],
-    });
+    const result = await runCreateNew(
+      {
+        parent,
+        name: 'My Notes',
+        editors: [...ALL_EDITOR_IDS],
+      },
+      withDetected(ALL_EDITOR_IDS),
+    );
     expect(result.target).toBe(join(parent, 'My Notes'));
     // projectDir == realpath(target). macOS aliases /tmp → /private/tmp so
     // the realpath equality holds even though the raw strings differ.
@@ -228,12 +241,31 @@ describe('runCreateNew — happy paths', () => {
     ).not.toThrow();
   });
 
-  test('records customized variant when a subset of editors is supplied', async () => {
-    const result = await runCreateNew({
-      parent: tmpRoot,
-      name: 'Customized',
-      editors: ['codex'],
-    });
+  test('reports default variant when the submitted set is the detected set, even though it is not every editor', async () => {
+    // The dialog seeds its checkboxes from detection, so "default" means
+    // "unchanged from what we proposed" — NOT "every editor". Pinning this
+    // against a two-editor machine is the whole point: under the old
+    // all-editors baseline every real create would have read as customized.
+    const result = await runCreateNew(
+      { parent: tmpRoot, name: 'Detected Only', editors: ['codex', 'cursor'] },
+      withDetected(['codex', 'cursor']),
+    );
+    expect(result.variant).toBe('create-new-default');
+  });
+
+  test('records customized variant when the user narrows the detected set', async () => {
+    const result = await runCreateNew(
+      { parent: tmpRoot, name: 'Narrowed', editors: ['codex'] },
+      withDetected(['codex', 'cursor']),
+    );
+    expect(result.variant).toBe('create-new-customized');
+  });
+
+  test('records customized variant when the user adds an undetected editor', async () => {
+    const result = await runCreateNew(
+      { parent: tmpRoot, name: 'Widened', editors: ['codex', 'claude'] },
+      withDetected(['codex']),
+    );
     expect(result.variant).toBe('create-new-customized');
   });
 
@@ -296,7 +328,7 @@ describe('runCreateNew — git-root promotion', () => {
     writeFileSync(resolve(repo, '.git/HEAD'), 'ref: refs/heads/main\n');
 
     const target = resolve(notes, 'MyProj');
-    const deps = makeDiscoverDeps(fakeHome, { [target]: repo });
+    const deps = withDetected(ALL_EDITOR_IDS, makeDiscoverDeps(fakeHome, { [target]: repo }));
 
     const result = await runCreateNew(
       { parent: notes, name: 'MyProj', editors: [...ALL_EDITOR_IDS] },

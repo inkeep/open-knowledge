@@ -116,6 +116,10 @@ describe('runInit', () => {
       cwd: testDir,
       home: fakeHome,
       installUserSkill: defaultInstallUserSkill,
+      // Most tests in this suite predate the opt-in flag and exercise unrelated
+      // init behavior. Keep their install path explicit; consent-default tests
+      // override this with `skills: undefined`.
+      skills: true,
       // Default to user scope so existing tests remain focused on user-scope
       // behavior. New scope tests set scope explicitly.
       scope: 'user',
@@ -682,6 +686,38 @@ describe('runInit', () => {
   });
 
   describe('multi-editor', () => {
+    it('omitted editors create project skills only for detected hosts', async () => {
+      rmSync(join(fakeHome, '.claude'), { recursive: true, force: true });
+
+      const noneDetected = await runInitForTest({ mcp: false });
+      expect(noneDetected.projectSkills).toEqual([]);
+      expect(existsSync(join(testDir, '.claude'))).toBe(false);
+      expect(existsSync(join(testDir, '.cursor'))).toBe(false);
+      expect(existsSync(join(testDir, '.agents'))).toBe(false);
+
+      mkdirSync(join(fakeHome, '.claude'), { recursive: true });
+      const claudeDetected = await runInitForTest({ mcp: false });
+      expect(claudeDetected.projectSkills.map((skill) => skill.editorId)).toEqual(['claude']);
+      expect(existsSync(join(testDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        true,
+      );
+      expect(existsSync(join(testDir, '.cursor'))).toBe(false);
+      expect(existsSync(join(testDir, '.agents'))).toBe(false);
+    });
+
+    it('explicit editors remain authoritative when their roots do not exist yet', async () => {
+      rmSync(join(fakeHome, '.claude'), { recursive: true, force: true });
+
+      const result = await runInitForTest({ editors: ['cursor'], mcp: false });
+
+      expect(result.projectSkills.map((skill) => skill.editorId)).toEqual(['cursor']);
+      expect(existsSync(join(testDir, '.cursor', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        true,
+      );
+      expect(existsSync(join(testDir, '.claude'))).toBe(false);
+      expect(existsSync(join(testDir, '.agents'))).toBe(false);
+    });
+
     it('writes Claude + Cursor configs in a single run', async () => {
       mkdirSync(dirname(cursorConfigPath()), { recursive: true });
       const result = await runInitForTest({ editors: ['claude', 'cursor'] });
@@ -1005,18 +1041,21 @@ describe('runInit', () => {
       expect(capturedHome).toBe(fakeHome);
     });
 
-    it('FR6/D8: installs BOTH user-global bundles by default and records both enabled', async () => {
+    it('an omitted skill choice enables every bundle', async () => {
+      // Enabling is not writing. The folder-creation bug this change fixes
+      // lives in `installUserSkill`, which refuses every destination whose host
+      // root is absent, so a machine with no agent tooling still gets nothing
+      // from this path. Making the bundles opt-in instead would be a product
+      // change rather than a fix, so the flag semantics stay as they were.
       const installed: (string | undefined)[] = [];
       await runInitForTest({
+        skills: undefined,
         installUserSkill: async (opts) => {
           installed.push(opts?.bundleId);
           return 'installed';
         },
       });
-      expect(installed.sort()).toEqual(['discovery', 'write-skill']);
-      // Decisions persisted so the desktop / start reclaim gates agree.
-      expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(true);
-      expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBe(true);
+      expect([...installed].sort()).toEqual(['discovery', 'write-skill']);
     });
 
     it('--no-skills installs nothing and records NOTHING', async () => {
@@ -3262,7 +3301,10 @@ describe('resolveInitSkillEnablement — --skills / --no-skills flag parsing', (
   const sorted = (skills: string | boolean | undefined): string[] =>
     [...resolveInitSkillEnablement(skills)].sort();
 
-  it('undefined (no flag) enables every user-global bundle', () => {
+  // Enabling is not writing: `installUserSkill` still refuses every destination
+  // whose host root is absent, so a machine with no agent tooling gets nothing
+  // regardless of what this returns.
+  it('undefined (no flag) enables every bundle', () => {
     expect(sorted(undefined)).toEqual(['discovery', 'write-skill']);
   });
 

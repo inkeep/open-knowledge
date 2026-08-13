@@ -201,8 +201,8 @@ describe('installUserSkill — scope discipline', () => {
 
     await installUserSkill({ home });
 
-    // `.claude` (installed) + `.agents` (central store) + `.ok` (state) only.
-    expect(homeEntries(home)).toEqual(['.agents', '.claude', '.ok']);
+    expect(homeEntries(home)).toEqual(['.claude', '.ok']);
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
     for (const hostDir of ALL_HOST_DIRS.filter((d) => d !== '.claude')) {
       expect(existsSync(join(home, hostDir))).toBe(false);
     }
@@ -218,7 +218,7 @@ describe('installUserSkill — scope discipline', () => {
     expect(result).toBe('installed');
     expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
     expect(existsSync(join(hostSkillDirFor(home, '.cursor'), 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(false);
     for (const hostDir of ALL_HOST_DIRS.filter((d) => d !== '.claude' && d !== '.cursor')) {
       expect(existsSync(hostSkillDirFor(home, hostDir))).toBe(false);
     }
@@ -292,7 +292,28 @@ describe('installUserSkill — scope discipline', () => {
     installHost(home, '.claude');
 
     expect(await installUserSkill({ home })).toBe('installed');
+    expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(false);
+  });
+
+  test('an existing .agents root receives the shared copy', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    installHost(home, '.agents');
+
+    expect(await installUserSkill({ home })).toBe('installed');
     expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(true);
+  });
+
+  test('Pi uses its existing nested user skill root without creating .agents', async () => {
+    const home = freshHome();
+    installHost(home, '.pi');
+
+    expect(await installUserSkill({ home })).toBe('installed');
+    expect(
+      existsSync(join(home, '.pi', 'agent', 'skills', 'open-knowledge-discovery', 'SKILL.md')),
+    ).toBe(true);
+    expect(existsSync(join(home, '.agents'))).toBe(false);
   });
 
   test('detectUserSkillHosts reports only the hosts present on disk', () => {
@@ -405,6 +426,15 @@ describe('installUserSkill — idempotency (skip-current)', () => {
     expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
   });
 
+  test('a concrete-host-only install is current on the next run', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+
+    expect(await installUserSkill({ home })).toBe('installed');
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
+    expect(await installUserSkill({ home })).toBe('skip-current');
+  });
+
   test('sidecar without trailing newline still matches (tolerant parse)', async () => {
     const home = freshHome();
     installHost(home, '.claude');
@@ -414,7 +444,7 @@ describe('installUserSkill — idempotency (skip-current)', () => {
     expect(await installUserSkill({ home })).toBe('skip-current');
   });
 
-  test('sidecar matches but central skill dir is missing → reinstall fires', async () => {
+  test('sidecar matches but the existing host skill is missing → reinstall fires', async () => {
     const home = freshHome();
     installHost(home, '.claude');
     writeSidecar(home, currentVersion);
@@ -422,10 +452,11 @@ describe('installUserSkill — idempotency (skip-current)', () => {
     const result = await installUserSkill({ home });
 
     expect(result).toBe('installed');
-    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
   });
 
-  test('the gate runs before detection — no host + matching sidecar still skips', async () => {
+  test('an existing central host + matching sidecar still skips', async () => {
     const home = freshHome();
     writeSidecar(home, currentVersion);
     writeCentralSkill(home);

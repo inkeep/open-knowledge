@@ -17,7 +17,7 @@
  * live under `<home>/.{host}/skills/`.
  */
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -100,6 +100,13 @@ async function moveCrossScope(
 
 beforeAll(async () => {
   tmpHome = mkdtempSync(join(tmpdir(), 'ok-xscope-uninstall-home-'));
+  // Adopt the vendor-neutral `.agents` hub in the throwaway home. A
+  // caller-supplied `configHomedirOverride` owns its own host set, and skill
+  // destinations resolve via `resolveDefaultSkillHomeRel`, which refuses (400
+  // `NO_USABLE_SKILL_HOME`) when the home has adopted none — OK never creates
+  // one on the user's behalf. The hub, not `.claude`, keeps the global source
+  // dir distinct from the claude PROJECTION dir this file asserts on.
+  mkdirSync(join(tmpHome, '.agents', 'skills'), { recursive: true });
   server = await createTestServer({ configHomedirOverride: tmpHome });
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(async () => {

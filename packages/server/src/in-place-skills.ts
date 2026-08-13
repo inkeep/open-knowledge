@@ -26,6 +26,7 @@ import {
   type EditorId,
   LEGACY_SKILL_STORE_ROOT,
   type SkillScope,
+  skillRootActivationPath,
 } from '@inkeep/open-knowledge-core';
 import {
   buildSkillRegistry,
@@ -269,9 +270,10 @@ export function aliasedSourceRoots(
  * The DEFAULT home for a NEW skill bundle at `base` — existence-activated:
  * `.agents/skills` only when the project already adopted the hub (OK never
  * creates `.agents` on its own — that's the team's call, not ours), else the
- * highest-precedence editor root that already exists, else `.claude/skills`.
+ * highest-precedence editor root that already exists. `null` means no host has
+ * granted a usable location.
  */
-export function resolveDefaultSkillHomeRel(base: string, scope: SkillScope): string {
+export function resolveDefaultSkillHomeRel(base: string, scope: SkillScope): string | null {
   const roots = scope === 'project' ? EDITOR_SKILL_ROOTS : USER_SKILL_ROOTS;
   if (existsSync(join(base, '.agents'))) return AGENTS_SKILLS_ROOT;
   const byPrecedence = [...roots]
@@ -285,10 +287,20 @@ export function resolveDefaultSkillHomeRel(base: string, scope: SkillScope): str
       );
     });
   for (const { root } of byPrecedence) {
-    if (existsSync(join(base, root))) return root;
+    if (existsSync(join(base, skillRootActivationPath(root)))) return root;
   }
-  // No existing host dir: default to `.claude/skills` (same for both scopes).
-  return '.claude/skills';
+  return null;
+}
+
+/**
+ * The folders {@link resolveDefaultSkillHomeRel} would accept at `scope`, as the
+ * activation paths a user actually creates (`.claude/`, `.agents/`, …). Lives
+ * beside the resolver so a refusal message naming them cannot drift from the
+ * set the resolver really consults when a new host is onboarded.
+ */
+export function skillHomeCandidateFolders(scope: SkillScope): string[] {
+  const roots = scope === 'project' ? EDITOR_SKILL_ROOTS : USER_SKILL_ROOTS;
+  return [...new Set(roots.map((r) => `${skillRootActivationPath(r.root)}/`))];
 }
 
 /**

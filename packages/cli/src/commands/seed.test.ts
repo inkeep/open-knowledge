@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -134,21 +143,69 @@ describe('runSeed — no-op', () => {
     expect(second.message).toContain('already seeded');
   });
 
-  test('is NOT a no-op when folders exist but a pack skill is missing', async () => {
+  test('is NOT a no-op when a pack skill was deleted from a project that has an agent folder', async () => {
     // A project whose pack skill was deleted has every folder yet no skill.
     // Re-seeding must re-author it, not report "already seeded, nothing to do".
+    // The agent folder stays: it is what lets OK author a skill at all, so
+    // deleting it would make re-authoring impossible (next test covers that).
+    scaffoldOkDir(testDir);
+    mkdirSync(join(testDir, '.claude'), { recursive: true });
+    await runSeed({ cwd: testDir, yes: true });
     // Pack skills land in-place (editor skill dirs) with the legacy `.ok/skills`
-    // store still honored — remove every home so the skill is truly gone.
+    // store still honored — clear both so the skill is truly gone.
+    rmSync(join(testDir, '.claude', 'skills'), { recursive: true, force: true });
+    rmSync(join(testDir, OK_DIR, 'skills'), { recursive: true, force: true });
+
+    const preview = await runSeed({ cwd: testDir, dryRun: true });
+    expect(preview.status).not.toBe('no-op');
+    const pending = preview.plan?.packSkills?.filter((s) => s.pending) ?? [];
+    expect(pending.length).toBeGreaterThan(0);
+
+    // …and the promised work actually happens: the skill is re-authored.
+    const applied = await runSeed({ cwd: testDir, yes: true });
+    expect(applied.status).toBe('applied');
+    for (const skill of pending) {
+      expect(existsSync(join(testDir, '.claude', 'skills', skill.name, 'SKILL.md'))).toBe(true);
+    }
+  });
+
+  test('with no agent folder, pack skills are not pending and re-runs stay a no-op', async () => {
+    // OK never creates an agent home, so a harness-free project can never
+    // receive pack skills. Reporting them pending promised work apply always
+    // declines, which made every `ok seed` re-run claim it applied something.
     scaffoldOkDir(testDir);
     await runSeed({ cwd: testDir, yes: true });
-    rmSync(join(testDir, OK_DIR, 'skills'), { recursive: true, force: true });
-    for (const dir of ['.agents', '.claude', '.cursor', '.codex', '.opencode', '.pi']) {
-      rmSync(join(testDir, dir), { recursive: true, force: true });
-    }
 
-    const second = await runSeed({ cwd: testDir, dryRun: true });
-    expect(second.status).not.toBe('no-op');
-    expect(second.plan?.packSkills?.some((s) => s.pending)).toBe(true);
+    const second = await runSeed({ cwd: testDir, yes: true });
+    expect(second.status).toBe('no-op');
+    expect(second.plan?.packSkills?.some((s) => s.pending)).toBe(false);
+    expect(second.plan?.packSkillHomeRefusal).toBe('no-agent-folder');
+    // Honest, not merely stable: it says the skills were not installed and why.
+    expect(second.message).toContain('skills were not installed');
+    expect(second.message).toContain('.claude/');
+  });
+
+  test('an agent folder symlinked outside the project gets the symlink-specific guidance', async () => {
+    // The second refusal class. Its guidance differs from the no-agent-folder
+    // one — "create the folder your agent uses" is wrong advice here, the
+    // folder exists and points out of the repo — so the run must reach the
+    // user with the symlink wording, not the generic one.
+    scaffoldOkDir(testDir);
+    const outside = mkdtempSync(join(tmpdir(), 'ok-seed-outside-'));
+    try {
+      symlinkSync(outside, join(testDir, '.claude'));
+      mkdirSync(join(outside, 'skills'), { recursive: true });
+
+      const result = await runSeed({ cwd: testDir, yes: true });
+
+      expect(result.plan?.packSkillHomeRefusal).toBe('home-escapes-project');
+      expect(result.message).toContain('symlink pointing outside the project');
+      expect(result.message).not.toContain('no agent folder for them');
+      // Refused, not quietly redirected: nothing was authored through the link.
+      expect(readdirSync(join(outside, 'skills'))).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

@@ -22,7 +22,7 @@ import {
 } from '../content/skills-write.ts';
 import type { extractActorIdentity } from '../extract-actor-identity.ts';
 import { sanitizeFilename } from '../filename-sanitize.ts';
-import { resolveDefaultSkillHomeRel } from '../in-place-skills.ts';
+import { resolveDefaultSkillHomeRel, skillHomeCandidateFolders } from '../in-place-skills.ts';
 import { getLogger } from '../logger.ts';
 import {
   projectInPlaceSkill,
@@ -184,6 +184,20 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
       // residents; existing store bundles keep working until their migration.
       const importBase = scope === 'project' ? deps.contentDir : deps.skillsHome;
       const importHomeRel = resolveDefaultSkillHomeRel(importBase, scope);
+      if (importHomeRel === null) {
+        // Actionable, not just accurate: this refusal is reachable by anyone
+        // importing into a project (or home) that has adopted no agent folder,
+        // and "no host available" leaves them with nothing to do about it. The
+        // folder list comes from the resolver's own candidate set, so onboarding
+        // a new host cannot leave this message naming a stale one.
+        return {
+          ok: false,
+          status: 400,
+          urn: 'urn:ok:error:invalid-request',
+          title: `Open Knowledge only writes skills into an agent folder that already exists (${skillHomeCandidateFolders(scope).join(', ')}) and never creates one for you. Create the folder your agent uses, then import again.`,
+          detail: 'NO_USABLE_SKILL_HOME',
+        };
+      }
       const importRoot = resolve(importBase, importHomeRel);
       const dupName = findByContentHash(lock, acquired.contentHash);
       if (dupName && deps.resolveSkillDirForRead(scope, dupName) !== null) {

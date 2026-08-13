@@ -74,15 +74,25 @@ describe('migrateStoreSkillsInPlace', () => {
     expect(readInstalledSkills(root).skills.foo).toBeUndefined();
   });
 
-  test('an unprojected (draft) skill lands in a concrete editor dir, never inventing .agents', async () => {
+  test('an unprojected skill with no usable host stays in the legacy store', async () => {
     makeStore('draft', '# D');
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
-    // No editor roots exist and no `.agents` adoption — the fallback is the
-    // top-precedence concrete harness dir, NOT an OK-invented hub.
-    expect(r.migrated).toContainEqual({ name: 'draft', to: '.claude/skills/draft' });
-    expect(existsSync(join(root, '.claude/skills/draft/SKILL.md'))).toBe(true);
+    expect(r.migrated).toEqual([]);
+    expect(r.skipped).toContainEqual(expect.objectContaining({ name: 'draft' }));
+    expect(existsSync(join(root, '.claude'))).toBe(false);
     expect(existsSync(join(root, '.agents'))).toBe(false);
-    expect(existsSync(join(skillsRoot, 'draft'))).toBe(false);
+    expect(existsSync(join(skillsRoot, 'draft', 'SKILL.md'))).toBe(true);
+  });
+
+  test('an existing .agents skills root is an ordinary usable migration host', async () => {
+    makeStore('adopted', '# A');
+    mkdirSync(join(root, '.agents', 'skills'), { recursive: true });
+
+    const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
+
+    expect(r.migrated).toContainEqual({ name: 'adopted', to: '.agents/skills/adopted' });
+    expect(existsSync(join(root, '.agents', 'skills', 'adopted', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(root, '.claude'))).toBe(false);
   });
 
   test('a same-hash real copy at a host becomes the canonical; store dir removed', async () => {
@@ -98,7 +108,7 @@ describe('migrateStoreSkillsInPlace', () => {
     expect(readFileSync(join(hostDir, 'SKILL.md'), 'utf-8')).toContain('# Same');
   });
 
-  test('NEVER clobbers: a differing real dir at the only target skips the skill', async () => {
+  test('a differing real dir at the only existing host skips without fabricating a fallback', async () => {
     makeStore('clash', '# Store version');
     // The hub slot is occupied by a genuinely different skill; no projections.
     const hub = join(root, '.agents/skills/clash');
@@ -106,13 +116,55 @@ describe('migrateStoreSkillsInPlace', () => {
     writeFileSync(join(hub, 'SKILL.md'), '---\nname: clash\ndescription: other.\n---\n# DIFFERENT');
 
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
-    // The occupied hub slot is never clobbered; the store version lands at a
-    // FREE concrete root instead (the fork then surfaces as a conflict).
-    expect(r.migrated).toContainEqual({ name: 'clash', to: '.claude/skills/clash' });
-    expect(readFileSync(join(root, '.claude/skills/clash/SKILL.md'), 'utf-8')).toContain(
+    expect(r.migrated).toEqual([]);
+    // Pin WHY it skipped: the hub root exists so it is the authorized target,
+    // and its slot is occupied by a different skill. A `no-usable-target` here
+    // would mean the hub was never considered, which is a different bug.
+    expect(r.skipped).toContainEqual({
+      name: 'clash',
+      reason: expect.stringContaining('target-occupied:.agents/skills'),
+    });
+    expect(existsSync(join(root, '.claude'))).toBe(false);
+    expect(readFileSync(join(skillsRoot, 'clash', 'SKILL.md'), 'utf-8')).toContain(
       '# Store version',
     );
     expect(readFileSync(join(hub, 'SKILL.md'), 'utf-8')).toContain('# DIFFERENT');
+  });
+
+  test('a free lower-precedence host does NOT rescue an occupied higher one', async () => {
+    // DELIBERATE INVERSION. Target selection now takes the highest-precedence
+    // host whose ROOT exists, regardless of whether that host's skill slot is
+    // free; it used to walk past an occupied slot to the next host that had a
+    // free one. So `.claude` occupied while `.cursor` exists and is free is a
+    // reported conflict, not a migration into `.cursor`.
+    //
+    // Fail closed on purpose: scattering the skill to whichever host happened
+    // to be free lands it somewhere the user never chose and never looks, and
+    // it silently diverges from the canonical the rest of the system resolves.
+    // Reporting `target-occupied` leaves the store bundle intact and the
+    // conflict visible in the boot log for the user to resolve.
+    makeStore('crowded', '# Store version');
+    const claude = join(root, '.claude/skills/crowded');
+    mkdirSync(claude, { recursive: true });
+    writeFileSync(
+      join(claude, 'SKILL.md'),
+      '---\nname: crowded\ndescription: theirs.\n---\n# DIFFERENT',
+    );
+    // Exists, free, lower precedence — and must NOT be picked.
+    mkdirSync(join(root, '.cursor/skills'), { recursive: true });
+
+    const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
+
+    expect(r.migrated).toEqual([]);
+    expect(r.skipped).toContainEqual({
+      name: 'crowded',
+      reason: 'target-occupied:.claude/skills (different)',
+    });
+    expect(existsSync(join(root, '.cursor/skills/crowded'))).toBe(false);
+    expect(readFileSync(join(skillsRoot, 'crowded', 'SKILL.md'), 'utf-8')).toContain(
+      '# Store version',
+    );
+    expect(readFileSync(join(claude, 'SKILL.md'), 'utf-8')).toContain('# DIFFERENT');
   });
 
   test('a foreign symlink at a host is never touched (D7)', async () => {
@@ -153,6 +205,23 @@ describe('migrateStoreSkillsInPlace', () => {
     expect(r.migrated).toContainEqual({ name: 'worldly', to: '.pi/agent/skills/worldly' });
     expect(existsSync(join(skillsRoot, 'worldly'))).toBe(false);
     expect(readFileSync(join(piDir, 'SKILL.md'), 'utf-8')).toContain('# G');
+  });
+
+  test('GLOBAL roots: residue with no existing user host stays put', async () => {
+    const { USER_HOST_ROOTS_BY_PRECEDENCE } = await import('./skill-migrate.ts');
+    makeStore('global-residue', '# G');
+
+    const r = await migrateStoreSkillsInPlace({
+      projectDir: root,
+      skillsRoot,
+      hostRoots: USER_HOST_ROOTS_BY_PRECEDENCE,
+    });
+
+    expect(r.migrated).toEqual([]);
+    expect(r.skipped).toContainEqual(expect.objectContaining({ name: 'global-residue' }));
+    expect(existsSync(join(root, '.claude'))).toBe(false);
+    expect(existsSync(join(root, '.agents'))).toBe(false);
+    expect(existsSync(join(skillsRoot, 'global-residue', 'SKILL.md'))).toBe(true);
   });
 
   test('a placement of an in-place skill (inPlaceNames) is never migrated', async () => {

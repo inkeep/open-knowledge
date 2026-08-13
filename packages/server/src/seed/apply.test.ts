@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -142,6 +142,30 @@ describe('applySeed — nested .ok/ era', () => {
       ).toBe(true);
     }
     expect(existsSync(join(projectDir, 'brain', 'log.md'))).toBe(true);
+  });
+
+  test('no adopted agent host: pack skills are skipped cleanly, not reported as errors', async () => {
+    // OK never creates `.claude` / `.agents` / … on the user's behalf, so a
+    // project that has adopted no host gets no pack skills — a consented
+    // refusal, not an authoring failure. It must not surface on `errors`.
+    const plan = await planSeed({ projectDir });
+    const result = await applySeed(plan, { projectDir });
+
+    expect(result.errors).toEqual([]);
+    expect(result.packSkillsInstalled).toEqual([]);
+    expect(existsSync(join(projectDir, '.claude'))).toBe(false);
+    expect(existsSync(join(projectDir, '.agents'))).toBe(false);
+  });
+
+  test('an adopted agent host receives the pack skills', async () => {
+    // The counterpart: with a host root already on disk the skills DO land, so
+    // the guard above suppresses only the no-host case, not real failures.
+    mkdirSync(join(projectDir, '.claude', 'skills'), { recursive: true });
+    const plan = await planSeed({ projectDir });
+    const result = await applySeed(plan, { projectDir });
+
+    expect(result.errors).toEqual([]);
+    expect(readdirSync(join(projectDir, '.claude', 'skills')).length).toBeGreaterThan(0);
   });
 
   test('reports an error for unknown template ids without crashing', async () => {

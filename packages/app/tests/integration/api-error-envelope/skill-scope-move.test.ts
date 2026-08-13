@@ -126,6 +126,12 @@ async function scopeOf(name: string): Promise<string | undefined> {
 
 beforeAll(async () => {
   tmpHome = mkdtempSync(join(tmpdir(), 'ok-scope-move-home-'));
+  // Adopt a harness in the throwaway home. A caller-supplied
+  // `configHomedirOverride` owns its own host set, and skill destinations
+  // resolve via `resolveDefaultSkillHomeRel`, which refuses (400
+  // `NO_USABLE_SKILL_HOME`) when the home has adopted none — OK never creates
+  // one on the user's behalf.
+  mkdirSync(join(tmpHome, '.claude', 'skills'), { recursive: true });
   server = await createTestServer({ configHomedirOverride: tmpHome });
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(async () => {

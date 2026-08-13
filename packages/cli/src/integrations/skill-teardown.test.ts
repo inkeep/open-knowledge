@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
+import { USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import { BUNDLE_SKILL_NAME, USER_GLOBAL_BUNDLE_IDS } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import { HOSTS_WITH_USER_SKILL_DIR } from '../commands/editors.ts';
@@ -17,7 +18,7 @@ describe('userGlobalSkillBundleTargets', () => {
   test('targets the central store + every per-host dir for each user-global bundle', () => {
     const targets = userGlobalSkillBundleTargets(HOME);
     // One central + N host dirs per user-global bundle.
-    const expectedCount = USER_GLOBAL_BUNDLE_IDS.length * (1 + HOSTS_WITH_USER_SKILL_DIR.length);
+    const expectedCount = USER_GLOBAL_BUNDLE_IDS.length * (1 + USER_SKILL_HOSTS.length);
     expect(targets.length).toBe(expectedCount);
 
     for (const bundleId of USER_GLOBAL_BUNDLE_IDS) {
@@ -29,15 +30,21 @@ describe('userGlobalSkillBundleTargets', () => {
         scope: 'central',
       });
       // Each per-host dir.
-      for (const host of HOSTS_WITH_USER_SKILL_DIR) {
+      for (const host of USER_SKILL_HOSTS) {
         expect(targets).toContainEqual({
-          path: join(HOME, host.hostDir, 'skills', name),
+          path: join(HOME, host.skillsRoot, name),
           bundleId,
           scope: 'host',
           hostDir: host.hostDir,
         });
       }
     }
+    expect(targets.map((target) => target.path)).toContain(
+      join(HOME, '.pi', 'agent', 'skills', 'open-knowledge-discovery'),
+    );
+    expect(targets.map((target) => target.path)).toContain(
+      join(HOME, '.copilot', 'skills', 'open-knowledge-discovery'),
+    );
   });
 
   test('includes both built-in bundles by name (discovery + write-skill)', () => {

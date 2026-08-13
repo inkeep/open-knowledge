@@ -755,6 +755,10 @@ export class ContentDirError extends Error {
  * / `--no-skills` flag: `undefined`/`true` → every bundle; `false`
  * (`--no-skills`) → none; a comma list (`--skills discovery`) → only the named
  * bundle ids (unknown tokens ignored — the known-id set wins).
+ *
+ * Enabling a bundle is not the same as writing it: `installUserSkill` still
+ * refuses every destination whose host root is absent, so a machine with no
+ * agent tooling gets nothing regardless of what this returns.
  */
 export function resolveInitSkillEnablement(skills: string | boolean | undefined): Set<BundleId> {
   if (skills === undefined || skills === true) return new Set(USER_GLOBAL_BUNDLE_IDS);
@@ -1703,17 +1707,11 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
 
   // 2. Wire MCP config per editor (unless --no-mcp). Defaults are scope-aware:
   // user-level writes stay limited to editors detected on this machine, while
-  // project-level targets include every host with either a config or a skill
-  // surface. That lets a global-MCP host such as Copilot receive its project
-  // skill without duplicating its server into a shared workspace config.
+  // project-level targets use the same detected set unless the caller supplied
+  // an explicit selection. This keeps an omitted editor choice from creating
+  // host roots that did not already exist while preserving explicit targets.
   const userEditorIds = options.editors ?? detectInstalledEditors(projectRoot, options.home);
-  const projectEditorIds =
-    options.editors ??
-    ALL_EDITOR_IDS.filter(
-      (id) =>
-        EDITOR_TARGETS[id].projectConfigPath !== undefined ||
-        EDITOR_TARGETS[id].projectSkillPath !== undefined,
-    );
+  const projectEditorIds = options.editors ?? userEditorIds;
   const userTargets = resolveEditorTargets(userEditorIds as EditorId[]);
   const projectTargets = resolveEditorTargets(projectEditorIds as EditorId[]);
   const skipMcp = options.mcp === false || scope === null;

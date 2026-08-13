@@ -345,6 +345,8 @@ export {
   PROJECT_SKILL_EDITOR_IDS,
   PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
   RESERVED_PROJECT_SKILL_NAME,
+  skillRootActivationPath,
+  USER_SKILL_HOSTS,
 } from './constants/editors.ts';
 export {
   detectEmbeddedHostFromBrowser,

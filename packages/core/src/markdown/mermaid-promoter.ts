@@ -1,4 +1,3 @@
-
 import type { Code, Root } from 'mdast';
 import type { MdxJsxAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
 import { visit } from 'unist-util-visit';

@@ -139,6 +139,16 @@ function createBridge(recents: unknown[]) {
     onMenuAction: vi.fn(() => () => {}),
     onRecentRemovedMissing: vi.fn(() => () => {}),
     config: { mode: 'navigator' },
+    integrations: {
+      // CreateProjectDialog seeds its editor checkboxes off this on open.
+      status: async () => ({
+        available: false,
+        editors: [],
+        path: { shellDetected: false, rcFilesToTouch: [], installed: false },
+        skills: [],
+        detectedEditorIds: [],
+      }),
+    },
     project: {
       listRecent: vi.fn(() => Promise.resolve(recents)),
       removeRecent: vi.fn(() => Promise.resolve()),

@@ -174,6 +174,33 @@ function packIdFromSkillMd(md: string): string | null {
   return /^[ \t]+pack:[ \t]*"?([a-z0-9-]+)"?[ \t]*$/m.exec(frontmatter)?.[1] ?? null;
 }
 
+/**
+ * Why a project cannot receive pack skills at all:
+ *   - `no-agent-folder` — the project has adopted no agent host, and OK never
+ *     creates one on the user's behalf.
+ *   - `home-escapes-project` — the default home is an editor dir symlinked out
+ *     of the project; authoring through it would write outside the repo.
+ */
+export type PackSkillHomeRefusal = 'no-agent-folder' | 'home-escapes-project';
+
+/**
+ * The project-local dir pack skills would be authored into, or the reason no
+ * install is possible. Single source of truth for the three surfaces that must
+ * agree: `planSeed` (preview), `applySeed` (post-install reconciliation) and
+ * `installPackSkill` (the write). Split them and a plan promises installs apply
+ * declines forever.
+ */
+export function resolvePackSkillHome(
+  projectDir: string,
+): { homeRel: string } | { refusal: PackSkillHomeRefusal } {
+  const homeRel = resolveDefaultSkillHomeRel(projectDir, 'project');
+  if (homeRel === null) return { refusal: 'no-agent-folder' };
+  if (hostSkillsRootEscapes(projectDir, join(projectDir, homeRel))) {
+    return { refusal: 'home-escapes-project' };
+  }
+  return { homeRel };
+}
+
 export async function installPackSkill(
   projectDir: string,
   packId: string,
@@ -220,18 +247,26 @@ export async function installPackSkill(
   const scanDirByName = new Map(scan.map((sk) => [sk.name, join(projectDir, sk.dir)]));
   const lock = readSkillsLockFile(join(projectDir, ...SKILLS_LOCK_REL));
   const conflicts: PackSkillConflict[] = [];
-  const homeRel = resolveDefaultSkillHomeRel(projectDir, 'project');
-  // The default home can be an editor dir that SYMLINKS OUT of the project
-  // (the escape class the projection guard refuses) — authoring through it
-  // would write outside the repo. Refuse the whole pack-skill install then;
-  // the old `.ok/skills` landing was only incidentally immune.
-  if (hostSkillsRootEscapes(projectDir, join(projectDir, homeRel))) {
-    getLogger('seed').warn(
-      { packId, homeRel },
-      'default skill home escapes the project (symlinked out) — pack skills not installed',
-    );
+  // Both refusals (no adopted host; a default home that SYMLINKS OUT of the
+  // project — the escape class the projection guard refuses, which the old
+  // `.ok/skills` landing was only incidentally immune to) come from the shared
+  // resolver, so the plan can decline in exactly the same cases.
+  const home = resolvePackSkillHome(projectDir);
+  if ('refusal' in home) {
+    if (home.refusal === 'home-escapes-project') {
+      getLogger('seed').warn(
+        { packId },
+        'default skill home escapes the project (symlinked out) — pack skills not installed',
+      );
+    } else {
+      getLogger('seed').info(
+        { packId },
+        'no existing agent host is available — pack skills not installed',
+      );
+    }
     return { editors: [], conflicts: [] };
   }
+  const homeRel = home.homeRel;
   // The editor whose root HOLDS the source loads it directly — it counts as
   // installed even though fan-out (rightly) skips the canonical's own root.
   const homeHost = (Object.entries(EDITOR_PROJECT_SKILL_ROOT) as [EditorId, string | null][]).find(

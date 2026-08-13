@@ -40,6 +40,19 @@ function makeCtx(): ManagedArtifactCtx {
   };
 }
 
+/**
+ * Give the throwaway home an adopted `.claude` harness. Global skill
+ * destinations resolve via `resolveDefaultSkillHomeRel`, which returns null
+ * when the home has adopted no harness at all — OK never creates one on the
+ * user's behalf. A user who has Claude Code installed is the normal shape for
+ * the blocks that resolve a global skill path, so they opt in here; the blocks
+ * that assert on the bare-home shape are left bare. Mirrors the
+ * `seedSkillHostRoot` option in `packages/app/tests/integration/test-harness.ts`.
+ */
+function adoptClaudeHost(): void {
+  mkdirSync(join(home, '.claude', 'skills'), { recursive: true });
+}
+
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), 'ok-ma-proj-'));
   home = mkdtempSync(join(tmpdir(), 'ok-ma-home-'));
@@ -51,6 +64,8 @@ afterEach(() => {
 });
 
 describe('managedArtifactAbsPath', () => {
+  beforeEach(adoptClaudeHost);
+
   test('global with no native/store resolves to the IN-PLACE default home, never the store', () => {
     const ctx = makeCtx();
     // Project managed docs keep the legacy `.ok/skills` content path (project
@@ -61,8 +76,8 @@ describe('managedArtifactAbsPath', () => {
     // Store retirement: a global skill with neither a native copy nor a store
     // resident resolves to the in-place default home — NEVER `~/.ok/skills`.
     // Defaulting to the store re-created the remnant on every stray global write
-    // (a global doc autosaving after the skill was moved away). Fresh home has no
-    // editor dirs → `.claude/skills`.
+    // (a global doc autosaving after the skill was moved away). The fixture's
+    // only adopted host is `.claude`, so that is the default home.
     expect(managedArtifactAbsPath('__skill__/global/my-skill', ctx)).toBe(
       resolve(home, '.claude', 'skills', 'my-skill', 'SKILL.md'),
     );
@@ -115,7 +130,7 @@ describe('managedArtifactAbsPath', () => {
   test('resolves a bundle FILE (rel) inside the resolved skill dir (per-file editability)', () => {
     const ctx = makeCtx();
     // Store retirement: with no native/store, a global skill resolves under the
-    // in-place default home (`.claude/skills` in a fresh home), not `.ok/skills`.
+    // in-place default home (the fixture's adopted `.claude`), not `.ok/skills`.
     // Not-yet-created file → ext-less doc name binds to `.md` by default.
     expect(managedArtifactAbsPath('__skill__/global/demo/references/patterns', ctx)).toBe(
       resolve(home, '.claude', 'skills', 'demo', 'references', 'patterns.md'),
@@ -172,6 +187,7 @@ describe('store/load round-trip', () => {
   // guard), so seed the dir here and let these tests exercise what they are
   // about: round-trip fidelity and reconcile, not bundle creation.
   beforeEach(() => {
+    adoptClaudeHost();
     mkdirSync(dirname(managedArtifactAbsPath(docName, makeCtx())), { recursive: true });
   });
 
@@ -340,6 +356,7 @@ describe('concurrent-writer reconcile', () => {
   // guard), so seed the dir here and let these tests exercise what they are
   // about: round-trip fidelity and reconcile, not bundle creation.
   beforeEach(() => {
+    adoptClaudeHost();
     mkdirSync(dirname(managedArtifactAbsPath(docName, makeCtx())), { recursive: true });
   });
 
@@ -470,6 +487,8 @@ describe('concurrent-writer reconcile', () => {
 });
 
 describe('managedArtifactDocNameForPath (reverse resolver)', () => {
+  beforeEach(adoptClaudeHost);
+
   test('maps a global SKILL.md leaf back to its doc name; project paths are content', () => {
     const ctx = makeCtx();
     // Project skills are content docs now — a project skill path no longer maps
@@ -578,6 +597,9 @@ describe('managedArtifactContributorAttribution (editor-edit versioning)', () =>
 
 describe('managedArtifactSkillsRoots', () => {
   test('covers every native user root, with the legacy store included but not privileged', () => {
+    // A root is a watch target only once its host dotdir exists (the watcher
+    // mkdir -p's what it is handed), so adopt the hosts this block asserts on.
+    for (const d of ['.claude', '.agents', '.ok']) mkdirSync(join(home, d), { recursive: true });
     const ctx = makeCtx();
     const roots = managedArtifactSkillsRoots(ctx);
     // Global skills live IN PLACE, so the native roots are what matters here.
@@ -590,6 +612,26 @@ describe('managedArtifactSkillsRoots', () => {
     expect(roots[0]).not.toBe(resolve(home, '.ok', 'skills'));
     // All under the ctx home — no absolute leaks from another machine state.
     expect(roots.every((r) => r.startsWith(home))).toBe(true);
+  });
+
+  /**
+   * OK never creates a harness home. Every root here is `mkdir -p`'d by the
+   * managed-artifact watcher at boot, so an ungated list grew `~/.codex`,
+   * `~/.copilot`, `~/.cursor`, `~/.opencode` and `~/.pi` in a real `$HOME`
+   * belonging to a user who has none of those tools installed.
+   */
+  test('omits roots whose host dotdir does not exist', () => {
+    expect(managedArtifactSkillsRoots(makeCtx())).toEqual([]);
+    mkdirSync(join(home, '.claude'), { recursive: true });
+    expect(managedArtifactSkillsRoots(makeCtx())).toEqual([resolve(home, '.claude', 'skills')]);
+  });
+
+  test('a nested user layout activates on the host dotdir, not the leaf parent', () => {
+    // Pi keeps its skills at `.pi/agent/skills`; `.pi` alone is proof enough.
+    mkdirSync(join(home, '.pi'), { recursive: true });
+    expect(managedArtifactSkillsRoots(makeCtx())).toContain(
+      resolve(home, '.pi', 'agent', 'skills'),
+    );
   });
 });
 
@@ -704,6 +746,8 @@ describe('a skill doc never RESURRECTS a bundle that is gone', () => {
   // it back re-creates the bundle dir holding a lone SKILL.md — a half-skill
   // that every scanner then reads as real.
   const docName = '__skill__/global/code-mode';
+
+  beforeEach(adoptClaudeHost);
 
   function seedGlobalBundle(ctx: ManagedArtifactCtx): string {
     // Ask the resolver where this skill lives rather than hardcoding the

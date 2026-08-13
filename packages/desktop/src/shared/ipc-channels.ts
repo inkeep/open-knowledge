@@ -563,6 +563,15 @@ export interface IntegrationsStatus {
   readonly editors: readonly IntegrationsEditorStatus[];
   readonly path: IntegrationsPathStatus;
   readonly skills: readonly IntegrationsSkillStatus[];
+  /**
+   * Every editor whose host root already exists on this machine
+   * (`detectInstalledEditors`, home-scoped) — a SUPERSET of the ids in
+   * `editors[]`, which is filtered to targets with a user-global MCP surface.
+   * Carried here rather than on its own channel so project-scope-only targets
+   * (Pi) are still representable; consumed by the Create-new-project dialog to
+   * seed its editor checkboxes.
+   */
+  readonly detectedEditorIds: readonly McpWiringEditorId[];
 }
 
 /** One toggleable component in Settings → AI tools. */

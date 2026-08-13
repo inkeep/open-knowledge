@@ -2,8 +2,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -190,6 +192,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
 
   test('linux deb install reaches done through the install-shape gate', async () => {
     const home = makeHome();
+    mkdirSync(join(home, '.agents'), { recursive: true });
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.0.0' });
     const r = await reclaimUserSkillsOnLaunch({
@@ -205,35 +208,66 @@ describe('reclaimUserSkillsOnLaunch', () => {
     ).toBe(true);
   });
 
-  test('central store always force-written even when nothing existed', async () => {
+  test('launch repair does not create an absent .agents host', async () => {
     const home = makeHome();
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '0.5.0-beta.41' });
-    const r = await reclaimUserSkillsOnLaunch({
+    await reclaimUserSkillsOnLaunch({
       home,
       isPackaged: true,
       platform: 'darwin',
       executablePath: EXE,
       deps,
     });
-    expect(r.status).toBe('done');
     const central = join(home, '.agents', 'skills', 'open-knowledge-discovery', 'SKILL.md');
-    expect(existsSync(central)).toBe(true);
-    expect(readFileSync(central, 'utf8')).toContain('v-new');
-    expect(deps.stateWrites).toEqual([{ home, version: '0.5.0-beta.41' }]);
-    expect(deps.events).toEqual([
-      {
-        ts: deps.events[0]?.ts ?? '',
-        outcome: 'installed',
-        bundle: 'discovery',
-        version: '0.5.0-beta.41',
-      },
+    expect(existsSync(central)).toBe(false);
+    expect(existsSync(join(home, '.agents'))).toBe(false);
+  });
+
+  test('launch repair uses an existing Pi root without creating .agents', async () => {
+    const home = makeHome();
+    mkdirSync(join(home, '.pi'), { recursive: true });
+    const bundle = setupBundle();
+    const deps = makeDeps({ bundle, version: '0.5.0-beta.41' });
+    await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+
+    expect(
+      existsSync(join(home, '.pi', 'agent', 'skills', 'open-knowledge-discovery', 'SKILL.md')),
+    ).toBe(true);
+    expect(existsSync(join(home, '.agents'))).toBe(false);
+  });
+
+  test('grandfathers a bundle installed only in a concrete Pi root', async () => {
+    const home = makeHome();
+    const skillDir = join(home, '.pi', 'agent', 'skills', 'open-knowledge-discovery');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '# existing');
+    const bundle = setupBundle();
+    const deps = makeDeps({ bundle, version: '0.5.0-beta.41', bundleDecision: null });
+    await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+
+    expect(deps.decisionWrites).toEqual([
+      { bundleName: 'open-knowledge-discovery', enabled: true },
     ]);
+    expect(existsSync(join(home, '.agents'))).toBe(false);
   });
 
   test('installs every user-global bundle (discovery + write-skill) into central + per-host', async () => {
     const home = makeHome();
     const bundle = setupBundle();
+    mkdirSync(join(home, '.agents'), { recursive: true });
     // A `.claude` host so a per-host (non-central) write also happens.
     mkdirSync(join(home, '.claude', 'skills'), { recursive: true });
     const deps = {
@@ -320,6 +354,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     // store and codex's per-host copy are distinct paths — both get written,
     // no collapse.
     const home = makeHome();
+    mkdirSync(join(home, '.agents'), { recursive: true });
     mkdirSync(join(home, '.codex'), { recursive: true });
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.2.3' });
@@ -407,6 +442,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
 
   test('every write failing → JSONL records outcome:failed reason:all-targets-failed', async () => {
     const home = makeHome();
+    mkdirSync(join(home, '.agents'), { recursive: true });
     const deps = makeDeps({ bundle: setupBundle(), version: '3.2.1' });
     // Inject an fs whose every write throws — central + per-host replaceDir
     // all fail, so no write succeeds and the state file is never advanced.
@@ -417,7 +453,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
       executablePath: EXE,
       deps,
       fs: {
-        existsSync: () => false,
+        existsSync: (path) => existsSync(path),
         isDirectory: () => false,
         readdirSync: () => [],
         readFileSync: () => Buffer.from(''),
@@ -435,6 +471,65 @@ describe('reclaimUserSkillsOnLaunch', () => {
     const failed = deps.events.find((e) => e.outcome === 'failed');
     expect(failed?.reason).toBe('all-targets-failed');
     expect(failed?.version).toBe('3.2.1');
+  });
+
+  test('a bundle that lands nowhere reports failed even when a sibling bundle succeeds', async () => {
+    const home = makeHome();
+    // `.agents` absent (no central destination) and exactly one host root, so
+    // each bundle has exactly one candidate destination: `~/.claude/skills/…`.
+    mkdirSync(join(home, '.claude'), { recursive: true });
+    const bundle = setupBundle();
+    const deps = {
+      ...makeDeps({ bundle, version: '4.5.6' }),
+      userGlobalBundles: [
+        { id: 'discovery', name: 'open-knowledge-discovery' },
+        { id: 'write-skill', name: 'open-knowledge-write-skill' },
+      ],
+    };
+    const failingBundleDir = 'open-knowledge-write-skill';
+    const r = await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+      fs: {
+        existsSync: (path) => existsSync(path),
+        isDirectory: (path) => {
+          try {
+            return statSync(path).isDirectory();
+          } catch {
+            return false;
+          }
+        },
+        readdirSync: (path) => readdirSync(path),
+        readFileSync: (path) => readFileSync(path),
+        // Only the write-skill bundle's writes throw; discovery lands normally.
+        writeFileSync: (path, content) => {
+          if (path.includes(failingBundleDir)) throw new Error('synthetic: EACCES');
+          writeFileSync(path, content);
+        },
+        mkdirSync: (path, options) => {
+          mkdirSync(path, options);
+        },
+        rmSync: (path, options) => {
+          rmSync(path, options);
+        },
+      },
+    });
+
+    expect(r.status).toBe('done');
+    expect(
+      existsSync(join(home, '.claude', 'skills', 'open-knowledge-discovery', 'SKILL.md')),
+    ).toBe(true);
+    // The sibling landed, but this bundle reached no destination at all.
+    const writeSkillEvents = deps.events.filter((e) => e.bundle === 'write-skill');
+    expect(writeSkillEvents).toHaveLength(1);
+    expect(writeSkillEvents[0]?.outcome).toBe('failed');
+    expect(writeSkillEvents[0]?.reason).toBe('all-targets-failed');
+    expect(deps.events.some((e) => e.outcome === 'installed')).toBe(false);
+    // Version stays unrecorded so the next launch retries the failed bundle.
+    expect(deps.stateWrites).toEqual([]);
   });
 
   test('bundle-missing surfaces as skipped with failed event', async () => {
@@ -477,6 +572,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     // this whole module is fixing. Gate the JSONL outcome on the state
     // write so the diagnostic trail stays coherent.
     const home = makeHome();
+    mkdirSync(join(home, '.agents'), { recursive: true });
     const deps = makeDeps({
       bundle: setupBundle(),
       version: '1.2.3',

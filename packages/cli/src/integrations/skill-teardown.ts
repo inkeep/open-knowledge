@@ -6,12 +6,11 @@
  * OK force-installs its user-global bundles (`open-knowledge-discovery` +
  * `open-knowledge-write-skill`) into:
  *   - the central store  `~/.agents/skills/<name>/`, and
- *   - each per-host dir  `~/<hostDir>/skills/<name>/`  (claude / cursor / codex /
- *     opencode).
+ *   - each concrete user-skill root, including nested Pi and Copilot layouts.
  *
  * This computes the identical set from the SAME single sources the installer
  * loops over — `USER_GLOBAL_BUNDLE_IDS`, `BUNDLE_SKILL_NAME`, and
- * `HOSTS_WITH_USER_SKILL_DIR` — so the teardown can never remove more or less
+ * `USER_SKILL_HOSTS` — so the teardown can never remove more or less
  * than what was installed (a new user-global bundle or host flows to both sides
  * automatically). Only the specific `open-knowledge-*` bundle dirs are targeted,
  * never the shared `~/.agents/skills/` root, so a user's other skills survive.
@@ -25,12 +24,12 @@
 
 import { existsSync, lstatSync, readdirSync, rmdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import {
   BUNDLE_SKILL_NAME,
   type BundleId,
   USER_GLOBAL_BUNDLE_IDS,
 } from '@inkeep/open-knowledge-server';
-import { HOSTS_WITH_USER_SKILL_DIR } from '../commands/editors.ts';
 
 /**
  * The agent homes a pre-0.42 `ok init` created skill copies in, for tools OK
@@ -397,9 +396,9 @@ export function userGlobalSkillBundleTargets(homeInput: string): SkillBundleTarg
       bundleId,
       scope: 'central',
     });
-    for (const host of HOSTS_WITH_USER_SKILL_DIR) {
+    for (const host of USER_SKILL_HOSTS) {
       targets.push({
-        path: join(home, host.hostDir, 'skills', name),
+        path: join(home, host.skillsRoot, name),
         bundleId,
         scope: 'host',
         hostDir: host.hostDir,

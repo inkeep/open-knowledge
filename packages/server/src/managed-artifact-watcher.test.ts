@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { managedArtifactSkillsRoots } from './managed-artifact-persistence.ts';
 import {
   type ManagedArtifactWatcherUnsubscribe,
   startManagedArtifactWatcher,
@@ -90,5 +91,36 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
 
     await eventually(() => contents.includes('v2'));
     expect(contents).not.toContain('noise');
+  }, 25_000);
+});
+
+/**
+ * The branch invariant: OK never CREATES a harness home, it only writes into
+ * one that already exists. This watcher is where that broke — it `mkdir -p`s
+ * every root handed to it, and the roots list was the full vocabulary, so
+ * booting a server against a home with only `.claude` grew `.codex`,
+ * `.copilot`, `.cursor`, `.opencode` and `.pi` before a single skill was
+ * written. Asserted as "no dotdir the home did not start with", not as a list
+ * of the five that leaked, so a newly onboarded editor is covered too.
+ */
+describe('managed-artifact watch roots never conjure a harness home', () => {
+  test('booting the watcher against a home with only .claude adds no host dotdir', async () => {
+    mkdirSync(join(root, '.claude'));
+    const before = readdirSync(root).sort();
+
+    cleanup = await startManagedArtifactWatcher(
+      managedArtifactSkillsRoots({
+        projectDir: root,
+        homedirOverride: root,
+        lkgCache: new Map<string, string>(),
+        setReconciledBase: () => {},
+        getReconciledBase: () => undefined,
+      }),
+      () => {},
+    );
+
+    expect(readdirSync(root).sort()).toEqual(before);
+    // …and the one host that IS installed still gets its watchable skills leaf.
+    expect(existsSync(resolve(root, '.claude', 'skills'))).toBe(true);
   }, 25_000);
 });

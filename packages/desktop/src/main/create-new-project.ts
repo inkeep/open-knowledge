@@ -16,6 +16,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   addOkPathsToGitExclude,
+  detectInstalledEditors,
   getOkArtifactPaths,
   type ProjectAiIntegrationsResult,
   writeProjectAiIntegrations,
@@ -132,9 +133,9 @@ interface CreateNewProjectSuccess {
   /** Per-(editor × integration) outcomes from `writeProjectAiIntegrations`
    *  (caller forwards to the `logAiIntegrationOutcomes` log helper). */
   readonly aiIntegrations: ProjectAiIntegrationsResult;
-  /** Telemetry flow-kind variant: `'create-new-default'`
-   *  when every available editor was selected, `'create-new-customized'`
-   *  otherwise. */
+  /** Telemetry flow-kind variant: `'create-new-default'` when the submitted
+   *  editor set is exactly the one the dialog proposed (the detected set),
+   *  `'create-new-customized'` when the user edited it. */
   readonly variant: 'create-new-default' | 'create-new-customized';
   /**
    * Outcome of the post-scaffold sharing
@@ -202,6 +203,13 @@ export interface RunCreateNewDeps {
     pickedPath: string,
     opts: DiscoverProjectOptions,
   ) => Promise<DiscoverProjectResult>;
+  /**
+   * The editor set the dialog proposed (what `detectInstalledEditors` reports
+   * for this machine). Read only to classify the telemetry variant as
+   * "unchanged from what we proposed" vs "user edited the selection", so tests
+   * can pin the classification without depending on the host's real `$HOME`.
+   */
+  readonly detectInstalledEditors?: () => readonly string[];
 }
 
 /**
@@ -506,8 +514,25 @@ export async function runCreateNew(
     }
   }
 
+  // Telemetry variant answers "did the user edit the selection we proposed?".
+  // The dialog seeds its checkboxes from the DETECTED set (it reads
+  // `bridge.integrations.status().detectedEditorIds` on open), so the baseline is
+  // that set, not `ALL_EDITOR_IDS` — against which almost every real create
+  // would read as customized.
+  const detectEditors = deps.detectInstalledEditors ?? (() => detectInstalledEditors(''));
+  let proposed: Set<string> | null = null;
+  try {
+    proposed = new Set(detectEditors());
+  } catch (err) {
+    // Telemetry must never fail a create. An unknown baseline cannot prove
+    // "unchanged from what we proposed", so it classifies as customized.
+    console.warn('[create-new-project] editor detection failed; variant is customized:', err);
+  }
+  const baseline = proposed;
   const variant: CreateNewProjectSuccess['variant'] =
-    editors.length === ALL_EDITOR_IDS.length ? 'create-new-default' : 'create-new-customized';
+    baseline !== null && editors.length === baseline.size && editors.every((id) => baseline.has(id))
+      ? 'create-new-default'
+      : 'create-new-customized';
 
   return {
     target,

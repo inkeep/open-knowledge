@@ -15050,6 +15050,16 @@ export function createApiExtension(
           // fs-direct spine as import (the live re-scan admits the new dir,
           // after which it IS a content doc).
           const homeRel = resolveDefaultSkillHomeRel(putBase, body.scope);
+          if (homeRel === null) {
+            errorResponse(
+              res,
+              400,
+              'urn:ok:error:invalid-request',
+              'No agent skill host is available.',
+              { handler: 'skill-put', detail: 'NO_USABLE_SKILL_HOME' },
+            );
+            return;
+          }
           const wr = applySkillWrite({
             skillsRoot: resolve(putBase, homeRel),
             name: body.name,
@@ -15741,7 +15751,18 @@ export function createApiExtension(
         // Destination: the target scope's default skill home (store retirement —
         // moved skills land in-place like creates/imports do).
         const toBase2 = toScope === 'project' ? contentDir : skillsHome;
-        const toRoot = resolve(toBase2, resolveDefaultSkillHomeRel(toBase2, toScope));
+        const toHomeRel = resolveDefaultSkillHomeRel(toBase2, toScope);
+        if (toHomeRel === null) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'No agent skill host is available in the destination scope.',
+            { handler: 'skill-move-scope', detail: 'NO_USABLE_SKILL_HOME' },
+          );
+          return;
+        }
+        const toRoot = resolve(toBase2, toHomeRel);
         const toDir = resolve(toRoot, name);
         if (realDir === null || !existsSync(fromDir)) {
           errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
@@ -16040,7 +16061,18 @@ export function createApiExtension(
           return;
         }
         const base = body.scope === 'project' ? contentDir : skillsHome;
-        const targetRoot = resolve(base, resolveDefaultSkillHomeRel(base, body.scope));
+        const targetHomeRel = resolveDefaultSkillHomeRel(base, body.scope);
+        if (targetHomeRel === null) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'No agent skill host is available.',
+            { handler: 'skill-duplicate', detail: 'NO_USABLE_SKILL_HOME' },
+          );
+          return;
+        }
+        const targetRoot = resolve(base, targetHomeRel);
         const targetDir = resolve(targetRoot, body.toName);
         if (resolveSkillDirForRead(body.scope, body.toName) !== null || existsSync(targetDir)) {
           errorResponse(
@@ -18261,18 +18293,26 @@ export function createApiExtension(
           return;
         }
 
-        // Targets: global installs into every editor that has a skill folder
-        // ("all your editors, every project"), honoring an explicit
-        // `targets` filter; project resolves the committed
+        // Targets: omitted global installs use only host roots already present
+        // on this machine; an explicit list remains authoritative and may
+        // create the named roots. Project resolves the committed
         // `.ok/skill-targets.json` set → detected project-configured editors.
         const targets: EditorId[] =
           body.scope === 'global'
-            ? targetsReq
+            ? targetsReq !== undefined
               ? // targetsReq is the narrower SkillTargetEditor set (no
                 // claude-desktop, which shares claude's host dir); match by
                 // value so the EditorId/SkillTargetEditor widths don't clash.
                 PROJECT_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
-              : [...PROJECT_SKILL_EDITOR_IDS]
+              : // Detection (`USER_SKILL_HOSTS`) is WIDER than the install-target
+                // vocabulary: `antigravity` has a user skill root (`~/.gemini/skills`)
+                // but no project one, so it is absent from PROJECT_SKILL_EDITOR_IDS,
+                // from the picker's checkbox set, and from `resolvedHosts` — a copy
+                // projected there could never be shown or dropped by a later
+                // set-exact install. Intersect, as the explicit branches do.
+                detectUserSkillHosts(skillsHome)
+                  .map((host) => host.editorId)
+                  .filter((id) => PROJECT_SKILL_EDITOR_IDS.includes(id))
             : targetsReq !== undefined
               ? // An EXPLICIT target list from the per-editor menu is set-exact,
                 // INCLUDING `[]` (unchecking the last editor = install nowhere =
@@ -18323,7 +18363,10 @@ export function createApiExtension(
           const canonicalRootRel = inPlaceEntry.dir.split('/').slice(0, -1).join('/');
           // The `.agents` hub is a first-class install target for in-place
           // skills (the editors-only resolver above drops it from `targets`).
-          const hubTargeted = targetsReq?.includes('agents') === true;
+          const hubTargeted =
+            targetsReq !== undefined
+              ? targetsReq.includes('agents')
+              : body.scope === 'global' && existsSync(join(skillsHome, '.agents'));
           const inPlaceTargets: SkillHostId[] = hubTargeted ? [...targets, 'agents'] : [...targets];
           // Install-mode default chain: explicit request > per-skill preference
           // (scope-local) > project-committed default > this machine's

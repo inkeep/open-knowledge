@@ -216,6 +216,17 @@ export interface CreateTestServerOptions {
    * retry within the test budget.
    */
   agentSessionOptions?: ServerOptions['agentSessionOptions'];
+  /**
+   * Seed a `.claude/skills` host root in the fresh contentDir and the owned
+   * throwaway home. Skill create / import / duplicate / move resolve their
+   * destination via `resolveDefaultSkillHomeRel`, which refuses (`null` →
+   * HTTP 400 `NO_USABLE_SKILL_HOME`) when no harness home exists — OK never
+   * creates one on the user's behalf. A project that has adopted a harness is
+   * the normal shape for these tests, so the harness seeds one, exactly as it
+   * already seeds `.ok/config.yml`. Pass `false` to exercise the no-host
+   * refusal. Fresh contentDirs / owned homes only.
+   */
+  seedSkillHostRoot?: boolean;
 }
 
 export async function createTestServer(options: CreateTestServerOptions = {}): Promise<TestServer> {
@@ -236,6 +247,12 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       ? realpathSync(mkdtempSync(join(tmpdir(), 'ok-test-home-')))
       : null;
   const homeOverride = options.configHomedirOverride ?? (ownedHomeDir as string);
+  // Same rationale as the contentDir host-root seed below, for global scope.
+  // Only the harness-owned home is seeded — a caller-supplied override owns its
+  // own host set (detection tests depend on that).
+  if (ownedHomeDir !== null && (options.seedSkillHostRoot ?? true)) {
+    mkdirSync(join(ownedHomeDir, '.claude', 'skills'), { recursive: true });
+  }
 
   // No-project ephemeral shape: `.ok/local/` runtime state lives in a
   // throwaway projectDir distinct from contentDir (the user's real dir). The
@@ -270,6 +287,14 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
         options.seedProjectConfigYml ??
         (options.markdownlintEnabled ? 'contentRules:\n  markdownlint:\n    enabled: true\n' : '');
       writeFileSync(join(contentDir, '.ok', 'config.yml'), seedConfig, 'utf-8');
+    }
+
+    // Seed a harness home so skill destinations resolve. `.claude` is the
+    // highest-precedence concrete host, so this reproduces the paths these
+    // tests already assert without pinning them to a fallback OK no longer
+    // invents.
+    if (options.contentDir === undefined && (options.seedSkillHostRoot ?? true)) {
+      mkdirSync(join(contentDir, '.claude', 'skills'), { recursive: true });
     }
 
     // Mirror the production auto-git-init path: every fresh tmpDir gets a real

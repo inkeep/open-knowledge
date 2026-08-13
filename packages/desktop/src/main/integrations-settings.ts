@@ -154,13 +154,24 @@ export function registerIntegrationsSettings(
   const { home, available, ipcMain, cli, path, skills, fs, now, logger = DEFAULT_LOGGER } = opts;
   const nowDate = (): Date => (now ? now() : new Date());
 
-  function computeEditorStatuses(): IntegrationsEditorStatus[] {
-    let detected: Set<McpWiringEditorId>;
+  /**
+   * Every editor with a host root on this machine. Home-scoped (cwd `''`)
+   * because a project-relative probe is meaningless for a user-global surface
+   * — and for the Create-new-project dialog, which reads this off the status
+   * snapshot, the project does not exist yet. NOT narrowed by
+   * `cli.allEditorIds`: that list is filtered to user-global targets, while
+   * this set must stay honest about project-scope-only ones (Pi) too.
+   */
+  function computeDetectedEditors(): Set<McpWiringEditorId> {
     try {
-      detected = new Set(cli.detectInstalledEditors('', home));
+      return new Set(cli.detectInstalledEditors('', home));
     } catch {
-      detected = new Set();
+      return new Set();
     }
+  }
+
+  function computeEditorStatuses(): IntegrationsEditorStatus[] {
+    const detected = computeDetectedEditors();
     return cli.allEditorIds.map((id) => {
       let state: IntegrationsEditorState;
       try {
@@ -204,7 +215,13 @@ export function registerIntegrationsSettings(
       });
       skillStatuses = [];
     }
-    return { available, editors: computeEditorStatuses(), path: pathStatus, skills: skillStatuses };
+    return {
+      available,
+      editors: computeEditorStatuses(),
+      path: pathStatus,
+      skills: skillStatuses,
+      detectedEditorIds: [...computeDetectedEditors()],
+    };
   }
 
   /**

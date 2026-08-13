@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
@@ -6,12 +6,57 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import {
   removableSkillOccurrenceDirs,
+  resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
   scanGlobalInPlaceSkills,
   scanHostRootAliases,
   scanInPlaceSkillDirs,
   scanInPlaceSkills,
 } from './in-place-skills.ts';
+
+describe('resolveDefaultSkillHomeRel', () => {
+  let base: string;
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'ok-default-skill-home-'));
+  });
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  test.each([
+    'project',
+    'global',
+  ] as const)('returns no %s home and creates nothing when no host root exists', (scope) => {
+    expect(resolveDefaultSkillHomeRel(base, scope)).toBeNull();
+    expect(existsSync(join(base, '.claude'))).toBe(false);
+    expect(existsSync(join(base, '.agents'))).toBe(false);
+  });
+
+  test('keeps existing hub and concrete roots selectable by precedence', () => {
+    mkdirSync(join(base, '.codex'), { recursive: true });
+    mkdirSync(join(base, '.claude'), { recursive: true });
+    expect(resolveDefaultSkillHomeRel(base, 'project')).toBe('.claude/skills');
+
+    mkdirSync(join(base, '.agents'), { recursive: true });
+    expect(resolveDefaultSkillHomeRel(base, 'project')).toBe('.agents/skills');
+    expect(resolveDefaultSkillHomeRel(base, 'global')).toBe('.agents/skills');
+  });
+
+  test('does not claim `.github` as a project home on its mere presence', () => {
+    mkdirSync(join(base, '.github', 'workflows'), { recursive: true });
+    expect(resolveDefaultSkillHomeRel(base, 'project')).toBeNull();
+  });
+
+  test('claims `.github/skills` once the project actually adopted it', () => {
+    mkdirSync(join(base, '.github', 'skills'), { recursive: true });
+    expect(resolveDefaultSkillHomeRel(base, 'project')).toBe('.github/skills');
+  });
+
+  test('claims the user-global Copilot home from its own dotdir', () => {
+    mkdirSync(join(base, '.copilot'), { recursive: true });
+    expect(resolveDefaultSkillHomeRel(base, 'global')).toBe('.copilot/skills');
+  });
+});
 
 function writeSkill(root: string, rel: string, body: string): void {
   const dir = join(root, rel);

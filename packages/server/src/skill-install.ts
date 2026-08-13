@@ -5,8 +5,8 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import {
   type EditorId,
-  HOSTS_WITH_USER_SKILL_DIR,
   OPENKNOWLEDGE_SKILLS_REPO,
+  USER_SKILL_HOSTS,
 } from '@inkeep/open-knowledge-core';
 import {
   type BuildSkillZipResult,
@@ -54,8 +54,9 @@ export interface InstallUserSkillOptions {
   /**
    * Override `$HOME`. The per-target install-state lives in
    * `${home}/.ok/skill-state.yml` under target key `cli-hosts`; the skill
-   * copies land under `${home}/.agents/skills/` and `${home}/.<host>/skills/`.
-   * Tests pass a tmpdir here.
+   * copies land under the agent-host roots that already exist, including
+   * `${home}/.agents/skills/` when `.agents` is present. Tests pass a tmpdir
+   * here.
    */
   home?: string;
   /** Optional logger. Falls back to `console.warn` / `console.info`. */
@@ -98,10 +99,8 @@ export type InstallUserSkillResult = 'installed' | 'skip-current' | 'failed' | '
 const LEGACY_USER_SKILL_NAME = 'open-knowledge';
 
 /**
- * Vendor-neutral central store. Written only when at least one host is
- * detected — it is a convergence point FOR installed hosts (Codex, OpenCode,
- * Cursor read it natively), not a destination in its own right, so a machine
- * with no agent host gets nothing at all.
+ * Vendor-neutral central store. `.agents` follows the same consent boundary as
+ * every other host root: it is written only when that root already exists.
  */
 const CENTRAL_HOST_DIR = '.agents';
 
@@ -113,6 +112,8 @@ function centralSkillDir(home: string, bundleName: string): string {
 export interface DetectedSkillHost {
   /** Home-relative dotdir whose presence means the host is installed. */
   readonly hostDir: string;
+  /** Home-relative directory that contains this host's skill bundles. */
+  readonly skillsRoot: string;
   readonly editorId: EditorId;
 }
 
@@ -124,20 +125,29 @@ export interface DetectedSkillHost {
  * both clutter and a scope-of-consent violation (issue #820, where a single
  * `ok init` created 51 tool-config dirs in a real `$HOME`). Every user-global
  * write site MUST filter through this. Host set comes from core's
- * `HOSTS_WITH_USER_SKILL_DIR`, derived from `EDITOR_PROJECT_SKILL_ROOT`, so it
- * can't drift from the editors OK actually supports.
+ * `USER_SKILL_HOSTS`, derived from `EDITOR_USER_SKILL_ROOT`, so it preserves
+ * nested user layouts such as Pi's `.pi/agent/skills`.
  */
 export function detectUserSkillHosts(home: string): DetectedSkillHost[] {
-  return HOSTS_WITH_USER_SKILL_DIR.filter((host) => existsSync(join(home, host.hostDir)));
+  return USER_SKILL_HOSTS.filter((host) => existsSync(join(home, host.hostDir)));
 }
 
-async function centralSkillExists(home: string, bundleName: string): Promise<boolean> {
-  try {
-    const info = await stat(centralSkillDir(home, bundleName));
-    return info.isDirectory();
-  } catch {
-    return false;
+async function installedUserSkillExists(home: string, bundleName: string): Promise<boolean> {
+  const candidates = detectUserSkillHosts(home).map((host) =>
+    join(home, host.skillsRoot, bundleName),
+  );
+  if (existsSync(join(home, CENTRAL_HOST_DIR))) {
+    candidates.push(centralSkillDir(home, bundleName));
   }
+
+  for (const candidate of candidates) {
+    try {
+      if ((await stat(candidate)).isDirectory()) return true;
+    } catch {
+      // A missing or unreadable destination cannot satisfy the disk-presence gate.
+    }
+  }
+  return false;
 }
 
 /**
@@ -152,9 +162,9 @@ function removeLegacyUserSkillDirs(
   hosts: readonly DetectedSkillHost[],
   logger: SkillInstallLogger,
 ): void {
-  const legacyHostDirs = [...hosts.map((h) => h.hostDir), CENTRAL_HOST_DIR];
-  for (const hostDir of legacyHostDirs) {
-    const legacyDir = join(home, hostDir, 'skills', LEGACY_USER_SKILL_NAME);
+  const legacySkillRoots = [...hosts.map((host) => host.skillsRoot), `${CENTRAL_HOST_DIR}/skills`];
+  for (const skillsRoot of legacySkillRoots) {
+    const legacyDir = join(home, skillsRoot, LEGACY_USER_SKILL_NAME);
     if (!existsSync(legacyDir)) continue;
     try {
       tracedRmSync(legacyDir, { recursive: true, force: true });
@@ -189,22 +199,23 @@ interface SkillWriteEntry {
 }
 
 /**
- * Copy one bundle into the central store plus every detected host dir.
- * Callers pass an already-filtered `hosts` — this never probes for, or creates,
- * a dir belonging to an absent tool.
+ * Copy one bundle into every usable destination. Callers pass an
+ * already-filtered host set and whether the ordinary `.agents` host exists, so
+ * this never turns its own writes into future host-detection evidence.
  */
 function writeBundleToHosts(
   home: string,
   bundleName: string,
   sourceDir: string,
   hosts: readonly DetectedSkillHost[],
+  includeCentral: boolean,
 ): SkillWriteEntry[] {
   const entries: SkillWriteEntry[] = [];
   const centralDest = centralSkillDir(home, bundleName);
   const destinations = [
-    centralDest,
+    ...(includeCentral ? [centralDest] : []),
     ...hosts
-      .map((host) => join(home, host.hostDir, 'skills', bundleName))
+      .map((host) => join(home, host.skillsRoot, bundleName))
       // Defensive: a host dest that collapses onto the central store would be a
       // redundant double-write of the same bytes. No host root is `.agents`
       // today, but the guard keeps the central write authoritative if that
@@ -242,19 +253,20 @@ function writeBundleToHosts(
  * also cost a floating-range `npx -y` fetch-and-execute at init time and
  * third-party telemetry OK never opted out of.
  *
- * Destinations: the central `${home}/.agents/skills/<name>/` store plus
- * `${home}/.<host>/skills/<name>/` for each detected host — and NOTHING when no
- * host is detected (`'no-hosts'`), so a machine with no agent tooling gets no
- * dirs at all. See `detectUserSkillHosts` for why that gate is load-bearing.
+ * Destinations: `${home}/.<host>/skills/<name>/` for each detected host,
+ * including the central `${home}/.agents/skills/<name>/` store only when its
+ * root already exists — and NOTHING when no host is detected (`'no-hosts'`),
+ * so a machine with no agent tooling gets no dirs at all. See
+ * `detectUserSkillHosts` for why that gate is load-bearing.
  *
  * Idempotency: the `cli-hosts` entry in `${home}/.ok/skill-state.yml` gates
  * re-install. Nothing is written (and `'skip-current'` is returned) only when
  * BOTH the recorded version matches the current
- * `@inkeep/open-knowledge-server` package version AND the central skill
- * directory at `${home}/.agents/skills/open-knowledge-discovery` is still on
- * disk. The disk-presence check exists because a manual `rm` of the skill
- * leaves the state file untouched, which would otherwise wedge the next
- * `ok init` into a no-op despite the skill being gone.
+ * `@inkeep/open-knowledge-server` package version AND the skill directory is
+ * still present under at least one currently installed host root. The
+ * disk-presence check exists because a manual `rm` of the skill leaves the
+ * state file untouched, which would otherwise wedge the next `ok init` into a
+ * no-op despite the skill being gone.
  *
  * Always resolves (never throws). Returns `'failed'` when no usable install
  * could be RECORDED — every destination write errored, a pre-write dependency
@@ -376,7 +388,7 @@ export async function installUserSkill(
     return null;
   });
   if (!opts.force && existingVersion !== null && existingVersion === currentVersion) {
-    if (await centralSkillExists(home, bundleName)) {
+    if (await installedUserSkillExists(home, bundleName)) {
       logger.info?.(
         { event: 'skill-install.skip-current', version: currentVersion },
         'OpenKnowledge skill already installed at current version; skipping.',
@@ -388,7 +400,6 @@ export async function installUserSkill(
       {
         event: 'skill-install.reinstall-missing',
         version: currentVersion,
-        path: centralSkillDir(home, bundleName),
       },
       'Sidecar matches current version but skill files are missing; reinstalling.',
     );
@@ -411,10 +422,12 @@ export async function installUserSkill(
     await report('failed', currentVersion, 'bundled-asset-missing');
     return 'failed';
   }
-  // Detect BEFORE writing anything. No detected host ⇒ no destinations ⇒ we
-  // write nothing at all, not even the central store.
+  // Detect BEFORE writing anything. `.agents` is an ordinary host: it receives
+  // a copy only when its root already exists, and does not authorize creating
+  // itself merely because another editor is installed.
   const hosts = detectUserSkillHosts(home);
-  if (hosts.length === 0) {
+  const includeCentral = existsSync(join(home, CENTRAL_HOST_DIR));
+  if (hosts.length === 0 && !includeCentral) {
     logger.info?.(
       { event: 'skill-install.no-hosts', version: currentVersion },
       'No supported agent host detected; skipping user-global skill install.',
@@ -427,7 +440,7 @@ export async function installUserSkill(
   // fresh machine). Fail-soft — the writes below are what the result gates on.
   removeLegacyUserSkillDirs(home, hosts, logger);
 
-  const entries = writeBundleToHosts(home, bundleName, bundleDir, hosts);
+  const entries = writeBundleToHosts(home, bundleName, bundleDir, hosts, includeCentral);
   const written = entries.filter((e) => e.status === 'written');
   const failed = entries.filter((e) => e.status === 'failed');
 

@@ -1,7 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  PROJECT_SKILL_EDITOR_IDS,
+  SkillInstallSuccessSchema,
+  SkillsListSuccessSchema,
+} from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
@@ -25,6 +29,11 @@ beforeAll(async () => {
   // the vendor-neutral authoring hub for a fresh global skill.
   mkdirSync(join(tmpHome, '.agents', 'skills'), { recursive: true });
   mkdirSync(join(tmpHome, '.claude', 'skills'), { recursive: true });
+  // `.gemini` is a DETECTED user skill host (Antigravity's user root is
+  // `~/.gemini/skills`) that has no project skill root, so it is not an
+  // install target. It also belongs to the standalone Gemini CLI, so its
+  // presence is not even evidence Antigravity is installed.
+  mkdirSync(join(tmpHome, '.gemini'), { recursive: true });
   server = await createTestServer({ configHomedirOverride: tmpHome });
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(async () => {
@@ -62,5 +71,38 @@ describe('installableEditors gating (PRD-7600)', () => {
     // offered — including Copilot (`.github/skills`).
     expect(project?.installableEditors).toContain('claude');
     expect(project?.installableEditors).toContain('copilot');
+  });
+});
+
+describe('default global install targets stay in the install-target vocabulary', () => {
+  /**
+   * Detection (`~/.gemini` → antigravity) is WIDER than the install-target
+   * vocabulary: an editor with no project skill root has no checkbox in the
+   * picker and is filtered out of `resolvedHosts`, so a projection there could
+   * never be seen or removed by a later set-exact install. Omitting `targets`
+   * must therefore yield the same vocabulary an explicit list is filtered to.
+   *
+   */
+  test('omitting targets never projects into a detected non-target host', async () => {
+    const name = 'vocab-skill';
+    expect((await putSkill('global', name)).status).toBe(200);
+
+    // `targets` OMITTED → the defaults branch under test.
+    const res = await fetch(`${base()}/api/skill/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'global', name }),
+    });
+    expect(res.status).toBe(200);
+    const parsed = SkillInstallSuccessSchema.safeParse(await res.json());
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    // Detection really ran: `.claude` is detected AND a valid target.
+    expect(parsed.data.hosts).toContain('claude');
+    // …and every emitted host round-trips (`agents` is the hub, not an editor).
+    const vocabulary = new Set<string>([...PROJECT_SKILL_EDITOR_IDS, 'agents']);
+    expect(parsed.data.hosts.filter((h) => !vocabulary.has(h))).toEqual([]);
+    expect(existsSync(join(tmpHome, '.gemini', 'skills', name))).toBe(false);
   });
 });

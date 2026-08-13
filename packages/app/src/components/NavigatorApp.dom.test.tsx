@@ -98,6 +98,16 @@ function createBridge() {
       projectName: 'Project Navigator',
       mode: 'navigator',
     },
+    integrations: {
+      // CreateProjectDialog seeds its editor checkboxes off this on open.
+      status: async () => ({
+        available: false,
+        editors: [],
+        path: { shellDetected: false, rcFilesToTouch: [], installed: false },
+        skills: [],
+        detectedEditorIds: [],
+      }),
+    },
     project: {
       listRecent: vi.fn(() =>
         Promise.resolve([{ path: '/projects/recent', name: 'Recent Project' }]),

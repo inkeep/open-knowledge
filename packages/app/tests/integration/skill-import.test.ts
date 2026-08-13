@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { EDITOR_USER_SKILL_ROOT } from '@inkeep/open-knowledge-core';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import {
   createTestServer,
@@ -38,6 +39,7 @@ describe('POST /api/skill/import', () => {
   let server: TestServer;
   beforeEach(async () => {
     server = await createTestServer();
+    mkdirSync(join(server.contentDir, '.claude'), { recursive: true });
   });
   afterEach(async () => {
     await server.cleanup();
@@ -50,6 +52,32 @@ describe('POST /api/skill/import', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+  test('project import reports no usable target without creating a host root', async () => {
+    rmSync(join(server.contentDir, '.claude'), { recursive: true, force: true });
+    rmSync(join(server.contentDir, '.agents'), { recursive: true, force: true });
+    const dir = join(srcRoot, 'project-no-host');
+    writeSkillDir(dir, 'project-no-host', 'No implicit host');
+
+    const res = await importSkill({ source: dir });
+    const body = (await res.json()) as { detail?: string; title?: string };
+
+    expect({
+      status: res.status,
+      detail: body.detail,
+      claudeRootExists: existsSync(join(server.contentDir, '.claude')),
+      agentsRootExists: existsSync(join(server.contentDir, '.agents')),
+    }).toEqual({
+      status: 400,
+      detail: 'NO_USABLE_SKILL_HOME',
+      claudeRootExists: false,
+      agentsRootExists: false,
+    });
+    // The refusal has to be actionable, not merely correct: name the folders
+    // OK would accept and what to do, since it never creates one itself.
+    expect(body.title).toContain('.claude/');
+    expect(body.title).toContain('Create the folder your agent uses');
+  });
 
   test('imports a local skill-dir as content + records provenance; scripts not executed', async () => {
     const dir = join(srcRoot, 'single');
@@ -234,6 +262,7 @@ describe('POST /api/skill/import at global scope', () => {
     homeDir = mkdtempSync(join(tmpdir(), 'ok-global-import-home-'));
     sourceDir = mkdtempSync(join(tmpdir(), 'ok-global-import-source-'));
     writeSkillDir(sourceDir, 'global-copy', 'Global plugin copy');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     server = await createTestServer({ configHomedirOverride: homeDir });
   });
 
@@ -277,12 +306,40 @@ describe('POST /api/skill/import at global scope', () => {
         ?.source,
     ).toBe(sourceDir);
   });
+
+  test('global import reports no usable target without creating a host root', async () => {
+    for (const root of Object.values(EDITOR_USER_SKILL_ROOT)) {
+      const hostRoot = root?.split('/')[0];
+      if (hostRoot !== undefined) rmSync(join(homeDir, hostRoot), { recursive: true, force: true });
+    }
+    rmSync(join(homeDir, '.agents'), { recursive: true, force: true });
+
+    const res = await fetch(`${server.baseUrl}/api/skill/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: sourceDir, scope: 'global' }),
+    });
+    const body = (await res.json()) as { detail?: string };
+
+    expect({
+      status: res.status,
+      detail: body.detail,
+      claudeRootExists: existsSync(join(homeDir, '.claude')),
+      agentsRootExists: existsSync(join(homeDir, '.agents')),
+    }).toEqual({
+      status: 400,
+      detail: 'NO_USABLE_SKILL_HOME',
+      claudeRootExists: false,
+      agentsRootExists: false,
+    });
+  });
 });
 
 describe('POST /api/skill/reimport', () => {
   let server: TestServer;
   beforeEach(async () => {
     server = await createTestServer();
+    mkdirSync(join(server.contentDir, '.claude'), { recursive: true });
   });
   afterEach(async () => {
     await server.cleanup();

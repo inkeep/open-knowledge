@@ -66,8 +66,17 @@ const PARENT = '/Users/test/Projects';
 const PROJECT_NAME = 'Runtime Project';
 const SECOND_PARENT = '/Users/test/OtherProjects';
 
+// The tools the fake machine "has installed". Deliberately a strict, non-empty
+// subset of ALL_EDITOR_IDS so the seeded default is distinguishable from both
+// the empty set and the everything set.
+const DETECTED: OkMcpWiringEditorId[] = ['claude', 'cursor'];
+// An editor the fake machine does NOT have — must never be pre-checked, and
+// must never reach the createNew payload unless the user ticks it.
+const UNDETECTED: OkMcpWiringEditorId = 'codex';
+
 function makeBridge() {
   let pickedParent: string | null = PARENT;
+  let detectedEditorIdsImpl = (): Promise<OkMcpWiringEditorId[]> => Promise.resolve([...DETECTED]);
   let defaultRootImpl = (): Promise<string> => Promise.resolve(PARENT);
   let folderStateImpl = async (_path: string): Promise<OkFolderState> => 'free';
   let createNewImpl = (): Promise<void> => Promise.resolve();
@@ -99,6 +108,18 @@ function makeBridge() {
         return Promise.resolve(pickedParent);
       }),
     },
+    integrations: {
+      // The dialog reads only `detectedEditorIds` off this snapshot; the rest of
+      // the shape exists so the fake matches the real status contract.
+      status: vi.fn(async () => ({
+        available: true,
+        editors: [],
+        path: { shellDetected: false, rcFilesToTouch: [], installed: false },
+        skills: [],
+        detectedEditorIds: await detectedEditorIdsImpl(),
+      })),
+      setComponent: vi.fn(),
+    },
     project: {
       recordCreateNewBannerShown: vi.fn((banner: string) => {
         bannerCalls.push(banner);
@@ -128,6 +149,9 @@ function makeBridge() {
     openFolderArgs,
     setPickedParent: (next: string | null) => {
       pickedParent = next;
+    },
+    setDetectedEditorsImpl: (next: () => Promise<OkMcpWiringEditorId[]>) => {
+      detectedEditorIdsImpl = next;
     },
     setDefaultProjectsRootImpl: (next: () => Promise<string>) => {
       defaultRootImpl = next;
@@ -184,7 +208,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     cleanup();
   });
 
-  test('name input is first and submit posts {parent, name} derived from the two fields', async () => {
+  test('detected agent harnesses start selected, undetected ones do not, and edits ride along', async () => {
     const stub = await renderDialog();
 
     const form = screen.getByTestId('create-project-form') as HTMLFormElement;
@@ -219,12 +243,26 @@ describe('CreateProjectDialog runtime wiring', () => {
     fireEvent.click(screen.getByTestId('create-advanced-trigger'));
     expect(screen.getByTestId('create-sharing')).not.toBeNull();
 
+    // Every editor still renders a labelled row; only the DETECTED ones come
+    // pre-checked. A tool whose host root does not exist is never pre-selected,
+    // so we never create a config dir for something the user doesn't have.
+    await waitFor(() => {
+      expect(screen.getByTestId('create-editor-claude').getAttribute('aria-checked')).toBe('true');
+    });
     for (const id of ALL_EDITOR_IDS) {
       const checkbox = screen.getByTestId(`create-editor-${id}`);
       expect(checkbox.closest('label')?.textContent).toContain(EDITOR_LABELS[id]);
-      expect(checkbox.getAttribute('aria-checked')).toBe('true');
+      expect(checkbox.getAttribute('aria-checked')).toBe(DETECTED.includes(id) ? 'true' : 'false');
     }
+    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
+      'false',
+    );
 
+    // Ticking an undetected tool adds it; unticking a detected one drops it.
+    fireEvent.click(screen.getByTestId(`create-editor-${UNDETECTED}`));
+    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
+      'true',
+    );
     fireEvent.click(screen.getByTestId('create-editor-cursor'));
     expect(screen.getByTestId('create-editor-cursor').getAttribute('aria-checked')).toBe('false');
 
@@ -238,16 +276,92 @@ describe('CreateProjectDialog runtime wiring', () => {
     fireEvent.click(submit);
 
     await waitFor(() => {
-      expect(stub.createNewCalls).toEqual([
-        {
-          parent: PARENT,
-          name: PROJECT_NAME,
-          editors: ALL_EDITOR_IDS.filter((id) => id !== 'cursor'),
-          sharing: 'shared',
-        },
-      ]);
+      expect(stub.createNewCalls).toHaveLength(1);
     });
+    const submitted = stub.createNewCalls[0];
+    expect(submitted?.parent).toBe(PARENT);
+    expect(submitted?.name).toBe(PROJECT_NAME);
+    expect(submitted?.sharing).toBe('shared');
+    expect([...(submitted?.editors ?? [])].sort()).toEqual(['claude', UNDETECTED].sort());
     expect(stub.onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  test('submitting without ever opening Advanced settings wires the detected editors', async () => {
+    // The regression this pins: the editor checkboxes live behind a collapsed
+    // "Advanced settings" section, so the overwhelmingly common path is
+    // name → Create. That path must still produce MCP config + the project
+    // skill for the tools the user actually has — an empty `editors` array
+    // silently yields a project wired to nothing, and nothing back-fills it.
+    const stub = await renderDialog();
+    await waitForLocationHydrate();
+
+    // Advanced is never expanded in this test.
+    expect(screen.queryByTestId('create-editor-claude')).toBeNull();
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    expect([...(stub.createNewCalls[0]?.editors ?? [])].sort()).toEqual([...DETECTED].sort());
+  });
+
+  test('a failed detection probe leaves the selection empty rather than guessing', async () => {
+    // Degrade toward writing nothing, never toward creating host roots for
+    // tools we could not confirm. Advanced settings remains the manual escape.
+    const stub = makeBridge();
+    stub.setDetectedEditorsImpl(() => Promise.reject(new Error('detection blew up')));
+    await renderDialog(stub);
+    await waitForLocationHydrate();
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    expect(stub.createNewCalls[0]?.editors).toEqual([]);
+  });
+
+  test('a detection probe that lands after the user ticks does not clobber the selection', async () => {
+    // Seeding is an async round-trip the user can beat: Advanced is one click
+    // away and the checkboxes are live well before `integrations.status()`
+    // resolves. Whatever the checkboxes show after the user's click is what
+    // gets submitted — a late seed neither replaces nor merges into it.
+    let releaseDetection = (): void => {};
+    const stub = makeBridge();
+    stub.setDetectedEditorsImpl(
+      () =>
+        new Promise<OkMcpWiringEditorId[]>((resolve) => {
+          releaseDetection = () => resolve([...DETECTED]);
+        }),
+    );
+    await renderDialog(stub);
+    await waitForLocationHydrate();
+
+    fireEvent.click(screen.getByTestId('create-advanced-trigger'));
+    fireEvent.click(screen.getByTestId(`create-editor-${UNDETECTED}`));
+    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+
+    releaseDetection();
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(screen.getByTestId('create-editor-claude').getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    expect(stub.createNewCalls[0]?.editors).toEqual([UNDETECTED]);
   });
 
   test('reopening the dialog re-collapses Advanced so sharing is hidden again', async () => {

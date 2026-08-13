@@ -84,8 +84,9 @@ export const EDITOR_LABELS = {
  * The asymmetry with USER/global scope is deliberate: `~/.agents/skills` IS the
  * right hub there — several hosts (Codex, OpenCode, Cursor) read it natively at
  * user scope, so it is a real convergence point with no per-project equivalent.
- * The user-global writer (`installUserSkill`) writes it ALONGSIDE the per-host
- * dirs of detected hosts, and only when at least one host is detected.
+ * The user-global writer (`installUserSkill`) writes it only when the
+ * `~/.agents` root already exists. Otherwise it writes only to detected
+ * concrete host roots.
  *
  * The CLI's `EDITOR_TARGETS.projectSkillPath` is a second source for the same
  * map and must move in lock-step.
@@ -149,6 +150,27 @@ export const EDITOR_USER_SKILL_ROOT = {
   hermes: null,
 } as const satisfies Record<EditorId, string | null>;
 
+/**
+ * Repo/home dirs that hold a skills root but are NOT owned by an agent.
+ * `.github` carries workflows, CODEOWNERS and issue templates in nearly every
+ * git repo, so its presence says nothing about whether the project adopted
+ * Copilot skills. Every other skills root sits under a dotdir a single agent
+ * owns. Copilot's USER root (`.copilot/skills`) is agent-owned and absent here.
+ */
+const NON_AGENT_SKILL_ROOT_DIRS: ReadonlySet<string> = new Set(['.github']);
+
+/**
+ * The base-relative path whose existence activates `skillsRoot` as a write
+ * target. Normally the host's dotdir — a project with `.claude` but no
+ * `.claude/skills` has still adopted Claude, so OK may create the skills dir.
+ * For a root under a shared non-agent dir the whole root must already exist:
+ * only `.github/skills` itself proves adoption, `.github` alone does not.
+ */
+export function skillRootActivationPath(skillsRoot: string): string {
+  const dotdir = skillsRoot.split('/')[0] ?? skillsRoot;
+  return NON_AGENT_SKILL_ROOT_DIRS.has(dotdir) ? skillsRoot : dotdir;
+}
+
 /** Editor ids that have a project skill surface (valid install-projection targets). */
 export const PROJECT_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
   (id) => EDITOR_PROJECT_SKILL_ROOT[id] !== null,
@@ -199,8 +221,8 @@ export const PROJECT_SKILL_PROJECTION_IGNORE_PATHS: readonly string[] = ALL_EDIT
  * Pi and Copilot are carve-outs: Pi's user-global skills dir is
  * `~/.pi/agent/skills` (the agent home is nested one level below the `.pi`
  * dotdir), while Copilot's is `~/.copilot/skills`, not `~/.github/skills`.
- * Both natively read the central `~/.agents/skills` hub that the user-bundle
- * installer already writes, so including either here would create a dead path.
+ * Both are handled by `USER_SKILL_HOSTS` at user scope; including either in
+ * this project-shaped list would fabricate the wrong global path.
  */
 export const HOSTS_WITH_USER_SKILL_DIR: ReadonlyArray<{
   readonly hostDir: string;
@@ -212,6 +234,23 @@ export const HOSTS_WITH_USER_SKILL_DIR: ReadonlyArray<{
     editorId,
   }),
 );
+
+/**
+ * Every editor with a concrete user-global skill location. Unlike
+ * `HOSTS_WITH_USER_SKILL_DIR`, this preserves the full user-root shape, so Pi
+ * (`.pi/agent/skills`) and Copilot (`.copilot/skills`) can be addressed without
+ * relying on an implicitly-created `.agents` hub.
+ */
+export const USER_SKILL_HOSTS: ReadonlyArray<{
+  readonly hostDir: string;
+  readonly skillsRoot: string;
+  readonly editorId: EditorId;
+}> = ALL_EDITOR_IDS.flatMap((editorId) => {
+  const skillsRoot = EDITOR_USER_SKILL_ROOT[editorId];
+  if (skillsRoot === null) return [];
+  const hostDir = skillsRoot.split('/')[0];
+  return hostDir === undefined ? [] : [{ hostDir, skillsRoot, editorId }];
+});
 
 /**
  * OpenKnowledge integration-doc slug per editor — the setup guide at

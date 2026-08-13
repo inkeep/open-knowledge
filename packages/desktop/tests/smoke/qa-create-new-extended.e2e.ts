@@ -12,6 +12,11 @@
  * not here — it needs an in-flight createNew the DOM tier can hold open
  * deterministically.
  *
+ * The editor checkboxes are seeded from `integrations.status().detectedEditorIds`
+ * on each open, and every spec here runs under a freshly-minted tmp HOME with
+ * no agent tool installed — so the deterministic baseline is "nothing checked",
+ * and a spec that wants an editor wired ticks it explicitly.
+ *
  * Name-first model. Browse picks the **parent**; the project
  * basename is supplied by typing into the Name <Input>. Tests set
  * `OK_DESKTOP_TEST_PICKED_PATH = parent` and use the `typeProjectName`
@@ -34,6 +39,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { typeProjectName } from './_helpers/create-new-dialog';
@@ -199,15 +205,18 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 5_000 },
     );
 
-    // Uncheck cursor + codex. EDITOR IDs from cli (NOT 'claude-code').
+    // The selection is seeded from detection, and the seeded tmp HOME has no
+    // agent tool installed on it — so the baseline is nothing checked. Tick
+    // cursor and only cursor. EDITOR IDs from cli (NOT 'claude-code').
     await expandCreateAdvanced(navigator);
-    await navigator.locator('[data-testid="create-editor-cursor"]').click();
-    await navigator.locator('[data-testid="create-editor-codex"]').click();
-    // Verify state: claude + claude-desktop checked; cursor + codex unchecked.
-    await expect(navigator.locator('[data-testid="create-editor-claude"]')).toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-claude-desktop"]')).toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-cursor"]')).not.toBeChecked();
+    const cursorBox = navigator.locator('[data-testid="create-editor-cursor"]');
+    await expect(cursorBox).not.toBeChecked();
     await expect(navigator.locator('[data-testid="create-editor-codex"]')).not.toBeChecked();
+    await expect(navigator.locator('[data-testid="create-editor-claude"]')).not.toBeChecked();
+    await cursorBox.click();
+    await expect(cursorBox).toBeChecked();
+    await expect(navigator.locator('[data-testid="create-editor-codex"]')).not.toBeChecked();
+    await expect(navigator.locator('[data-testid="create-editor-claude"]')).not.toBeChecked();
 
     const submit = navigator.locator('[data-testid="create-submit"]');
     await expect(submit).toBeEnabled();
@@ -221,13 +230,17 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => existsSync(join(expected, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
 
-    // assertion: cursor + codex NOT present on disk.
-    expect(existsSync(join(expected, '.cursor'))).toBe(false);
+    // The ticked editor is wired; the unticked ones leave nothing behind.
+    await expect
+      .poll(() => existsSync(join(expected, '.cursor', 'mcp.json')), { timeout: 15_000 })
+      .toBe(true);
     expect(existsSync(join(expected, '.codex'))).toBe(false);
+    expect(existsSync(join(expected, '.claude'))).toBe(false);
+    expect(existsSync(join(expected, '.mcp.json'))).toBe(false);
   });
 
   // dialog UX: name input is focused on open, Location is hydrated,
-  // all 4 editors visible.
+  // every editor row is visible and tickable under Advanced settings.
   test('QA-010 dialog UX — focus, location, checkboxes, ARIA', async ({ captureStderrFor }) => {
     const tmpHome = seedTmpHome('uxshape');
     const parent = join(tmpHome, 'projects');
@@ -258,12 +271,19 @@ test.describe('QA extended create-new-project', () => {
     const ariaLive = await caption.getAttribute('aria-live');
     expect(ariaLive).toBe('polite');
 
-    // All 4 editors visible + checked initially (under Advanced settings).
+    // Every known editor renders a row under Advanced settings. None starts
+    // checked: the selection is seeded from detection and nothing is installed
+    // under the seeded tmp HOME.
     await expandCreateAdvanced(navigator);
-    await expect(navigator.locator('[data-testid="create-editor-claude"]')).toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-claude-desktop"]')).toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-cursor"]')).toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-codex"]')).toBeChecked();
+    for (const id of ALL_EDITOR_IDS) {
+      const checkbox = navigator.locator(`[data-testid="create-editor-${id}"]`);
+      await expect(checkbox).toBeVisible();
+      await expect(checkbox).not.toBeChecked();
+    }
+    // The rows are interactive, not merely rendered.
+    const codexBox = navigator.locator('[data-testid="create-editor-codex"]');
+    await codexBox.click();
+    await expect(codexBox).toBeChecked();
 
     // Type the name + Browse → caption shows the resolved target.
     await typeProjectName(navigator, projectName);
@@ -325,6 +345,17 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => countWindowsByMode(app1, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
 
+    // Advanced settings is never opened here, so this submits the
+    // detection-seeded selection — empty, since nothing is installed under the
+    // seeded tmp HOME. That still creates a real project; it just wires no
+    // editor integrations.
+    const firstProject = join(parent, projectName);
+    await expect
+      .poll(() => existsSync(join(firstProject, '.ok', 'config.yml')), { timeout: 15_000 })
+      .toBe(true);
+    expect(existsSync(join(firstProject, '.cursor'))).toBe(false);
+    expect(existsSync(join(firstProject, '.mcp.json'))).toBe(false);
+
     // First → second launch hand-off. Both launches share the same `tmpHome` →
     // same Electron `userData` dir. Two Electron processes against the
     // same userData would contend on Chromium's lockfile; the first must be
@@ -362,7 +393,8 @@ test.describe('QA extended create-new-project', () => {
     rmSync(join(userDataDir, 'bug-report-dirty-shutdown.json'), { force: true });
 
     // Second launch: relaunch. Location prefills from lastUsedProjectParent;
-    // the Name input resets to empty; editor checkboxes reset to checked.
+    // the Name input resets to empty; the editor selection re-seeds from
+    // detection (still empty under the seeded tmp HOME).
     const app2 = await launchApp(tmpHome);
     captureStderrFor(app2);
     const navigator2 = await findWindowByMode(app2, 'navigator', 30_000);
@@ -380,10 +412,12 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 15_000 },
     );
     await expandCreateAdvanced(navigator2);
-    await expect(navigator2.locator('[data-testid="create-editor-claude"]')).toBeChecked();
-    await expect(navigator2.locator('[data-testid="create-editor-claude-desktop"]')).toBeChecked();
-    await expect(navigator2.locator('[data-testid="create-editor-cursor"]')).toBeChecked();
-    await expect(navigator2.locator('[data-testid="create-editor-codex"]')).toBeChecked();
+    await expect(navigator2.locator('[data-testid="create-editor-claude"]')).not.toBeChecked();
+    await expect(
+      navigator2.locator('[data-testid="create-editor-claude-desktop"]'),
+    ).not.toBeChecked();
+    await expect(navigator2.locator('[data-testid="create-editor-cursor"]')).not.toBeChecked();
+    await expect(navigator2.locator('[data-testid="create-editor-codex"]')).not.toBeChecked();
   });
 
   // Create stays enabled even before the user types a name — a disabled

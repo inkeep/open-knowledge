@@ -9,8 +9,9 @@
  * on open) followed by a Location field (read-only display + Browse button
  * that picks the PARENT directory). A live "Will be created at: …" caption
  * shows the resolved target before submit. The config-sharing posture
- * (side-by-side radio cards) and the editor-checkbox group (all default ON)
- * both collapse under an "Advanced settings" section. Cancel +
+ * (side-by-side radio cards) and the editor-checkbox group (pre-checked from
+ * `bridge.integrations.status().detectedEditorIds` on open) both collapse under
+ * an "Advanced settings" section. Cancel +
  * Create footer. Create stays enabled with an empty name — a click then
  * surfaces an "Enter a project name" toast (see onSubmit) rather than sitting
  * disabled with no hint. The two fields (`location`, `name`) are the source of
@@ -324,9 +325,15 @@ export function CreateProjectDialog({
   // Project name typed into the always-present <Input>. The creation target
   // is `joinPathPreview(location, sanitizeFolderName(name))`.
   const [name, setName] = useState('');
-  const [editorIds, setEditorIds] = useState<ReadonlySet<OkMcpWiringEditorId>>(
-    () => new Set(ALL_EDITOR_IDS),
-  );
+  // AI tools that get wired on submit. Seeded on each open from
+  // `bridge.integrations.status().detectedEditorIds` — the tools whose host root
+  // already exists on this machine — because the checkboxes live behind a collapsed
+  // "Advanced settings" section: a user who types a name and clicks Create
+  // never sees them, so an empty default would silently produce a project with
+  // no MCP config and no project skill for tools they DO have. Seeding from
+  // detection keeps the other half of that contract too: we never create a
+  // host root for a tool the user doesn't have.
+  const [editorIds, setEditorIds] = useState<ReadonlySet<OkMcpWiringEditorId>>(() => new Set());
   // OK config sharing mode. Defaults to `'shared'` (encourages team
   // adoption). Rendered via SharingModeField inside "Advanced settings" — the
   // greenfield dialog tucks the choice away (sensible default already set),
@@ -370,6 +377,12 @@ export function CreateProjectDialog({
   // banner, so a result that arrives after the banner has moved on would
   // otherwise be lost without UX feedback).
   const removeGitCallIdRef = useRef(0);
+  // True once the user has toggled an editor checkbox during the current open.
+  // The on-open detection probe is async, so a user who expands Advanced and
+  // ticks a box before it resolves would otherwise have their choice silently
+  // overwritten by the seed landing late. What the checkboxes show right after
+  // their click is the truth; a late probe never overrides it.
+  const editorsTouchedRef = useRef(false);
 
   // Hydrate Location + focus the Name input on dialog open. Reset transient
   // state (banner-fired set, error, busy, name, editors, removeGitState) so
@@ -387,7 +400,8 @@ export function CreateProjectDialog({
     setProbeLifecycle('idle');
     setBusy(false);
     setName('');
-    setEditorIds(new Set(ALL_EDITOR_IDS));
+    setEditorIds(new Set());
+    editorsTouchedRef.current = false;
     setSharing('shared');
     setAdvancedOpen(false);
     setRemoveGitState({ kind: 'idle' });
@@ -397,6 +411,22 @@ export function CreateProjectDialog({
     removeGitCallIdRef.current += 1;
 
     let cancelled = false;
+    // Re-probe detection on every open (the user may have installed a tool
+    // since last time). A selection the user has already edited wins over the
+    // seed: this probe is a round-trip the user can beat.
+    bridge.integrations
+      .status()
+      .then((status) => {
+        if (!cancelled && !editorsTouchedRef.current) {
+          setEditorIds(new Set(status.detectedEditorIds));
+        }
+      })
+      .catch((err) => {
+        // Best-effort: leave the selection empty so we never create a host
+        // root for a tool we could not confirm. Advanced settings still works.
+        console.warn('[CreateProjectDialog] editor-detection probe failed:', err);
+      });
+
     // Reset Location before refetching — second-open after a first-open
     // success leaves a stale value visible if defaultProjectsRoot() rejects
     // this time. The catch handler's "leave location empty on failure"
@@ -651,6 +681,7 @@ export function CreateProjectDialog({
   const submitDisabled = busy || (rawName !== '' && !canSubmit);
 
   function toggleEditor(id: OkMcpWiringEditorId) {
+    editorsTouchedRef.current = true;
     setEditorIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);

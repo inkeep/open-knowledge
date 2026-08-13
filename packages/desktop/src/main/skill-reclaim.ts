@@ -57,7 +57,7 @@ import {
   EDITOR_TARGETS,
   HOSTS_WITH_USER_SKILL_DIR,
 } from '@inkeep/open-knowledge';
-import { resolveBundleEnabled } from '@inkeep/open-knowledge-core';
+import { resolveBundleEnabled, USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import { classifyInstallShape } from './install-shape.ts';
 
 interface SkillReclaimLogger {
@@ -302,9 +302,15 @@ interface ReclaimUserSkillsOpts {
 /**
  * Force-write ONE user-global bundle into the central store + every detected
  * per-host directory, under its own `bundleDirName`. Returns the per-write
- * entries (the version-advance gate keys off `anyWriteSucceeded` across all
- * bundles). Looped over `deps.userGlobalBundles` so discovery + write-skill
- * both land.
+ * entries plus this bundle's own `anyWritten` / `anyDestinationSucceeded`
+ * flags. Looped over `deps.userGlobalBundles` so discovery + write-skill both
+ * land.
+ *
+ * Both flags are PER BUNDLE by construction: the version-advance gate and the
+ * outcome event must not read them off a pooled entry list, or one bundle's
+ * success answers for a sibling that landed nowhere. Sibling of the CLI's
+ * `installUserBundleToHostDirs` in `packages/cli/src/commands/repair-skills.ts`
+ * — keep the shape aligned.
  */
 function installUserBundleToHostDirs(
   home: string,
@@ -313,7 +319,7 @@ function installUserBundleToHostDirs(
   fs: SkillFsOps,
   logger: SkillReclaimLogger,
   version: string,
-): UserSkillReclaimEntry[] {
+): { entries: UserSkillReclaimEntry[]; anyWritten: boolean; anyDestinationSucceeded: boolean } {
   const entries: UserSkillReclaimEntry[] = [];
   const centralDest = join(home, '.agents', 'skills', bundleDirName);
   // SEED-IF-ABSENT: the reclaim guarantees the
@@ -321,9 +327,10 @@ function installUserBundleToHostDirs(
   // that copy may be a user-applied skills.sh update, and force-refreshing it
   // would clobber the update + churn a version string every launch. Updates now
   // flow through the manual "update available" path, not this launch hook.
-  if (fs.existsSync(centralDest)) {
+  const centralRootExists = fs.existsSync(join(home, '.agents'));
+  if (centralRootExists && fs.existsSync(centralDest)) {
     entries.push({ kind: 'central', path: centralDest, status: 'skipped-present' });
-  } else {
+  } else if (centralRootExists) {
     try {
       replaceDir(sourceDir, centralDest, fs);
       entries.push({ kind: 'central', path: centralDest, status: 'written' });
@@ -340,9 +347,9 @@ function installUserBundleToHostDirs(
     }
   }
 
-  for (const host of HOSTS_WITH_USER_SKILL_DIR) {
+  for (const host of USER_SKILL_HOSTS) {
     const hostRoot = join(home, host.hostDir);
-    const hostDest = join(hostRoot, 'skills', bundleDirName);
+    const hostDest = join(home, host.skillsRoot, bundleDirName);
     if (hostDest === centralDest) {
       // Defensive: skip a per-host write that resolves to the central store's
       // own path (would be a redundant double-write of the same bytes). No
@@ -406,7 +413,20 @@ function installUserBundleToHostDirs(
       });
     }
   }
-  return entries;
+  return {
+    entries,
+    anyWritten: entries.some((entry) => entry.status === 'written'),
+    anyDestinationSucceeded: entries.some(
+      (entry) => entry.status === 'written' || entry.status === 'skipped-present',
+    ),
+  };
+}
+
+function userBundleExists(home: string, bundleName: string, fs: SkillFsOps): boolean {
+  return (
+    fs.existsSync(join(home, '.agents', 'skills', bundleName)) ||
+    USER_SKILL_HOSTS.some((host) => fs.existsSync(join(home, host.skillsRoot, bundleName)))
+  );
 }
 
 /**
@@ -510,7 +530,7 @@ export async function reclaimUserSkillsOnLaunch(
   // the identical gate.
   const gatedBundles: typeof resolvedBundles = [];
   for (const bundle of resolvedBundles) {
-    const onDisk = fs.existsSync(join(home, '.agents', 'skills', bundle.name));
+    const onDisk = userBundleExists(home, bundle.name, fs);
     const decision = await deps.readBundleDecision(home, bundle.name).catch(() => null);
     if (!resolveBundleEnabled(decision, { installedOnDisk: onDisk })) {
       if (onDisk) {
@@ -557,8 +577,12 @@ export async function reclaimUserSkillsOnLaunch(
   // not an install and reporting it would turn an install counter into a launch
   // counter. Collected per bundle because the entry rows do not carry a name.
   const installedBundleNames: string[] = [];
+  // Per-bundle outcome flags. Read off the pooled `entries` list instead, one
+  // bundle's success answers for a sibling whose only write threw, and that
+  // sibling then reports `installed`. Mirrors the CLI sweep's `bundleResults`.
+  const bundleResults: Array<{ id: string; landed: boolean; failed: boolean }> = [];
   for (const bundle of gatedBundles) {
-    const bundleEntries = installUserBundleToHostDirs(
+    const result = installUserBundleToHostDirs(
       home,
       bundle.name,
       bundle.sourceDir,
@@ -566,16 +590,24 @@ export async function reclaimUserSkillsOnLaunch(
       logger,
       version,
     );
-    if (bundleEntries.some((e) => e.status === 'written')) installedBundleNames.push(bundle.name);
-    entries.push(...bundleEntries);
+    if (result.anyWritten) installedBundleNames.push(bundle.name);
+    entries.push(...result.entries);
+    bundleResults.push({
+      id: bundle.id,
+      landed: result.anyDestinationSucceeded,
+      failed: result.entries.some((e) => e.status === 'failed'),
+    });
   }
   // Machine-scoped, matching the CLI's user-global install: these bundles live
   // once per machine, so a second project must not re-count them.
   if (installedBundleNames.length > 0) deps.reportInstalled?.(installedBundleNames);
 
-  const anyWriteSucceeded = entries.some((e) => e.status === 'written');
-  const anyFailed = entries.some((e) => e.status === 'failed');
-  if (anyWriteSucceeded) {
+  const anyWriteSucceeded = installedBundleNames.length > 0;
+  // Every gated bundle has to have reached a destination of its own before the
+  // shared state file may advance — otherwise the failing bundle rides its
+  // sibling's success into an `installed` event.
+  const allBundlesLanded = bundleResults.every((b) => b.landed);
+  if (anyWriteSucceeded && allBundlesLanded) {
     let stateWriteError: string | null = null;
     try {
       await deps.writeTargetVersion(home, 'cli-hosts', version, 'desktop-direct');
@@ -605,20 +637,28 @@ export async function reclaimUserSkillsOnLaunch(
         })
         .catch(() => {});
     }
-  } else if (anyFailed) {
-    await deps
-      .recordSkillInstallEvent({
-        ts: nowDate().toISOString(),
-        surface: 'desktop-direct',
-        target: 'cli-hosts',
-        outcome: 'failed',
-        version,
-        reason: 'all-targets-failed',
-      })
-      .catch(() => {});
+  } else {
+    // One event per bundle that actually threw, naming the bundle: a pooled
+    // event would let a sibling's success hide it. A bundle that landed gets no
+    // event — the state file was not advanced, so nothing may claim it was.
+    for (const { id, failed } of bundleResults) {
+      if (!failed) continue;
+      await deps
+        .recordSkillInstallEvent({
+          ts: nowDate().toISOString(),
+          surface: 'desktop-direct',
+          target: 'cli-hosts',
+          bundle: id,
+          outcome: 'failed',
+          version,
+          reason: 'all-targets-failed',
+        })
+        .catch(() => {});
+    }
   }
-  // else: seed-if-absent no-op — every target was already present. Nothing was
-  // written and nothing failed, so no state advance and no outcome event.
+  // Seed-if-absent no-op — every target already present — falls through the
+  // loop above with nothing written and nothing failed: no state advance and
+  // no outcome event.
 
   return { status: 'done', version, entries };
 }
