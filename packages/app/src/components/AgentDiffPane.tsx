@@ -14,16 +14,18 @@
  */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import { Trans, useLingui } from '@lingui/react/macro';
+import type { FrontmatterDelta } from '@inkeep/open-knowledge-core';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { PropertyDiffBlock } from '@/components/PropertyDiffBlock';
 import { computeRenderedDiff, RenderedDiffView } from '@/components/RenderedDiffView';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { type AgentDiffView, closeAgentDiff, setAgentDiffKept } from '@/lib/agent-diff-store';
-import { collectChangeAnchors } from '@/lib/diff-change-nav';
+import { collectChangeAnchors, PROPERTY_CHANGE_ANCHOR_SELECTOR } from '@/lib/diff-change-nav';
 import { LruStringCache } from '@/lib/lru-string-cache';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { RENDERED_DIFF_CHANGE_SELECTOR } from '@/lib/rendered-diff/diff-decorations';
@@ -39,6 +41,9 @@ const LazyActivityPanelDiffView = lazy(async () => {
 // Bound the per-version diff cache so scrubbing a long session can't grow
 // renderer memory unboundedly. Mirrors the panel hook's BURST_DIFF_CACHE_LIMIT.
 const VERSION_DIFF_CACHE_LIMIT = 64;
+
+/** Placeholder while loading / on error, so `properties` is never optional. */
+const EMPTY_DELTA: FrontmatterDelta = { changes: [], unparseable: null };
 
 interface AgentDiffPaneProps {
   view: AgentDiffView;
@@ -61,18 +66,28 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
     diff: string;
     before: string;
     after: string;
-  }>({ status: 'loading', diff: '', before: '', after: '' });
+    properties: FrontmatterDelta;
+  }>({ status: 'loading', diff: '', before: '', after: '', properties: EMPTY_DELTA });
 
-  // Fetch the current version's whole-page diff + before/after bodies (cached
-  // across steps within this pane's lifetime as one JSON blob). Keyed on the
-  // primitive coordinates so it doesn't re-fetch when `view` identity changes.
+  // Fetch the current version's whole-page diff + before/after bodies + property
+  // delta (cached across steps within this pane's lifetime as one JSON blob).
+  // Keyed on the primitive coordinates so it doesn't re-fetch when `view`
+  // identity changes.
   useEffect(() => {
     let cancelled = false;
-    setResult({ status: 'loading', diff: '', before: '', after: '' });
+    setResult({ status: 'loading', diff: '', before: '', after: '', properties: EMPTY_DELTA });
     const key = `${docName}\0${keptCount}`;
     const cached = cache.get(key);
     if (cached !== undefined) {
-      const parsed = JSON.parse(cached) as { diff: string; before: string; after: string };
+      // No try/catch: this cache is in-memory, private to this pane, and the only
+      // writer is the `JSON.stringify` below over a Zod-validated response — so
+      // unlike the fetch path there is no parse failure to recover from.
+      const parsed = JSON.parse(cached) as {
+        diff: string;
+        before: string;
+        after: string;
+        properties: FrontmatterDelta;
+      };
       setResult({ status: 'ready', ...parsed });
       return;
     }
@@ -90,7 +105,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
             keptCount,
             err,
           });
-          setResult({ status: 'error', diff: '', before: '', after: '' });
+          setResult({ status: 'error', diff: '', before: '', after: '', properties: EMPTY_DELTA });
         }
       });
     return () => {
@@ -103,16 +118,19 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
   const rendered =
     result.status === 'ready' ? computeRenderedDiff(result.before, result.after) : null;
 
-  // Whole-file diff → scroll to the first changed line once it renders.
-  // Re-keyed on the diff string (re-runs per version step) and on mode (so
-  // toggling Rendered/Source re-scrolls). Mirrors `TimelineDiffPane`'s
-  // settle-debounced scroll: the rendered (ProseMirror) diff mounts its change
-  // decorations a beat after the React commit, so scrolling on the first anchor
-  // we see races a stale anchor from the previous version. Instead we wait until
-  // the diff DOM has stopped mutating for `settleMs`, then double-rAF so the
-  // final batch paints before we measure.
-  const diffKey =
-    result.status === 'ready' && result.diff !== '' ? `${renderMode}:${result.diff}` : '';
+  // Whole-file diff → scroll to the first change once it renders. Keyed on the
+  // version and the mode (so stepping versions or toggling Rendered/Source
+  // re-scrolls), NOT on the body diff being non-empty: a write that only touched
+  // frontmatter has an empty body diff and a property row to scroll to, so
+  // gating on emptiness would skip exactly the case that needs the scroll.
+  // `keptCount` is in the key because two adjacent versions can both have an
+  // empty body diff, and a cache hit swaps them within one render. Mirrors
+  // `TimelineDiffPane`'s settle-debounced scroll: the rendered (ProseMirror)
+  // diff mounts its change decorations a beat after the React commit, so
+  // scrolling on the first anchor we see races a stale anchor from the previous
+  // version. Instead we wait until the diff DOM has stopped mutating for
+  // `settleMs`, then double-rAF so the final batch paints before we measure.
+  const diffKey = result.status === 'ready' ? `${renderMode}:${keptCount}:${result.diff}` : '';
   useEffect(() => {
     const container = diffBodyRef.current;
     if (diffKey === '' || !container) return;
@@ -124,8 +142,10 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
 
     const scrollToFirstChange = (): void => {
       if (done) return;
-      // First rendered-diff decoration, else first source-diff change row.
+      // First property row, else first rendered-diff decoration, else first
+      // source-diff change row.
       const el =
+        container.querySelector<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR) ??
         container.querySelector<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR) ??
         collectChangeAnchors(container)[0];
       if (!el) return;
@@ -203,6 +223,10 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
   const stat =
     result.status === 'ready' ? countDiffStat(result.diff) : { additions: 0, deletions: 0 };
   const showStat = stat.additions > 0 || stat.deletions > 0;
+  // Property changes are counted separately — `+N −M` stays a body line count.
+  const propertyCount = result.properties.changes.length;
+  const hasPropertyBlock =
+    result.properties.changes.length > 0 || result.properties.unparseable !== null;
 
   return (
     <div
@@ -240,6 +264,15 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
         </div>
 
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {propertyCount > 0 && (
+            <span
+              className="shrink-0 text-xs text-muted-foreground tabular-nums"
+              data-testid="agent-diff-property-stat"
+            >
+              <Plural value={propertyCount} one="# property" other="# properties" />
+            </span>
+          )}
+
           {showStat && (
             <span
               role="img"
@@ -322,19 +355,27 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
             <Trans>Diff unavailable</Trans>
           </p>
         )}
+        {result.status === 'ready' && (
+          // Above the body in both render modes: an agent write that only
+          // touched properties has no body diff to show.
+          <PropertyDiffBlock delta={result.properties} />
+        )}
         {result.status === 'ready' &&
           (renderMode === 'rendered' && rendered?.ok ? (
             // Rendered (WYSIWYG) inline diff. Also the no-change path: with zero
             // changes it renders the document (e.g. version 0 = the original).
             <RenderedDiffView diff={rendered} />
           ) : result.diff === '' ? (
-            // Source mode, no diff (version 0 original, or a no-op edit): show the
-            // note, then the whole document source — so the original's content is
-            // visible in Source too, mirroring what Rendered shows (and Timeline).
+            // Source mode, no body diff (version 0 original, or an edit that only
+            // touched properties): show the note, then the whole document source —
+            // so the original's content is visible in Source too, mirroring what
+            // Rendered shows (and Timeline).
             <>
               <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground italic">
                 {keptCount === 0 ? (
                   <Trans>Original file — before this agent's edits.</Trans>
+                ) : hasPropertyBlock ? (
+                  <Trans>No body changes at this version.</Trans>
                 ) : (
                   <Trans>No content changes at this version.</Trans>
                 )}

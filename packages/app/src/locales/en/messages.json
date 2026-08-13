@@ -124,6 +124,7 @@
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
     "15MMFT": ["Show these comments"],
+    "15ZHCt": ["No body changes at this version."],
     "161NCV": ["Stopping"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
     "16eIWu": ["Force stop"],
@@ -489,6 +490,16 @@
     "6m_7We": ["Open this settings dialog."],
     "6pe_G5": ["Element type"],
     "6q0rnH": ["writing"],
+    "6qFchx": [
+      [
+        "omitted",
+        "plural",
+        {
+          "one": ["#", " more property change not shown"],
+          "other": ["#", " more property changes not shown"]
+        }
+      ]
+    ],
     "6qMe0o": [
       "Draft a technical spec for my project. Start with an overview, then add cross-linked pages for the architecture, the key modules, and the open questions, all linked from a specs index."
     ],
@@ -1031,6 +1042,7 @@
       " tokens"
     ],
     "ElyuiT": ["Thanks for giving OpenKnowledge a try."],
+    "EmSrGB": ["Before"],
     "Emz5BG": [
       "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
     ],
@@ -1624,6 +1636,7 @@
     "N_7kkF": [
       "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
     ],
+    "NawEr2": ["After"],
     "Nay2Yr": ["No agents match your search."],
     "NcUznW": [["0"], ", No workspace"],
     "NcurBF": ["Pan down"],
@@ -2044,6 +2057,9 @@
       " at the ",
       ["boldLevel"],
       " level."
+    ],
+    "UI0WPT": [
+      ["propertyCount", "plural", { "one": ["#", " property"], "other": ["#", " properties"] }]
     ],
     "UJEFJY": ["Couldn't start ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge opened the live preview"],
@@ -2672,6 +2688,7 @@
     "cLn264": ["This theme file couldn’t be read"],
     "cMMb6H": ["Installed ", ["imported"], ", but ", ["failed"], " failed: ", ["failedNames"]],
     "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],
+    "cNsIJf": ["Changed"],
     "cOJyVj": ["Disable Themes"],
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
@@ -2844,6 +2861,7 @@
     "emMrXQ": ["Server returned a malformed duplicate response."],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
+    "eps54V": ["Removed"],
     "epuNYK": [
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
     ],
@@ -3586,6 +3604,7 @@
     "oBK5fD": ["Overlapping edits"],
     "oBXkm2": ["Delete code block"],
     "oCHfGC": ["Level"],
+    "oCO0pe": ["No body changes in this version"],
     "oCZkaG": ["Copy path"],
     "oJl7eO": ["Unknown component: ", ["componentName"], " — source editable below"],
     "oKBnk5": ["More requests were blocked."],
@@ -4137,6 +4156,9 @@
       "/",
       ["expectedRepo"],
       ". Pick a different folder?"
+    ],
+    "wFyXOW": [
+      "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
     ],
     "wGSHzy": ["Activate one of the first eight editor tabs."],
     "wIM7ul": ["Press space or tap the blob to start"],

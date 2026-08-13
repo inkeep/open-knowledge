@@ -43,7 +43,13 @@ vi.doMock('@/lib/agent-diff-store', () => ({
 }));
 
 vi.doMock('@/lib/use-activity-panel', () => ({
-  fetchAgentBurstDiff: () => Promise.resolve({ diff: '', before: '', after: '' }),
+  fetchAgentBurstDiff: () =>
+    Promise.resolve({
+      diff: '',
+      before: '',
+      after: '',
+      properties: { changes: [], unparseable: null },
+    }),
 }));
 
 const view = {

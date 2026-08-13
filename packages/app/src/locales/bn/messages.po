@@ -750,6 +750,10 @@ msgstr "{name} CLI"
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# নোড} other {# নোড}}"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr "{omitted, plural, one {আরও # প্রপার্টি পরিবর্তন দেখানো হয়নি} other {আরও # প্রপার্টি পরিবর্তন দেখানো হয়নি}}"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {ওয়ার্কট্রি} other {ওয়ার্কট্রি}}"
@@ -793,6 +797,11 @@ msgstr "{phase} — {pct}%"
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
 msgstr "{problemCount, plural, one {# প্রপার্টি স্কিমার সঙ্গে মেলে না} other {# প্রপার্টি স্কিমার সঙ্গে মেলে না}}"
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
+msgstr "{propertyCount, plural, one {# প্রপার্টি} other {# প্রপার্টি}}"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
@@ -1369,6 +1378,7 @@ msgstr "মান যোগ করুন"
 msgid "Add your comments to this message"
 msgstr "এই বার্তায় আপনার মন্তব্য যোগ করুন"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr "যোগ করা হয়েছে"
@@ -1412,6 +1422,10 @@ msgstr "উন্নত"
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "উন্নত সেটিং"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
+msgstr "পরে"
 
 #: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
@@ -1876,6 +1890,10 @@ msgstr "ভিত্তি ব্রাঞ্চ"
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "কেউ এই টেমপ্লেট থেকে নথি তৈরি করলে এটিই সেই নথির বিষয়বস্তু হয়। আজকের তারিখ বা লেখকের নাম নিজে থেকে বসাতে <0>{dateToken}</0> বা <1>{userToken}</1> লিখুন।"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr "আগে"
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr "সিঙ্ক করার আগে git কমিটের জন্য আপনার পরিচয় নির্ধারণ করুন:"
@@ -2180,6 +2198,10 @@ msgstr "সরবরাহকারী বদলান"
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
 msgstr "এমবেডিং সরবরাহকারী বদলাবেন?"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
+msgstr "পরিবর্তিত"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -7772,6 +7794,14 @@ msgstr "কোনো AI এজেন্ট ইনস্টল করা নে�
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "এই এন্ডপয়েন্টের জন্য কোনো API কী নির্ধারিত নেই। উপরে একটি যোগ করুন।"
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr "এই সংস্করণে মূল অংশের কোনো পরিবর্তন নেই।"
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr "এই সংস্করণে মূল অংশের কোনো পরিবর্তন নেই"
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr "এখনও কোনো বাগ রিপোর্ট নেই।"
@@ -9392,6 +9422,7 @@ msgstr "যেসব প্রকল্প-স্তরের পাতার �
 msgid "Project-level pages with no outgoing graph edges."
 msgstr "যেসব প্রকল্প-স্তরের পাতার কোনো বহির্গামী গ্রাফ প্রান্ত নেই।"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9812,6 +9843,10 @@ msgstr "নির্বাচন সরান"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "মূল <0>.git</0> ফোল্ডারটি সরান"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
+msgstr "সরানো হয়েছে"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -12162,6 +12197,10 @@ msgstr "প্রাকদর্শন সেসব সম্পদ আটকে
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "এই নথির উপরের প্রপার্টি ব্লকে একটি বিন্যাস ত্রুটি আছে। এটি ঠিক করতে সোর্স মোডে যান।"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr "প্রপার্টি বদলেছে, কিন্তু তুলনা করা যায়নি — YAML পার্স হয়নি। দুটি সংস্করণই যেমন লেখা ছিল তেমনই দেখানো হচ্ছে।"
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."

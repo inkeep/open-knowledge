@@ -750,6 +750,10 @@ msgstr "واجهة {name} السطرية"
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, zero {# عقدة} one {عقدة واحدة} two {عقدتان} few {# عقد} many {# عقدةً} other {# عقدة}}"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr "{omitted, plural, zero {# تغيير خصائص إضافي غير معروض} one {تغيير خصائص إضافي واحد غير معروض} two {تغييرا خصائص إضافيان غير معروضين} few {# تغييرات خصائص إضافية غير معروضة} many {# تغييرًا إضافيًا في الخصائص غير معروض} other {# تغيير خصائص إضافي غير معروض}}"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, zero {أشجار عمل} one {شجرة عمل} two {شجرتا عمل} few {أشجار عمل} many {شجرة عمل} other {شجرة عمل}}"
@@ -793,6 +797,11 @@ msgstr "{phase} — {pct}%"
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
 msgstr "{problemCount, plural, zero {# خاصية لا تطابق المخطط} one {خاصية واحدة لا تطابق المخطط} two {خاصيتان لا تطابقان المخطط} few {# خصائص لا تطابق المخطط} many {# خاصيةً لا تطابق المخطط} other {# خاصية لا تطابق المخطط}}"
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
+msgstr "{propertyCount, plural, zero {# خاصية} one {خاصية واحدة} two {خاصيتان} few {# خصائص} many {# خاصية} other {# خاصية}}"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
@@ -1373,6 +1382,7 @@ msgstr "إضافة قيمة"
 msgid "Add your comments to this message"
 msgstr "أضف تعليقاتك إلى هذه الرسالة"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr "أُضيف"
@@ -1416,6 +1426,10 @@ msgstr "متقدم"
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "إعدادات متقدمة"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
+msgstr "بعد"
 
 #: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
@@ -1880,6 +1894,10 @@ msgstr "الفرع الأساسي"
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "يصبح محتوى المستند عندما ينشئ أحدهم مستندًا من هذا القالب. اكتب <0>{dateToken}</0> أو <1>{userToken}</1> لملء تاريخ اليوم أو اسم المؤلف تلقائيًا."
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr "قبل"
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr "قبل المزامنة، اضبط هويتك لإيداعات git:"
@@ -2184,6 +2202,10 @@ msgstr "تغيير المزوّد"
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
 msgstr "هل تريد تغيير مزوّد التضمينات؟"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
+msgstr "تغيّر"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -7776,6 +7798,14 @@ msgstr "لا توجد وكلاء ذكاء اصطناعي مثبَّتون"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "لم يُضبط مفتاح API لنقطة النهاية هذه. أضف واحدًا أعلاه."
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr "لا تغييرات في المتن في هذه النسخة."
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr "لا تغييرات في المتن في هذه النسخة"
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr "لا توجد تقارير علل بعد."
@@ -9396,6 +9426,7 @@ msgstr "صفحات على مستوى المشروع بلا حواف واردة �
 msgid "Project-level pages with no outgoing graph edges."
 msgstr "صفحات على مستوى المشروع بلا حواف صادرة في الرسم البياني."
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9816,6 +9847,10 @@ msgstr "إزالة التحديد"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "إزالة مجلد <0>.git</0> الأب"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
+msgstr "أُزيل"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -12166,6 +12201,10 @@ msgstr "تحظر المعاينة الموارد التي لا تستوفي قو
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "كتلة الخصائص أعلى هذا المستند بها خطأ تنسيقي. بدّل إلى وضع المصدر لإصلاحه."
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr "تغيّرت الخصائص، لكن تعذّرت المقارنة — لم يُحلَّل YAML. تُعرض النسختان كما كُتبتا."
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."

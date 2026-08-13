@@ -22,6 +22,8 @@
 import {
   AGENT_ICON_COLORS,
   colorFromSeed,
+  diffFrontmatter,
+  type FrontmatterDelta,
   iconFromClientName,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
@@ -241,28 +243,33 @@ function reconstructStateAsOf(
  * current document. This is what the undo timeline scrubs: each stop shows the
  * entire file as it stood at that version, not one edit's isolated change.
  *
- * Returns an empty string when `before === after` (e.g. version 0, or a
- * frontmatter-only edit) so callers can render a placeholder. Whole-file context
- * so `AgentDiffPane` shows the entire page (mirrors `computeTimelineDiff`).
+ * Returns an empty `diff` when the two bodies match (e.g. version 0, or an edit
+ * that only touched frontmatter) so callers can render a placeholder — such a
+ * version still reports its `properties` delta, so an empty diff alone does not
+ * mean nothing changed. Whole-file context so `AgentDiffPane` shows the entire
+ * page (mirrors `computeTimelineDiff`).
  */
 export function synthesizeVersionDiff(
   undoStack: YjsStackItemShape[],
   keptCount: number,
   ytext: Y.Text,
   docName: string,
-): { diff: string; before: string; after: string } {
+): { diff: string; before: string; after: string; properties: FrontmatterDelta } {
   const beforeRaw = reconstructStateAsOf(undoStack, 0, ytext);
   const afterRaw = reconstructStateAsOf(undoStack, keptCount, ytext);
+  // Every text comparison here is body-only, matching the Timeline path
+  // (`useTimelineEntryDiff`): a YAML region diffed as text reports key reorders
+  // and requotes as changes, so the frontmatter is compared structurally
+  // instead and travels as `properties`.
+  const before = stripFrontmatter(beforeRaw).body;
+  const after = stripFrontmatter(afterRaw).body;
   const diff =
-    beforeRaw === afterRaw
+    before === after
       ? ''
-      : createPatch(docName, beforeRaw, afterRaw, undefined, undefined, {
-          context: Math.max(beforeRaw.split('\n').length, afterRaw.split('\n').length),
+      : createPatch(docName, before, after, undefined, undefined, {
+          context: Math.max(before.split('\n').length, after.split('\n').length),
         });
-  // Frontmatter-stripped bodies for the client's WYSIWYG diff — parity with the
-  // Timeline path (`useTimelineEntryDiff`), which strips before rendering. The
-  // unified `diff` above keeps full content, so Source mode is unchanged.
-  return { diff, before: stripFrontmatter(beforeRaw).body, after: stripFrontmatter(afterRaw).body };
+  return { diff, before, after, properties: diffFrontmatter(beforeRaw, afterRaw) };
 }
 
 /** Back-compat: the unified-diff string alone (the pre-WYSIWYG callers + tests). */

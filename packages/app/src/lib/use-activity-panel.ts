@@ -24,6 +24,7 @@ import {
   type ActivityFile,
   AgentActivitySuccessSchema,
   AgentBurstDiffSuccessSchema,
+  type FrontmatterDelta,
   ProblemDetailsSchema,
 } from '@inkeep/open-knowledge-core';
 import { useEffect, useRef, useState } from 'react';
@@ -133,7 +134,7 @@ export async function fetchAgentBurstDiff(
   connectionId: string,
   docName: string,
   keptCount: number,
-): Promise<{ diff: string; before: string; after: string }> {
+): Promise<{ diff: string; before: string; after: string; properties: FrontmatterDelta }> {
   const url = `/api/agent-burst-diff?agentId=${encodeURIComponent(
     connectionId,
   )}&docName=${encodeURIComponent(docName)}&keptCount=${keptCount}`;
@@ -164,8 +165,8 @@ export async function fetchAgentBurstDiff(
       { cause: success.error, status: res.status },
     );
   }
-  const { diff, before, after } = success.data;
-  return { diff, before, after };
+  const { diff, before, after, properties } = success.data;
+  return { diff, before, after, properties };
 }
 
 // ---------------------------------------------------------------

@@ -750,6 +750,10 @@ msgstr "{name} CLI"
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, other {# 个节点}}"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr "{omitted, plural, other {另有 # 处属性改动未显示}}"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, other {worktree}}"
@@ -793,6 +797,11 @@ msgstr "{phase} — {pct}%"
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
 msgstr "{problemCount, plural, other {# 个属性与架构不匹配}}"
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
+msgstr "{propertyCount, plural, other {# 项属性}}"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
@@ -1373,6 +1382,7 @@ msgstr "添加值"
 msgid "Add your comments to this message"
 msgstr "把你的评论写在这条消息里"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr "已添加"
@@ -1416,6 +1426,10 @@ msgstr "高级"
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "高级设置"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
+msgstr "之后"
 
 #: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
@@ -1880,6 +1894,10 @@ msgstr "基础分支"
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "当有人用这个模板创建文档时，这会成为该文档的内容。输入 <0>{dateToken}</0> 或 <1>{userToken}</1> 可自动填入今天的日期或作者姓名。"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr "之前"
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr "同步之前，请设置你用于 git 提交的身份："
@@ -2184,6 +2202,10 @@ msgstr "更换服务提供方"
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
 msgstr "要更换嵌入服务提供方吗？"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
+msgstr "已修改"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -7776,6 +7798,14 @@ msgstr "未安装任何 AI 智能体"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "这个端点还没有设置 API 密钥。请在上方添加一个。"
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr "这个版本没有正文改动。"
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr "这个版本没有正文改动"
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr "还没有错误报告。"
@@ -9396,6 +9426,7 @@ msgstr "没有入链的项目级页面。"
 msgid "Project-level pages with no outgoing graph edges."
 msgstr "没有出链的项目级页面。"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9816,6 +9847,10 @@ msgstr "移除选区"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "删除上层的 <0>.git</0> 文件夹"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
+msgstr "已移除"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -12166,6 +12201,10 @@ msgstr "预览会拦截不符合其安全规则的资源（例如纯 http:// 的
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "这个文档顶部的属性块有格式错误。请切换到源码模式修复。"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr "属性有改动，但无法比较——YAML 解析失败。两个版本均按原样显示。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."

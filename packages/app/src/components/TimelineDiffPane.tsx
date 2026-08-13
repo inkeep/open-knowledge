@@ -16,6 +16,7 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen, Undo2, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { MAX_RENDERED_CHANGES, PropertyDiffBlock } from '@/components/PropertyDiffBlock';
 import { computeRenderedDiff, RenderedDiffView } from '@/components/RenderedDiffView';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +30,11 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { collectChangeAnchors, countChangeGroups } from '@/lib/diff-change-nav';
+import {
+  collectChangeAnchors,
+  countChangeGroups,
+  PROPERTY_CHANGE_ANCHOR_SELECTOR,
+} from '@/lib/diff-change-nav';
 import { LruStringCache } from '@/lib/lru-string-cache';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import {
@@ -67,6 +72,9 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
   const abortRef = useRef<AbortController | null>(null);
   const diffBodyRef = useRef<HTMLDivElement>(null);
   const [currentChange, setCurrentChange] = useState(0);
+  // Controlled here rather than left to the disclosure: closing it unmounts the
+  // property rows, and the change stepper's total has to follow.
+  const [propertiesOpen, setPropertiesOpen] = useState(true);
   // The pane always shows "what changed in this version" (diff vs the previous
   // version). There is no vs-live mode — the only thing it told you (what a
   // restore would undo) lives in the Restore confirm as a plain count.
@@ -78,24 +86,52 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     result.status === 'ready' ? computeRenderedDiff(result.before, result.after) : null;
   const usingRendered = renderMode === 'rendered' && rendered?.ok === true;
 
+  // Property delta and body diff answer different questions, so they are counted
+  // and rendered separately — `+N −M` stays a body line count.
+  const properties = result.status === 'ready' ? result.properties : null;
+  const propertyCount = properties?.changes.length ?? 0;
+  const hasPropertyBlock =
+    properties !== null && (properties.changes.length > 0 || properties.unparseable !== null);
+
   // Header stepper count: rendered mode counts the engine's change regions;
-  // source mode counts unified-diff hunks.
-  const changeCount =
+  // source mode counts unified-diff hunks. Property rows are anchors too, so
+  // they join the total in both modes.
+  const bodyChangeCount =
     result.status !== 'ready'
       ? 0
       : usingRendered && rendered?.ok
         ? countRenderedDiffAnchors(rendered)
         : countChangeGroups(result.diff);
+  // Counts only the property anchors that are in the DOM, since `goToChange`
+  // re-reads anchors from the DOM and anything counted here that isn't rendered
+  // is a denominator the stepper can never reach. Two ways rows go missing: past
+  // the cap they collapse into one summary line, and while the disclosure is
+  // closed Radix unmounts them entirely. The unparseable block is a single
+  // anchor carrying no counted changes, and it renders outside the disclosure,
+  // so it is neither capped nor collapsible.
+  const propertyAnchorCount =
+    properties === null
+      ? 0
+      : properties.unparseable !== null
+        ? 1
+        : propertiesOpen
+          ? Math.min(propertyCount, MAX_RENDERED_CHANGES)
+          : 0;
+  const changeCount = bodyChangeCount + propertyAnchorCount;
 
   // Scroll to the Nth change (wraps). Anchors are re-read from the live DOM each
-  // call so they stay valid across re-renders — rendered mode marks changes with
-  // `.ok-diff-*` decoration DOM; source mode with react-diff-view change rows.
+  // call so they stay valid across re-renders — property rows sit above the diff
+  // body, then rendered mode marks changes with `.ok-diff-*` decoration DOM and
+  // source mode with react-diff-view change rows.
   function goToChange(next: number): void {
     const container = diffBodyRef.current;
     if (!container) return;
-    const anchors = usingRendered
-      ? Array.from(container.querySelectorAll<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR))
-      : collectChangeAnchors(container);
+    const anchors = [
+      ...container.querySelectorAll<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR),
+      ...(usingRendered
+        ? Array.from(container.querySelectorAll<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR))
+        : collectChangeAnchors(container)),
+    ];
     if (anchors.length === 0) return;
     const clamped = (next + anchors.length) % anchors.length;
     setCurrentChange(clamped);
@@ -121,8 +157,10 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
 
     const scrollToFirstChange = (): void => {
       if (done) return;
-      // First rendered-diff decoration, else first source-diff change row.
+      // First property row, else first rendered-diff decoration, else first
+      // source-diff change row.
       const el =
+        container.querySelector<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR) ??
         container.querySelector<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR) ??
         collectChangeAnchors(container)[0];
       if (!el) return;
@@ -270,6 +308,15 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
         </div>
 
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {propertyCount > 0 && (
+            <span
+              className="shrink-0 text-xs text-muted-foreground tabular-nums"
+              data-testid="timeline-diff-property-stat"
+            >
+              <Plural value={propertyCount} one="# property" other="# properties" />
+            </span>
+          )}
+
           {showStat && result.status === 'ready' && (
             <span
               role="img"
@@ -399,17 +446,36 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
             <Trans>Diff unavailable</Trans>
           </p>
         )}
+        {result.status === 'ready' && properties !== null && (
+          // Above the body in both render modes: a property change is a change
+          // to this version whichever way the body is being read.
+          <PropertyDiffBlock
+            delta={properties}
+            open={propertiesOpen}
+            onOpenChange={(next) => {
+              setPropertiesOpen(next);
+              // The anchor set just changed under the stepper — restart the walk
+              // instead of leaving the index pointing past the new end.
+              setCurrentChange(0);
+            }}
+          />
+        )}
         {result.status === 'ready' &&
           (renderMode === 'rendered' && rendered?.ok ? (
             // Rendered (WYSIWYG) inline track-changes. Also the no-change path:
             // with zero changes it renders the document plain.
             <RenderedDiffView diff={rendered} />
           ) : result.diff === '' ? (
-            // Source mode, no net content change (frontmatter- or whitespace-
-            // only edit) — say so, then show the document unchanged.
+            // Source mode, no net body change. Only claim nothing changed when
+            // the properties are unchanged too — otherwise the block above has
+            // already said what happened.
             <>
               <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground italic">
-                <Trans>No content changes in this version</Trans>
+                {hasPropertyBlock ? (
+                  <Trans>No body changes in this version</Trans>
+                ) : (
+                  <Trans>No content changes in this version</Trans>
+                )}
               </p>
               <pre className="whitespace-pre-wrap px-4 py-3 font-mono text-xs text-foreground/90">
                 {result.after}

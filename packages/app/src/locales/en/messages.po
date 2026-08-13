@@ -750,6 +750,10 @@ msgstr "{name} CLI"
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# node} other {# nodes}}"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
@@ -793,6 +797,11 @@ msgstr "{phase} — {pct}%"
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
 msgstr "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
+msgstr "{propertyCount, plural, one {# property} other {# properties}}"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
@@ -1373,6 +1382,7 @@ msgstr "Add value"
 msgid "Add your comments to this message"
 msgstr "Add your comments to this message"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr "Added"
@@ -1416,6 +1426,10 @@ msgstr "Advanced"
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "Advanced settings"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
+msgstr "After"
 
 #: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
@@ -1880,6 +1894,10 @@ msgstr "Base branch"
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr "Before"
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Before syncing, set your identity for git commits:"
@@ -2184,6 +2202,10 @@ msgstr "Change provider"
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
 msgstr "Change the embeddings provider?"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
+msgstr "Changed"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -7776,6 +7798,14 @@ msgstr "No AI agents installed"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "No API key is set for this endpoint. Add one above."
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr "No body changes at this version."
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr "No body changes in this version"
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr "No bug reports yet."
@@ -9396,6 +9426,7 @@ msgstr "Project-level pages with no incoming graph edges."
 msgid "Project-level pages with no outgoing graph edges."
 msgstr "Project-level pages with no outgoing graph edges."
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9816,6 +9847,10 @@ msgstr "Remove selection"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Remove the parent <0>.git</0> folder"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
+msgstr "Removed"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -12166,6 +12201,10 @@ msgstr "The preview blocks resources that don't meet its security rules (for exa
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."

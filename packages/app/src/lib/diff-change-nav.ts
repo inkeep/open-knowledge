@@ -4,6 +4,13 @@
  * diff and let the user jump between the contiguous changed-line runs.
  */
 
+/**
+ * Change anchors for the property-delta rows `PropertyDiffBlock` paints. The
+ * block renders above the body diff inside the same scroll container, so
+ * querying this before the body anchors yields DOM order.
+ */
+export const PROPERTY_CHANGE_ANCHOR_SELECTOR = '[data-property-change]';
+
 /** Count contiguous +/- runs in a unified-diff string — one per "change" for the stepper. */
 export function countChangeGroups(diff: string): number {
   let count = 0;

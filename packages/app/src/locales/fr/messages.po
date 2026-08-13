@@ -750,6 +750,10 @@ msgstr "CLI {name}"
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# nœud} many {# nœuds} other {# nœuds}}"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr "{omitted, plural, one {# modification de propriété de plus non affichée} many {# modifications de propriétés de plus non affichées} other {# modifications de propriétés de plus non affichées}}"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} many {worktrees} other {worktrees}}"
@@ -793,6 +797,11 @@ msgstr "{phase} — {pct}%"
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
 msgstr "{problemCount, plural, one {# propriété ne correspond pas au schéma} many {# propriétés ne correspondent pas au schéma} other {# propriétés ne correspondent pas au schéma}}"
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
+msgstr "{propertyCount, plural, one {# propriété} many {# propriétés} other {# propriétés}}"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
@@ -1373,6 +1382,7 @@ msgstr "Ajouter une valeur"
 msgid "Add your comments to this message"
 msgstr "Ajoutez vos commentaires à ce message"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr "Ajouté"
@@ -1416,6 +1426,10 @@ msgstr "Avancé"
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "Paramètres avancés"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
+msgstr "Après"
 
 #: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
@@ -1880,6 +1894,10 @@ msgstr "Branche de base"
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "Devient le contenu du document lorsque quelqu'un en crée un à partir de ce modèle. Saisissez <0>{dateToken}</0> ou <1>{userToken}</1> pour insérer automatiquement la date du jour ou le nom de l'auteur."
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr "Avant"
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Avant de synchroniser, définissez votre identité pour les commits git :"
@@ -2184,6 +2202,10 @@ msgstr "Changer de fournisseur"
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
 msgstr "Changer de fournisseur d'embeddings ?"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
+msgstr "Modifié"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -7776,6 +7798,14 @@ msgstr "Aucun agent IA installé"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "Aucune clé API n'est définie pour ce point de terminaison. Ajoutez-en une ci-dessus."
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr "Aucune modification du corps dans cette version."
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr "Aucune modification du corps dans cette version"
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr "Pas encore de rapport de bug."
@@ -9396,6 +9426,7 @@ msgstr "Pages du projet sans arête entrante dans le graphe."
 msgid "Project-level pages with no outgoing graph edges."
 msgstr "Pages du projet sans arête sortante dans le graphe."
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9816,6 +9847,10 @@ msgstr "Retirer la sélection"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Supprimer le dossier <0>.git</0> parent"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
+msgstr "Supprimé"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -12166,6 +12201,10 @@ msgstr "L'aperçu bloque les ressources qui ne respectent pas ses règles de sé
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "Le bloc de propriétés en haut de ce document contient une erreur de mise en forme. Passez en mode source pour la corriger."
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr "Les propriétés ont changé, mais la comparaison a échoué : le YAML n'a pas pu être analysé. Les deux versions sont affichées telles quelles."
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."

@@ -750,6 +750,10 @@ msgstr ""
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr ""
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr ""
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr ""
@@ -792,6 +796,11 @@ msgstr ""
 
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
+msgstr ""
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
 msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
@@ -1369,6 +1378,7 @@ msgstr ""
 msgid "Add your comments to this message"
 msgstr ""
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr ""
@@ -1411,6 +1421,10 @@ msgstr ""
 #: src/components/ConsentDialogBody.tsx
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
+msgstr ""
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
 msgstr ""
 
 #: src/components/SessionsHost.tsx
@@ -1876,6 +1890,10 @@ msgstr ""
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr ""
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr ""
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr ""
@@ -2179,6 +2197,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
+msgstr ""
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
 msgstr ""
 
 #: src/components/ChangedOutsideBadge.tsx
@@ -7772,6 +7794,14 @@ msgstr ""
 msgid "No API key is set for this endpoint. Add one above."
 msgstr ""
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr ""
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr ""
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr ""
@@ -9392,6 +9422,7 @@ msgstr ""
 msgid "Project-level pages with no outgoing graph edges."
 msgstr ""
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9811,6 +9842,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
+msgstr ""
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
 msgstr ""
 
 #. placeholder {0}: skill.name
@@ -12161,6 +12196,10 @@ msgstr ""
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
+msgstr ""
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx

@@ -140,6 +140,7 @@
     "12F9WL": ["(sin id)"],
     "151wvk": ["Mostrar la barra lateral"],
     "15MMFT": ["Mostrar estos comentarios"],
+    "15ZHCt": ["No hay cambios en el cuerpo en esta versión."],
     "161NCV": ["Deteniendo"],
     "16D5Zj": [
       "¿Seguro que quieres eliminar ",
@@ -566,6 +567,17 @@
     "6m_7We": ["Abre este diálogo de ajustes."],
     "6pe_G5": ["Tipo de elemento"],
     "6q0rnH": ["escritura"],
+    "6qFchx": [
+      [
+        "omitted",
+        "plural",
+        {
+          "one": ["#", " cambio de propiedad más sin mostrar"],
+          "many": ["#", " cambios de propiedades más sin mostrar"],
+          "other": ["#", " cambios de propiedades más sin mostrar"]
+        }
+      ]
+    ],
     "6qMe0o": [
       "Redacta una especificación técnica para mi proyecto. Empieza con una visión general y añade después páginas enlazadas entre sí para la arquitectura, los módulos clave y las preguntas abiertas, todas enlazadas desde un índice de especificaciones."
     ],
@@ -1187,6 +1199,7 @@
       " tokens"
     ],
     "ElyuiT": ["Gracias por probar OpenKnowledge."],
+    "EmSrGB": ["Antes"],
     "Emz5BG": [
       "Los embeddings solo se calculan cuando se ejecuta una búsqueda y se guardan en caché localmente en <0>.ok/local</0>."
     ],
@@ -1873,6 +1886,7 @@
     "N_7kkF": [
       "Lee este código y redacta una especificación técnica del módulo más complejo: una visión general, la arquitectura, los archivos clave y las preguntas abiertas, todo enlazado desde una página índice de especificaciones."
     ],
+    "NawEr2": ["Después"],
     "Nay2Yr": ["Ningún agente coincide con tu búsqueda."],
     "NcUznW": [["0"], ", sin espacio de trabajo"],
     "NcurBF": ["Desplazar hacia abajo"],
@@ -2334,6 +2348,17 @@
       " en el nivel ",
       ["boldLevel"],
       "."
+    ],
+    "UI0WPT": [
+      [
+        "propertyCount",
+        "plural",
+        {
+          "one": ["#", " propiedad"],
+          "many": ["#", " propiedades"],
+          "other": ["#", " propiedades"]
+        }
+      ]
     ],
     "UJEFJY": ["No se pudo iniciar ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge abrió la vista previa en vivo"],
@@ -3097,6 +3122,7 @@
       ["failedNames"]
     ],
     "cN1Gcp": ["Ya existe una carpeta de worktree para ", ["shareBranch"], "."],
+    "cNsIJf": ["Modificado"],
     "cOJyVj": ["Desactivar los temas"],
     "cOSAfL": ["No se encontraron repositorios en tu cuenta de GitHub."],
     "cOrTMo": ["Tu enlace para compartir está listo abajo."],
@@ -3305,6 +3331,7 @@
     "emMrXQ": ["El servidor devolvió una respuesta de duplicación con formato incorrecto."],
     "emgiet": ["Contenido autoritativo; se replica literalmente allí donde se referencia."],
     "enPTnx": ["línea ", ["displayLine"]],
+    "eps54V": ["Eliminado"],
     "epuNYK": [
       "Marca un bloque como fuente de verdad. Los espejos de otros sitios se actualizan en vivo mientras lo editas."
     ],
@@ -4135,6 +4162,7 @@
     "oBK5fD": ["Ediciones solapadas"],
     "oBXkm2": ["Eliminar el bloque de código"],
     "oCHfGC": ["Nivel"],
+    "oCO0pe": ["No hay cambios en el cuerpo en esta versión"],
     "oCZkaG": ["Copiar ruta"],
     "oJl7eO": ["Componente desconocido: ", ["componentName"], "; el código se puede editar abajo"],
     "oKBnk5": ["Se bloquearon más solicitudes."],
@@ -4767,6 +4795,9 @@
       "/",
       ["expectedRepo"],
       ". ¿Eliges otra carpeta?"
+    ],
+    "wFyXOW": [
+      "Las propiedades cambiaron, pero no se pudieron comparar: el YAML no se pudo analizar. Se muestran ambas versiones tal como están escritas."
     ],
     "wGSHzy": ["Activa una de las ocho primeras pestañas del editor."],
     "wIM7ul": ["Pulsa espacio o toca el blob para empezar"],

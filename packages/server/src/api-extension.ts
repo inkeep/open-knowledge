@@ -7340,7 +7340,7 @@ export function createApiExtension(
         }
 
         const ytext = session.dc.document.getText('source');
-        const { diff, before, after } = synthesizeVersionDiff(
+        const { diff, before, after, properties } = synthesizeVersionDiff(
           // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs — structural shape matches YjsStackItemShape in agent-activity.ts
           um.undoStack as any,
           keptCount,
@@ -7350,13 +7350,13 @@ export function createApiExtension(
         // `generatedAt` is the server's wall clock at response time (used for
         // client-side cache staleness). The StackItem's capture timestamp is
         // already carried in `/api/agent-activity`'s `bursts[].ts` — no need
-        // to duplicate it here. `before`/`after` are the frontmatter-stripped
-        // bodies for the client's WYSIWYG diff (Source mode uses `diff`).
+        // to duplicate it here. `diff`/`before`/`after` are body-only; the
+        // frontmatter travels as the structural `properties` delta.
         successResponse(
           res,
           200,
           AgentBurstDiffSuccessSchema,
-          { diff, before, after, generatedAt: Date.now() },
+          { diff, before, after, properties, generatedAt: Date.now() },
           { handler: 'agent-burst-diff' },
         );
       } catch (e) {

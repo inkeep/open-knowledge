@@ -1658,6 +1658,12 @@ export {
   withFences,
 } from './frontmatter/yaml-codec.ts';
 export {
+  diffFrontmatter,
+  type FrontmatterDelta,
+  FrontmatterDeltaSchema,
+  type PropertyChange,
+} from './frontmatter-diff.ts';
+export {
   emptyInstalledSkills,
   INSTALLED_SKILLS_FILENAME,
   INSTALLED_SKILLS_REL,

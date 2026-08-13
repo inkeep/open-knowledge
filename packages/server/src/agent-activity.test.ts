@@ -205,8 +205,11 @@ describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
     expect(v1.after).toContain('body line');
     expect(v1.after).not.toContain('title: T');
     expect(v1.before).toBe('');
-    // Source `diff` still carries full content (unchanged behavior).
+    // The unified diff is body-only too — the frontmatter is reported
+    // structurally instead, so Source mode does not show raw YAML lines.
     expect(v1.diff).toContain('body line');
+    expect(v1.diff).not.toContain('title: T');
+    expect(v1.properties.changes).toMatchObject([{ key: 'title', kind: 'added' }]);
   });
 
   test('version 0 → empty diff and equal (empty) bodies', () => {
@@ -219,6 +222,48 @@ describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
     const v0 = synthesizeVersionDiff(um.undoStack as any, 0, text, 'doc.md');
     expect(v0.diff).toBe('');
     expect(v0.before).toBe(v0.after);
+    expect(v0.properties.changes).toEqual([]);
+  });
+
+  /**
+   * Seed a document OUTSIDE the tracked origin so it is the pre-agent original
+   * (version 0), then apply one tracked frontmatter rewrite. Seeding inside the
+   * tracked origin would make version 0 the empty document and every property
+   * an addition, which is not the case under test.
+   */
+  function seedThenRewriteFm(seed: string, rewritten: string) {
+    const doc = new Y.Doc();
+    const text = doc.getText('source');
+    const { origin, um } = makeUMPair(doc, text);
+    doc.transact(() => text.insert(0, seed));
+    doc.transact(() => {
+      text.delete(0, text.length);
+      text.insert(0, rewritten);
+    }, origin);
+    // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
+    const stack = um.undoStack as any;
+    return synthesizeVersionDiff(stack, stack.length, text, 'doc.md');
+  }
+
+  // The defect this guards: an agent write that only touched frontmatter had no
+  // body diff and no property signal, so the pane showed nothing at all.
+  test('a frontmatter-only edit reports a property delta with an empty body diff', () => {
+    const latest = seedThenRewriteFm(
+      '---\nstatus: draft\n---\nbody\n',
+      '---\nstatus: ready\n---\nbody\n',
+    );
+    expect(latest.diff).toBe('');
+    expect(latest.properties.changes).toMatchObject([
+      { key: 'status', kind: 'changed', before: 'draft', after: 'ready' },
+    ]);
+  });
+
+  test('a reserialized frontmatter region reports no property change', () => {
+    const latest = seedThenRewriteFm(
+      '---\ntitle: T\nstatus: draft\n---\nbody\n',
+      '---\nstatus: draft\ntitle: T\n---\nbody\n',
+    );
+    expect(latest.properties.changes).toEqual([]);
   });
 });
 

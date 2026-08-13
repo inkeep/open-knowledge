@@ -750,6 +750,10 @@ msgstr "CLI {name}"
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, other {# simpul}}"
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "{omitted, plural, one {# more property change not shown} other {# more property changes not shown}}"
+msgstr "{omitted, plural, other {# perubahan properti lainnya tidak ditampilkan}}"
+
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, other {worktree}}"
@@ -793,6 +797,11 @@ msgstr "{phase} — {pct}%"
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
 msgstr "{problemCount, plural, other {# properti tidak sesuai skema}}"
+
+#: src/components/AgentDiffPane.tsx
+#: src/components/TimelineDiffPane.tsx
+msgid "{propertyCount, plural, one {# property} other {# properties}}"
+msgstr "{propertyCount, plural, other {# properti}}"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
@@ -1369,6 +1378,7 @@ msgstr "Tambahkan nilai"
 msgid "Add your comments to this message"
 msgstr "Tambahkan komentar Anda ke pesan ini"
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
 msgstr "Ditambahkan"
@@ -1412,6 +1422,10 @@ msgstr "Lanjutan"
 #: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "Pengaturan lanjutan"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "After"
+msgstr "Sesudah"
 
 #: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
@@ -1876,6 +1890,10 @@ msgstr "Cabang dasar"
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "Menjadi isi dokumen ketika seseorang membuat dokumen dari templat ini. Ketik <0>{dateToken}</0> atau <1>{userToken}</1> untuk mengisi tanggal hari ini atau nama penulis secara otomatis."
 
+#: src/components/PropertyDiffBlock.tsx
+msgid "Before"
+msgstr "Sebelum"
+
 #: src/components/AuthModal.tsx
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Sebelum menyinkronkan, setel identitas Anda untuk commit git:"
@@ -2180,6 +2198,10 @@ msgstr "Ganti penyedia"
 #: src/components/settings/SearchSection.tsx
 msgid "Change the embeddings provider?"
 msgstr "Ganti penyedia embedding?"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Changed"
+msgstr "Diubah"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -7772,6 +7794,14 @@ msgstr "Tidak ada agen AI yang terpasang"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "Tidak ada kunci API yang disetel untuk endpoint ini. Tambahkan satu di atas."
 
+#: src/components/AgentDiffPane.tsx
+msgid "No body changes at this version."
+msgstr "Tidak ada perubahan isi utama pada versi ini."
+
+#: src/components/TimelineDiffPane.tsx
+msgid "No body changes in this version"
+msgstr "Tidak ada perubahan isi utama pada versi ini"
+
 #: src/components/BugReportHistory.tsx
 msgid "No bug reports yet."
 msgstr "Belum ada laporan bug."
@@ -9392,6 +9422,7 @@ msgstr "Halaman tingkat proyek yang tidak punya sisi graf masuk."
 msgid "Project-level pages with no outgoing graph edges."
 msgstr "Halaman tingkat proyek yang tidak punya sisi graf keluar."
 
+#: src/components/PropertyDiffBlock.tsx
 #: src/components/PropertyPanel.tsx
 #: src/components/ReadonlyPropertyPanel.tsx
 #: src/components/TemplateProperties.tsx
@@ -9812,6 +9843,10 @@ msgstr "Hapus pilihan"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Hapus folder <0>.git</0> induknya"
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "Removed"
+msgstr "Dihapus"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -12162,6 +12197,10 @@ msgstr "Pratinjau memblokir sumber daya yang tidak memenuhi aturan keamanannya (
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "Blok properti di bagian atas dokumen ini punya galat format. Beralihlah ke mode sumber untuk memperbaikinya."
+
+#: src/components/PropertyDiffBlock.tsx
+msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr "Properti berubah, tetapi tidak bisa dibandingkan — YAML gagal diurai. Kedua versi ditampilkan apa adanya."
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."

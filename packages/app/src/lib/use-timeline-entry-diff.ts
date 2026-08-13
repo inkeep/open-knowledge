@@ -19,8 +19,9 @@
  *      provider-identity churn (reconnect, server-instance-mismatch
  *      recovery) does not silently re-snapshot mid-view. Strip frontmatter
  *      from both sides; if the bodies match exactly, surface an empty diff
- *      string so the renderer's "No changes" placeholder fires. Otherwise
- *      compute the unified diff via
+ *      string. An empty diff no longer means "nothing changed" on its own —
+ *      the caller's placeholder also requires an empty `properties` delta.
+ *      Otherwise compute the unified diff via
  *      `diff.createPatch(docName, historical, current, '', '', { context: 3 })`.
  *      The diff is recomputed every effect run — never cached, because the
  *      `current` side is mutable.
@@ -35,7 +36,11 @@
  * navigation (no `key={docName}` on the parent today), a hit is always for
  * the right document.
  */
-import { stripFrontmatter } from '@inkeep/open-knowledge-core';
+import {
+  diffFrontmatter,
+  type FrontmatterDelta,
+  stripFrontmatter,
+} from '@inkeep/open-knowledge-core';
 import { createPatch } from 'diff';
 import { useEffect, useRef, useState } from 'react';
 import { useDocumentContext } from '@/editor/DocumentContext';
@@ -61,6 +66,12 @@ type UseTimelineEntryDiffResult =
        */
       before: string;
       after: string;
+      /**
+       * Structural property delta across the two frontmatter regions. Separate
+       * from `diff`/`before`/`after`, all of which are body-only: a YAML region
+       * compared as text reports reorders and requotes as changes.
+       */
+      properties: FrontmatterDelta;
     };
 
 /**
@@ -202,12 +213,23 @@ export function useTimelineEntryDiff(
 
         // Frontmatter-stripped bodies drive the rendered prose diff (word-level);
         // `computeTimelineDiff` stays the single source of the source-view patch.
+        // The stripped region is not discarded — `diffFrontmatter` compares it
+        // structurally, which is what the property block renders.
         const before = stripFrontmatter(beforeRaw).body;
         const after = stripFrontmatter(afterRaw).body;
         const patchStr = computeTimelineDiff(beforeRaw, afterRaw, docName);
+        const properties = diffFrontmatter(beforeRaw, afterRaw);
         if (cancelled) return;
         const { additions, deletions } = countDiffStat(patchStr);
-        setResult({ status: 'ready', diff: patchStr, additions, deletions, before, after });
+        setResult({
+          status: 'ready',
+          diff: patchStr,
+          additions,
+          deletions,
+          before,
+          after,
+          properties,
+        });
       } catch (err) {
         if (!cancelled) {
           console.error('[timeline-diff] failed to load entry diff', {

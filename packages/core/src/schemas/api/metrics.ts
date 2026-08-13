@@ -22,6 +22,7 @@
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+import { FrontmatterDeltaSchema } from '../../frontmatter-diff.ts';
 
 /** One unified-diff burst entry on `AgentActivitySuccessSchema.files[].bursts[]`. */
 export const ActivityBurstSchema = z
@@ -83,9 +84,11 @@ export type AgentActivitySuccess = z.infer<typeof AgentActivitySuccessSchema>;
  * `GET /api/agent-burst-diff?agentId=<connId>&docName=<path>&keptCount=<n>`.
  *
  * `diff` is unified-diff text (CommonMark-style — empty string when the
- * StackItem produces a no-op diff). `before`/`after` are the frontmatter-
- * stripped bodies of the two versions the diff compares, so the client can
- * render a WYSIWYG diff (via `buildRenderedDiff`) without recomputing them.
+ * StackItem produces a no-op diff). `diff`, `before`, and `after` are all
+ * body-only: the frontmatter region is compared structurally instead and
+ * arrives as `properties`, because a YAML region diffed as text reports key
+ * reorders and requotes as changes. `before`/`after` let the client render a
+ * WYSIWYG diff (via `buildRenderedDiff`) without recomputing them.
  * `generatedAt` is the server's wall clock at response-emit time; clients use
  * it for staleness detection against `bursts[].ts` (from `/api/agent-activity`).
  */
@@ -94,6 +97,7 @@ export const AgentBurstDiffSuccessSchema = z
     diff: z.string(),
     before: z.string(),
     after: z.string(),
+    properties: FrontmatterDeltaSchema,
     generatedAt: z.number().int().min(0),
   })
   .loose() satisfies StandardSchemaV1;

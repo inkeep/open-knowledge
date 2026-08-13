@@ -122,6 +122,7 @@
     "12F9WL": ["(tanpa id)"],
     "151wvk": ["Tampilkan bilah sisi"],
     "15MMFT": ["Tampilkan komentar ini"],
+    "15ZHCt": ["Tidak ada perubahan isi utama pada versi ini."],
     "161NCV": ["Menghentikan"],
     "16D5Zj": ["Yakin ingin menghapus ", ["itemName"], "? Tindakan ini tidak bisa dibatalkan."],
     "16eIWu": ["Hentikan paksa"],
@@ -492,6 +493,9 @@
     "6m_7We": ["Membuka dialog pengaturan ini."],
     "6pe_G5": ["Tipe elemen"],
     "6q0rnH": ["menulis"],
+    "6qFchx": [
+      ["omitted", "plural", { "other": ["#", " perubahan properti lainnya tidak ditampilkan"] }]
+    ],
     "6qMe0o": [
       "Susun spesifikasi teknis untuk proyek saya. Mulai dengan ikhtisar, lalu tambahkan halaman yang saling tertaut untuk arsitekturnya, modul-modul utamanya, dan pertanyaan terbuka, semuanya tertaut dari sebuah indeks spesifikasi."
     ],
@@ -1022,6 +1026,7 @@
       " token"
     ],
     "ElyuiT": ["Terima kasih sudah mencoba OpenKnowledge."],
+    "EmSrGB": ["Sebelum"],
     "Emz5BG": [
       "Embedding hanya dihitung ketika sebuah pencarian berjalan dan disimpan dalam cache lokal di <0>.ok/local</0>."
     ],
@@ -1629,6 +1634,7 @@
     "N_7kkF": [
       "Baca basis kode ini dan susun spesifikasi teknis untuk modul yang paling rumit: sebuah ikhtisar, arsitekturnya, berkas-berkas utamanya, dan pertanyaan terbuka, semuanya tertaut dari sebuah halaman indeks spesifikasi."
     ],
+    "NawEr2": ["Sesudah"],
     "Nay2Yr": ["Tidak ada agen yang cocok dengan pencarian Anda."],
     "NcUznW": [["0"], ", tidak ada ruang kerja"],
     "NcurBF": ["Geser ke bawah"],
@@ -2055,6 +2061,7 @@
       ["boldLevel"],
       "."
     ],
+    "UI0WPT": [["propertyCount", "plural", { "other": ["#", " properti"] }]],
     "UJEFJY": ["Tidak dapat menjalankan ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge membuka pratinjau langsung"],
     "UL8A9w": ["Tag"],
@@ -2704,6 +2711,7 @@
     "cLn264": ["Berkas tema ini tidak dapat dibaca"],
     "cMMb6H": [["imported"], " dipasang, tetapi ", ["failed"], " gagal: ", ["failedNames"]],
     "cN1Gcp": ["Folder worktree untuk ", ["shareBranch"], " sudah ada."],
+    "cNsIJf": ["Diubah"],
     "cOJyVj": ["Nonaktifkan Tema"],
     "cOSAfL": ["Tidak ada repositori yang ditemukan di akun GitHub Anda."],
     "cOrTMo": ["Tautan berbagi Anda sudah siap di bawah."],
@@ -2868,6 +2876,7 @@
     "emMrXQ": ["Server mengembalikan respons duplikasi yang salah bentuk."],
     "emgiet": ["Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."],
     "enPTnx": ["baris ", ["displayLine"]],
+    "eps54V": ["Dihapus"],
     "epuNYK": [
       "Menandai sebuah blok sebagai sumber kebenaran. Cermin di tempat lain diperbarui langsung saat Anda menyuntingnya."
     ],
@@ -3624,6 +3633,7 @@
     "oBK5fD": ["Suntingan bertumpang tindih"],
     "oBXkm2": ["Hapus blok kode"],
     "oCHfGC": ["Tingkat"],
+    "oCO0pe": ["Tidak ada perubahan isi utama pada versi ini"],
     "oCZkaG": ["Salin jalur"],
     "oJl7eO": ["Komponen tidak dikenal: ", ["componentName"], " — sumber bisa disunting di bawah"],
     "oKBnk5": ["Lebih banyak permintaan diblokir."],
@@ -4162,6 +4172,9 @@
       "/",
       ["expectedRepo"],
       ". Pilih folder lain?"
+    ],
+    "wFyXOW": [
+      "Properti berubah, tetapi tidak bisa dibandingkan — YAML gagal diurai. Kedua versi ditampilkan apa adanya."
     ],
     "wGSHzy": ["Mengaktifkan salah satu dari delapan tab penyunting pertama."],
     "wIM7ul": ["Tekan spasi atau ketuk blob untuk mulai"],

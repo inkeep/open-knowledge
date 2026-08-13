@@ -162,6 +162,10 @@ describe('AgentBurstDiffSuccessSchema', () => {
         diff: '@@ -1 +1 @@\n-old\n+new\n',
         before: 'old',
         after: 'new',
+        properties: {
+          changes: [{ key: 'status', kind: 'changed', before: 'draft', after: 'ready' }],
+          unparseable: null,
+        },
         generatedAt: 1714512345000,
       }).success,
     ).toBe(true);
@@ -172,6 +176,7 @@ describe('AgentBurstDiffSuccessSchema', () => {
         diff: '',
         before: '',
         after: '',
+        properties: { changes: [], unparseable: null },
         generatedAt: 0,
       }).success,
     ).toBe(true);
@@ -180,6 +185,35 @@ describe('AgentBurstDiffSuccessSchema', () => {
     expect(
       AgentBurstDiffSuccessSchema.safeParse({
         diff: '',
+        properties: { changes: [], unparseable: null },
+        generatedAt: 0,
+      }).success,
+    ).toBe(false);
+  });
+  // The nested delta schemas are `.loose()` on purpose: an outer loose object
+  // does not relax its nested ones, and a strict arm would reject a response
+  // from a newer server that added a field.
+  test('accepts unknown fields inside the nested property delta', () => {
+    expect(
+      AgentBurstDiffSuccessSchema.safeParse({
+        diff: '',
+        before: '',
+        after: '',
+        properties: {
+          changes: [{ key: 'status', kind: 'added', after: 'ready', confidence: 0.9 }],
+          unparseable: null,
+          futureField: 'from a newer server',
+        },
+        generatedAt: 0,
+      }).success,
+    ).toBe(true);
+  });
+  test('rejects a missing property delta', () => {
+    expect(
+      AgentBurstDiffSuccessSchema.safeParse({
+        diff: '',
+        before: '',
+        after: '',
         generatedAt: 0,
       }).success,
     ).toBe(false);
@@ -190,6 +224,7 @@ describe('AgentBurstDiffSuccessSchema', () => {
         diff: '',
         before: '',
         after: '',
+        properties: { changes: [], unparseable: null },
         generatedAt: -1,
       }).success,
     ).toBe(false);
