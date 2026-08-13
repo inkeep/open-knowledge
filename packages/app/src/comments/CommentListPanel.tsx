@@ -13,7 +13,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
-  Check,
+  CheckCheck,
   ChevronRight,
   CircleDot,
   FileText,
@@ -23,6 +23,7 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Panel,
@@ -36,7 +37,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { CommentSendFooter } from './CommentSendFooter';
 import { docBasename } from './comment-chips';
 import { groupByDoc } from './queue-grouping';
-import { subscribeFocusThread, useQueueSelection } from './store';
+import { setSendingAll, subscribeFocusThread, usePinnedThread, useQueueSelection } from './store';
 import { ThreadCard } from './ThreadCard';
 import type { CommentThread } from './types';
 
@@ -45,26 +46,39 @@ export function CommentListPanel({
   groupByDocument = false,
   empty,
   testIdPrefix,
+  scopeSwitch,
 }: {
   threads: readonly CommentThread[];
   /** Project scope buckets under a filename; a single doc has nothing to bucket by. */
   groupByDocument?: boolean;
   empty: ReactNode;
   testIdPrefix: string;
+  /**
+   * The This-doc / This-project switch, rendered under this panel's own title.
+   *
+   * A slot rather than state: the scope lives in the tab, which is also what a
+   * reveal retargets, while the title belongs to the panel. Passing the element
+   * down is what lets the pair read title-then-switch — the order Problems uses
+   * — without this component learning what a scope is.
+   */
+  scopeSwitch?: ReactNode;
 }) {
   const { t } = useLingui();
   const [showResolved, setShowResolved] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const cardRefs = useRef(new Map<string, HTMLElement>());
-  // Captured once on mount — relative timestamps don't need to tick live, and
-  // calling Date.now() during render violates the React Compiler purity rule.
-  const [now] = useState(() => Date.now());
   // Tracks what is CLOSED, not what is open, so groups mount expanded and stay
   // that way: comments are hand-written and few, and a file that appears while
   // you are reading — one posted from another window — arrives expanded like the
   // rest instead of silently landing folded because it was not in an opened-set.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const sending = useQueueSelection();
+  // The thread whose popover is OPEN in the document — mirrored onto its card
+  // so the two sides of the screen point at each other. Popover-open only, not
+  // hover: washing a card because the pointer touched it (or its highlight)
+  // made every pass of the mouse a light show. One subscription for the whole
+  // panel, like `sending`.
+  const activeId = usePinnedThread();
 
   function toggleFile(docName: string, open: boolean) {
     setCollapsed((prev) => {
@@ -108,14 +122,44 @@ export function CommentListPanel({
   // Scoped to what this panel lists: the This-doc footer must never ship a
   // comment on a file the reader is not looking at.
   const scopedSending = active.filter((thread) => sending.includes(thread.id)).map((t) => t.id);
+  // What "all" means for THIS panel — This doc must not reach across the project.
+  const selectableIds = active.map((thread) => thread.id);
+  const allTicked = selectableIds.length > 0 && scopedSending.length === selectableIds.length;
+
+  /**
+   * The comments under a file heading its tick can act on.
+   *
+   * The same set the panel-level tick uses, for the same reason: a resolved
+   * comment is out of the batch entirely — the queue drops it — so counting one
+   * here would put a file permanently at "some", unreachable by any number of
+   * clicks, from the moment resolved comments are shown. Ticking the heading
+   * would also fire queue requests for threads that cannot be queued.
+   */
+  function sendableIn(group: { threads: readonly CommentThread[] }): string[] {
+    return group.threads
+      .filter((thread) => thread.status !== 'resolved')
+      .map((thread) => thread.id);
+  }
+
+  /**
+   * A file heading's tick: on when every comment under it is going, mixed when
+   * only some are. Mixed rather than off for a partial file — off would offer to
+   * "select all" a group that is already half in, and the click would look like
+   * it had done nothing to the comments already ticked.
+   */
+  function fileTickState(sendable: readonly string[]): boolean | 'indeterminate' {
+    const ticked = sendable.filter((id) => sending.includes(id)).length;
+    if (ticked === 0) return false;
+    return ticked === sendable.length ? true : 'indeterminate';
+  }
 
   function card(thread: CommentThread) {
     return (
       <ThreadCard
         key={thread.id}
         thread={thread}
-        now={now}
         sending={sending.includes(thread.id)}
+        active={activeId === thread.id}
         focused={focusedId === thread.id}
         cardRef={(el) => {
           if (el) cardRefs.current.set(thread.id, el);
@@ -131,38 +175,55 @@ export function CommentListPanel({
         <PanelTitle>
           <Trans>Comments</Trans>
         </PanelTitle>
-        {/* Icons, not labels, for both controls. Spelled out, "Show resolved
-            (93)" put a second number in a row that already ends in the count —
-            two figures side by side that look alike and mean different things
-            (how many are done vs how many are open). The resolved tally moves
-            into the tooltip, where it is read on purpose rather than compared by
-            accident, and the row keeps ONE number. */}
+        {/* The resolved tally sits ON its toggle, not in the tooltip.
+            It lived in the tooltip while the toggle wore a single check: two
+            bare figures in one row, alike in shape and meaning different things
+            (how many are done, how many are open), and the reader had no way to
+            tell which was which without hovering. The doubled check settles
+            that — the number is attached to the done glyph, the count badge at
+            the end of the row is the open one, and neither has to be guessed. */}
         <div className="flex items-center gap-1">
           {resolved.length > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="icon"
+                  size="sm"
                   variant="ghost"
-                  className="size-6 shrink-0 text-muted-foreground"
-                  aria-label={showResolved ? t`Hide resolved comments` : t`Show resolved comments`}
+                  className="h-6 shrink-0 gap-1 px-1.5 text-muted-foreground"
+                  // The count is INSIDE the accessible name, not just beside the
+                  // glyph: an aria-label replaces a button's contents outright,
+                  // so a number rendered as a child would be read by nobody.
+                  aria-label={
+                    showResolved
+                      ? t`Hide resolved comments (${resolved.length})`
+                      : t`Show resolved comments (${resolved.length})`
+                  }
                   aria-pressed={showResolved}
                   data-testid={`${testIdPrefix}-resolved-toggle`}
                   onClick={() => setShowResolved((v) => !v)}
                 >
+                  {/* A DOUBLE check for resolved. A single one is the mark this
+                      panel already uses for "ticked to send" — on every card and
+                      on the select-all — so wearing it here made the one control
+                      that has nothing to do with the batch look like the control
+                      that governs it. The doubled form is the settled/done glyph
+                      wherever read receipts and issue trackers use it, and it
+                      cannot be mistaken for a tick. `CircleDot` stays: an open
+                      thread is not a tick of any kind. */}
                   {showResolved ? (
                     <CircleDot aria-hidden="true" className="size-3.5" />
                   ) : (
-                    <Check aria-hidden="true" className="size-3.5" />
+                    <CheckCheck aria-hidden="true" className="size-3.5" />
                   )}
+                  <span aria-hidden="true" className="text-[11px] tabular-nums">
+                    {resolved.length}
+                  </span>
                 </Button>
               </TooltipTrigger>
+              {/* Words only. The number is on the button now, so repeating it
+                  here would print it twice a few pixels apart. */}
               <TooltipContent>
-                {showResolved ? (
-                  <Trans>Hide resolved</Trans>
-                ) : (
-                  <Trans>Show resolved ({resolved.length})</Trans>
-                )}
+                {showResolved ? <Trans>Hide resolved</Trans> : <Trans>Show resolved</Trans>}
               </TooltipContent>
             </Tooltip>
           )}
@@ -204,53 +265,113 @@ export function CommentListPanel({
           <PanelCount>{active.length}</PanelCount>
         </div>
       </PanelHeader>
+      {scopeSwitch}
+      {/* The bulk tick, at the head of the list rather than down in the footer
+          beside the send.
+          Flush to the panel's own `px-4`, which lines it up with the title above
+          and the file headings below — the rows it actually sits among. Inset to
+          match the per-card ticks instead, it cleared the text on both sides and
+          read as indented under nothing.
+          The count rides beside it, not across the row: how many are going and
+          the control that changes it are one thought, and pinned to opposite
+          ends they read as unrelated.
+          No visible label, and no explanatory line above it either. The tick,
+          the count and the Send button are one sentence read left to right; the
+          aria-label carries the name for anyone not reading the layout. */}
+      {active.length > 0 && (
+        // No bottom padding of its own: PanelBody's `py-3` is the gap to the
+        // first card, and adding one here stacked two.
+        <div className="flex shrink-0 items-center gap-2 px-4">
+          <Checkbox
+            checked={allTicked}
+            onCheckedChange={() => setSendingAll(selectableIds, !allTicked)}
+            aria-label={allTicked ? t`Unmark every comment` : t`Mark every comment to send`}
+            data-testid={`${testIdPrefix}-select-all`}
+          />
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {scopedSending.length}/{selectableIds.length}
+          </span>
+        </div>
+      )}
       <PanelBody className="flex flex-col gap-3">
         {visible.length === 0 ? (
           <PanelEmpty>{empty}</PanelEmpty>
         ) : groupByDocument ? (
-          groups.map((group) => (
-            <section key={group.docName} aria-label={group.docName}>
-              <Collapsible
-                open={!collapsed.has(group.docName)}
-                onOpenChange={(open) => toggleFile(group.docName, open)}
-                className="flex flex-col gap-2"
-              >
-                {/* The file names the group once instead of riding every card.
+          groups.map((group) => {
+            const sendable = sendableIn(group);
+            const tick = fileTickState(sendable);
+            return (
+              <section key={group.docName} aria-label={group.docName}>
+                <Collapsible
+                  open={!collapsed.has(group.docName)}
+                  onOpenChange={(open) => toggleFile(group.docName, open)}
+                  className="flex flex-col gap-2"
+                >
+                  {/* The file names the group once instead of riding every card.
                       Basename, not the full path: the rail is narrow and a
                       nested path pushes the row past the panel edge; the full
                       path stays reachable as the tooltip. Not sticky —
                       PanelBody's scroll-fade mask fades whatever sits at its top
                       edge, so a pinned header would sit there half-faded.
-                      No file-level tick. Selection lives on the cards and, for
-                      everything at once, in the footer; a third one here
-                      duplicates the card's own whenever a file holds a single
-                      comment, and sits higher and further left than the control
-                      it duplicates — so it reads as the primary one. */}
-                <div className="flex items-center gap-1.5">
-                  <CollapsibleTrigger
-                    title={group.docName}
-                    className="group flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded text-left text-[11px] text-muted-foreground hover:text-foreground"
-                  >
-                    <FileText className="size-3 shrink-0" />
-                    <span className="truncate">{docBasename(group.docName)}</span>
-                    <Badge
-                      variant="outline"
-                      className="shrink-0 px-1 py-0 text-[10px] tabular-nums"
-                    >
-                      {group.threads.length}
-                    </Badge>
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+                      The file-level tick is REVEALED, not resident. Drawn at
+                      rest it sat higher and further left than the card ticks it
+                      summarizes, which read as the primary control; a column of
+                      them also put a checkbox on every heading of a panel whose
+                      headings are otherwise just labels. On hover (and on
+                      keyboard focus, which is why this is `opacity-0` rather
+                      than unmounted or `hidden` — both take it out of the tab
+                      order) it is there for the reader who wants a whole file at
+                      once, and gone for the one who does not.
+                      OUTSIDE the trigger, not inside it: a tick nested in the
+                      fold control would fold the group on its way to changing
+                      the batch. */}
+                  <div className="group/file flex items-center gap-1.5">
+                    <Checkbox
+                      checked={tick}
+                      // Rendered but inert for a file whose comments are all
+                      // resolved — reachable only with resolved ones shown. Kept
+                      // in the row rather than dropped so its heading still lines
+                      // up with every other heading in the list.
+                      disabled={sendable.length === 0}
+                      onCheckedChange={() => setSendingAll(sendable, tick !== true)}
+                      aria-label={
+                        tick === true
+                          ? t`Unmark every comment in ${docBasename(group.docName)}`
+                          : t`Mark every comment in ${docBasename(group.docName)} to send`
+                      }
+                      data-testid={`${testIdPrefix}-file-select-${group.docName}`}
+                      // `focus-visible`, NOT `focus-within`: a mouse click leaves
+                      // the box focused, so focus-within kept it revealed after the
+                      // pointer had gone — one heading stuck showing a control the
+                      // others were hiding. focus-visible only matches the keyboard
+                      // route, which is the one that actually needs it drawn.
+                      className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover/file:opacity-100"
                     />
-                  </CollapsibleTrigger>
-                </div>
-                <CollapsibleContent className="flex flex-col gap-2 overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
-                  {group.threads.map(card)}
-                </CollapsibleContent>
-              </Collapsible>
-            </section>
-          ))
+                    <CollapsibleTrigger
+                      title={group.docName}
+                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded text-left text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      <FileText className="size-3 shrink-0" />
+                      <span className="truncate">{docBasename(group.docName)}</span>
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 px-1 py-0 text-[10px] tabular-nums"
+                      >
+                        {group.threads.length}
+                      </Badge>
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+                      />
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent className="flex flex-col gap-2 overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
+                    {group.threads.map(card)}
+                  </CollapsibleContent>
+                </Collapsible>
+              </section>
+            );
+          })
         ) : (
           visible.map(card)
         )}
@@ -258,11 +379,7 @@ export function CommentListPanel({
       {/* Outside PanelBody so a long list scrolls UNDER the actions rather than
           pushing them off the bottom. */}
       {active.length > 0 && (
-        <CommentSendFooter
-          threadIds={scopedSending}
-          selectableIds={active.map((thread) => thread.id)}
-          testIdPrefix={testIdPrefix}
-        />
+        <CommentSendFooter threadIds={scopedSending} testIdPrefix={testIdPrefix} />
       )}
     </Panel>
   );

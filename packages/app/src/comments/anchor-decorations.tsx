@@ -187,8 +187,17 @@ function createCommentAnchorPlugin(docName: string): Plugin<AnchorPluginState> {
           if (hit === null || anchor.to - anchor.from < hit.to - hit.from) hit = anchor;
         }
         if (hit?.id == null) return false;
+        // One click, both meanings — the Google Docs gesture. The thread opens
+        // beside the passage AND the click falls through to ProseMirror as an
+        // ordinary caret placement, so a commented passage stays editable text
+        // rather than a button. The two never conflicted: a plain caret paints
+        // no selection and opens no bubble menu, and the popover takes no
+        // focus, so reading and typing coexist. (An earlier cut captured the
+        // click and blurred the editor, which made editing inside a highlight
+        // impossible — the popover's dismisser ignores highlight clicks, so
+        // the card also stays up while you type.)
         openThread(hit.id);
-        return true;
+        return false;
       },
     },
   });

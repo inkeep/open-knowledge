@@ -15,19 +15,18 @@
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-// Two macro imports, deliberately: `relativeTime` is a plain module function
-// with no React context to read, so its units come from the core macro, while
-// the component's own copy uses the hook. The component-local `t` shadows this
-// one inside it, which is why the stamp lives outside.
-import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Check, MapPin, Pencil, RotateCcw, Trash2, Unlink, X } from 'lucide-react';
+import { CheckCheck, MapPin, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Textarea } from '@/components/ui/textarea';
-import { getEditorForDoc } from '@/editor/active-editor';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { getVisibleEditorForDoc } from '@/editor/active-editor';
+import {
+  ComposerMentionInput,
+  type ComposerMentionInputHandle,
+} from '@/editor/ComposerMentionInput';
 import { cn } from '@/lib/utils';
 import { captureSelectionContext, findQuoteRange } from './anchor-search';
 import { propertyAddress, revealThread } from './comment-chips';
@@ -37,6 +36,7 @@ import {
   clearActiveThread,
   deleteThread,
   editComment,
+  emitOpenThreadPopover,
   reopenThread,
   replaceOrphan,
   setActiveThread,
@@ -45,41 +45,71 @@ import {
 import type { CommentThread } from './types';
 
 /**
- * The card's age stamp, in the largest unit that still reads as an age.
+ * When the comment was last written, as a clock time rather than an age.
  *
- * Rolls over rather than running the smallest unit up forever: hours alone gave
- * a week-old comment "174h", a number nobody converts in their head. Past a week
- * even days stop meaning anything, so it hands over to a date — the same
- * rollover point the Timeline panel uses, so two views of the same week-old
- * thing agree.
+ * An age ("20m") answers how long ago and nothing else: two comments written in
+ * the same sitting both read "20m", and coming back to a document the next day
+ * every stamp has silently changed. A time is the same string every time you
+ * look at it, which is what makes it something you can refer to.
  *
- * `floor`, not `round`: rounding UP promoted 23.6 hours to "24h" and 6.7 days to
- * "7d", both of which are ages the branch below was supposed to have taken.
+ * Only as much date as the reader doesn't already have. Today's comments show
+ * the time alone — "today" is what the reader is in, and stamping it on every
+ * card in a session's worth of comments says nothing while pushing the ones that
+ * DO carry a date out of alignment. The year appears only outside this one.
+ *
+ * Rendered in the machine's own locale and timezone (`Intl` defaults), like
+ * every other stamp in the app.
  */
-function relativeTime(at: number, now: number): string {
-  const secs = Math.max(1, Math.floor((now - at) / 1000));
-  if (secs < 60) return t`${secs}s`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return t`${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return t`${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return t`${days}d`;
-  return new Date(at).toLocaleDateString();
+function editedAt(at: number, now: number): string {
+  const date = new Date(at);
+  const today = new Date(now);
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+  const time = { hour: 'numeric', minute: '2-digit' } as const;
+  if (sameDay) return date.toLocaleTimeString(undefined, time);
+  if (date.getFullYear() === today.getFullYear()) {
+    return date.toLocaleString(undefined, { month: 'short', day: 'numeric', ...time });
+  }
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    ...time,
+  });
 }
 
 export function ThreadCard({
   thread,
-  now,
   cardRef,
   focused,
+  active = false,
   sending,
-  onClose,
+  showQuote = true,
 }: {
   thread: CommentThread;
-  now: number;
   cardRef: (el: HTMLElement | null) => void;
   focused: boolean;
+  /**
+   * This thread's in-doc popover is OPEN. The card answers with the same amber
+   * WASH the passage carries — background only, no border (a border reads as a
+   * statement about selection, which the tick owns). Popover-open specifically,
+   * not hover: hosts used to pass the pointer-following active thread, and every
+   * card lit itself as the mouse crossed it. Optional because the popover host
+   * renders exactly one card and pinning it as active would just tint the card
+   * the reader is already inside.
+   */
+  active?: boolean;
+  /**
+   * Render the quoted passage the comment is anchored to.
+   *
+   * On in the panels, which sit away from the text and have to say what each
+   * comment is on. Off in the in-document popover, which is already pinned to
+   * that passage with the passage itself highlighted underneath — quoting it
+   * there prints the same words twice, inches apart.
+   */
+  showQuote?: boolean;
   /**
    * Ticked for the next send. Passed in rather than read here so one
    * subscription serves a whole panel of cards.
@@ -90,37 +120,112 @@ export function ThreadCard({
    * silently disagrees with the state behind it.
    */
   sending: boolean;
-  /** When set, renders a close button in the header (used by the popover). */
-  onClose?: () => void;
 }) {
   const { t } = useLingui();
-  // The edit field opens on demand from the icon in the action row, seeded with
-  // the current text — this revises the comment rather than adding to it.
-  const [draft, setDraft] = useState(thread.body);
+  // Captured once on mount: only the today-or-not branch reads it, that answer
+  // does not change while a card is on screen, and calling Date.now() during
+  // render violates the React Compiler purity rule.
+  const [renderedAt] = useState(() => Date.now());
+  // The edit field opens on demand from the icon in the header, seeded with the
+  // current text — this revises the comment rather than adding to it.
   const [editing, setEditing] = useState(false);
-  const editFieldRef = useRef<HTMLTextAreaElement>(null);
+  // Pushed up by the field on every keystroke; the Save button reads it so a
+  // revision emptied down to nothing can't be filed.
+  const [draftEmpty, setDraftEmpty] = useState(false);
+  const editFieldRef = useRef<ComposerMentionInputHandle>(null);
   const isOrphaned = thread.status === 'orphaned';
   const isResolved = thread.status === 'resolved';
 
-  // Focus the edit field with the caret AFTER the existing text. `autoFocus`
-  // alone lands it at offset 0, so you open an edit standing in front of your
-  // own sentence and have to travel to the end before typing.
+  // Read by the seed effect below, which must not re-run when the body changes:
+  // a comment revised elsewhere while you have this field open would otherwise
+  // overwrite what you are typing.
+  const bodyRef = useRef(thread.body);
+  useEffect(() => {
+    bodyRef.current = thread.body;
+  });
+
+  // The field's current text, mirrored on every keystroke. The unmount commit
+  // below cannot read the field directly — by the time the cleanup runs, the
+  // field's own editor may already be destroyed — so the words ride a ref the
+  // whole time the edit is open.
+  const liveDraftRef = useRef<string | null>(null);
+  /** An explicit save or discard already settled this edit — later signals stand down. */
+  const settledRef = useRef(false);
+
+  // Seed the field and put the caret AFTER the existing text. Focus alone lands
+  // it at offset 0, so you would open an edit standing in front of your own
+  // sentence and have to travel to the end before typing.
   useEffect(() => {
     if (!editing) return;
-    const field = editFieldRef.current;
-    if (field === null) return;
-    field.focus();
-    const end = field.value.length;
-    field.setSelectionRange(end, end);
+    settledRef.current = false;
+    liveDraftRef.current = null;
+    editFieldRef.current?.setText(bodyRef.current);
+    editFieldRef.current?.focusEnd();
+  }, [editing]);
+
+  /**
+   * Settle the edit with `raw` as the revision. Idempotent — Enter, Escape, and
+   * the unmount commit can all fire around one edit, and only the first counts.
+   */
+  function settleEdit(raw: string | null) {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    setEditing(false);
+    const next = (raw ?? '').trim();
+    if (next.length === 0 || next === bodyRef.current) return;
+    editComment(thread.id, next);
+  }
+
+  /** Save the revision, or close on a no-op. Enter and the `@`-popup's own keys
+   *  are the field's concern; this only decides what a submit means. */
+  function commitEdit() {
+    settleEdit(editFieldRef.current?.getContent().instruction ?? null);
+  }
+
+  /** The one explicit DISCARD — Escape and the Cancel button. Settling with no
+   *  text saves nothing and, crucially, stands the unmount commit down. */
+  function cancelEdit() {
+    settleEdit(null);
+  }
+
+  /**
+   * Delete the thread, discarding any revision in flight.
+   *
+   * Deleting is not clicking away. The card unmounts either way, but only one of
+   * them means "file what I typed" — left to the unmount commit, deleting a
+   * comment mid-edit filed the revision against a thread that no longer exists,
+   * and the reader got a "couldn't save that edit" on top of a delete that
+   * worked perfectly.
+   */
+  function deleteComment() {
+    cancelEdit();
+    deleteThread(thread.id);
+  }
+
+  // Click-away SAVES, like Notion — not silently discards. The popover host
+  // closes on any outside click, unmounting this card mid-edit; before this,
+  // that threw the revision away with nothing saying so, which read as "my
+  // edit didn't reflect". Escape remains the explicit discard, and it settles
+  // the edit first so this cleanup stands down.
+  //
+  // The commit must fire exactly when the edit session ends, not when the
+  // thread re-renders mid-edit.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: settleEdit is deliberately read at cleanup time; keying the effect on it would re-arm the commit on every render.
+  useEffect(() => {
+    if (!editing) return;
+    return () => {
+      settleEdit(liveDraftRef.current);
+    };
   }, [editing]);
 
   function jumpToQuote(quote: string) {
     if (thread.anchor === null) return;
-    // A comment on a file that is not open: the project scope lists every
-    // document, so the editor this jump needs may not exist yet. `revealThread`
-    // navigates first and waits for that editor to mount; the local paths below
-    // would find nothing and silently do nothing.
-    if (getEditorForDoc(thread.docName) === null) {
+    // A comment on a document that is not IN FRONT OF THE READER: the project
+    // scope lists every file, and the pool keeps the last few visited ones
+    // mounted but hidden — so "an editor exists" is not "you can see it". Either
+    // way `revealThread` navigates first and waits; the local paths below would
+    // measure a pane with no layout and silently do nothing.
+    if (getVisibleEditorForDoc(thread.docName) === null) {
       revealThread(thread);
       return;
     }
@@ -134,35 +239,30 @@ export function ThreadCard({
         start: thread.anchor.start,
         end: thread.anchor.end,
       });
+      emitOpenThreadPopover(thread.id);
       return;
     }
-    const editor = getEditorForDoc(thread.docName);
+    const editor = getVisibleEditorForDoc(thread.docName);
     if (!editor) return;
     const range = findQuoteRange(editor.state.doc, quote, thread.anchor);
     if (!range) return;
-    // Select without ProseMirror's own scroll, then place it ourselves — its
-    // minimal scroll lands the passage under the floating toolbar.
-    editor.chain().focus().setTextSelection(range).run();
-    scrollAnchorIntoView(editor, range);
-  }
-
-  function cancelEdit() {
-    setDraft(thread.body);
-    setEditing(false);
-  }
-
-  function saveEdit() {
-    const next = draft.trim();
-    if (next.length === 0 || next === thread.body) {
-      setEditing(false);
-      return;
-    }
-    editComment(thread.id, next);
-    setEditing(false);
+    // Scrolled to and pointed at, never selected. Focusing the editor and
+    // setting a text selection put a live selection on the passage — blue, with
+    // the formatting bubble menu over it — so following a comment from the panel
+    // read as picking the words up to edit them. Opening the thread is what the
+    // margin marker does, and it deepens the highlight the same way, which is
+    // the "here it is" this needed all along.
+    //
+    // Our own scroll, not ProseMirror's: its minimal scroll lands the passage
+    // under the floating toolbar.
+    scrollAnchorIntoView(editor, range, thread.docName);
+    emitOpenThreadPopover(thread.id);
   }
 
   function rePlaceOnSelection() {
-    const editor = getEditorForDoc(thread.docName);
+    // Visible, like the jump: re-placing reads the reader's CURRENT selection,
+    // and a hidden pane's selection is whatever was left there last time.
+    const editor = getVisibleEditorForDoc(thread.docName);
     if (!editor) return;
     const { from, to, empty } = editor.state.selection;
     if (empty) return;
@@ -174,7 +274,15 @@ export function ThreadCard({
     }
   }
 
+  // Clicking the card SELECTS ONLY this comment, or clears it when it is
+  // already the only one; the checkbox stays additive, and the quote row keeps
+  // the jump. Panel cards only (`showQuote` is the proxy — the popover's card
+  // has no batch column beside it), never while editing, and a resolved card
+  // has no tick to narrow.
+  const cardSelects = showQuote && !editing && !isResolved;
+
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only affordance — clicking the card's whitespace solos its tick; keyboard/AT users compose the same state from the real controls (the card's checkbox + the footer's master tick). See focus-composer-on-card-pointer.ts for the sibling pattern.
     <article
       ref={cardRef}
       // Reading a card deepens its passage in the document. With two comments
@@ -184,10 +292,49 @@ export function ThreadCard({
       onPointerLeave={() => clearActiveThread(thread.id)}
       onFocusCapture={() => setActiveThread(thread.id)}
       onBlurCapture={() => clearActiveThread(thread.id)}
+      // The card body is a bigger target for the tick it contains, and nothing
+      // more. It used to mean "send only this one" — narrowing the batch and
+      // clearing every other comment — which is a reasonable shortcut and the
+      // wrong one to hang on a bare click: a column of rows with checkboxes, a
+      // select-all above them and a count reads as a checklist, and in a
+      // checklist clicking a row toggles that row. Readers reached for the
+      // additive meaning and got the destructive one.
+      // The jump stays on the quote row, and a click that started on any
+      // interactive descendant is that control's alone.
+      onClick={(event) => {
+        if (!cardSelects) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('button, [role="checkbox"], [role="textbox"], a, input, textarea')) {
+          return;
+        }
+        // A drag that SELECTED this card's words still ends in a click on the
+        // card, so copying a sentence out of a comment silently toggled whether
+        // it was going to be sent. Anchored inside this card specifically:
+        // selecting a passage in the document and then clicking a card here is
+        // an ordinary click, and reading the selection alone would swallow it.
+        const selection = window.getSelection();
+        if (
+          selection !== null &&
+          !selection.isCollapsed &&
+          selection.anchorNode !== null &&
+          event.currentTarget.contains(selection.anchorNode)
+        ) {
+          return;
+        }
+        toggleSending(thread.id);
+      }}
       className={cn(
-        'flex flex-col gap-1.5 rounded-lg border p-2.5 transition-shadow',
+        'flex flex-col gap-1.5 rounded-lg border p-2.5 transition-[box-shadow,border-color,background-color]',
+        cardSelects && 'cursor-pointer',
         isResolved && 'opacity-70',
-        isOrphaned && 'border-amber-500/40 bg-amber-500/5',
+        // No card treatment for a lost passage. Amber in this component means
+        // the passage highlight — the wash a card takes while it is being read,
+        // matching the mark on its text in the document. A card tinted for its
+        // STATE spent that hue on something the document never echoes, and left
+        // every orphan looking permanently hovered.
+        // The same hue as the passage's highlight — and like it, a wash with no
+        // outline, so being-read never masquerades as being-selected.
+        active && 'bg-amber-500/10',
         focused && 'ring-2 ring-primary',
       )}
     >
@@ -208,8 +355,13 @@ export function ThreadCard({
               aria-label={sending ? t`Don't send this comment` : t`Send this comment`}
             />
           )}
-          <span className="shrink-0 text-[10px] text-muted-foreground">
-            {relativeTime(thread.createdAt, now)}
+          {/* `title` carries the full date and time, including the year and the
+              seconds the stamp drops. */}
+          <span
+            className="shrink-0 text-[10px] text-muted-foreground"
+            title={new Date(thread.updatedAt).toLocaleString()}
+          >
+            {editedAt(thread.updatedAt, renderedAt)}
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
@@ -218,106 +370,192 @@ export function ThreadCard({
               variant="outline"
               className="gap-1 border-green-600/40 text-green-700 dark:text-green-500"
             >
-              <Check className="size-2.5" />
+              {/* The doubled check, matching the panel's show-resolved toggle.
+                  A single one is this panel's "ticked to send" mark, and the two
+                  meanings cannot share a glyph on the same card. */}
+              <CheckCheck className="size-2.5" />
               <Trans>Resolved</Trans>
             </Badge>
           )}
-          {isOrphaned && (
-            <Badge
-              variant="outline"
-              className="gap-1 border-amber-500/50 text-amber-600 dark:text-amber-500"
-            >
-              <Unlink className="size-2.5" />
-              <Trans>Orphaned</Trans>
-            </Badge>
-          )}
+          {/* No badge for the lost-passage state. The block below already says
+              it in a full sentence, right under the words it is about, and the
+              card carries the amber treatment either way — a badge saying the
+              same thing two lines up was the state announced twice. Resolved
+              keeps its badge because nothing else on that card says so. */}
           {/* Edit rides beside Delete rather than in a row of its own: the two
               are peers, both acting on this comment as an object rather than on
               where it goes. A row for one icon also costs a line of card height
               on every card, for the least-taken action. */}
           {!isResolved && (
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={t`Edit this comment`}
-              title={t`Edit this comment`}
-              aria-expanded={editing}
-              className={cn(
-                'size-6 p-0',
-                editing ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-              onClick={() => {
-                setDraft(thread.body);
-                setEditing((open) => !open);
-              }}
-            >
-              <Pencil className="size-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t`Edit this comment`}
+                  aria-expanded={editing}
+                  className={cn(
+                    'size-6 p-0',
+                    editing ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => setEditing((open) => !open)}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <Trans>Edit this comment</Trans>
+              </TooltipContent>
+            </Tooltip>
           )}
           {/* No confirm step: a comment is one line of your own text, it has
               gone nowhere but the queue, and re-adding it costs a selection and
               a sentence. An interstitial would cost more than the mistake. */}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="size-6 p-0 text-muted-foreground hover:text-destructive"
-            aria-label={t`Delete this comment`}
-            title={t`Delete this comment`}
-            onClick={() => deleteThread(thread.id)}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-          {onClose && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="-mr-1 size-6 p-0 text-muted-foreground hover:text-foreground"
-              aria-label={t`Close`}
-              onClick={onClose}
-            >
-              <X className="size-3.5" />
-            </Button>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="size-6 p-0 text-muted-foreground hover:text-destructive"
+                aria-label={t`Delete this comment`}
+                onClick={deleteComment}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <Trans>Delete this comment</Trans>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
-      {/* Anchor quote */}
-      {isOrphaned ? (
-        <p className="rounded border-l-2 border-amber-500/60 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
-          <Trans>The anchored text is gone. You can re-place it on selected text.</Trans>
-        </p>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          // Inert only when there are no words to reveal — a comment on a whole
-          // field. The row still renders, so the thread keeps saying what it is
-          // on rather than showing nothing.
-          disabled={thread.anchor === null}
-          onClick={() => jumpToQuote(thread.anchor?.quote ?? '')}
-          title={
-            thread.anchor === null
-              ? t`This comment is on the whole property`
-              : thread.target.kind === 'property'
-                ? t`Select this text in the property`
-                : t`Jump to the anchored text`
-          }
-          className="h-auto w-full justify-start truncate rounded border-l-2 border-muted-foreground/40 bg-muted/40 px-2 py-1 text-left text-xs font-normal text-muted-foreground hover:bg-muted/70 disabled:opacity-100"
-        >
-          <span className="truncate">
-            {thread.target.kind === 'property' ? (
-              <span className="font-mono">
-                {propertyAddress(thread.target.key, thread.target.path)}:
-                {thread.anchor === null ? '' : ` “${thread.anchor.quote}”`}
-              </span>
-            ) : (
-              <>“{thread.anchor?.quote ?? ''}”</>
-            )}
-          </span>
-        </Button>
-      )}
+      {/* Anchor quote. The orphaned block is the card's state rather than a
+          quote row — a thread that lost its passage has to say so wherever it is
+          rendered — so `showQuote` does not gate it. It still SHOWS the quote:
+          orphaning mutates state alone, so the stored words survive as the last
+          thing the comment was on, and they are what tells a reader which of
+          several comments this is. The popover has no passage underneath to
+          duplicate, that being the whole problem.
 
-      <p className="text-sm text-foreground/90">{thread.body}</p>
+          Same chrome as the live quote row it stands in for — a lost passage is
+          still the passage this comment is on, so it reads as that row struck
+          through rather than as a different kind of object. */}
+      {isOrphaned ? (
+        <div className="flex flex-col gap-0.5 rounded border-l-2 border-muted-foreground/40 bg-muted/40 px-2 py-1">
+          {thread.anchor !== null && (
+            <p
+              className="truncate text-xs text-muted-foreground line-through"
+              title={thread.anchor.quote}
+            >
+              {/* Struck through, but never ONLY struck through — the sentence
+                  below carries the same fact in words, which is what a screen
+                  reader and a monochrome display get. */}
+              “{thread.anchor.quote}”
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            <Trans>
+              The original text was deleted. You can re-place this comment on selected text.
+            </Trans>
+          </p>
+        </div>
+      ) : showQuote ? (
+        <Tooltip>
+          {/* `asChild` onto a DISABLED button would lose the hint — a disabled
+              element fires no pointer events, so Radix never sees the hover.
+              The span is what carries it for the inert case. */}
+          <TooltipTrigger asChild>
+            <span className="w-full">
+              <Button
+                type="button"
+                variant="ghost"
+                // Inert only when there are no words to reveal — a comment on a whole
+                // field. The row still renders, so the thread keeps saying what it is
+                // on rather than showing nothing.
+                disabled={thread.anchor === null}
+                onClick={() => jumpToQuote(thread.anchor?.quote ?? '')}
+                className="h-auto w-full justify-start truncate rounded border-l-2 border-muted-foreground/40 bg-muted/40 px-2 py-1 text-left text-xs font-normal text-muted-foreground hover:bg-muted/70 disabled:opacity-100"
+              >
+                <span className="truncate">
+                  {thread.target.kind === 'property' ? (
+                    <span className="font-mono">
+                      {propertyAddress(thread.target.key, thread.target.path)}:
+                      {thread.anchor === null ? '' : ` “${thread.anchor.quote}”`}
+                    </span>
+                  ) : (
+                    <>“{thread.anchor?.quote ?? ''}”</>
+                  )}
+                </span>
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {thread.anchor === null ? (
+              <Trans>This comment is on the whole property</Trans>
+            ) : thread.target.kind === 'property' ? (
+              <Trans>Jump to selected text in property</Trans>
+            ) : (
+              <Trans>Jump to the anchored text</Trans>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+
+      {/* The comment, or the field that revises it — one slot, never both. The
+          field used to open BENEATH the text it was seeded from, so a card in
+          edit mode printed the same sentence twice, inches apart, and the card
+          grew by a row for it. Editing something means editing it where it is.
+
+          The SAME field the comment was written in, not a plain textarea: `@` a
+          file while writing a comment and you could not `@` one while revising
+          it, which made the revision a lesser thing than the original for no
+          reason a reader could see. Enter saves, Shift+Enter is a newline, and
+          Escape closes — all three belong to the field, which is also the only
+          side that knows whether the `@`-popup just consumed the key. */}
+      {editing ? (
+        <div className="flex flex-col gap-1.5">
+          <ComposerMentionInput
+            ref={editFieldRef}
+            ariaLabel={t`Edit this comment`}
+            placeholder={t`Edit this comment`}
+            // Drives the Save button's disabled state — an empty field has no
+            // revision to file, and the keyboard path declines the same case.
+            onEmptyChange={setDraftEmpty}
+            // Mirrored per keystroke for the unmount commit, which runs after
+            // the field's editor is already gone.
+            onContentChange={() => {
+              liveDraftRef.current = editFieldRef.current?.getContent().instruction ?? null;
+            }}
+            onSubmit={commitEdit}
+            // The one explicit DISCARD. Settling with the original text saves
+            // nothing and, crucially, stands the unmount commit down.
+            onEscape={cancelEdit}
+            className="max-h-40 overflow-y-auto rounded-md border px-2 py-1 text-sm"
+          />
+          {/* The keys alone are not the affordance. Enter/Escape stay the fast
+              path, but a field with no visible way out leaves a reader who
+              never learned them stuck in it — and click-away saving is a
+              guess unless something on screen says which way the exit goes. */}
+          <div className="flex items-center justify-end gap-1.5">
+            <Button size="sm" variant="ghost" onClick={cancelEdit}>
+              <Trans>Cancel</Trans>
+            </Button>
+            <Button
+              size="sm"
+              onClick={commitEdit}
+              disabled={draftEmpty}
+              aria-label={t`Save this comment (Enter)`}
+            >
+              <Trans>Save</Trans>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p data-testid="thread-comment-body" className="text-sm text-foreground/90">
+          {thread.body}
+        </p>
+      )}
 
       {/* Actions */}
       {isOrphaned ? (
@@ -329,46 +567,6 @@ export function ThreadCard({
         </Button>
       ) : (
         <>
-          {/* The field appears only once you ask for it — most cards are being
-              read, not revised, so an always-present box costs every card height
-              for an action taken on few of them. Enter saves, Shift+Enter is a
-              newline, Escape discards the revision. */}
-          {editing && (
-            <div className="flex flex-col gap-1.5">
-              <Textarea
-                ref={editFieldRef}
-                rows={1}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    cancelEdit();
-                    return;
-                  }
-                  if (e.key !== 'Enter' || e.shiftKey) return;
-                  // Mid-composition Enter belongs to the IME, not to saving.
-                  if (e.nativeEvent.isComposing) return;
-                  e.preventDefault();
-                  saveEdit();
-                }}
-                placeholder={t`Edit this comment`}
-                className="min-h-0 resize-none px-2 py-1 text-sm leading-5"
-              />
-              <div className="flex items-center justify-end gap-1.5">
-                <Button size="sm" variant="ghost" onClick={cancelEdit}>
-                  <Trans>Cancel</Trans>
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={saveEdit}
-                  disabled={draft.trim().length === 0}
-                  aria-label={t`Save this comment (Enter)`}
-                >
-                  <Trans>Save</Trans>
-                </Button>
-              </div>
-            </div>
-          )}
           {/* Only a resolved thread still needs a row down here. Resolving is
               something a SEND does, not something you declare, so there is no
               manual Resolve — but Reopen has to stay, and stay one click: it is

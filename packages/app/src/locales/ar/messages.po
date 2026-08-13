@@ -511,6 +511,11 @@ msgstr "{conflictCount, plural, zero {# ملف متعارض} one {ملف واح�
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, zero {# تعليق} one {تعليق واحد} two {تعليقان} few {# تعليقات} many {# تعليقًا} other {# تعليق}}"
 
+#. placeholder {0}: docs.length
+#: src/comments/comment-chips.tsx
+msgid "{count, plural, one {# comment} other {# comments}} across {0, plural, one {# file} other {# files}}"
+msgstr "{count, plural, zero {# تعليق} one {تعليق واحد} two {تعليقان} few {# تعليقات} many {# تعليقًا} other {# تعليق}} عبر {0, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}"
+
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, zero {لا مستندات} one {مستند واحد} two {مستندان} few {# مستندات} many {# مستندًا} other {# مستند}}"
@@ -558,10 +563,6 @@ msgstr "{count} مهارة في هذا المصدر"
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, zero {قبل # يوم} one {قبل يوم واحد} two {قبل يومين} few {قبل # أيام} many {قبل # يومًا} other {قبل # يوم}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{days}d"
-msgstr "{days}ي"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
@@ -657,10 +658,6 @@ msgstr "{folderCount, plural, zero {مجلدات} one {مجلد} two {مجلدا
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} نجمة على GitHub"
 
-#: src/comments/ThreadCard.tsx
-msgid "{hours}h"
-msgstr "{hours}س"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -726,10 +723,6 @@ msgstr "{localizedMessage} في السطر {displayLine}"
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, zero {قبل # دقيقة} one {قبل # دقيقة} two {قبل # دقيقة} few {قبل # دقائق} many {قبل # دقيقة} other {قبل # دقيقة}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{mins}m"
-msgstr "{mins}د"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{minutes} min ago"
@@ -812,10 +805,6 @@ msgstr "خصائص {propPanelDescriptorLabel}"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "{seconds}s ago"
 msgstr "قبل {seconds} ثانية"
-
-#: src/comments/ThreadCard.tsx
-msgid "{secs}s"
-msgstr "{secs}ث"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{settingsDescriptorLabel} properties"
@@ -2500,7 +2489,6 @@ msgstr "يجري استنساخ {repoName}..."
 msgid "Cloning..."
 msgstr "يجري الاستنساخ..."
 
-#: src/comments/ThreadCard.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -3390,6 +3378,10 @@ msgstr "تعذّر قطع الاتصال — يرجى المحاولة مرة أ
 #: src/components/skill-actions.tsx
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "تعذّر تكرار «{0}»: {1}"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't find that passage — the text it was on may have changed."
+msgstr "تعذر العثور على ذلك المقطع — ربما تغير النص الذي كان عليه."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -4323,10 +4315,6 @@ msgstr "يميّز بين القوالب المتشابهة الأسماء في 
 msgid "Discard local edits, restore the installed version"
 msgstr "تجاهل التعديلات المحلية واستعد النسخة المثبتة"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Discard this comment"
-msgstr "تجاهل هذا التعليق"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnect"
 msgstr "قطع الاتصال"
@@ -4426,7 +4414,6 @@ msgstr "مستندات موسومة بـ <0>#{tagName}</0>"
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "لا ترى <0>المهارات</0>؟ فعّل <1>الإعدادات <2/> القدرات <3/> تنفيذ الكود وإنشاء الملفات</1> أولًا."
 
-#: src/comments/comment-chips.tsx
 #: src/comments/ThreadCard.tsx
 msgid "Don't send this comment"
 msgstr "لا ترسل هذا التعليق"
@@ -5842,15 +5829,6 @@ msgstr "الانتقال إلى السطر {0}"
 msgid "Go to line {0} in {1}"
 msgstr "الانتقال إلى السطر {0} في {1}"
 
-#. placeholder {0}: docBasename(thread.docName)
-#: src/comments/comment-chips.tsx
-msgid "Go to this comment in {0}"
-msgstr "الانتقال إلى هذا التعليق في {0}"
-
-#: src/comments/comment-chips.tsx
-msgid "gone"
-msgstr "غير موجود"
-
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "جيد"
@@ -6062,9 +6040,10 @@ msgstr "إخفاء الاستبدال"
 msgid "Hide resolved"
 msgstr "إخفاء المحلولة"
 
+#. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Hide resolved comments"
-msgstr "إخفاء التعليقات المُنجزة"
+msgid "Hide resolved comments ({0})"
+msgstr "إخفاء التعليقات المحلولة ({0})"
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
@@ -6078,10 +6057,6 @@ msgstr "إخفاء الشريط الجانبي"
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "إخفاء Terminal"
-
-#: src/comments/comment-chips.tsx
-msgid "Hide these comments"
-msgstr "إخفاء هذه التعليقات"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -6306,10 +6281,6 @@ msgstr "داخل التطبيق (بيتا)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "في تطبيق Claude Desktop"
-
-#: src/comments/comment-chips.tsx
-msgid "Include this comment in the next send"
-msgstr "ضمّن هذا التعليق في الإرسال التالي"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
@@ -6667,6 +6638,10 @@ msgstr "الانتقال إلى آخر تبويب"
 #: src/editor/components/Pdf.tsx
 msgid "Jump to page {pageNumber}"
 msgstr "الانتقال إلى الصفحة {pageNumber}"
+
+#: src/comments/ThreadCard.tsx
+msgid "Jump to selected text in property"
+msgstr "الانتقال إلى النص المحدد في الخاصية"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Jump to tab 1-8"
@@ -7165,7 +7140,12 @@ msgstr "ارسم خريطة البنية"
 msgid "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
 msgstr "حدّد كتلة كمرجع أساسي. تتحدث المرايا في الأماكن الأخرى مباشرةً أثناء تحريرك لها."
 
-#: src/comments/CommentSendFooter.tsx
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Mark every comment in {0} to send"
+msgstr "تحديد كل التعليقات في {0} للإرسال"
+
+#: src/comments/CommentListPanel.tsx
 msgid "Mark every comment to send"
 msgstr "تحديد كل التعليقات للإرسال"
 
@@ -8405,10 +8385,6 @@ msgstr "افتح لوحة تشخيصات الفحص في CodeMirror."
 msgid "Open comment"
 msgstr "فتح التعليق"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Open Comments"
-msgstr "فتح التعليقات"
-
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
 msgid "Open containing folder"
@@ -8881,10 +8857,6 @@ msgstr "الملف الأصلي — قبل تعديلات هذا الوكيل."
 #: src/components/GraphPanel.tsx
 msgid "Orphan mode"
 msgstr "وضع اليتامى"
-
-#: src/comments/ThreadCard.tsx
-msgid "Orphaned"
-msgstr "يتيم"
 
 #: src/components/GraphPanel.tsx
 msgid "Orphans"
@@ -9370,7 +9342,6 @@ msgid "project"
 msgstr "مشروع"
 
 #: src/components/CommandPalette.tsx
-#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -10681,10 +10652,6 @@ msgstr "تحديد التكرار التالي"
 msgid "Select the full source document."
 msgstr "حدّد مستند المصدر بالكامل."
 
-#: src/comments/ThreadCard.tsx
-msgid "Select this text in the property"
-msgstr "حدّد هذا النص في الخاصية"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
 msgstr "حدّد مكوّنات الكتل وكتل المصدر الاحتياطية أو ادخلها أو غادرها من حدود لوحة المفاتيح."
@@ -11143,14 +11110,14 @@ msgstr "إظهار مؤشرات المشكلات"
 msgid "Show replace"
 msgstr "إظهار الاستبدال"
 
+#: src/comments/CommentListPanel.tsx
+msgid "Show resolved"
+msgstr "إظهار المحلولة"
+
 #. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Show resolved ({0})"
-msgstr "إظهار المحلولة ({0})"
-
-#: src/comments/CommentListPanel.tsx
-msgid "Show resolved comments"
-msgstr "إظهار التعليقات المُنجزة"
+msgid "Show resolved comments ({0})"
+msgstr "إظهار التعليقات المحلولة ({0})"
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
@@ -11170,8 +11137,8 @@ msgid "Show Terminal"
 msgstr "إظهار Terminal"
 
 #: src/comments/comment-chips.tsx
-msgid "Show these comments"
-msgstr "إظهار هذه التعليقات"
+msgid "Show these comments in the Comments panel"
+msgstr "عرض هذه التعليقات في لوحة التعليقات"
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
@@ -12067,6 +12034,10 @@ msgstr "شكرًا على التقرير!"
 msgid "That branch is already open in another worktree."
 msgstr "ذلك الفرع مفتوح بالفعل في شجرة عمل أخرى."
 
+#: src/comments/reveal-comment.ts
+msgid "That document didn't open in time. Try again once it has synced."
+msgstr "لم يُفتح ذلك المستند في الوقت المناسب. حاول مرة أخرى بعد اكتمال المزامنة."
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "لا يمكن استخدام نقطة النهاية تلك. أدخل رابط https:// — لا يُسمح بـ http:// إلا للمضيف المحلي."
@@ -12111,10 +12082,6 @@ msgstr "الوكيل لا يتوقف. الإيقاف القسري يغلق هذ�
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "شخصية الوكيل وقيمه ونبرته."
-
-#: src/comments/ThreadCard.tsx
-msgid "The anchored text is gone. You can re-place it on selected text."
-msgstr "اختفى النص المرتبط. يمكنك إعادة وضعه على نص محدد."
 
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
@@ -12194,6 +12161,10 @@ msgstr "معرّف النموذج الذي تخدمه نقطة نهايتك. ي�
 msgid "the open agent"
 msgstr "الوكيل المفتوح"
 
+#: src/comments/ThreadCard.tsx
+msgid "The original text was deleted. You can re-place this comment on selected text."
+msgstr "تم حذف النص الأصلي. يمكنك إعادة وضع هذا التعليق على النص المحدد."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "تحظر المعاينة الموارد التي لا تستوفي قواعد أمانها (مثل روابط http:// العادية، أو الكود الذي يستخدم eval). قد يُعرض المحتوى أعلاه على نحو ناقص."
@@ -12218,10 +12189,6 @@ msgstr "رفض المزوّد الطلب (HTTP {0}). تحقق من مفتاح AP
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "رفض المزوّد الطلب. تحقق من مفتاح API ومعرّف النموذج."
-
-#: src/comments/comment-chips.tsx
-msgid "The quoted text is no longer in the document — the agent will be told."
-msgstr "لم يعد النص المقتبس في المستند — سيُبلَّغ الوكيل بذلك."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
@@ -12599,7 +12566,7 @@ msgstr "يؤدي هذا إلى إزالة {0}/{1} نهائيًا من المها
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "يزيل هذا {path} نهائيًا. ستفشل الوكلاء التي تشير إلى هذا القالب بالاسم حتى يُنشأ من جديد أو يحل محله قالب في مجلد أب."
 
-#: src/comments/CommentsTab.tsx
+#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "This project"
 msgstr "هذا المشروع"
@@ -13090,9 +13057,14 @@ msgstr "خطأ غير معروف"
 msgid "unlink"
 msgstr "فك الارتباط"
 
-#: src/comments/CommentSendFooter.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Unmark every comment"
 msgstr "إلغاء تحديد كل التعليقات"
+
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Unmark every comment in {0}"
+msgstr "إلغاء تحديد كل التعليقات في {0}"
 
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
@@ -13398,6 +13370,10 @@ msgstr "عرض {name}"
 #: src/components/AssetPreview.tsx
 msgid "View as text"
 msgstr "العرض كنص"
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "View comments"
+msgstr "عرض التعليقات"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "View diff for edit {burstNumber} of {docName}"

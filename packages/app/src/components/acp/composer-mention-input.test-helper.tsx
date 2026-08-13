@@ -18,6 +18,7 @@
  * join (`existing\n\nappended`) the rescue/staged-draft tests assert.
  */
 
+import type { JSONContent } from '@tiptap/core';
 import { type Ref, useImperativeHandle, useRef } from 'react';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
 
@@ -25,6 +26,7 @@ export function MockComposerMentionInput({
   ref,
   ariaLabel,
   onEmptyChange,
+  onContentChange,
   onSubmit,
   onEscape,
   className,
@@ -35,6 +37,7 @@ export function MockComposerMentionInput({
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
   onEmptyChange: (isEmpty: boolean) => void;
+  onContentChange?: (doc: JSONContent) => void;
   onSubmit: () => void;
   onEscape?: () => void;
   className?: string;
@@ -43,7 +46,25 @@ export function MockComposerMentionInput({
   testId?: string;
 }) {
   const localRef = useRef<HTMLTextAreaElement>(null);
-  const notify = () => onEmptyChange((localRef.current?.value.trim() ?? '') === '');
+  // Both callbacks, on every edit — the real field fires them together, and a
+  // double that only carried `onEmptyChange` left every host reading the live
+  // draft (`ThreadCard`'s click-away commit) looking at a permanent `null`. A
+  // test for "the unmount saves what I typed" then passed with nothing typed.
+  //
+  // A paragraph of plain text: hosts read this back through `getContent`, not
+  // by walking the doc, so the shape only has to be a doc TipTap would accept.
+  const notify = () => {
+    const value = localRef.current?.value ?? '';
+    onEmptyChange(value.trim() === '');
+    onContentChange?.({
+      type: 'doc',
+      content: [
+        value === ''
+          ? { type: 'paragraph' }
+          : { type: 'paragraph', content: [{ type: 'text', text: value }] },
+      ],
+    });
+  };
   useImperativeHandle(ref, () => ({
     focus: () => localRef.current?.focus(),
     focusEnd: () => {
@@ -55,7 +76,7 @@ export function MockComposerMentionInput({
     blur: () => localRef.current?.blur(),
     clear: () => {
       if (localRef.current) localRef.current.value = '';
-      onEmptyChange(true);
+      notify();
     },
     setText: (text: string) => {
       if (localRef.current) localRef.current.value = text;

@@ -360,7 +360,10 @@ export class CommentService {
    * that is an identity gate, not attribution, and nothing here can record it.
    */
   async editComment(threadId: string, body: string): Promise<CommentThreadMeta> {
-    return this.mutate(threadId, { latestComment: body });
+    // Stamped only here. Resolving, queueing, and re-anchoring all change the
+    // thread, but the card reads this as "when this text was last written" —
+    // moving it on a resolve would say the words changed when they did not.
+    return this.mutate(threadId, { latestComment: body, updatedAt: this.now() });
   }
 
   async resolve(threadId: string): Promise<CommentThreadMeta> {
@@ -371,9 +374,16 @@ export class CommentService {
    * Reopen a closed thread. Its anchor state was not preserved under `resolved`
    * — deliberately, since a closed thread's anchor is moot — so the re-find
    * immediately re-establishes whether the passage is still there.
+   *
+   * Comes back QUEUED, the state a send cleared. Reopening is the correction for
+   * a send that did not settle the thing, so the next act is another send; the
+   * whole feature already queues on write rather than asking twice, and this was
+   * the one place it asked twice. A reviewer who reopened only to read unticks in
+   * one click, which is the cheap direction — a comment silently left out of a
+   * batch the reviewer thought they had built is the expensive one.
    */
   async reopen(threadId: string): Promise<CommentThreadMeta> {
-    await this.mutate(threadId, { state: 'anchored' });
+    await this.mutate(threadId, { state: 'anchored', queued: true });
     return this.refindOnLoad(threadId);
   }
 
@@ -627,22 +637,44 @@ export class CommentService {
 
     let changed = false;
     for (const meta of threads) {
-      let state: 'anchored' | 'orphaned';
       if (meta.target.kind === 'property') {
         // Unreadable frontmatter is not evidence the address is gone; skip,
         // exactly as an unreadable body leaves every body thread alone above.
         const result = await this.refindProperty(docName, meta.target, meta.anchor, frontmatter);
         if (result === null) continue;
-        state = result.state;
-      } else {
-        // A body thread without an anchor is malformed rather than orphaned —
-        // leave it as it is instead of reporting a loss the document didn't cause.
-        if (meta.anchor === null) continue;
-        state = refind(docBody, meta.anchor).status === 'anchored' ? 'anchored' : 'orphaned';
+        if (result.state === meta.state) continue;
+        await this.mutate(meta.threadId, { state: result.state });
+        changed = true;
+        continue;
       }
-      if (state === meta.state) continue;
-      await this.mutate(meta.threadId, { state });
-      changed = true;
+      // A body thread without an anchor is malformed rather than orphaned —
+      // leave it as it is instead of reporting a loss the document didn't cause.
+      if (meta.anchor === null) continue;
+      const result = refind(docBody, meta.anchor);
+      if (result.status === 'orphaned') {
+        if (meta.state === 'orphaned') continue;
+        await this.mutate(meta.threadId, { state: 'orphaned' });
+        changed = true;
+        continue;
+      }
+      // A REWRITTEN quote is persisted and broadcast — editing the anchored
+      // passage recovers through the brackets, and keeping only the
+      // anchored/orphaned bit (as this pass once did) left the stored quote
+      // naming text no longer in the document: the panel card showed the old
+      // words until some later dispatch happened to re-find. Re-captured whole,
+      // context included, exactly as `refindOnLoad` does.
+      //
+      // A mere position drift is deliberately NOT persisted here. This pass
+      // runs on every settle of every document, so a hint write per thread per
+      // keystroke burst is real load for a value that is only a hint — the
+      // rare `refindOnLoad` refreshes it. The quote is different: the panel
+      // RENDERS it, so staleness there is user-visible.
+      const anchor =
+        result.rewritten === true ? createAnchor(docBody, result.start, result.end) : undefined;
+      const stateChanged = meta.state !== 'anchored';
+      if (anchor === undefined && !stateChanged) continue;
+      await this.mutate(meta.threadId, { ...(anchor ? { anchor } : {}), state: 'anchored' });
+      if (stateChanged || anchor !== undefined) changed = true;
     }
     return changed;
   }
@@ -751,6 +783,8 @@ export class CommentService {
       literal.length > 0 ? literal : findAllPassages(docBody, quote, { syntaxIn: 'haystack' });
     if (hits.length === 0) throw new PassageNotFoundError(quote);
     if (hits.length === 1) return hits[0];
+    // No `contextIsMarkdown` here, unlike `refind`: this context came from the
+    // editor and is rendered text, so it carries no syntax to be elastic about.
     return bestByContext(docBody, hits, { prefix: input.prefix, suffix: input.suffix })[0];
   }
 

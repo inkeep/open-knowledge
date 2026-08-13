@@ -25,7 +25,6 @@ import { commentQuoteText } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { posToDOMRect } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
-import { MessageSquare, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { requestDocPanelTab } from '@/components/doc-panel-events';
@@ -36,8 +35,10 @@ import {
 } from '@/editor/ComposerMentionInput';
 import { getEditorView } from '@/editor/utils/get-editor-view';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { cn } from '@/lib/utils';
 import { setCommentDraftRange } from './anchor-decorations';
 import { captureSelectionContext } from './anchor-search';
+import { useCommentsPanelOnScreen } from './comments-panel-visibility';
 import { selectedSpan } from './selected-span';
 import { createThread, emitStartComment, subscribeStartComment } from './store';
 
@@ -63,6 +64,9 @@ export function CommentSelectionAffordance({
   const { t } = useLingui();
   const [captured, setCaptured] = useState<Captured | null>(null);
   const [empty, setEmpty] = useState(true);
+  // Drives whether this card offers a route to the queue at all (see the row
+  // below the field).
+  const commentsOnScreen = useCommentsPanelOnScreen();
   const inputRef = useRef<ComposerMentionInputHandle>(null);
   const floatingRef = useRef<HTMLDivElement>(null);
 
@@ -227,31 +231,15 @@ export function CommentSelectionAffordance({
   return createPortal(
     <div
       ref={floatingRef}
-      className="z-[60] flex w-80 flex-col gap-2 rounded-lg border bg-popover p-3 shadow-lg"
+      // Same borrowed `PopoverContent` chrome as the thread popover, and for the
+      // same reason — a virtual anchor Radix cannot take.
+      className="z-[60] flex w-80 flex-col gap-2 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
       style={{ position: 'fixed', top: 0, left: 0 }}
       data-testid="comment-composer"
     >
-      {/* Dismiss sits in the corner rather than the action row: the row is for
-          filing the comment, and a button beside that one made discarding look
-          like a peer of it.
-
-          Its own row rather than absolute positioning — overlaying the card
-          floated it on top of the textarea's rounded corner, and any offset that
-          clears the corner is a magic number that breaks the moment the field's
-          radius or padding changes. A row cannot overlap by construction; the
-          negative margins only pull it tight into the corner. */}
-      <div className="-mt-1 -mr-1 -mb-1 flex justify-end">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          aria-label={t`Discard this comment`}
-          onClick={reset}
-          className="size-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
+      {/* No dismiss button: Escape and a click anywhere outside both discard
+          the draft (see `reset`'s two callers above), and a card this small
+          spent a whole row saying so. */}
       {/* The chat composer's field, not a plain textarea — so `@` mentions a
           file here exactly as it does there, and the comment an agent receives
           carries real paths rather than a name it has to go find.
@@ -280,16 +268,29 @@ export function CommentSelectionAffordance({
           it annotates. `normal-case tracking-normal` undoes the button's
           uppercase treatment for the glyph alone; the aria-label keeps it out of
           the accessible name. */}
-      <div className="flex items-center justify-between gap-1.5">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => requestDocPanelTab('comments')}
-          className="gap-1 px-2 text-muted-foreground hover:text-foreground"
-        >
-          <MessageSquare className="size-3.5" aria-hidden="true" />
-          <Trans>Open Comments</Trans>
-        </Button>
+      {/* `justify-end` when the route out is withheld, so the post button keeps
+          the far end of the row it already sits at rather than sliding left into
+          the space the missing button leaves. */}
+      <div
+        className={cn(
+          'flex items-center gap-1.5',
+          commentsOnScreen ? 'justify-end' : 'justify-between',
+        )}
+      >
+        {/* Withheld while the queue is already on screen: the button's whole job
+            is to take you there, and pressing it from in front of an open
+            Comments tab changes nothing the eye can see. Dropping it also leaves
+            the card with a single action while the panel is up. */}
+        {commentsOnScreen ? null : (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => requestDocPanelTab('comments')}
+            className="px-2 text-muted-foreground hover:text-foreground"
+          >
+            <Trans>View comments</Trans>
+          </Button>
+        )}
         <Button size="sm" onClick={post} disabled={empty} aria-label={t`Add Comment (Enter)`}>
           <Trans>Add Comment</Trans>
           <span className="ml-0.5 text-[11px] tracking-normal normal-case text-primary-foreground/75">

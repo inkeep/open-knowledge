@@ -20,6 +20,7 @@ function thread(id: string, docName: string): CommentThread {
     status: 'open',
     body: `body ${id}`,
     createdAt: 1000,
+    updatedAt: 1000,
     queued: true,
   };
 }

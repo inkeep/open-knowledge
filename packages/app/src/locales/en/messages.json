@@ -54,6 +54,7 @@
     "03wKPg": ["A report helps us find the cause. Nothing is sent until you review it."],
     "04RA0-": ["Failed to enable sync — ", ["detail"]],
     "04XyCH": ["Adds a managed block to ", ["0"]],
+    "05F1GY": ["The original text was deleted. You can re-place this comment on selected text."],
     "05n5wS": ["Doc mention suggestions"],
     "06SZfb": ["Template \"", ["trimmedTitle"], "\" created"],
     "07eGJB": ["Couldn't move skill: ", ["0"]],
@@ -123,7 +124,6 @@
     "11ukmX": ["Rename failed: ", ["0"]],
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
-    "15MMFT": ["Show these comments"],
     "15ZHCt": ["No body changes at this version."],
     "161NCV": ["Stopping"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
@@ -196,7 +196,6 @@
     "2QM24L": ["All tags"],
     "2RnFoM": ["Couldn't resume this chat: ", ["0"]],
     "2Snes1": ["This sends the link's address off your machine"],
-    "2UgoBZ": ["gone"],
     "2VSPan": ["Terminal closed to make room for the agent panel."],
     "2XQ8Ww": ["Open preview when agent edits"],
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
@@ -221,6 +220,7 @@
     "2vIPtm": ["Open link in new tab"],
     "2wTb8w": ["Set it up on its own page under Plugins."],
     "2wxgft": ["Rename"],
+    "2zvUIK": ["Show these comments in the Comments panel"],
     "322lyb": ["Highlight tips, warnings, and notes."],
     "34qyH5": ["Could not reach server"],
     "36WXSC": ["Couldn't delete template: ", ["error"]],
@@ -329,7 +329,6 @@
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
     "4d0VYJ": ["We’ll create a safe theme ID from this name."],
-    "4eO-iB": ["Discard this comment"],
     "4g19V6": ["Failed to update property"],
     "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
@@ -347,7 +346,6 @@
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],
     "4uNLmk": ["Pulling"],
-    "4uaCUA": [["mins"], "m"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
     "4wo5UV": ["Install selected"],
     "4xtLTl": ["Hidden folder “", ["basename"], "”"],
@@ -373,7 +371,6 @@
     "5ClEAu": ["Inline hashtag for cross-doc grouping."],
     "5D3Ior": ["Hide folder"],
     "5F5HYj": [["ahead"], " ahead, ", ["behind"], " behind"],
-    "5GBQ-F": ["Select this text in the property"],
     "5GKMSz": ["Indent or outdent the current list item."],
     "5GRxoA": ["Search files, folders, and commands for the current workspace."],
     "5HJpFY": ["Queues behind the running turn"],
@@ -395,6 +392,11 @@
       "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
     ],
     "5Tk8Fb": ["Loading files"],
+    "5TmrYN": [
+      ["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }],
+      " across ",
+      ["0", "plural", { "one": ["#", " file"], "other": ["#", " files"] }]
+    ],
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
     "5Y17qa": ["Applies to (globs — leading ! excludes; empty means every doc)"],
@@ -945,6 +947,7 @@
     "DbILZA": ["No matches. Some files are excluded from search (hidden or ignored files)."],
     "DcFr-y": ["OpenKnowledge deleted a document"],
     "DcLaew": ["Custom theme"],
+    "Dd6j2Q": ["View comments"],
     "DeDYLr": ["Unrecognized wiki link"],
     "DgcGrb": [["fileCount", "plural", { "one": ["file"], "other": ["files"] }]],
     "DhLHEb": ["Failed to load activity"],
@@ -1112,6 +1115,7 @@
     "FgQ7XZ": ["Couldn't load your bug reports."],
     "FgRAvd": ["Logs & system info"],
     "Fhp4Gn": ["View plugin"],
+    "FiyNln": ["Jump to selected text in property"],
     "FjkaiT": ["Zoom out"],
     "FqGWeR": ["Couldn't reach the agent registry."],
     "FqTpiN": ["Bird wiki"],
@@ -1135,7 +1139,6 @@
     "G0YZ-I": ["Indent or outdent list item"],
     "G1Gw0v": ["New template"],
     "G1XxbZ": ["Checkbox"],
-    "G1zJlD": ["Hide resolved comments"],
     "G4m8rL": ["Comment on selection"],
     "G6Lrs_": ["Stop ", ["0"], " reading this skill"],
     "G7-rf8": ["Pattern syntax error: ", ["message"]],
@@ -1335,6 +1338,7 @@
       "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
     ],
     "JDHcCM": ["Loading popular skills"],
+    "JDQ5I5": ["That document didn't open in time. Try again once it has synced."],
     "JE21eh": ["Symlink to ", ["targetPath"]],
     "JG_8KT": ["Couldn't pull from GitHub. Check your connection and sign-in, then retry."],
     "JHf6qZ": ["you@company.com"],
@@ -1408,6 +1412,7 @@
     "KZLdgR": ["See <0>#design-docs</0> for the latest specs."],
     "K_vT1F": ["Upstream sync"],
     "KaFCD3": ["Open this link in a new tab and collapse the graph."],
+    "KeXgA-": ["Couldn't find that passage — the text it was on may have changed."],
     "Kf7GG5": ["Restarting the server…"],
     "Kge76t": ["Row options"],
     "Kh1n4a": [
@@ -1538,7 +1543,6 @@
     "M92_0q": ["Close comment"],
     "M9597s": ["Preparing share URL..."],
     "MBKkUy": ["skills.sh is unavailable; showing GitHub results (no install ranking)."],
-    "MBe6TE": ["The quoted text is no longer in the document — the agent will be told."],
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Hard to use"],
     "MDZSJe": ["When the agent runs its scheduled work."],
@@ -1644,7 +1648,6 @@
     "NeY1Np": ["Slidev timed out while starting. Try again."],
     "NfraGd": ["Other ways to install Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
-    "NiGIcB": ["Open Comments"],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Edit ", ["tag"]],
     "NkXEFS": ["Restore failed — document unchanged"],
@@ -1751,6 +1754,7 @@
     "PBxg_E": ["Not now"],
     "PCSkw2": ["Skills"],
     "PGPGsL": ["Add description"],
+    "PHHEuH": ["Hide resolved comments (", ["0"], ")"],
     "PIMM5l": ["You're subscribed!"],
     "PKLY-1": ["Opening..."],
     "PKjGhT": ["Headings"],
@@ -1853,7 +1857,6 @@
     "QpSqAP": [
       "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
     ],
-    "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
     "Qvls7J": ["Eng specs"],
     "Qw-7Ie": [
@@ -1992,6 +1995,7 @@
     ],
     "T-654M": ["Loading PDF"],
     "T0OVm7": ["The default branch is protected — pushes need a pull request."],
+    "T2fvhw": ["Unmark every comment in ", ["0"]],
     "T3Mld1": ["Window"],
     "T3j-7o": ["e.g. Switching projects while a sync was running"],
     "TBfy1C": ["Couldn't start Slidev."],
@@ -2045,7 +2049,6 @@
     "UDFrWm": ["Checking GitHub connection..."],
     "UD_onR": ["Mulling…"],
     "UDb2YD": ["React"],
-    "UEdTEN": ["Orphaned"],
     "UGeJuP": ["Allowed values (empty = any)"],
     "UGtPix": ["GitHub connection expired. Connect again to continue."],
     "UH0Zqw": ["This isn’t a regular theme file"],
@@ -2117,7 +2120,6 @@
     "UkQGhd": ["Hide replace"],
     "UlVARL": ["Enable Slidev"],
     "Uobeu9": ["Adds the skill to ", ["rootRel"], " — also read by ", ["0"]],
-    "Uoux8m": ["Include this comment in the next send"],
     "Up2_7p": ["Copy full path"],
     "UpCz01": ["This doc"],
     "UpOct_": ["Add your comments to this message"],
@@ -2236,6 +2238,7 @@
     "Wh0im4": ["editing [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Strikethrough"],
     "Wi-VWy": ["Couldn't send the report"],
+    "WkQ0Z_": ["Mark every comment in ", ["0"], " to send"],
     "WkTLN7": ["Show only markdown files"],
     "WkyP2p": ["Skills section"],
     "WmPbvm": ["Get product updates in your inbox."],
@@ -2283,7 +2286,6 @@
     "XV5sC0": ["Open worktree"],
     "XVnIvs": ["Install skills"],
     "XW18jo": ["Page headings response did not match success schema"],
-    "XWEqQj": [["days"], "d"],
     "XXA1b_": [["componentLabel"], " (empty)"],
     "XYZ7tp": ["Unresolvable"],
     "XYlJJT": ["Setting up"],
@@ -2532,7 +2534,6 @@
       "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
     ],
     "_XWY2J": ["Terminal disabled"],
-    "_YEyHO": ["Show resolved comments"],
     "_YWqV2": ["OpenKnowledge resolved a conflict"],
     "_ayOfA": [
       "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
@@ -2544,7 +2545,6 @@
     "_gO_m8": ["Waiting for your approval"],
     "_gkGSK": ["deleted template"],
     "_mcDqU": [["count"], " skills at this source"],
-    "_oqig9": [["hours"], "h"],
     "_pY_Vq": ["The repository was moved, renamed, or deleted."],
     "_qD6mn": ["Pick the folder where you've cloned it."],
     "_rP3HI": [["minutes"], "m ago"],
@@ -2970,6 +2970,7 @@
     "gBbxn_": ["Checking sign-in status"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
     "gHSAWT": ["Create worktree <0>“<1>", ["typedName"], "</1>”</0>"],
+    "gHb5bB": ["Show resolved comments (", ["0"], ")"],
     "gITz7o": [
       "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
     ],
@@ -3190,7 +3191,6 @@
     "iz1LdD": [
       "Changed outside OK since it last wrote here — the state shown is what's on disk now"
     ],
-    "j0ItfO": ["Show resolved (", ["0"], ")"],
     "j15ZSH": ["Send comments to"],
     "j2229h": ["Removing OpenKnowledge files…"],
     "j2kt1j": [
@@ -3290,7 +3290,6 @@
       ["targetNoun"],
       " will appear once the branch syncs."
     ],
-    "kMKqP_": ["Hide these comments"],
     "kNGLX6": ["Retrying…"],
     "kNqMMd": ["Folder"],
     "kRTXGw": [
@@ -3525,7 +3524,6 @@
     "nBgzKO": ["Make this the source — the skill's real folder moves here"],
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
-    "nG-XA9": ["The anchored text is gone. You can re-place it on selected text."],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
     ],
@@ -3590,6 +3588,7 @@
     "nzaV6Q": ["Page thumbnails"],
     "o0bHtA": ["By OpenKnowledge"],
     "o49mDZ": ["Loading timeline history"],
+    "o7AkQ0": ["Show resolved"],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Auto-update from source"],
     "o9yN4T": ["Move to Recycle Bin"],
@@ -3840,7 +3839,6 @@
     "roAe2K": ["Link URL"],
     "roiUQQ": ["This page doesn't link to anything yet."],
     "rppgXF": ["Disconnecting"],
-    "rscgd_": ["Go to this comment in ", ["0"]],
     "rssK8c": ["Ignore patterns (raw text)"],
     "rtdR4v": ["Show or hide Files"],
     "rtir7c": ["unknown"],

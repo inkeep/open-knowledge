@@ -49,7 +49,18 @@ describe('EmptyStateHeader runtime behavior', () => {
     expect(screen.getByTestId('ok-blob-probe').getAttribute('data-size')).toBe('64');
 
     const root = screen.getByTestId('ok-blob-probe').parentElement;
-    expectVisualClassTokens(root?.className, ['flex', 'items-center', 'gap-4']);
+    // Stacked and start-aligned by default; the centered row is a container
+    // query, not the base layout — the blob sits above the title in a narrow
+    // pane and beside it once the pane is wide enough.
+    expectVisualClassTokens(root?.className, [
+      'flex',
+      'flex-col',
+      'items-start',
+      'gap-3',
+      '@md/emptystate:flex-row',
+      '@md/emptystate:items-center',
+      '@md/emptystate:gap-4',
+    ]);
     expectVisualClassTokensAbsent(root?.className, ['inline-flex']);
 
     rerender(<EmptyStateHeader title="Choose a starter" celebrateSignal={4} />);

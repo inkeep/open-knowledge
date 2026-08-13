@@ -104,6 +104,17 @@ export const CommentThreadMetaSchema = z.object({
   latestComment: z.string(),
   createdBy: z.string().min(1),
   createdAt: z.number(),
+  /**
+   * When the comment text was last revised — absent on a thread nobody has
+   * edited, which is most of them.
+   *
+   * Optional rather than defaulted to `createdAt`: a card that shows when a
+   * comment was last touched has to be able to tell "written then" from
+   * "rewritten then", and a filler value erases that difference on every thread
+   * ever created. Optional also lets threads written before this field existed
+   * parse unchanged.
+   */
+  updatedAt: z.number().optional(),
 });
 export type CommentThreadMeta = z.infer<typeof CommentThreadMetaSchema>;
 

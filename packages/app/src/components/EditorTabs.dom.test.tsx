@@ -1316,7 +1316,9 @@ describe('EditorTabs runtime behavior', () => {
 
     const unpinButton = screen.getByRole('button', { name: 'Unpin docs/team/readme.txt' });
     expect(unpinButton.getAttribute('title')).toBeNull();
-    expectVisualClassTokens(unpinButton.className, ['text-primary']);
+    // `text-primary!` — the important modifier is part of the token, and the
+    // pinned tint only holds because it outranks the button variant's own color.
+    expectVisualClassTokens(unpinButton.className, ['text-primary!']);
     fireEvent.click(unpinButton);
     expect(unpinTab).toHaveBeenCalledWith('docs/team/readme');
 

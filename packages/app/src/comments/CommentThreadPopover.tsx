@@ -22,6 +22,7 @@ import { propertyRowRect } from './property-row-rect';
 import {
   emitOpenThreadPopover,
   subscribeOpenThreadPopover,
+  useAllThreads,
   useCommentThreads,
   useQueueSelection,
 } from './store';
@@ -29,7 +30,6 @@ import { ThreadCard } from './ThreadCard';
 
 export function CommentThreadPopover({ editor, docName }: { editor: Editor; docName: string }) {
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [now] = useState(() => Date.now());
   const floatingRef = useRef<HTMLDivElement>(null);
   const threads = useCommentThreads(docName);
   const thread = threadId ? (threads.find((t) => t.id === threadId) ?? null) : null;
@@ -45,14 +45,31 @@ export function CommentThreadPopover({ editor, docName }: { editor: Editor; docN
     return subscribeOpenThreadPopover((id) => setThreadId(id));
   }, []);
 
+  // Another document's thread — that document's own instance is showing it.
+  //
+  // The editor pool keeps recently visited docs mounted, so several of these
+  // exist at once and the open signal is a single project-wide bus that reaches
+  // all of them. An instance that answered a thread it does not own by
+  // BROADCASTING a close slammed the popover shut for the instance that had just
+  // opened it, and which one spoke last was down to tree order — so clicking a
+  // passage worked or did nothing depending on how many tabs were open.
+  //
+  // Looked up across every doc rather than inferred from this one's miss: "not
+  // in my list" alone cannot tell a thread that belongs elsewhere from one that
+  // was deleted, and only the second is this instance's business.
+  const allThreads = useAllThreads();
+  const ownedElsewhere =
+    threadId !== null && thread === null && allThreads.some((t) => t.id === threadId);
+
   // Auto-close when the thread is gone or no longer anchored (resolved/orphaned).
   // Announced rather than set locally: the margin rail mirrors this state and
   // would otherwise keep the marker lit for a popover that closed itself.
   useEffect(() => {
+    if (ownedElsewhere) return;
     if (threadId !== null && (thread === null || thread.status !== 'open')) {
       emitOpenThreadPopover(null);
     }
-  }, [threadId, thread]);
+  }, [threadId, thread, ownedElsewhere]);
 
   // Pin the card to the anchored text.
   useEffect(() => {
@@ -107,6 +124,11 @@ export function CommentThreadPopover({ editor, docName }: { editor: Editor; docN
       const target = event.target as HTMLElement | null;
       if (floatingRef.current?.contains(target)) return;
       if (target?.closest('[data-comment-thread]')) return;
+      // The card's edit field is the `@`-mention composer, whose results portal
+      // to `document.body` — outside this card by DOM, inside it by intent.
+      // Picking a file must not read as clicking away. Same guard the selection
+      // composer carries, for the same popup.
+      if (target?.closest('[data-suggestion-popup]')) return;
       emitOpenThreadPopover(null);
     };
     const onKey = (event: KeyboardEvent) => {
@@ -125,16 +147,31 @@ export function CommentThreadPopover({ editor, docName }: { editor: Editor; docN
   return createPortal(
     <div
       ref={floatingRef}
-      className="z-50 w-80 rounded-lg bg-popover shadow-lg"
+      // Chrome borrowed from `PopoverContent`, since this cannot BE one: the
+      // card follows a ProseMirror text range through a floating-ui virtual
+      // element, and Radix's anchor takes a DOM node. Its border and padding are
+      // deliberately left off — `ThreadCard` brings both, and doubling them
+      // draws two outlines a couple of pixels apart.
+      className="z-50 w-80 rounded-lg bg-popover text-popover-foreground shadow-md"
       style={{ position: 'fixed', top: 0, left: 0 }}
     >
+      {/* No quote and no close button: the card is pinned to the passage it is
+          about, with that passage highlighted underneath, and Escape or a click
+          outside dismisses it (see the effect above). */}
       <ThreadCard
+        // Keyed, so retargeting this popover REMOUNTS the card rather than
+        // handing the next thread the last one's state. Clicking a second
+        // highlight while the first is open swaps `thread` in place — no null
+        // in between — and an unkeyed card kept its open edit field, its seeded
+        // draft and its settled flag across the swap, which filed one comment's
+        // words as a revision of another. The remount also lets the outgoing
+        // card's click-away commit save its own edit, against its own id.
+        key={thread.id}
         thread={thread}
-        now={now}
         focused={false}
+        showQuote={false}
         sending={sending.includes(thread.id)}
         cardRef={() => {}}
-        onClose={() => emitOpenThreadPopover(null)}
       />
     </div>,
     document.body,

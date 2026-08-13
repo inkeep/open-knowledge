@@ -32,6 +32,7 @@ import { AlertTriangle, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { CommentedDocProvider } from '@/comments/CommentedDocContext';
 import { PropertyCommentButton } from '@/comments/PropertyCommentButton';
+import { usePropertyAnchorClick } from '@/comments/property-anchor-click';
 import type { AddPropertyFieldSuggestion } from '@/components/AddPropertyNameField';
 import { FrontmatterBindingProvider } from '@/components/FrontmatterBindingContext';
 import {
@@ -182,6 +183,10 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   // context" button.
   const panelRef = useRef<HTMLDivElement>(null);
   usePublishFrontmatterSelection(panelRef, docName);
+  // Clicking a commented value opens its thread, the way clicking a commented
+  // passage does in the body. Panel-scoped for the same reason the selection
+  // hook is: hidden entries in the editor pool keep their panels mounted.
+  usePropertyAnchorClick(panelRef, docName);
 
   // A doc's property panel shows the doc's OWN frontmatter only. Folder
   // frontmatter is descriptive (about the folder) and does not cascade into

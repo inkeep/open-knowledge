@@ -511,6 +511,11 @@ msgstr "{conflictCount, plural, other {# berkas berkonflik}}"
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# komentar}}"
 
+#. placeholder {0}: docs.length
+#: src/comments/comment-chips.tsx
+msgid "{count, plural, one {# comment} other {# comments}} across {0, plural, one {# file} other {# files}}"
+msgstr "{count, plural, other {# komentar}} di {0, plural, other {# berkas}}"
+
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, other {# dokumen}}"
@@ -558,10 +563,6 @@ msgstr "{count} keterampilan di sumber ini"
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# hari lalu}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{days}d"
-msgstr "{days}h"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
@@ -657,10 +658,6 @@ msgstr "{folderCount, plural, other {folder}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} bintang GitHub"
 
-#: src/comments/ThreadCard.tsx
-msgid "{hours}h"
-msgstr "{hours}j"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -726,10 +723,6 @@ msgstr "{localizedMessage} pada baris {displayLine}"
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# mnt lalu}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{mins}m"
-msgstr "{mins}mnt"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{minutes} min ago"
@@ -812,10 +805,6 @@ msgstr "Properti {propPanelDescriptorLabel}"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "{seconds}s ago"
 msgstr "{seconds} dtk lalu"
-
-#: src/comments/ThreadCard.tsx
-msgid "{secs}s"
-msgstr "{secs}dtk"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{settingsDescriptorLabel} properties"
@@ -2496,7 +2485,6 @@ msgstr "Mengkloning {repoName}..."
 msgid "Cloning..."
 msgstr "Mengkloning..."
 
-#: src/comments/ThreadCard.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -3386,6 +3374,10 @@ msgstr "Tidak bisa memutus koneksi — silakan coba lagi."
 #: src/components/skill-actions.tsx
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" tidak bisa digandakan: {1}"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't find that passage — the text it was on may have changed."
+msgstr "Tidak dapat menemukan bagian teks itu — teks yang ditandainya mungkin telah berubah."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -4319,10 +4311,6 @@ msgstr "Membedakan templat yang namanya mirip di menu."
 msgid "Discard local edits, restore the installed version"
 msgstr "Buang suntingan lokal, pulihkan versi yang terpasang"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Discard this comment"
-msgstr "Buang komentar ini"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnect"
 msgstr "Putuskan koneksi"
@@ -4422,7 +4410,6 @@ msgstr "Dokumen bertag <0>#{tagName}</0>"
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
 
-#: src/comments/comment-chips.tsx
 #: src/comments/ThreadCard.tsx
 msgid "Don't send this comment"
 msgstr "Jangan kirim komentar ini"
@@ -5838,15 +5825,6 @@ msgstr "Ke baris {0}"
 msgid "Go to line {0} in {1}"
 msgstr "Ke baris {0} di {1}"
 
-#. placeholder {0}: docBasename(thread.docName)
-#: src/comments/comment-chips.tsx
-msgid "Go to this comment in {0}"
-msgstr "Ke komentar ini di {0}"
-
-#: src/comments/comment-chips.tsx
-msgid "gone"
-msgstr "hilang"
-
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "Bagus"
@@ -6058,9 +6036,10 @@ msgstr "Sembunyikan penggantian"
 msgid "Hide resolved"
 msgstr "Sembunyikan yang sudah selesai"
 
+#. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Hide resolved comments"
-msgstr "Sembunyikan komentar yang selesai"
+msgid "Hide resolved comments ({0})"
+msgstr "Sembunyikan komentar yang selesai ({0})"
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
@@ -6074,10 +6053,6 @@ msgstr "Sembunyikan bilah sisi"
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Sembunyikan Terminal"
-
-#: src/comments/comment-chips.tsx
-msgid "Hide these comments"
-msgstr "Sembunyikan komentar ini"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -6302,10 +6277,6 @@ msgstr "Di aplikasi (beta)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Di aplikasi Claude Desktop"
-
-#: src/comments/comment-chips.tsx
-msgid "Include this comment in the next send"
-msgstr "Sertakan komentar ini pada pengiriman berikutnya"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
@@ -6663,6 +6634,10 @@ msgstr "Lompat ke tab terakhir"
 #: src/editor/components/Pdf.tsx
 msgid "Jump to page {pageNumber}"
 msgstr "Lompat ke halaman {pageNumber}"
+
+#: src/comments/ThreadCard.tsx
+msgid "Jump to selected text in property"
+msgstr "Lompat ke teks terpilih di properti"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Jump to tab 1-8"
@@ -7161,7 +7136,12 @@ msgstr "Petakan arsitekturnya"
 msgid "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
 msgstr "Menandai sebuah blok sebagai sumber kebenaran. Cermin di tempat lain diperbarui langsung saat Anda menyuntingnya."
 
-#: src/comments/CommentSendFooter.tsx
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Mark every comment in {0} to send"
+msgstr "Tandai semua komentar di {0} untuk dikirim"
+
+#: src/comments/CommentListPanel.tsx
 msgid "Mark every comment to send"
 msgstr "Tandai semua komentar untuk dikirim"
 
@@ -8401,10 +8381,6 @@ msgstr "Membuka panel diagnostik lint CodeMirror."
 msgid "Open comment"
 msgstr "Buka komentar"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Open Comments"
-msgstr "Buka Komentar"
-
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
 msgid "Open containing folder"
@@ -8877,10 +8853,6 @@ msgstr "Berkas asli — sebelum suntingan agen ini."
 #: src/components/GraphPanel.tsx
 msgid "Orphan mode"
 msgstr "Mode yatim"
-
-#: src/comments/ThreadCard.tsx
-msgid "Orphaned"
-msgstr "Yatim"
 
 #: src/components/GraphPanel.tsx
 msgid "Orphans"
@@ -9366,7 +9338,6 @@ msgid "project"
 msgstr "proyek"
 
 #: src/components/CommandPalette.tsx
-#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -10677,10 +10648,6 @@ msgstr "Pilih kemunculan berikutnya"
 msgid "Select the full source document."
 msgstr "Memilih seluruh dokumen sumber."
 
-#: src/comments/ThreadCard.tsx
-msgid "Select this text in the property"
-msgstr "Pilih teks ini di properti"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
 msgstr "Memilih, masuk, atau keluar dari komponen blok dan blok sumber cadangan dari batas papan ketik."
@@ -11139,14 +11106,14 @@ msgstr "Tampilkan penanda masalah"
 msgid "Show replace"
 msgstr "Tampilkan penggantian"
 
+#: src/comments/CommentListPanel.tsx
+msgid "Show resolved"
+msgstr "Tampilkan yang selesai"
+
 #. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Show resolved ({0})"
-msgstr "Tampilkan yang sudah selesai ({0})"
-
-#: src/comments/CommentListPanel.tsx
-msgid "Show resolved comments"
-msgstr "Tampilkan komentar yang selesai"
+msgid "Show resolved comments ({0})"
+msgstr "Tampilkan komentar yang selesai ({0})"
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
@@ -11166,8 +11133,8 @@ msgid "Show Terminal"
 msgstr "Tampilkan Terminal"
 
 #: src/comments/comment-chips.tsx
-msgid "Show these comments"
-msgstr "Tampilkan komentar ini"
+msgid "Show these comments in the Comments panel"
+msgstr "Tampilkan komentar ini di panel komentar"
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
@@ -12063,6 +12030,10 @@ msgstr "Terima kasih atas laporannya!"
 msgid "That branch is already open in another worktree."
 msgstr "Cabang itu sudah terbuka di worktree lain."
 
+#: src/comments/reveal-comment.ts
+msgid "That document didn't open in time. Try again once it has synced."
+msgstr "Dokumen itu tidak terbuka tepat waktu. Coba lagi setelah tersinkronisasi."
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "Endpoint itu tidak bisa dipakai. Masukkan URL https:// — http:// hanya diizinkan untuk localhost."
@@ -12107,10 +12078,6 @@ msgstr "Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "Kepribadian, nilai, dan gaya bicara agen."
-
-#: src/comments/ThreadCard.tsx
-msgid "The anchored text is gone. You can re-place it on selected text."
-msgstr "Teks berjangkarnya sudah hilang. Anda bisa menempatkannya ulang pada teks yang dipilih."
 
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
@@ -12190,6 +12157,10 @@ msgstr "Id model yang dilayani endpoint Anda. Ukuran vektornya terdeteksi otomat
 msgid "the open agent"
 msgstr "agen yang terbuka"
 
+#: src/comments/ThreadCard.tsx
+msgid "The original text was deleted. You can re-place this comment on selected text."
+msgstr "Teks aslinya telah dihapus. Anda dapat menempatkan ulang komentar ini pada teks terpilih."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "Pratinjau memblokir sumber daya yang tidak memenuhi aturan keamanannya (misalnya URL http:// polos, atau kode yang memakai eval). Konten di atas mungkin dirender tidak lengkap."
@@ -12214,10 +12185,6 @@ msgstr "Penyedianya menolak permintaannya (HTTP {0}). Periksa kunci API dan id m
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."
-
-#: src/comments/comment-chips.tsx
-msgid "The quoted text is no longer in the document — the agent will be told."
-msgstr "Teks yang dikutip sudah tidak ada di dokumen — agennya akan diberi tahu."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
@@ -12595,7 +12562,7 @@ msgstr "Ini menghapus {0}/{1} secara permanen dari skill “{2}”. Apa pun di S
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "Ini menghapus {path} secara permanen. Agen yang merujuk templat ini berdasarkan nama akan gagal sampai ia dibuat ulang atau digantikan oleh templat di folder induk."
 
-#: src/comments/CommentsTab.tsx
+#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "This project"
 msgstr "Proyek ini"
@@ -13086,9 +13053,14 @@ msgstr "Galat tidak diketahui"
 msgid "unlink"
 msgstr "lepas tautan"
 
-#: src/comments/CommentSendFooter.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Unmark every comment"
 msgstr "Hapus tanda semua komentar"
+
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Unmark every comment in {0}"
+msgstr "Hapus tanda semua komentar di {0}"
 
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
@@ -13394,6 +13366,10 @@ msgstr "Lihat {name}"
 #: src/components/AssetPreview.tsx
 msgid "View as text"
 msgstr "Lihat sebagai teks"
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "View comments"
+msgstr "Lihat komentar"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "View diff for edit {burstNumber} of {docName}"

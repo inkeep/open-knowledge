@@ -9,8 +9,9 @@
 
 import type { ReactNode } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { Streamdown } from 'streamdown';
+import { defaultRemarkPlugins, Streamdown } from 'streamdown';
 import { codeHighlighter } from '@/lib/acp/code-highlighter';
+import { remarkHardBreaks } from '@/lib/acp/remark-hard-breaks';
 
 export function AgentMarkdown({ text }: { text: string }): ReactNode {
   return (
@@ -46,6 +47,17 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         // cap tall blocks at max-h-80 with internal scroll, targeting the
         // stable `data-streamdown` hooks rather than its Tailwind classes.
         className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto"
+        // A lone newline ends the line, as it does in every chat client. The
+        // transcript renders sent messages too now, and those are typed by a
+        // person pressing Enter — not prose where only a blank line means a new
+        // block.
+        //
+        // SPREAD THE DEFAULTS FIRST. This prop REPLACES Streamdown's own set
+        // rather than adding to it, so passing a bare `[remarkHardBreaks]`
+        // silently dropped remark-gfm with it — tables and strikethrough stopped
+        // rendering in agent output, nowhere near the line that caused it.
+        // `defaultRemarkPlugins` is a RECORD keyed by name, not a list.
+        remarkPlugins={[...Object.values(defaultRemarkPlugins), remarkHardBreaks]}
         lineNumbers={false}
         controls={{ code: { copy: true, download: false }, table: false, mermaid: false }}
         // Shiki-backed syntax highlighting via the in-house curated-grammar

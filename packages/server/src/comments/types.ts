@@ -41,7 +41,11 @@ export {
   type PropertyPath,
 } from '@inkeep/open-knowledge-core';
 
-/** The fields a caller may change. Identity and provenance are not among them. */
+/**
+ * The fields a caller may change. Identity and provenance are not among them —
+ * `updatedAt` is the one time field here because it records a change rather than
+ * the thread's origin.
+ */
 export type CommentThreadPatch = Partial<
-  Pick<CommentThreadMeta, 'docName' | 'anchor' | 'state' | 'queued' | 'latestComment'>
+  Pick<CommentThreadMeta, 'docName' | 'anchor' | 'state' | 'queued' | 'latestComment' | 'updatedAt'>
 >;

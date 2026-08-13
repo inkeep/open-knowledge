@@ -5,6 +5,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Clock, Link2, ListTree, MessageSquare, Network } from 'lucide-react';
 import { lazy, Suspense, useEffect } from 'react';
 import { CommentsTab } from '@/comments/CommentsTab';
+import { setCommentsPanelOnScreen } from '@/comments/comments-panel-visibility';
 import {
   composeFixAllProblemsTerminalPaste,
   composeLintFixTerminalPaste,
@@ -95,6 +96,11 @@ interface DocPanelProps {
   onActiveTabChange: (tab: PanelTab) => void;
   /** Active mode — controlled by presence-bar avatar clicks + the back arrow. */
   mode: DocPanelMode;
+  /** Whether the right rail is collapsed. The panel stays MOUNTED at zero width
+   *  when it is, so this is the half of "on screen" the tree cannot see. Only
+   *  published outward (see `setCommentsPanelOnScreen`), never rendered — the
+   *  collapsed rail's own `inert` already handles focus and the a11y tree. */
+  isCollapsed?: boolean;
 }
 
 export function DocPanel({
@@ -103,6 +109,7 @@ export function DocPanel({
   activeTab,
   onActiveTabChange,
   mode,
+  isCollapsed = false,
 }: DocPanelProps) {
   const { t } = useLingui();
   // Live, mode-agnostic lint diagnostics for the active doc — drives both the
@@ -189,6 +196,15 @@ export function DocPanel({
   const tabs = singleFile ? baseTabs : [...baseTabs, ...COMMENT_TABS];
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
+  // Published for surfaces that offer a route TO the queue — the selection
+  // composer withholds its "View comments" button while the reader is already
+  // looking at one. The effective tab rather than `activeTab`: a persisted
+  // 'comments' selection is coerced away in single-file mode, and the button
+  // must stay on offer when the tab it points at is not the one showing.
+  useEffect(() => {
+    setCommentsPanelOnScreen(!isCollapsed && mode === 'doc' && effectiveTab === 'comments');
+    return () => setCommentsPanelOnScreen(false);
+  }, [isCollapsed, mode, effectiveTab]);
   return (
     <>
       {/* In `'doc'` mode: the info sub-tabs render as the panel header.

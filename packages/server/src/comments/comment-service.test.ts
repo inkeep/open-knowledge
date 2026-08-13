@@ -521,6 +521,26 @@ describe('CommentService — refindDoc (document settled)', () => {
     expect(docBodyReads).toBe(0);
   });
 
+  test('editing the anchored passage re-captures the quote the panel shows', async () => {
+    // The reported gap: the highlight follows an edited passage live (bracket
+    // recovery), but this pass kept only the anchored/orphaned bit — so the
+    // card's quote named text no longer in the document until some later
+    // dispatch re-found. A rewritten quote is user-visible state: persist it
+    // and say so, so clients refetch.
+    // Mid-document, so both stored brackets are substantial — a quote at the
+    // very end gets a one-character suffix ("."), which is legitimately too
+    // ambiguous for the recovery to accept.
+    const { threadId } = await makeThread('scheduled');
+    // Edit INSIDE the passage: the quote is no longer literal, but the stored
+    // context still brackets it.
+    bodies.set('notes/rollout', ORIGINAL.replace('scheduled', 'penciled in'));
+
+    expect(await svc.refindDoc('notes/rollout')).toBe(true);
+    const after = await svc.readThread(threadId);
+    expect(after.state).toBe('anchored');
+    expect(after.anchor?.exact).toBe('penciled in');
+  });
+
   test('resolved threads are skipped', async () => {
     const { threadId } = await makeThread();
     await svc.resolve(threadId);
@@ -748,6 +768,32 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
     await svc.completeDispatch(threadId);
     const meta = await svc.reopen(threadId);
     expect(meta.state).toBe('anchored');
+  });
+
+  test('reopening re-queues, so the next send carries it without a second click', async () => {
+    // A send clears `queued` on its way to `resolved`. Reopening is the
+    // correction for a send that did not settle the thing, so the comment comes
+    // back in the batch rather than waiting to be ticked again.
+    const { threadId } = await makeThread();
+    await svc.prepareDispatch(threadId);
+    await svc.completeDispatch(threadId);
+    expect((await svc.readThread(threadId)).queued).toBe(false);
+
+    expect((await svc.reopen(threadId)).queued).toBe(true);
+  });
+
+  test('a reopened thread that lost its passage is queued and orphaned', async () => {
+    // Reopen re-finds, and a resolved thread's anchor is not maintained — so the
+    // passage can be gone by now. It still ships: the dispatch tells the agent
+    // the anchor was lost, which is more use than a comment silently held back.
+    const { threadId } = await makeThread();
+    await svc.prepareDispatch(threadId);
+    await svc.completeDispatch(threadId);
+    bodies.set('notes/rollout', 'Nothing of the original passage survives here.');
+
+    const meta = await svc.reopen(threadId);
+    expect(meta.state).toBe('orphaned');
+    expect(meta.queued).toBe(true);
   });
 });
 

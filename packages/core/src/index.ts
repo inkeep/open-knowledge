@@ -112,6 +112,7 @@ export {
 export { commentLeafText, commentQuoteText } from './comments/leaf-text.ts';
 export {
   type ContextMatchOptions,
+  contextEvidenceFloor,
   contextMatchScore,
   findAllPassages,
   findPassage,

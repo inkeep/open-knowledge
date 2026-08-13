@@ -52,6 +52,9 @@
     ],
     "04RA0-": ["Gagal mengaktifkan sinkronisasi — ", ["detail"]],
     "04XyCH": ["Menambahkan blok terkelola ke ", ["0"]],
+    "05F1GY": [
+      "Teks aslinya telah dihapus. Anda dapat menempatkan ulang komentar ini pada teks terpilih."
+    ],
     "05n5wS": ["Saran penyebutan dokumen"],
     "06SZfb": ["Templat \"", ["trimmedTitle"], "\" dibuat"],
     "07eGJB": ["Keterampilan tidak bisa dipindahkan: ", ["0"]],
@@ -121,7 +124,6 @@
     "11ukmX": ["Gagal mengganti nama: ", ["0"]],
     "12F9WL": ["(tanpa id)"],
     "151wvk": ["Tampilkan bilah sisi"],
-    "15MMFT": ["Tampilkan komentar ini"],
     "15ZHCt": ["Tidak ada perubahan isi utama pada versi ini."],
     "161NCV": ["Menghentikan"],
     "16D5Zj": ["Yakin ingin menghapus ", ["itemName"], "? Tindakan ini tidak bisa dibatalkan."],
@@ -196,7 +198,6 @@
     "2QM24L": ["Semua tag"],
     "2RnFoM": ["Tidak dapat melanjutkan obrolan ini: ", ["0"]],
     "2Snes1": ["Ini mengirim alamat tautannya keluar dari komputer Anda"],
-    "2UgoBZ": ["hilang"],
     "2VSPan": ["Terminal ditutup untuk memberi ruang bagi panel agen."],
     "2XQ8Ww": ["Buka pratinjau saat agen menyunting"],
     "2YOwme": ["Dimulai ulang — kini menjalankan v", ["appRuntime"], "."],
@@ -221,6 +222,7 @@
     "2vIPtm": ["Buka tautan di tab baru"],
     "2wTb8w": ["Siapkan di halamannya sendiri di bawah Plugin."],
     "2wxgft": ["Ganti nama"],
+    "2zvUIK": ["Tampilkan komentar ini di panel komentar"],
     "322lyb": ["Menyoroti tip, peringatan, dan catatan."],
     "34qyH5": ["Server tidak dapat dihubungi"],
     "36WXSC": ["Templat tidak bisa dihapus: ", ["error"]],
@@ -322,7 +324,6 @@
     "4buZWd": ["Diwarisi dari ", ["path"]],
     "4c_a6S": ["Belum ada yang disetel."],
     "4d0VYJ": ["Kami akan membuat ID tema yang aman dari nama ini."],
-    "4eO-iB": ["Buang komentar ini"],
     "4g19V6": ["Gagal memperbarui properti"],
     "4h3e0H": ["Berbagi keterampilan tidak bisa diperbarui — ", ["detail"], "."],
     "4hJhzz": ["Tabel"],
@@ -344,7 +345,6 @@
     "4sKwf6": ["Berkas sudah ada"],
     "4sUdTJ": ["pratinjau bertema"],
     "4uNLmk": ["Melakukan pull"],
-    "4uaCUA": [["mins"], "mnt"],
     "4v2Yyz": [
       "Memilih semua baris pohon berkas yang terlihat ketika fokus ada di bilah sisi Berkas."
     ],
@@ -374,7 +374,6 @@
     "5ClEAu": ["Tagar sebaris untuk pengelompokan antardokumen."],
     "5D3Ior": ["Sembunyikan folder"],
     "5F5HYj": [["ahead"], " di depan, ", ["behind"], " di belakang"],
-    "5GBQ-F": ["Pilih teks ini di properti"],
     "5GKMSz": ["Menambah atau mengurangi indentasi item daftar saat ini."],
     "5GRxoA": ["Mencari berkas, folder, dan perintah untuk ruang kerja saat ini."],
     "5HJpFY": ["Mengantre di belakang giliran yang sedang berjalan"],
@@ -396,6 +395,11 @@
       "Endpoint ini mengabaikan ukuran vektor yang Anda atur. Hapus <0>search.semantic.dimensions</0> untuk memakai ukuran milik modelnya sendiri."
     ],
     "5Tk8Fb": ["Memuat berkas"],
+    "5TmrYN": [
+      ["count", "plural", { "other": ["#", " komentar"] }],
+      " di ",
+      ["0", "plural", { "other": ["#", " berkas"] }]
+    ],
     "5Umg9i": ["Nonaktifkan pratinjau tautan eksternal"],
     "5WDhAk": ["Menaut ke sebuah halaman atau URL eksternal."],
     "5Y17qa": ["Berlaku untuk (glob — awalan ! mengecualikan; kosong berarti semua dokumen)"],
@@ -925,6 +929,7 @@
     ],
     "DcFr-y": ["OpenKnowledge menghapus sebuah dokumen"],
     "DcLaew": ["Tema khusus"],
+    "Dd6j2Q": ["Lihat komentar"],
     "DeDYLr": ["Tautan wiki tidak dikenali"],
     "DgcGrb": [["fileCount", "plural", { "other": ["berkas"] }]],
     "DhLHEb": ["Gagal memuat aktivitas"],
@@ -1096,6 +1101,7 @@
     "FgQ7XZ": ["Laporan bug Anda tidak bisa dimuat."],
     "FgRAvd": ["Log & info sistem"],
     "Fhp4Gn": ["Lihat plugin"],
+    "FiyNln": ["Lompat ke teks terpilih di properti"],
     "FjkaiT": ["Perkecil"],
     "FqGWeR": ["Registri agen tidak bisa dihubungi."],
     "FqTpiN": ["Wiki burung"],
@@ -1123,7 +1129,6 @@
     "G0YZ-I": ["Tambah atau kurangi indentasi item daftar"],
     "G1Gw0v": ["Templat baru"],
     "G1XxbZ": ["Kotak centang"],
-    "G1zJlD": ["Sembunyikan komentar yang selesai"],
     "G4m8rL": ["Komentari pilihan"],
     "G6Lrs_": ["Hentikan ", ["0"], " membaca keterampilan ini"],
     "G7-rf8": ["Galat sintaks pola: ", ["message"]],
@@ -1334,6 +1339,7 @@
       "Tidak ada halaman yang terputus. Halaman muncul di sini hanya bila ia tidak punya sisi graf masuk maupun keluar."
     ],
     "JDHcCM": ["Memuat keterampilan populer"],
+    "JDQ5I5": ["Dokumen itu tidak terbuka tepat waktu. Coba lagi setelah tersinkronisasi."],
     "JE21eh": ["Symlink ke ", ["targetPath"]],
     "JG_8KT": [
       "Tidak bisa melakukan pull dari GitHub. Periksa koneksi dan status masuk Anda, lalu coba lagi."
@@ -1411,6 +1417,9 @@
     "KZLdgR": ["Lihat <0>#design-docs</0> untuk spesifikasi terbaru."],
     "K_vT1F": ["Sinkronisasi hulu"],
     "KaFCD3": ["Membuka tautan ini di tab baru dan menciutkan graf."],
+    "KeXgA-": [
+      "Tidak dapat menemukan bagian teks itu — teks yang ditandainya mungkin telah berubah."
+    ],
     "Kf7GG5": ["Memulai ulang server…"],
     "Kge76t": ["Opsi baris"],
     "Kh1n4a": [
@@ -1534,7 +1543,6 @@
     "M92_0q": ["Tutup komentar"],
     "M9597s": ["Menyiapkan URL berbagi..."],
     "MBKkUy": ["skills.sh tidak tersedia; menampilkan hasil GitHub (tanpa peringkat pemasangan)."],
-    "MBe6TE": ["Teks yang dikutip sudah tidak ada di dokumen — agennya akan diberi tahu."],
     "MCjC9A": ["Hapus ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Sulit dipakai"],
     "MDZSJe": ["Kapan agennya menjalankan pekerjaan terjadwalnya."],
@@ -1642,7 +1650,6 @@
     "NeY1Np": ["Slidev terlalu lama saat memulai. Coba lagi."],
     "NfraGd": ["Cara lain untuk memasang Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " aktif"],
-    "NiGIcB": ["Buka Komentar"],
     "NjrIak": ["Berkas: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Sunting ", ["tag"]],
     "NkXEFS": ["Gagal memulihkan — dokumen tidak berubah"],
@@ -1751,6 +1758,7 @@
     "PBxg_E": ["Nanti saja"],
     "PCSkw2": ["Keterampilan"],
     "PGPGsL": ["Tambahkan deskripsi"],
+    "PHHEuH": ["Sembunyikan komentar yang selesai (", ["0"], ")"],
     "PIMM5l": ["Anda sudah berlangganan!"],
     "PKLY-1": ["Membuka..."],
     "PKjGhT": ["Judul"],
@@ -1861,7 +1869,6 @@
     "QpSqAP": [
       "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
     ],
-    "Qpfxa1": [["secs"], "dtk"],
     "QqBQu1": ["Label <0>(teks tautan yang terlihat)</0>"],
     "Qvls7J": ["Spesifikasi teknik"],
     "Qw-7Ie": [
@@ -1991,6 +1998,7 @@
     ],
     "T-654M": ["Memuat PDF"],
     "T0OVm7": ["Cabang bawaannya terlindungi — push memerlukan pull request."],
+    "T2fvhw": ["Hapus tanda semua komentar di ", ["0"]],
     "T3Mld1": ["Jendela"],
     "T3j-7o": ["mis. Berpindah proyek saat sinkronisasi sedang berjalan"],
     "TBfy1C": ["Tidak dapat menjalankan Slidev."],
@@ -2048,7 +2056,6 @@
     "UDFrWm": ["Memeriksa koneksi GitHub..."],
     "UD_onR": ["Mempertimbangkan…"],
     "UDb2YD": ["React"],
-    "UEdTEN": ["Yatim"],
     "UGeJuP": ["Nilai yang diizinkan (kosong = apa saja)"],
     "UGtPix": ["Koneksi GitHub kedaluwarsa. Hubungkan lagi untuk melanjutkan."],
     "UH0Zqw": ["Ini bukan berkas tema biasa"],
@@ -2115,7 +2122,6 @@
     "UkQGhd": ["Sembunyikan penggantian"],
     "UlVARL": ["Aktifkan Slidev"],
     "Uobeu9": ["Menambahkan keterampilan ke ", ["rootRel"], " — juga dibaca oleh ", ["0"]],
-    "Uoux8m": ["Sertakan komentar ini pada pengiriman berikutnya"],
     "Up2_7p": ["Salin jalur lengkap"],
     "UpCz01": ["Dokumen ini"],
     "UpOct_": ["Tambahkan komentar Anda ke pesan ini"],
@@ -2249,6 +2255,7 @@
     "Wh0im4": ["menyunting [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Coret"],
     "Wi-VWy": ["Laporannya tidak bisa dikirim"],
+    "WkQ0Z_": ["Tandai semua komentar di ", ["0"], " untuk dikirim"],
     "WkTLN7": ["Tampilkan hanya berkas markdown"],
     "WkyP2p": ["Bagian Keterampilan"],
     "WmPbvm": ["Dapatkan kabar terbaru produk di kotak masuk Anda."],
@@ -2296,7 +2303,6 @@
     "XV5sC0": ["Buka worktree"],
     "XVnIvs": ["Pasang keterampilan"],
     "XW18jo": ["Respons judul halaman tidak sesuai skema sukses"],
-    "XWEqQj": [["days"], "h"],
     "XXA1b_": [["componentLabel"], " (kosong)"],
     "XYZ7tp": ["Tidak terselesaikan"],
     "XYlJJT": ["Menyiapkan"],
@@ -2534,7 +2540,6 @@
       "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di sumbernya dan salinan ini diperbarui langsung."
     ],
     "_XWY2J": ["Terminal dinonaktifkan"],
-    "_YEyHO": ["Tampilkan komentar yang selesai"],
     "_YWqV2": ["OpenKnowledge menyelesaikan sebuah konflik"],
     "_ayOfA": [
       "Basis pengetahuan yang mengikuti Open Knowledge Format dari Google, cara bersama untuk menata apa yang Anda tahu. Pilih ini jika Anda ingin catatan Anda bekerja baik dengan alat lain yang memahami format tersebut."
@@ -2546,7 +2551,6 @@
     "_gO_m8": ["Menunggu persetujuan Anda"],
     "_gkGSK": ["templat dihapus"],
     "_mcDqU": [["count"], " keterampilan di sumber ini"],
-    "_oqig9": [["hours"], "j"],
     "_pY_Vq": ["Repositorinya dipindahkan, diganti nama, atau dihapus."],
     "_qD6mn": ["Pilih folder tempat Anda mengkloningnya."],
     "_rP3HI": [["minutes"], " mnt lalu"],
@@ -2980,6 +2984,7 @@
     "gBbxn_": ["Memeriksa status masuk"],
     "gGVP4q": ["Klik <0>+</0> <1/> <2>Buat keterampilan</2> <3/> <4>Unggah keterampilan</4>."],
     "gHSAWT": ["Buat worktree <0>“<1>", ["typedName"], "</1>”</0>"],
+    "gHb5bB": ["Tampilkan komentar yang selesai (", ["0"], ")"],
     "gITz7o": [
       "Memindahkan kursor atau memperluas pilihan lewat peta tombol navigasi penyunting sumber standar CodeMirror."
     ],
@@ -3215,7 +3220,6 @@
     "iz1LdD": [
       "Diubah di luar OK sejak terakhir kali OK menulis di sini — keadaan yang ditampilkan adalah apa yang ada di disk sekarang"
     ],
-    "j0ItfO": ["Tampilkan yang sudah selesai (", ["0"], ")"],
     "j15ZSH": ["Kirim komentar ke"],
     "j2229h": ["Menghapus berkas OpenKnowledge…"],
     "j2kt1j": [
@@ -3319,7 +3323,6 @@
       ["targetNoun"],
       " akan muncul begitu cabangnya tersinkron."
     ],
-    "kMKqP_": ["Sembunyikan komentar ini"],
     "kNGLX6": ["Mencoba lagi…"],
     "kNqMMd": ["Folder"],
     "kRTXGw": [
@@ -3557,9 +3560,6 @@
     "nBgzKO": ["Jadikan ini sumbernya — folder asli keterampilan ini pindah ke sini"],
     "nCzR-G": ["Salin kode ", ["userCode"]],
     "nDT8qt": [["0"], " diinisialisasi tetapi tidak dapat dibuka."],
-    "nG-XA9": [
-      "Teks berjangkarnya sudah hilang. Anda bisa menempatkannya ulang pada teks yang dipilih."
-    ],
     "nMSYz5": [
       "Jalur ini berada di volume eksternal (/Volumes/...). OpenKnowledge akan kehilangan jejak berkasnya ketika drive itu dicabut."
     ],
@@ -3619,6 +3619,7 @@
     "nzaV6Q": ["Gambar mini halaman"],
     "o0bHtA": ["Oleh OpenKnowledge"],
     "o49mDZ": ["Memuat riwayat lini masa"],
+    "o7AkQ0": ["Tampilkan yang selesai"],
     "o9CrsQ": ["catatan-riset"],
     "o9fPtM": ["Perbarui otomatis dari sumber"],
     "o9yN4T": ["Pindahkan ke Recycle Bin"],
@@ -3862,7 +3863,6 @@
     "roAe2K": ["URL tautan"],
     "roiUQQ": ["Halaman ini belum menaut ke apa pun."],
     "rppgXF": ["Memutus koneksi"],
-    "rscgd_": ["Ke komentar ini di ", ["0"]],
     "rssK8c": ["Pola abaikan (teks mentah)"],
     "rtdR4v": ["Tampilkan atau sembunyikan Berkas"],
     "rtir7c": ["tidak diketahui"],

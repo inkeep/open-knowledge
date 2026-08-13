@@ -261,6 +261,41 @@ vi.doMock('sonner', () => ({
   },
 }));
 
+/**
+ * The comments batch, doubled.
+ *
+ * Zero by default, which is what the real store reports here — nothing has
+ * loaded — so every test that predates this sees the composer it always saw. The
+ * comment-chip tests set a count and fire `commentPosted` themselves.
+ */
+let selectedCommentCount = 0;
+let selectedCommentDocs: readonly { docName: string; count: number }[] = [];
+const commentPostedListeners = new Set<() => void>();
+function emitCommentPostedForTest() {
+  for (const listener of commentPostedListeners) listener();
+}
+
+vi.doMock('@/comments/store', () => ({
+  dispatchComments: vi.fn(async () => []),
+  subscribeCommentPosted: (listener: () => void) => {
+    commentPostedListeners.add(listener);
+    return () => commentPostedListeners.delete(listener);
+  },
+}));
+
+vi.doMock('@/comments/comment-chips', async () => {
+  // Only the count is doubled. The chip itself is the real component, so what
+  // these assert is what a reader sees rather than a stand-in for it.
+  const actual = await vi.importActual<typeof import('@/comments/comment-chips')>(
+    '@/comments/comment-chips',
+  );
+  return {
+    ...actual,
+    useSelectedCommentCount: () => selectedCommentCount,
+    useSelectedCommentDocs: () => selectedCommentDocs,
+  };
+});
+
 const FIRST_SUGGESTION = /Research the extinction of flightless birds/i;
 const DEFAULT_AGENT_NAME = VISIBLE_TARGETS[0]?.displayName;
 
@@ -285,7 +320,17 @@ async function renderComposer(
 ) {
   enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
-  return render(<BottomComposer docName={docName} surface="wysiwyg" {...extra} />);
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
+  // Production wraps the app in one provider (main.tsx); the comments chip's
+  // per-file breakdown is a Radix Tooltip, which throws without one.
+  //
+  // As RTL's `wrapper`, NOT a wrapping element: `rerender` reuses the wrapper
+  // but replaces the element it is given, so a provider written into the tree
+  // here would vanish on the first rerender — remounting the composer and
+  // dropping the draft state half these tests are about.
+  return render(<BottomComposer docName={docName} surface="wysiwyg" {...extra} />, {
+    wrapper: TooltipProvider,
+  });
 }
 
 // Variant that supplies a docked-terminal launcher so the picker offers the
@@ -297,6 +342,7 @@ async function renderComposerWithTerminal(
   enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
   return render(
     <TerminalLaunchProvider
       value={{
@@ -312,6 +358,7 @@ async function renderComposerWithTerminal(
     >
       <BottomComposer docName={docName} surface="wysiwyg" />
     </TerminalLaunchProvider>,
+    { wrapper: TooltipProvider },
   );
 }
 
@@ -428,6 +475,9 @@ beforeEach(() => {
   buildArgs.length = 0;
   terminalLaunchCalls.length = 0;
   toastErrors.length = 0;
+  selectedCommentCount = 0;
+  selectedCommentDocs = [];
+  commentPostedListeners.clear();
   try {
     window.localStorage.clear();
   } catch {
@@ -1428,5 +1478,57 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(document.activeElement).not.toBe(composerInput);
+  });
+});
+
+/**
+ * The comments chip's attached bit belongs to the DRAFT, not to the queue.
+ *
+ * The ✕ says "not this message" about the batch as it stood. Writing another
+ * comment is a fresh statement of intent about the same message — the same
+ * reason posting a comment queues it rather than asking twice — so the batch
+ * comes back. Without that, the comment you had just written sat outside the
+ * send with a dismissed chip as the only clue.
+ */
+describe('BottomComposer (queued-comments chip lifecycle)', () => {
+  /** Attached: the ✕ that takes the batch off this message. */
+  const DETACH = /leave these comments out of this message/i;
+  /** Detached: the chip has become the way back. */
+  const REATTACH = /add your comments to this message/i;
+
+  test('a ticked batch rides the message by default', async () => {
+    selectedCommentCount = 2;
+    await renderComposer();
+    expect(screen.getByRole('button', { name: DETACH })).toBeTruthy();
+  });
+
+  test('the ✕ takes the batch off this message and leaves the way back', async () => {
+    selectedCommentCount = 2;
+    await renderComposer();
+    fireEvent.click(screen.getByRole('button', { name: DETACH }));
+    expect(screen.queryByRole('button', { name: DETACH })).toBeNull();
+    expect(screen.getByRole('button', { name: REATTACH })).toBeTruthy();
+  });
+
+  test('posting a new comment re-attaches a dismissed batch', async () => {
+    selectedCommentCount = 2;
+    await renderComposer();
+    fireEvent.click(screen.getByRole('button', { name: DETACH }));
+    expect(screen.queryByRole('button', { name: DETACH })).toBeNull();
+
+    // What `createThread` fires once the server has accepted the comment.
+    selectedCommentCount = 3;
+    act(() => emitCommentPostedForTest());
+
+    expect(screen.getByRole('button', { name: DETACH })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: REATTACH })).toBeNull();
+  });
+
+  test('a post while the batch is already attached changes nothing', async () => {
+    selectedCommentCount = 1;
+    await renderComposer();
+    selectedCommentCount = 2;
+    act(() => emitCommentPostedForTest());
+    expect(screen.getByRole('button', { name: DETACH })).toBeTruthy();
   });
 });

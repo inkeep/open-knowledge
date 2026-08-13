@@ -485,3 +485,44 @@ describe('rewriteCeiling', () => {
     }
   });
 });
+
+/**
+ * Whitespace is elastic on both sides everywhere else in the matcher, but the
+ * scan loop can only skip a needle's whitespace while there is still haystack
+ * left to compare against. A needle ending in whitespace therefore failed at the
+ * very end of the text.
+ *
+ * The field case: a comment on a document's LAST passage. Rendered editor text
+ * carries no trailing newline, while a stored suffix that ran off the end of the
+ * markdown body is exactly "\n" — so the deletion probe in the editor's
+ * `findRangeInIndex` saw `prefix + suffix` match and `prefix + quote + suffix`
+ * not, concluded the passage had been deleted where it stood, and dropped the
+ * highlight. The server, whose haystack is the body and does end in a newline,
+ * went on reporting the thread as anchored.
+ */
+describe('a needle ending in whitespace, at the end of the haystack', () => {
+  const rendered = 'Serve withWarm tortillas or a dollop of yogurt/crema';
+  const prefix = 'tortillas or a dollop of yogurt/';
+
+  test('completes when the haystack is exhausted', () => {
+    expect(findAllPassages(rendered, `${prefix}crema\n`, { syntaxIn: 'needle' })).toEqual([
+      { start: rendered.indexOf(prefix), end: rendered.length },
+    ]);
+  });
+
+  test('agrees with the same needle one character short of the end', () => {
+    // Both must match, or the deletion probe reads a document-final passage as
+    // deleted purely because of where it sits.
+    expect(findAllPassages(rendered, `${prefix}\n`, { syntaxIn: 'needle' }).length).toBe(1);
+    expect(findAllPassages(rendered, `${prefix}crema\n`, { syntaxIn: 'needle' }).length).toBe(1);
+  });
+
+  test('does not invent a match for trailing content', () => {
+    // Only whitespace is forgiven at the edge. A needle asking for real
+    // characters the haystack does not have must still fail.
+    expect(findAllPassages(rendered, `${prefix}crema and rice`, { syntaxIn: 'needle' })).toEqual(
+      [],
+    );
+    expect(findAllPassages(rendered, `${prefix}crema\n.`, { syntaxIn: 'needle' })).toEqual([]);
+  });
+});

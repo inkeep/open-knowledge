@@ -1772,6 +1772,7 @@ function EditorAreaInner({
             activeTab={activeTab}
             onActiveTabChange={onActiveTabChange}
             mode={docPanelMode}
+            isCollapsed={isCollapsed}
           />
         </ResizablePanel>
       </>

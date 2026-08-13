@@ -511,6 +511,11 @@ msgstr "{conflictCount, plural, other {# 个文件有冲突}}"
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# 条评论}}"
 
+#. placeholder {0}: docs.length
+#: src/comments/comment-chips.tsx
+msgid "{count, plural, one {# comment} other {# comments}} across {0, plural, one {# file} other {# files}}"
+msgstr "{count, plural, other {# 条评论}}，分布在 {0, plural, other {# 个文件}}"
+
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, other {# 个文档}}"
@@ -558,10 +563,6 @@ msgstr "此来源有 {count} 个技能"
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# 天前}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{days}d"
-msgstr "{days}天"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
@@ -657,10 +658,6 @@ msgstr "{folderCount, plural, other {文件夹}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 个 GitHub star"
 
-#: src/comments/ThreadCard.tsx
-msgid "{hours}h"
-msgstr "{hours}小时"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -726,10 +723,6 @@ msgstr "第 {displayLine} 行：{localizedMessage}"
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分钟前}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{mins}m"
-msgstr "{mins}分"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{minutes} min ago"
@@ -812,10 +805,6 @@ msgstr "{propPanelDescriptorLabel} 属性"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "{seconds}s ago"
 msgstr "{seconds} 秒前"
-
-#: src/comments/ThreadCard.tsx
-msgid "{secs}s"
-msgstr "{secs}秒"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{settingsDescriptorLabel} properties"
@@ -2500,7 +2489,6 @@ msgstr "正在克隆 {repoName}…"
 msgid "Cloning..."
 msgstr "正在克隆…"
 
-#: src/comments/ThreadCard.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -3390,6 +3378,10 @@ msgstr "无法断开连接——请重试。"
 #: src/components/skill-actions.tsx
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "无法复制 \"{0}\"：{1}"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't find that passage — the text it was on may have changed."
+msgstr "找不到该段落 — 它所在的文本可能已更改。"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -4323,10 +4315,6 @@ msgstr "用于在菜单中区分名称相近的模板。"
 msgid "Discard local edits, restore the installed version"
 msgstr "丢弃本地编辑，恢复已安装的版本"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Discard this comment"
-msgstr "丢弃这条评论"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnect"
 msgstr "断开连接"
@@ -4426,7 +4414,6 @@ msgstr "带 <0>#{tagName}</0> 标签的文档"
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "没看到<0>技能</0>？请先启用<1>设置 <2/> 功能 <3/> 代码执行与文件创建</1>。"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/ThreadCard.tsx
 msgid "Don't send this comment"
 msgstr "不要发送这条评论"
@@ -5842,15 +5829,6 @@ msgstr "跳转到第 {0} 行"
 msgid "Go to line {0} in {1}"
 msgstr "跳转到 {1} 的第 {0} 行"
 
-#. placeholder {0}: docBasename(thread.docName)
-#: src/comments/comment-chips.tsx
-msgid "Go to this comment in {0}"
-msgstr "在 {0} 中查看这条评论"
-
-#: src/comments/comment-chips.tsx
-msgid "gone"
-msgstr "已消失"
-
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "良好"
@@ -6062,9 +6040,10 @@ msgstr "隐藏替换"
 msgid "Hide resolved"
 msgstr "隐藏已解决的"
 
+#. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Hide resolved comments"
-msgstr "隐藏已解决的评论"
+msgid "Hide resolved comments ({0})"
+msgstr "隐藏已解决的评论（{0}）"
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
@@ -6078,10 +6057,6 @@ msgstr "隐藏侧边栏"
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "隐藏 Terminal"
-
-#: src/comments/comment-chips.tsx
-msgid "Hide these comments"
-msgstr "隐藏这些评论"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -6306,10 +6281,6 @@ msgstr "在应用内（beta）"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "在 Claude 桌面应用中"
-
-#: src/comments/comment-chips.tsx
-msgid "Include this comment in the next send"
-msgstr "下次发送时包含这条评论"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
@@ -6667,6 +6638,10 @@ msgstr "跳到最后一个标签页"
 #: src/editor/components/Pdf.tsx
 msgid "Jump to page {pageNumber}"
 msgstr "跳到第 {pageNumber} 页"
+
+#: src/comments/ThreadCard.tsx
+msgid "Jump to selected text in property"
+msgstr "跳到属性中选中的文本"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Jump to tab 1-8"
@@ -7165,7 +7140,12 @@ msgstr "梳理架构"
 msgid "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
 msgstr "把某个块标记为事实来源。你编辑它时，别处的镜像会实时更新。"
 
-#: src/comments/CommentSendFooter.tsx
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Mark every comment in {0} to send"
+msgstr "勾选 {0} 中的所有评论以发送"
+
+#: src/comments/CommentListPanel.tsx
 msgid "Mark every comment to send"
 msgstr "勾选全部评论以发送"
 
@@ -8405,10 +8385,6 @@ msgstr "打开 CodeMirror 的检查诊断面板。"
 msgid "Open comment"
 msgstr "打开评论"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Open Comments"
-msgstr "打开评论"
-
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
 msgid "Open containing folder"
@@ -8881,10 +8857,6 @@ msgstr "原始文件——这个智能体编辑之前的版本。"
 #: src/components/GraphPanel.tsx
 msgid "Orphan mode"
 msgstr "孤立页模式"
-
-#: src/comments/ThreadCard.tsx
-msgid "Orphaned"
-msgstr "孤立"
 
 #: src/components/GraphPanel.tsx
 msgid "Orphans"
@@ -9370,7 +9342,6 @@ msgid "project"
 msgstr "项目"
 
 #: src/components/CommandPalette.tsx
-#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -10681,10 +10652,6 @@ msgstr "选中下一处出现"
 msgid "Select the full source document."
 msgstr "选中整个源码文档。"
 
-#: src/comments/ThreadCard.tsx
-msgid "Select this text in the property"
-msgstr "在属性中选中这段文本"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
 msgstr "从键盘边界选中、进入或离开块组件和回退源码块。"
@@ -11143,14 +11110,14 @@ msgstr "显示问题标记"
 msgid "Show replace"
 msgstr "显示替换"
 
+#: src/comments/CommentListPanel.tsx
+msgid "Show resolved"
+msgstr "显示已解决"
+
 #. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Show resolved ({0})"
-msgstr "显示已解决的（{0}）"
-
-#: src/comments/CommentListPanel.tsx
-msgid "Show resolved comments"
-msgstr "显示已解决的评论"
+msgid "Show resolved comments ({0})"
+msgstr "显示已解决的评论（{0}）"
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
@@ -11170,8 +11137,8 @@ msgid "Show Terminal"
 msgstr "显示 Terminal"
 
 #: src/comments/comment-chips.tsx
-msgid "Show these comments"
-msgstr "显示这些评论"
+msgid "Show these comments in the Comments panel"
+msgstr "在评论面板中显示这些评论"
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
@@ -12067,6 +12034,10 @@ msgstr "感谢你的报告！"
 msgid "That branch is already open in another worktree."
 msgstr "那个分支已经在另一个 worktree 中打开了。"
 
+#: src/comments/reveal-comment.ts
+msgid "That document didn't open in time. Try again once it has synced."
+msgstr "该文档未能及时打开。请在同步完成后重试。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "无法使用那个端点。请输入 https:// 的 URL——http:// 只允许用于 localhost。"
@@ -12111,10 +12082,6 @@ msgstr "智能体没有停止。强制停止将关闭此对话并退出智能体
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "智能体的人设、价值观和语气。"
-
-#: src/comments/ThreadCard.tsx
-msgid "The anchored text is gone. You can re-place it on selected text."
-msgstr "锚定的文本已经不见了。你可以把它重新定位到选中的文本上。"
 
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
@@ -12194,6 +12161,10 @@ msgstr "你的端点提供的模型 id。它的向量维度会自动检测——
 msgid "the open agent"
 msgstr "已打开的智能体"
 
+#: src/comments/ThreadCard.tsx
+msgid "The original text was deleted. You can re-place this comment on selected text."
+msgstr "原始文本已被删除。你可以将此评论重新定位到选中的文本上。"
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "预览会拦截不符合其安全规则的资源（例如纯 http:// 的 URL，或使用了 eval 的代码）。上面的内容可能渲染不完整。"
@@ -12218,10 +12189,6 @@ msgstr "服务提供方拒绝了这个请求（HTTP {0}）。请检查 API 密�
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "服务提供方拒绝了这个请求。请检查 API 密钥和模型 id。"
-
-#: src/comments/comment-chips.tsx
-msgid "The quoted text is no longer in the document — the agent will be told."
-msgstr "被引用的文本已不在文档中——会告知智能体。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
@@ -12599,7 +12566,7 @@ msgstr "此操作会从“{2}”技能中永久删除 {0}/{1}。SKILL.md 中指�
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "这会永久移除 {path}。在重新创建它，或者由上级文件夹中的同名模板取代之前，按名称引用这个模板的智能体都会失败。"
 
-#: src/comments/CommentsTab.tsx
+#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "This project"
 msgstr "本项目"
@@ -13090,9 +13057,14 @@ msgstr "未知错误"
 msgid "unlink"
 msgstr "取消链接"
 
-#: src/comments/CommentSendFooter.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Unmark every comment"
 msgstr "取消勾选全部评论"
+
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Unmark every comment in {0}"
+msgstr "取消勾选 {0} 中的所有评论"
 
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
@@ -13398,6 +13370,10 @@ msgstr "查看 {name}"
 #: src/components/AssetPreview.tsx
 msgid "View as text"
 msgstr "以文本方式查看"
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "View comments"
+msgstr "查看评论"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "View diff for edit {burstNumber} of {docName}"

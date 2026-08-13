@@ -84,6 +84,50 @@ export function railBand(
 }
 
 /**
+ * Narrower than this and the rail is covering the text instead of sitting beside
+ * it, so it does not draw at all. Roughly the width below which the editor's own
+ * measure has collapsed to a few words a line.
+ */
+const MIN_PANE_WIDTH = 260;
+
+/**
+ * Where the rail's left edge goes, or null when the pane is too narrow to host
+ * one.
+ *
+ * The rail is a FIXED portal on `document.body`, so no ancestor's overflow can
+ * clip it — it has to sit over the scroll area without scrolling with it, and
+ * the cost of that is that whatever `left` it computes is where it paints, over
+ * whatever happens to be there. The scroll container's own right edge is not a
+ * safe answer: squeezed past its minimum the container keeps its width and
+ * overflows the pane clipping it, and the rail followed it into the next panel.
+ *
+ * So the edge comes from the nearest thing that actually clips, and the rail
+ * declines rather than shrinking — a 34px rail inside a 200px pane is on top of
+ * the prose either way, and half a marker peeking out reads as breakage.
+ */
+export function railLeft(rect: { left: number; right: number }, clipRight: number): number | null {
+  const right = Math.min(rect.right, clipRight);
+  if (right - rect.left < MIN_PANE_WIDTH) return null;
+  return right - RAIL_WIDTH;
+}
+
+/**
+ * The viewport x of the nearest ancestor that clips horizontally — the pane's
+ * real right edge, whatever the scroll container believes about its own width.
+ * Falls back to the viewport, which clips everything.
+ */
+function horizontalClipRight(el: HTMLElement): number {
+  let node: HTMLElement | null = el.parentElement;
+  while (node) {
+    if (getComputedStyle(node).overflowX !== 'visible') {
+      return node.getBoundingClientRect().right;
+    }
+    node = node.parentElement;
+  }
+  return window.innerWidth;
+}
+
+/**
  * Place each marker beside its line, in viewport coordinates.
  *
  * Exported for test: this is the geometry that was wrong before — a marker's y
@@ -164,8 +208,16 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
           targets.push({ id: thread.id, y });
         }
       }
+      const left = railLeft(rect, horizontalClipRight(container));
+      if (left === null) {
+        // Both, not just the rail: the markers are absolutely positioned inside
+        // it, so leaving them behind would strand a list with nothing to hang on.
+        setRail(null);
+        setPositions([]);
+        return;
+      }
       const band = railBand(rect, scrollportInsetTop(container));
-      setRail({ top: band.top, height: band.height, left: rect.right - RAIL_WIDTH });
+      setRail({ top: band.top, height: band.height, left });
       setPositions(layoutMarkers(targets, band.top, band.height));
     };
 
@@ -218,7 +270,7 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
       if (!revealed) scrollPropertyRowIntoView(thread.target.key);
     } else if (thread && thread.anchor !== null) {
       const range = findQuoteRange(editor.state.doc, thread.anchor.quote, thread.anchor);
-      if (range) scrollAnchorIntoView(editor, range);
+      if (range) scrollAnchorIntoView(editor, range, thread.docName);
     }
     emitOpenThreadPopover(threadId);
   }

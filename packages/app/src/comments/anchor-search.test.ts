@@ -33,6 +33,52 @@ const DOC = 'Add the garlic and cook 1 min. Stir the sauce. Add the garlic and s
 const FIRST = DOC.indexOf('Add the garlic');
 const SECOND = DOC.indexOf('Add the garlic', FIRST + 1);
 
+describe('findRangeInIndex — deleting the selection leaves a seam', () => {
+  test('declines the twin even when its neighbourhood matches honestly', () => {
+    // The sentence was duplicated after the comment was made, so the twin's
+    // surroundings match the stored context well past any evidence floor —
+    // only the seam at the old spot (prefix and suffix now touching) says the
+    // original was deleted. The stored context reaches BEYOND the duplicated
+    // sentence, as a real 32-char capture does; a context falling entirely
+    // inside the duplication is the documented indistinguishable case.
+    const sentence = 'The chord stages into the agents panel specifically, naming its target.';
+    const afterDelete =
+      `Intro first. The chord stages into  specifically, naming its target. ` +
+      `Later, restated: ${sentence}`;
+    const range = findRangeInIndex(indexOf(afterDelete), 'the agents panel', {
+      prefix: 'Intro first. The chord stages into ',
+      suffix: ' specifically, naming its target. Later,',
+    });
+    expect(range).toBeNull();
+  });
+});
+
+describe('findRangeInIndex — a deleted passage with an identical twin', () => {
+  // The reported bug: delete the commented occurrence while the same words
+  // survive elsewhere. The survivor is a lone hit, and a lone hit was accepted
+  // without consulting the stored context — the highlight slid onto words
+  // nobody commented on, prefix and suffix in open disagreement.
+  test('declines the surviving twin instead of highlighting it', () => {
+    const afterDelete = 'Closing notes mention Add the garlic near the archive vault.';
+    const range = findRangeInIndex(indexOf(afterDelete), 'Add the garlic', {
+      prefix: 'The northern site reports that you should ',
+      suffix: ' and cook until fragrant, one minute.',
+    });
+    expect(range).toBeNull();
+  });
+
+  test('still accepts a lone hit whose surroundings carry a trace of the context', () => {
+    // Edited around, not moved: the floor asks for a fragment, not preservation.
+    const edited = 'Stir the sauce. Add the garlic and serve immediately, garnished.';
+    const at = edited.indexOf('Add the garlic');
+    const range = findRangeInIndex(indexOf(edited), 'Add the garlic', {
+      prefix: 'Stir the sauce. ',
+      suffix: ' and serve.',
+    });
+    expect(range).toEqual({ from: at + 1, to: at + 1 + 'Add the garlic'.length });
+  });
+});
+
 describe('findRangeInIndex — repeated quote', () => {
   test('the fixture really does repeat (guards the guard)', () => {
     expect(FIRST).toBeGreaterThanOrEqual(0);

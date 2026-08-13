@@ -511,6 +511,11 @@ msgstr "{conflictCount, plural, one {# fichier en conflit} many {# fichiers en c
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# commentaire} many {# commentaires} other {# commentaires}}"
 
+#. placeholder {0}: docs.length
+#: src/comments/comment-chips.tsx
+msgid "{count, plural, one {# comment} other {# comments}} across {0, plural, one {# file} other {# files}}"
+msgstr "{count, plural, one {# commentaire} many {# commentaires} other {# commentaires}} dans {0, plural, one {# fichier} many {# fichiers} other {# fichiers}}"
+
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, one {# document} many {# documents} other {# documents}}"
@@ -558,10 +563,6 @@ msgstr "{count} compétences à cette source"
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {il y a # jour} many {il y a # jours} other {il y a # jours}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{days}d"
-msgstr "{days}j"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "{days}d ago"
@@ -657,10 +658,6 @@ msgstr "{folderCount, plural, one {dossier} many {dossiers} other {dossiers}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} étoiles GitHub"
 
-#: src/comments/ThreadCard.tsx
-msgid "{hours}h"
-msgstr "{hours}h"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -726,10 +723,6 @@ msgstr "{localizedMessage} à la ligne {displayLine}"
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {il y a # min} many {il y a # min} other {il y a # min}}"
-
-#: src/comments/ThreadCard.tsx
-msgid "{mins}m"
-msgstr "{mins}min"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{minutes} min ago"
@@ -812,10 +805,6 @@ msgstr "Propriétés de {propPanelDescriptorLabel}"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "{seconds}s ago"
 msgstr "il y a {seconds} s"
-
-#: src/comments/ThreadCard.tsx
-msgid "{secs}s"
-msgstr "{secs}s"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{settingsDescriptorLabel} properties"
@@ -2500,7 +2489,6 @@ msgstr "Clonage de {repoName}…"
 msgid "Cloning..."
 msgstr "Clonage…"
 
-#: src/comments/ThreadCard.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -3390,6 +3378,10 @@ msgstr "Impossible de se déconnecter — veuillez réessayer."
 #: src/components/skill-actions.tsx
 msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "Impossible de dupliquer « {0} » : {1}"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't find that passage — the text it was on may have changed."
+msgstr "Impossible de trouver ce passage — le texte auquel il était rattaché a peut-être changé."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -4323,10 +4315,6 @@ msgstr "Distingue les modèles aux noms similaires dans le menu."
 msgid "Discard local edits, restore the installed version"
 msgstr "Abandonner les modifications locales, restaurer la version installée"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Discard this comment"
-msgstr "Abandonner ce commentaire"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnect"
 msgstr "Déconnecter"
@@ -4426,7 +4414,6 @@ msgstr "Documents étiquetés <0>#{tagName}</0>"
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "Vous ne voyez pas <0>Compétences</0> ? Activez d'abord <1>Paramètres <2/> Fonctionnalités <3/> Exécution de code et création de fichiers</1>."
 
-#: src/comments/comment-chips.tsx
 #: src/comments/ThreadCard.tsx
 msgid "Don't send this comment"
 msgstr "Ne pas envoyer ce commentaire"
@@ -5842,15 +5829,6 @@ msgstr "Aller à la ligne {0}"
 msgid "Go to line {0} in {1}"
 msgstr "Aller à la ligne {0} dans {1}"
 
-#. placeholder {0}: docBasename(thread.docName)
-#: src/comments/comment-chips.tsx
-msgid "Go to this comment in {0}"
-msgstr "Voir ce commentaire dans {0}"
-
-#: src/comments/comment-chips.tsx
-msgid "gone"
-msgstr "disparu"
-
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "Bien"
@@ -6062,9 +6040,10 @@ msgstr "Masquer le remplacement"
 msgid "Hide resolved"
 msgstr "Masquer les éléments résolus"
 
+#. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Hide resolved comments"
-msgstr "Masquer les commentaires résolus"
+msgid "Hide resolved comments ({0})"
+msgstr "Masquer les commentaires résolus ({0})"
 
 #: src/components/BottomComposer.tsx
 msgid "Hide selection preview"
@@ -6078,10 +6057,6 @@ msgstr "Masquer la barre latérale"
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Masquer Terminal"
-
-#: src/comments/comment-chips.tsx
-msgid "Hide these comments"
-msgstr "Masquer ces commentaires"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -6306,10 +6281,6 @@ msgstr "Dans l'application (bêta)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Dans l'application Claude Desktop"
-
-#: src/comments/comment-chips.tsx
-msgid "Include this comment in the next send"
-msgstr "Inclure ce commentaire dans le prochain envoi"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
@@ -6667,6 +6638,10 @@ msgstr "Aller au dernier onglet"
 #: src/editor/components/Pdf.tsx
 msgid "Jump to page {pageNumber}"
 msgstr "Aller à la page {pageNumber}"
+
+#: src/comments/ThreadCard.tsx
+msgid "Jump to selected text in property"
+msgstr "Aller au texte sélectionné dans la propriété"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Jump to tab 1-8"
@@ -7165,7 +7140,12 @@ msgstr "Cartographier l'architecture"
 msgid "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
 msgstr "Marque un bloc comme source de vérité. Les miroirs situés ailleurs se mettent à jour en direct pendant que vous le modifiez."
 
-#: src/comments/CommentSendFooter.tsx
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Mark every comment in {0} to send"
+msgstr "Cocher tous les commentaires de {0} à envoyer"
+
+#: src/comments/CommentListPanel.tsx
 msgid "Mark every comment to send"
 msgstr "Cocher tous les commentaires à envoyer"
 
@@ -8405,10 +8385,6 @@ msgstr "Ouvre le panneau de diagnostics de vérification de CodeMirror."
 msgid "Open comment"
 msgstr "Ouvrir le commentaire"
 
-#: src/comments/CommentSelectionAffordance.tsx
-msgid "Open Comments"
-msgstr "Ouvrir les commentaires"
-
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
 msgid "Open containing folder"
@@ -8881,10 +8857,6 @@ msgstr "Fichier d'origine — avant les modifications de cet agent."
 #: src/components/GraphPanel.tsx
 msgid "Orphan mode"
 msgstr "Mode orphelines"
-
-#: src/comments/ThreadCard.tsx
-msgid "Orphaned"
-msgstr "Orpheline"
 
 #: src/components/GraphPanel.tsx
 msgid "Orphans"
@@ -9370,7 +9342,6 @@ msgid "project"
 msgstr "projet"
 
 #: src/components/CommandPalette.tsx
-#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -10681,10 +10652,6 @@ msgstr "Sélectionner l'occurrence suivante"
 msgid "Select the full source document."
 msgstr "Sélectionne l'intégralité du document source."
 
-#: src/comments/ThreadCard.tsx
-msgid "Select this text in the property"
-msgstr "Sélectionner ce texte dans la propriété"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
 msgstr "Sélectionnez, entrez dans ou quittez les composants de bloc et les blocs source de repli depuis les limites clavier."
@@ -11143,14 +11110,14 @@ msgstr "Afficher les indicateurs de problèmes"
 msgid "Show replace"
 msgstr "Afficher le remplacement"
 
+#: src/comments/CommentListPanel.tsx
+msgid "Show resolved"
+msgstr "Afficher les résolus"
+
 #. placeholder {0}: resolved.length
 #: src/comments/CommentListPanel.tsx
-msgid "Show resolved ({0})"
-msgstr "Afficher les éléments résolus ({0})"
-
-#: src/comments/CommentListPanel.tsx
-msgid "Show resolved comments"
-msgstr "Afficher les commentaires résolus"
+msgid "Show resolved comments ({0})"
+msgstr "Afficher les commentaires résolus ({0})"
 
 #: src/components/BottomComposer.tsx
 msgid "Show selection preview"
@@ -11170,8 +11137,8 @@ msgid "Show Terminal"
 msgstr "Afficher Terminal"
 
 #: src/comments/comment-chips.tsx
-msgid "Show these comments"
-msgstr "Afficher ces commentaires"
+msgid "Show these comments in the Comments panel"
+msgstr "Afficher ces commentaires dans le panneau des commentaires"
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
@@ -12067,6 +12034,10 @@ msgstr "Merci pour ce rapport !"
 msgid "That branch is already open in another worktree."
 msgstr "Cette branche est déjà ouverte dans un autre worktree."
 
+#: src/comments/reveal-comment.ts
+msgid "That document didn't open in time. Try again once it has synced."
+msgstr "Ce document ne s'est pas ouvert à temps. Réessayez une fois qu'il sera synchronisé."
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "Ce point de terminaison ne peut pas être utilisé. Saisissez une URL https:// — http:// n'est autorisé que pour localhost."
@@ -12111,10 +12082,6 @@ msgstr "L'agent ne s'arrête pas. L'arrêt forcé ferme ce chat et quitte l'agen
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "La personnalité, les valeurs et le ton de l'agent."
-
-#: src/comments/ThreadCard.tsx
-msgid "The anchored text is gone. You can re-place it on selected text."
-msgstr "Le texte ancré a disparu. Vous pouvez le replacer sur un texte sélectionné."
 
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
@@ -12194,6 +12161,10 @@ msgstr "L'id du modèle servi par votre point de terminaison. La taille de ses v
 msgid "the open agent"
 msgstr "l'agent ouvert"
 
+#: src/comments/ThreadCard.tsx
+msgid "The original text was deleted. You can re-place this comment on selected text."
+msgstr "Le texte d'origine a été supprimé. Vous pouvez replacer ce commentaire sur le texte sélectionné."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "L'aperçu bloque les ressources qui ne respectent pas ses règles de sécurité (par exemple les URL http:// simples, ou le code qui utilise eval). Le contenu ci-dessus peut s'afficher de façon incomplète."
@@ -12218,10 +12189,6 @@ msgstr "Le fournisseur a rejeté la requête (HTTP {0}). Vérifiez la clé API e
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "Le fournisseur a rejeté la requête. Vérifiez la clé API et l'id du modèle."
-
-#: src/comments/comment-chips.tsx
-msgid "The quoted text is no longer in the document — the agent will be told."
-msgstr "Le texte cité n'est plus dans le document — l'agent en sera informé."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
@@ -12599,7 +12566,7 @@ msgstr "Cette action supprime définitivement {0}/{1} de la compétence « {2} �
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "Ceci retire définitivement {path}. Les agents qui référencent ce modèle par son nom échoueront jusqu'à ce qu'il soit recréé ou remplacé par un modèle d'un dossier parent."
 
-#: src/comments/CommentsTab.tsx
+#: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "This project"
 msgstr "Ce projet"
@@ -13090,9 +13057,14 @@ msgstr "Erreur inconnue"
 msgid "unlink"
 msgstr "dissocier"
 
-#: src/comments/CommentSendFooter.tsx
+#: src/comments/CommentListPanel.tsx
 msgid "Unmark every comment"
 msgstr "Décocher tous les commentaires"
+
+#. placeholder {0}: docBasename(group.docName)
+#: src/comments/CommentListPanel.tsx
+msgid "Unmark every comment in {0}"
+msgstr "Décocher tous les commentaires de {0}"
 
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
@@ -13398,6 +13370,10 @@ msgstr "Voir {name}"
 #: src/components/AssetPreview.tsx
 msgid "View as text"
 msgstr "Afficher comme texte"
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "View comments"
+msgstr "Afficher les commentaires"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "View diff for edit {burstNumber} of {docName}"

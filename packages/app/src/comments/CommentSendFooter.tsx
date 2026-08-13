@@ -16,25 +16,21 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { useReusableSession } from '@/components/reusable-session-store';
-import { Checkbox } from '@/components/ui/checkbox';
 import { PanelFooter } from '@/components/ui/panel';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { openAgentSettings } from '@/lib/use-settings-route';
 import { QueueNewChatRow } from './QueueNewChatRow';
-import { dispatchComments, setSendingAll } from './store';
+import { dispatchComments } from './store';
 import { useCommentAgentPicker } from './use-comment-agent-picker';
 import { useCommentDispatch } from './use-comment-delivery';
 import { useSendQueue } from './use-send-queue';
 
 export function CommentSendFooter({
   threadIds,
-  selectableIds,
   testIdPrefix,
 }: {
   /** Ticked, and therefore going out — the batch this button hands over. */
   threadIds: readonly string[];
-  /** Everything the panel lists, ticked or not: what "all" means for this scope. */
-  selectableIds: readonly string[];
   testIdPrefix: string;
 }) {
   const { t } = useLingui();
@@ -73,26 +69,10 @@ export function CommentSendFooter({
       />
     );
 
-  const allTicked = selectableIds.length > 0 && threadIds.length === selectableIds.length;
-
   return (
-    <PanelFooter className="justify-between">
-      {/* The bulk tick lives beside the button it feeds rather than in the
-          header: "how many are going" and "send them" are one thought, and the
-          count doubles as the answer to what the button is about to carry.
-          The count is a sibling, not a `<label>` wrapper — this Checkbox renders
-          a `role="checkbox"` button rather than an `<input>`, which `htmlFor`
-          cannot address; the aria-label carries the name instead. */}
-      <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <Checkbox
-          checked={allTicked}
-          onCheckedChange={() => setSendingAll(selectableIds, !allTicked)}
-          aria-label={allTicked ? t`Unmark every comment` : t`Mark every comment to send`}
-        />
-        <span className="truncate tabular-nums">
-          {threadIds.length}/{selectableIds.length}
-        </span>
-      </div>
+    // The footer is the send alone now. The bulk tick and its count moved to the
+    // head of the list, where they line up with the per-card ticks they act on.
+    <PanelFooter className="justify-end">
       {/* Both scopes carry it, because the chord reads the visible scope
           (`visible-scope.ts`) and therefore sends exactly what this button
           sends. Showing it on only one scope would put a glyph beside a button
@@ -108,9 +88,17 @@ export function CommentSendFooter({
           stays reachable for screen readers through Settings → Hotkeys, which
           renders the same registry row. */}
       <div className="flex min-w-0 items-center gap-2">
+        {/* `font-sans`, the same face `Kbd` uses and for the same reason: ⇧ and
+            ⌘ have no glyph in the mono face, so they fell back to a symbol font
+            whose metrics do not match the "Enter" typeset beside them — the
+            marks sat off the baseline of their own string. `leading-none` so the
+            row's `items-center` centres the glyphs rather than a box padded out
+            by line-height. Still a bare span, not `Kbd`: its pill carries a
+            height, min-width, padding and background, and would reshape the row
+            it annotates. */}
         <span
           aria-hidden="true"
-          className="shrink-0 font-mono text-[13px] text-muted-foreground"
+          className="shrink-0 font-sans text-xs leading-none text-muted-foreground"
           title={t`Send to chat (${formatShortcutLabel('send-comment-queue')})`}
         >
           {formatShortcut('send-comment-queue')}

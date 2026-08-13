@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { layoutMarkers, railBand } from './CommentMarginRail';
+import { layoutMarkers, railBand, railLeft } from './CommentMarginRail';
 
 const RAIL_TOP = 100;
 const RAIL_HEIGHT = 600; // visible band: 100 → 700
@@ -114,5 +114,45 @@ describe('railBand', () => {
 
   test('never reports a negative height for a scrollport shorter than its inset', () => {
     expect(railBand({ top: 100, height: 20 }, TOOLBAR).height).toBe(0);
+  });
+});
+
+/**
+ * Keeping the rail inside the pane.
+ *
+ * It is a fixed portal on `document.body`, so nothing clips it — the `left` it
+ * computes is where it paints. Taking that straight from the scroll container's
+ * right edge sent it over the neighbouring panel whenever the container
+ * outgrew the pane clipping it.
+ */
+describe('railLeft', () => {
+  const RAIL_WIDTH = 34;
+
+  test('sits inside the container when the container fits its pane', () => {
+    expect(railLeft({ left: 0, right: 800 }, 900)).toBe(800 - RAIL_WIDTH);
+  });
+
+  test('follows the clipping edge when the container overflows the pane', () => {
+    // The container still measures 800 wide; only 500 of it is visible. The rail
+    // belongs at the visible edge, not the measured one.
+    expect(railLeft({ left: 0, right: 800 }, 500)).toBe(500 - RAIL_WIDTH);
+  });
+
+  test('declines rather than shrinking once the pane is too narrow', () => {
+    expect(railLeft({ left: 0, right: 200 }, 900)).toBeNull();
+  });
+
+  test('measures the visible width, not the measured one, when deciding', () => {
+    // Wide by its own reckoning, narrow on screen — the second is what a reader
+    // sees, so it is what the threshold reads.
+    expect(railLeft({ left: 0, right: 900 }, 200)).toBeNull();
+  });
+
+  test('never reports a left that would put the rail past the visible edge', () => {
+    for (const clipRight of [300, 400, 640, 1200]) {
+      const left = railLeft({ left: 0, right: 1000 }, clipRight);
+      if (left === null) continue;
+      expect(left + RAIL_WIDTH).toBeLessThanOrEqual(clipRight);
+    }
   });
 });

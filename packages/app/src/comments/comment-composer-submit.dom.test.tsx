@@ -13,7 +13,7 @@
  */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
@@ -155,12 +155,16 @@ function fakeEditor() {
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   captured.created.length = 0;
   captured.collapsedTo.length = 0;
   captured.panelTabs.length = 0;
   captured.startComment = null;
+  // Module-level store, so a test that puts the panel on screen would leave it
+  // there for the next one.
+  const { setCommentsPanelOnScreen } = await import('./comments-panel-visibility');
+  setCommentsPanelOnScreen(false);
 });
 
 async function openComposer() {
@@ -217,12 +221,39 @@ describe('the comment composer', () => {
   test('the card routes to the Comments tab instead of dispatching', async () => {
     const field = await openComposer();
     fireEvent.change(field, { target: { value: 'press it?' } });
-    fireEvent.click(screen.getByRole('button', { name: /open comments/i }));
+    fireEvent.click(screen.getByRole('button', { name: /view comments/i }));
 
     expect(captured.panelTabs).toEqual(['comments']);
     // Leaving is not filing: the draft survives the trip so nothing is lost.
     expect(captured.created).toEqual([]);
     expect(screen.queryByPlaceholderText('Add a comment')).not.toBeNull();
+  });
+
+  // The route out is the only thing on the card that is not the primary action,
+  // and it earns its place only while there is somewhere to go.
+  test('the route to the queue is withheld while the Comments tab is on screen', async () => {
+    const { setCommentsPanelOnScreen } = await import('./comments-panel-visibility');
+    setCommentsPanelOnScreen(true);
+    await openComposer();
+
+    expect(screen.queryByRole('button', { name: /view comments/i })).toBeNull();
+    // Filing still works — withholding the exit must not touch the action the
+    // card exists for.
+    expect(screen.queryByRole('button', { name: /add comment/i })).not.toBeNull();
+  });
+
+  // The store is subscribed to, not sampled at mount: opening the tab from
+  // behind an already-open composer has to take the button away.
+  test('the route disappears when the tab opens under an open composer', async () => {
+    const { setCommentsPanelOnScreen } = await import('./comments-panel-visibility');
+    await openComposer();
+    expect(screen.queryByRole('button', { name: /view comments/i })).not.toBeNull();
+
+    await act(async () => {
+      setCommentsPanelOnScreen(true);
+    });
+
+    expect(screen.queryByRole('button', { name: /view comments/i })).toBeNull();
   });
 
   test('posting collapses the selection — the passage has been filed', async () => {

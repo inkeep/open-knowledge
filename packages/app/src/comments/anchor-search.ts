@@ -26,6 +26,7 @@
 import {
   commentLeafText,
   commentQuoteText,
+  contextEvidenceFloor,
   contextMatchScore,
   findAllPassages,
   type PassageMatch,
@@ -180,24 +181,85 @@ export function findRangeInIndex(
     const recovered = findBetweenBrackets(index.text, quote, context);
     return recovered === null ? null : toRange(index, recovered);
   }
-  if (hits.length === 1) return toRange(index, hits[0]);
+  const prefix = context?.prefix ?? '';
+  const suffix = context?.suffix ?? '';
+  // Deletion probe, mirroring the server's: deleting exactly the selected text
+  // leaves the stored prefix and suffix CONCATENATED at the old spot, and that
+  // seam is positive evidence of an in-place deletion — it outranks any
+  // surviving occurrence of the quote, including a twin whose whole
+  // neighbourhood was duplicated and therefore matches the context honestly.
+  // Same two qualifiers as the server's: both context sides must exist (one
+  // side alone is a document edge), and the full prefix+quote+suffix triple
+  // must be GONE — neighbours that repeat the quote ("hi hi hi") contain the
+  // seam string even with the passage intact. Literal checks first; the
+  // elastic pass covers a context window that carries markdown syntax this
+  // rendered index does not show.
+  const present = (needle: string): boolean =>
+    index.text.includes(needle) ||
+    findAllPassages(index.text, needle, { syntaxIn: 'needle' }).length > 0;
+  if (
+    prefix !== '' &&
+    suffix !== '' &&
+    !present(prefix + quote + suffix) &&
+    present(prefix + suffix)
+  ) {
+    return null;
+  }
+  // Any accepted hit must show a trace of the stored surroundings. Without
+  // this, deleting the commented passage slid the highlight onto an identical
+  // phrase elsewhere in the document (the survivor is a lone hit, and a lone
+  // hit was accepted unexamined). The bracket recovery runs before giving up:
+  // the true passage may have been edited while an untouched twin still
+  // matches, and its intact surroundings can still name it. Same gate the
+  // server's `refind` applies, so highlight and stored state cannot disagree
+  // about a survivor.
+  // The context is a slice of the markdown BODY (the server captures it there),
+  // while `index.text` is rendered — so syntax is elastic on the context side
+  // here even though the text being scored has none.
+  const floor = contextEvidenceFloor({ prefix, suffix }, { syntaxInContext: true });
+  const evidence = (hit: PassageMatch): boolean =>
+    floor === 0 ||
+    contextMatchScore(
+      index.text,
+      hit,
+      { prefix, suffix },
+      { syntaxIn: 'none', syntaxInContext: true },
+    ) >= floor;
+  if (hits.length === 1) {
+    if (!evidence(hits[0])) {
+      const recovered = findBetweenBrackets(index.text, quote, context);
+      return recovered === null ? null : toRange(index, recovered);
+    }
+    return toRange(index, hits[0]);
+  }
 
   // Repeated quote: prefer the hit whose surrounding text best matches the
   // context captured when the comment was written.
-  const prefix = context?.prefix ?? '';
-  const suffix = context?.suffix ?? '';
   let best: PassageMatch[] = [];
   let bestScore = -1;
   for (const hit of hits) {
     // `index.text` is rendered text, so there is no markdown syntax to be
-    // elastic about — only whitespace. Same function the server ranks with.
-    const score = contextMatchScore(index.text, hit, { prefix, suffix }, { syntaxIn: 'none' });
+    // elastic about on THAT side — only whitespace. Same function the server
+    // ranks with.
+    const score = contextMatchScore(
+      index.text,
+      hit,
+      { prefix, suffix },
+      { syntaxIn: 'none', syntaxInContext: true },
+    );
     if (score > bestScore) {
       bestScore = score;
       best = [hit];
     } else if (score === bestScore) {
       best.push(hit);
     }
+  }
+  // Ranking orders the candidates; only the gate says whether the winner is
+  // any good. With the commented occurrence gone, every surviving twin scores
+  // near zero and the "best" is an arbitrary wrong answer.
+  if (!evidence(best[0])) {
+    const recovered = findBetweenBrackets(index.text, quote, context);
+    return recovered === null ? null : toRange(index, recovered);
   }
   // Context could not separate them — the earliest hit, which is exactly what
   // the server's `bestByContext` caller does with the same tied set. There was

@@ -1,17 +1,18 @@
 /**
  * Queued review comments ride the agent panel's composer, not only the Ask AI
- * one: the same `+ Comments` chip attaches the batch, and sending puts it into
- * THIS thread as one turn rather than starting a detached conversation.
+ * one: whatever the Comments panel has ticked is on the next message, and
+ * sending puts it into THIS thread as one turn rather than starting a detached
+ * conversation.
  *
- * The chip's own two-state rendering is `comment-chips`' behaviour; what this
- * suite owns is the wiring — that the row appears in the ACP composer at all,
- * that an attached batch makes an empty draft sendable, that the send reaches
- * `client.prompt` with the composed instruction, and that a hand-off which
- * never happened leaves the draft alone.
+ * The chip's own rendering is `comment-chips`' behaviour; what this suite owns
+ * is the wiring — that the row appears in the ACP composer at all, that a ticked
+ * batch makes an empty draft sendable with no attach step, that the send reaches
+ * `client.prompt` with the composed instruction, and that a hand-off which never
+ * happened leaves the draft alone.
  */
 
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { cleanup, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CommentThread } from '@/comments/types';
@@ -77,7 +78,6 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
  */
 const captured = {
   dispatched: [] as string[],
-  selectAllCalls: 0,
   /** Whether each send asked for the batch to be closed. */
   resolved: [] as boolean[],
 };
@@ -91,6 +91,7 @@ function thread(id: string, docName: string, body: string): CommentThread {
     status: 'open',
     body,
     createdAt: 1,
+    updatedAt: 1,
     queued: true,
   };
 }
@@ -100,14 +101,20 @@ const threads = [
   thread('t2', 'plan.md', 'cite a source'),
 ];
 
+/** Stand-in for the "server accepted a new comment" signal `createThread` fires. */
+const commentPostedListeners = new Set<() => void>();
+function emitCommentPostedForTest() {
+  for (const listener of commentPostedListeners) listener();
+}
+
 vi.doMock('@/comments/store', () => ({
-  useQueue: () => threads.map((item) => item.id),
   useQueueSelection: () => threads.map((item) => item.id),
   getThreadById: (id: string) => threads.find((item) => item.id === id) ?? null,
   removeFromQueue: () => {},
   toggleQueueSelection: () => {},
-  selectAllQueued: () => {
-    captured.selectAllCalls += 1;
+  subscribeCommentPosted: (listener: () => void) => {
+    commentPostedListeners.add(listener);
+    return () => commentPostedListeners.delete(listener);
   },
   dispatchComments: async ({
     compose,
@@ -170,41 +177,65 @@ beforeEach(() => {
   createThread.mockClear();
   resumeThread.mockClear();
   captured.dispatched = [];
-  captured.selectAllCalls = 0;
   captured.resolved = [];
   resumeSucceeds = false;
+  commentPostedListeners.clear();
 });
 
 afterEach(cleanup);
 
 describe('ThreadView queued-comment chip', () => {
-  test('offers the queue as an add chip, then names what the message carries', async () => {
+  test('names what the message carries, with no attach step', async () => {
     const user = userEvent.setup();
     render(<ThreadView info={makeInfo()} />);
 
-    // Detached: the source, with no count — the chip's presence is the signal
-    // that a batch is waiting.
-    const chip = screen.getByTestId('composer-context-chip-comments');
-    expect(chip.textContent).toContain('Comments');
-    expect(chip.textContent).not.toContain('2');
+    // Ticked in the panel is already on the message: the chip states the count
+    // rather than offering to pick one up.
+    expect(screen.getByTestId('composer-context-chip-comments').textContent).toContain(
+      '2 comments',
+    );
 
-    await user.click(chip);
+    // The ✕ takes the batch off this message and leaves the way back — it does
+    // not untick anything, so the send stops carrying them and the panel doesn't
+    // change underneath.
+    await user.click(screen.getByRole('button', { name: /leave these comments out/i }));
+    const detached = screen.getByTestId('composer-context-chip-comments');
+    expect(detached.textContent).toContain('Comments');
+    expect(detached.textContent).not.toContain('2 comments');
+    expect((screen.getByTestId('agent-thread-send') as HTMLButtonElement).disabled).toBe(true);
 
-    expect(captured.selectAllCalls).toBe(1);
+    await user.click(detached);
     expect(screen.getByTestId('composer-context-chip-comments').textContent).toContain(
       '2 comments',
     );
   });
 
-  test('an attached batch is sendable with nothing typed, and lands as one prompt', async () => {
+  test('posting a new comment re-attaches a dismissed batch', async () => {
+    // Both composers read one queue and show one chip, so the ✕ has to mean the
+    // same thing in each. Dismissing here and writing another comment puts the
+    // batch back on this message, exactly as it does in the Ask AI composer.
     const user = userEvent.setup();
     render(<ThreadView info={makeInfo()} />);
 
-    const send = screen.getByTestId('agent-thread-send') as HTMLButtonElement;
-    // Empty draft, nothing attached: there is nothing to send.
-    expect(send.disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: /leave these comments out/i }));
+    expect(screen.getByTestId('composer-context-chip-comments').textContent).not.toContain(
+      '2 comments',
+    );
 
-    await user.click(screen.getByTestId('composer-context-chip-comments'));
+    act(() => emitCommentPostedForTest());
+
+    expect(screen.getByTestId('composer-context-chip-comments').textContent).toContain(
+      '2 comments',
+    );
+  });
+
+  test('a ticked batch is sendable with nothing typed, and lands as one prompt', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={makeInfo()} />);
+
+    // The comments ARE the ask, so an empty draft sends — and it sends without
+    // a preparatory click, which is the whole point of the default.
+    const send = screen.getByTestId('agent-thread-send') as HTMLButtonElement;
     expect(send.disabled).toBe(false);
 
     await user.click(send);
@@ -229,14 +260,16 @@ describe('ThreadView queued-comment chip', () => {
     const field = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     await user.click(field);
     await user.keyboard('apply these before the review');
-    await user.click(screen.getByTestId('composer-context-chip-comments'));
     await user.click(screen.getByTestId('agent-thread-send'));
 
     expect(prompt.mock.calls[0]?.[1]).toContain('apply these before the review');
     expect(field.value).toBe('');
-    // The batch detaches with the draft, so the next message can't silently
-    // carry whatever has been queued since.
-    expect(screen.getByTestId('composer-context-chip-comments').textContent).toContain('Comments');
+    // The next message starts from the default again — a dispatched comment
+    // leaves the queue server-side (this suite's store double holds it fixed),
+    // so what is ticked is what rides.
+    expect(screen.getByTestId('composer-context-chip-comments').textContent).toContain(
+      '2 comments',
+    );
   });
 
   test('a mid-turn send queues the message but leaves the comments open', async () => {
@@ -246,7 +279,6 @@ describe('ThreadView queued-comment chip', () => {
     const user = userEvent.setup();
     render(<ThreadView info={makeInfo({ status: 'running' })} />);
 
-    await user.click(screen.getByTestId('composer-context-chip-comments'));
     await user.click(screen.getByTestId('agent-thread-send'));
 
     // The message really is sent...
@@ -263,7 +295,6 @@ describe('ThreadView queued-comment chip', () => {
     const field = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     await user.click(field);
     await user.keyboard('handle these');
-    await user.click(screen.getByTestId('composer-context-chip-comments'));
     await user.click(screen.getByTestId('agent-thread-send'));
 
     // The message rides the resume op as the thread's first turn.
@@ -279,7 +310,6 @@ describe('ThreadView queued-comment chip', () => {
     const field = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     await user.click(field);
     await user.keyboard('handle these');
-    await user.click(screen.getByTestId('composer-context-chip-comments'));
     await user.click(screen.getByTestId('agent-thread-send'));
 
     await screen.findByTestId('agent-thread-resume-failed');
@@ -299,7 +329,6 @@ describe('ThreadView queued-comment chip', () => {
     const field = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     await user.click(field);
     await user.keyboard('look at these');
-    await user.click(screen.getByTestId('composer-context-chip-comments'));
     await user.click(screen.getByTestId('agent-thread-send'));
 
     // The resume itself carried the batch — that send was real, it just failed.

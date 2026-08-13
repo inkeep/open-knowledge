@@ -68,6 +68,13 @@ export interface CommentThread {
   body: string;
   createdAt: number;
   /**
+   * When `body` was last written — the comment's own creation time until someone
+   * revises it. Always set here, unlike the server's optional field: every card
+   * shows this, so the fallback belongs at the one place the projection is built
+   * rather than at each render site.
+   */
+  updatedAt: number;
+  /**
    * The comment is in the dispatch queue, waiting to be sent in the next batch.
    *
    * Deliberately NOT "an agent is working on it": the server does not persist

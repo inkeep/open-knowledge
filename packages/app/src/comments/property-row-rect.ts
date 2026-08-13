@@ -101,8 +101,12 @@ export function revealPropertyValueRange(args: {
  * The stored offsets first, verified against the words; a search only if they no
  * longer hold. Same order the server's re-find uses, and for the same reason —
  * the position is a hint that is usually right and never trusted on its own.
+ *
+ * Exported because the click side has to agree with the reveal side about where
+ * a passage sits: a click that opened a thread whose reveal then selected
+ * different characters would be two answers to one question.
  */
-function locateInValue(
+export function locateInValue(
   value: string,
   quote: string,
   start?: number,

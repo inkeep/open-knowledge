@@ -102,7 +102,9 @@ vi.doMock('@/lib/use-workspace', () => ({
 // Markdown rendering is covered by AgentMarkdown.dom.test.tsx; keep this
 // suite off the streamdown pipeline.
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
-  AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
+  // Marked so a test can tell WHICH bubbles route through the renderer. Real
+  // markdown output is AgentMarkdown.dom.test.tsx's subject, not this file's.
+  AgentMarkdown: ({ text }: { text: string }) => <div data-testid="rendered-markdown">{text}</div>,
 }));
 
 // The composer's rich input, doubled as a textarea (jsdom can't type into a
@@ -2062,5 +2064,43 @@ describe('ThreadView failure notices', () => {
     const card = screen.getByTestId('agent-thread-notice');
     expect(card.textContent).toBe('session setup failed: boom');
     expect(screen.queryByTestId('agent-thread-notice-details-toggle')).toBeNull();
+  });
+});
+
+/**
+ * Sent messages render as markdown, like the agent's replies.
+ *
+ * They used to print verbatim. Fine for a typed sentence, wrong for a comment
+ * batch: that prompt is composed markdown, so the reader saw the raw `>`
+ * blockquotes and backticks the agent parses instead of the passages they mark.
+ */
+describe('the transcript renders both sides as markdown', () => {
+  test('a sent message goes through the renderer', async () => {
+    model = {
+      items: [{ kind: 'message', role: 'user', text: '> quoted', messageId: 'u1' }],
+      plan: [],
+      turnActive: false,
+      tokenUsage: null,
+      terminals: {},
+      permissionsByToolCall: {},
+    };
+    render(<ThreadView info={makeInfo()} />);
+    const bubble = screen.getByTestId('agent-thread-user-message');
+    expect(bubble.querySelector('[data-testid="rendered-markdown"]')).not.toBeNull();
+  });
+
+  test('the sent bubble does not also pre-wrap, which would fight the renderer', async () => {
+    model = {
+      items: [{ kind: 'message', role: 'user', text: 'hello', messageId: 'u1' }],
+      plan: [],
+      turnActive: false,
+      tokenUsage: null,
+      terminals: {},
+      permissionsByToolCall: {},
+    };
+    render(<ThreadView info={makeInfo()} />);
+    expect(screen.getByTestId('agent-thread-user-message').className).not.toContain(
+      'whitespace-pre-wrap',
+    );
   });
 });

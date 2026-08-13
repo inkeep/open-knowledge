@@ -63,16 +63,15 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import {
+  type CommentDocTally,
   composeCommentBatchInstruction,
   QueuedCommentsChip,
-  QueuedCommentsList,
   toCommentBatchItem,
-  useQueuedComments,
   useSelectedCommentCount,
+  useSelectedCommentDocs,
 } from '@/comments/comment-chips';
 import { subscribeSendInThread } from '@/comments/open-chat-send';
-import { dispatchComments, selectAllQueued } from '@/comments/store';
-import type { CommentThread } from '@/comments/types';
+import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { useOptionalPageList } from '@/components/PageListContext';
@@ -594,12 +593,21 @@ export function ThreadView({
   // shared instruction, and the batch lands as ONE turn in THIS thread — which
   // is the point of having it here rather than only in the omnicomposer, where
   // every send starts a conversation detached from the one already going.
-  const queuedComments = useQueuedComments();
   const selectedCommentCount = useSelectedCommentCount();
-  const [commentsAttached, setCommentsAttached] = useState(false);
-  const [commentsExpanded, setCommentsExpanded] = useState(false);
-
+  // The files the batch draws from — the chip says so when there is more than one.
+  const selectedCommentDocs = useSelectedCommentDocs();
+  // Ticked in the Comments panel = riding this message, so this starts ON — one
+  // picker (the panel), and both composers default to carrying what it holds.
+  // The chip's ✕ turns it off for this draft without disturbing the ticks.
+  const [commentsAttached, setCommentsAttached] = useState(true);
   const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
+  // A NEW comment re-attaches a dismissed batch, exactly as it does in the Ask
+  // AI composer. The ✕ says "not this message" about the batch as it stood;
+  // writing another one is a fresh statement of intent about the same message.
+  // Both composers read one queue and show one chip, so a rule that held in only
+  // one of them would make the same ✕ mean two different things depending on
+  // which box you happened to be typing in.
+  useEffect(() => subscribeCommentPosted(() => setCommentsAttached(true)), []);
 
   /**
    * The one send. A live thread prompts (the server queues it behind an active
@@ -733,10 +741,9 @@ export function ThreadView({
       );
     }
     composerRef.current?.clear();
-    // The batch detaches with the rest of the draft. Left on, the next message
-    // would silently carry whatever had been queued since.
-    setCommentsAttached(false);
-    setCommentsExpanded(false);
+    // Back to the default for the next message — a dispatched comment leaves the
+    // queue server-side, so this only matters when a send left something behind.
+    setCommentsAttached(true);
   };
 
   /**
@@ -1032,22 +1039,11 @@ export function ThreadView({
           archived={archived}
           resumePending={resumePending}
           usage={model?.tokenUsage ?? null}
-          queuedComments={queuedComments}
           selectedCommentCount={selectedCommentCount}
+          selectedCommentDocs={selectedCommentDocs}
           hasQueuedComments={hasQueuedComments}
-          commentsExpanded={commentsExpanded}
-          onAttachComments={() => {
-            setCommentsAttached(true);
-            // Deselection is sticky, so re-attaching has to re-check the queue —
-            // otherwise this puts an empty batch on the message and the chip
-            // bounces straight back to detached.
-            selectAllQueued();
-          }}
-          onToggleCommentsExpanded={() => setCommentsExpanded((open) => !open)}
-          onDismissComments={() => {
-            setCommentsAttached(false);
-            setCommentsExpanded(false);
-          }}
+          onAttachComments={() => setCommentsAttached(true)}
+          onDismissComments={() => setCommentsAttached(false)}
           pendingAttachments={pendingAttachments}
           pendingUploads={pendingUploads}
           imagesAccepted={imagesAccepted}
@@ -2041,13 +2037,21 @@ function MessageBubble({
             // margin (on top of the transcript's gap-2) enlarges only the turn
             // boundary — the gap before the agent's response starts — while the
             // response's own items (reply text + its tool calls) stay tight.
-            'my-3 ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-xs bg-muted px-3 py-1.5'
+            // No `whitespace-pre-wrap`: it fights the renderer, which decides
+            // its own block spacing. The cost is that a single newline in a
+            // typed message collapses, the way it does in any markdown chat.
+            'my-3 ml-auto max-w-[85%] rounded-2xl rounded-br-xs bg-muted px-3 py-1.5'
           : // Agent reply reads as full-width prose — no bubble, no fill.
             'w-full',
       )}
       data-testid={isUser ? 'agent-thread-user-message' : 'agent-thread-agent-message'}
     >
-      {isUser ? item.text : <AgentMarkdown text={item.text} />}
+      {/* Both sides render as markdown. Sent messages used to print verbatim,
+          which was fine for a typed sentence and wrong for a comment batch: that
+          prompt is composed markdown, so the reader saw the raw `>` blockquotes
+          and backticks the agent parses rather than the passages they mark. The
+          same renderer that sanitizes agent output handles this text. */}
+      <AgentMarkdown text={item.text} />
       {attachments !== undefined && attachments.length > 0 ? (
         <UserMessageAttachments attachments={attachments} />
       ) : null}
@@ -3081,12 +3085,10 @@ function ThreadComposer({
   archived,
   resumePending,
   usage,
-  queuedComments,
   selectedCommentCount,
+  selectedCommentDocs,
   hasQueuedComments,
-  commentsExpanded,
   onAttachComments,
-  onToggleCommentsExpanded,
   onDismissComments,
   pendingAttachments,
   pendingUploads,
@@ -3116,21 +3118,16 @@ function ThreadComposer({
   resumePending: boolean;
   /** Context-window fill the agent reported; null until it reports any. */
   usage: { used?: number; size?: number } | null;
-  /** The review comments waiting to be sent, in queue order. */
-  queuedComments: readonly CommentThread[];
-  /** How many of them are checked — what an attached send would carry. */
+  /** How many comments are ticked in the panel — what this send would carry. */
   selectedCommentCount: number;
+  selectedCommentDocs: readonly CommentDocTally[];
   /**
-   * The batch is riding this message AND still has something checked — the
-   * derived flag, never the raw attached state. `BottomComposer` carries the
-   * same distinction: unchecking the last item means nothing rides this
-   * message, which is the detached state however it was reached, and keying the
-   * chip on the raw flag leaves a countless chip above a list of unchecked rows.
+   * Ticked AND still on this message. `BottomComposer` derives the same flag the
+   * same way; the chip renders on the ticked count alone, since detached it is
+   * the way back.
    */
   hasQueuedComments: boolean;
-  commentsExpanded: boolean;
   onAttachComments: () => void;
-  onToggleCommentsExpanded: () => void;
   onDismissComments: () => void;
   /** Files/images the user dropped, pasted, or picked; parent owns the array. */
   pendingAttachments: readonly AttachmentPart[];
@@ -3173,8 +3170,6 @@ function ThreadComposer({
       : null;
 
   const queue = info.queue ?? [];
-
-  const queueSize = queuedComments.length;
 
   // What the action slot keys off. Both the Stop/Send choice and Send's disabled
   // state read this, or the two disagree. An attached batch counts as content:
@@ -3235,29 +3230,22 @@ function ThreadComposer({
         className="relative cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
       >
         {/* Queued comments as a context chip above the field, the same control
-            the Ask AI composer carries — detached it is a `+ Comments` add
-            button, attached it grows the peek + ✕ the other context chips have.
-            Same row component, so the two composers read as one chip system. */}
+            the Ask AI composer carries — a count of what the panel has ticked
+            plus the ✕ that unticks it. Same component in both composers, so the
+            two read as one chip system. */}
         {/* Gated here as well as inside the chip: `ComposerContextChips` decides
             whether to render its row by counting children, and an element that
-            returns null still counts as one. An empty queue has to contribute NO
+            returns null still counts as one. An empty batch has to contribute NO
             child, or the row appears as an empty strip above the field. */}
-        {queueSize > 0 ? (
+        {selectedCommentCount > 0 ? (
           <ComposerContextChips className="px-3 pt-2 pb-1">
             <QueuedCommentsChip
-              // Attached, the count is what a SEND carries, so unchecking an
-              // item moves it. Detached the chip shows no number, so the raw
-              // queue is what decides it renders at all.
-              count={hasQueuedComments ? selectedCommentCount : queueSize}
+              count={selectedCommentCount}
+              docs={selectedCommentDocs}
               attached={hasQueuedComments}
-              expanded={commentsExpanded}
               onAttach={onAttachComments}
-              onToggleExpanded={onToggleCommentsExpanded}
               onDismiss={onDismissComments}
             />
-            {hasQueuedComments && commentsExpanded ? (
-              <QueuedCommentsList threads={queuedComments} />
-            ) : null}
           </ComposerContextChips>
         ) : null}
         {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (

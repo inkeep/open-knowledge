@@ -8,8 +8,14 @@
  * as an id, which is what these pin.
  */
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { consumePendingDocPanelTabRequest } from '@/components/doc-panel-events';
 import { emitOpenThreadPopover, subscribeOpenThreadPopover } from './store';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  consumePendingDocPanelTabRequest();
+});
 
 /** Collect everything the bus publishes for the life of one subscription. */
 function record(): { seen: (string | null)[]; stop: () => void } {
@@ -60,5 +66,19 @@ describe('the thread-popover bus', () => {
     expect(a.seen).toEqual(b.seen);
     a.stop();
     b.stop();
+  });
+});
+
+describe('opening a thread opens the Comments tab beside it', () => {
+  test('an id requests the tab; a close leaves the panel alone', () => {
+    consumePendingDocPanelTabRequest();
+    emitOpenThreadPopover('t1');
+    // The pending-tab latch is how the panel host learns of the request even
+    // when it has not mounted yet — the same channel every open path lands on.
+    expect(consumePendingDocPanelTabRequest()).toBe('comments');
+
+    emitOpenThreadPopover(null);
+    // Dismissing a popover is not a statement about the panel.
+    expect(consumePendingDocPanelTabRequest()).toBeNull();
   });
 });

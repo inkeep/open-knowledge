@@ -354,6 +354,20 @@ export function findAllPassages(
       }
       break;
     }
+    // Whitespace left over in the needle once the haystack is exhausted. The
+    // loop above can only skip it while there is still haystack to compare
+    // against, so a needle ending in whitespace never completed at the very end
+    // of the text — even though whitespace is elastic everywhere else.
+    //
+    // A comment on a document's LAST passage is the case that reached users.
+    // Rendered text carries no trailing newline, while a stored suffix that ran
+    // off the end of the markdown body is exactly "\n" — so `prefix + suffix`
+    // matched (its "\n" was skipped mid-haystack) while `prefix + quote +
+    // suffix` did not, and the deletion probe in `findRangeInIndex` read the
+    // passage as deleted where it stood. The comment stayed `anchored`
+    // server-side,
+    // where the body does end in a newline, and silently lost its highlight.
+    while (ni < needle.length && isSpace(needle[ni] as string)) ni += 1;
     if (ni === needle.length) out.push({ start, end: hi });
   }
   return out;
@@ -393,6 +407,26 @@ export function findPassage(
 export interface ContextMatchOptions {
   /** `'haystack'` when `text` is markdown; `'none'` when it is rendered text. */
   readonly syntaxIn: 'haystack' | 'none';
+  /**
+   * Whether the stored `prefix`/`suffix` themselves carry markdown syntax —
+   * independent of the haystack, because the two sides come from different
+   * places. A STORED anchor's context is a slice of the markdown body, so it
+   * arrives with `## `, `1. `, `**` in it; the context a client captures around
+   * a live selection is rendered text and has none.
+   *
+   * Condensing a markdown context as though it were rendered was a silent
+   * scoring collapse, not a rounding error: a 32-character window reaches past
+   * its own block in ordinary prose, so it almost always contains a heading or
+   * list marker, and one such character at the seam takes the common-run length
+   * to zero — `## Steps\n\n1. ` condenses to `##Steps1.` against a rendered
+   * `…Steps`, sharing nothing at the end. Every candidate scored 0, the
+   * evidence floor could never be met, and re-find fell through to the
+   * exact-literal bracket recovery for anchors that should have resolved on
+   * their quote. The visible symptom was a highlight vanishing when text NEAR
+   * the passage — inside the stored context window, but not inside the quote —
+   * was edited.
+   */
+  readonly syntaxInContext?: boolean;
 }
 
 /**
@@ -447,7 +481,7 @@ export function contextMatchScore(
   text: string,
   span: { readonly start: number; readonly end: number },
   context: { readonly prefix?: string; readonly suffix?: string },
-  { syntaxIn }: ContextMatchOptions,
+  { syntaxIn, syntaxInContext = false }: ContextMatchOptions,
 ): number {
   const prefix = context.prefix ?? '';
   const suffix = context.suffix ?? '';
@@ -456,18 +490,56 @@ export function contextMatchScore(
   if (prefix.length > 0) {
     const window = prefix.length * CONTEXT_WINDOW_FACTOR + CONTEXT_WINDOW_FLOOR;
     score += commonSuffixLen(
-      condense(prefix, 0, prefix.length, false),
+      condense(prefix, 0, prefix.length, syntaxInContext),
       condense(text, span.start - window, span.start, syntax),
     );
   }
   if (suffix.length > 0) {
     const window = suffix.length * CONTEXT_WINDOW_FACTOR + CONTEXT_WINDOW_FLOOR;
     score += commonPrefixLen(
-      condense(suffix, 0, suffix.length, false),
+      condense(suffix, 0, suffix.length, syntaxInContext),
       condense(text, span.end, span.end + window, syntax),
     );
   }
   return score;
+}
+
+/**
+ * The least context agreement a re-find may accept a quote hit on, in the
+ * condensed characters {@link contextMatchScore} counts. Zero when too little
+ * context is stored to demand anything (a quote hugging both document edges).
+ *
+ * This is what stands between a comment and an impostor. Deleting a commented
+ * passage while an identical phrase survives elsewhere leaves the survivor as a
+ * lone, clean hit of the quote — and a re-find that accepts a lone hit
+ * unexamined re-anchors the comment onto words nobody commented on, with the
+ * stored context in open disagreement. Any acceptance must therefore show a
+ * TRACE of the recorded neighbourhood.
+ *
+ * A floor, not a match requirement: the surroundings may legitimately have been
+ * edited, so it asks for a fragment, well under the stored context's length.
+ * Above zero because unrelated locations share stray seam characters — a
+ * period, a closing word — and a gate those satisfy is no gate. The cost is
+ * deliberate and documented: a passage MOVED somewhere entirely new fails the
+ * floor and orphans (its old neighbours, left behind and now adjacent, read as
+ * a deletion) — "exact-match-or-orphan, never guess" is the contract, and
+ * re-placing an orphan is one click.
+ */
+export function contextEvidenceFloor(
+  context: {
+    readonly prefix?: string;
+    readonly suffix?: string;
+  },
+  { syntaxInContext = false }: { readonly syntaxInContext?: boolean } = {},
+): number {
+  const MAX_FLOOR = 8;
+  // Condensed the same way `contextMatchScore` condenses this context, or the
+  // floor asks for more agreement than the score can ever report — a context
+  // that is mostly markers would demand characters scoring has already dropped.
+  const available =
+    condense(context.prefix ?? '', 0, Number.POSITIVE_INFINITY, syntaxInContext).length +
+    condense(context.suffix ?? '', 0, Number.POSITIVE_INFINITY, syntaxInContext).length;
+  return Math.min(MAX_FLOOR, available);
 }
 
 /**

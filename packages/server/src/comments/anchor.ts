@@ -8,7 +8,11 @@
  * between multiple exact hits.
  */
 
-import { contextMatchScore, rewriteCeiling } from '@inkeep/open-knowledge-core';
+import {
+  contextEvidenceFloor,
+  contextMatchScore,
+  rewriteCeiling,
+} from '@inkeep/open-knowledge-core';
 import type { Anchor } from './types.ts';
 
 /** Hypothesis uses 32 chars of context for web text; a reasonable markdown default. */
@@ -104,11 +108,18 @@ export function literalSpans(haystack: string, needle: string): Span[] {
  * a single `\n` and the body has `\n\n`, `- `, `> ` or `#`. It scored zero for
  * every candidate on any context reaching past its own block, which is most of
  * them, and the ranking silently did nothing.
+ *
+ * `contextIsMarkdown` says where the caller's context came from, and the two
+ * callers differ: a STORED anchor's context is a slice of the body and carries
+ * its syntax, while the context a client sends with a fresh selection is
+ * rendered text. Getting this wrong reintroduces the same collapse one side
+ * over — see `syntaxInContext`.
  */
 export function bestByContext<T extends Span>(
   body: string,
   hits: readonly T[],
   context: { prefix?: string; suffix?: string },
+  { contextIsMarkdown = false }: { contextIsMarkdown?: boolean } = {},
 ): T[] {
   const prefix = context.prefix ?? '';
   const suffix = context.suffix ?? '';
@@ -116,7 +127,12 @@ export function bestByContext<T extends Span>(
   let bestScore = -1;
   for (const hit of hits) {
     // `body` is markdown, so syntax is elastic here as well as whitespace.
-    const score = contextMatchScore(body, hit, { prefix, suffix }, { syntaxIn: 'haystack' });
+    const score = contextMatchScore(
+      body,
+      hit,
+      { prefix, suffix },
+      { syntaxIn: 'haystack', syntaxInContext: contextIsMarkdown },
+    );
     if (score > bestScore) {
       bestScore = score;
       best = [hit];
@@ -130,9 +146,11 @@ export function bestByContext<T extends Span>(
 /**
  * Locate the anchor in the current `body`. Ordered, stop at first hit:
  *   1. fast path — the quote is still at the saved offsets;
- *   2. quote search — find the quote; disambiguate multiple hits by context,
+ *   2. deletion probe — the stored surroundings, now TOUCHING, prove the
+ *      passage was removed where it stood;
+ *   3. quote search — find the quote; disambiguate multiple hits by context,
  *      then by nearest-to-old-position;
- *   3. orphan — nothing matched, or still ambiguous. Never guesses.
+ *   4. orphan — nothing matched, or still ambiguous. Never guesses.
  */
 export function refind(body: string, anchor: Anchor): RefindResult {
   const { exact, prefix, suffix, start } = anchor;
@@ -143,11 +161,57 @@ export function refind(body: string, anchor: Anchor): RefindResult {
     return { status: 'anchored', start, end };
   }
 
-  // (2) quote search
+  // (2) deletion probe. Deleting exactly the selected text does not remove the
+  // stored context — it closes the gap between prefix and suffix, leaving the
+  // two concatenated at the old spot. Finding that seam is POSITIVE evidence of
+  // an in-place deletion, and it outranks any surviving occurrence of the
+  // quote: when the deleted passage's whole neighbourhood was duplicated
+  // elsewhere (a copied sentence, a repeated heading), the twin's surroundings
+  // legitimately match the stored context and no amount of context scoring can
+  // tell it from the original. The seam can.
+  //
+  // Two qualifiers keep the probe honest. Both context sides must exist — a
+  // one-sided context is a document edge, not a seam. And the full
+  // prefix+quote+suffix triple must be GONE: when the quote's own neighbours
+  // repeat the quote ("hi hi hi"), the seam string exists even with the
+  // passage intact, so adjacency alone proves nothing while the triple's
+  // absence does.
+  if (
+    prefix !== '' &&
+    suffix !== '' &&
+    !body.includes(prefix + exact + suffix) &&
+    body.includes(prefix + suffix)
+  ) {
+    return { status: 'orphaned' };
+  }
+
+  // (3) quote search
   const hits = allOccurrences(body, exact);
   if (hits.length === 0) return refindBetweenBrackets(body, anchor);
+  // Every acceptance below must show a trace of the stored surroundings. This
+  // is what keeps a deleted passage from re-anchoring onto an identical phrase
+  // elsewhere: the survivor is a lone, clean hit of the quote, and before this
+  // gate a lone hit was accepted without consulting the context at all — the
+  // exact "never guesses" this module's header promises, broken in the one
+  // case where guessing is invisible.
+  // A stored anchor's context was sliced out of the body, so it carries the
+  // body's markdown syntax and is condensed the same way the body is.
+  const floor = contextEvidenceFloor(anchor, { syntaxInContext: true });
+  const evidence = (span: Span): boolean =>
+    floor === 0 ||
+    contextMatchScore(
+      body,
+      span,
+      { prefix, suffix },
+      { syntaxIn: 'haystack', syntaxInContext: true },
+    ) >= floor;
   if (hits.length === 1) {
-    return { status: 'anchored', start: hits[0], end: hits[0] + exact.length };
+    const span = { start: hits[0], end: hits[0] + exact.length };
+    // Not straight to orphaned: the true passage may have been EDITED (its
+    // quote no longer literal) while an untouched twin still matches — the
+    // bracket recovery can still find the real one by its intact surroundings.
+    if (!evidence(span)) return refindBetweenBrackets(body, anchor);
+    return { status: 'anchored', start: span.start, end: span.end };
   }
 
   // disambiguate by how much of the stored context still surrounds each hit
@@ -155,7 +219,12 @@ export function refind(body: string, anchor: Anchor): RefindResult {
     body,
     hits.map((h) => ({ start: h, end: h + exact.length })),
     { prefix, suffix },
+    { contextIsMarkdown: true },
   );
+  // Ranking says which candidate is LEAST bad; only the gate says whether the
+  // winner is any good. With the commented occurrence gone, every surviving
+  // twin scores near zero and the winner is an arbitrary wrong answer.
+  if (!evidence(best[0])) return refindBetweenBrackets(body, anchor);
   if (best.length === 1) {
     return { status: 'anchored', start: best[0].start, end: best[0].end };
   }

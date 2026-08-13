@@ -15,32 +15,16 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { ChevronDown, FileText, MessageSquare, Plus, Unlink, X } from 'lucide-react';
+import { MessageSquare, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { DispatchPayload } from './comments-client';
 import { revealPropertyValueRange } from './property-row-rect';
 import { revealComment } from './reveal-comment';
-import {
-  getThreadById,
-  removeFromQueue,
-  toggleQueueSelection,
-  useQueue,
-  useQueueSelection,
-} from './store';
+import { revealQueue } from './reveal-queue';
+import { getThreadById, useQueueSelection } from './store';
 import type { CommentThread } from './types';
-
-/** The queued comments backing the composer chip, in queue order. */
-export function useQueuedComments(): CommentThread[] {
-  const ids = useQueue();
-  const threads: CommentThread[] = [];
-  for (const id of ids) {
-    const thread = getThreadById(id);
-    if (thread !== null) threads.push(thread);
-  }
-  return threads;
-}
 
 /**
  * How many queued comments are actually checked — what a send would carry.
@@ -53,40 +37,77 @@ export function useSelectedCommentCount(): number {
   return useQueueSelection().length;
 }
 
+/** A file the batch draws from, and how many of its comments are in it. */
+export interface CommentDocTally {
+  docName: string;
+  count: number;
+}
+
 /**
- * One chip standing for the whole batch (`3 comments`), matching how the
- * selection pill reads — a count plus a remove control, never raw content.
+ * The batch broken down by the files it spans, in queue order.
  *
- * The chip is also the ATTACH control, which is why it renders whenever
- * anything is queued rather than only once the batch is riding the message.
- * Attaching is opt-in, so something has to say a queue exists — and the count
- * is that something. Behind a `+` menu it was one click deep and invisible until
- * you went looking, which made a queue you had just built read as lost.
+ * A bare "5 comments" is honest but unreadable the moment the batch crosses
+ * documents: the reader is looking at ONE file and the number counts comments
+ * they cannot see, with nothing saying so. The tally is what lets the chip say
+ * how far the send reaches.
+ */
+export function useSelectedCommentDocs(): readonly CommentDocTally[] {
+  const selected = useQueueSelection();
+  const byDoc = new Map<string, number>();
+  for (const id of selected) {
+    const docName = getThreadById(id)?.docName;
+    if (docName === undefined) continue;
+    byDoc.set(docName, (byDoc.get(docName) ?? 0) + 1);
+  }
+  return [...byDoc].map(([docName, count]) => ({ docName, count }));
+}
+
+/**
+ * One chip standing for the whole batch, matching how the selection pill reads —
+ * a count plus a remove control, never raw content.
  *
- * Unattached it is a single toggle: click to put the batch on this message.
- * Attached it grows the two controls the other context chips carry — a peek
- * (what am I about to send) and a ✕ (stop carrying it).
+ * It says how many FILES the batch spans as soon as there is more than one. A
+ * bare "5 comments" is honest and unreadable in that case: the reader is looking
+ * at one file, the number counts comments they cannot see, and the send goes on
+ * to edit documents they were not looking at. The names go in the tooltip —
+ * this row is shared with the file chips and cannot grow by a path per document.
+ *
+ * ATTACHED IS THE DEFAULT. What is ticked in the Comments panel rides the next
+ * message, and the chip states that rather than gating it: as an opt-in toggle
+ * the panel's ticks meant nothing until a second, differently-shaped act in a
+ * different corner of the screen, and a batch you had just built read as lost.
+ * The panel is the picker; this is its read-out.
+ *
+ * Attached, it carries two controls, both pointing back at that picker. The
+ * count opens the panel — with the peek gone, a chip naming a batch you could
+ * not get to was a dead end. The ✕ takes the batch off THIS message and leaves
+ * the chip as the way back; it does not touch the ticks, because "not on this
+ * message" and "not a comment I want to send" are different statements and only
+ * one of them is being made.
  */
 export function QueuedCommentsChip({
   count,
+  docs = [],
   attached,
-  expanded,
   onAttach,
-  onToggleExpanded,
   onDismiss,
 }: {
   count: number;
-  /** The batch is riding this message. Unattached, the chip is an add button. */
-  attached: boolean;
-  expanded: boolean;
-  /** Put the queue ON this message. The queue itself is untouched either way. */
-  onAttach: () => void;
-  onToggleExpanded: () => void;
   /**
-   * Take the queue OUT of this message — it does not touch the queue itself.
+   * The files the batch spans. Empty is treated as "not told", which reads the
+   * same as a single file — the chip degrades to the bare count rather than
+   * claiming a span it has not been given.
+   */
+  docs?: readonly CommentDocTally[];
+  /** The batch is riding this message. Detached, the chip is the way back. */
+  attached: boolean;
+  /** Put the batch back on this message. The ticks were never disturbed. */
+  onAttach: () => void;
+  /**
+   * Take the batch OUT of this message — it unticks nothing and deletes nothing.
    *
    * The sibling controls in this row (a file chip's ✕, the selection pill's ✕)
-   * all mean "stop carrying this", so an ✕ here that emptied the batch would be
+   * all mean "stop carrying this", so an ✕ here that emptied the queue would be
    * the one destructive button wearing a dismiss affordance. Destroying the
    * batch is the All-comments panel's labelled Clear.
    */
@@ -97,18 +118,14 @@ export function QueuedCommentsChip({
   if (!attached) {
     return (
       // The leading `+` carries the state, not the border. The two chips sit in
-      // the same row at different times rather than side by side, so a fill or
+      // the same slot at different times rather than side by side, so a fill or
       // outline difference has nothing to be read against — `+` vs. the comment
-      // mark is legible with no second chip to compare to, and says which way the
-      // click goes. Dashed border reinforces it for anyone who reads the shape
-      // before the icon.
+      // mark is legible with no second chip to compare to, and says which way
+      // the click goes. Dashed border reinforces it for anyone who reads the
+      // shape before the icon.
       //
-      // Detached it names the SOURCE ("Comments"), attached the CONTENT ("2
-      // comments"): one is what you are about to pick up, the other what this
-      // message carries, and the sibling chips already name content that way.
-      // No count while detached — the chip's presence is the signal that a batch
-      // is waiting, and the number only becomes a fact about this message once
-      // the batch is on it.
+      // No count here: detached, the number is not a fact about this message,
+      // and the chip's presence is already the signal that a batch is waiting.
       <Button
         type="button"
         size="sm"
@@ -135,20 +152,54 @@ export function QueuedCommentsChip({
         'text-xs text-muted-foreground',
       )}
     >
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        aria-expanded={expanded}
-        aria-label={expanded ? t`Hide these comments` : t`Show these comments`}
-        onClick={onToggleExpanded}
-        data-testid="composer-comments-peek"
-        className="h-auto min-h-0 gap-1 px-0.5 py-0 text-xs font-normal text-muted-foreground hover:text-foreground"
-      >
-        <MessageSquare className="size-3" />
-        <Plural value={count} one="# comment" other="# comments" />
-        <ChevronDown className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
-      </Button>
+      {/* `revealQueue`, not a plain tab request: the batch spans documents, so
+          the panel has to open on the whole queue rather than on whichever file
+          happens to be in front. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label={t`Show these comments in the Comments panel`}
+            onClick={() => revealQueue()}
+            data-testid="composer-comments-open-panel"
+            className="h-auto min-h-0 gap-1 px-0.5 py-0 text-xs font-normal text-muted-foreground hover:text-foreground"
+          >
+            <MessageSquare className="size-3" />
+            {/* The file count comes with the comment count whenever the batch
+                crosses documents. Reading one file, "5 comments" counts things
+                the reader cannot see and nothing says so — the send then edits
+                documents they were not looking at. One file needs no such
+                warning, so the bare count stays for the common case. */}
+            {docs.length > 1 ? (
+              <Trans>
+                <Plural value={count} one="# comment" other="# comments" /> across{' '}
+                <Plural value={docs.length} one="# file" other="# files" />
+              </Trans>
+            ) : (
+              <Plural value={count} one="# comment" other="# comments" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        {/* The per-file breakdown, in the one place with room for it. One line
+            per file, so it stays readable at ten files where a comma-joined
+            sentence would not. */}
+        <TooltipContent className="max-w-64">
+          {docs.length > 1 ? (
+            <ul className="flex flex-col gap-0.5">
+              {docs.map((doc) => (
+                <li key={doc.docName} className="flex items-baseline gap-1.5">
+                  <span className="tabular-nums">{doc.count}</span>
+                  <span className="truncate">{docBasename(doc.docName)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Trans>Show these comments in the Comments panel</Trans>
+          )}
+        </TooltipContent>
+      </Tooltip>
       <Button
         type="button"
         size="sm"
@@ -181,34 +232,6 @@ export function propertyAddress(key: string, path: readonly (string | number)[])
   let out = key;
   for (const step of path) out += typeof step === 'number' ? `[${step}]` : `.${step}`;
   return out;
-}
-
-/**
- * The one line that says what a thread is ON, for the composer chip's expanded
- * list. Local to this file — the panels' own cards render the target themselves,
- * with room for a jump target and a badge this compact line has no space for.
- *
- * A whole property renders as `tags:` in the same monospace the quote uses. That
- * reads as the YAML it is, which distinguishes it from a passage without needing
- * a label saying "property" — and the trailing colon is the whole difference,
- * because a bare key and a short quote otherwise look identical.
- *
- * A passage inside a value shows BOTH — `description: “ships in Q3”` — because
- * neither half identifies it alone: several comments can sit on one field, and
- * the same words can appear in more than one.
- */
-function ThreadTargetLine({ thread, className }: { thread: CommentThread; className?: string }) {
-  const base = 'w-full truncate font-mono text-[11px] text-muted-foreground';
-  const quote = thread.anchor?.quote ?? '';
-  if (thread.target.kind === 'property') {
-    const address = propertyAddress(thread.target.key, thread.target.path);
-    return (
-      <span className={cn(base, className)}>
-        {address}:{quote === '' ? '' : ` “${quote}”`}
-      </span>
-    );
-  }
-  return <span className={cn(base, className)}>“{quote}”</span>;
 }
 
 /**
@@ -250,105 +273,6 @@ export function revealThread(thread: CommentThread): void {
 
 /** ~half a second of frames — long enough for a doc switch, short enough to stop. */
 const REVEAL_FRAME_BUDGET = 30;
-
-/**
- * The expanded queue: one row per comment — check to include it in the next
- * send, ✕ to drop it entirely. Shows the file, the quoted passage, and what the
- * reviewer wrote, so the batch can be reviewed without leaving the composer.
- *
- * Carries `basis-full` so it drops onto its own line beneath the chip row (the
- * same mechanism the expanded selection preview uses).
- */
-export function QueuedCommentsList({ threads }: { threads: readonly CommentThread[] }) {
-  const { t } = useLingui();
-  // USE the subscription's value — do not just call it for the side effect.
-  //
-  // React Compiler memoizes this component's rows on the dependencies it can
-  // see. An imperative store read is not one, and a hook whose result is
-  // discarded contributes no dependency — so toggling a checkbox updated the
-  // store, re-ran this function, and handed back the previous rows. The checkbox
-  // looked dead. Reading through `selectedIds` is what puts the selection inside
-  // React's data flow, and is what the queue panel already did.
-  const selectedIds = useQueueSelection();
-  if (threads.length === 0) return null;
-  return (
-    <ul
-      data-testid="composer-comments-list"
-      className="mt-1 flex max-h-64 basis-full list-none flex-col gap-1 overflow-y-auto subtle-scrollbar"
-    >
-      {threads.map((thread) => {
-        const orphaned = thread.status === 'orphaned';
-        const selected = selectedIds.includes(thread.id);
-        return (
-          <li
-            key={thread.id}
-            className={cn(
-              'flex items-start gap-2 rounded-md border bg-background/60 px-2 py-1.5',
-              // Unchecked = not going in this send. Dim it so the row's state is
-              // legible at a glance, not only from the checkbox.
-              !selected && 'opacity-50',
-            )}
-          >
-            <Checkbox
-              checked={selected}
-              onCheckedChange={() => toggleQueueSelection(thread.id)}
-              aria-label={t`Include this comment in the next send`}
-              className="mt-0.5"
-            />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex min-w-0 items-center gap-1.5">
-                {/* `min-w-0` on both the row and the chip — a flex child won't
-                    compress below its content without it, so `truncate` alone
-                    would still overflow. */}
-                <span
-                  className="inline-flex min-w-0 items-center gap-1 rounded border px-1 py-px text-[10px] text-muted-foreground"
-                  title={thread.docName}
-                >
-                  <FileText className="size-2.5 shrink-0" />
-                  <span className="truncate">{docBasename(thread.docName)}</span>
-                </span>
-                {orphaned && (
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1 text-[10px] text-amber-600 dark:text-amber-500"
-                    title={t`The quoted text is no longer in the document — the agent will be told.`}
-                  >
-                    <Unlink className="size-2.5" />
-                    <Trans>gone</Trans>
-                  </span>
-                )}
-              </div>
-              {/* Click the quote/body to open that document and scroll to the
-                  passage — the queue spans files, so this is how you check what
-                  you're about to send. */}
-              <Button
-                type="button"
-                variant="ghost"
-                aria-label={t`Go to this comment in ${docBasename(thread.docName)}`}
-                onClick={() => revealThread(thread)}
-                className="h-auto min-h-0 w-full min-w-0 flex-col items-start gap-1 px-0 py-0 text-left font-normal hover:bg-transparent"
-              >
-                <ThreadTargetLine thread={thread} />
-                <span className="line-clamp-2 w-full text-xs whitespace-normal text-foreground/90">
-                  {thread.body}
-                </span>
-              </Button>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              aria-label={t`Don't send this comment`}
-              onClick={() => removeFromQueue(thread.id)}
-              className="size-5 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            >
-              <X className="size-3" />
-            </Button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
 
 /** One queued comment, as the composer hands it to an agent. */
 export interface CommentBatchItem {

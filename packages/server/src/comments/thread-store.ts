@@ -200,13 +200,14 @@ export class CommentThreadStore {
  * by mistake or through an `as` cast.
  */
 function patchable(patch: CommentThreadPatch): CommentThreadPatch {
-  const { docName, anchor, state, queued, latestComment } = patch;
+  const { docName, anchor, state, queued, latestComment, updatedAt } = patch;
   return {
     ...(docName !== undefined && { docName }),
     ...(anchor !== undefined && { anchor }),
     ...(state !== undefined && { state }),
     ...(queued !== undefined && { queued }),
     ...(latestComment !== undefined && { latestComment }),
+    ...(updatedAt !== undefined && { updatedAt }),
   };
 }
 

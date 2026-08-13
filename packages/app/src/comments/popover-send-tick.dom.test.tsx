@@ -13,6 +13,7 @@ import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import type { CommentThread } from './types';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -32,12 +33,14 @@ const THREAD: CommentThread = {
   status: 'open',
   body: 'hi',
   createdAt: 1000,
+  updatedAt: 1000,
   queued: true,
 };
 
 // `t1` is in the send list — the state the popover used to draw as unchecked.
 vi.doMock('./store', () => ({
   useCommentThreads: () => [THREAD],
+  useAllThreads: () => [THREAD],
   useQueueSelection: () => ['t1'],
   subscribeOpenThreadPopover: (cb: (id: string | null) => void) => {
     openPopover = cb;
@@ -77,8 +80,12 @@ afterEach(() => {
 describe('the thread popover', () => {
   test('draws its tick from the send list, not from nothing', async () => {
     const { CommentThreadPopover } = await import('./CommentThreadPopover');
-    // biome-ignore lint/suspicious/noExplicitAny: structural editor double
-    render(<CommentThreadPopover editor={{ state: {} } as any} docName="recipes/wiki" />);
+    render(
+      <TooltipProvider>
+        {/* biome-ignore lint/suspicious/noExplicitAny: structural editor double */}
+        <CommentThreadPopover editor={{ state: {} } as any} docName="recipes/wiki" />
+      </TooltipProvider>,
+    );
     openPopover?.('t1');
 
     const tick = await screen.findByRole('checkbox');

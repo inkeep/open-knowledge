@@ -71,3 +71,35 @@ describe('AgentMarkdown', () => {
     expect(anchor?.getAttribute('rel')).toContain('noreferrer');
   });
 });
+
+/**
+ * A lone newline ends the line.
+ *
+ * Markdown collapses one into a space; only a blank line starts a block. That is
+ * right for prose and wrong for a chat transcript, where people press Enter once
+ * — and it started mattering when sent messages began rendering as markdown
+ * instead of printing verbatim under `whitespace-pre-wrap`.
+ */
+describe('single newlines', () => {
+  test('become a line break', () => {
+    const { container } = render(<AgentMarkdown text={'first line\nsecond line'} />);
+    expect(container.querySelector('br')).not.toBeNull();
+  });
+
+  test('leave fenced code alone — its newlines are the code renderer’s', () => {
+    const { container } = render(<AgentMarkdown text={'```ts\nconst a = 1;\nconst b = 2;\n```'} />);
+    expect(container.querySelector('pre br')).toBeNull();
+  });
+
+  test('do not cost the renderer its GFM defaults', () => {
+    // The break rule arrives via `remarkPlugins`, which REPLACES Streamdown's
+    // own set rather than extending it. Passing the plugin alone dropped
+    // remark-gfm with it, and the damage showed up in agent output far from the
+    // line that caused it — so both of these are the regression guard.
+    const table = render(<AgentMarkdown text={'| a | b |\n| - | - |\n| 1 | 2 |'} />);
+    expect(table.container.querySelector('table')).not.toBeNull();
+
+    const strike = render(<AgentMarkdown text={'~~gone~~'} />);
+    expect(strike.container.querySelector('del')).not.toBeNull();
+  });
+});

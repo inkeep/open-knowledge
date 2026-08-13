@@ -35,17 +35,11 @@ import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
   QueuedCommentsChip,
-  QueuedCommentsList,
   toCommentBatchItem,
-  useQueuedComments,
   useSelectedCommentCount,
+  useSelectedCommentDocs,
 } from '@/comments/comment-chips';
-import {
-  type BatchPreparedItem,
-  dispatchComments,
-  selectAllQueued,
-  subscribeCommentPosted,
-} from '@/comments/store';
+import { type BatchPreparedItem, dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
@@ -436,22 +430,22 @@ export function BottomComposer({
   // the top row never duplicates an inline reference. Reset on dispatch/clear.
   const [touchedFiles, setTouchedFiles] = useState<readonly string[]>([]);
   const [dismissedFiles, setDismissedFiles] = useState<ReadonlySet<string>>(() => new Set());
-  // Comments queued from the selection composer — they ride this composer's
-  // chip row and its send button.
-  const queuedComments = useQueuedComments();
   // The count that matters is what a send would carry — the CHECKED subset.
   // Unchecking every item leaves the queue non-empty but the send empty, so
   // gate the send button on this too rather than on the raw queue length.
   const selectedCommentCount = useSelectedCommentCount();
-  const [commentsExpanded, setCommentsExpanded] = useState(false);
-  // Attached = "part of THIS message", and OFF until asked for. An attached queue
-  // takes over the send button and the placeholder, so attaching by itself would
-  // let a comment left anywhere in the project repoint a composer the user opened
-  // for an unrelated question. The `+` menu's toggle is the way in, and queueing
-  // another comment does not flip it — a default that re-asserts itself is not a
-  // default. Dispatching the batch is what the Queue panel's own send is for.
-  const [commentsAttached, setCommentsAttached] = useState(false);
-  const queueSize = queuedComments.length;
+  // The files the batch draws from — the chip says so when there is more than one.
+  const selectedCommentDocs = useSelectedCommentDocs();
+  // Ticked in the Comments panel = riding this message, so this starts ON.
+  // There is no attach step to find: the panel's checkboxes were already a
+  // picker, and a second opt-in here meant a batch you had just built sat one
+  // differently-shaped click away from the send meant to carry it.
+  //
+  // The chip's ✕ turns it off for THIS draft and nothing else — a composer
+  // opened for an unrelated question is a statement about the message, not
+  // about which comments you meant to send, so the ticks stay as they were and
+  // the chip is the way back.
+  const [commentsAttached, setCommentsAttached] = useState(true);
   const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
   // The current inline-mention `@path` set, pushed up from the editor — used to
   // dedup the top row against inline mentions (the live invariant).
@@ -527,6 +521,12 @@ export function BottomComposer({
       subscribeCommentPosted(() => {
         setPinnedSelection(null);
         setSelectionExpanded(false);
+        // A NEW comment re-attaches the batch. The ✕ says "not this message",
+        // about the batch as it stood; writing another one is a fresh statement
+        // of intent about the same message, and the same reason posting queues a
+        // comment rather than asking twice. Without this the comment you just
+        // wrote sat outside the send, with a dismissed chip as the only clue.
+        setCommentsAttached(true);
       }),
     [],
   );
@@ -666,11 +666,11 @@ export function BottomComposer({
     // sticky-dismissed tracking (and `inlineMentions` follows the cleared editor).
     setTouchedFiles([]);
     setDismissedFiles(new Set());
-    // The queue detaches with the rest of the draft's context. Left on, the next
-    // message would silently carry whatever had been queued since — the same
-    // surprise as attaching by default, just deferred a send.
-    setCommentsAttached(false);
-    setCommentsExpanded(false);
+    // Back to the default for the next message. The TICKS are the panel's state
+    // and deliberately survive — this only resets the one bit that belongs to
+    // the draft, so a batch dismissed from one message is not silently dismissed
+    // from every message after it.
+    setCommentsAttached(true);
     // Clear the SHARED draft too so a sent prompt does not reappear in the
     // create-screen hero (or on the next navigation back to a doc).
     clearComposerDraft();
@@ -1070,44 +1070,23 @@ export function BottomComposer({
         ) : null}
         {/* Queued comments ride the same chip row as files + the selection pill:
             the queue lives in the composer you already use, not a separate
-            dispatch surface. The chip is the attach control too, so it renders on
-            the RAW queue rather than on what a send would carry — nothing else
-            would say a queue exists while the batch is still detached. */}
-        {/* Gated here as well as inside the chip: `ComposerContextChips` decides
-            whether to render its row at all by counting children, and an element
-            that returns null still counts as one. An empty queue has to
-            contribute NO child, or the chip row appears as an empty strip. */}
-        {queueSize > 0 && (
-          <>
-            <QueuedCommentsChip
-              // Attached, the count is what a SEND carries, so unchecking an item
-              // moves it. Detached the chip shows no number, so the raw queue is
-              // what decides it renders at all.
-              count={hasQueuedComments ? selectedCommentCount : queueSize}
-              // `hasQueuedComments`, not `commentsAttached`: unchecking the LAST
-              // item means nothing rides this message, which is the detached
-              // state however it was reached. Keying on the flag alone left a
-              // countless chip above a list of unchecked rows — attached in name,
-              // carrying nothing.
-              attached={hasQueuedComments}
-              expanded={commentsExpanded}
-              onAttach={() => {
-                setCommentsAttached(true);
-                // Deselection is sticky, so re-attaching has to re-check the
-                // queue — otherwise this puts an empty batch on the message and
-                // the chip bounces straight back to detached.
-                selectAllQueued();
-              }}
-              onToggleExpanded={() => setCommentsExpanded((open) => !open)}
-              onDismiss={() => {
-                setCommentsAttached(false);
-                setCommentsExpanded(false);
-              }}
-            />
-            {hasQueuedComments && commentsExpanded && (
-              <QueuedCommentsList threads={queuedComments} />
-            )}
-          </>
+            dispatch surface. What is ticked in the Comments panel is what this
+            counts — the panel is the picker, and the chip is its read-out.
+
+            Gated on the TICKED count, not on `hasQueuedComments`: detached, the
+            chip is the way back and has to still be there. Gated here as well as
+            inside the chip because `ComposerContextChips` decides whether to
+            render its row at all by counting children, and an element that
+            returns null still counts as one — nothing ticked has to contribute
+            NO child, or the chip row appears as an empty strip. */}
+        {selectedCommentCount > 0 && (
+          <QueuedCommentsChip
+            count={selectedCommentCount}
+            docs={selectedCommentDocs}
+            attached={commentsAttached}
+            onAttach={() => setCommentsAttached(true)}
+            onDismiss={() => setCommentsAttached(false)}
+          />
         )}
       </ComposerContextChips>
       <div className="flex items-end gap-2">

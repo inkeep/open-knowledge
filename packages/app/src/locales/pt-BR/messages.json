@@ -66,6 +66,9 @@
     "03wKPg": ["Um relatório nos ajuda a achar a causa. Nada é enviado até você revisar."],
     "04RA0-": ["Falha ao ativar a sincronização — ", ["detail"]],
     "04XyCH": ["Adiciona um bloco gerenciado a ", ["0"]],
+    "05F1GY": [
+      "O texto original foi excluído. Você pode reposicionar este comentário no texto selecionado."
+    ],
     "05n5wS": ["Sugestões de menção de documentos"],
     "06SZfb": ["Modelo \"", ["trimmedTitle"], "\" criado"],
     "07eGJB": ["Não deu para mover a habilidade: ", ["0"]],
@@ -135,7 +138,6 @@
     "11ukmX": ["Falha ao renomear: ", ["0"]],
     "12F9WL": ["(sem id)"],
     "151wvk": ["Mostrar a barra lateral"],
-    "15MMFT": ["Mostrar estes comentários"],
     "15ZHCt": ["Nenhuma alteração no corpo nesta versão."],
     "161NCV": ["Parando"],
     "16D5Zj": [
@@ -216,7 +218,6 @@
     "2QM24L": ["Todas as tags"],
     "2RnFoM": ["Não foi possível retomar este chat: ", ["0"]],
     "2Snes1": ["Isto envia o endereço do link para fora do seu computador"],
-    "2UgoBZ": ["sumiu"],
     "2VSPan": ["O Terminal foi fechado para abrir espaço para o painel de agentes."],
     "2XQ8Ww": ["Abrir a pré-visualização quando o agente editar"],
     "2YOwme": ["Reiniciado — agora rodando a v", ["appRuntime"], "."],
@@ -241,6 +242,7 @@
     "2vIPtm": ["Abrir o link em uma nova aba"],
     "2wTb8w": ["Configure na página própria dele, em Plugins."],
     "2wxgft": ["Renomear"],
+    "2zvUIK": ["Mostrar estes comentários no painel de comentários"],
     "322lyb": ["Destaca dicas, avisos e notas."],
     "34qyH5": ["Não foi possível contatar o servidor"],
     "36WXSC": ["Não deu para excluir o modelo: ", ["error"]],
@@ -380,7 +382,6 @@
     "4buZWd": ["Herdado de ", ["path"]],
     "4c_a6S": ["Ainda não há nada definido."],
     "4d0VYJ": ["Criaremos um ID de tema seguro a partir deste nome."],
-    "4eO-iB": ["Descartar este comentário"],
     "4g19V6": ["Falha ao atualizar a propriedade"],
     "4h3e0H": ["Não deu para atualizar o compartilhamento de habilidades — ", ["detail"], "."],
     "4hJhzz": ["Tabela"],
@@ -408,7 +409,6 @@
     "4sKwf6": ["O arquivo já existe"],
     "4sUdTJ": ["pré-visualização com tema"],
     "4uNLmk": ["Fazendo pull"],
-    "4uaCUA": [["mins"], "min"],
     "4v2Yyz": [
       "Seleciona todas as linhas visíveis da árvore de arquivos quando o foco está na barra lateral Arquivos."
     ],
@@ -440,7 +440,6 @@
     "5ClEAu": ["Hashtag em linha para agrupar entre documentos."],
     "5D3Ior": ["Ocultar a pasta"],
     "5F5HYj": [["ahead"], " à frente, ", ["behind"], " atrás"],
-    "5GBQ-F": ["Selecionar este texto na propriedade"],
     "5GKMSz": ["Aumenta ou diminui o recuo do item de lista atual."],
     "5GRxoA": ["Busca arquivos, pastas e comandos do espaço de trabalho atual."],
     "5HJpFY": ["Entra na fila atrás do turno em andamento"],
@@ -462,6 +461,23 @@
       "Este endpoint ignorou o tamanho de vector que você configurou. Remova <0>search.semantic.dimensions</0> para usar o tamanho próprio do modelo."
     ],
     "5Tk8Fb": ["Carregando arquivos"],
+    "5TmrYN": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["#", " comentário"],
+          "many": ["#", " comentários"],
+          "other": ["#", " comentários"]
+        }
+      ],
+      " em ",
+      [
+        "0",
+        "plural",
+        { "one": ["#", " arquivo"], "many": ["#", " arquivos"], "other": ["#", " arquivos"] }
+      ]
+    ],
     "5Umg9i": ["Desativar a pré-visualização de links externos"],
     "5WDhAk": ["Aponta para uma página ou uma URL externa."],
     "5Y17qa": ["Aplica-se a (globs — um ! inicial exclui; vazio significa todos os documentos)"],
@@ -1084,6 +1100,7 @@
     ],
     "DcFr-y": ["OpenKnowledge excluiu um documento"],
     "DcLaew": ["Tema personalizado"],
+    "Dd6j2Q": ["Ver comentários"],
     "DeDYLr": ["Link wiki não reconhecido"],
     "DgcGrb": [
       ["fileCount", "plural", { "one": ["arquivo"], "many": ["arquivos"], "other": ["arquivos"] }]
@@ -1261,6 +1278,7 @@
     "FgQ7XZ": ["Não foi possível carregar seus relatórios de erro."],
     "FgRAvd": ["Logs e informações do sistema"],
     "Fhp4Gn": ["Ver o plugin"],
+    "FiyNln": ["Ir para o texto selecionado na propriedade"],
     "FjkaiT": ["Afastar"],
     "FqGWeR": ["Não deu para contatar o registro de agentes."],
     "FqTpiN": ["Wiki de aves"],
@@ -1298,7 +1316,6 @@
     "G0YZ-I": ["Aumentar ou diminuir o recuo do item de lista"],
     "G1Gw0v": ["Novo modelo"],
     "G1XxbZ": ["Caixa de seleção"],
-    "G1zJlD": ["Ocultar comentários resolvidos"],
     "G4m8rL": ["Comentar na seleção"],
     "G6Lrs_": ["Fazer ", ["0"], " parar de ler esta habilidade"],
     "G7-rf8": ["Erro de sintaxe no padrão: ", ["message"]],
@@ -1536,6 +1553,9 @@
       "Nenhuma página desconectada. As páginas só aparecem aqui quando não têm arestas de entrada nem de saída no grafo."
     ],
     "JDHcCM": ["Carregando as habilidades populares"],
+    "JDQ5I5": [
+      "Esse documento não abriu a tempo. Tente novamente quando ele estiver sincronizado."
+    ],
     "JE21eh": ["Link simbólico para ", ["targetPath"]],
     "JG_8KT": [
       "Não deu para fazer pull do GitHub. Verifique sua conexão e seu login e tente de novo."
@@ -1615,6 +1635,9 @@
     "KZLdgR": ["Veja <0>#design-docs</0> para as especificações mais recentes."],
     "K_vT1F": ["Sincronização com o remoto"],
     "KaFCD3": ["Abre este link em uma nova aba e recolhe o grafo."],
+    "KeXgA-": [
+      "Não foi possível encontrar esse trecho — o texto em que ele estava pode ter mudado."
+    ],
     "Kf7GG5": ["Reiniciando o servidor…"],
     "Kge76t": ["Opções da linha"],
     "Kh1n4a": [
@@ -1764,7 +1787,6 @@
     "MBKkUy": [
       "O skills.sh está indisponível; mostrando resultados do GitHub (sem classificação por instalações)."
     ],
-    "MBe6TE": ["O texto citado não está mais no documento — o agente será avisado."],
     "MCjC9A": ["Excluir ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Difícil de usar"],
     "MDZSJe": ["Quando o agente roda o trabalho agendado dele."],
@@ -1872,7 +1894,6 @@
     "NeY1Np": ["O Slidev demorou demais para iniciar. Tente novamente."],
     "NfraGd": ["Outras formas de instalar o Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " ativos"],
-    "NiGIcB": ["Abrir Comentários"],
     "NjrIak": ["Arquivo: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Editar ", ["tag"]],
     "NkXEFS": ["Falha ao restaurar — o documento não mudou"],
@@ -1983,6 +2004,7 @@
     "PBxg_E": ["Agora não"],
     "PCSkw2": ["Habilidades"],
     "PGPGsL": ["Adicionar descrição"],
+    "PHHEuH": ["Ocultar comentários resolvidos (", ["0"], ")"],
     "PIMM5l": ["Assinatura confirmada!"],
     "PKLY-1": ["Abrindo..."],
     "PKjGhT": ["Títulos"],
@@ -2099,7 +2121,6 @@
     "QpSqAP": [
       "O shell real está desativado para este projeto. Ativá-lo faz os comandos rodarem com todo o acesso da sua conta de usuário."
     ],
-    "Qpfxa1": [["secs"], "s"],
     "QqBQu1": ["Rótulo <0>(texto visível do link)</0>"],
     "Qvls7J": ["Especificações de engenharia"],
     "Qw-7Ie": [
@@ -2249,6 +2270,7 @@
     ],
     "T-654M": ["Carregando o PDF"],
     "T0OVm7": ["O ramo padrão é protegido — os envios exigem um pull request."],
+    "T2fvhw": ["Desmarcar todos os comentários de ", ["0"]],
     "T3Mld1": ["Janela"],
     "T3j-7o": ["ex.: Trocar de projeto enquanto uma sincronização rodava"],
     "TBfy1C": ["Não foi possível iniciar o Slidev."],
@@ -2310,7 +2332,6 @@
     "UDFrWm": ["Verificando a conexão com o GitHub..."],
     "UD_onR": ["Ruminando…"],
     "UDb2YD": ["React"],
-    "UEdTEN": ["Órfã"],
     "UGeJuP": ["Valores permitidos (vazio = qualquer)"],
     "UGtPix": ["A conexão com o GitHub expirou. Conecte-se novamente para continuar."],
     "UH0Zqw": ["Este não é um arquivo de tema comum"],
@@ -2392,7 +2413,6 @@
     "UkQGhd": ["Ocultar substituir"],
     "UlVARL": ["Ativar Slidev"],
     "Uobeu9": ["Adiciona a habilidade a ", ["rootRel"], " — também lida por ", ["0"]],
-    "Uoux8m": ["Incluir este comentário no próximo envio"],
     "Up2_7p": ["Copiar caminho completo"],
     "UpCz01": ["Este documento"],
     "UpOct_": ["Adicione seus comentários a esta mensagem"],
@@ -2547,6 +2567,7 @@
     "Wh0im4": ["editando [[", ["realCurrentDoc"], "]]"],
     "WhOsNE": ["Tachado"],
     "Wi-VWy": ["Não deu para enviar o relatório"],
+    "WkQ0Z_": ["Marcar todos os comentários de ", ["0"], " para enviar"],
     "WkTLN7": ["Mostrar somente arquivos markdown"],
     "WkyP2p": ["Seção Habilidades"],
     "WmPbvm": ["Receba novidades do produto no seu e-mail."],
@@ -2594,7 +2615,6 @@
     "XV5sC0": ["Abrir o worktree"],
     "XVnIvs": ["Instalar habilidades"],
     "XW18jo": ["A resposta dos títulos da página não corresponde ao esquema de sucesso"],
-    "XWEqQj": [["days"], "d"],
     "XXA1b_": [["componentLabel"], " (vazio)"],
     "XYZ7tp": ["Não resolvido"],
     "XYlJJT": ["Configurando"],
@@ -2871,7 +2891,6 @@
       "Cópia somente leitura de um bloco MirrorSource de outro documento. Edite na fonte e ela se atualiza ao vivo."
     ],
     "_XWY2J": ["Terminal desativado"],
-    "_YEyHO": ["Mostrar comentários resolvidos"],
     "_YWqV2": ["OpenKnowledge resolveu um conflito"],
     "_ayOfA": [
       "Uma base de conhecimento que segue o Open Knowledge Format do Google, uma forma comum de organizar o que você sabe. Escolha isto se quiser que suas notas funcionem bem com outras ferramentas que entendem o formato."
@@ -2885,7 +2904,6 @@
     "_gO_m8": ["Aguardando sua aprovação"],
     "_gkGSK": ["modelo excluído"],
     "_mcDqU": [["count"], " habilidades nesta fonte"],
-    "_oqig9": [["hours"], "h"],
     "_pY_Vq": ["O repositório foi movido, renomeado ou excluído."],
     "_qD6mn": ["Escolha a pasta onde você o clonou."],
     "_rP3HI": ["há ", ["minutes"], " min"],
@@ -3393,6 +3411,7 @@
     "gBbxn_": ["Verificando o estado da sessão"],
     "gGVP4q": ["Clique em <0>+</0> <1/> <2>Criar habilidade</2> <3/> <4>Enviar habilidade</4>."],
     "gHSAWT": ["Criar o worktree <0>“<1>", ["typedName"], "</1>”</0>"],
+    "gHb5bB": ["Mostrar comentários resolvidos (", ["0"], ")"],
     "gITz7o": [
       "Move o cursor ou estende a seleção pelo mapa de teclas padrão de navegação do editor de código do CodeMirror."
     ],
@@ -3633,7 +3652,6 @@
     "iz1LdD": [
       "Alterado fora do OK desde a última vez que ele escreveu aqui — o estado exibido é o que está no disco agora"
     ],
-    "j0ItfO": ["Mostrar os resolvidos (", ["0"], ")"],
     "j15ZSH": ["Enviar os comentários para"],
     "j2229h": ["Removendo os arquivos do OpenKnowledge…"],
     "j2kt1j": [
@@ -3735,7 +3753,6 @@
       ["targetNoun"],
       " vai aparecer assim que o ramo sincronizar."
     ],
-    "kMKqP_": ["Ocultar estes comentários"],
     "kNGLX6": ["Tentando novamente…"],
     "kNqMMd": ["Pasta"],
     "kRTXGw": [
@@ -4002,7 +4019,6 @@
     "nBgzKO": ["Tornar esta a fonte — a pasta real da habilidade se muda para cá"],
     "nCzR-G": ["Copiar o código ", ["userCode"]],
     "nDT8qt": [["0"], " inicializado, mas não foi possível abri-lo."],
-    "nG-XA9": ["O texto ancorado sumiu. Você pode reposicioná-lo em um texto selecionado."],
     "nMSYz5": [
       "Este caminho está em um volume externo (/Volumes/...). O OpenKnowledge vai perder os arquivos de vista quando a unidade for ejetada."
     ],
@@ -4072,6 +4088,7 @@
     "nzaV6Q": ["Miniaturas das páginas"],
     "o0bHtA": ["Pelo OpenKnowledge"],
     "o49mDZ": ["Carregando o histórico da linha do tempo"],
+    "o7AkQ0": ["Mostrar resolvidos"],
     "o9CrsQ": ["nota-de-pesquisa"],
     "o9fPtM": ["Atualizar automaticamente pela fonte"],
     "o9yN4T": ["Mover para a Lixeira"],
@@ -4341,7 +4358,6 @@
     "roAe2K": ["URL do link"],
     "roiUQQ": ["Esta página ainda não aponta para nada."],
     "rppgXF": ["Desconectando"],
-    "rscgd_": ["Ir para este comentário em ", ["0"]],
     "rssK8c": ["Padrões de exclusão (texto puro)"],
     "rtdR4v": ["Mostrar ou ocultar Arquivos"],
     "rtir7c": ["desconhecido"],

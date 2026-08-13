@@ -20,10 +20,11 @@
 import { t } from '@lingui/core/macro';
 import { useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
+import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 import type { DispatchPayload } from './comments-client';
 import * as api from './comments-client';
-import { revealQueue } from './reveal-queue';
+import { revealComments } from './reveal-queue';
 import type { CommentThread } from './types';
 
 const EMPTY: readonly CommentThread[] = Object.freeze([]);
@@ -110,6 +111,9 @@ function toThread(meta: api.CommentThreadMeta): CommentThread {
     // request, and there is no history behind it to render.
     body: meta.latestComment,
     createdAt: meta.createdAt,
+    // Collapsed to one field for rendering: the card states when this text was
+    // last written, and an unedited thread's answer is when it was written.
+    updatedAt: meta.updatedAt ?? meta.createdAt,
     // "Queued for the next batch" is what the UI shows as in-flight; the server
     // deliberately does not persist "an agent is working right now".
     queued: meta.queued,
@@ -290,8 +294,9 @@ export function createThread(args: {
         return;
       }
       // Only after the server accepted it. Revealing optimistically would open
-      // the queue on a comment that then failed to anchor.
-      revealQueue();
+      // the panel on a comment that then failed to anchor. Doc scope: the thing
+      // to show is the comment just made, beside the passage it is on.
+      revealComments('doc');
       emitCommentPosted();
     })
     .catch((err: unknown) => {
@@ -335,7 +340,7 @@ export function createPropertyThread(args: {
       // Same as the passage path above: not chained into the outer `.catch`, so
       // it has to carry its own.
       void refresh(args.docName).catch(() => undefined);
-      revealQueue();
+      revealComments('doc');
       emitCommentPosted();
     })
     .catch((err: unknown) => {
@@ -357,15 +362,23 @@ export function createPropertyThread(args: {
  * API puts its reasons ("The quoted passage is not in the document").
  */
 function settle(promise: Promise<unknown>, docName: string | undefined, failed: string): void {
-  void promise
-    .then(() => refresh(docName))
-    .catch((err: unknown) => {
+  // Two handlers on one `.then`, NOT `.then(...).catch(...)`. Chained, the
+  // success branch's refetch runs INSIDE the mutation's own catch: a network
+  // blip on the re-sync then reports an edit that the server accepted as one it
+  // refused, which is the exact lie this function exists to stop telling. The
+  // re-sync is background on both branches — the mutation is what reports.
+  void promise.then(
+    () => {
+      void refresh(docName).catch(() => undefined);
+    },
+    (err: unknown) => {
       toast.error(err instanceof Error && err.message ? `${failed} ${err.message}` : failed);
       // Re-sync anyway: a rejection can still have changed server state (a
       // thread deleted by another window), and leaving the stale row on screen
       // would be a second, quieter lie.
       void refresh(docName).catch(() => undefined);
-    });
+    },
+  );
 }
 
 export function editComment(threadId: string, body: string): void {
@@ -380,6 +393,11 @@ export function editComment(threadId: string, body: string): void {
  */
 export function reopenThread(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
+  // The server reopens it QUEUED. An untick recorded before the send is still
+  // sitting in the local set, and left there it would veto that — the comment
+  // would come back open and unchecked, which is the second click reopening
+  // exists to avoid.
+  clearDeselection(threadId);
   settle(api.reopenThread(threadId), docName, t`Couldn't reopen that comment.`);
 }
 
@@ -448,10 +466,6 @@ export function getQueue(): readonly string[] {
   return queueSnapshot;
 }
 
-export function useQueue(): readonly string[] {
-  return useSyncExternalStore(subscribe, getQueue, () => EMPTY_QUEUE);
-}
-
 /** Queued minus whatever the reviewer unchecked — what a batch send actually ships. */
 export function getSelectedQueue(): readonly string[] {
   const queued = getQueue();
@@ -481,15 +495,26 @@ export function getSelectedQueueForDoc(docName: string): readonly string[] {
   return getSelectedQueue().filter((id) => getThreadById(id)?.docName === docName);
 }
 
+/**
+ * Drop a thread from the local unticked set.
+ *
+ * `queued` is server state and this is the client's veto over it, so anything
+ * that puts a comment back in the batch has to lift the veto too — otherwise the
+ * server reports queued, the panel renders unchecked, and the two disagree with
+ * nothing on screen explaining why.
+ */
+function clearDeselection(threadId: string): void {
+  if (!deselected.has(threadId)) return;
+  const next = new Set(deselected);
+  next.delete(threadId);
+  deselected = next;
+  bumpSelection();
+}
+
 function addToQueue(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
   // Re-queuing clears any earlier deselection.
-  if (deselected.has(threadId)) {
-    const next = new Set(deselected);
-    next.delete(threadId);
-    deselected = next;
-    bumpSelection();
-  }
+  clearDeselection(threadId);
   settle(api.queueThread(threadId), docName, t`Couldn't mark that comment to send.`);
 }
 
@@ -545,20 +570,6 @@ export function setSendingAll(threadIds: readonly string[], sending: boolean): v
     }
     void refresh().catch(() => undefined);
   });
-}
-
-/**
- * Re-check everything in the queue.
- *
- * Deselection is sticky — it lives in `deselected` until something clears it —
- * so "put the queue on this message" has to mean the WHOLE queue. Without this,
- * re-attaching after unchecking every item would attach a batch that carries
- * nothing, and the control would look broken twice over.
- */
-export function selectAllQueued(): void {
-  if (deselected.size === 0) return;
-  deselected = new Set();
-  bumpSelection();
 }
 
 /** Check / uncheck a queued item without removing it from the queue. */
@@ -713,10 +724,10 @@ async function runDispatch(
 // UI-only signals (no server state)
 // ---------------------------------------------------------------------------
 
-const FOCUS_EVENT = 'ok:comment-focus-thread';
-const POPOVER_EVENT = 'ok:comment-open-popover';
-const START_EVENT = 'ok:comment-start';
-const POSTED_EVENT = 'ok:comment-posted';
+const FOCUS_EVENT = 'open-knowledge:comment-focus-thread';
+const POPOVER_EVENT = 'open-knowledge:comment-open-popover';
+const START_EVENT = 'open-knowledge:comment-start';
+const POSTED_EVENT = 'open-knowledge:comment-posted';
 
 // The node-env unit tier imports this module and has no `window`, so touching
 // these emitters there would throw. One module-level stand-in (not a per-call
@@ -786,6 +797,29 @@ export function subscribeActiveThread(listener: () => void): () => void {
 }
 
 /**
+ * The thread whose in-doc popover is OPEN, for React — deliberately narrower
+ * than the active thread, which also follows the pointer. The panel's card
+ * wash keys on this: hover-driven washing meant every card lit itself up as
+ * the pointer crossed it, noise with no information. A popover being open is
+ * a fact worth mirroring; a pointer passing through is not.
+ */
+export function usePinnedThread(): string | null {
+  return useSyncExternalStore(subscribePinnedThread, getPinnedThread, () => null);
+}
+
+// Module-level, like every other binding here: `useSyncExternalStore` tears the
+// subscription down and rebuilds it whenever the subscribe function's identity
+// changes, so an inline lambda re-subscribes on every render of every panel
+// reading this.
+function subscribePinnedThread(listener: () => void): () => void {
+  return subscribeOpenThreadPopover(() => listener());
+}
+
+function getPinnedThread(): string | null {
+  return pinnedThreadId;
+}
+
+/**
  * Which thread's in-doc popover is open — `null` for none.
  *
  * One signal both ways, rather than "open" one-way. The popover used to close
@@ -796,6 +830,13 @@ export function subscribeActiveThread(listener: () => void): () => void {
 export function emitOpenThreadPopover(threadId: string | null): void {
   pinnedThreadId = threadId;
   recomputeActive();
+  // Opening a thread also opens the Comments tab beside it — the popover shows
+  // ONE comment, and the panel is where its neighbours, its checkbox column,
+  // and the send all live. Here rather than at each open site (highlight click,
+  // margin marker, jump) so no path can forget; a no-op when the tab is already
+  // showing, and closing (null) deliberately leaves the panel as it is — the
+  // reader opened it, dismissing a popover is not a statement about it.
+  if (threadId !== null) requestDocPanelTab('comments');
   bus.dispatchEvent(new CustomEvent(POPOVER_EVENT, { detail: threadId }));
 }
 
