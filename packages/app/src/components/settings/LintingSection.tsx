@@ -140,7 +140,6 @@ export function ProjectPluginsManageSection() {
                   className="inline-flex items-center gap-1.5 text-sm font-medium"
                 >
                   {plugin.label}
-                  {plugin.id === 'frontmatter' ? <PluginBetaBadge /> : null}
                 </Label>
                 <p id={descriptionId} className="text-1sm text-muted-foreground">
                   <PluginManageDescription id={plugin.id} />
@@ -715,7 +714,6 @@ export function FrontmatterPluginSection() {
       <PluginSectionHeader
         titleId="settings-plugin-frontmatter-title"
         title={t`Frontmatter schemas`}
-        beta
         docUrl={pluginDocUrl('frontmatter')}
       >
         <Trans>

@@ -123,13 +123,12 @@ afterEach(() => {
 });
 
 describe('SchemaConfigEditor — toggle and default view', () => {
-  test('renders a Source/Fields toggle and defaults to the Source view', () => {
+  test('renders a Source/Fields toggle without a maturity tag and defaults to Source', () => {
     renderEditor(MAPPED_SCHEMA);
 
     expect(fieldsSegment()).toBeDefined();
     expect(sourceSegment()).toBeDefined();
-    // The feature-beta tag marks the schema editor surface.
-    expect(screen.getByText('Beta')).toBeDefined();
+    expect(screen.queryByText('Beta')).toBeNull();
 
     const viewer = screen.getByTestId('mock-text-viewer');
     expect(viewer.getAttribute('data-src')).toBe(

@@ -273,10 +273,10 @@ describe('FrontmatterPluginSection — schema browser', () => {
     expect(consumeSchemaFieldsView('schemas/local.schema.json')).toBe(true);
   });
 
-  test('the section header carries the feature-beta tag', () => {
+  test('the section header has no maturity tag', () => {
     renderSection();
     const header = document.getElementById('settings-plugin-frontmatter-title')?.parentElement;
-    expect(header?.textContent).toContain('Beta');
+    expect(header?.textContent).not.toContain('Beta');
   });
 
   test('the appliesTo input names the pattern grammar with an example glob', () => {

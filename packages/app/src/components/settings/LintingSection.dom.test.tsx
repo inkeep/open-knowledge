@@ -178,11 +178,8 @@ describe('ProjectPluginsManageSection', () => {
     expect(screen.getByTestId('settings-plugins-audit-pointer').textContent).toContain(
       'Run a project audit from the Problems panel',
     );
-    // The frontmatter plugin is feature-beta; markdownlint is not.
     const list = screen.getByTestId('settings-plugins-list');
-    const rows = within(list).getAllByText('Beta');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.closest('label')?.textContent).toContain('Frontmatter schemas');
+    expect(within(list).queryByText('Beta')).toBeNull();
   });
 
   test('every plugin toggle is described by its own row description', () => {
@@ -328,10 +325,11 @@ describe('UserPluginsManageSection', () => {
     expect(window.location.hash).toBe('#settings/plugin:theme');
   });
 
-  test('lists a user-scope Slides toggle beside Themes', () => {
+  test('lists a user-scope Slides toggle beside Themes and labels Slidev as beta', () => {
     render(<UserPluginsManageSection userBinding={null} />);
     expect(screen.getByTestId('settings-plugin-toggle-slides')).toBeDefined();
     expect(screen.getByTestId('settings-plugin-toggle-theme')).toBeDefined();
+    expect(screen.getByText('Slidev').closest('label')?.textContent).toContain('Beta');
   });
 
   test('enabling Slides writes the user-scope enabled patch and offers its panel', async () => {

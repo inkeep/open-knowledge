@@ -24,7 +24,6 @@ import { useEffect, useState } from 'react';
 import { EditorModeToggle } from '@/components/EditorModeToggle';
 import { NotInSidebarIndicator } from '@/components/NotInSidebarIndicator';
 import { FrontmatterSchemaFieldEditor } from '@/components/settings/frontmatter-schema-field-editor';
-import { PluginBetaBadge } from '@/components/settings/PluginBetaBadge';
 import { TextViewer } from '@/components/TextViewer';
 import { useProjectLintConfig } from '@/editor/lint-config-client';
 import { type LintConfigViewMode, useLintConfigViewMode } from '@/editor/useLintConfigViewMode';
@@ -94,7 +93,7 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
         entry={{ kind: 'asset', path: assetPath }}
         className="shrink-0 border-b bg-background px-3 py-1.5"
       />
-      <div className="relative flex shrink-0 items-center justify-center border-b bg-background py-2">
+      <div className="flex shrink-0 items-center justify-center border-b bg-background py-2">
         <EditorModeToggle
           isSourceMode={isSourceMode}
           onModeChange={(next) => setViewMode(next === 'source' ? 'source' : 'rules')}
@@ -103,11 +102,6 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
           sourceLabel={t`Source`}
           wysiwygDisabledReason={t`Field editing is available for schema files mapped in the Frontmatter schemas plugin`}
         />
-        {/* Absolute so the mode toggle stays visually centered. Denser than the
-            Badge default because this one sits in the editor toolbar beside the
-            mode toggle, not in a settings header — the settings surfaces use the
-            default so Beta and Scope badges line up. */}
-        <PluginBetaBadge className="absolute left-3 top-1/2 h-4 -translate-y-1/2 px-1 text-[10px]" />
       </div>
       {isSourceMode ? (
         // Source is a CodeMirror viewer that owns its own scroll — full-bleed,
