@@ -102,16 +102,21 @@ export function DownloadSplitButton({
         >
           <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuContent
+          align="end"
+          sideOffset={8}
+          collisionPadding={16}
+          className={DOWNLOAD_MENU.content}
+        >
           {orderTargetsForOs(os).map((target) => (
-            <DropdownMenuItem key={target.id} asChild>
+            <DropdownMenuItem key={target.id} asChild className={DOWNLOAD_MENU.item}>
               <a href={downloadHrefForTarget(cta, target)} rel="noopener">
                 {target.label}
               </a>
             </DropdownMenuItem>
           ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
+          <DropdownMenuSeparator className={DOWNLOAD_MENU.separator} />
+          <DropdownMenuItem asChild className={DOWNLOAD_MENU.item}>
             <a href={WEB_APP_HREF}>{WEB_APP_LABEL}</a>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -127,6 +132,20 @@ export function DownloadSplitButton({
  */
 const FOCUS_RING =
   'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-slide-accent has-[:focus-visible]:ring-offset-2';
+
+const DOWNLOAD_MENU = {
+  // The sidebar install CTA gets roomier menu chrome than utility menus like
+  // "Copy page", while still using the docs theme's shared fd-* colors.
+  content: cn(
+    'min-w-64 rounded-[10px] border border-fd-border bg-fd-popover p-1.5 text-fd-popover-foreground',
+    'shadow-[0_18px_48px_rgba(35,31,32,0.12)] dark:shadow-[0_18px_48px_rgba(0,0,0,0.45)]',
+  ),
+  item: cn(
+    'cursor-pointer rounded-md px-3 py-2 text-sm text-fd-popover-foreground whitespace-nowrap',
+    'focus:bg-fd-accent focus:text-fd-accent-foreground',
+  ),
+  separator: '-mx-1.5 my-1.5 bg-fd-border',
+} as const;
 
 /**
  * Each segment owns its own border and rounding — left rounds left, caret
