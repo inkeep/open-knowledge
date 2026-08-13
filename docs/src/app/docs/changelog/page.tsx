@@ -2,13 +2,7 @@ import { DocsDescription, DocsPage, DocsTitle } from 'fumadocs-ui/page';
 import type { Metadata } from 'next';
 import { ChangelogTimeline } from '@/components/changelog-timeline';
 import { getChangelogSource } from '@/lib/changelog-source';
-import {
-  CHANGELOG_ROUTE,
-  metaDescription,
-  RELEASES_PAGE_URL,
-  SITE_NAME,
-  SITE_URL,
-} from '@/lib/site';
+import { CHANGELOG_ROUTE, metaDescription, SITE_NAME, SITE_URL } from '@/lib/site';
 
 /**
  * `/docs/changelog` — the stable release notes.
@@ -26,7 +20,7 @@ import {
 export const dynamic = 'force-static';
 
 const PAGE_TITLE = 'Changelog';
-const PAGE_DESCRIPTION = `Stable releases of ${SITE_NAME}, newest first, with the notes for every version.`;
+const PAGE_DESCRIPTION = `Release notes for ${SITE_NAME}.`;
 const RSS_ROUTE = `${CHANGELOG_ROUTE}/rss.xml`;
 
 export const metadata: Metadata = {
@@ -60,13 +54,7 @@ export default async function ChangelogPage() {
   return (
     <DocsPage toc={toc} tableOfContent={{ style: 'clerk' }} article={{ className: 'pb-12' }}>
       <DocsTitle>{PAGE_TITLE}</DocsTitle>
-      <DocsDescription>
-        Stable releases, newest first, with notes for every version. Also published on{' '}
-        <a href={RELEASES_PAGE_URL} target="_blank" rel="noreferrer">
-          GitHub
-        </a>
-        .
-      </DocsDescription>
+      <DocsDescription>{PAGE_DESCRIPTION}</DocsDescription>
       {/* Outside DocsBody on purpose — the timeline owns its own chrome and
           scopes `prose` to the notes (see ChangelogTimeline). */}
       <ChangelogTimeline releases={releases} />

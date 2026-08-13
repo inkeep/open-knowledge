@@ -1,5 +1,7 @@
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from 'fumadocs-ui/page';
+import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getChangelogSource, getReleasePages } from '@/lib/changelog-source';
 import { CHANGELOG_ROUTE, metaDescription, SITE_NAME, SITE_URL } from '@/lib/site';
@@ -8,11 +10,10 @@ import { CHANGELOG_ROUTE, metaDescription, SITE_NAME, SITE_URL } from '@/lib/sit
  * `/docs/changelog/<tag>` — one indexable page per stable release.
  *
  * These pages exist for search-engine indexing: every release gets its own URL in
- * the sitemap even though the timeline at `/docs/changelog` links only to anchors,
- * not to these pages. Data comes from the same build-time changelog source adapter;
- * `dynamic = 'force-static'` + `dynamicParams = false` prerender exactly the known
- * tags as static HTML and 404 anything else (so the sibling `rss.xml` route is
- * never shadowed).
+ * the sitemap and the timeline links to these pages. Data comes from the same
+ * build-time changelog source adapter; `dynamic = 'force-static'` +
+ * `dynamicParams = false` prerender exactly the known tags as static HTML and 404
+ * anything else (so the sibling `rss.xml` route is never shadowed).
  */
 export const dynamic = 'force-static';
 export const dynamicParams = false;
@@ -61,11 +62,15 @@ export default async function ReleasePage(props: PageProps<'/docs/changelog/[tag
 
   return (
     <DocsPage article={{ className: 'pb-12' }}>
+      <Link
+        href={CHANGELOG_ROUTE}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-fd-muted-foreground no-underline transition-colors hover:text-fd-primary"
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Changelog
+      </Link>
       <DocsTitle>{release.title}</DocsTitle>
-      <DocsDescription>
-        {date ? `Released ${date}. ` : ''}
-        Part of the <a href={CHANGELOG_ROUTE}>{SITE_NAME} changelog</a>.
-      </DocsDescription>
+      {date ? <DocsDescription>{`Released ${date}.`}</DocsDescription> : null}
       <DocsBody>
         {release.bodyHtml ? (
           // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted maintainer-authored release notes, rendered at build time

@@ -41,8 +41,6 @@ export const CHANGELOG_ROUTE = '/docs/changelog';
  * making it unbounded. The build fetch stays complete (see `releases.ts`).
  */
 export const CHANGELOG_TIMELINE_LIMIT = 30;
-/** Re-exported so changelog surfaces link the releases page from one import. */
-export { RELEASES_PAGE_URL } from './download-links';
 export const X_URL = `https://x.com/${TWITTER_HANDLE.slice(1)}`;
 export const SITE_DESCRIPTION =
   'Beautiful, AI-native markdown editor for humans and agents. Build knowledge bases, LLM wikis, and agent 2nd brains.';
