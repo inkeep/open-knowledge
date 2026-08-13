@@ -1,7 +1,7 @@
 ---
 name: review-a-design
 description: "Reviews whether a design is SOUND — solving the right problem, derived from its stated goals and constraints — and emits ranked, evidence-backed findings, not edits. Read when asked to 'review this design', 'is this design sound', 'pressure-test this proposal', 'do a design review', 'does this solve the right problem', 'poke holes in this spec', 'should we build this', or to critique a proposal / spec / ADR / architecture or product decision. Do NOT read when the user wants to AUTHOR one of these — routing a new proposal is frame-a-proposal, a spec is write-a-spec, a decision record is record-a-decision, a postmortem is write-a-postmortem. Do NOT read for code review of a diff, or to fact-check individual claims (that is a correctness pass, a different job)."
-compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
+compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"

@@ -1,10 +1,10 @@
 ---
 name: okf-knowledge-base
 description: "How to work in an OKF starter project (the `okf` starter pack): a knowledge base that is conformant with Google's Open Knowledge Format (OKF) from commit one — `concepts/`, `references/`, `notes/`, a reserved `index.md` navigation hub, and a reserved `log.md` change history. Read when the project has these folders plus reserved files, OR when asked whether a document is OKF-conformant, or to add a document to an OKF knowledge base. Carries the OKF conventions (non-empty `type` on every non-reserved doc; reserved files carry no frontmatter) as guidance, not enforcement. Complements the platform `open-knowledge` skill; does not replace it."
-compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack okf`."
+compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack okf`."
 # `type` keeps this skill doc OKF-conformant: it installs as project-local
-# markdown under `.claude`/`.cursor`/`.agents` skills dirs, which OK admits into
-# the content corpus — so without a non-empty `type` it would be a non-reserved
+# markdown under each detected agent's skills dir, which OK admits into the
+# content corpus — so without a non-empty `type` it would be a non-reserved
 # doc that violates the pack's own "every non-reserved doc has a `type`" contract.
 type: Document
 metadata:

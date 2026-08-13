@@ -1,7 +1,7 @@
 ---
 name: knowledge-base
 description: "How to work in a Knowledge Base project (the `knowledge-base` starter pack). Read when the project has the three-layer source-grounded layout — `external-sources/` → `research/` → `articles/` — or when asked how this project is organized. Carries the layer model, per-folder rules, status flows, and log discipline so this guidance does NOT live inside template bodies or log.md. The three procedures live elsewhere: ingest in the platform `open-knowledge` skill, research and consolidate as their own sibling skills in this pack. Complements the platform `open-knowledge` skill; does not replace it."
-compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack knowledge-base`."
+compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack knowledge-base`."
 metadata:
   pack: "knowledge-base"
   author: "Inkeep"

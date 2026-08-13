@@ -1,7 +1,7 @@
 ---
 name: research-with-sources
 description: "Investigate a topic against preserved sources and write a provisional research article under `research/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when asked to research a topic, compare options, synthesize sources, gather evidence, or extend an existing research doc. Carries the full procedure: scan existing coverage, agree a research rubric, capture every source verbatim before analyzing, write the article incrementally so a crash never loses work, cite every claim, and link it back into the graph. Does not promote findings to canonical knowledge — that is the sibling `consolidate-notes` skill, after a decision lands."
-compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack knowledge-base`."
+compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack knowledge-base`."
 metadata:
   pack: "knowledge-base"
   author: "Inkeep"

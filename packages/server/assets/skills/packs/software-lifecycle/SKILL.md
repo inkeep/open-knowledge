@@ -1,7 +1,7 @@
 ---
 name: software-lifecycle
 description: "How to work in a Software Lifecycle project (the `software-lifecycle` starter pack): proposals → decisions → specs → postmortems, plus guides. Read when the project has these folders, or when asked how this project is organized. Carries the doc lifecycle, status flows, and per-folder agent behaviors so that guidance does not live inside template bodies or folder descriptions. The five workflows — frame a proposal, write a spec, record a decision, write a postmortem, review a design — each ship as their own sibling skill in this pack. Complements the platform `open-knowledge` skill; does not replace it."
-compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
+compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"
