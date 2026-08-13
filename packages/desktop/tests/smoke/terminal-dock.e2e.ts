@@ -869,8 +869,11 @@ test.describe('Docked terminal — live Electron', () => {
     await expect.poll(() => readTerminalText(page), { timeout: 10_000 }).toContain('RESTARTED_OK');
   });
 
-  // Claude not on PATH surfaces the actionable not-found banner.
-  test('QA-017 claude-not-found shows Get-Claude-Code banner', async ({ captureStderrFor }) => {
+  // A plain terminal never asks about Claude. An explicit Claude launch still
+  // surfaces the actionable not-found banner when the CLI is absent.
+  test('QA-017 plain terminal stays quiet; missing Claude launch shows Get-Claude-Code banner', async ({
+    captureStderrFor,
+  }) => {
     // No fake claude, restricted PATH pinned past path_helper → probe resolves
     // not-found even when the host machine has a real claude cask.
     const s = seed('claude-missing', { consent: true, pinRestrictedPath: true });
@@ -880,6 +883,19 @@ test.describe('Docked terminal — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
+
+    await expect(readinessBanner(page)).toHaveCount(0);
+
+    // Drive the same window-scoped launch request emitted by the product's
+    // Claude launchers. This creates a fresh Claude-targeting terminal tab and
+    // crosses renderer → preload → main before the banner verdict renders.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('open-knowledge:terminal-launch', {
+          detail: { prompt: '', cli: 'claude', stage: false },
+        }),
+      );
+    });
 
     const banner = readinessBanner(page);
     await expect(banner).toBeVisible({ timeout: 15_000 });
@@ -905,6 +921,16 @@ test.describe('Docked terminal — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
+
+    await expect(readinessBanner(page)).toHaveCount(0);
+
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('open-knowledge:terminal-launch', {
+          detail: { prompt: '', cli: 'claude', stage: false },
+        }),
+      );
+    });
 
     const banner = readinessBanner(page);
     await expect(banner).toBeVisible({ timeout: 15_000 });

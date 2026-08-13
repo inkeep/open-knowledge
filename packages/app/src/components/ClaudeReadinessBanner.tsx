@@ -1,10 +1,15 @@
 /**
- * Actionable readiness banner for the docked terminal. After the PTY is
- * running, the panel probes Claude Code readiness and renders this strip when
- * something blocks the `type claude and it works` flow:
+ * Actionable readiness banner for the docked terminal. Shown only for sessions
+ * whose launch actually targets the Claude CLI: the launch-time preflight
+ * (`resolveLaunchCommand`) produces the verdict, and this strip renders when
+ * something blocks that launch:
  *   - `claude` not on PATH → a help affordance (open the Claude Code docs).
  *   - `claude` present but the `open-knowledge` MCP server missing from
  *     `~/.claude.json` → a re-wire affordance (re-arms MCP consent).
+ *
+ * A launch-less session (bare tab, "run this command" tab, adopted reload
+ * survivor) never probes and never shows this strip — a plain terminal open
+ * must not nag about claude.
  *
  * Renders nothing when claude is present + wired, or when the probe verdict is
  * `unknown` (a flaky probe must never surface a false "not installed"). The

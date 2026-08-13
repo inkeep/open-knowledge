@@ -1071,12 +1071,16 @@ describe('TerminalPanel', () => {
     expect(terminal.onData).not.toHaveBeenCalled();
   });
 
-  test('probes Claude readiness once the shell is live and shows a help affordance when claude is not on PATH', async () => {
+  // The readiness banner is launch-scoped: only a session whose launch targets
+  // claude carries a verdict (resolveLaunchCommand's preflight). These tests
+  // arrange it via a promptless claude launch; launch-less sessions are pinned
+  // banner-free further down.
+  test('a claude launch probes readiness and shows a help affordance when claude is not on PATH', async () => {
     const { bridge, terminal, openExternal } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
       { claude: 'not-found', mcp: 'needs-rewire' },
     );
-    render(<TerminalPanel bridge={bridge} />);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.claudePreflight).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/isn't installed or on your PATH/)).toBeTruthy();
@@ -1087,12 +1091,12 @@ describe('TerminalPanel', () => {
     expect(openExternal.mock.calls[0]?.[0]).toContain('claude-code');
   });
 
-  test('shows a re-wire affordance when claude is present but OK tools are not wired', async () => {
+  test('a claude launch shows a re-wire affordance when claude is present but OK tools are not wired', async () => {
     const { bridge, rewireClaudeMcp } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
       { claude: 'present', mcp: 'needs-rewire' },
     );
-    render(<TerminalPanel bridge={bridge} />);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     expect(await screen.findByText(/aren't connected to it yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
@@ -1101,9 +1105,9 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
   });
 
-  test('shows no readiness banner when claude is present and OK tools are wired', async () => {
+  test('a claude launch shows no readiness banner when claude is present and OK tools are wired', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' }, WIRED);
-    render(<TerminalPanel bridge={bridge} />);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.claudePreflight).toHaveBeenCalledTimes(1));
     await act(async () => {
@@ -1117,7 +1121,7 @@ describe('TerminalPanel', () => {
       { ok: true, ptyId: 'pty-1' },
       { claude: 'not-found', mcp: 'needs-rewire' },
     );
-    render(<TerminalPanel bridge={bridge} />);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     await screen.findByText(/isn't installed or on your PATH/);
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
@@ -1204,7 +1208,7 @@ describe('TerminalPanel', () => {
       { ok: true, ptyId: 'pty-1' },
       { claude: 'not-found', mcp: 'needs-rewire' },
     );
-    render(<TerminalPanel bridge={bridge} />);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     // The readiness nudge appears while the shell is live...
     await screen.findByText(/isn't installed or on your PATH/);
@@ -1214,6 +1218,120 @@ describe('TerminalPanel', () => {
     act(() => pushExit({ ptyId: 'pty-1', exitCode: 0, signal: null }));
     await waitFor(() => expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull());
     expect(screen.getByRole('alert')).toBeTruthy();
+  });
+
+  // A plain tab is precisely the session that did NOT choose claude (the dock
+  // only launches a TUI on an explicit pick), so claude-readiness feedback on
+  // it reads as an unprompted nag. The readiness verdict belongs to launches
+  // that actually target claude (TerminalPanel.launch.dom.test.tsx covers
+  // those); a launch-less session must stay banner-free.
+  test('a plain tab (no launch intent) shows no claude-readiness banner even when claude is not on PATH', async () => {
+    const { bridge } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      { claude: 'not-found', mcp: 'needs-rewire' },
+    );
+    render(<TerminalPanel bridge={bridge} />);
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy(),
+    );
+    // Flush any pending readiness probe so a late-arriving banner cannot slip
+    // past the absence assertion below.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
+  });
+
+  test('a plain tab (no launch intent) shows no MCP-rewire nudge either', async () => {
+    const { bridge } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      { claude: 'present', mcp: 'needs-rewire' },
+    );
+    render(<TerminalPanel bridge={bridge} />);
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy(),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByText(/aren't connected to it yet/)).toBeNull();
+  });
+
+  test('a "run this command" tab shows no claude-readiness banner (no CLI is involved)', async () => {
+    const { bridge } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      { claude: 'not-found', mcp: 'needs-rewire' },
+    );
+    render(<TerminalPanel bridge={bridge} commandId="install-slidev" />);
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy(),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
+  });
+
+  test('an adopted tab (reload survivor) shows no claude-readiness banner', async () => {
+    // An adopted session cannot know whether it was a claude launch or a bare
+    // shell, so under the intent-scoped contract it gets no nudge either.
+    const { bridge } = makeBridge(
+      { ok: true, ptyId: 'pty-ignored' },
+      { claude: 'not-found', mcp: 'needs-rewire' },
+    );
+    render(<TerminalPanel bridge={bridge} adoptPtyId="surv-1" />);
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy(),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
+  });
+
+  test('an adopted tab that still carries a stale claude launch intent shows no readiness banner', async () => {
+    // The compound reload-survivor case: a claude-launch tab that survived a
+    // reload keeps its (now stale) launch intent, but adoption reconnects the
+    // already-running claude session, so resolveLaunchCommand never runs (the
+    // adoptPtyId guard) and attachSession must not probe. A probe re-added to
+    // attachSession gated only on `launch !== null` would re-nag this
+    // reconnected session — the launch-less adopted test above wouldn't catch
+    // it (launch is null there), and the launch suite's adopted test uses a
+    // WIRED preflight that hides the banner either way. This is the one axis
+    // where those two pins intersect.
+    const { bridge } = makeBridge(
+      { ok: true, ptyId: 'pty-ignored' },
+      { claude: 'not-found', mcp: 'needs-rewire' },
+    );
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        adoptPtyId="surv-1"
+        launch={{ prompt: null, cli: 'claude', nonce: 1 }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy(),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
   });
 
   test('constructs xterm with the palette for the resolved app theme', async () => {

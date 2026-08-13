@@ -602,9 +602,9 @@ function TerminalSession({
     });
 
     // Wire a now-live ptyId (freshly created OR adopted from a survivor) into
-    // this session: route xterm I/O, exit, and resize through it, focus it, and
-    // probe Claude readiness. The wiring is identical for both acquisition paths
-    // — only how the id is obtained differs — so both branches below call this.
+    // this session: route xterm I/O, exit, and resize through it, and focus it.
+    // The wiring is identical for both acquisition paths — only how the id is
+    // obtained differs — so both branches below call this.
     // A const arrow (not a hoisted `function`) so it observes the non-null
     // `container` narrowed by the early return above.
     const attachSession = (livePtyId: string) => {
@@ -658,28 +658,10 @@ function TerminalSession({
 
       term.focus();
 
-      // Surface Claude Code readiness once the shell is live. Best-effort UX —
-      // a probe failure must never break the terminal, so swallow and show
-      // nothing. Log first so a non-teardown failure isn't invisible.
-      //
-      // SKIP for a freshly-launched tab: `resolveLaunchCommand` already ran a
-      // launch-time `claudePreflight` and owns the readiness verdict for that
-      // session. Re-probing here would be a redundant IPC round-trip AND could
-      // downgrade a launch-time `not-found` (banner shown) to a flaky `unknown`
-      // (banner hides), making the missing-CLI banner flash then vanish with no
-      // agent launched. Adopted sessions (adoptPtyId set) never call
-      // `resolveLaunchCommand`, so they still need the probe.
-      const launchOwnsReadiness = launch !== null && adoptPtyId === null;
-      if (!launchOwnsReadiness) {
-        bridge.terminal
-          .claudePreflight()
-          .then((readinessResult) => {
-            if (!cancelled) setReadiness(readinessResult);
-          })
-          .catch((err) => {
-            console.warn('[terminal] claude readiness preflight failed', err);
-          });
-      }
+      // No readiness probe here: attachSession runs for every session, including
+      // plain and adopted tabs. Readiness feedback is scoped to a fresh,
+      // product-initiated Claude launch, so only `resolveLaunchCommand` produces
+      // the verdict while resolving that launch.
     };
 
     // "Open in <Agent>" launch: resolve the command we BAKE into the shell spawn
@@ -692,9 +674,9 @@ function TerminalSession({
     // The bake is gated on a CLI confirmed present on PATH — exactly today's
     // guarantee that the terminal never shows a raw `command not found`. A not-
     // present / unknown / IPC-failure verdict returns undefined (spawn a plain
-    // shell) and surfaces a banner: this function OWNS the claude readiness
-    // verdict for a launch session (setting it on every path so the post-attach
-    // probe is skipped — see attachSession), and sets the missing-CLI banner for
+    // shell) and surfaces a banner: this function is the ONLY producer of the
+    // claude readiness verdict (launch-less sessions carry no claude intent and
+    // never probe — see attachSession), and sets the missing-CLI banner for
     // codex/cursor/opencode. The claude probe here doubles as the launch-time MCP
     // pre-approval check — as fresh as the on-disk `.mcp.json` gets, since it runs
     // immediately before the spawn.
@@ -705,9 +687,9 @@ function TerminalSession({
         try {
           const fresh = await bridge.terminal.claudePreflight();
           if (fresh.claude === 'present') {
-            // Own the readiness verdict for this launch session (the post-attach
-            // probe is skipped for launches): surfaces the rewire banner when OK
-            // tools need rewiring, and stays silent when fully wired.
+            // Own the readiness verdict for this launch session: surfaces the
+            // rewire banner when OK tools need rewiring, and stays silent when
+            // fully wired.
             if (!cancelled) setReadiness(fresh);
             return buildCliLaunchArgString('claude', intent.prompt, {
               mcpPreApprove: fresh.mcpPreApprovable === true,

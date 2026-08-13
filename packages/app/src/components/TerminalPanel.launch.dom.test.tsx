@@ -562,8 +562,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     // Fell through to a plain shell — no baked launch command, and nothing typed
-    // into the shell. (The post-attach readiness probe still runs here, since this
-    // is now just a plain tab — resolveLaunchCommand never owned readiness.)
+    // into the shell (a failed adopt must not silently replay the launch).
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
