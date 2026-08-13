@@ -1,17 +1,28 @@
 import { isAbsolute, relative } from 'node:path';
 import { stripDocExtension } from './doc-extensions.ts';
-import type { FileIndexEntry, WatcherHandle } from './file-watcher.ts';
+import type { FileIndexEntry, FolderIndexEntry, WatcherHandle } from './file-watcher.ts';
 import { toPosix } from './path-utils.ts';
 
 export interface WatcherLocalTargetInventory {
   documentTargets: readonly string[];
   fileTargets: readonly string[];
+  /**
+   * Every non-excluded directory the watcher indexes — including empty and
+   * asset-only folders, which have no doc descendants to derive from. This is
+   * the folder-existence oracle's watcher half; consumers union it with the
+   * admitted docs' ancestors (covering CRDT-live docs not yet on disk), the
+   * same union the client's folder navigation uses.
+   */
+  folderTargets: readonly string[];
 }
 
 type LocalTargetWatcher = Pick<
   WatcherHandle,
   'getAllFilesIndex' | 'getFileIndexGeneration' | 'getFolderAliasIndex'
->;
+> &
+  // Optional so narrow harness stubs keep working; a missing accessor just
+  // means "no injected folders" (the doc-ancestor half still applies).
+  Partial<Pick<WatcherHandle, 'getFolderIndex'>>;
 
 interface CachedWatcherInventory {
   contentDir: string;
@@ -73,6 +84,7 @@ export function localTargetInventoryFromWatcher(
     watcher.getAllFilesIndex(),
     watcher.getFolderAliasIndex(),
     contentDir,
+    watcher.getFolderIndex?.(),
   );
   watcherInventoryCache.set(watcher, { contentDir, generation, inventory });
   return inventory;
@@ -83,9 +95,11 @@ export function localTargetInventoryFromIndexes(
   allFiles: ReadonlyMap<string, FileIndexEntry>,
   folderAliases: ReadonlyMap<string, string>,
   contentDir: string,
+  folderIndex?: ReadonlyMap<string, FolderIndexEntry>,
 ): WatcherLocalTargetInventory {
   const documentTargets = new Set<string>();
   const fileTargets = new Set<string>();
+  const folderTargets = new Set<string>(folderIndex?.keys() ?? []);
   for (const [indexedIdentity, entry] of allFiles) {
     const targets = entry.kind === 'markdown' ? documentTargets : fileTargets;
     targets.add(indexedIdentity);
@@ -99,9 +113,11 @@ export function localTargetInventoryFromIndexes(
 
   projectFolderAliases(documentTargets, folderAliases);
   projectFolderAliases(fileTargets, folderAliases);
+  projectFolderAliases(folderTargets, folderAliases);
 
   return {
     documentTargets: [...documentTargets],
     fileTargets: [...fileTargets],
+    folderTargets: [...folderTargets],
   };
 }

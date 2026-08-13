@@ -321,11 +321,13 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
       const layer = getInteractionLayer(editor);
       // Bare click navigates to the target (doc/anchor same-tab, external
       // always new-tab, asset same-tab). Cmd/Ctrl/middle-click forces
-      // new-tab. Unresolved doc targets (page missing or folder with no
-      // index) return false so the popover surfaces "Create page" / "Create
-      // index" — the only useful action when there's nothing to navigate
-      // to. Reads `currentNode.attrs` (reassigned by the `update` hook
-      // below on PropPanel edits).
+      // new-tab. Missing doc targets return false so the popover surfaces
+      // "Create page" — the only useful action when there's nothing to
+      // navigate to. A folder target (with or without an index doc) IS a
+      // destination: it opens the folder view at `#/<folderPath>`, the same
+      // hash the Links panel already navigates to. Reads
+      // `currentNode.attrs` (reassigned by the `update` hook below on
+      // PropPanel edits).
       //
       // Single source for primary-navigation: both the InteractionLayer
       // (chip click / Enter) and the PropPanel's clickable destination text
@@ -354,7 +356,6 @@ export const WikiLink = BaseWikiLink.extend<{ docName: string }>({
             fallbackTargets: getWikiLinkResolutionCandidates(liveTarget),
           });
           if (intent.kind === 'create') return false;
-          if (intent.kind === 'navigate' && intent.displayState === 'folder') return false;
           const targetDocName =
             intent.kind === 'navigate' ? intent.hashDocName : classified.docName;
           if (newTab) {

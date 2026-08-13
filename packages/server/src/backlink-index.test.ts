@@ -429,6 +429,56 @@ describe('BacklinkIndex', () => {
     }
   });
 
+  test('getDeadLinks never reports a link to an existing folder (PRD-7956)', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-folder-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(join(contentDir, 'guides', 'deep'), { recursive: true });
+    try {
+      // 'guides' and 'guides/deep' exist purely as ancestors of docs — no
+      // index doc, no page named 'guides'. Every navigating surface opens
+      // them as the folder view, so the audit must not call them dead. The
+      // sibling wiki AND markdown forms are both exempt; 'missing-folder'
+      // names no doc and no folder and stays reported.
+      writeFileSync(
+        join(contentDir, 'alpha.md'),
+        '# Alpha\n\nSee [[guides]] and [markdown-form](./guides/deep) plus [[missing-folder]].\n',
+        'utf-8',
+      );
+      writeFileSync(
+        join(contentDir, 'guides', 'deep', 'guide-one.md'),
+        '# Guide one\n\nBody.\n',
+        'utf-8',
+      );
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      const deadLinks = index.getDeadLinks(['alpha', 'guides/deep/guide-one']);
+      expect(deadLinks.map((entry) => entry.target)).toEqual(['missing-folder']);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('getDeadLinks accepts a watcher folder inventory for folders with no doc descendants', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-watcher-folder-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      // `assets` is asset-only: no doc beneath it, so the doc-ancestor
+      // derivation cannot see it — only the injected watcher inventory can.
+      writeFileSync(join(contentDir, 'alpha.md'), '# Alpha\n\nSee [[assets]].\n', 'utf-8');
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+
+      expect(index.getDeadLinks(['alpha']).map((entry) => entry.target)).toEqual(['assets']);
+      expect(index.getDeadLinks(['alpha'], undefined, undefined, ['assets'])).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('getDeadLinks returns an empty array when every target exists', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-empty-'));
     const contentDir = join(projectDir, 'content');
@@ -2064,6 +2114,18 @@ describe('computeBrokenOutboundLinks', () => {
     const md = 'See [sibling](./real.md) and [root](/docs/guide.md) and [[Existing]].';
     const admitted = new Set(['notes/real', 'docs/guide', 'Existing']);
     expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual([]);
+  });
+
+  test('a folder oracle exempts wiki and markdown links to existing folders', () => {
+    // `assets` holds no docs (asset-only), so it is invisible to `admitted`;
+    // only the injected watcher-backed oracle can prove it exists. Both link
+    // forms navigate to the folder view, so neither is broken. A folder the
+    // oracle does not know stays reported.
+    const md = 'See [[assets]] and [dir](./assets) and [[missing-folder]].';
+    const folderExists = (folderPath: string) => folderPath === 'assets';
+    expect(computeBrokenOutboundLinks(md, 'notes', new Set(), undefined, folderExists)).toEqual<
+      BrokenOutboundLink[]
+    >([{ href: '[[missing-folder]]', resolvedTo: 'missing-folder', reason: 'no-such-doc' }]);
   });
 
   test('flags the `./`-onto-content-root doubling footgun as no-such-doc (AC2.2)', () => {

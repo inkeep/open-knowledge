@@ -1034,12 +1034,16 @@ export interface BrokenOutboundLink {
  * @param sourceDocName   the doc being written (relative hrefs resolve against its dir)
  * @param admittedDocs    every docName that currently exists (the same admitted set `getDeadLinks` takes)
  * @param fileExists      oracle for a content-root-relative file path's on-disk existence; omit to skip file-link validation
+ * @param folderExists    oracle for a content-root-relative folder path's existence; a link
+ *                        naming an existing folder is a navigable destination (the folder
+ *                        view), not a broken link. Omit to treat folders as unknown.
  */
 export function computeBrokenOutboundLinks(
   markdown: string,
   sourceDocName: string,
   admittedDocs: Iterable<string>,
   fileExists?: (contentRootRelativePath: string) => boolean,
+  folderExists?: (folderPath: string) => boolean,
 ): BrokenOutboundLink[] {
   const admitted = admittedDocs instanceof Set ? admittedDocs : new Set(admittedDocs);
 
@@ -1075,7 +1079,9 @@ export function computeBrokenOutboundLinks(
       return;
     }
     if (classified.kind === 'doc') {
-      if (!admitted.has(classified.docName)) {
+      // A path naming an existing folder is the folder view's destination —
+      // the same exemption the dead-link audit applies.
+      if (!admitted.has(classified.docName) && folderExists?.(classified.docName) !== true) {
         record(trimmed, classified.docName, 'no-such-doc');
       }
       return;
@@ -1134,7 +1140,10 @@ export function computeBrokenOutboundLinks(
     // hit. `[[analysis]]` reaching `research/analysis` by basename is a working
     // link, and the strict check reported exactly those as broken while staying
     // silent about the genuinely broken ones.
-    if (resolveWikiLinkTargetDocName(resolved.docName, wikiLookup) === undefined) {
+    if (
+      resolveWikiLinkTargetDocName(resolved.docName, wikiLookup) === undefined &&
+      folderExists?.(resolved.docName) !== true
+    ) {
       record(`[[${target}${anchor ? `#${anchor}` : ''}]]`, resolved.docName, 'no-such-doc');
     }
   };
@@ -1310,6 +1319,24 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
     ),
     epoch: 0,
   };
+}
+
+/**
+ * Every ancestor folder path of the given docNames — the server-side twin of
+ * the client's `deriveKnownFolderPaths` (navigation-targets.ts). Used by
+ * {@link BacklinkIndex.getDeadLinks} as the folder-existence oracle so a link
+ * targeting an existing folder is never reported as a dead link.
+ */
+function deriveFolderPathsFromDocNames(docNames: Iterable<string>): Set<string> {
+  const folderPaths = new Set<string>();
+  for (const docName of docNames) {
+    let slash = docName.indexOf('/');
+    while (slash !== -1) {
+      folderPaths.add(docName.slice(0, slash));
+      slash = docName.indexOf('/', slash + 1);
+    }
+  }
+  return folderPaths;
 }
 
 export class BacklinkIndex {
@@ -1828,10 +1855,25 @@ export class BacklinkIndex {
     admittedDocs: Iterable<string>,
     sourceDocNames?: readonly string[],
     branch = this.activeBranch,
+    knownFolderPaths?: Iterable<string>,
   ): DeadLinkEntry[] {
     const state = this.getState(branch);
     const admittedDocSet = new Set(admittedDocs);
     const sourceDocSet = sourceDocNames?.length ? new Set(sourceDocNames) : null;
+    // Folder-existence oracle: a link to an existing folder is a real
+    // destination — the editor resolves it to the 'folder' display state and
+    // clicking opens the folder view at `#/<folderPath>` — so reporting it
+    // dead contradicts every navigating surface. Two sources, unioned to
+    // match the client's own union (`deriveKnownFolderPaths(pages)` ∪ the
+    // watcher folder index in PageListContext): the ancestors of every
+    // existing doc (covers CRDT-live docs the watcher has not indexed yet)
+    // plus the caller-provided watcher folder inventory (covers empty and
+    // asset-only folders, which have no doc descendants to derive from).
+    const folderPathSet = deriveFolderPathsFromDocNames([
+      ...admittedDocSet,
+      ...state.forward.keys(),
+    ]);
+    for (const folderPath of knownFolderPaths ?? []) folderPathSet.add(folderPath);
 
     return [...state.backward.entries()]
       .filter(([target, sources]) => {
@@ -1846,6 +1888,11 @@ export class BacklinkIndex {
         // target is never a forward node (only `state.backward` carries it), so
         // this never hides a real dead link.
         if (admittedDocSet.has(target) || state.forward.has(target)) return false;
+        // A target naming an existing folder is navigable, not dead — every
+        // occurrence form (wiki AND markdown path) resolves it to the folder
+        // view, so the exemption is form-agnostic. Exact membership only; no
+        // slug/basename fuzz, so a path naming nothing still reports dead.
+        if (folderPathSet.has(target.replace(/\/+$/, ''))) return false;
         if (!sourceDocSet) return sources.size > 0;
         for (const source of sources.keys()) {
           if (sourceDocSet.has(source)) return true;

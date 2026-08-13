@@ -8,6 +8,23 @@ function fileOracle(...paths: string[]): (rel: string) => boolean {
 }
 
 describe('computeWriteAdvisoryLinks', () => {
+  test('a folder oracle exempts wiki and inline links to existing folders (both planes)', () => {
+    // The graph scan owns wiki + inline entries and the assessment plane owns
+    // the evidence-carrying rest; both must consult the injected folder
+    // oracle, or an MCP write response reports a link broken while the
+    // Problems tab and the editor resolve it. `assets` is asset-only — no doc
+    // descendants — so only the injected oracle can prove it.
+    const md = 'See [[assets]] and [dir](./assets) and [[missing-folder]].';
+    const links = computeWriteAdvisoryLinks(
+      md,
+      'notes',
+      new Set<string>(),
+      undefined,
+      (folderPath) => folderPath === 'assets',
+    );
+    expect(links.map((link) => link.href)).toEqual(['[[missing-folder]]']);
+  });
+
   test('reports graph-shaped links (doc, file, wiki) with no evidence, exactly as before', () => {
     const md = ['See [guide](./guide) and [data](./data.csv).', 'A [[Ghost]] wiki reference.'].join(
       '\n',

@@ -121,6 +121,24 @@ describe('WYSIWYG wiki-link activation', () => {
     expect(currentHash()).toBe('#/notes/roadmap');
   });
 
+  test('a target naming an existing folder opens the folder view (PRD-7956)', () => {
+    // 'notes' is in folderPaths but is NOT a page and has no index doc — the
+    // pre-fix behavior dead-ended here (handlePrimary returned false and the
+    // chip read as inert). The folder view at `#/notes` is the destination
+    // the Links panel already navigates to; the chip must agree.
+    const { activate, currentHash } = mountWikiLink('notes');
+
+    expect(activate()).toBe(true);
+    expect(currentHash()).toBe('#/notes');
+  });
+
+  test('a target naming a missing page still falls through to create (returns false)', () => {
+    const { activate, currentHash } = mountWikiLink('totally/absent-page');
+
+    expect(activate()).toBe(false);
+    expect(currentHash()).toBe('');
+  });
+
   test('a target naming a real asset still opens the asset viewer', () => {
     const { activate, currentHash } = mountWikiLink('meeting.pdf');
 

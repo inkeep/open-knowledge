@@ -109,6 +109,9 @@ export interface LocalTargetRebuildResult {
 export interface LocalTargetRebuildInventory {
   documentTargets: Iterable<string>;
   fileTargets: Iterable<string>;
+  /** Watcher folder inventory (every non-excluded directory); optional so
+   *  doc-only harnesses keep working — absent means "no injected folders". */
+  folderTargets?: Iterable<string>;
 }
 
 /**
@@ -183,11 +186,15 @@ function documentMutationKeys(docName: string): string[] {
   const leaf = docName.slice(docName.lastIndexOf('/') + 1);
   const leafSlug = toWikiLinkSlug(leaf);
   if (leafSlug) keys.push(`basename:${leafSlug}`);
-  const slash = docName.lastIndexOf('/');
-  if (slash > 0) {
-    const parent = docName.slice(0, slash);
-    const parentLeaf = parent.slice(parent.lastIndexOf('/') + 1);
-    if (leaf === 'index' || leaf === parentLeaf) keys.push(`folder:${parent}`);
+  // Every ancestor folder, not just an index-like parent: adding a doc can
+  // bring a folder into existence at any depth and removing one can take the
+  // folder with it, and folder existence is itself an assessment input since
+  // folder targets became exact destinations. Sources holding a
+  // `folder:` dependency on any of these ancestors must re-run.
+  let slash = docName.indexOf('/');
+  while (slash !== -1) {
+    keys.push(`folder:${docName.slice(0, slash)}`);
+    slash = docName.indexOf('/', slash + 1);
   }
   return keys;
 }
@@ -258,11 +265,28 @@ export class LocalTargetIndex {
   private readyValue = false;
   private closed = false;
 
+  /**
+   * Ancestor folders of every admitted document — the derived half of the
+   * `hasFolder` oracle (covers CRDT-live docs the watcher has not indexed).
+   * Rebuilt with the tolerant indexes (every `documents` mutation site calls
+   * `refreshTolerantDocumentIndexes`), so it can never go stale independently.
+   */
+  private folderPaths = new Set<string>();
+  /**
+   * Watcher folder inventory (every non-excluded directory, including empty
+   * and asset-only folders) — the injected half of the `hasFolder` oracle.
+   * Seeded by `populateFromDisk`, replaced by `reconcileFolderTargets`, and
+   * swapped with the other staged fields in `rebuildOnce`.
+   */
+  private injectedFolderPaths = new Set<string>();
+
   /** Existence oracle backed by this index's own inventory sets. */
   private readonly inventory: LocalTargetInventory = {
     hasDocument: (docName) => this.documents.has(docName),
     hasFile: (relativePath) => this.files.has(relativePath),
     resolveTolerantDocument: (docName) => this.tolerantDocumentResolver(docName),
+    hasFolder: (folderPath) =>
+      this.folderPaths.has(folderPath) || this.injectedFolderPaths.has(folderPath),
   };
 
   constructor(options: LocalTargetIndexOptions) {
@@ -501,6 +525,39 @@ export class LocalTargetIndex {
     return reassessed;
   }
 
+  /**
+   * Replace the injected (watcher) folder inventory from an authoritative
+   * snapshot. Sources whose assessments hold a `folder:` dependency on a
+   * folder that appeared or disappeared are reassessed, so an empty or
+   * asset-only folder coming or going flips its links between exact and
+   * missing without waiting for a doc edit.
+   */
+  reconcileFolderTargets(folderTargets: Iterable<string>): number {
+    const next = new Set(folderTargets);
+    const changedFolders = new Set<string>();
+    for (const folderPath of this.injectedFolderPaths) {
+      if (!next.has(folderPath)) changedFolders.add(folderPath);
+    }
+    for (const folderPath of next) {
+      if (!this.injectedFolderPaths.has(folderPath)) changedFolders.add(folderPath);
+    }
+    if (changedFolders.size === 0) return 0;
+
+    const affected = new Set<string>();
+    for (const folderPath of changedFolders) {
+      for (const source of this.reverseByTolerant.get(`folder:${folderPath}`) ?? []) {
+        affected.add(source);
+      }
+    }
+    this.injectedFolderPaths = next;
+    let reassessed = 0;
+    for (const source of affected) {
+      if (this.reassessSource(source)) reassessed++;
+    }
+    if (reassessed > 0) this.generationValue++;
+    return reassessed;
+  }
+
   /** Replace ordinary-file existence from an authoritative alias-complete snapshot. */
   reconcileFileTargets(fileTargets: Iterable<string>): number {
     return instrumentIndexUpdate(
@@ -633,6 +690,13 @@ export class LocalTargetIndex {
     this.sourceTolerantDeps = staged.sourceTolerantDeps;
     this.documents = staged.documents;
     this.tolerantDocumentResolver = staged.tolerantDocumentResolver;
+    // folderPaths must swap with `documents` — it is derived from it. Missing
+    // this line was a live bug: boot assessments (computed inside `staged`,
+    // folder-aware) were clean, then the FIRST live reassessment on this
+    // instance ran against an empty folder set and flipped folder-exact
+    // targets back to missing.
+    this.folderPaths = staged.folderPaths;
+    this.injectedFolderPaths = staged.injectedFolderPaths;
     this.files = staged.files;
     this.readyValue = true;
     if (hadContent || this.sourceAssessments.size > 0) this.generationValue++;
@@ -644,6 +708,9 @@ export class LocalTargetIndex {
   ): Promise<LocalTargetRebuildResult> {
     for (const docName of inventory.documentTargets) this.documents.add(docName);
     for (const relativePath of inventory.fileTargets) this.files.add(relativePath);
+    for (const folderPath of inventory.folderTargets ?? []) {
+      this.injectedFolderPaths.add(folderPath);
+    }
     this.refreshTolerantDocumentIndexes();
 
     if (!existsSync(this.contentDir)) {
@@ -699,8 +766,14 @@ export class LocalTargetIndex {
       for (const file of files) nextFileDeps.add(file);
       if (
         assessment.targetKind === 'document' &&
-        assessment.status !== 'exact' &&
-        assessment.resolvedTarget !== null
+        assessment.resolvedTarget !== null &&
+        // Non-exact targets need every tolerant edge (a slug/basename/folder
+        // mutation can heal them). An exact target normally needs none — its
+        // reverseByDoc edge covers it — EXCEPT a folder-backed exact,
+        // whose existence is a property of the folder, not of any
+        // one document: it keeps its `folder:` edge so deleting the folder's
+        // last doc re-runs the assessment.
+        (assessment.status !== 'exact' || !this.documents.has(assessment.resolvedTarget))
       ) {
         for (const key of tolerantDependencyKeys(assessment.resolvedTarget)) {
           nextTolerantDeps.add(key);
@@ -786,6 +859,15 @@ export class LocalTargetIndex {
 
   private refreshTolerantDocumentIndexes(): void {
     this.tolerantDocumentResolver = createTolerantDocumentResolver(this.documents);
+    const folderPaths = new Set<string>();
+    for (const docName of this.documents) {
+      let slash = docName.indexOf('/');
+      while (slash !== -1) {
+        folderPaths.add(docName.slice(0, slash));
+        slash = docName.indexOf('/', slash + 1);
+      }
+    }
+    this.folderPaths = folderPaths;
   }
 
   private async listDocsWithPaths(): Promise<Array<{ docName: string; filePath: string }>> {

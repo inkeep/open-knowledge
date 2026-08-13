@@ -240,7 +240,8 @@ export class DerivedDocumentIndex
     this.contentFilter = options.contentFilter;
     this.getGlobalSkillRoots = options.getGlobalSkillRoots;
     this.getLocalTargetInventory =
-      options.getLocalTargetInventory ?? (() => ({ documentTargets: [], fileTargets: [] }));
+      options.getLocalTargetInventory ??
+      (() => ({ documentTargets: [], fileTargets: [], folderTargets: [] }));
     this.signalChannel = options.signalChannel;
     this.onRecoveredFileTarget = options.onRecoveredFileTarget;
     this.testOnly = {
@@ -616,7 +617,16 @@ export class DerivedDocumentIndex
     sourceDocumentNames?: readonly string[],
   ): Promise<DeadLinkEntry[]> {
     return this.runQuery(() =>
-      this.backlinkIndex.getDeadLinks(admittedDocuments, sourceDocumentNames),
+      this.backlinkIndex.getDeadLinks(
+        admittedDocuments,
+        sourceDocumentNames,
+        undefined,
+        // The watcher folder inventory rides along so empty and asset-only
+        // folders — navigable in the editor, absent from every doc-ancestor
+        // derivation — are not reported dead. Null (watcher unavailable)
+        // degrades to the doc-ancestor oracle inside getDeadLinks.
+        this.getLocalTargetInventory()?.folderTargets,
+      ),
     );
   }
 
@@ -946,6 +956,7 @@ export class DerivedDocumentIndex
       new Set([...this.backlinkIndex.getIndexedDocNames(), ...watcherInventory.documentTargets]),
     );
     this.localTargetIndex.reconcileFileTargets(watcherInventory.fileTargets);
+    this.localTargetIndex.reconcileFolderTargets(watcherInventory.folderTargets);
     return watcherInventory;
   }
 

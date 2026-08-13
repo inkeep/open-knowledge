@@ -285,19 +285,93 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     });
   });
 
-  test('records canonical folder-index and bare-basename fallbacks', () => {
+  test('a folder target is exact; a bare basename still records its fallback', () => {
+    // `guides` names an existing folder, which is a real
+    // destination (the folder view) — exact under its authored identity, no
+    // fallback re-pointing. The bare-basename tolerant fallback is untouched.
     const index = createIndex();
     index.setSource('guides/index', '# Guides\n');
     index.setSource('nested/analysis', '# Analysis\n');
     index.setSource('src', 'See [folder](guides) and [bare](analysis).\n');
 
-    expect(index.getAssessments('src').map((assessment) => assessment.fallbackTarget)).toEqual([
-      'guides/index',
-      'nested/analysis',
-    ]);
     expect(
-      index.getAssessments('src').every((assessment) => assessment.status === 'fallback'),
-    ).toBe(true);
+      index.getAssessments('src').map(({ status, resolvedTarget, fallbackTarget }) => ({
+        status,
+        resolvedTarget,
+        fallbackTarget,
+      })),
+    ).toEqual([
+      { status: 'exact', resolvedTarget: 'guides', fallbackTarget: null },
+      { status: 'fallback', resolvedTarget: 'analysis', fallbackTarget: 'nested/analysis' },
+    ]);
+  });
+
+  test('reconcileFolderTargets flips folder links as watcher folders come and go', () => {
+    // An asset-only folder never appears among doc ancestors; only the
+    // injected watcher inventory can prove it. The reconcile must reassess
+    // sources holding a folder: dependency in both directions.
+    const index = createIndex();
+    index.setSource('src', 'See [dir](assets).\n');
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      resolvedTarget: 'assets',
+    });
+
+    expect(index.reconcileFolderTargets(['assets'])).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: 'assets',
+    });
+
+    expect(index.reconcileFolderTargets([])).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      resolvedTarget: 'assets',
+    });
+  });
+
+  test('a staged rebuild carries the folder oracle into live reassessment (PRD-7956)', async () => {
+    // rebuildFromDisk assesses inside a STAGED instance and swaps its fields
+    // into the live one. The folder set must swap with `documents`, or the
+    // first live setSource after a rebuild reassesses folder-exact targets
+    // against an empty folder set and flips them to missing — clean at boot,
+    // broken the moment a doc is opened.
+    const index = createIndex();
+    await index.rebuildFromDisk({
+      documentTargets: ['guides/guide-one'],
+      fileTargets: [],
+    });
+
+    index.setSource('src', 'See [folder](guides).\n');
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: 'guides',
+    });
+  });
+
+  test('folder existence tracks the docs beneath it in both directions (PRD-7956)', () => {
+    const index = createIndex();
+    index.setSource('src', 'See [folder](guides).\n');
+    // Nothing named guides exists yet — missing.
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      resolvedTarget: 'guides',
+    });
+
+    // First doc under guides/ brings the folder into existence — heals to exact.
+    index.setSource('guides/first', '# First\n');
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: 'guides',
+      fallbackTarget: null,
+    });
+
+    // Deleting the folder's last doc takes the folder with it — back to missing.
+    index.removeSource('guides/first');
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      resolvedTarget: 'guides',
+    });
   });
 
   test('system and config source names are never indexed and create no reverse edges', () => {

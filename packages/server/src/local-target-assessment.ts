@@ -98,6 +98,16 @@ export interface LocalTargetInventory {
    * `exact`.
    */
   resolveTolerantDocument?(docName: string, sourceDocName: string): string | null;
+  /**
+   * Optional folder-existence oracle: whether an extension-less path names an
+   * existing content folder (an ancestor of at least one admitted document —
+   * the same derivation every navigating surface uses). An existing folder is
+   * a real destination since the folder-links fix (it opens the folder view at
+   * `#/<folderPath>`), so `assessDocument` reports it `exact` instead of
+   * minting a dead-link finding. Absent oracle = folders unknown, which
+   * preserves the pre-folder behavior for callers that never see folders.
+   */
+  hasFolder?(folderPath: string): boolean;
 }
 
 /** Build the deterministic tolerant document lookup shared by index and write-time assessment. */
@@ -178,6 +188,23 @@ function assessDocument(
   exactExists?: boolean,
 ): SharedAssessment {
   if (exactExists ?? inventory.hasDocument(docName)) {
+    return {
+      targetKind: 'document',
+      resolvedTarget: docName,
+      status: 'exact',
+      reason: null,
+      resolutionMethod: methodForHref(href),
+      fallbackTarget: null,
+    };
+  }
+  // An existing folder is an exact destination, not a missing document: every
+  // navigating surface opens it as the folder view at `#/<folderPath>`.
+  // Checked BEFORE tolerant fallback so a folder target keeps its
+  // authored identity rather than being re-pointed at a lookalike doc; a
+  // folder that also carries an index doc still navigates fine (the folder
+  // view lists it). Checked AFTER the exact-document branch so a doc named
+  // like a folder keeps winning.
+  if (inventory.hasFolder?.(docName)) {
     return {
       targetKind: 'document',
       resolvedTarget: docName,

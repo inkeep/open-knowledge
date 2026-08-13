@@ -54,6 +54,28 @@ describe('localTargetInventoryFromIndexes', () => {
     );
   });
 
+  test('carries the watcher folder index as folderTargets, with folder-alias projection', () => {
+    const contentDir = '/project/content';
+    const inventory = localTargetInventoryFromIndexes(
+      new Map(),
+      new Map([['folder-alias', 'canonical']]),
+      contentDir,
+      new Map([
+        ['canonical', { modified: '2026-01-01T00:00:00.000Z' } as never],
+        ['canonical/assets-only', { modified: '2026-01-01T00:00:00.000Z' } as never],
+      ]),
+    );
+
+    expect(inventory.folderTargets).toEqual(
+      expect.arrayContaining([
+        'canonical',
+        'canonical/assets-only',
+        'folder-alias',
+        'folder-alias/assets-only',
+      ]),
+    );
+  });
+
   test('distinguishes an unavailable watcher from an empty authoritative inventory', () => {
     expect(localTargetInventoryFromWatcher(null, '/project/content')).toBeNull();
   });

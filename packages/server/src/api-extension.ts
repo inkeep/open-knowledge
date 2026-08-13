@@ -3613,6 +3613,19 @@ export function createApiExtension(
   // fallback preserves immediate write advisories during the short window
   // between a native file creation and its watcher event, while applying the
   // same ignore and realpath-escape gates before admitting that file.
+  // Folder-existence oracle for write-time link validation: the watcher's
+  // folder index is every non-excluded directory (including empty and
+  // asset-only ones) — the same inventory the client's folder navigation
+  // unions in, so an existing folder target is not reported broken here
+  // while the editor chip resolves it. `computeWriteAdvisoryLinks` unions
+  // this with the admitted docs' ancestors, which cover CRDT-live docs the
+  // watcher has not indexed yet.
+  function createLinkedFolderExists(): (folderPath: string) => boolean {
+    const folderIndex = getFolderIndex?.();
+    if (!folderIndex) return () => false;
+    return (folderPath) => folderIndex.has(folderPath);
+  }
+
   function createLinkedFileExists(
     allFiles = getAllFilesIndex(),
   ): (contentRootRelativePath: string) => boolean {
@@ -5633,6 +5646,7 @@ export function createApiExtension(
           resolvedDocName,
           admittedForLinks,
           createLinkedFileExists(),
+          createLinkedFolderExists(),
         );
 
         const subscriberCount = getSubscriberCount(resolvedDocName);
@@ -6055,6 +6069,7 @@ export function createApiExtension(
             if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
           }
           const linkedFileExists = createLinkedFileExists();
+          const linkedFolderExists = createLinkedFolderExists();
 
           let lastWrittenDoc: string | undefined;
           for (const p of pending) {
@@ -6070,6 +6085,7 @@ export function createApiExtension(
               p.docName,
               admittedForLinks,
               linkedFileExists,
+              linkedFolderExists,
             );
             results[p.index] = {
               status: 'written',

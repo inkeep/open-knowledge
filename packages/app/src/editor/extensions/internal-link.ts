@@ -189,17 +189,16 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
       // anchor / external here.
       switch (target.kind) {
         case 'doc': {
-          // Unresolved docs (target page missing OR a folder with no
-          // index) fall through so the popover surfaces "Create page" /
-          // "Create index" — the only useful action when there's no
-          // destination to navigate to.
+          // Missing docs fall through so the popover surfaces "Create page" —
+          // the only useful action when there's no destination to navigate
+          // to. A folder target IS a destination: it opens the folder view at
+          // `#/<folderPath>`, the same hash the Links panel navigates to.
           const cache = getPageListCache();
           const intent = resolveLinkTargetIntent(target.docName, {
             pages: cache?.pages ?? new Set<string>(),
             folderPaths: cache?.folderPaths ?? new Set<string>(),
           });
           if (intent.kind === 'create') return false;
-          if (intent.kind === 'navigate' && intent.displayState === 'folder') return false;
           if (newTab) {
             openInternalHashHrefInNewTab({ docName: target.docName, anchor: target.anchor });
           } else {

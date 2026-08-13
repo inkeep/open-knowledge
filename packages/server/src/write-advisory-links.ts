@@ -49,13 +49,30 @@ export function computeWriteAdvisoryLinks(
   sourceDocName: string,
   admittedDocs: Iterable<string>,
   fileExists?: (contentRootRelativePath: string) => boolean,
+  folderExists?: (folderPath: string) => boolean,
 ): WriteAdvisoryLink[] {
   const admitted = admittedDocs instanceof Set ? admittedDocs : new Set(admittedDocs);
 
+  const folderPaths = new Set<string>();
+  for (const docName of admitted) {
+    let slash = docName.indexOf('/');
+    while (slash !== -1) {
+      folderPaths.add(docName.slice(0, slash));
+      slash = docName.indexOf('/', slash + 1);
+    }
+  }
+  // Folder targets are exact destinations (the folder view). Union the
+  // admitted docs' ancestors with the caller's folder oracle (the watcher's
+  // folder index, when provided) — the same union the client navigates with,
+  // so an empty or asset-only folder is not reported broken here while the
+  // chip resolves it.
+  const hasFolder = (folderPath: string): boolean =>
+    folderPaths.has(folderPath) || folderExists?.(folderPath) === true;
   const inventory: LocalTargetInventory = {
     hasDocument: (docName) => admitted.has(docName),
     hasFile: (relPath) => (fileExists ? fileExists(relPath) : false),
     resolveTolerantDocument: createTolerantDocumentResolver(admitted),
+    hasFolder,
   };
   const assessments = assessLocalTargets(markdown, sourceDocName, inventory);
   const inlineLinkHrefs = new Set(
@@ -76,6 +93,7 @@ export function computeWriteAdvisoryLinks(
     sourceDocName,
     admitted,
     fileExists,
+    hasFolder,
   ).filter((link) => link.href.startsWith('[[') || inlineLinkHrefs.has(link.href));
   const graphHrefs = new Set(links.map((link) => link.href));
   const seenRepairSites = new Set<string>();

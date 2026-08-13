@@ -1,3 +1,4 @@
+
 import type { BrokenLinkReason } from '../../schemas/api/agent-write.ts';
 
 export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter'] as const;
@@ -97,6 +98,7 @@ export interface FrontmatterSlice {
   enabled: boolean;
   schemas: ResolvedFrontmatterSchemaEntry[];
 }
+
 
 interface RuleOptionSpecBase {
   key: string;
