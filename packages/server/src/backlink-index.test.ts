@@ -827,7 +827,7 @@ describe('BacklinkIndex', () => {
       writeFileSync(
         join(cacheDir, 'backlinks.json'),
         JSON.stringify({
-          version: 1,
+          version: 2,
           backward: {
             ghost: [{ source: 'alpha', anchor: null, snippet: 'See ghost.' }],
             // Invalid positions (hand-edited or corrupt cache) must degrade to
@@ -869,6 +869,57 @@ describe('BacklinkIndex', () => {
       expect(index.getDeadLinks(['alpha'])[0]?.sources[0]).toEqual(
         expect.objectContaining({ source: 'alpha', line: 0 }),
       );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a v1 cache is rejected so skill refs are recorded instead of silently missing', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-skillrefs-guard-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      // `skillRefs` was added to the cache as an optional field without bumping
+      // the version, so a v1 cache loaded fine and deserialized it to empty.
+      // With mtimes matching disk the reconcile re-parses nothing, so
+      // `recordSkillRefs` never runs and every `/skill-name` edge a project
+      // skill authors stays missing for the life of the cache.
+      const analyze = '.agents/skills/analyze/SKILL';
+      const research = '.agents/skills/research/SKILL';
+      mkdirSync(join(contentDir, '.agents', 'skills', 'analyze'), { recursive: true });
+      mkdirSync(join(contentDir, '.agents', 'skills', 'research'), { recursive: true });
+      writeFileSync(
+        join(contentDir, '.agents', 'skills', 'analyze', 'SKILL.md'),
+        '# Analyze\n\nFor reports use /research.\n',
+      );
+      writeFileSync(join(contentDir, '.agents', 'skills', 'research', 'SKILL.md'), '# Research\n');
+
+      const cacheDir = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main');
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        join(cacheDir, 'backlinks.json'),
+        JSON.stringify({
+          version: 1,
+          backward: {},
+          forward: { [analyze]: [], [research]: [] },
+          externalForward: {},
+          // No skillRefs key — exactly what a pre-skillRefs cache looks like.
+          // mtimes are filled in below so the reconcile would skip both files.
+          mtimes: {},
+        }),
+        'utf-8',
+      );
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      expect(await index.loadFromDisk()).toBe(false);
+
+      // The caller's fallback on a rejected load: a cold rebuild re-parses both
+      // files, so the ref edge is present.
+      await index.rebuildFromDisk();
+      expect(index.getForwardLinks(analyze)).toEqual([research]);
+      expect(index.getBacklinks(research)).toEqual([
+        { source: analyze, anchor: null, snippet: null },
+      ]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

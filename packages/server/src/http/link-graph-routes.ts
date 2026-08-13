@@ -29,6 +29,7 @@ import {
   TagsForNameSuccessSchema,
   TagsListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
+import { parseSkillBundleDocAnyScope } from '../backlink-index.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import {
   type DerivedDocumentIndexApiPort,
@@ -39,6 +40,7 @@ import {
 import type { FileIndexEntry } from '../file-watcher.ts';
 import { toForwardLinkLocalTargets } from '../local-target-assessment.ts';
 import type { FrontmatterMetadata } from '../page-identity.ts';
+import { isInternalBundleSkillName } from '../skill-bundles.ts';
 import { SuggestLinksTargetNotFoundError, suggestLinks } from '../suggest-links.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
@@ -329,6 +331,7 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
         const enrichedNodes = nodes.map((node) => {
           if (node.kind === 'doc') {
             const meta = readFrontmatterMetadataForLinkedDocName(node.docName, admitted);
+            const bundle = parseSkillBundleDocAnyScope(node.docName);
             return {
               id: node.id,
               kind: 'doc' as const,
@@ -338,6 +341,10 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
               cluster: meta.cluster ?? null,
               category: meta.category ?? null,
               tags: meta.tags ?? null,
+              // Only stamped when true — an ordinary document carries no flag.
+              ...(bundle !== null && isInternalBundleSkillName(bundle.name)
+                ? { managed: true as const }
+                : {}),
             };
           }
           return {

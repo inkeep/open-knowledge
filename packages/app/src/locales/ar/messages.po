@@ -6054,6 +6054,10 @@ msgstr "إخفاء معاينة التحديد"
 msgid "Hide sidebar"
 msgstr "إخفاء الشريط الجانبي"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "إخفاء عقد المهارات"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "إخفاء Terminal"
@@ -11127,6 +11131,10 @@ msgstr "إظهار معاينة التحديد"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "إظهار الشريط الجانبي"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "إظهار عقد المهارات"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

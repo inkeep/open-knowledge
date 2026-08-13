@@ -4376,6 +4376,7 @@
     "qFWMl-": ["Afficher comme texte"],
     "qIJIrD": ["Test en cours"],
     "qJSo0_": ["Quelle est la différence entre les copies et les liens symboliques ?"],
+    "qKMfPp": ["Masquer les nœuds de compétences"],
     "qNOgUu": [
       "Les modifications faites à la source arrivent ici — aucune dérive due au copier-coller."
     ],
@@ -4843,6 +4844,7 @@
     "vy_VIN": [
       "Suivi dans git — les mises à jour arrivent via votre dépôt (pull ou CI), pas par mise à jour automatique"
     ],
+    "w0YVAE": ["Afficher les nœuds de compétences"],
     "w3tVpc": [
       "Pas encore de liens. Ajoutez des liens wiki ou markdown pour construire un graphe."
     ],

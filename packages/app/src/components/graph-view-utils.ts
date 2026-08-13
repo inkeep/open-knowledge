@@ -9,6 +9,10 @@ interface DocGraphNode {
   cluster?: string | null;
   category?: string | null;
   tags?: string[] | null;
+  /** Server-set: this node belongs to one of OpenKnowledge's own skill bundles.
+   *  The reserved names live in the server package, so the classification arrives
+   *  on the payload rather than being re-derived here. */
+  managed?: boolean;
   /** Wall-clock ms this node first entered the rendered graph (birth animation). */
   bornAt?: number;
 }

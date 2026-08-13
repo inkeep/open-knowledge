@@ -541,6 +541,30 @@ function isShareableOkArtifactAncestorDir(relativePath: string): boolean {
  * relative, '/'-joined, no leading/trailing slash.
  */
 
+/**
+ * True for a path under a KNOWN skill root (`.claude/skills`, `.github/skills`,
+ * `.agents/skills`, a ledger custom root, …). Roots arrive from the same
+ * registry the scanner uses, never a literal list here — hosts get added and
+ * users configure custom roots, and a hand-maintained copy in this file has
+ * already drifted once: every editor dotdir was skipped wholesale EXCEPT
+ * `.github`, so Copilot's projection was swept in as ordinary content and every
+ * skill rendered twice in the graph.
+ *
+ * Scoped to the ROOT PATH (`.github/skills`), never the host dotdir
+ * (`.github`) — segment-matching the dotdir would also bury real content that
+ * lives beside the projection (`.github/CI_RUNBOOK.md` and friends).
+ *
+ * Admission is unchanged: a bundle still enters only via the elected-canonical
+ * allow-list, which is a per-SKILL election. One skill can be canonical in
+ * `.github` while the next is canonical in `.cursor`; no root is privileged.
+ */
+function isUnderSkillRoot(relativePath: string, roots: ReadonlySet<string>): boolean {
+  for (const root of roots) {
+    if (relativePath === root || relativePath.startsWith(`${root}/`)) return true;
+  }
+  return false;
+}
+
 /** True for a FILE under one of the admitted in-place skill bundle dirs. */
 function isInPlaceSkillFile(relativePath: string, dirs: ReadonlySet<string>): boolean {
   if (dirs.size === 0) return false;
@@ -913,6 +937,13 @@ export interface ContentFilterOptions {
    */
   inPlaceSkillDirs?: ReadonlySet<string>;
   /**
+   * Known skill ROOT paths for this content dir (contentDir-relative, e.g.
+   * `.claude/skills`, `.github/skills`, `.tim/skills`). A non-canonical
+   * projection under one of these is excluded; the elected canonical bundle is
+   * re-admitted by `inPlaceSkillDirs`. Empty / omitted = feature off.
+   */
+  skillRootPaths?: ReadonlySet<string>;
+  /**
    * Optional provider re-run inside `rebuildIgnorePatterns()` to refresh the
    * in-place skill allow-list (live re-scan on skill add/remove). Throws are
    * swallowed — the previous set is kept. Absent = the construction-time set
@@ -1094,6 +1125,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   let configuredAttachmentFolder = attachmentFolderShape(
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
+  const skillRootPaths: ReadonlySet<string> = opts.skillRootPaths ?? new Set();
 
   // Precompute the contentDir-to-projectDir prefix for path conversion.
   // When contentDir is outside projectDir, the relative path starts with ".."
@@ -1333,6 +1365,20 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // file-level carve-out must defer to the always-skip floor under bypass
       // too — otherwise a caller passing `bypassFilters` straight to `isExcluded`
       // on a `.ok/skills/...` path would get inconsistent admission.
+
+      // A file under a known skill root that the canonical election did NOT
+      // admit is a duplicate projection of a skill already represented by its
+      // canonical bundle. Excluded ahead of that carve-out so it cannot be
+      // re-admitted as ordinary content — the leak that made one skill render
+      // once per editor dir it happened to be projected into.
+      if (
+        !opts?.bypassFilters &&
+        isUnderSkillRoot(relativePath, skillRootPaths) &&
+        !isInPlaceSkillFile(relativePath, inPlaceSkillDirs)
+      ) {
+        return true;
+      }
+
       if (
         !opts?.bypassFilters &&
         (isSkillContentFile(relativePath) ||
@@ -1914,6 +1960,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
   let configuredAttachmentFolder = attachmentFolderShape(
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
+  const skillRootPaths: ReadonlySet<string> = opts.skillRootPaths ?? new Set();
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
   const contentOutsideProject = contentRelPrefix.startsWith('..');
@@ -2072,6 +2119,20 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // Skills-as-content carve-out — admit project skill docs + linkable assets
       // under `.ok/skills/**` (see sync variant for rationale, incl. the
       // `!bypassFilters` gate that mirrors `isDirExcluded`).
+
+      // A file under a known skill root that the canonical election did NOT
+      // admit is a duplicate projection of a skill already represented by its
+      // canonical bundle. Excluded ahead of that carve-out so it cannot be
+      // re-admitted as ordinary content — the leak that made one skill render
+      // once per editor dir it happened to be projected into.
+      if (
+        !opts?.bypassFilters &&
+        isUnderSkillRoot(relativePath, skillRootPaths) &&
+        !isInPlaceSkillFile(relativePath, inPlaceSkillDirs)
+      ) {
+        return true;
+      }
+
       if (
         !opts?.bypassFilters &&
         (isSkillContentFile(relativePath) ||

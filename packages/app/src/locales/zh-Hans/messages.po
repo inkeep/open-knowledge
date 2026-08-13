@@ -6054,6 +6054,10 @@ msgstr "隐藏选区预览"
 msgid "Hide sidebar"
 msgstr "隐藏侧边栏"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "隐藏技能节点"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "隐藏 Terminal"
@@ -11127,6 +11131,10 @@ msgstr "显示选区预览"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "显示侧边栏"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "显示技能节点"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

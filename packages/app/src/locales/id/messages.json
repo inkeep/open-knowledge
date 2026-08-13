@@ -3766,6 +3766,7 @@
     "qFWMl-": ["Lihat sebagai teks"],
     "qIJIrD": ["Menguji"],
     "qJSo0_": ["Apa bedanya salinan dan symlink?"],
+    "qKMfPp": ["Sembunyikan simpul keterampilan"],
     "qNOgUu": ["Suntingan di sumbernya sampai ke sini — tanpa penyimpangan salin-tempel."],
     "qQi_um": ["Tema diimpor."],
     "qRZh7J": ["Biarkan Tab keluar dari penyunting sumber alih-alih menambah indentasi."],
@@ -4148,6 +4149,7 @@
     "vy_VIN": [
       "Dilacak di git — pembaruan mengalir lewat repo Anda (pull atau CI), bukan pembaruan otomatis"
     ],
+    "w0YVAE": ["Tampilkan simpul keterampilan"],
     "w3tVpc": [
       "Belum ada tautan. Tambahkan tautan wiki atau tautan markdown untuk membangun sebuah graf."
     ],

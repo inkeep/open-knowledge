@@ -236,8 +236,16 @@ interface BranchGraphState {
  * pre-v1 cache carrying an edge under that key would otherwise surface a false
  * dead link (`getDeadLinks`) and a false orphan (`getOrphans`) until the
  * source doc happened to be re-parsed.
+ *
+ * Bump on an ADDED key too, not just a changed one. v2 covers `skillRefs`:
+ * added as an optional field without a bump, so v1 caches stayed loadable and
+ * deserialized it to empty. The mtime reconcile then skips every unchanged
+ * file, so `recordSkillRefs` never runs for them and every `/skill-name` edge
+ * a project skill authors is missing until that file happens to be edited.
+ * Global bundles hid the bug — `ingestGlobalSkillBundles` re-reads them on
+ * every boot, so their refs looked fine while project skills had none.
  */
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
 
 interface SerializedBranchGraphState {
   version?: number;
@@ -306,7 +314,7 @@ function isUndecidedTarget(state: BranchGraphState, target: string): boolean {
  * same skill, a project SKILL only to project references, never across the
  * scope boundary or into a project's KB.
  */
-function parseSkillBundleDocAnyScope(
+export function parseSkillBundleDocAnyScope(
   docName: string,
 ): { name: string; kind: 'skill' | 'reference'; skillDocName: string } | null {
   const project = parseProjectSkillBundleDoc(docName);
@@ -1461,7 +1469,18 @@ export class BacklinkIndex {
    *  authors. No-op for non-bundle docs — plain prose mentioning `/tmp`-style
    *  tokens must never fabricate graph edges. */
   private recordSkillRefs(docName: string, body: string, branch = this.activeBranch): void {
-    const state = this.getState(branch);
+    this.recordSkillRefsInto(this.getState(branch), docName, body);
+  }
+
+  /**
+   * State-explicit twin of {@link recordSkillRefs}. The cold rebuild builds a
+   * detached state and only installs it at the end, so it cannot go through
+   * `getState(branch)` — it would write refs into the state it is replacing.
+   * Both paths share this one implementation so the rule cannot drift; a
+   * rebuild that skipped it left every project skill's `/skill-name` edges
+   * missing while global bundles (re-ingested per boot) looked fine.
+   */
+  private recordSkillRefsInto(state: BranchGraphState, docName: string, body: string): void {
     if (!parseSkillBundleDocAnyScope(docName)) return;
     const refs = extractSkillRefs(body);
     if (refs.length === 0) state.skillRefs.delete(docName);
@@ -2223,6 +2242,7 @@ export class BacklinkIndex {
         ];
         const targets = new Set<string>();
         const externalTargets = new Map<string, { label: string | null; snippet: string | null }>();
+        this.recordSkillRefsInto(state, docName, body);
         state.forward.set(docName, targets);
         state.epoch++;
         state.externalForward.set(docName, externalTargets);

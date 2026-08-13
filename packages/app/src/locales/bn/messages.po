@@ -6050,6 +6050,10 @@ msgstr "নির্বাচনের প্রাকদর্শন লুক�
 msgid "Hide sidebar"
 msgstr "সাইডবার লুকান"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "স্কিল নোড লুকান"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Terminal লুকান"
@@ -11123,6 +11127,10 @@ msgstr "নির্বাচনের প্রাকদর্শন দেখ�
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "সাইডবার দেখান"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "স্কিল নোড দেখান"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

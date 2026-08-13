@@ -6050,6 +6050,10 @@ msgstr "चयन पूर्वावलोकन छिपाएँ"
 msgid "Hide sidebar"
 msgstr "साइडबार छिपाएँ"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "स्किल नोड छिपाएँ"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Terminal छिपाएँ"
@@ -11123,6 +11127,10 @@ msgstr "चयन पूर्वावलोकन दिखाएँ"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "साइडबार दिखाएँ"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "स्किल नोड दिखाएँ"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

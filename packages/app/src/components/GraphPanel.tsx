@@ -9,6 +9,8 @@ import {
   type OrphanMode,
   OrphansSuccessSchema,
   ProblemDetailsSchema,
+  parseGlobalSkillBundleDoc,
+  parseProjectSkillBundleDoc,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
@@ -18,12 +20,14 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Globe,
+  Hexagon,
   Maximize2,
   Minimize2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { GraphLegend } from '@/components/GraphLegend';
 import { GraphView } from '@/components/GraphView';
+import type { GraphSkillVisibility } from '@/components/graph-skill-filter';
 import {
   type GraphNodeSelection,
   getHashForGraphDocSelection,
@@ -42,6 +46,7 @@ import {
 } from '@/components/ui/panel';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { loadBoolPref, saveBoolPref } from '@/lib/bool-pref';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { openExternalUrl } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -51,28 +56,9 @@ const FULLSCREEN_HUB_LIMIT = 50;
 
 const GRAPH_URL_NODES_DOCKED_KEY = 'ok-graph-docked-url-nodes-v1';
 const GRAPH_URL_NODES_FULLSCREEN_KEY = 'ok-graph-fullscreen-url-nodes-v1';
-
-function loadBoolPref(key: string): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(key) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function saveBoolPref(key: string, value: boolean): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (value) {
-      window.localStorage.setItem(key, 'true');
-    } else {
-      window.localStorage.removeItem(key);
-    }
-  } catch {
-    // quota exceeded / private mode — ignore, stays in-memory
-  }
-}
+// Fullscreen only. The docked view is a 2-hop neighborhood used to inspect what a
+// given doc — including a skill — connects to, so it stays unfiltered by design.
+const GRAPH_SKILL_NODES_FULLSCREEN_KEY = 'ok-graph-fullscreen-skill-nodes-v1';
 
 type FullscreenGraphMode = 'explore' | 'orphans' | 'hubs';
 
@@ -302,6 +288,9 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
   const [showUrlNodesFull, setShowUrlNodesFull] = useState(() =>
     loadBoolPref(GRAPH_URL_NODES_FULLSCREEN_KEY),
   );
+  const [showSkillsFull, setShowSkillsFull] = useState(() =>
+    loadBoolPref(GRAPH_SKILL_NODES_FULLSCREEN_KEY, true),
+  );
   const nodeCount = stats?.nodes ?? 0;
   const linkCount = stats?.links ?? 0;
 
@@ -312,6 +301,10 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
   useEffect(() => {
     saveBoolPref(GRAPH_URL_NODES_FULLSCREEN_KEY, showUrlNodesFull);
   }, [showUrlNodesFull]);
+
+  useEffect(() => {
+    saveBoolPref(GRAPH_SKILL_NODES_FULLSCREEN_KEY, showSkillsFull, true);
+  }, [showSkillsFull]);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -340,8 +333,26 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
     }
   }, [fullscreenMode, selectedNode]);
 
+  useEffect(() => {
+    if (
+      !showSkillsFull &&
+      selectedNode?.kind === 'doc' &&
+      (parseProjectSkillBundleDoc(selectedNode.docName) !== null ||
+        parseGlobalSkillBundleDoc(selectedNode.docName) !== null)
+    ) {
+      setSelectedNode(null);
+    }
+  }, [showSkillsFull, selectedNode]);
+
   const activeMode = isExpanded ? fullscreenMode : 'explore';
   const showUrlNodes = isExpanded ? showUrlNodesFull : showUrlNodesDocked;
+  // Docked stays unfiltered on both axes: it shows every skill node, built-ins
+  // included, because it is the surface for inspecting a skill's neighborhood.
+  const skillVisibility: GraphSkillVisibility = !isExpanded
+    ? 'all'
+    : showSkillsFull
+      ? 'hide-builtins'
+      : 'none';
   const setShowUrlNodes = isExpanded ? setShowUrlNodesFull : setShowUrlNodesDocked;
   const selectedNodeIntent =
     selectedNode?.kind === 'doc' && !pageListLoading
@@ -526,6 +537,35 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
                 )}
               </TooltipContent>
             </Tooltip>
+            {isExpanded ? (
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground hover:bg-accent"
+                    aria-label={showSkillsFull ? t`Hide skill nodes` : t`Show skill nodes`}
+                    aria-pressed={showSkillsFull}
+                    onClick={() => setShowSkillsFull((prev) => !prev)}
+                  >
+                    <Hexagon
+                      className={
+                        showSkillsFull
+                          ? 'size-4 text-sidebar-accent-foreground'
+                          : 'size-4 text-muted-foreground'
+                      }
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8} className="z-[9999]">
+                  {showSkillsFull ? (
+                    <Trans>Hide skill nodes</Trans>
+                  ) : (
+                    <Trans>Show skill nodes</Trans>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <Button
@@ -556,6 +596,7 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
             selectedNodeId={isExpanded ? (selectedNode?.id ?? null) : null}
             isExpanded={isExpanded}
             showUrlNodes={showUrlNodes}
+            skillVisibility={skillVisibility}
             className="h-full min-h-0"
             docClickBehavior={isExpanded ? 'select' : 'navigate'}
             onSelectNode={isExpanded ? setSelectedNode : undefined}

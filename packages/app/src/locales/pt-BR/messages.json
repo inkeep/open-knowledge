@@ -4243,6 +4243,7 @@
     "qFWMl-": ["Ver como texto"],
     "qIJIrD": ["Testando"],
     "qJSo0_": ["Qual é a diferença entre cópias e links simbólicos?"],
+    "qKMfPp": ["Ocultar os nós de habilidades"],
     "qNOgUu": ["As edições feitas na fonte chegam aqui — sem desvio por copiar e colar."],
     "qQi_um": ["Tema importado."],
     "qRZh7J": ["Deixar o Tab sair do editor de código em vez de recuar."],
@@ -4690,6 +4691,7 @@
     "vy_VIN": [
       "Rastreado no git — as atualizações chegam pelo seu repositório (pull ou CI), não por atualização automática"
     ],
+    "w0YVAE": ["Mostrar os nós de habilidades"],
     "w3tVpc": ["Ainda não há links. Adicione links wiki ou links markdown para montar um grafo."],
     "w3vFfL": ["Ocultar Arquivos"],
     "w4ZzmQ": ["Não deu para contatar o provedor de embeddings — tentar de novo"],

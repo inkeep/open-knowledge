@@ -6054,6 +6054,10 @@ msgstr "انتخاب کا پیش منظر چھپائیں"
 msgid "Hide sidebar"
 msgstr "سائیڈ بار چھپائیں"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "مہارت نوڈز چھپائیں"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Terminal چھپائیں"
@@ -11127,6 +11131,10 @@ msgstr "انتخاب کا پیش منظر دکھائیں"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "سائیڈ بار دکھائیں"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "مہارت نوڈز دکھائیں"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

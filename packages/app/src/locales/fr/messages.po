@@ -6054,6 +6054,10 @@ msgstr "Masquer l'aperçu de la sélection"
 msgid "Hide sidebar"
 msgstr "Masquer la barre latérale"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "Masquer les nœuds de compétences"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Masquer Terminal"
@@ -11127,6 +11131,10 @@ msgstr "Afficher l'aperçu de la sélection"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "Afficher la barre latérale"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "Afficher les nœuds de compétences"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

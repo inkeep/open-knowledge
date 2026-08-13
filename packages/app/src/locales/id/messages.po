@@ -6050,6 +6050,10 @@ msgstr "Sembunyikan pratinjau pilihan"
 msgid "Hide sidebar"
 msgstr "Sembunyikan bilah sisi"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "Sembunyikan simpul keterampilan"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Sembunyikan Terminal"
@@ -11123,6 +11127,10 @@ msgstr "Tampilkan pratinjau pilihan"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "Tampilkan bilah sisi"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "Tampilkan simpul keterampilan"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

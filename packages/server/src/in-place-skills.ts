@@ -505,6 +505,17 @@ export function resolveGlobalNativeSkillDir(home: string, name: string): string 
  * The contentDir-relative canonical bundle dirs to admit as content (the
  * `ContentFilter.inPlaceSkillDirs` allow-list).
  */
+/**
+ * Known skill ROOT paths for a project, contentDir-relative — every editor host
+ * root plus the ledger's custom roots. The content filter uses this to exclude
+ * non-canonical projections without hardcoding a host list of its own; sharing
+ * `knownSkillRootsFor` with the scanner is what keeps a newly-supported host
+ * (or a user's custom root) from silently leaking in as ordinary content.
+ */
+export function skillRootPathsFor(contentDir: string): ReadonlySet<string> {
+  return new Set(knownSkillRootsFor(contentDir, 'project').map((r) => r.root));
+}
+
 export function scanInPlaceSkillDirs(contentDir: string): ReadonlySet<string> {
   return new Set(scanInPlaceSkills(contentDir).map((s) => s.dir));
 }

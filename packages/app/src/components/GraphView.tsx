@@ -20,6 +20,7 @@ import {
   planGraphLabels,
 } from './graph-label-layout';
 import { buildGraphLabelDescriptors } from './graph-label-utils';
+import { filterGraphSkillNodes, type GraphSkillVisibility } from './graph-skill-filter';
 import {
   buildGraphLinkSignature,
   buildGraphNodeSignature,
@@ -506,6 +507,7 @@ export function GraphView({
   showcase = false,
   showcaseBaseline = null,
   showUrlNodes = true,
+  skillVisibility = 'all',
   className = '',
   docClickBehavior = 'navigate',
   onSelectNode,
@@ -525,6 +527,9 @@ export function GraphView({
    *  ADDITIONS get the staged pop-in entrance. */
   showcaseBaseline?: { nodeIds: ReadonlySet<string>; linkKeys: ReadonlySet<string> } | null;
   showUrlNodes?: boolean;
+  /** How much of the skill layer to draw. The docked local graph leaves this
+   *  'all' so a skill's own neighborhood stays inspectable there. */
+  skillVisibility?: GraphSkillVisibility;
   className?: string;
   docClickBehavior?: GraphDocClickBehavior;
   onSelectNode?: (selection: GraphNodeSelection) => void;
@@ -755,7 +760,7 @@ export function GraphView({
   // label budget than the docked 2-hop neighborhood view to avoid flooding.
   const maxVisibleLabels = isExpanded ? 10 : 18;
 
-  const displayData: GraphData = showUrlNodes
+  const urlFilteredData: GraphData = showUrlNodes
     ? graphData
     : (() => {
         const externalNodeIds = new Set(
@@ -770,6 +775,8 @@ export function GraphView({
           }),
         };
       })();
+
+  const displayData: GraphData = filterGraphSkillNodes(urlFilteredData, skillVisibility);
 
   const layoutNodes = displayData.nodes as GraphLabelLayoutNode[];
   const layoutLinks = displayData.links as GraphLabelLayoutLink[];

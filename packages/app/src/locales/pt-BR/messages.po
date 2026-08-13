@@ -6050,6 +6050,10 @@ msgstr "Ocultar a pré-visualização da seleção"
 msgid "Hide sidebar"
 msgstr "Ocultar a barra lateral"
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr "Ocultar os nós de habilidades"
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Ocultar o Terminal"
@@ -11123,6 +11127,10 @@ msgstr "Mostrar a pré-visualização da seleção"
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr "Mostrar a barra lateral"
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
+msgstr "Mostrar os nós de habilidades"
 
 #: src/components/MermaidFileViewer.tsx
 msgid "Show source"

@@ -6050,6 +6050,10 @@ msgstr ""
 msgid "Hide sidebar"
 msgstr ""
 
+#: src/components/GraphPanel.tsx
+msgid "Hide skill nodes"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr ""
@@ -11122,6 +11126,10 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
+msgstr ""
+
+#: src/components/GraphPanel.tsx
+msgid "Show skill nodes"
 msgstr ""
 
 #: src/components/MermaidFileViewer.tsx

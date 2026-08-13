@@ -349,6 +349,12 @@ export const LinkGraphDocNodeSchema = z
     cluster: z.string().nullable(),
     category: z.string().nullable(),
     tags: z.array(z.string()).nullable(),
+    /** True when this node belongs to one of OpenKnowledge's own shipped skill
+     *  bundles. Server-set: the reserved bundle names live in the server package,
+     *  which core and the app cannot import, so the classification travels on the
+     *  payload rather than being re-derived (and duplicated) client-side. Absent
+     *  for every ordinary document. */
+    managed: z.boolean().optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type LinkGraphDocNode = z.infer<typeof LinkGraphDocNodeSchema>;

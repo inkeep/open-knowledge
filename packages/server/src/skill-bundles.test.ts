@@ -1,9 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RESERVED_PROJECT_SKILL_NAME } from '@inkeep/open-knowledge-core';
+import { extractSkillRefs, RESERVED_PROJECT_SKILL_NAME } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { BUNDLE_IDS, BUNDLE_SKILL_NAME, bundleSkillMdPath } from './skill-bundles.ts';
+import {
+  BUNDLE_IDS,
+  BUNDLE_SKILL_NAME,
+  bundleSkillMdPath,
+  USER_GLOBAL_BUNDLE_IDS,
+} from './skill-bundles.ts';
 
 // Repo root = three levels up from this file (packages/server/src → root).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -34,6 +39,23 @@ describe('skill-bundles (single source of truth)', () => {
     // name. This pins the two so a bundle rename can't silently break the
     // git-exclude carve-out / `.gitignore` block that key off the core copy.
     expect(RESERVED_PROJECT_SKILL_NAME).toBe(BUNDLE_SKILL_NAME.project);
+  });
+
+  test('user-global bundles contain no skill refs', () => {
+    // Skill-ref edges between SKILL documents are mirrored, so any ref from a
+    // managed user-global bundle can make that bundle appear referenced and visible.
+    //
+    // Scoped to the user-global bundles because only those become graph nodes:
+    // they install into `~/.{host}/skills/`, which the global skill-graph scan
+    // ingests. The `project` bundle is exempt — its projection is force-added to
+    // the project `.gitignore` on every open, so it is not indexed as content and
+    // never reaches the graph. It legitimately references /open-knowledge-write-skill
+    // for agent routing, and that ref must stay.
+    for (const id of USER_GLOBAL_BUNDLE_IDS) {
+      const raw = readFileSync(join(REPO_ROOT, bundleSkillMdPath(id)), 'utf-8');
+      const refs = extractSkillRefs(raw);
+      expect({ id, refs }).toEqual({ id, refs: [] });
+    }
   });
 
   test('write-skill description is within the skill contract (≤1024, no XML tags)', () => {

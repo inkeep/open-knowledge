@@ -137,7 +137,11 @@ import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from '
 import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
 import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
-import { scanGlobalInPlaceSkills, scanInPlaceSkillDirs } from './in-place-skills.ts';
+import {
+  scanGlobalInPlaceSkills,
+  scanInPlaceSkillDirs,
+  skillRootPathsFor,
+} from './in-place-skills.ts';
 import {
   buildIngressPolicy,
   type IngressPolicy,
@@ -1407,6 +1411,10 @@ export function createServer(options: ServerOptions): ServerInstance {
       // one when a host skills dir changes).
       inPlaceSkillDirs: scanInPlaceSkillDirs(contentDir),
       rescanInPlaceSkillDirs: () => scanInPlaceSkillDirs(contentDir),
+      // Same registry the scan uses, so a non-canonical projection under any
+      // known root (including a host the filter has never heard of) is excluded
+      // rather than swept in as ordinary content.
+      skillRootPaths: skillRootPathsFor(contentDir),
       onAfterRebuild: () => {
         // Re-derive relationship views against the freshly rebuilt admission
         // boundary. The coordinator serializes rapid successive rebuilds.

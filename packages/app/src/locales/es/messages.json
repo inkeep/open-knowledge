@@ -4325,6 +4325,7 @@
     "qFWMl-": ["Ver como texto"],
     "qIJIrD": ["Probando"],
     "qJSo0_": ["¿Qué diferencia hay entre las copias y los enlaces simbólicos?"],
+    "qKMfPp": ["Ocultar los nodos de habilidades"],
     "qNOgUu": [
       "Las ediciones hechas en el origen llegan aquí: sin desviaciones por copiar y pegar."
     ],
@@ -4783,6 +4784,7 @@
     "vy_VIN": [
       "Seguido en git: las actualizaciones llegan por tu repositorio (pull o CI), no por actualización automática"
     ],
+    "w0YVAE": ["Mostrar los nodos de habilidades"],
     "w3tVpc": [
       "Todavía no hay enlaces. Añade enlaces wiki o enlaces markdown para construir un grafo."
     ],
