@@ -292,7 +292,6 @@ import {
   upsertLockEntry,
   type WellKnownIndex,
 } from '@inkeep/open-knowledge-core/skills-catalog';
-import busboy from 'busboy';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { type Entry, fromBuffer as yauzlFromBuffer, type ZipFile } from 'yauzl';
 import { z } from 'zod';
@@ -667,6 +666,7 @@ import {
   incrementSummariesProvided,
   incrementSummariesTruncated,
 } from './metrics.ts';
+import { createMultipartParser, type MultipartParser } from './multipart.ts';
 import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import {
@@ -1021,7 +1021,7 @@ interface UploadResult {
  */
 function readUploadBody(req: IncomingMessage, projectDir: string): Promise<UploadResult> {
   return new Promise((resolveP, reject) => {
-    let bb: ReturnType<typeof busboy>;
+    let bb: MultipartParser;
     try {
       // `files: 1` caps the file part; `fields` + `fieldSize` cap non-file
       // surface so a flooded multipart can't buffer thousands of fields or a
@@ -1032,10 +1032,7 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
       // ceiling in `sanitizeFilename` (the filesystem-portability layer);
       // busboy does not expose a header-section-size limit (only headerPairs
       // count), so the parsed-value cap is the right place.
-      bb = busboy({
-        headers: req.headers,
-        limits: { files: 1, fields: 10, fieldSize: 2 * 1024 },
-      });
+      bb = createMultipartParser(req, { files: 1, fields: 10, fieldSize: 2 * 1024 });
     } catch (err) {
       reject(new UploadWriteError('urn:ok:error:malformed-upload', err));
       return;
@@ -17498,16 +17495,13 @@ export function createApiExtension(
   /** Collect every multipart file part into a bounded in-memory buffer. */
   function readSkillUploadParts(req: IncomingMessage): Promise<UploadedPart[]> {
     return new Promise((resolveP, reject) => {
-      let bb: ReturnType<typeof busboy>;
+      let bb: MultipartParser;
       try {
-        bb = busboy({
-          headers: req.headers,
-          limits: {
-            files: UPLOAD_MAX_FILES,
-            fields: 10,
-            fieldSize: 2 * 1024,
-            fileSize: UPLOAD_MAX_ENTRY_BYTES,
-          },
+        bb = createMultipartParser(req, {
+          files: UPLOAD_MAX_FILES,
+          fields: 10,
+          fieldSize: 2 * 1024,
+          fileSize: UPLOAD_MAX_ENTRY_BYTES,
         });
       } catch (err) {
         reject(err);

@@ -238,6 +238,29 @@ The rule does NOT catch: bare `exec(...)` (the identifier is too commonly shadow
 
 Plugin: [`biome-plugins/require-windowshide-on-spawn.grit`](require-windowshide-on-spawn.grit). Fixture: [`biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts`](../packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
+### `require-utf8-multipart-parser.grit`
+
+Multipart filename charset correctness. `busboy(...)` may only be constructed inside [`packages/server/src/multipart.ts`](../packages/server/src/multipart.ts); every other multipart body is parsed through its `createMultipartParser(req, limits)` factory, which hardcodes `defParamCharset: 'utf8'`.
+
+**Why.** busboy defaults `defParamCharset` to `latin1` — an inheritance from `Content-Disposition`'s original MIME/email definition, not from the `multipart/form-data` rules. RFC 7578 governs this surface instead. It issues no receiver mandate — section 5.1.3 is explicit that a parser cannot assume any particular charset was used — so the default is ours to choose, and UTF-8 is the only defensible choice: section 4.2 records that "the encoding used for the file names is typically UTF-8", and the sender-side form-charset ladder in section 5.1.2 terminates at UTF-8. Browsers and Node/undici both put the name on the wire as raw UTF-8 bytes in the plain `filename=` parameter, so at the default every multi-byte sequence is read back as one mojibake code point per byte: `café.png` arrives as `cafÃ©.png`, `会議メモ.pdf` loses essentially all of its information. The damage lands at the transport-decode boundary, before any sanitizer or storage layer sees it, and it is not invertible there — the mojibake is indistinguishable from a filename the user legitimately owns.
+
+The omission is invisible in review: `busboy({ headers, limits })` reads as complete unless you happen to know the default. It shipped at two construction sites for exactly that reason, the second copied from the first along with its `limits` shape, which is why this is a mechanical gate rather than a review convention.
+
+**Presence match, not absence match.** The sibling `require-windowshide-on-spawn` rule is shaped as "the call must contain `windowsHide`", because there the option's only correct value is `true`. That shape is too weak here: "the call must contain `defParamCharset:`" is satisfied by `defParamCharset: 'latin1'`, which passes lint and reintroduces the bug. The factory takes no charset parameter, so routing through it removes the value hole entirely and reduces this rule to a plain presence check on the constructor. Both the wrong-value and the right-value-wrong-place cases are pinned as must-fire fixtures.
+
+**Registered via `overrides[].plugins`** repo-wide (`**/*.ts`, `**/*.tsx`, `**/*.mts`) rather than per-package: server owns the only busboy dependency today, and that is exactly the state a new dependency elsewhere would change, silently. Excluded are `!packages/server/src/multipart.ts` (the one sanctioned construction site), `!**/*.test.ts`, `!**/*.test.tsx`, and `!**/*.test-helper.ts`. The test exclusion is deliberate rather than copied: [`packages/server/src/http/local-api-dispatch.test.ts`](../packages/server/src/http/local-api-dispatch.test.ts) drives its own parser inside a synthetic `/api/upload-lite` handler that counts bytes and never decodes a non-ASCII name.
+
+**Opting out.** There is no legitimate second construction site. A caller that needs different parser options (`preservePath`, `highWaterMark`, …) should widen the factory — that keeps the charset decision in one place, and forces the path-traversal reasoning `preservePath` demands rather than letting it be set in passing. If you genuinely must construct in place, suppress the one call with a reason:
+
+```ts
+// biome-ignore lint/plugin/require-utf8-multipart-parser: <reason>
+const bb = busboy({ headers, defParamCharset: 'utf8' });
+```
+
+The rule does NOT catch: member calls (`parsers.busboy(...)` — a different AST); a call through a renamed binding (`import bb from 'busboy'; bb(...)`). Both are defeatable on purpose rather than by accident. A `ReturnType<typeof busboy>` type annotation is not a call expression and correctly does not fire; it is pinned as a negative fixture so a future pattern change cannot silently start flagging type positions. The behavioural backstop for all of these is [`packages/app/tests/integration/api-error-envelope/upload-filename-charset.test.ts`](../packages/app/tests/integration/api-error-envelope/upload-filename-charset.test.ts), which asserts the decode end to end over real HTTP through both endpoints.
+
+Plugin: [`biome-plugins/require-utf8-multipart-parser.grit`](require-utf8-multipart-parser.grit). Fixture: [`biome-plugins/__fixtures__/require-utf8-multipart-parser.fixture.tsx`](__fixtures__/require-utf8-multipart-parser.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-utf8-multipart-parser.test.ts`](../packages/server/src/lint-plugins/require-utf8-multipart-parser.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
 ### `no-blind-agent-host-fanout.grit`
 
 Scope discipline for user-global Agent Skill installs. Bans the `skills` CLI npm specs (`skills@~1.5.0` and its caret / exact / `latest` variants) and the bare `'--agent'` argv token anywhere under `packages/{server,cli}/src/**`.

@@ -1,0 +1,69 @@
+// require-utf8-multipart-parser — multipart filename charset correctness.
+//
+// `busboy(...)` may only be constructed inside
+// `packages/server/src/multipart.ts`. Everything else parses multipart bodies
+// through its factory:
+//
+//   const bb = createMultipartParser(req, { files: 1, fields: 10 });   // only form
+//
+// Why: busboy's `defParamCharset` defaults to `latin1`, an inheritance from
+// `Content-Disposition`'s original MIME/email definition. RFC 7578 governs
+// `multipart/form-data` instead. It issues no receiver mandate, so the default
+// is ours to pick, and UTF-8 is the only defensible pick: section 4.2 records
+// that file names are "typically UTF-8", and it is what browsers and
+// Node/undici actually send. Left at its default, busboy reads every
+// multi-byte sequence back as one mojibake code point per byte, at the
+// transport-decode boundary — before any sanitizer or storage layer can see it,
+// and irreversibly, because the damage is indistinguishable from a filename the
+// user legitimately owns.
+//
+// The omission is invisible in review: `busboy({ headers, limits })` reads as
+// complete unless you happen to know the default. It shipped twice for exactly
+// that reason — the second construction site was copied from the first, limits
+// and all — which is why this is a mechanical gate rather than a convention.
+//
+// This is a PRESENCE match, not an absence match, and that is deliberate. A
+// rule shaped as "a `busboy(...)` call must contain `defParamCharset:`" would be
+// satisfied by `defParamCharset: 'latin1'` — it enforces that a charset is
+// declared, not that the right one is. The factory takes no charset parameter,
+// so routing through it removes the value hole entirely and reduces this rule to
+// a plain presence check.
+//
+// OPTING OUT — there is no legitimate second construction site. A caller that
+// needs different parser options (`preservePath`, `highWaterMark`, …) should
+// widen the factory, which keeps the charset decision in one place and forces
+// the path-traversal reasoning `preservePath` demands. If you genuinely must
+// construct in place, suppress the one call with a reason:
+//
+//   // biome-ignore lint/plugin/require-utf8-multipart-parser: <reason>
+//   const bb = busboy({ headers, defParamCharset: 'utf8' });
+//
+// Registered via `overrides[].plugins` repo-wide rather than per-package:
+// server owns the only busboy dependency today, and that is exactly the state a
+// new dependency elsewhere would change, silently. The factory module itself and
+// tests are excluded. The test exclusion covers the synthetic `/api/upload-lite`
+// handler in `http/local-api-dispatch.test.ts`, which drives its own parser to
+// count bytes and never decodes a non-ASCII name; that was a deliberate call,
+// not an oversight.
+//
+// The rule keys on the CALL-EXPRESSION CALLEE IDENTIFIER. Known gaps, stated
+// honestly: a member call (`parsers.busboy(...)`) is a different AST and is not
+// matched; neither is a call through a renamed binding (`import bb from
+// 'busboy'; bb(...)`). Both are defeatable on purpose rather than by accident,
+// and the behavioural backstop is
+// `packages/app/tests/integration/api-error-envelope/upload-filename-charset.test.ts`,
+// which asserts the decode end to end through both endpoints. A `ReturnType<typeof
+// busboy>` type annotation is NOT a call expression and does not fire — pinned
+// as a negative fixture case so a future pattern change cannot silently start
+// flagging type positions.
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+`busboy($...)` as $call where {
+    register_diagnostic(
+        span = $call,
+        message = "busboy constructed directly - route multipart parsing through `createMultipartParser(...)` from `packages/server/src/multipart.ts`, which hardcodes `defParamCharset: 'utf8'`. busboy defaults that option to `latin1`, so every non-ASCII filename is mojibaked at the transport-decode boundary before any sanitizer sees it, irreversibly; RFC 7578 section 4.2 records that multipart/form-data file names are typically UTF-8, which is what every standard client sends. Need different parser options? widen the factory rather than construct here. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#require-utf8-multipart-parsergrit"
+    )
+}

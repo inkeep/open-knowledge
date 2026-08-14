@@ -125,6 +125,35 @@
       "plugins": ["./biome-plugins/require-windowshide-on-spawn.grit"]
     },
     {
+      // Multipart filename charset: busboy may only be constructed inside
+      // `multipart.ts`, whose factory hardcodes `defParamCharset: 'utf8'`.
+      // busboy defaults that option to `latin1`, which mojibakes every
+      // non-ASCII filename at the transport-decode boundary, irreversibly and
+      // invisibly in review. Repo-wide rather than server-scoped: server owns
+      // the only busboy dependency today, and that is exactly the state a new
+      // dependency in another package would change, silently. The factory
+      // itself is excluded so it can make the one sanctioned call. Tests are
+      // excluded deliberately, not by copy: `http/local-api-dispatch.test.ts`
+      // drives its own parser in a synthetic `/api/upload-lite` handler that
+      // counts bytes and never decodes a non-ASCII name. `**/*.mts` matches
+      // nothing today (the sibling class-proof override omits it) and is here
+      // as forward coverage: this gate exists because the defect spread by
+      // copy-paste, so an extension it cannot see is a hole by construction.
+      "includes": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.mts",
+        "!**/node_modules/**",
+        "!**/dist/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.test-helper.ts",
+        "!packages/server/src/multipart.ts",
+        "biome-plugins/__fixtures__/require-utf8-multipart-parser.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/require-utf8-multipart-parser.grit"]
+    },
+    {
       // Scope discipline for user-global Agent Skill installs (issue #820).
       // OK writes these dirs itself, gated on `detectUserSkillHosts`; shelling
       // out to the `skills` CLI with `--agent '*'` bypasses host detection and
