@@ -36,8 +36,10 @@ import {
   type ConfigDiagnostic,
   type ConfigIssue,
   type ConfigValidationError,
+  detectCommittedProjectLocalKeys,
   detectRemovedKeys,
   humanFormat,
+  type IgnoredCommittedKey,
   locateIssue,
   mergeLayered,
   stripRemovedKeys,
@@ -65,6 +67,15 @@ export interface LoadConfigResult {
    * without saying so reads as a silent data loss.
    */
   sidelined: Array<{ from: string; to: string }>;
+  /**
+   * Project-local settings found in the committed `.ok/config.yml`, where
+   * `mergeLayered` silently drops them. Surfaced so the caller can warn once
+   * per invocation that the committed value is ignored and name the per-machine
+   * fix (`.ok/local/config.yml` / `OK_*`). The canonical offender is a
+   * committed `server.bind` that would otherwise refuse to boot for cloners.
+   * Empty when the committed layer sets nothing out of scope.
+   */
+  ignoredCommittedKeys: IgnoredCommittedKey[];
 }
 
 /** Short TTL for per-cwd config resolution in long-lived MCP sessions. */
@@ -179,6 +190,7 @@ export function loadConfig(cwd?: string): LoadConfigResult {
   const sources: string[] = [];
   const diagnostics: ConfigDiagnostic[] = [];
   const sidelined: Array<{ from: string; to: string }> = [];
+  const ignoredCommittedKeys: IgnoredCommittedKey[] = [];
 
   // Layer 1: user-global config — go through readConfigSafely so removed keys
   // are stripped-and-reported and a genuinely broken file is sidelined; either
@@ -206,7 +218,11 @@ export function loadConfig(cwd?: string): LoadConfigResult {
   //      key) resolves to its schema default — never the cloned value.
   // A file that could not be read/parsed degrades to `{}` but says so via
   // `diagnostics`.
-  const loadRawLayer = (filePath: string): Record<string, unknown> => {
+  // `isCommittedLayer` is true only for the shared project file. Project-local
+  // keys belong in the gitignored local layer, so a project-local value there
+  // (or in the user layer) is expected — only a committed one is the ignored
+  // misconfiguration this reports.
+  const loadRawLayer = (filePath: string, isCommittedLayer = false): Record<string, unknown> => {
     const file = loadYamlFile(filePath);
     if (file.diagnostic !== undefined) {
       diagnostics.push(file.diagnostic);
@@ -220,11 +236,22 @@ export function loadConfig(cwd?: string): LoadConfigResult {
     });
     diagnostics.push(...removedKeyDiagnostics);
     sources.push(filePath);
-    return removedKeyDiagnostics.length > 0 ? stripRemovedKeys(file.value) : file.value;
+    const value = removedKeyDiagnostics.length > 0 ? stripRemovedKeys(file.value) : file.value;
+    if (isCommittedLayer) {
+      ignoredCommittedKeys.push(
+        ...detectCommittedProjectLocalKeys({
+          value,
+          file: file.path,
+          source: file.source,
+          doc: file.doc,
+        }),
+      );
+    }
+    return value;
   };
 
   const projectPath = resolve(workingDir, OK_DIR, CONFIG_FILENAME);
-  const projectRaw = loadRawLayer(projectPath);
+  const projectRaw = loadRawLayer(projectPath, true);
   const localRaw = loadRawLayer(resolveConfigPath('project-local', workingDir));
 
   // Scope-aware merge over the raw layers, then ONE parse fills defaults for
@@ -242,7 +269,7 @@ export function loadConfig(cwd?: string): LoadConfigResult {
     const error: ConfigValidationError = { code: 'SCHEMA_INVALID', issues };
     throw new Error(humanFormat(error));
   }
-  return { config: result.data, sources, diagnostics, sidelined };
+  return { config: result.data, sources, diagnostics, sidelined, ignoredCommittedKeys };
 }
 
 interface CreateProjectConfigResolverOptions {

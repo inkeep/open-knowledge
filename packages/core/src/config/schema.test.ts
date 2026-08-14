@@ -7,6 +7,7 @@ import {
   isValidAttachmentFolderPath,
   normalizeAttachmentFolderPath,
 } from './schema.ts';
+import { getLeafFieldMeta } from './schema-leaf.ts';
 
 describe('checkEmbeddingsBaseUrl', () => {
   test('accepts https endpoints', () => {
@@ -418,6 +419,15 @@ describe('server.* (canonical listener/exposure surface)', () => {
     expect(ConfigSchema.safeParse({ server: { bind: [] } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ server: { bind: [''] } }).success).toBe(false);
     expect(ConfigSchema.safeParse({ server: { bind: '127.0.0.1' } }).success).toBe(false);
+  });
+
+  test('bind is registered project-local so a committed value is ignored (clone-safety)', () => {
+    // Per-machine listener knob: a committed non-loopback bind must never break
+    // a teammate who clones and runs locally, so it lives in .ok/local, not the
+    // shared .ok/config.yml. mergeLayered keys off this scope to drop it.
+    const meta = getLeafFieldMeta(ConfigSchema, ['server', 'bind']);
+    expect(meta?.scope).toBe('project-local');
+    expect(meta?.defaultScope).toBe('project-local');
   });
 
   test('the deprecated publicUrl spelling still validates with the same URL shape', () => {

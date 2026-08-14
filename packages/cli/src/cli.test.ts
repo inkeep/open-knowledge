@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 const CLI_PACKAGE_ROOT = import.meta.dir.replace(/\/src$/, '');
 
@@ -95,5 +98,58 @@ describe('CLI --version notice', () => {
     expect(stdout).toContain('GPL-3.0-or-later');
     expect(stdout).toMatch(/free software/i);
     expect(stdout).toMatch(/NO WARRANTY/);
+  }, 30_000);
+});
+
+describe('committed project-local key startup warning', () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), 'ok-committed-bind-'));
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+    // A committed non-loopback bind — the clone-breaking case. It resolves to
+    // the loopback default (ignored), and the preAction hook must name it.
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), 'server:\n  bind:\n    - 0.0.0.0\n');
+  });
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  test('the preAction hook names a committed server.bind as ignored and points at the OK_BIND fix', () => {
+    // Exercises the wired emission loop in cli.ts — the loader-level and
+    // formatter-level unit tests both pass even if this glue is removed, so a
+    // command that goes through the preAction hook (`ok ps`) is the surface that
+    // proves the startup warning actually reaches stderr.
+    const result = Bun.spawnSync({
+      cmd: [
+        'node',
+        '--import',
+        'tsx',
+        '--conditions=development',
+        '-e',
+        `
+        process.argv = [
+          process.execPath,
+          process.cwd() + '/src/cli.ts',
+          '--cwd',
+          ${JSON.stringify(projectDir)},
+          'ps',
+          '--json',
+        ];
+        await import('./src/cli.ts');
+        `,
+      ],
+      cwd: CLI_PACKAGE_ROOT,
+      env: { ...process.env, NO_COLOR: '1' },
+    });
+
+    const stderr = result.stderr.toString();
+    expect(stderr).toContain('server.bind is a per-machine (project-local) setting');
+    expect(stderr).toContain('.ok/local/config.yml');
+    expect(stderr).toContain('OK_BIND');
+    // The committed value is IGNORED, not applied — nothing exposes, so the
+    // exposure interlock must never fire on this read-only listing.
+    expect(stderr).not.toContain('ExposureConsentError');
   }, 30_000);
 });

@@ -227,13 +227,45 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.terminal?.enabled).toBeNull();
   });
 
-  test("scope: 'project' (server.bind) returns project, ignoring a project-local override attempt", () => {
+  test("scope: 'project-local' (server.bind) ignores a committed project value; the project-local layer wins", () => {
+    // server.bind is per-machine: a committed bind (one machine exposing the
+    // server) must never reach a teammate's local run — only this machine's
+    // gitignored project-local layer sets it. Same posture as allowExternal.
     const user = makeConfig({});
-    const project = makeConfig({ server: { bind: ['127.0.0.1'] } });
-    const projectLocal = makeConfig({ server: { bind: ['0.0.0.0'] } });
+    const project = makeConfig({ server: { bind: ['0.0.0.0'] } });
+    const projectLocal = makeConfig({ server: { bind: ['192.168.1.5'] } });
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.server?.bind).toEqual(['192.168.1.5']);
+  });
+
+  test('a clone with a committed non-loopback bind but no project-local layer falls to the loopback default', () => {
+    // The exact footgun: a repo commits `server.bind: [0.0.0.0]` so one box
+    // serves remotely; every teammate who clones and runs locally must still
+    // bind loopback (and boot), never inherit the committed non-loopback value
+    // (which would trip the exposure interlock they never consented to).
+    const user = makeConfig({});
+    const project = makeConfig({ server: { bind: ['0.0.0.0'] } });
+    const projectLocal = makeConfig({});
 
     const merged = mergeLayered(user, project, projectLocal);
     expect(merged.server?.bind).toEqual(['127.0.0.1']);
+  });
+
+  test('RAW-layer path: a committed bind is skipped; a user-global bind is honored as a personal default', () => {
+    // The loader's inputs are RAW (un-parsed) partials. A committed project
+    // `bind` surfaces no `bind` from the merge (→ the final parse fills the
+    // loopback default), while a user-global bind still wins as a cross-project
+    // personal default (the project-local fallback is user, never project).
+    const committed = mergeLayered({}, { server: { bind: ['0.0.0.0'] } }, {});
+    expect((committed.server as { bind?: string[] } | undefined)?.bind).toBeUndefined();
+
+    const userDefault = mergeLayered(
+      { server: { bind: ['::1'] } },
+      { server: { bind: ['0.0.0.0'] } },
+      {},
+    );
+    expect((userDefault.server as { bind?: string[] } | undefined)?.bind).toEqual(['::1']);
   });
 
   test("scope: 'project-local' (server.allowExternal) ignores a committed project value", () => {

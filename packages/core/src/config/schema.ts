@@ -1245,13 +1245,22 @@ export const ConfigSchema = z.looseObject({
   // target that drifts from the values that actually matter; "hosted" is
   // just what a non-loopback bind, a public URL, and consent look like.
   //
-  // Scopes: `port` / `bind` / `externalUrl` are PROJECT — the committed,
-  // reviewed shape of this knowledge base's server. `openBrowser` /
-  // `idleShutdown` are PROJECT-LOCAL — personal workflow, like the sidebar
-  // toggles. `allowExternal` is PROJECT-LOCAL consent, the same posture as
-  // `terminal.enabled`: consent never travels via git, clone, or share, so a
-  // committed `allowExternal: true` can never expose a future cloner's
-  // machine (containers consent via environment instead).
+  // Scopes: `port` / `externalUrl` are PROJECT — the committed, reviewed shape
+  // of this knowledge base's server. `bind` is PROJECT-LOCAL, alongside
+  // `allowExternal` / `openBrowser` / `idleShutdown`: it is a per-machine
+  // listener knob, and a committed non-loopback `bind` would otherwise refuse to
+  // boot for every teammate who clones the repo and runs it locally — the
+  // exposure interlock needs per-machine `allowExternal` consent, which is never
+  // committed. Keeping `bind` project-local makes a committed value inert (the
+  // loader's scope-aware merge skips the committed layer), so one machine
+  // exposing the server can't break local clones for the rest of the team; the
+  // exposing host sets it per-machine via `OK_BIND` / `--bind` or
+  // `.ok/local/config.yml`. `allowExternal` is PROJECT-LOCAL consent, the same
+  // posture as `terminal.enabled`: consent never travels via git, clone, or
+  // share, so a committed `allowExternal: true` can never expose a future
+  // cloner's machine (containers consent via environment instead). `openBrowser`
+  // / `idleShutdown` are PROJECT-LOCAL personal workflow, like the sidebar
+  // toggles.
   //
   // `agentSettable: false` on every leaf, same reasoning as `remote.*`: an
   // agent must never widen its own network exposure.
@@ -1282,12 +1291,12 @@ export const ConfigSchema = z.looseObject({
         .array(z.string().min(1))
         .min(1)
         .register(fieldRegistry, {
-          scope: 'project',
+          scope: 'project-local',
           agentSettable: false,
           reload: 'boot',
-          defaultScope: 'project',
+          defaultScope: 'project-local',
           description:
-            'Addresses the server binds, e.g. [127.0.0.1] or [0.0.0.0]. Default loopback-only ([127.0.0.1]): nothing off this machine can connect. A non-loopback bind additionally requires the server.allowExternal consent interlock. Lists replace, never merge. Read at server start; changing it requires a restart.',
+            'Addresses the server binds, e.g. [127.0.0.1] or [0.0.0.0]. Default loopback-only ([127.0.0.1]): nothing off this machine can connect. A non-loopback bind additionally requires the server.allowExternal consent interlock. Per-machine (project-local): a value committed to .ok/config.yml is ignored, so one machine exposing the server can never break local clones for the rest of the team — the exposing host sets it via OK_BIND, --bind, or .ok/local/config.yml. Lists replace, never merge. Read at server start; changing it requires a restart.',
         })
         .default([...DEFAULT_SERVER_BIND]),
       externalUrl: z

@@ -167,6 +167,12 @@ export {
   type OkignoreUnsubscribe,
 } from './config/bind-okignore-doc.ts';
 export {
+  type DetectCommittedProjectLocalKeysInput,
+  detectCommittedProjectLocalKeys,
+  formatIgnoredCommittedKey,
+  type IgnoredCommittedKey,
+} from './config/committed-scope-diagnostics.ts';
+export {
   applyConfigOverlay,
   type EnvConfigLayer,
   type EnvDiagnostic,

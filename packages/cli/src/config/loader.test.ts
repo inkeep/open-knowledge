@@ -2,7 +2,14 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { type ConfigDiagnostic, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
+import {
+  applyConfigOverlay,
+  type ConfigDiagnostic,
+  REMOVED_KEYS,
+  requiresExternalConsent,
+  resolveEnvConfigLayer,
+  resolveServerRuntimeConfig,
+} from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify } from 'yaml';
 
@@ -623,10 +630,73 @@ describe('loadConfig — scope-aware layering (project-local)', () => {
     expect(config.server.openBrowser).toBe(false);
   });
 
-  test('project layer still owns project-scoped server keys', () => {
-    writeWorkspaceConfig('server:\n  bind:\n    - 127.0.0.1\n    - 100.64.0.7\n');
+  test('project layer still owns project-scoped server keys (port, externalUrl)', () => {
+    writeWorkspaceConfig('server:\n  port: 8080\n  externalUrl: https://kb.example.com\n');
     const { config } = loadConfig(testDir);
-    expect(config.server.bind).toEqual(['127.0.0.1', '100.64.0.7']);
+    expect(config.server.port).toBe(8080);
+    expect(config.server.externalUrl).toBe('https://kb.example.com');
+  });
+
+  test('a committed server.bind is ignored (clone-safety) and reported as an ignored committed key', () => {
+    // The footgun: a repo commits a non-loopback bind so one machine serves
+    // remotely; a teammate who clones and runs `ok start` locally must bind the
+    // loopback default (and boot), never inherit the committed value — which
+    // would trip the exposure interlock they never consented to.
+    writeWorkspaceConfig('server:\n  bind:\n    - 0.0.0.0\n');
+    const { config, ignoredCommittedKeys } = loadConfig(testDir);
+    expect(config.server.bind).toEqual(['127.0.0.1']);
+    const bindKey = ignoredCommittedKeys.find((k) => k.path.join('.') === 'server.bind');
+    expect(bindKey).toBeDefined();
+    expect(bindKey?.envVar).toBe('OK_BIND');
+  });
+
+  test('a project-local server.bind is honored, with no ignored-committed-key warning', () => {
+    writeLocalConfig('server:\n  bind:\n    - 0.0.0.0\n');
+    const { config, ignoredCommittedKeys } = loadConfig(testDir);
+    expect(config.server.bind).toEqual(['0.0.0.0']);
+    expect(ignoredCommittedKeys).toEqual([]);
+  });
+
+  test('a committed file with both a removed key and a project-local key reports each correctly', () => {
+    // strip-removed-keys runs BEFORE the project-local detector in loadRawLayer.
+    // Pin that the two don't interfere: the removed `server.host` is stripped and
+    // reported as REMOVED_KEY, the committed `server.bind` survives stripping and
+    // is still flagged as ignored, and the in-scope `server.port` takes effect.
+    writeWorkspaceConfig('server:\n  host: 0.0.0.0\n  bind:\n    - 0.0.0.0\n  port: 8080\n');
+    const { config, diagnostics, ignoredCommittedKeys } = loadConfig(testDir);
+    expect(config.server.port).toBe(8080);
+    expect(config.server.bind).toEqual(['127.0.0.1']);
+    expect(removedKeys(diagnostics).some((k) => k.dotted === 'server.host')).toBe(true);
+    const bindKey = ignoredCommittedKeys.find((k) => k.path.join('.') === 'server.bind');
+    expect(bindKey).toBeDefined();
+    expect(bindKey?.envVar).toBe('OK_BIND');
+  });
+
+  test('interlock resolution: a committed bind boots on loopback, but explicit OK_BIND stays exposing', () => {
+    // Mirrors the `ok start` resolution pipeline: loadConfig (scope-aware merge)
+    // -> env overlay -> resolveServerRuntimeConfig. A committed non-loopback
+    // bind resolves loopback-only, so the exposure interlock passes and the
+    // server boots. The SAME value supplied per-machine via OK_BIND resolves
+    // non-loopback (loopbackOnly false, no consent) -> the interlock still
+    // refuses. That path is the real exposing host and must stay loud.
+    writeWorkspaceConfig('server:\n  bind:\n    - 0.0.0.0\n');
+    const { config } = loadConfig(testDir);
+
+    const committedRuntime = resolveServerRuntimeConfig(config);
+    expect(committedRuntime.bind).toEqual(['127.0.0.1']);
+    expect(committedRuntime.loopbackOnly).toBe(true);
+    // The interlock decision itself, not just its input: no consent required.
+    expect(requiresExternalConsent(committedRuntime)).toBe(false);
+
+    const envLayer = resolveEnvConfigLayer({ OK_BIND: '0.0.0.0' });
+    const envConfig = applyConfigOverlay(config, envLayer.layer) as typeof config;
+    const envRuntime = resolveServerRuntimeConfig(envConfig);
+    expect(envRuntime.bind).toEqual(['0.0.0.0']);
+    expect(envRuntime.loopbackOnly).toBe(false);
+    expect(envRuntime.allowExternal).toBe(false);
+    // The interlock still refuses: consent is required and not granted, so the
+    // exposing OK_BIND host stays loud (asserts the predicate, not just inputs).
+    expect(requiresExternalConsent(envRuntime)).toBe(true);
   });
 
   test('schema-invalid project-local file throws loud with the file named', () => {

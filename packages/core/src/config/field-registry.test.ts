@@ -267,11 +267,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'lossCapture.maxBytes',
       'remote.port',
       'remote.url',
-      // `server.{port,bind,externalUrl}` are the committed, reviewed shape of
-      // this knowledge base's server — project scope, like the `remote.*`
-      // keys they supersede. Their consent/workflow siblings are
-      // project-local (below).
-      'server.bind',
+      // `server.{port,externalUrl}` are the committed, reviewed shape of this
+      // knowledge base's server — project scope, like the `remote.*` keys they
+      // supersede. `server.bind` and the rest of the listener's consent/workflow
+      // siblings are project-local (below).
       'server.externalUrl',
       'server.port',
       'server.publicUrl',
@@ -325,9 +324,12 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       // `server.allowExternal` is exposure CONSENT — the `terminal.enabled`
       // posture: never inherited via clone, sync, or share, so a committed
       // `allowExternal: true` can never expose a future cloner's machine.
+      // `server.bind` is per-machine for the same clone-safety reason: a
+      // committed non-loopback bind must never break a teammate's local run.
       // `server.{openBrowser,idleShutdown}` are personal workflow, like the
       // sidebar toggles.
       'server.allowExternal',
+      'server.bind',
       'server.idleShutdown',
       'server.openBrowser',
       'terminal.enabled',

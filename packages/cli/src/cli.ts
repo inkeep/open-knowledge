@@ -21,7 +21,7 @@ trustSystemCertificates();
 
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { humanFormat } from '@inkeep/open-knowledge-core';
+import { formatIgnoredCommittedKey, humanFormat } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open-knowledge-server';
 /**
  * CLI entry point for @inkeep/open-knowledge.
@@ -168,6 +168,14 @@ program
           if (diagnostic.code !== 'REMOVED_KEY') continue;
           console.error(`[ok] ${humanFormat(diagnostic)}`);
         }
+      }
+      // Project-local keys committed to the shared `.ok/config.yml` are silently
+      // dropped by the scope-aware merge — a committed `server.bind` would
+      // otherwise refuse to boot for every teammate who clones and runs locally.
+      // Name each one and its per-machine fix, once per invocation, for every
+      // command (including the config family — nothing else reports these yet).
+      for (const key of loaded.ignoredCommittedKeys) {
+        console.error(`[ok] ${formatIgnoredCommittedKey(key)}`);
       }
     } catch (err) {
       if (subcommandName === 'uninstall' || subcommandName === 'deinit') {
