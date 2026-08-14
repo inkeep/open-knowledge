@@ -1045,7 +1045,7 @@ msgstr "<0>{sanitized}</0> नाम के एक फ़ोल्डर मे�
 msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
 msgstr "एक कुंजी सेट है, पर एम्बेडिंग प्रदाता ने उसे अस्वीकार कर दिया या वह पहुँच से बाहर था — खोज कीवर्ड मिलान पर लौट आई। क्या ग़लत हुआ यह देखने के लिए Custom endpoint के नीचे <0>कनेक्शन जाँचें</0> का उपयोग करें।"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
 msgstr "एक ज्ञान आधार जो Google के Open Knowledge Format का पालन करता है, जो आपकी जानकारी को व्यवस्थित करने का एक साझा तरीका है। इसे चुनें यदि आप चाहते हैं कि आपके नोट उन दूसरे टूल के साथ अच्छी तरह काम करें जो इस फ़ॉर्मेट को समझते हैं।"
 
@@ -1136,7 +1136,7 @@ msgstr "एक सहेजी गई थीम पहले से इस न�
 msgid "A short line shown under the title in the template list."
 msgstr "टेम्पलेट सूची में शीर्षक के नीचे दिखाई जाने वाली एक छोटी पंक्ति।"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
 msgstr "लिखने के लिए एक सरल जगह, हर विषय के लिए एक फ़ाइल और एक दैनिक जर्नल के साथ। इसे चुनें यदि आप बस लिखना शुरू करना चाहते हैं और समय के साथ नोटों के बीच के संबंध बनने देना चाहते हैं।"
 
@@ -1307,7 +1307,7 @@ msgstr "फ़ील्ड जोड़ें"
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "फ़ाइल या फ़ोल्डर पैटर्न जोड़ें, जैसे guides/**/*"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
 msgstr "इसे सीधे इस प्रोजेक्ट में जोड़ें।"
 
@@ -1893,6 +1893,7 @@ msgstr "OpenKnowledge डेस्कटॉप ऐप में उपलब्�
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -2101,7 +2102,7 @@ msgstr "प्रतिस्पर्धी शोध का एक ज्ञ�
 msgid "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
 msgstr "उड़ान न भरने वाले पक्षियों के विभिन्न प्रकारों पर एक ज्ञान विकी बनाएँ। एक सिंहावलोकन पेज से शुरू करें, फिर हर प्रमुख समूह (शुतुरमुर्ग, एमू और कीवी जैसे रेटाइट; पेंगुइन; और उड़ान न भरने वाले रेल), उनके रहने के क्षेत्रों, और उड़ानहीनता कैसे विकसित हुई इसकी समयरेखा के लिए आपस में जुड़े पेज जोड़ें।"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write."
 msgstr "अपनी कहानी के पीछे की दुनिया बनाएँ और उस पर नज़र रखें। आपके पात्रों, स्थानों, गुटों और उन्हें जोड़ने वाली दंतकथाओं का एक घर, ताकि लिखते समय ब्यौरे एक जैसे बने रहें।"
 
@@ -2222,6 +2223,10 @@ msgstr "जिन फ़ाइलों के विरोध हल नही�
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "अपलोड नहीं किया जा सकता: कोई दस्तावेज़ खुला नहीं है"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Change pack"
+msgstr "पैक बदलें"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Change provider"
@@ -3862,12 +3867,6 @@ msgstr "एक नई ब्रांच बनाएँ, या किसी �
 msgid "Create a new list item from the current list item."
 msgstr "मौजूदा सूची आइटम से एक नया सूची आइटम बनाएँ।"
 
-#. placeholder {0}: selectedPack.name
-#. placeholder {1}: selectedPack.entryCounts.folders
-#: src/components/CreateProjectDialog.tsx
-msgid "Create a new OpenKnowledge project from the <0>{0}</0> starter pack ({1, plural, one {# folder} other {# folders}} and starter templates) in the folder of your choice."
-msgstr "अपनी पसंद के फ़ोल्डर में <0>{0}</0> स्टार्टर पैक ({1, plural, one {# फ़ोल्डर} other {# फ़ोल्डर}} और स्टार्टर टेम्पलेट) से एक नया OpenKnowledge प्रोजेक्ट बनाएँ।"
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Create a new OpenKnowledge project in the folder of your choice."
 msgstr "अपनी पसंद के फ़ोल्डर में एक नया OpenKnowledge प्रोजेक्ट बनाएँ।"
@@ -3908,6 +3907,10 @@ msgstr "अनुपस्थित पेज {target} बनाएँ"
 #: src/components/NavigatorApp.tsx
 msgid "Create new project"
 msgstr "नया प्रोजेक्ट बनाएँ"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Create new project from {selectedPackName}"
+msgstr "{selectedPackName} से नया प्रोजेक्ट बनाएँ"
 
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "Create new tag #{tagValue}"
@@ -4601,6 +4604,7 @@ msgstr "जैसे सिंक चलते समय प्रोजेक�
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "जैसे एक बड़ी तालिका चिपकाने के बाद संपादक जम गया"
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "हर पैक आपके प्रोजेक्ट को तैयार फ़ोल्डर और टेम्पलेट के साथ ढाँचा देता है।"
@@ -4920,6 +4924,7 @@ msgstr "Enter"
 msgid "Enter a 6-digit hex like #1A2B3C"
 msgstr "#1A2B3C जैसा 6-अंकों का हेक्स मान डालें"
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/SeedDialog.tsx
 msgid "Enter a folder name (e.g. brain)."
 msgstr "एक फ़ोल्डर नाम डालें (जैसे brain)।"
@@ -5048,7 +5053,7 @@ msgstr "फैला हुआ ग्राफ़ मोड"
 msgid "Expires in {timeLabel}"
 msgstr "{timeLabel} में समाप्त होगा"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
 msgstr "बताएँ कि आपका कोडबेस कैसे काम करता है ताकि सहकर्मी और AI एजेंट अपना रास्ता खोज सकें। संरचना, मुख्य हिस्सों और उन प्रश्नों को दर्ज करने के लिए अच्छा जो नए योगदानकर्ता हमेशा पूछते हैं।"
 
@@ -6361,7 +6366,7 @@ msgstr "आयात किया जा रहा है"
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
 msgstr "एक लॉग दस्तावेज़ में: प्रविष्टि शीर्षक ISO YYYY-MM-DD दिनांक के साथ आगे बढ़ते हैं, सबसे पहले नवीनतम। आप कितने title का उपयोग करते हैं, और क्या प्रविष्टियाँ बुलेट हैं, यह आप पर निर्भर है।"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "In a subfolder"
 msgstr "किसी उप-फ़ोल्डर में"
 
@@ -6806,7 +6811,7 @@ msgstr "कर्सर वाले ब्लॉक के markdown स्र�
 msgid "just now"
 msgstr "अभी-अभी"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
 msgstr "अपना उत्पाद कैसे बनता है इसका लिखित लेखा रखें। विचार प्रस्तावित करने, निर्णय दर्ज करने, स्पेक लिखने और किसी गड़बड़ी के बाद सीखी बातों को सहेजने का एक घर।"
 
@@ -6850,7 +6855,7 @@ msgstr "नाम 64 अक्षरों या उससे कम रखे�
 msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
 msgstr "इस प्रोजेक्ट को अपने git रिमोट के साथ तालमेल में रखें। Follow बिना भेजे अपडेट लाता है; पूर्ण सिंक आपके कमिट भी भेजता है। सिंक चालू करने के लिए पुष्टि ज़रूरी है।"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "आप जिन लोगों और कंपनियों के साथ काम करते हैं और उनके साथ होने वाली बैठकों पर नज़र रखें। यह याद रखने के लिए अच्छा कि कोई कौन है, आप उसे कैसे जानते हैं, और आपकी आख़िरी बात किस पर हुई थी।"
 
@@ -7130,7 +7135,7 @@ msgstr "PDF लोड हो रही है"
 msgid "Loading popular skills"
 msgstr "लोकप्रिय स्किल लोड हो रही हैं"
 
-#: src/components/SeedDialog.tsx
+#: src/components/CreatedItemsList.tsx
 msgid "Loading preview"
 msgstr "पूर्वावलोकन लोड हो रहा है"
 
@@ -8875,6 +8880,10 @@ msgstr "OpenKnowledge ने एक स्किल इंस्टॉल की
 msgid "OpenKnowledge integrations checked."
 msgstr "OpenKnowledge इंटीग्रेशन जाँच लिए गए।"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "OpenKnowledge is set up at the repository root here, so the pack goes inside <0>{sanitized}</0> rather than at the top of the repository."
+msgstr "यहाँ OpenKnowledge रिपॉज़िटरी रूट पर सेट होता है, इसलिए पैक रिपॉज़िटरी के शीर्ष के बजाय <0>{sanitized}</0> के अंदर जाता है।"
+
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
 msgstr "OpenKnowledge gh CLI द्वारा दिया गया GitHub खाता उपयोग कर रहा है। कनेक्शन तोड़ने के लिए कोई अलग OpenKnowledge क्रेडेंशियल नहीं है।"
@@ -9098,6 +9107,10 @@ msgstr "स्वामी"
 #: src/components/ImportSkillForm.tsx
 msgid "owner/repo, a git URL, or a local path"
 msgstr "owner/repo, एक git URL, या एक स्थानीय पथ"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Pack preview unavailable."
+msgstr "पैक पूर्वावलोकन उपलब्ध नहीं है।"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -9565,7 +9578,7 @@ msgid "Project plugins are your project's authoring standard — turn them on or
 msgstr "प्रोजेक्ट प्लगइन आपके प्रोजेक्ट का लेखन मानक हैं — उन्हें यहाँ चालू या बंद करें। यह चुनाव config.yml में कमिट होता है और git के ज़रिए हर सहयोगी के साथ साझा होता है। हर सक्षम प्लगइन को सेटिंग साइडबार में Plugins के अंतर्गत अपना पेज मिलता है।"
 
 #: src/components/FileTree.tsx
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "प्रोजेक्ट रूट"
 
@@ -10441,7 +10454,7 @@ msgstr "पुनः प्रयास किया जा रहा है…"
 msgid "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
 msgstr "साइडबार से क्लिक करते समय एक ही टैब का पुन: उपयोग करें। बंद होने पर हर क्लिक अपने अलग टैब में खुलता है।"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Reused if it already exists, created if not."
 msgstr "यदि पहले से मौजूद है तो पुन: उपयोग किया जाता है, वरना बना दिया जाता है।"
 
@@ -11713,6 +11726,7 @@ msgstr "शुरुआती सामग्री"
 msgid "starter pack"
 msgstr "स्टार्टर पैक"
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "स्टार्टर पैक"
@@ -11824,7 +11838,7 @@ msgstr "शैली"
 msgid "subagents"
 msgstr "उप-एजेंट"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Subfolder name"
 msgstr "उप-फ़ोल्डर का नाम"
 
@@ -12084,7 +12098,7 @@ msgstr "\"{tagListQuery}\" से मेल खाते टैग"
 msgid "Take a look if you'd like. This exact file is what we receive."
 msgstr "चाहें तो देख लें। हमें ठीक यही फ़ाइल मिलती है।"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
 msgstr "किसी लेखन को एक कच्चे विचार से तैयार मसौदे तक और फिर साझा करने लायक चीज़ तक ले जाएँ। ब्लॉग पोस्ट, निबंध, या ऐसी किसी भी चीज़ के लिए अच्छा जिसे आप स्पष्ट चरणों से गुज़ारना चाहते हैं।"
 
@@ -13155,7 +13169,7 @@ msgstr "बाहरी लिंक पूर्वावलोकन चाल
 msgid "Turn on semantic search?"
 msgstr "अर्थ-आधारित खोज चालू करें?"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr "आप जो पढ़ते हैं उसे स्पष्ट, भरोसेमंद लेखों में बदलें। कोई स्रोत सहेजें, समझें कि उसका क्या अर्थ है, फिर अंतिम संस्करण रखें ताकि आप बाद में उस पर भरोसा कर सकें।"
 
@@ -13825,7 +13839,7 @@ msgstr "जब आप कोई प्रकाशित स्किल इं�
 msgid "Where newly added attachments are placed."
 msgstr "नए जोड़े गए संलग्नक कहाँ रखे जाते हैं।"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Where should it live?"
 msgstr "यह कहाँ रहना चाहिए?"
 

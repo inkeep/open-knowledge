@@ -1141,6 +1141,11 @@ export interface RequestChannels {
          * packs-forward launcher). Omitted → blank project (today's behavior).
          */
         packId?: PackId;
+        /**
+         * Folder the pack scaffolds into, relative to the project root.
+         * Omitted → the project root (the dialog's default).
+         */
+        rootDir?: string;
       },
     ];
     result: undefined;

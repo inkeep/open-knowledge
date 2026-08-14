@@ -13,7 +13,7 @@
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import {
   addOkPathsToGitExclude,
   detectInstalledEditors,
@@ -36,7 +36,6 @@ import {
   findEnclosingProjectRoot,
   initContent,
   planSeed,
-  resolvePack,
   tracedMkdirSync,
   writeRootGitignoreForNewRepo,
 } from '@inkeep/open-knowledge-server';
@@ -191,6 +190,13 @@ interface CreateNewProjectArgs {
    * `coercePackId` at the trust boundary; an unknown id skips seeding.
    */
   readonly packId?: string;
+  /**
+   * Folder (relative to the project root) the pack scaffolds into. Omitted →
+   * the project root, matching the create-new dialog's root chooser default.
+   * Validated by `planSeed`, which rejects absolute paths, `..` segments, and
+   * symlink escapes.
+   */
+  readonly rootDir?: string;
 }
 
 /**
@@ -476,20 +482,33 @@ export async function runCreateNew(
   //     first-run launcher threaded a `packId`; the blank create path leaves
   //     it undefined and the project opens empty as before. Runs BEFORE the
   //     caller opens the editor window so it lands populated with no
-  //     empty-editor flash. Seeds at the pack's `defaultSubfolder` (project
-  //     root when the pack declares none) — parity with `SeedDialog`'s
-  //     project-root default + pre-filled subfolder. `initContent` (step 7)
-  //     already wrote `.ok/config.yml`, so `planSeed`'s project-root
-  //     prerequisite holds. Best-effort: a seed failure leaves a valid (if
-  //     empty) project rather than failing the whole create — the folder is
-  //     already on disk and the user just picked a name/location.
+  //     empty-editor flash. Seeds at `args.rootDir` — the folder the dialog's
+  //     root chooser resolved, which defaults to the project root just as the
+  //     in-project seed dialog does. `initContent` (step 7) already wrote
+  //     `.ok/config.yml`, so `planSeed`'s project-root prerequisite holds.
+  //     Best-effort: a seed failure leaves a valid (if empty) project rather
+  //     than failing the whole create — the folder is already on disk and the
+  //     user just picked a name/location.
+  //
+  //     Under git-root promotion `projectDir` is the enclosing repo, NOT the
+  //     folder the user just named, so seeding at the project root there would
+  //     scatter the pack across an existing repo and leave the named folder
+  //     empty. Anchor at the named folder in that case; a chosen subfolder
+  //     nests inside it.
   const seedPackId = coercePackId(args.packId);
   if (seedPackId !== undefined) {
+    const namedRoot = gitRootPromoted ? relative(projectDir, target) : '';
+    const chosenRoot = args.rootDir ?? '';
+    const seedRootDir =
+      namedRoot === ''
+        ? args.rootDir
+        : chosenRoot === ''
+          ? namedRoot
+          : `${namedRoot}/${chosenRoot}`;
     try {
-      const pack = resolvePack(seedPackId);
       const plan = await planSeed({
         projectDir,
-        rootDir: pack.defaultSubfolder,
+        rootDir: seedRootDir,
         packId: seedPackId,
       });
       const seedResult = await applySeed(plan, { projectDir, packId: seedPackId });
@@ -506,7 +525,7 @@ export async function runCreateNew(
       // Pass `err` as a structured second arg (not the interpolated message) so
       // the stack survives — parity with the partial-failure branch above; a
       // "first project was empty" report needs the call depth to tell whether
-      // the throw came from resolvePack, planSeed, or applySeed.
+      // the throw came from planSeed or applySeed.
       console.warn(
         `[create-new-project] starter-pack seed failed at ${projectDir} (pack ${seedPackId}):`,
         err,

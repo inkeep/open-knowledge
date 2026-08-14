@@ -44,6 +44,11 @@
     ],
     "-kKdCC": ["Se instalaron ", ["imported"], " habilidades desde ", ["0"]],
     "-kbIAr": ["Enlaces e imágenes"],
+    "-ksoxk": [
+      "Aquí OpenKnowledge se configura en la raíz del repositorio, así que el paquete va dentro de <0>",
+      ["sanitized"],
+      "</0> en lugar de en la parte superior del repositorio."
+    ],
     "-l6jM7": ["Inicia un chat con el botón ＋ o lanza un agente desde una página."],
     "-lCAuQ": ["Cargando el grafo"],
     "-o5XAG": [
@@ -691,6 +696,7 @@
     "7m3Ade": ["instalaciones:"],
     "7qRHf0": ["Instalar para Claude Chat y Cowork"],
     "7uBlRT": ["Copia el elemento enfocado del árbol de archivos para que Pegar pueda duplicarlo."],
+    "7vxWET": ["La vista previa del paquete no está disponible."],
     "7wogIQ": [
       [
         "0",
@@ -1087,17 +1093,6 @@
     "D-Oh1s": ["Cómo configurar ", ["0"], " (se abre en el navegador)"],
     "D-_B7l": ["Conectado: este endpoint devuelve vectores de ", ["0"], " dimensiones."],
     "D12vtS": ["(desacoplado)"],
-    "D2CwBE": [
-      "Crea un proyecto de OpenKnowledge a partir del paquete inicial <0>",
-      ["0"],
-      "</0> (",
-      [
-        "1",
-        "plural",
-        { "one": ["#", " carpeta"], "many": ["#", " carpetas"], "other": ["#", " carpetas"] }
-      ],
-      " y plantillas iniciales) en la carpeta que elijas."
-    ],
     "D2emTw": ["Algo salió mal al enviar tus comentarios. Inténtalo de nuevo."],
     "D4H2N6": ["Quitar ", ["tag"]],
     "D7hnvB": ["Meditando…"],
@@ -1869,6 +1864,7 @@
     "MJuO1q": ["Ventana de contexto:"],
     "MKEPCY": ["Seguir"],
     "MLVPcm": [["0"], " versión ", ["1"]],
+    "MPpSAg": ["Crear proyecto a partir de ", ["selectedPackName"]],
     "MQ5LOx": [
       "Vuelve a convertir ",
       ["display"],
@@ -4775,6 +4771,7 @@
       "Comprueba tu proyecto con Open Knowledge Format. Puedes desactivarlo en cualquier momento en Configuración."
     ],
     "uKRYiW": ["Estado de sincronización no disponible: error del servidor."],
+    "uLVNZL": ["Cambiar paquete"],
     "uL_Wx8": ["La terminal se detuvo de forma inesperada."],
     "uM6jnS": ["Falló la restauración"],
     "uNGmQn": ["No se pudo ejecutar la prueba. Comprueba que OpenKnowledge siga en marcha."],

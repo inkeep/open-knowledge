@@ -28,6 +28,11 @@
     ],
     "-kKdCC": [["imported"], " keterampilan dipasang dari ", ["0"]],
     "-kbIAr": ["Tautan & gambar"],
+    "-ksoxk": [
+      "Di sini OpenKnowledge disiapkan di root repositori, jadi paket ditempatkan di dalam <0>",
+      ["sanitized"],
+      "</0> alih-alih di puncak repositori."
+    ],
     "-l6jM7": ["Mulai obrolan dengan tombol ＋, atau luncurkan agen dari halaman."],
     "-lCAuQ": ["Memuat graf"],
     "-o5XAG": [
@@ -587,6 +592,7 @@
     "7m3Ade": ["pemasangan:"],
     "7qRHf0": ["Pasang untuk Claude Chat & Cowork"],
     "7uBlRT": ["Menyalin item pohon berkas yang sedang difokus agar Tempel bisa menggandakannya."],
+    "7vxWET": ["Pratinjau paket tidak tersedia."],
     "7wogIQ": [["0", "plural", { "other": ["Plugin"] }]],
     "80c4-P": ["Kode disalin ke papan klip"],
     "81H_23": ["Tambahkan properti"],
@@ -907,13 +913,6 @@
     "D-Oh1s": ["Cara menyiapkan ", ["0"], " (terbuka di peramban)"],
     "D-_B7l": ["Terhubung — endpoint ini mengembalikan vektor berdimensi ", ["0"], "."],
     "D12vtS": ["(terlepas)"],
-    "D2CwBE": [
-      "Membuat proyek OpenKnowledge baru dari paket awal <0>",
-      ["0"],
-      "</0> (",
-      ["1", "plural", { "other": ["#", " folder"] }],
-      " dan templat awal) di folder pilihan Anda."
-    ],
     "D2emTw": ["Ada yang tidak beres saat mengirim masukan Anda. Silakan coba lagi."],
     "D4H2N6": ["Hapus ", ["tag"]],
     "D7hnvB": ["Menimbang…"],
@@ -1597,6 +1596,7 @@
     "MJuO1q": ["Jendela konteks:"],
     "MKEPCY": ["Ikuti"],
     "MLVPcm": [["0"], " versi ", ["1"]],
+    "MPpSAg": ["Buat proyek baru dari ", ["selectedPackName"]],
     "MQ5LOx": [
       "Mengubah ",
       ["display"],
@@ -4164,6 +4164,7 @@
       "Periksa proyek Anda terhadap Open Knowledge Format. Matikan kapan saja di Pengaturan."
     ],
     "uKRYiW": ["Status sinkronisasi tidak tersedia — galat server."],
+    "uLVNZL": ["Ganti paket"],
     "uL_Wx8": ["Terminal berhenti tak terduga."],
     "uM6jnS": ["Gagal memulihkan"],
     "uNGmQn": ["Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjalan."],

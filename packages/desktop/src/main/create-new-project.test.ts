@@ -306,6 +306,66 @@ describe('runCreateNew — happy paths', () => {
   });
 });
 
+describe('runCreateNew — starter-pack seeding under git-root promotion', () => {
+  /**
+   * When the picked location sits inside an existing git repo the project root
+   * is promoted to that repo, so "project root" is no longer the folder the
+   * user just named. Seeding there would spray the pack across someone's
+   * existing repo and leave the named folder empty.
+   */
+  function promotedFixture(homeName: string) {
+    const tmpReal = realpathSync(tmpRoot);
+    const fakeHome = resolve(tmpReal, homeName);
+    const repo = resolve(fakeHome, 'repo');
+    const notes = resolve(repo, 'notes');
+    mkdirSync(notes, { recursive: true });
+    mkdirSync(resolve(repo, '.git'), { recursive: true });
+    writeFileSync(resolve(repo, '.git/HEAD'), 'ref: refs/heads/main\n');
+    const target = resolve(notes, 'MyProj');
+    return {
+      repo,
+      notes,
+      target,
+      deps: withDetected(ALL_EDITOR_IDS, makeDiscoverDeps(fakeHome, { [target]: repo })),
+    };
+  }
+
+  test('anchors the pack at the named folder, not the repo root', async () => {
+    const { repo, notes, target, deps } = promotedFixture('promoted-root');
+
+    const result = await runCreateNew(
+      { parent: notes, name: 'MyProj', editors: [...ALL_EDITOR_IDS], packId: 'knowledge-base' },
+      deps,
+    );
+
+    expect(result.projectDir).toBe(repo);
+    expect(result.gitRootPromoted).toBe(true);
+    expect(existsSync(resolve(target, 'external-sources'))).toBe(true);
+    expect(existsSync(resolve(target, 'log.md'))).toBe(true);
+    // The user's existing repo root stays untouched.
+    expect(existsSync(resolve(repo, 'external-sources'))).toBe(false);
+    expect(existsSync(resolve(repo, 'log.md'))).toBe(false);
+  });
+
+  test('nests a chosen subfolder inside the named folder', async () => {
+    const { repo, notes, target, deps } = promotedFixture('promoted-subfolder');
+
+    await runCreateNew(
+      {
+        parent: notes,
+        name: 'MyProj',
+        editors: [...ALL_EDITOR_IDS],
+        packId: 'knowledge-base',
+        rootDir: 'brain',
+      },
+      deps,
+    );
+
+    expect(existsSync(resolve(target, 'brain', 'external-sources'))).toBe(true);
+    expect(existsSync(resolve(repo, 'brain'))).toBe(false);
+  });
+});
+
 describe('runCreateNew — git-root promotion', () => {
   /**
    * When the user picks a parent inside an existing git working tree, the
@@ -724,6 +784,32 @@ describe('runCreateNew — starter-pack seeding', () => {
     // disk. A blank create leaves neither.
     expect(existsSync(join(result.projectDir, 'notes'))).toBe(true);
     expect(existsSync(join(result.projectDir, 'daily'))).toBe(true);
+  });
+
+  test('seeds at the project root when no rootDir is given', async () => {
+    // `knowledge-base` declares `defaultSubfolder: 'brain'`. That default only
+    // pre-fills the dialog's subfolder input — the scaffold itself lands at the
+    // project root unless the user picks "In a subfolder".
+    const result = await runCreateNew({
+      parent: tmpRoot,
+      name: 'Root Seeded Project',
+      editors: [...ALL_EDITOR_IDS],
+      packId: 'knowledge-base',
+    });
+    expect(existsSync(join(result.projectDir, 'external-sources'))).toBe(true);
+    expect(existsSync(join(result.projectDir, 'brain'))).toBe(false);
+  });
+
+  test('seeds under rootDir when the dialog picked a subfolder', async () => {
+    const result = await runCreateNew({
+      parent: tmpRoot,
+      name: 'Subfolder Seeded Project',
+      editors: [...ALL_EDITOR_IDS],
+      packId: 'knowledge-base',
+      rootDir: 'brain',
+    });
+    expect(existsSync(join(result.projectDir, 'brain', 'external-sources'))).toBe(true);
+    expect(existsSync(join(result.projectDir, 'external-sources'))).toBe(false);
   });
 
   test('creates a blank project when packId is unrecognised', async () => {

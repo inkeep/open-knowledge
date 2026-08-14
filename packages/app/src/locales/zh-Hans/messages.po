@@ -1049,7 +1049,7 @@ msgstr "名为 <0>{sanitized}</0> 的文件夹这里已经有文件了。请换�
 msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
 msgstr "密钥已设置，但嵌入服务提供方拒绝了它或无法连接——搜索已退回到关键词匹配。可在「自定义端点」下使用<0>测试连接</0>查看具体问题。"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
 msgstr "遵循 Google Open Knowledge Format 的知识库，一种整理知识的通用方式。如果你希望自己的笔记能与理解该格式的其他工具良好协作，请选这个。"
 
@@ -1140,7 +1140,7 @@ msgstr "已有一个已保存的主题使用此名称。"
 msgid "A short line shown under the title in the template list."
 msgstr "在模板列表中显示在标题下方的一行简介。"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
 msgstr "一个简单的写作空间，每个主题一个文件，外加一份日志。如果你只想先动笔，让笔记之间的链接慢慢生长，请选这个。"
 
@@ -1311,7 +1311,7 @@ msgstr "添加字段"
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "添加文件或文件夹模式，例如 guides/**/*"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
 msgstr "直接把它添加到这个项目。"
 
@@ -1897,6 +1897,7 @@ msgstr "在 OpenKnowledge 桌面应用中可用。在终端里可使用<0> ok co
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -2105,7 +2106,7 @@ msgstr "搭建一个竞品调研知识库。先写一页总览，再为每个竞
 msgid "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
 msgstr "搭建一个关于各种不会飞的鸟类的知识维基。先写一页总览，再为每个主要类群（鸵鸟、鸸鹋、几维鸟等平胸鸟；企鹅；以及不会飞的秧鸡）、它们的分布区域，以及失去飞行能力的演化时间线，添加相互链接的页面。"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write."
 msgstr "构建并梳理你故事背后的世界。一个安放角色、地点、势力以及把它们串联起来的设定的地方，让细节在写作过程中始终自洽。"
 
@@ -2226,6 +2227,10 @@ msgstr "无法删除存在未解决冲突的文件"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "无法上传：当前没有打开的文档"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Change pack"
+msgstr "更换入门包"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Change provider"
@@ -3866,12 +3871,6 @@ msgstr "新建一个分支，或检出一个已有分支，各自在独立窗口
 msgid "Create a new list item from the current list item."
 msgstr "基于当前列表项创建一个新的列表项。"
 
-#. placeholder {0}: selectedPack.name
-#. placeholder {1}: selectedPack.entryCounts.folders
-#: src/components/CreateProjectDialog.tsx
-msgid "Create a new OpenKnowledge project from the <0>{0}</0> starter pack ({1, plural, one {# folder} other {# folders}} and starter templates) in the folder of your choice."
-msgstr "用 <0>{0}</0> 入门包（{1, plural, other {# 个文件夹}}和入门模板）在你选择的文件夹中创建一个新的 OpenKnowledge 项目。"
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Create a new OpenKnowledge project in the folder of your choice."
 msgstr "在你选择的文件夹中创建一个新的 OpenKnowledge 项目。"
@@ -3912,6 +3911,10 @@ msgstr "创建缺失的页面 {target}"
 #: src/components/NavigatorApp.tsx
 msgid "Create new project"
 msgstr "新建项目"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Create new project from {selectedPackName}"
+msgstr "从 {selectedPackName} 新建项目"
 
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "Create new tag #{tagValue}"
@@ -4605,6 +4608,7 @@ msgstr "例如：同步过程中切换了项目"
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "例如：粘贴一个很大的表格后编辑器卡住了"
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "每个包都会用现成的文件夹和模板为你的项目搭好骨架。"
@@ -4924,6 +4928,7 @@ msgstr "Enter"
 msgid "Enter a 6-digit hex like #1A2B3C"
 msgstr "请输入 6 位十六进制值，例如 #1A2B3C"
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/SeedDialog.tsx
 msgid "Enter a folder name (e.g. brain)."
 msgstr "请输入文件夹名（例如 brain）。"
@@ -5052,7 +5057,7 @@ msgstr "关系图展开模式"
 msgid "Expires in {timeLabel}"
 msgstr "{timeLabel}后过期"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
 msgstr "讲清楚你的代码库是怎么运作的，让队友和 AI 智能体都能找到方向。适合记录架构、主要组成部分，以及新贡献者总会问到的问题。"
 
@@ -6365,7 +6370,7 @@ msgstr "正在导入"
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
 msgstr "在日志文档中：条目标题以 ISO YYYY-MM-DD 日期开头，最新的在前。您使用多少个 title，以及条目是否为项目符号，都取决于您。"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "In a subfolder"
 msgstr "在子文件夹中"
 
@@ -6810,7 +6815,7 @@ msgstr "跳到光标所在块的 markdown 源码，居中并高亮显示。"
 msgid "just now"
 msgstr "刚刚"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
 msgstr "为你的产品是怎么做出来的留下书面记录。一个提出想法、记录决策、撰写规格，以及在出问题后总结经验的地方。"
 
@@ -6854,7 +6859,7 @@ msgstr "名称请控制在 64 个字符以内。"
 msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
 msgstr "让这个项目与你的 git 远程保持同步。「跟随」只获取更新而不推送；完全同步也会推送你的提交。开启同步需要确认。"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "记录你打交道的人和公司，以及你们之间的会面。适合用来记住某人是谁、你怎么认识他们，以及上次聊了什么。"
 
@@ -7134,7 +7139,7 @@ msgstr "正在加载 PDF"
 msgid "Loading popular skills"
 msgstr "正在加载热门技能"
 
-#: src/components/SeedDialog.tsx
+#: src/components/CreatedItemsList.tsx
 msgid "Loading preview"
 msgstr "正在加载预览"
 
@@ -8879,6 +8884,10 @@ msgstr "OpenKnowledge 安装了一个技能"
 msgid "OpenKnowledge integrations checked."
 msgstr "已检查 OpenKnowledge 集成。"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "OpenKnowledge is set up at the repository root here, so the pack goes inside <0>{sanitized}</0> rather than at the top of the repository."
+msgstr "这里的 OpenKnowledge 设置在仓库根目录，因此入门包会放进 <0>{sanitized}</0>，而不是仓库顶层。"
+
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
 msgstr "OpenKnowledge 正在使用 gh CLI 提供的 GitHub 账户。没有单独的 OpenKnowledge 凭据需要断开。"
@@ -9102,6 +9111,10 @@ msgstr "所有者"
 #: src/components/ImportSkillForm.tsx
 msgid "owner/repo, a git URL, or a local path"
 msgstr "owner/repo、一个 git URL，或一个本地路径"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Pack preview unavailable."
+msgstr "无法预览入门包。"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -9569,7 +9582,7 @@ msgid "Project plugins are your project's authoring standard — turn them on or
 msgstr "项目插件是你项目的写作规范——在这里开启或关闭它们。这个选择会写入 config.yml，并通过 git 与所有协作者共享。每个启用的插件在设置侧边栏的「插件」下都有自己的页面。"
 
 #: src/components/FileTree.tsx
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "项目根目录"
 
@@ -10445,7 +10458,7 @@ msgstr "正在重试…"
 msgid "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
 msgstr "在侧边栏中连续点击时复用同一个标签页。关闭后，每次点击都会打开新标签页。"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Reused if it already exists, created if not."
 msgstr "如果已存在就复用，否则就新建。"
 
@@ -11717,6 +11730,7 @@ msgstr "初始内容"
 msgid "starter pack"
 msgstr "入门包"
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "入门包"
@@ -11828,7 +11842,7 @@ msgstr "样式"
 msgid "subagents"
 msgstr "子智能体"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Subfolder name"
 msgstr "子文件夹名"
 
@@ -12088,7 +12102,7 @@ msgstr "匹配 \"{tagListQuery}\" 的标签"
 msgid "Take a look if you'd like. This exact file is what we receive."
 msgstr "愿意的话可以看看。我们收到的就是这个文件本身。"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
 msgstr "把一段文字从粗略的想法带到完成的初稿，再到可以拿出去分享的成品。适合博客文章、随笔，或者任何你想分阶段推进的写作。"
 
@@ -13159,7 +13173,7 @@ msgstr "要开启外部链接预览吗？"
 msgid "Turn on semantic search?"
 msgstr "要开启语义搜索吗？"
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr "把你读过的东西变成清晰可信的文章。保存来源，弄清它的含义，再留下最终版本，以便日后可以放心引用。"
 
@@ -13829,7 +13843,7 @@ msgstr "当你安装一个已发布的技能时，会告知技能目录（skills
 msgid "Where newly added attachments are placed."
 msgstr "新添加的附件放在哪里。"
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Where should it live?"
 msgstr "它应该保存在哪里？"
 

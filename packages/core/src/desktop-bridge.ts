@@ -818,6 +818,17 @@ export type OkPackId =
 export interface OkSeedPlanOptions {
   rootDir?: string;
   packId?: OkPackId;
+  /**
+   * Preview a pack for a project that does not exist yet. The create-new
+   * dialog runs on the Navigator window, which has no project bound, so the
+   * normal `resolveProjectRoot` path answers `no-project`. Main plans against
+   * a throwaway directory instead, so every entry reads as `created`.
+   *
+   * `skillsInstallable` is the part only the caller knows: whether the project
+   * about to be created has an editor selected, and so whether the pack's
+   * skills will actually install once it exists.
+   */
+  preview?: { skillsInstallable: boolean };
 }
 
 export interface OkSeedApplyOptions {
@@ -1532,6 +1543,11 @@ export interface OkDesktopBridge {
       /** OK config sharing mode — defaults to 'shared' when omitted. */
       sharing?: 'shared' | 'local-only';
       packId?: OkPackId;
+      /**
+       * Folder the pack scaffolds into, relative to the project root.
+       * Omitted → the project root (the dialog's default).
+       */
+      rootDir?: string;
     }): Promise<void>;
     /**
      * Fire-and-forget renderer→main telemetry counter for the Create-new-project

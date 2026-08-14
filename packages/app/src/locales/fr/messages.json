@@ -44,6 +44,11 @@
     ],
     "-kKdCC": [["imported"], " compétences installées depuis ", ["0"]],
     "-kbIAr": ["Liens et images"],
+    "-ksoxk": [
+      "Ici, OpenKnowledge est configuré à la racine du dépôt, donc le pack est placé dans <0>",
+      ["sanitized"],
+      "</0> plutôt qu’à la racine du dépôt."
+    ],
     "-l6jM7": ["Démarrez un chat avec le bouton ＋ ou lancez un agent depuis une page."],
     "-lCAuQ": ["Chargement du graphe"],
     "-o5XAG": [
@@ -719,6 +724,7 @@
     "7uBlRT": [
       "Copie l'élément de l'arborescence ayant le focus pour que Coller puisse le dupliquer."
     ],
+    "7vxWET": ["Aperçu du pack indisponible."],
     "7wogIQ": [
       ["0", "plural", { "one": ["Extension"], "many": ["Extensions"], "other": ["Extensions"] }]
     ],
@@ -1111,17 +1117,6 @@
     "D-Oh1s": ["Comment configurer ", ["0"], " (s'ouvre dans le navigateur)"],
     "D-_B7l": ["Connecté — ce point de terminaison renvoie des vecteurs de dimension ", ["0"], "."],
     "D12vtS": ["(détaché)"],
-    "D2CwBE": [
-      "Créez un nouveau projet OpenKnowledge à partir du pack de démarrage <0>",
-      ["0"],
-      "</0> (",
-      [
-        "1",
-        "plural",
-        { "one": ["#", " dossier"], "many": ["#", " dossiers"], "other": ["#", " dossiers"] }
-      ],
-      " et modèles de départ) dans le dossier de votre choix."
-    ],
     "D2emTw": ["Une erreur s'est produite lors de l'envoi de votre retour. Veuillez réessayer."],
     "D4H2N6": ["Retirer ", ["tag"]],
     "D7hnvB": ["Réflexion…"],
@@ -1894,6 +1889,7 @@
     "MJuO1q": ["Fenêtre de contexte :"],
     "MKEPCY": ["Suivre"],
     "MLVPcm": [["0"], " version ", ["1"]],
+    "MPpSAg": ["Créer un projet à partir de ", ["selectedPackName"]],
     "MQ5LOx": [
       "Retransformez ",
       ["display"],
@@ -4827,6 +4823,7 @@
       "Vérifie votre projet par rapport au Open Knowledge Format. Désactivez-le à tout moment dans Paramètres."
     ],
     "uKRYiW": ["État de synchronisation indisponible — erreur serveur."],
+    "uLVNZL": ["Changer de pack"],
     "uL_Wx8": ["Le terminal s'est arrêté de façon inattendue."],
     "uM6jnS": ["Échec de la restauration"],
     "uNGmQn": ["Impossible d'exécuter le test. Vérifiez qu'OpenKnowledge fonctionne toujours."],

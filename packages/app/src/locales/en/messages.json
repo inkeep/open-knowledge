@@ -32,6 +32,11 @@
     "-imiMK": ["Follow — updates flow in from your remote; your edits stay on this computer."],
     "-kKdCC": ["Installed ", ["imported"], " skills from ", ["0"]],
     "-kbIAr": ["Links & images"],
+    "-ksoxk": [
+      "OpenKnowledge is set up at the repository root here, so the pack goes inside <0>",
+      ["sanitized"],
+      "</0> rather than at the top of the repository."
+    ],
     "-l6jM7": ["Start a chat with the ＋ button, or launch an agent from a page."],
     "-lCAuQ": ["Loading graph"],
     "-o5XAG": [
@@ -585,6 +590,7 @@
     "7m3Ade": ["installs:"],
     "7qRHf0": ["Install for Claude Chat & Cowork"],
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
+    "7vxWET": ["Pack preview unavailable."],
     "7wogIQ": [["0", "plural", { "one": ["Plugin"], "other": ["Plugins"] }]],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
@@ -926,13 +932,6 @@
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
     "D-_B7l": ["Connected — this endpoint returns ", ["0"], "-dimension vectors."],
     "D12vtS": ["(detached)"],
-    "D2CwBE": [
-      "Create a new OpenKnowledge project from the <0>",
-      ["0"],
-      "</0> starter pack (",
-      ["1", "plural", { "one": ["#", " folder"], "other": ["#", " folders"] }],
-      " and starter templates) in the folder of your choice."
-    ],
     "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
     "D7hnvB": ["Pondering…"],
@@ -1595,6 +1594,7 @@
     "MJuO1q": ["Context window:"],
     "MKEPCY": ["Follow"],
     "MLVPcm": [["0"], " version ", ["1"]],
+    "MPpSAg": ["Create new project from ", ["selectedPackName"]],
     "MQ5LOx": [
       "Turn ",
       ["display"],
@@ -4136,6 +4136,7 @@
       "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
     ],
     "uKRYiW": ["Sync status unavailable — server error."],
+    "uLVNZL": ["Change pack"],
     "uL_Wx8": ["The terminal stopped unexpectedly."],
     "uM6jnS": ["Restore failed"],
     "uNGmQn": ["Couldn't run the test. Check that OpenKnowledge is still running."],

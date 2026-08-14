@@ -20,6 +20,9 @@
  * window's project root — no business logic here.
  */
 
+import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   applySeed as applySeedImpl,
   coercePackId,
@@ -37,6 +40,7 @@ import type {
   SeedApplyOptions,
   SeedPlanOptions,
 } from '../../shared/bridge-contract.ts';
+import { getLogger } from '../desktop-logger.ts';
 
 // Wire-format aliases — kept for compatibility with `ipc-channels.ts`.
 export type SeedPlanResult = OkSeedPlanResult;
@@ -69,11 +73,37 @@ function noProjectError(): { ok: false; error: { kind: 'no-project'; message: st
   };
 }
 
-/** Map an arbitrary error onto the structured `internal` error envelope. */
+/**
+ * Map an arbitrary error onto the structured `internal` error envelope.
+ *
+ * Logs first: only `err.message` survives the IPC boundary, so without this the
+ * stack behind a "preview failed with an internal error" report is gone by the
+ * time anyone reads it. The two expected error types never reach here.
+ */
 function internalError(err: unknown): { ok: false; error: { kind: 'internal'; message: string } } {
+  getLogger('ipc:seed').error({ err }, 'unexpected seed error');
   return {
     ok: false,
     error: { kind: 'internal', message: err instanceof Error ? err.message : String(err) },
+  };
+}
+
+/**
+ * Rewrite a preview plan's skill rows for a project that doesn't exist yet.
+ *
+ * `planSeed` reads the skill state off disk, and the throwaway preview dir has
+ * no agent folder — so `resolvePackSkillHome` refuses and every skill reports
+ * `pending: false`. At create time the project's AI integrations are written
+ * before the seed runs, so the skills DO install as long as the user has an
+ * editor selected. `skillsInstallable` is the caller's answer to that.
+ */
+function normalizePreviewPlan(plan: ScaffoldPlan, skillsInstallable: boolean): ScaffoldPlan {
+  const { packSkillHomeRefusal, ...rest } = plan;
+  void packSkillHomeRefusal;
+  if (rest.packSkills === undefined) return rest;
+  return {
+    ...rest,
+    packSkills: rest.packSkills.map((skill) => ({ ...skill, pending: skillsInstallable })),
   };
 }
 
@@ -82,12 +112,21 @@ function internalError(err: unknown): { ok: false; error: { kind: 'internal'; me
  * project. Pure read; never writes to disk. Optional `rootDir` (relative to
  * the project root) scopes the scaffold to a subfolder. Optional `packId`
  * selects which pack to scaffold (defaults to `'knowledge-base'`).
+ *
+ * `preview` swaps the window's project for a throwaway directory that is never
+ * created, so the create-new dialog (which runs on the project-less Navigator
+ * window) can show what a pack would scaffold. Nothing exists there, so every
+ * entry lands in `created` — the same all-created preview `ok seed --dry-run`
+ * gets from `skipPrerequisite`.
  */
 export async function handleSeedPlan(
   deps: SeedIpcDeps,
   options?: SeedPlanOptions,
 ): Promise<SeedPlanResult> {
-  const projectRoot = deps.resolveProjectRoot();
+  const preview = options?.preview;
+  const projectRoot = preview
+    ? join(tmpdir(), `ok-seed-preview-${randomUUID()}`)
+    : deps.resolveProjectRoot();
   if (!projectRoot) return noProjectError();
 
   const plan = deps.planSeed ?? planSeedImpl;
@@ -106,8 +145,14 @@ export async function handleSeedPlan(
       projectDir: projectRoot,
       rootDir: options?.rootDir,
       packId,
+      skipPrerequisite: preview !== undefined,
     });
-    return { ok: true, plan: result };
+    return {
+      ok: true,
+      // `=== true` because the flag crosses the IPC trust boundary — anything
+      // other than a real `true` reads as "no skills will install".
+      plan: preview ? normalizePreviewPlan(result, preview.skillsInstallable === true) : result,
+    };
   } catch (err) {
     if (err instanceof SeedPrerequisiteError) {
       return { ok: false, error: { kind: 'prerequisite-missing', message: err.message } };

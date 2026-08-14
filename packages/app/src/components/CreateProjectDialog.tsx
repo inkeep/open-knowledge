@@ -74,10 +74,13 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
-import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { ChevronRight } from 'lucide-react';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { CreatedItemsList, CreatedItemsSkeleton } from '@/components/CreatedItemsList';
+import { PackCardGrid } from '@/components/PackCardGrid';
+import { type SeedRootChoice, SeedRootPicker } from '@/components/SeedRootPicker';
 import { SharingModeField } from '@/components/SharingModeField';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -100,8 +103,12 @@ import type {
   OkFolderState,
   OkMcpWiringEditorId,
   OkPackId,
+  OkScaffoldPlan,
   OkSeedPackInfo,
 } from '@/lib/desktop-bridge-types';
+import { PACK_BLURBS } from '@/lib/pack-copy';
+import { seedClient } from '@/lib/seed-client';
+import { cn } from '@/lib/utils';
 
 /**
  * Debounce window for the cascade probes. ~180 ms after a `name`/`location`
@@ -119,6 +126,14 @@ const PROBE_DEBOUNCE_MS = 180;
  * a newly-appearing `.git`, only to confirm one is gone.
  */
 const GIT_BANNER_POLL_INTERVAL_MS = 5_000;
+
+/**
+ * Debounce for the starter-pack preview plan. Matches the in-project seed
+ * dialog: the first plan of an open cycle fires immediately (the user just
+ * picked a pack and expects to see it), later ones — driven by typing in the
+ * subfolder field — wait this long so the list doesn't strobe per keystroke.
+ */
+const PACK_PREVIEW_DEBOUNCE_MS = 200;
 
 // The settled verdict of the cascade probe. Drives banner mount: the render
 // layer reads only this. A probe-in-flight discriminant is intentionally
@@ -146,6 +161,24 @@ type ProbeLifecycle = 'idle' | 'in-flight';
  * success — probeNonce bumps + the banner either disappears or repaints
  * with the next-higher .git) or error (inline retry).
  */
+/**
+ * Live preview of what the selected starter pack would scaffold into the
+ * project about to be created. Planned against a throwaway directory main-side
+ * (`preview` on the seed-plan channel) because this dialog runs on the
+ * Navigator window, which has no project bound.
+ */
+type PackPreview =
+  | { kind: 'loading' }
+  | { kind: 'plan'; plan: OkScaffoldPlan }
+  /**
+   * `blocking` separates "you typed a root the planner rejects" from "the
+   * preview could not be computed". Only the first withholds Create: the
+   * second is not the user's fault and the pack is secondary to creating the
+   * project, so a transport or internal failure must not strand someone with a
+   * permanently disabled button.
+   */
+  | { kind: 'error'; message: string; blocking: boolean };
+
 type RemoveGitState =
   | { kind: 'idle' }
   | { kind: 'confirming'; gitRoot: string }
@@ -183,18 +216,17 @@ interface CreateProjectDialogProps {
   bridge: OkDesktopBridge;
   /**
    * Starter pack pre-selected on the packs-forward first-run launcher. When
-   * set (alongside a matching entry in `packs`), the dialog names the pack in
-   * its description as read-only confirmation and threads this id into
-   * `createNew` so the fresh project opens seeded. The pack was already chosen
-   * on the launcher — the dialog confirms it, it isn't a control here. Unset →
-   * the blank-project create flow (today's generic description). No subfolder
-   * UI — first-run applies the pack's defaults (see `runCreateNew`).
+   * set (alongside a matching entry in `packs`), the dialog configures that
+   * pack the same way the in-project seed dialog does — long-form blurb, root
+   * chooser, live "What gets created" preview — and threads the choice into
+   * `createNew` so the fresh project opens seeded. Unset → the blank-project
+   * create flow (today's generic description, no pack UI).
    */
   initialPackId?: OkPackId;
   /**
-   * The available starter packs, used only to look up `initialPackId`'s
-   * display metadata (name + folder count) for the read-only description.
-   * Empty/omitted → the generic blank-create description.
+   * The available starter packs. Supplies the selected pack's display metadata
+   * and backs the in-dialog "Change pack" grid. Empty/omitted → the generic
+   * blank-create description and no pack UI.
    */
   packs?: OkSeedPackInfo[];
 }
@@ -346,6 +378,15 @@ export function CreateProjectDialog({
   // so the dialog leads with just the name and location fields. Reset closed
   // on each open.
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Starter-pack selection + where it scaffolds. `packId` starts at the
+  // launcher's pick and can be changed in-dialog (step 'pick'); the root
+  // defaults to the project root — same default the in-project seed dialog
+  // uses — with the pack's `defaultSubfolder` only pre-filling the input.
+  const [packId, setPackId] = useState<OkPackId | undefined>(initialPackId);
+  const [step, setStep] = useState<'pick' | 'configure'>('configure');
+  const [rootChoice, setRootChoice] = useState<SeedRootChoice>('project-root');
+  const [subfolder, setSubfolder] = useState('');
+  const [packPreview, setPackPreview] = useState<PackPreview>({ kind: 'loading' });
   const [cascade, setCascade] = useState<SettledCascade>({ kind: 'idle' });
   const [probeLifecycle, setProbeLifecycle] = useState<ProbeLifecycle>('idle');
   const [busy, setBusy] = useState(false);
@@ -383,6 +424,10 @@ export function CreateProjectDialog({
   // overwritten by the seed landing late. What the checkboxes show right after
   // their click is the truth; a late probe never overrides it.
   const editorsTouchedRef = useRef(false);
+  // Whether the next pack-preview plan is the first of this open cycle — it
+  // fires immediately, later ones debounce. Reset on open and whenever the
+  // user picks a different pack.
+  const previewFirstLoadRef = useRef(true);
 
   // Hydrate Location + focus the Name input on dialog open. Reset transient
   // state (banner-fired set, error, busy, name, editors, removeGitState) so
@@ -405,6 +450,13 @@ export function CreateProjectDialog({
     setSharing('shared');
     setAdvancedOpen(false);
     setRemoveGitState({ kind: 'idle' });
+    // Honor the caller's pack on every open — the Navigator clears it when the
+    // dialog closes, so a blank create after a pack create must not inherit it.
+    setPackId(initialPackId);
+    setStep('configure');
+    setRootChoice('project-root');
+    setPackPreview({ kind: 'loading' });
+    previewFirstLoadRef.current = true;
     // Invalidate any in-flight removeGitFolder IPC from a previous open
     // (dialog component is reused, useRef survives) so its completion
     // can't land on the fresh-open state.
@@ -468,7 +520,111 @@ export function CreateProjectDialog({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [open, bridge]);
+  }, [open, bridge, initialPackId]);
+
+  // The pack currently configured, resolved from the caller-supplied list.
+  // Absent when this is a blank create (no `packId`) or when the caller didn't
+  // pass `packs` — both cases render no pack UI at all.
+  const selectedPack = packs?.find((pack) => pack.id === packId);
+
+  // Pre-fill the subfolder field from the selected pack's default. Packs with
+  // no `defaultSubfolder` clear it, so switching from `brain/` to a pack
+  // without one doesn't leave a stale value behind. The field is only a
+  // pre-fill — the scaffold still lands at the project root unless the user
+  // picks "In a subfolder".
+  //
+  // Keyed on `open` and the default VALUE rather than the pack object: a name
+  // typed into a cancelled attempt must not survive into the next open, and
+  // the caller may hand back the very same pack object (its pack list is
+  // fetched once and reused), so object identity alone would not re-fire this.
+  const selectedPackSubfolderDefault = selectedPack?.defaultSubfolder ?? '';
+  useEffect(() => {
+    // `open` is a "re-run me on reopen" signal, not a value the body reads —
+    // same shape as `probeNonce` below.
+    void open;
+    if (packId === undefined) return;
+    setSubfolder(selectedPackSubfolderDefault);
+  }, [open, packId, selectedPackSubfolderDefault]);
+
+  const trimmedSubfolder = subfolder.trim();
+  const subfolderInvalid =
+    selectedPack !== undefined && rootChoice === 'subfolder' && trimmedSubfolder === '';
+  const packRootDir = rootChoice === 'project-root' ? undefined : trimmedSubfolder;
+  // The pack's skills install only into editors this project is set up for,
+  // and `runCreateNew` writes those integrations before it seeds — so an empty
+  // editor selection means no skill lands, and the preview must say so.
+  const skillsInstallable = editorIds.size > 0;
+
+  // Live pack preview. Re-plans on every input that changes what would be
+  // written; nothing here touches disk (main plans against a throwaway dir).
+  useEffect(() => {
+    if (!open) return;
+    if (selectedPack === undefined) return;
+    if (step !== 'configure') return;
+    if (subfolderInvalid) {
+      setPackPreview({
+        kind: 'error',
+        message: t`Enter a folder name (e.g. brain).`,
+        blocking: true,
+      });
+      return;
+    }
+
+    const delay = previewFirstLoadRef.current ? 0 : PACK_PREVIEW_DEBOUNCE_MS;
+    previewFirstLoadRef.current = false;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      // Only show the skeleton when nothing is on screen yet — keeps the list
+      // steady while the user is still typing a subfolder name.
+      setPackPreview((prev) => (prev.kind === 'plan' ? prev : { kind: 'loading' }));
+      seedClient()
+        .plan({
+          rootDir: packRootDir,
+          packId: selectedPack.id,
+          preview: { skillsInstallable },
+        })
+        .then((result) => {
+          if (cancelled) return;
+          if (result.ok) {
+            setPackPreview({ kind: 'plan', plan: result.plan });
+            return;
+          }
+          // `invalid-root` is the one kind the user can fix by editing the
+          // field, and the one that would otherwise produce a silently
+          // unseeded project. Its message names what is wrong with the input,
+          // so it is worth showing; anything else is an internal string
+          // (`ENOENT …`, `Error invoking remote method …`) that tells the user
+          // nothing they can act on. The detail goes to the console instead.
+          const blocking = result.error.kind === 'invalid-root';
+          if (!blocking) {
+            console.warn('[CreateProjectDialog] pack preview unavailable:', result.error);
+          }
+          setPackPreview({
+            kind: 'error',
+            message: blocking ? result.error.message : t`Pack preview unavailable.`,
+            blocking,
+          });
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          console.warn('[CreateProjectDialog] pack preview plan failed:', err);
+          setPackPreview({
+            kind: 'error',
+            message: t`Pack preview unavailable.`,
+            // A rejected transport is not something the user can fix by
+            // editing the form, so it must not withhold Create.
+            blocking: false,
+          });
+        });
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, step, selectedPack, packRootDir, subfolderInvalid, skillsInstallable, t]);
 
   // Cascade probe — debounce + abort. Recomputes on every `location` or
   // `name` change. When either is empty (or `name` sanitizes to empty),
@@ -642,12 +798,6 @@ export function CreateProjectDialog({
     });
   }, [open, cascade, bridge]);
 
-  // The launcher-chosen pack, resolved for the read-only description. Present
-  // only when the dialog was opened from a pack (`initialPackId` set) and its
-  // metadata is available in `packs`; otherwise the description stays generic
-  // (blank / `File → New` create path).
-  const selectedPack = packs?.find((pack) => pack.id === initialPackId);
-
   // Derived name + target presentation.
   const rawName = name;
   const sanitized = rawName === '' ? '' : sanitizeFolderName(rawName);
@@ -671,6 +821,15 @@ export function CreateProjectDialog({
     location !== '' &&
     rawName !== '' &&
     sanitized !== '' &&
+    !subfolderInvalid &&
+    // A rootDir the planner rejects (`../x`, `/x`) is non-empty, so
+    // `subfolderInvalid` passes it through. Seeding is best-effort main-side —
+    // the error is swallowed to a warn — so submitting here would open a
+    // project with no pack and nothing said. Withhold Create instead, the way
+    // the in-project dialog withholds Initialize outside `phase.kind: 'plan'`.
+    // Only for `blocking` errors: a preview that could not be computed at all
+    // must not stop someone from creating the project.
+    (selectedPack === undefined || packPreview.kind !== 'error' || !packPreview.blocking) &&
     probeLifecycle === 'idle' &&
     (cascade.kind === 'free' || cascade.kind === 'confirm-git');
   // Keep Create enabled while no name is typed yet — a disabled button
@@ -743,10 +902,11 @@ export function CreateProjectDialog({
         name: sanitized,
         editors: Array.from(editorIds),
         sharing,
-        // Seed the launcher-chosen starter pack (packs-forward first-run).
-        // Undefined on the blank-create path — main opens an empty project
-        // as before.
-        packId: initialPackId,
+        // Seed the chosen starter pack (packs-forward first-run). Undefined on
+        // the blank-create path — main opens an empty project as before.
+        packId,
+        // Undefined means the project root, which is the default here.
+        rootDir: packRootDir,
       });
       onOpenChange(false);
     } catch (err) {
@@ -828,88 +988,119 @@ export function CreateProjectDialog({
   const nameDescribedBy =
     sanitizeErased || nameTaken || sanitizeDiverged ? `${captionId} ${nameErrorId}` : captionId;
 
+  // The pack grid is only reachable when the caller supplied a pack list AND
+  // this open started from a pack — the blank create paths (File → New,
+  // command palette, project switcher) stay a plain create dialog.
+  const canChangePack = packId !== undefined && (packs?.length ?? 0) > 0;
+  const selectedPackName = selectedPack?.name;
+  const selectedPackBlurb = selectedPack ? PACK_BLURBS[selectedPack.id] : undefined;
+  const title =
+    selectedPackName !== undefined
+      ? t`Create new project from ${selectedPackName}`
+      : t`Create new project`;
+  const description =
+    selectedPack === undefined
+      ? t`Create a new OpenKnowledge project in the folder of your choice.`
+      : selectedPackBlurb
+        ? t(selectedPackBlurb)
+        : selectedPack.description;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChangeInternal}>
-      <DialogContent className="sm:max-w-lg" data-testid="create-project-dialog">
+      <DialogContent
+        className={cn('sm:max-w-lg', step === 'pick' && 'sm:max-w-3xl')}
+        data-testid="create-project-dialog"
+      >
         <DialogHeader>
-          <DialogTitle>
-            <Trans>Create new project</Trans>
-          </DialogTitle>
+          <DialogTitle>{step === 'pick' ? t`Starter packs` : title}</DialogTitle>
           <DialogDescription>
-            {selectedPack ? (
-              <Trans>
-                Create a new OpenKnowledge project from the <strong>{selectedPack.name}</strong>{' '}
-                starter pack (
-                <Plural value={selectedPack.entryCounts.folders} one="# folder" other="# folders" />{' '}
-                and starter templates) in the folder of your choice.
-              </Trans>
-            ) : (
-              <Trans>Create a new OpenKnowledge project in the folder of your choice.</Trans>
-            )}
+            {step === 'pick'
+              ? t`Each pack scaffolds your project with ready-made folders and templates.`
+              : description}
           </DialogDescription>
         </DialogHeader>
 
-        <DialogBody className="space-y-6">
-          <form
-            id={formId}
-            onSubmit={onSubmit}
-            data-testid="create-project-form"
-            className="space-y-6"
-          >
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={nameInputId}>
-                <Trans>Project name</Trans>
-              </Label>
-              <Input
-                id={nameInputId}
-                ref={nameInputRef}
-                value={name}
-                placeholder={t`Team Wiki`}
-                onChange={(e) => setName(e.target.value)}
-                disabled={busy}
-                autoComplete="off"
-                aria-invalid={sanitizeErased || nameTaken}
-                aria-describedby={nameDescribedBy}
-                data-testid="create-name"
-              />
-              {sanitizeErased ? (
-                <p
-                  id={nameErrorId}
-                  role="alert"
-                  className="text-1sm text-destructive"
-                  data-testid="create-name-error-erased"
-                >
-                  <Trans>Add at least one letter or number.</Trans>
-                </p>
-              ) : nameTaken ? (
-                <p
-                  id={nameErrorId}
-                  role="alert"
-                  className="text-1sm text-destructive"
-                  data-testid="create-name-error-taken"
-                >
-                  <Trans>
-                    A folder named <code className="font-mono break-all">{sanitized}</code> already
-                    has files here. Pick a different name.
-                  </Trans>
-                </p>
-              ) : sanitizeDiverged ? (
-                <p
-                  id={nameErrorId}
-                  role="status"
-                  aria-live="polite"
-                  className="text-1sm text-muted-foreground"
-                  data-testid="create-name-hint-diverged"
-                >
-                  <Trans>
-                    Will be saved as <code className="font-mono break-all">{sanitized}</code>.
-                  </Trans>
-                </p>
-              ) : null}
-            </div>
+        {step === 'pick' ? (
+          <DialogBody>
+            <PackCardGrid
+              packs={packs ?? null}
+              onPackSelect={(id) => {
+                setPackId(id);
+                setStep('configure');
+                // The user just clicked a card and expects the preview to
+                // follow immediately, not after the typing debounce.
+                previewFirstLoadRef.current = true;
+                setPackPreview({ kind: 'loading' });
+                // The card the click landed on unmounts with the grid, so
+                // focus would fall to the body and a keyboard user would lose
+                // their place inside the dialog. Same rAF-then-focus shape as
+                // the on-open focus above.
+                requestAnimationFrame(() => nameInputRef.current?.focus());
+              }}
+            />
+          </DialogBody>
+        ) : (
+          <DialogBody className="space-y-6">
+            <form
+              id={formId}
+              onSubmit={onSubmit}
+              data-testid="create-project-form"
+              className="space-y-6"
+            >
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={nameInputId}>
+                  <Trans>Project name</Trans>
+                </Label>
+                <Input
+                  id={nameInputId}
+                  ref={nameInputRef}
+                  value={name}
+                  placeholder={t`Team Wiki`}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={busy}
+                  autoComplete="off"
+                  aria-invalid={sanitizeErased || nameTaken}
+                  aria-describedby={nameDescribedBy}
+                  data-testid="create-name"
+                />
+                {sanitizeErased ? (
+                  <p
+                    id={nameErrorId}
+                    role="alert"
+                    className="text-1sm text-destructive"
+                    data-testid="create-name-error-erased"
+                  >
+                    <Trans>Add at least one letter or number.</Trans>
+                  </p>
+                ) : nameTaken ? (
+                  <p
+                    id={nameErrorId}
+                    role="alert"
+                    className="text-1sm text-destructive"
+                    data-testid="create-name-error-taken"
+                  >
+                    <Trans>
+                      A folder named <code className="font-mono break-all">{sanitized}</code>{' '}
+                      already has files here. Pick a different name.
+                    </Trans>
+                  </p>
+                ) : sanitizeDiverged ? (
+                  <p
+                    id={nameErrorId}
+                    role="status"
+                    aria-live="polite"
+                    className="text-1sm text-muted-foreground"
+                    data-testid="create-name-hint-diverged"
+                  >
+                    <Trans>
+                      Will be saved as <code className="font-mono break-all">{sanitized}</code>.
+                    </Trans>
+                  </p>
+                ) : null}
+              </div>
 
-            <div className="flex flex-col gap-2">
-              {/* "Location" is a visual label for the read-only path display.
+              <div className="flex flex-col gap-2">
+                {/* "Location" is a visual label for the read-only path display.
                   No htmlFor/association: the value sits in a non-labelable
                   <div> (a label can only bind to a form control), so a binding
                   here would be a dead attribute. AT reads the label then the
@@ -917,137 +1108,203 @@ export function CreateProjectDialog({
                   <Input readOnly>, because it renders three mutually exclusive
                   inner states (resolved path / "Resolving" / "No location
                   selected") that a single `value` string can't express. */}
-              <Label>
-                <Trans>Location</Trans>
-              </Label>
-              <div className="flex items-center gap-2">
-                <div
-                  className="min-w-0 flex-1 rounded-md border border-input bg-muted/50 px-2.5 py-1 text-sm text-foreground wrap-break-word"
-                  data-testid="create-location-display"
+                <Label>
+                  <Trans>Location</Trans>
+                </Label>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="min-w-0 flex-1 rounded-md border border-input bg-muted/50 px-2.5 py-1 text-sm text-foreground wrap-break-word"
+                    data-testid="create-location-display"
+                  >
+                    {location !== '' ? (
+                      location
+                    ) : locationResolving ? (
+                      <span className="text-muted-foreground">
+                        <Trans>Resolving default location</Trans>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        <Trans>No location selected. Use Browse to choose a folder.</Trans>
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={busy}
+                    onClick={() => void onBrowse()}
+                    data-testid="create-browse"
+                  >
+                    <Trans>Browse</Trans>
+                  </Button>
+                </div>
+                <p
+                  id={captionId}
+                  className="text-1sm text-muted-foreground wrap-break-word"
+                  aria-live="polite"
+                  data-testid="create-target-caption"
                 >
-                  {location !== '' ? (
-                    location
-                  ) : locationResolving ? (
-                    <span className="text-muted-foreground">
-                      <Trans>Resolving default location</Trans>
-                    </span>
+                  {targetPreview !== '' ? (
+                    <Trans>
+                      Will be created at:{' '}
+                      <code className="font-mono break-all">{targetPreview}</code>
+                    </Trans>
+                  ) : null}
+                </p>
+              </div>
+
+              <CascadeBanner
+                cascade={cascade}
+                onOpenNested={onOpenNested}
+                removeGitState={removeGitState}
+                onRequestRemoveGit={onRequestRemoveGit}
+                onCancelRemoveGit={onCancelRemoveGit}
+                onConfirmRemoveGit={onConfirmRemoveGit}
+              />
+
+              {selectedPack ? (
+                <div className="space-y-6" data-testid="create-pack-section">
+                  <SeedRootPicker
+                    choice={rootChoice}
+                    subfolder={subfolder}
+                    placeholder={selectedPack.defaultSubfolder ?? 'subfolder'}
+                    idPrefix="create-seed-root"
+                    onChoiceChange={setRootChoice}
+                    onSubfolderChange={setSubfolder}
+                  />
+                  {/* Inside an existing git repo the project is the repo, not
+                      the folder being created (one project per repo), so
+                      "project root" would otherwise read as the repo's top
+                      level. The pack is anchored at the new folder instead —
+                      say so, because the banner above only speaks about where
+                      OpenKnowledge itself is set up. */}
+                  {cascade.kind === 'confirm-git' ? (
+                    <p
+                      className="text-1sm text-muted-foreground"
+                      data-testid="create-pack-promoted-note"
+                    >
+                      <Trans>
+                        OpenKnowledge is set up at the repository root here, so the pack goes inside{' '}
+                        <code className="font-mono break-all">{sanitized}</code> rather than at the
+                        top of the repository.
+                      </Trans>
+                    </p>
+                  ) : null}
+                  {packPreview.kind === 'error' ? (
+                    <div
+                      role="alert"
+                      className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                      data-testid="create-pack-preview-error"
+                    >
+                      {packPreview.message}
+                    </div>
+                  ) : packPreview.kind === 'plan' ? (
+                    <CreatedItemsList plan={packPreview.plan} selectedPack={selectedPack} />
                   ) : (
-                    <span className="text-muted-foreground">
-                      <Trans>No location selected. Use Browse to choose a folder.</Trans>
-                    </span>
+                    <CreatedItemsSkeleton rowCount={selectedPack.folders.length} />
                   )}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0"
-                  disabled={busy}
-                  onClick={() => void onBrowse()}
-                  data-testid="create-browse"
+              ) : null}
+
+              <Collapsible
+                open={advancedOpen}
+                onOpenChange={setAdvancedOpen}
+                className="rounded-md border border-border"
+                data-testid="create-advanced"
+              >
+                <CollapsibleTrigger
+                  className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50"
+                  data-testid="create-advanced-trigger"
                 >
-                  <Trans>Browse</Trans>
-                </Button>
-              </div>
-              <p
-                id={captionId}
-                className="text-1sm text-muted-foreground wrap-break-word"
-                aria-live="polite"
-                data-testid="create-target-caption"
-              >
-                {targetPreview !== '' ? (
-                  <Trans>
-                    Will be created at: <code className="font-mono break-all">{targetPreview}</code>
-                  </Trans>
-                ) : null}
-              </p>
-            </div>
+                  <Trans>Advanced settings</Trans>
+                  <ChevronRight
+                    className="size-4 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+                    aria-hidden
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-6 border-t border-border px-3 py-4">
+                  <fieldset className="flex flex-col space-y-2 pb-2">
+                    <legend className="text-sm font-medium">
+                      <Trans>Connect to AI tools</Trans>
+                    </legend>
+                    <p className="text-1sm text-muted-foreground">
+                      <Trans>Each selected tool gets an OpenKnowledge MCP entry.</Trans>
+                    </p>
+                    {ALL_EDITOR_IDS.map((id) => {
+                      const inputId = `create-editor-${id}`;
+                      return (
+                        <Label key={id} htmlFor={inputId} className="text-sm font-normal">
+                          <Checkbox
+                            id={inputId}
+                            checked={editorIds.has(id)}
+                            onCheckedChange={() => toggleEditor(id)}
+                            disabled={busy}
+                            data-testid={`create-editor-${id}`}
+                          />
+                          <span>{EDITOR_LABELS[id]}</span>
+                        </Label>
+                      );
+                    })}
+                  </fieldset>
 
-            <CascadeBanner
-              cascade={cascade}
-              onOpenNested={onOpenNested}
-              removeGitState={removeGitState}
-              onRequestRemoveGit={onRequestRemoveGit}
-              onCancelRemoveGit={onCancelRemoveGit}
-              onConfirmRemoveGit={onConfirmRemoveGit}
-            />
+                  <SharingModeField
+                    idPrefix="create"
+                    testIdPrefix="create-sharing"
+                    value={sharing}
+                    onValueChange={setSharing}
+                    disabled={busy}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
 
-            <Collapsible
-              open={advancedOpen}
-              onOpenChange={setAdvancedOpen}
-              className="rounded-md border border-border"
-              data-testid="create-advanced"
-            >
-              <CollapsibleTrigger
-                className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50"
-                data-testid="create-advanced-trigger"
-              >
-                <Trans>Advanced settings</Trans>
-                <ChevronRight
-                  className="size-4 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
-                  aria-hidden
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-6 border-t border-border px-3 py-4">
-                <fieldset className="flex flex-col space-y-2 pb-2">
-                  <legend className="text-sm font-medium">
-                    <Trans>Connect to AI tools</Trans>
-                  </legend>
-                  <p className="text-1sm text-muted-foreground">
-                    <Trans>Each selected tool gets an OpenKnowledge MCP entry.</Trans>
-                  </p>
-                  {ALL_EDITOR_IDS.map((id) => {
-                    const inputId = `create-editor-${id}`;
-                    return (
-                      <Label key={id} htmlFor={inputId} className="text-sm font-normal">
-                        <Checkbox
-                          id={inputId}
-                          checked={editorIds.has(id)}
-                          onCheckedChange={() => toggleEditor(id)}
-                          disabled={busy}
-                          data-testid={`create-editor-${id}`}
-                        />
-                        <span>{EDITOR_LABELS[id]}</span>
-                      </Label>
-                    );
-                  })}
-                </fieldset>
-
-                <SharingModeField
-                  idPrefix="create"
-                  testIdPrefix="create-sharing"
-                  value={sharing}
-                  onValueChange={setSharing}
-                  disabled={busy}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-
-            {submitError !== null ? (
-              <div
-                role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                data-testid="create-submit-error"
-              >
-                {t(errorCopy(submitError))}
-              </div>
-            ) : null}
-          </form>
-        </DialogBody>
+              {submitError !== null ? (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  data-testid="create-submit-error"
+                >
+                  {t(errorCopy(submitError))}
+                </div>
+              ) : null}
+            </form>
+          </DialogBody>
+        )}
 
         <DialogFooter>
+          {step === 'configure' && canChangePack ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="me-auto font-mono uppercase"
+              onClick={() => setStep('pick')}
+              disabled={busy}
+              data-testid="create-change-pack"
+            >
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+              <Trans>Change pack</Trans>
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
             className="font-mono uppercase"
-            onClick={() => onOpenChange(false)}
+            onClick={() => (step === 'pick' ? setStep('configure') : onOpenChange(false))}
             disabled={busy}
             data-testid="create-cancel"
           >
-            <Trans>Cancel</Trans>
+            {step === 'pick' ? <Trans>Back</Trans> : <Trans>Cancel</Trans>}
           </Button>
-          <Button type="submit" form={formId} disabled={submitDisabled} data-testid="create-submit">
-            {busy ? <Trans>Creating</Trans> : <Trans>Create</Trans>}
-          </Button>
+          {step === 'configure' ? (
+            <Button
+              type="submit"
+              form={formId}
+              disabled={submitDisabled}
+              data-testid="create-submit"
+            >
+              {busy ? <Trans>Creating</Trans> : <Trans>Create</Trans>}
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -53,6 +53,12 @@ async function translateSeedError(res: Response): Promise<OkSeedError> {
 interface SeedPlanOptions {
   rootDir?: string;
   packId?: OkPackId;
+  /**
+   * Preview a pack for a project that does not exist yet. Desktop-only: it is
+   * the create-new-project dialog's plan, and the HTTP transport always runs
+   * inside an already-open project, so the query path below ignores it.
+   */
+  preview?: { skillsInstallable: boolean };
 }
 interface SeedApplyOptions {
   packId?: OkPackId;

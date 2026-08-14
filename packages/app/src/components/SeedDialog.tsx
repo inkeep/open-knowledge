@@ -5,8 +5,9 @@ import { ArrowLeft } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { CreatedItemsList } from '@/components/CreatedItemsList';
+import { CreatedItemsList, CreatedItemsSkeleton } from '@/components/CreatedItemsList';
 import { PackCardGrid } from '@/components/PackCardGrid';
+import { type SeedRootChoice, SeedRootPicker } from '@/components/SeedRootPicker';
 import { Button } from '@/components/ui/button';
 import {
   DialogBody,
@@ -17,17 +18,9 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-  FieldTitle,
-} from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Spinner } from '@/components/ui/spinner';
 import type { OkPackId, OkScaffoldPlan, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
+import { PACK_BLURBS } from '@/lib/pack-copy';
 import { seedClient } from '@/lib/seed-client';
 
 const DEFAULT_PACK_ID: OkPackId = 'knowledge-base';
@@ -54,7 +47,6 @@ type DialogPhase =
   | { kind: 'error'; message: string }
   | { kind: 'applying'; plan: OkScaffoldPlan };
 
-type RootChoice = 'project-root' | 'subfolder';
 type DialogStep = 'pick' | 'configure';
 
 /**
@@ -76,7 +68,7 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
   const [phase, setPhase] = useState<DialogPhase>({ kind: 'loading' });
   const [packs, setPacks] = useState<OkSeedPackInfo[] | null>(null);
   const [selectedPackId, setSelectedPackId] = useState<OkPackId>(initialPackId ?? DEFAULT_PACK_ID);
-  const [rootChoice, setRootChoice] = useState<RootChoice>('project-root');
+  const [rootChoice, setRootChoice] = useState<SeedRootChoice>('project-root');
   const [subfolder, setSubfolder] = useState<string>('');
   // Tracks which step the body is rendering. Starts at 'configure' when the
   // caller pre-picked a pack (canvas entry); otherwise the user picks in
@@ -283,24 +275,12 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
     step === 'configure' && selectedPack
       ? t`Initialize ${selectedPackName}`
       : t`Initialize a starter pack`;
-  // The configure step has room for more than the one-line card blurb: a
-  // sentence or two on why you'd reach for this pack and what you'd do with it.
-  // Dialog-only copy, so it lives here rather than on the pack wire (a
-  // drift-guarded three-way mirror). Unmapped packs fall back to the short
-  // `description`.
-  const packBlurbs: Partial<Record<OkPackId, string>> = {
-    'knowledge-base': t`Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later.`,
-    'software-lifecycle': t`Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke.`,
-    'codebase-wiki': t`Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask.`,
-    'plain-notes': t`A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time.`,
-    okf: t`A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format.`,
-    'writing-pipeline': t`Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages.`,
-    'entity-vault': t`Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about.`,
-    worldbuilding: t`Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write.`,
-  };
+  const packBlurb = selectedPack ? PACK_BLURBS[selectedPack.id] : undefined;
   const description =
     step === 'configure' && selectedPack
-      ? (packBlurbs[selectedPack.id] ?? selectedPack.description)
+      ? packBlurb
+        ? t(packBlurb)
+        : selectedPack.description
       : t`Ready-made folders and templates to get you started quickly.`;
 
   function handlePackSelect(id: OkPackId) {
@@ -333,7 +313,7 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
           </DialogBody>
         ) : (
           <DialogBody className="space-y-6">
-            <RootPicker
+            <SeedRootPicker
               choice={rootChoice}
               subfolder={subfolder}
               placeholder={selectedPack?.defaultSubfolder ?? 'subfolder'}
@@ -378,73 +358,6 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
   );
 }
 
-function RootPicker({
-  choice,
-  subfolder,
-  placeholder,
-  onChoiceChange,
-  onSubfolderChange,
-}: {
-  choice: RootChoice;
-  subfolder: string;
-  placeholder: string;
-  onChoiceChange: (next: RootChoice) => void;
-  onSubfolderChange: (next: string) => void;
-}) {
-  const { t } = useLingui();
-  return (
-    <div className="space-y-2 py-1">
-      <p className="text-sm font-medium">
-        <Trans>Where should it live?</Trans>
-      </p>
-      <RadioGroup
-        className="sm:flex"
-        value={choice}
-        onValueChange={(next) => onChoiceChange(next as RootChoice)}
-      >
-        <FieldLabel htmlFor="seed-root-project-root">
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldTitle>
-                <Trans>Project root</Trans>
-              </FieldTitle>
-              <FieldDescription className="text-1sm">
-                <Trans>Add it directly to this project.</Trans>
-              </FieldDescription>
-            </FieldContent>
-            <RadioGroupItem value="project-root" id="seed-root-project-root" />
-          </Field>
-        </FieldLabel>
-        <FieldLabel htmlFor="seed-root-subfolder">
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldTitle>
-                <Trans>In a subfolder</Trans>
-              </FieldTitle>
-              <FieldDescription className="nth-last-2:mt-0 text-1sm">
-                <Trans>Reused if it already exists, created if not.</Trans>
-              </FieldDescription>
-              {choice === 'subfolder' && (
-                <Input
-                  value={subfolder}
-                  onChange={(e) => onSubfolderChange(e.target.value)}
-                  placeholder={placeholder}
-                  aria-label={t`Subfolder name`}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  className="mt-1.5 font-mono text-xs bg-background"
-                />
-              )}
-            </FieldContent>
-            <RadioGroupItem value="subfolder" id="seed-root-subfolder" />
-          </Field>
-        </FieldLabel>
-      </RadioGroup>
-    </div>
-  );
-}
-
 function SeedDialogBody({
   phase,
   selectedPack,
@@ -452,28 +365,8 @@ function SeedDialogBody({
   phase: DialogPhase;
   selectedPack: OkSeedPackInfo | undefined;
 }) {
-  const { t } = useLingui();
   if (phase.kind === 'loading') {
-    // Skeleton rows matching the real `CreatedItemsList` row shape (size-8 icon
-    // block, centered, + name/description lines), so the plan swaps in without a
-    // layout jump. Count tracks the pack's folders (the dominant row kind).
-    // `role="status"` so assistive tech hears it loading.
-    const rowCount = selectedPack?.folders.length ?? 6;
-    return (
-      <section role="status" aria-busy="true" aria-label={t`Loading preview`}>
-        <ul className="space-y-2">
-          {Array.from({ length: rowCount }, (_, i) => i).map((i) => (
-            <li key={`seed-skeleton-${i}`} aria-hidden="true" className="flex items-center gap-3">
-              <div className="size-8 shrink-0 animate-pulse rounded-lg bg-muted" />
-              <div className="min-w-0 flex-1 py-0.5">
-                <span className="block h-3.5 w-28 animate-pulse rounded bg-muted" />
-                <span className="mt-2 block h-3 w-4/5 animate-pulse rounded bg-muted" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    );
+    return <CreatedItemsSkeleton rowCount={selectedPack?.folders.length ?? 6} />;
   }
 
   if (phase.kind === 'error') {

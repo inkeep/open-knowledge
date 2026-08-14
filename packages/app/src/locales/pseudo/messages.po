@@ -1045,7 +1045,7 @@ msgstr ""
 msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
 msgstr ""
 
@@ -1136,7 +1136,7 @@ msgstr ""
 msgid "A short line shown under the title in the template list."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
 msgstr ""
 
@@ -1307,7 +1307,7 @@ msgstr ""
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
 msgstr ""
 
@@ -1893,6 +1893,7 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -2101,7 +2102,7 @@ msgstr ""
 msgid "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write."
 msgstr ""
 
@@ -2221,6 +2222,10 @@ msgstr ""
 
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
+msgstr ""
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Change pack"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -3862,12 +3867,6 @@ msgstr ""
 msgid "Create a new list item from the current list item."
 msgstr ""
 
-#. placeholder {0}: selectedPack.name
-#. placeholder {1}: selectedPack.entryCounts.folders
-#: src/components/CreateProjectDialog.tsx
-msgid "Create a new OpenKnowledge project from the <0>{0}</0> starter pack ({1, plural, one {# folder} other {# folders}} and starter templates) in the folder of your choice."
-msgstr ""
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Create a new OpenKnowledge project in the folder of your choice."
 msgstr ""
@@ -3907,6 +3906,10 @@ msgstr ""
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Create new project"
+msgstr ""
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Create new project from {selectedPackName}"
 msgstr ""
 
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -4601,6 +4604,7 @@ msgstr ""
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr ""
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr ""
@@ -4920,6 +4924,7 @@ msgstr ""
 msgid "Enter a 6-digit hex like #1A2B3C"
 msgstr ""
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/SeedDialog.tsx
 msgid "Enter a folder name (e.g. brain)."
 msgstr ""
@@ -5048,7 +5053,7 @@ msgstr ""
 msgid "Expires in {timeLabel}"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Explain how your codebase works so teammates and AI agents can find their way around. Good for documenting the architecture, the main parts, and the questions new contributors always ask."
 msgstr ""
 
@@ -6361,7 +6366,7 @@ msgstr ""
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "In a subfolder"
 msgstr ""
 
@@ -6806,7 +6811,7 @@ msgstr ""
 msgid "just now"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
 msgstr ""
 
@@ -6850,7 +6855,7 @@ msgstr ""
 msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr ""
 
@@ -7130,7 +7135,7 @@ msgstr ""
 msgid "Loading popular skills"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/components/CreatedItemsList.tsx
 msgid "Loading preview"
 msgstr ""
 
@@ -8875,6 +8880,10 @@ msgstr ""
 msgid "OpenKnowledge integrations checked."
 msgstr ""
 
+#: src/components/CreateProjectDialog.tsx
+msgid "OpenKnowledge is set up at the repository root here, so the pack goes inside <0>{sanitized}</0> rather than at the top of the repository."
+msgstr ""
+
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
 msgstr ""
@@ -9097,6 +9106,10 @@ msgstr ""
 
 #: src/components/ImportSkillForm.tsx
 msgid "owner/repo, a git URL, or a local path"
+msgstr ""
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Pack preview unavailable."
 msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -9565,7 +9578,7 @@ msgid "Project plugins are your project's authoring standard — turn them on or
 msgstr ""
 
 #: src/components/FileTree.tsx
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr ""
 
@@ -10441,7 +10454,7 @@ msgstr ""
 msgid "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Reused if it already exists, created if not."
 msgstr ""
 
@@ -11713,6 +11726,7 @@ msgstr ""
 msgid "starter pack"
 msgstr ""
 
+#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr ""
@@ -11824,7 +11838,7 @@ msgstr ""
 msgid "subagents"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Subfolder name"
 msgstr ""
 
@@ -12084,7 +12098,7 @@ msgstr ""
 msgid "Take a look if you'd like. This exact file is what we receive."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Take a piece of writing from a rough idea to a finished draft to something you're ready to share. Good for blog posts, essays, or anything you want to move through clear stages."
 msgstr ""
 
@@ -13155,7 +13169,7 @@ msgstr ""
 msgid "Turn on semantic search?"
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/lib/pack-copy.ts
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr ""
 
@@ -13825,7 +13839,7 @@ msgstr ""
 msgid "Where newly added attachments are placed."
 msgstr ""
 
-#: src/components/SeedDialog.tsx
+#: src/components/SeedRootPicker.tsx
 msgid "Where should it live?"
 msgstr ""
 

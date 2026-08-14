@@ -6311,6 +6311,7 @@ function registerIpcHandlers() {
         editors: args.editors,
         sharing: args.sharing,
         packId: args.packId,
+        rootDir: args.rootDir,
       });
     } catch (err) {
       if (err instanceof CreateNewProjectError) {

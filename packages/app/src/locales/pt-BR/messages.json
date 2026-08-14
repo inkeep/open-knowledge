@@ -44,6 +44,11 @@
     ],
     "-kKdCC": [["imported"], " habilidades instaladas a partir de ", ["0"]],
     "-kbIAr": ["Links e imagens"],
+    "-ksoxk": [
+      "Aqui o OpenKnowledge é configurado na raiz do repositório, então o pacote fica dentro de <0>",
+      ["sanitized"],
+      "</0> em vez de no topo do repositório."
+    ],
     "-l6jM7": ["Inicie um chat com o botão ＋ ou inicie um agente a partir de uma página."],
     "-lCAuQ": ["Carregando o grafo"],
     "-o5XAG": [
@@ -687,6 +692,7 @@
     "7m3Ade": ["instalações:"],
     "7qRHf0": ["Instalar para o Claude Chat e Cowork"],
     "7uBlRT": ["Copia o item em foco na árvore de arquivos para que Colar possa duplicá-lo."],
+    "7vxWET": ["Prévia do pacote indisponível."],
     "7wogIQ": [["0", "plural", { "one": ["Plugin"], "many": ["Plugins"], "other": ["Plugins"] }]],
     "80c4-P": ["Código copiado para a área de transferência"],
     "81H_23": ["Adicionar propriedades"],
@@ -1069,17 +1075,6 @@
     "D-Oh1s": ["Como configurar ", ["0"], " (abre no navegador)"],
     "D-_B7l": ["Conectado — este endpoint devolve vetores de ", ["0"], " dimensões."],
     "D12vtS": ["(desanexado)"],
-    "D2CwBE": [
-      "Cria um novo projeto do OpenKnowledge a partir do pacote inicial <0>",
-      ["0"],
-      "</0> (",
-      [
-        "1",
-        "plural",
-        { "one": ["#", " pasta"], "many": ["#", " pastas"], "other": ["#", " pastas"] }
-      ],
-      " e modelos iniciais) na pasta que você escolher."
-    ],
     "D2emTw": ["Algo deu errado ao enviar seus comentários. Tente de novo."],
     "D4H2N6": ["Remover ", ["tag"]],
     "D7hnvB": ["Ponderando…"],
@@ -1841,6 +1836,7 @@
     "MJuO1q": ["Janela de contexto:"],
     "MKEPCY": ["Acompanhar"],
     "MLVPcm": [["0"], " versão ", ["1"]],
+    "MPpSAg": ["Criar novo projeto a partir de ", ["selectedPackName"]],
     "MQ5LOx": [
       "Transforma ",
       ["display"],
@@ -4682,6 +4678,7 @@
       "Verifica seu projeto em relação ao Open Knowledge Format. Desligue-o a qualquer momento nas Configurações."
     ],
     "uKRYiW": ["Status de sincronização indisponível — erro do servidor."],
+    "uLVNZL": ["Trocar pacote"],
     "uL_Wx8": ["O terminal parou de forma inesperada."],
     "uM6jnS": ["Falha ao restaurar"],
     "uNGmQn": ["Não deu para executar o teste. Verifique se o OpenKnowledge ainda está rodando."],
