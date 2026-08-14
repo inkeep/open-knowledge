@@ -53,6 +53,7 @@
 
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { EDITOR_TOOLBAR_HEIGHT, editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 
 // EditorToolbar is absolutely positioned at the top of the scroll container,
 // 3.5rem tall. Frozen headers must clear it. One of the four load-bearing
@@ -60,7 +61,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 // move them together. Exported so selection-anchored floating menus can treat
 // the toolbar band as occluded (editor/bubble-menu/bubble-menu-clip.ts)
 // instead of keeping a fifth drifting copy of the value.
-export const TOOLBAR_HEIGHT = 56;
+export const TOOLBAR_HEIGHT = EDITOR_TOOLBAR_HEIGHT;
 
 // Subtle shadow to indicate the frozen row overlaps the table body.
 const FROZEN_SHADOW = '0 2px 4px rgba(0, 0, 0, 0.08)';
@@ -107,7 +108,7 @@ export function computeFreezeRange(
   const maxShift = tableHeight - headerHeight;
   if (maxShift <= 0) return null;
   // The scroll offset at which the table's top crosses the toolbar boundary.
-  const startOffset = scrollTop + tableTop - (containerTop + TOOLBAR_HEIGHT);
+  const startOffset = scrollTop + tableTop - (containerTop + editorToolbarOverlapPx());
   return { startOffset, endOffset: startOffset + maxShift, maxShift };
 }
 
@@ -336,7 +337,7 @@ function computeAndApplyFrozenHeaders(
 
     // Fallback: compute the instantaneous shift and apply it directly.
     const shift = Math.max(0, Math.min(scrollTop - range.startOffset, range.maxShift));
-    if (shift <= 0 || tableRect.bottom <= containerTop + TOOLBAR_HEIGHT) {
+    if (shift <= 0 || tableRect.bottom <= containerTop + editorToolbarOverlapPx()) {
       resetHeaderCells(firstRow);
       continue;
     }

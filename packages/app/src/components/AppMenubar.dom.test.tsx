@@ -2,9 +2,10 @@
  * DOM tests for AppMenubar's custom Windows/Linux menus.
  *
  * AppMenubar is the custom-drawn Windows/Linux menu bar; it self-gates on
- * `window.okDesktop` and returns null on darwin. These pin the Help entries
- * that route to in-app dialogs and the View history rows, including their
- * ordering, shortcut hints, and `bridge.menu.dispatch` payloads.
+ * `window.okDesktop` and returns null on darwin and in focused note windows.
+ * These pin the Help entries that route to in-app dialogs and the View history
+ * rows, including their ordering, shortcut hints, and
+ * `bridge.menu.dispatch` payloads.
  *
  * Invocation: `pnpm exec vitest run --config vitest.dom.config.ts
  * src/components/AppMenubar.dom.test.tsx` from `packages/app/`.
@@ -22,12 +23,13 @@ vi.doMock('@lingui/react/macro', () => ({
 
 type DispatchMock = ReturnType<typeof vi.fn>;
 
-function installBridge(platform: string): DispatchMock {
+function installBridge(platform: string, mode: 'editor' | 'note' = 'editor'): DispatchMock {
   // `query` resolves null so the snapshot-gated rows stay hidden; the two
   // rows under test are unconditional.
   const dispatch = vi.fn(() => Promise.resolve(null));
   (window as unknown as { okDesktop?: unknown }).okDesktop = {
     platform,
+    config: { mode },
     menu: { dispatch },
   };
   return dispatch;
@@ -61,6 +63,16 @@ describe('AppMenubar Help menu', () => {
   });
 
   test('returns null on the web host', async () => {
+    const { AppMenubar } = await import('./AppMenubar');
+    const { container } = render(<AppMenubar />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  test.each([
+    'win32',
+    'linux',
+  ] as const)('returns null in a %s note window, where app-wide menu chrome is intentionally absent', async (platform) => {
+    installBridge(platform, 'note');
     const { AppMenubar } = await import('./AppMenubar');
     const { container } = render(<AppMenubar />);
     expect(container.firstChild).toBeNull();

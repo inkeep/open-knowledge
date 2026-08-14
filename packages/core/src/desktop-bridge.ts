@@ -64,6 +64,47 @@ export interface OkTerminalDockState {
   agents?: { order: string[]; activeKey: string | null };
 }
 
+/**
+ * A conversation or comments action started in a popped-out note window and
+ * handed back to the owning project window. The note renderer composes the
+ * same bounded prompt it would use locally; main only resolves/focuses the
+ * project window and forwards this typed intent.
+ */
+export type OkNoteWindowMainAction =
+  | {
+      readonly kind: 'active-input';
+      readonly text: string;
+      readonly newTab: boolean;
+      readonly submit: boolean;
+      readonly target?: 'agents';
+    }
+  | {
+      readonly kind: 'agent-thread';
+      readonly agentSource: 'registry' | 'custom';
+      readonly agentId: string;
+      readonly prompt: string | null;
+      readonly docName: string | null;
+      readonly titleHint: string | null;
+    }
+  | {
+      readonly kind: 'terminal-launch';
+      readonly prompt: string;
+      readonly cli: TerminalCli;
+      readonly stage: boolean;
+    }
+  | {
+      readonly kind: 'reveal-comments';
+      readonly docName: string;
+      readonly scope: 'doc' | 'queue';
+    };
+
+export type OkNoteWindowMainActionResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: 'invalid-action' | 'not-note-window' | 'project-not-open';
+    };
+
 export type OkTerminalDockStateUpdate =
   | {
       surface: 'terminal';
@@ -85,7 +126,7 @@ export type OkTerminalDockStateWriteResult =
     };
 
 /** Render mode picked by the main process when creating a BrowserWindow. */
-export type OkDesktopMode = 'editor' | 'navigator' | 'terminal';
+export type OkDesktopMode = 'editor' | 'navigator' | 'terminal' | 'note';
 
 /**
  * Config values injected at preload-exposure time. A frozen snapshot, not a
@@ -103,7 +144,7 @@ export interface OkDesktopConfig {
   readonly projectPath: string;
   /** Display name for the project (usually basename of projectPath). */
   readonly projectName: string;
-  /** Render mode — `navigator` renders the Project Navigator, `editor` renders the doc editor, `terminal` renders the standalone terminal window. */
+  /** Render mode — `navigator` renders the Project Navigator, `editor` renders the doc editor, `terminal` renders the standalone terminal window, `note` renders a single popped-out document full-window. */
   readonly mode: OkDesktopMode;
   readonly e2eSmoke: boolean;
   readonly singleFile: boolean;
@@ -1633,6 +1674,29 @@ export interface OkDesktopBridge {
    */
   navigator: {
     open(): Promise<void>;
+  };
+
+  /** Popped-out single-document windows (`--ok-mode=note`). */
+  noteWindow: {
+    /**
+     * Pop `docName` out into its own window, or focus the window already
+     * showing it. `no-project` when the calling window has no project context.
+     */
+    open(
+      docName: string,
+      entryPoint: 'tab-menu' | 'palette',
+    ): Promise<
+      | { ok: true; outcome: 'created' | 'focused' }
+      | { ok: false; reason: 'no-project' | 'invalid-request' }
+    >;
+    /**
+     * Focus the owning project window and deliver a conversation/comments
+     * action there. Note-window renderers call this instead of opening chrome
+     * that deliberately does not exist in their reduced surface.
+     */
+    dispatchToMain(action: OkNoteWindowMainAction): Promise<OkNoteWindowMainActionResult>;
+    /** Receive a note-window action in the owning project renderer. */
+    onMainAction(cb: (action: OkNoteWindowMainAction) => void): OkUnsubscribe;
   };
 
   /**

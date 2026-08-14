@@ -2600,6 +2600,10 @@ msgstr ""
 msgid "Close this chat's tab to delete it"
 msgstr ""
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3288,6 +3292,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
+msgstr ""
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -8614,6 +8622,11 @@ msgstr ""
 msgid "Open in file manager"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr ""
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr ""
@@ -12649,6 +12662,10 @@ msgstr ""
 
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
+msgstr ""
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx

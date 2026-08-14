@@ -4,6 +4,7 @@ import {
   applyReducedTransparency,
   type BrowserWindowVibrancyTarget,
   type ReducedTransparencyDeps,
+  setPreferredWindowVibrancy,
 } from '../../src/main/reduced-transparency-handler.ts';
 
 interface WindowFixture {
@@ -102,6 +103,36 @@ describe('applyReducedTransparency — restore path (reduced=false)', () => {
 
     expect(w.setVibrancy.mock.calls[0]).toEqual(['window']);
   });
+
+  test('restores a preferred material without changing the shared default', () => {
+    const editor = makeWindow();
+    const note = makeWindow();
+    setPreferredWindowVibrancy(note.win, 'window');
+    const deps: ReducedTransparencyDeps = {
+      getAllWindows: () => [editor.win, note.win],
+      defaultVibrancy: 'sidebar',
+    };
+
+    applyReducedTransparency(deps, false);
+
+    expect(editor.setVibrancy.mock.calls[0]).toEqual(['sidebar']);
+    expect(note.setVibrancy.mock.calls[0]).toEqual(['window']);
+  });
+
+  test('reduced transparency disables preferred and default materials alike', () => {
+    const editor = makeWindow();
+    const note = makeWindow();
+    setPreferredWindowVibrancy(note.win, 'window');
+    const deps: ReducedTransparencyDeps = {
+      getAllWindows: () => [editor.win, note.win],
+      defaultVibrancy: 'sidebar',
+    };
+
+    applyReducedTransparency(deps, true);
+
+    expect(editor.setVibrancy.mock.calls[0]).toEqual([null]);
+    expect(note.setVibrancy.mock.calls[0]).toEqual([null]);
+  });
 });
 
 describe('applyReducedTransparency — diagnostic logging', () => {
@@ -144,6 +175,24 @@ describe('applyReducedTransparency — diagnostic logging', () => {
     expect(parsed.reducedTransparency).toBe(false);
     expect(parsed.vibrancy).toBe('sidebar');
     expect(parsed.windowCount).toBe(1);
+  });
+
+  test('reports every material actually restored when windows have preferences', () => {
+    const editor = makeWindow();
+    const note = makeWindow();
+    setPreferredWindowVibrancy(note.win, 'window');
+    const warn = vi.fn(() => {});
+    const deps: ReducedTransparencyDeps = {
+      getAllWindows: () => [editor.win, note.win],
+      defaultVibrancy: 'sidebar',
+      warn,
+    };
+
+    applyReducedTransparency(deps, false);
+
+    const line = warn.mock.calls.at(-1)?.[0] as unknown as string;
+    const parsed = JSON.parse(line);
+    expect(parsed.vibrancyMaterials).toEqual({ sidebar: 1, window: 1 });
   });
 
   test('windowCount counts only successfully-applied windows; destroyed windows go to destroyedCount', () => {

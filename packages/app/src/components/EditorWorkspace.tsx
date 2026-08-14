@@ -21,12 +21,18 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { docNameForNavigationTarget } from '@/components/navigation-targets';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { EditorPaneState, PaneSide } from '@/editor/editor-panes';
 import { openSidebarDropPayload } from '@/editor/sidebar-drop';
+import {
+  getNoteWindowDeletedDoc,
+  subscribeNoteWindowDeleted,
+} from '@/lib/note-window-deleted-store';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { hasSidebarDragType, parseSidebarDragPayload } from '@/lib/sidebar-drag';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
@@ -39,6 +45,7 @@ import {
   isEditorTabDropData,
   TAB_KEYBOARD_DRAG_CODES,
 } from './editor-tabs-chrome';
+import { NoteWindowDeletedState } from './NoteWindowDeletedState';
 
 const MIN_EDITOR_PANE_WIDTH = 300;
 
@@ -360,6 +367,15 @@ export function EditorWorkspace({
     visibleTabIdsByPane,
   } = useDocumentContext();
   const singleFile = useSingleFileMode();
+  // Two surfaces show exactly one document with no tab strip and no split: an
+  // ephemeral single-file session (`ok <file>`) and a popped-out note window.
+  // They reach it for different reasons but render the same reduced workspace.
+  const singleDocumentSurface = singleFile || isNoteWindow();
+  const deletedDocName = useSyncExternalStore(
+    subscribeNoteWindowDeleted,
+    getNoteWindowDeletedDoc,
+    () => null,
+  );
   const desktopSessionRestorePending =
     !singleFile &&
     !tabSessionLoaded &&
@@ -686,8 +702,20 @@ export function EditorWorkspace({
     </div>
   );
 
-  if (singleFile) {
+  if (singleDocumentSurface) {
     const pane = panes.find((candidate) => candidate.id === focusedPaneId) ?? panes[0];
+    // A deleted document replaces the editor outright. The header stays so the
+    // window keeps its chrome and drag region while the user reads and closes.
+    if (deletedDocName !== null) {
+      return (
+        <>
+          {renderHeader(null)}
+          <div data-editor-workspace="" className="relative min-h-0 flex-1 overflow-hidden">
+            <NoteWindowDeletedState docName={deletedDocName} />
+          </div>
+        </>
+      );
+    }
     return (
       <>
         {renderHeader(null)}

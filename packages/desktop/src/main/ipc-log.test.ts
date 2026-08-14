@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { logIpcError } from './ipc-log.ts';
+import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 
 interface CapturedWarn {
   readonly args: readonly unknown[];
@@ -41,6 +41,42 @@ function captureWarn(fn: () => void): CapturedWarn[] {
 }
 
 describe('logIpcError — cause boundary normalization', () => {
+  test('withIpcErrorLogging records and rethrows unexpected handler failures', async () => {
+    const err = new Error('note window constructor failed');
+    err.stack = 'STACK: note window constructor failed';
+    const captured: CapturedWarn[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => {
+      captured.push({ args });
+    };
+    try {
+      await expect(
+        withIpcErrorLogging(
+          {
+            channel: 'ok:window:open-note',
+            reason: 'unexpected',
+            handler: 'openNoteWindow',
+          },
+          async () => {
+            throw err;
+          },
+        ),
+      ).rejects.toBe(err);
+    } finally {
+      console.warn = original;
+    }
+
+    expect(captured).toHaveLength(1);
+    const parsed = JSON.parse(captured[0].args[0] as string);
+    expect(parsed).toMatchObject({
+      event: 'ipc.error',
+      channel: 'ok:window:open-note',
+      reason: 'unexpected',
+      handler: 'openNoteWindow',
+    });
+    expect(parsed.cause.stack).toBe('STACK: note window constructor failed');
+  });
+
   test('plain-object cause round-trips faithfully', () => {
     const captured = captureWarn(() => {
       logIpcError({

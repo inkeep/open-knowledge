@@ -21,6 +21,8 @@ import {
 } from '@/editor/extensions/nested-cm-extensions';
 import type { RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { useConfigContext } from '@/lib/config-provider';
+import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
+import { claimNoteWindowInitialFocus } from '@/lib/note-window-focus';
 import { registerSourceView, unregisterSourceView } from './active-source-view';
 import { createSourceClipboardExtension } from './clipboard/index.ts';
 import { type CmCacheEntry, mountCmEditor, parkCmEditor } from './editor-cache';
@@ -56,11 +58,8 @@ import { attachTypingBurstDetector } from './typing-burst-detector';
 // bounding rect and does NOT read `scroll-padding-top` from the scroll ancestor,
 // so the `scroll-pt-14` on ScrollPreservingContainer in
 // components/EditorActivityPool.tsx does not reach source mode. EditorView.scrollMargins
-// is CM6's native equivalent — restate the inset here. Keep in sync with `pt-14`
-// / `scroll-pt-14` in components/EditorActivityPool.tsx; rendered height from
-// components/EditorToolbar.tsx.
-const TOOLBAR_OVERLAP_PX = 56;
-
+// is CM6's native equivalent — derive the inset from the same note-window-aware
+// helper as the shared scroll container.
 // CodeMirror's search config asks for a scroll EFFECT rather than performing
 // the scroll, so standing a match-scroll down means handing back an effect no
 // extension reads.
@@ -349,7 +348,7 @@ export function SourceEditor({
                   height: '100%',
                 },
               }),
-              EditorView.scrollMargins.of(() => ({ top: TOOLBAR_OVERLAP_PX })),
+              EditorView.scrollMargins.of(() => ({ top: editorToolbarOverlapPx() })),
             ],
           });
           const view = new EditorView({ state, parent: el });
@@ -387,6 +386,10 @@ export function SourceEditor({
       // synchronously at flip time, before this editor is hidden, and so outline
       // active-heading tracking can measure this document's line geometry.
       registerSourceView(docName, entry.view);
+      // A popped-out note window has nothing else to focus, so the first editor
+      // surface to mount takes the caret. One-shot per window: later mounts
+      // (Activity reveal, mode flip) must not yank focus back mid-session.
+      if (claimNoteWindowInitialFocus()) entry.view.focus();
     } catch (err) {
       // Surface mount failures through DocumentErrorBoundary.
       console.error('[SourceEditor] mountCmEditor failed', err);

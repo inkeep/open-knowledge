@@ -2600,6 +2600,10 @@ msgstr "Tutup terminal"
 msgid "Close this chat's tab to delete it"
 msgstr "Tutup tab obrolan ini untuk menghapusnya"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "Tutup jendela"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3289,6 +3293,10 @@ msgstr "Pemilih folder tidak dapat dibuka"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "Halaman masuk GitHub tidak dapat dibuka. Silakan coba lagi."
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "Tidak dapat membuka dokumen ini di jendela baru."
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8614,6 +8622,11 @@ msgstr "Buka di aplikasi bawaan"
 msgid "Open in file manager"
 msgstr "Buka di pengelola berkas"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "Buka di Jendela Baru"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "Buka di Slidev"
@@ -12650,6 +12663,10 @@ msgstr "Dokumen ini sudah aktif di penyunting. Gunakan Buka untuk menciutkan gra
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "Dokumen ini kehilangan properti yang wajib"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "Dokumen ini telah dihapus"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

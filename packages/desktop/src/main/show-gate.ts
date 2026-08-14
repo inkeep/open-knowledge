@@ -100,7 +100,7 @@ export interface ShowGateRegistry {
   fireThemeApplied(window: BrowserWindowLike): void;
 }
 
-type WindowKind = 'editor' | 'navigator' | 'terminal';
+type WindowKind = 'editor' | 'navigator' | 'terminal' | 'note';
 
 interface PerWindowGateState {
   readyToShow: boolean;

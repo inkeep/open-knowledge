@@ -194,6 +194,7 @@
       "Le dossier sur le disque et l'id que les agents utilisent pour invoquer cette compétence."
     ],
     "1jym2J": ["Ne pas envoyer ce commentaire"],
+    "1lFNz3": ["Ce document a été supprimé"],
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
     "1oSHI0": ["Impossible d'installer ", ["skillName"], " : ", ["0"]],
@@ -1213,6 +1214,7 @@
       "Gérez le compte GitHub qu'OpenKnowledge utilise pour parcourir et synchroniser vos dépôts."
     ],
     "E7BhZn": ["Note vierge"],
+    "E91VZY": ["Ouvrir dans une nouvelle fenêtre"],
     "E9bKSA": ["Création"],
     "E9gh86": ["Vous pouvez joindre jusqu'à ", ["MAX_ATTACHMENTS"], " images."],
     "EARn6h": ["Impossible de partager les compétences — ", ["detail"], "."],
@@ -4313,6 +4315,7 @@
     "nzHlj8": ["Fermer ", ["0"]],
     "nzaV6Q": ["Miniatures des pages"],
     "o0bHtA": ["Par OpenKnowledge"],
+    "o1veZ6": ["Impossible d'ouvrir ce document dans une nouvelle fenêtre."],
     "o49mDZ": ["Chargement de l'historique de la chronologie"],
     "o7AkQ0": ["Afficher les résolus"],
     "o9CrsQ": ["research-note"],
@@ -4602,6 +4605,7 @@
     "rbrHTd": ["Approuvé — ", ["optionName"]],
     "rcJmK8": ["Convertir les emplacements en copies"],
     "rdU729": ["Mise en page"],
+    "rf8fiC": ["Fermer la fenêtre"],
     "rfFpcF": ["Retirer ", ["chip"]],
     "rg7hNd": ["Évaluez votre expérience"],
     "rgPqOw": ["Convertit le bloc actuel en paragraphe."],

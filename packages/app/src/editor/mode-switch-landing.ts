@@ -25,6 +25,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { EditorView as ProseMirrorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
+import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 import { getEditorForDoc } from './active-editor';
 import { getSourceViewForDoc } from './active-source-view';
 import { visibleEditorScrollContainer } from './editor-cache';
@@ -54,11 +55,8 @@ import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from './view-in-source-
 // Toolbar exclusion zone in px (= EditorToolbar's rendered 3.5rem height). The
 // toolbar overlays the top of the shared scroller, so both the capture probe
 // (below the toolbar) and the landing offset (target sits just under it) start
-// here. Restated rather than shared to keep this leaf free of a React-component
-// import cycle; keep in sync with TOOLBAR_OVERLAP_PX in SourceEditor.tsx and the
-// scroll-pt-14 in components/EditorActivityPool.tsx.
-const TOOLBAR_OVERLAP_PX = 56;
-
+// here. The shared helper keeps this leaf free of a React-component import cycle
+// while returning zero when the note titlebar owns the controls.
 let sharedResolver: ModeSwitchPositionResolver | null = null;
 function getSharedResolver(): ModeSwitchPositionResolver {
   sharedResolver ??= createApproxResolver(getSharedMarkdownManager());
@@ -310,7 +308,8 @@ function findScrollContainer(): HTMLElement | null {
 function topmostVisiblePos(view: ProseMirrorView, container: HTMLElement): number | null {
   const rect = container.getBoundingClientRect();
   const x = rect.left + rect.width / 2;
-  for (const dy of [TOOLBAR_OVERLAP_PX + 1, TOOLBAR_OVERLAP_PX + 12, TOOLBAR_OVERLAP_PX + 40]) {
+  const toolbarOverlap = editorToolbarOverlapPx();
+  for (const dy of [toolbarOverlap + 1, toolbarOverlap + 12, toolbarOverlap + 40]) {
     const found = view.posAtCoords({ left: x, top: rect.top + dy });
     if (found) return found.pos;
   }
@@ -326,7 +325,8 @@ function topmostVisiblePos(view: ProseMirrorView, container: HTMLElement): numbe
 function topmostVisibleSourceOffset(view: EditorView, container: HTMLElement): number | null {
   const rect = container.getBoundingClientRect();
   const x = rect.left + rect.width / 2;
-  for (const dy of [TOOLBAR_OVERLAP_PX + 1, TOOLBAR_OVERLAP_PX + 12, TOOLBAR_OVERLAP_PX + 40]) {
+  const toolbarOverlap = editorToolbarOverlapPx();
+  for (const dy of [toolbarOverlap + 1, toolbarOverlap + 12, toolbarOverlap + 40]) {
     const pos = view.posAtCoords({ x, y: rect.top + dy });
     if (pos !== null) return pos;
   }
@@ -476,7 +476,7 @@ export function startSourceLanding(params: {
       grade: target.confidence,
       landedMode: 'source',
       transition,
-      toolbarOffset: TOOLBAR_OVERLAP_PX,
+      toolbarOffset: editorToolbarOverlapPx(),
       onOutcome: isJump
         ? (outcome) => {
             // Flash the whole block once it is genuinely on screen (the controller
@@ -542,7 +542,7 @@ export function startWysiwygLanding(params: {
     grade: target.confidence,
     landedMode: 'wysiwyg',
     transition,
-    toolbarOffset: TOOLBAR_OVERLAP_PX,
+    toolbarOffset: editorToolbarOverlapPx(),
     onDiscardQueuedTarget: () => clearPendingWysiwygNavigation(docName),
   });
 }

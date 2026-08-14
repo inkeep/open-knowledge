@@ -12,6 +12,7 @@ import {
   PanelRight,
   PinIcon,
   PlusIcon,
+  SquareArrowOutUpRight,
   Trash2,
   XIcon,
 } from 'lucide-react';
@@ -60,6 +61,7 @@ import { useSkills } from '@/hooks/use-skills';
 import { emitFileTreeMenuActionRename } from '@/lib/file-tree-menu-action-events';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
+import { openDocInNoteWindow } from '@/lib/open-note-window';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { cn } from '@/lib/utils';
 import {
@@ -321,6 +323,17 @@ function EditorTabContextMenu({
   );
   const closableTabIds = filterClosableTabIds(openTabs, pinnedTabIds);
   const canMoveToNewPane = canSplit && openTabs.length > 1;
+  // Pop-out is desktop-only and document-only. Two conditions, because neither
+  // alone is enough: the parsed kind rules out folder / asset / skill tabs,
+  // which carry their own id prefixes, while `target` rules out a blank "New
+  // tab" — its id has no prefix, so it parses AS a doc, but it is backed by no
+  // file and there would be nothing for the new window to show. Already inside a
+  // note window there is no tab strip, so this menu never renders there.
+  const parsedTab = parseEditorTabId(tabId);
+  const popOutDocName =
+    parsedTab.kind === 'doc' && target && typeof window !== 'undefined' && window.okDesktop
+      ? parsedTab.docName
+      : null;
 
   return (
     <>
@@ -407,6 +420,17 @@ function EditorTabContextMenu({
               <PanelRight aria-hidden="true" />
               <Trans>Move to new pane right</Trans>
             </ContextMenuItem>
+            {popOutDocName ? (
+              <ContextMenuItem
+                data-testid="editor-tab-context-open-in-new-window"
+                onSelect={() => {
+                  void openDocInNoteWindow(popOutDocName, 'tab-menu');
+                }}
+              >
+                <SquareArrowOutUpRight aria-hidden="true" />
+                <Trans>Open in New Window</Trans>
+              </ContextMenuItem>
+            ) : null}
           </ContextMenuGroup>
         </ContextMenuContent>
       </ContextMenu>

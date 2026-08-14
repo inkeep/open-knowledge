@@ -1,4 +1,9 @@
-import type { TerminalCli, TerminalPlacement } from '@inkeep/open-knowledge-core';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+import {
+  isEditableTextDocFile,
+  type TerminalCli,
+  type TerminalPlacement,
+} from '@inkeep/open-knowledge-core';
 import {
   lazy,
   Suspense,
@@ -27,17 +32,20 @@ import { authPromptStore } from '@/lib/auth-prompt-store';
 import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { readTerminalPlacement, writeTerminalPlacement } from '@/lib/terminal-placement-store';
 import { readTerminalRightWidth, writeTerminalRightWidth } from '@/lib/terminal-right-width-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
+import { useSyncStatus } from '@/presence/use-sync-status';
 import { AuthModal } from './AuthModal';
 import { AutoSyncOnboardingDialog } from './AutoSyncOnboardingDialog';
 import { resolveAutoSyncOnboarding } from './auto-sync-onboarding-gate';
 import { type PanelTab, TABS } from './DocPanel';
 import { EditorArea, type SessionPlacements } from './EditorArea';
 import { EditorHeader } from './EditorHeader';
+import { EditorModeToggle } from './EditorModeToggle';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import {
@@ -105,6 +113,25 @@ export interface ThreadLaunchIntent {
 
 export type EditorMode = EditorModeValue;
 
+function NoteWindowModeToggle({
+  provider,
+  editorMode,
+  onModeChange,
+}: {
+  provider: HocuspocusProvider | null;
+  editorMode: EditorModeValue;
+  onModeChange: (mode: EditorModeValue) => void;
+}) {
+  const syncStatus = useSyncStatus(provider);
+  return (
+    <EditorModeToggle
+      isSourceMode={editorMode === 'source'}
+      onModeChange={onModeChange}
+      sourceDisabled={syncStatus !== 'connected' && syncStatus !== 'synced'}
+    />
+  );
+}
+
 interface EditorPaneProps {
   onOpenSearch?: () => void;
 }
@@ -149,7 +176,12 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // (node-pty is not bundled there; terminal dock dark off-mac), where a
   // rendered affordance would only surface a spawn failure. Gate every
   // terminal affordance on both so a control that can't launch never renders.
+  // A popped-out note window is a reading/writing surface for one document, so
+  // it carries no docked terminal. Deferred rather than refused: the surface is
+  // structurally the heaviest of the deferred chrome, not ruled out forever.
+  const noteWindow = isNoteWindow();
   const terminalAvailable =
+    !noteWindow &&
     desktopBridge != null &&
     desktopBridge.terminal != null &&
     desktopBridge.config.ptyAvailable === true;
@@ -319,6 +351,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // chord per destination is the point, and two would put the same intent behind
   // a key that says "terminal".
   useEffect(() => {
+    if (noteWindow) return;
     return subscribeLocalMenuAction((action) => {
       if (action === 'toggle-terminal') {
         setTerminalVisible((visible) => !visible);
@@ -336,7 +369,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         setAgentsVisible((visible) => !visible);
       }
     });
-  }, []);
+  }, [noteWindow]);
 
   // Unlike the ⌘L listener below, this one stays mounted on desktop: ⌃` carries
   // no native accelerator, so the renderer is its only delivery path. ⌘J is
@@ -550,6 +583,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // (always, even on a read failure) releases the deferred pushes so the View
   // menu converges. Desktop-only.
   useEffect(() => {
+    if (noteWindow) {
+      setDockRestoreSettled(true);
+      return;
+    }
     const bridge = window.okDesktop;
     if (bridge == null) return;
     // Capability-guard like TerminalDock's list(): a desktop bridge without a
@@ -587,7 +624,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [noteWindow]);
 
   // Adoption telemetry: count each open (the false→true transition). Starts
   // hidden, so the mount run is a no-op; desktop-only (the dock is too). The
@@ -736,17 +773,26 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             activeTab={activeTab}
             onActiveTabChange={setActiveTab}
             terminalBridge={terminalAvailable ? desktopBridge : null}
-            terminalVisible={terminalVisible}
+            terminalVisible={noteWindow ? false : terminalVisible}
             terminalPlacement={terminalPlacement}
             terminalRightWidth={terminalRightWidth}
             onTerminalVisibleChange={setTerminalVisible}
             onTerminalRightWidthChange={setTerminalRightWidth}
-            agentsVisible={agentsVisible}
+            agentsVisible={noteWindow ? false : agentsVisible}
             onAgentsVisibleChange={setAgentsVisible}
             onSessionPlacements={setPlacements}
-            onRevealAgents={revealAgents}
+            onRevealAgents={noteWindow ? undefined : revealAgents}
             renderWorkspaceHeader={(tabs) => (
               <EditorHeader
+                noteModeToggle={
+                  noteWindow && activeDocName !== null && !isEditableTextDocFile(activeDocName) ? (
+                    <NoteWindowModeToggle
+                      provider={activeProvider}
+                      editorMode={editorMode}
+                      onModeChange={handleModeChange}
+                    />
+                  ) : null
+                }
                 onSignIn={() => {
                   setAuthInitialStep('auth');
                   setAuthModalOpen(true);
@@ -768,20 +814,22 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
           unavailable. The terminal host mounts only where a shell can actually
           spawn (`terminalAvailable` folds in `ptyAvailable`); an empty terminal
           dock on those hosts would be a control that can never do anything. */}
-      <Suspense fallback={null}>
-        <SessionsHost
-          surface="agents-panel"
-          bridge={desktopBridge}
-          terminalCapable={terminalAvailable}
-          visible={agentsVisible}
-          onVisibleChange={setAgentsVisible}
-          threadLaunch={threadLaunch}
-          installedClis={installedClis}
-          container={placements.agents.container}
-          isShowing={placements.agents.isShowing}
-          onRequestEditorFocus={() => placements.editorRegion?.focus()}
-        />
-      </Suspense>
+      {noteWindow ? null : (
+        <Suspense fallback={null}>
+          <SessionsHost
+            surface="agents-panel"
+            bridge={desktopBridge}
+            terminalCapable={terminalAvailable}
+            visible={agentsVisible}
+            onVisibleChange={setAgentsVisible}
+            threadLaunch={threadLaunch}
+            installedClis={installedClis}
+            container={placements.agents.container}
+            isShowing={placements.agents.isShowing}
+            onRequestEditorFocus={() => placements.editorRegion?.focus()}
+          />
+        </Suspense>
+      )}
       {terminalAvailable ? (
         <Suspense fallback={null}>
           <SessionsHost

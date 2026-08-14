@@ -23,6 +23,8 @@ import {
 } from '@/lib/doc-hash';
 import { emitBranchChanged, emitDocumentsChanged } from '@/lib/documents-events';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { markNoteWindowDocDeleted } from '@/lib/note-window-deleted-store';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { mark } from '@/lib/perf';
 import { refreshServerInfo } from '@/lib/server-info-refresh';
 import { useCollabUrl } from '@/lib/use-collab-url';
@@ -65,7 +67,7 @@ import {
   filterOpenTabsForKnownTargets,
   folderTabId,
   isSkillTabId,
-  localTabSessionStorageKey,
+  localTabSessionKeyForMode,
   parseEditorTabId,
   parseEditorTabSessionState,
   readLocalTabSessionState,
@@ -502,8 +504,7 @@ function getDesktopBridge() {
 
 function getLocalTabSessionKey(): string | null {
   if (typeof window === 'undefined') return null;
-  if (window.okDesktop?.config.mode === 'editor') return null;
-  return localTabSessionStorageKey(window.location.origin);
+  return localTabSessionKeyForMode(window.okDesktop?.config.mode, window.location.origin);
 }
 
 function readInitialLocalTabSession() {
@@ -1346,6 +1347,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         const focused = focusedPane(workspaceRef.current);
         navigateToHash(focused.activeTabId ? hashFromTabId(focused.activeTabId) : '');
       },
+      // A popped-out window has one document and no home surface to land on, so
+      // it shows an explicit deleted state rather than navigating. Declining in
+      // every other window keeps the workspace behavior untouched.
+      showDocumentDeletedState: (docName) =>
+        isNoteWindow() ? markNoteWindowDocDeleted(docName) : false,
     });
   }
 

@@ -29,6 +29,7 @@
     "rebuild:native": "electron-builder install-app-deps",
     "smoke:mock-update": "OK_UPDATER_FORCE_DEV=1 node scripts/smoke-mock-update.mjs",
     "instances": "node scripts/launch-instances.mjs",
+    "lint": "biome check . && oxlint --max-warnings 0 .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -1200,6 +1200,38 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
     (findByLabel(collapsed, 'Show document panel')?.click as (() => void) | undefined)?.();
     expect(onToggleDocPanel2).toHaveBeenCalledTimes(1);
   });
+
+  test('note windows omit editor-only panel, sidebar, and terminal commands', () => {
+    const template = buildMenuTemplateForPlatform(
+      'darwin',
+      makeDeps({
+        noteWindow: true,
+        onToggleSidebar: vi.fn(() => {}),
+        onToggleDocPanel: vi.fn(() => {}),
+        onToggleTerminal: vi.fn(() => {}),
+        onMoveTerminal: vi.fn(() => {}),
+        onNewTerminal: vi.fn(() => {}),
+        onNewTerminalWindow: vi.fn(() => {}),
+        onKillTerminal: vi.fn(() => {}),
+        terminalLive: true,
+        onToggleAgentPanel: vi.fn(() => {}),
+      }),
+    );
+
+    expect(findByLabel(template, 'Hide sidebar')).toBeUndefined();
+    expect(findByLabel(template, 'Show sidebar')).toBeUndefined();
+    expect(findByLabel(template, 'Hide document panel')).toBeUndefined();
+    expect(findByLabel(template, 'Show document panel')).toBeUndefined();
+    expect(findByLabel(template, 'Show Terminal')).toBeUndefined();
+    expect(findByLabel(template, 'Hide Terminal')).toBeUndefined();
+    expect(findByLabel(template, 'Move Terminal to right')).toBeUndefined();
+    expect(findByLabel(template, 'Move Terminal to bottom')).toBeUndefined();
+    expect(findByLabel(template, 'New Terminal')).toBeUndefined();
+    expect(findByLabel(template, 'Kill Terminal')).toBeUndefined();
+    expect(findByLabel(template, 'New Terminal Window')).toBeDefined();
+    expect(findByLabel(template, 'Show Agents')).toBeUndefined();
+    expect(findByLabel(template, 'Hide Agents')).toBeUndefined();
+  });
 });
 
 describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
@@ -1637,5 +1669,66 @@ describe('buildMenuTemplate — View navigation history', () => {
     const template = buildMenuTemplate(makeDeps());
     expect(findByLabel(template, 'Back')?.enabled).toBe(false);
     expect(findByLabel(template, 'Forward')?.enabled).toBe(false);
+  });
+});
+
+describe('Window → Open in New Window', () => {
+  const LABEL = 'Open in New Window';
+
+  test('is enabled when the focused window has a document active', () => {
+    const template = buildMenuTemplate(
+      makeDeps({
+        activeTarget: { kind: 'doc', identifier: 'notes/alpha' },
+        onOpenInNewWindow: vi.fn(() => {}),
+      }),
+    );
+    expect(findByLabel(template, LABEL)?.enabled).toBe(true);
+  });
+
+  test('is disabled when the focused window has no document active', () => {
+    // A menu leaf disables rather than hides — the user opened this menu
+    // deliberately, so the row should be visible and inert, not absent.
+    for (const activeTarget of [
+      { kind: 'folder' as const, identifier: 'notes' },
+      { kind: 'asset' as const, identifier: 'images/cat.png' },
+      { kind: null as const },
+    ]) {
+      const template = buildMenuTemplate(
+        makeDeps({ activeTarget, onOpenInNewWindow: vi.fn(() => {}) }),
+      );
+      expect(findByLabel(template, LABEL)?.enabled).toBe(false);
+    }
+  });
+
+  test('is disabled when the handler is unwired', () => {
+    const template = buildMenuTemplate(
+      makeDeps({ activeTarget: { kind: 'doc', identifier: 'notes/alpha' } }),
+    );
+    expect(findByLabel(template, LABEL)?.enabled).toBe(false);
+  });
+
+  test('invokes its handler once', () => {
+    const onOpenInNewWindow = vi.fn(() => {});
+    const template = buildMenuTemplate(
+      makeDeps({ activeTarget: { kind: 'doc', identifier: 'notes/alpha' }, onOpenInNewWindow }),
+    );
+
+    (findByLabel(template, LABEL)?.click as (() => void) | undefined)?.();
+    expect(onOpenInNewWindow).toHaveBeenCalledOnce();
+  });
+
+  test('sits in the Window menu on both platform branches', () => {
+    for (const platform of ['darwin', 'win32'] as const) {
+      const template = buildMenuTemplateForPlatform(
+        platform,
+        makeDeps({
+          activeTarget: { kind: 'doc', identifier: 'notes/alpha' },
+          onOpenInNewWindow: vi.fn(() => {}),
+        }),
+      );
+      const windowMenu = template.find((item) => item.label === 'Window');
+      const sub = windowMenu?.submenu as MenuItemConstructorOptions[] | undefined;
+      expect(findByLabel(sub ?? [], LABEL)).toBeDefined();
+    }
   });
 });

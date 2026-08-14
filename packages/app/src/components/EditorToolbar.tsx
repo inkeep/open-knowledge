@@ -19,6 +19,7 @@ import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
 import { useConfigContextOptional } from '@/lib/config-context';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import {
   NO_RESERVED_KEYS,
   SKILL_RESERVED_KEYS,
@@ -105,6 +106,7 @@ export function EditorToolbar({
   const slidesPluginEnabled = useConfigContextOptional()?.merged?.slides?.enabled === true;
   const panelShortcut = formatShortcut('toggle-document-panel');
   const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
+  const showPanelToggle = !isNoteWindow();
   // Skills carry install/uninstall + history chrome in this per-doc toolbar
   // (templates + documents don't — only skills are installed). Install is a
   // live symlink, so there's no reinstall step.
@@ -245,30 +247,32 @@ export function EditorToolbar({
             <SlidesToolbarControls provider={activeProvider} docName={activeDocName} />
           </Suspense>
         ) : null}
-        <Tooltip>
-          <Button
-            data-doc-panel-toggle=""
-            variant="ghost"
-            size="icon"
-            onClick={onTogglePanel}
-            aria-expanded={!isPanelCollapsed}
-            aria-controls="doc-panel"
-            aria-label={
-              isPanelCollapsed
-                ? t`Show panel (${panelShortcutLabel})`
-                : t`Hide panel (${panelShortcutLabel})`
-            }
-            asChild
-          >
-            <TooltipTrigger>
-              {isPanelCollapsed ? <PanelRightOpen /> : <PanelRightClose />}
-            </TooltipTrigger>
-          </Button>
-          <TooltipContent side="bottom">
-            <span>{isPanelCollapsed ? t`Show panel` : t`Hide panel`}</span>{' '}
-            <Kbd aria-label={panelShortcutLabel}>{panelShortcut}</Kbd>
-          </TooltipContent>
-        </Tooltip>
+        {showPanelToggle ? (
+          <Tooltip>
+            <Button
+              data-doc-panel-toggle=""
+              variant="ghost"
+              size="icon"
+              onClick={onTogglePanel}
+              aria-expanded={!isPanelCollapsed}
+              aria-controls="doc-panel"
+              aria-label={
+                isPanelCollapsed
+                  ? t`Show panel (${panelShortcutLabel})`
+                  : t`Hide panel (${panelShortcutLabel})`
+              }
+              asChild
+            >
+              <TooltipTrigger>
+                {isPanelCollapsed ? <PanelRightOpen /> : <PanelRightClose />}
+              </TooltipTrigger>
+            </Button>
+            <TooltipContent side="bottom">
+              <span>{isPanelCollapsed ? t`Show panel` : t`Hide panel`}</span>{' '}
+              <Kbd aria-label={panelShortcutLabel}>{panelShortcut}</Kbd>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </div>
       <div
         aria-hidden

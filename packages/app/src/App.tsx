@@ -17,6 +17,7 @@ import { composeTerminalLaunchPrompt } from '@/components/handoff/useHandoffDisp
 import { InstallInClaudeDesktopDialog } from '@/components/InstallInClaudeDesktopDialog';
 import { McpConsentDialog } from '@/components/McpConsentDialog';
 import { isNewItemShortcut, NewItemDialog } from '@/components/NewItemDialog';
+import { NoteWindowMainActionReceiver } from '@/components/NoteWindowMainActionReceiver';
 import {
   downgradeFolderIndexForHashNav,
   type ResolvedNavigationTarget,
@@ -53,6 +54,7 @@ import {
   skillsFromHash,
 } from '@/lib/doc-hash';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
@@ -482,12 +484,15 @@ function SettingsShortcutHandler() {
  * state-aware enable/disable for items like Rename / Move to Trash / Send
  * to AI. Web-host short-circuits when the desktop bridge is absent.
  *
- * Lives at the App-tier where `useDocumentContext()` is already mounted —
- * exactly one push site keeps the last-write-wins semantics main relies on
- * (`editorActiveTarget` is module-scope, singleton across windows). Effect
- * deps are narrowed to the discriminator + identifier so a render that
- * re-creates an equal `activeTarget` reference doesn't re-fire the push —
- * the snapshot main consumes is normalized to the same four shapes.
+ * Lives at the App-tier where `useDocumentContext()` is already mounted — one
+ * push site per window. Main keys the snapshot by SENDING window and reads the
+ * focused one, so two windows on one project (a pop-out beside its editor
+ * window) no longer fight over the menu's scope. Effect deps are narrowed to
+ * the discriminator + identifier so a render that re-creates an equal
+ * `activeTarget` reference doesn't re-fire the push — the snapshot main
+ * consumes is normalized to the same four shapes. A rename changes the
+ * identifier, so the push re-fires, which is what lets a popped-out window's
+ * title follow a rename.
  *
  * Snapshot shape mirrors `EditorActiveTargetSnapshot`'s discriminated union
  * (doc / folder / asset / null). `folder-index` and `missing` collapse to
@@ -639,6 +644,9 @@ function AppBody() {
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const singleFile = useSingleFileMode();
+  // A popped-out note window shows one document full-window: no workspace
+  // chrome, and none of the app-root singletons that assume the main window.
+  const noteWindow = isNoteWindow();
 
   // "Open in terminal" launcher — desktop-only. Routes a scope-derived prompt
   // to the docked terminal in EditorPane. `composeTerminalLaunchPrompt` drops
@@ -670,7 +678,12 @@ function AppBody() {
     <>
       <ConnectingBanner />
       <PageListProvider>
-        <SystemDocSubscriber />
+        <NoteWindowMainActionReceiver />
+        {/* Agent-driven hash navigation retargets the window to whatever doc an
+            agent is writing. That is right for the main workspace window and
+            wrong for a pop-out, which the user parked on one specific document
+            on purpose. */}
+        {!noteWindow && <SystemDocSubscriber />}
         <ValidationFreshness />
         {/* Explains a skill that lists but can't open (gitignored bundle) and
             offers the one-line fix. Mounted here because the guard fires from
@@ -681,7 +694,7 @@ function AppBody() {
         <NewItemShortcutHandler />
         {/* Settings is unavailable in single-file mode (config editing is
             inert), so the Cmd-, route handler isn't mounted. */}
-        {!singleFile && <SettingsShortcutHandler />}
+        {!singleFile && !noteWindow && <SettingsShortcutHandler />}
         {SHOW_INSTALL_SKILL && <InstallInClaudeDesktopTrigger />}
         {/* File → New project… opens CreateProjectDialog here.
             Desktop-only — the `new-project` menu action never fires in
@@ -710,11 +723,15 @@ function AppBody() {
             <ShareReceiveMissDialog />
           </Suspense>
         ) : null}
-        <CommandPalette
-          bridge={desktopBridge}
-          open={commandPaletteOpen}
-          onOpenChange={setCommandPaletteOpen}
-        />
+        {/* The palette is a workspace navigator; a single-document window has
+            nowhere to navigate to. Deferred, not refused (§15 Future Work). */}
+        {!noteWindow && (
+          <CommandPalette
+            bridge={desktopBridge}
+            open={commandPaletteOpen}
+            onOpenChange={setCommandPaletteOpen}
+          />
+        )}
         {/* Electron BrowserWindow renders with `titleBarStyle: 'hiddenInset'` +
             `transparent: true` + `vibrancy: 'sidebar'`, so the renderer owns
             window-drag affordance. Existing chrome rows (EditorHeader,
@@ -741,7 +758,9 @@ function AppBody() {
           <SidebarProvider className="h-screen overflow-hidden">
             {/* No-project single-file mode drops the file sidebar (file tree +
                 project switcher); the editor inset takes the full width. */}
-            {!singleFile && <FileSidebar onOpenSearch={() => setCommandPaletteOpen(true)} />}
+            {!singleFile && !noteWindow && (
+              <FileSidebar onOpenSearch={() => setCommandPaletteOpen(true)} />
+            )}
             <SidebarInset className="overflow-hidden h-[calc(100vh-var(--layout-inset-offset))]">
               <EditorPane onOpenSearch={() => setCommandPaletteOpen(true)} />
             </SidebarInset>

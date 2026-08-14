@@ -2604,6 +2604,10 @@ msgstr "ٹرمینل بند کریں"
 msgid "Close this chat's tab to delete it"
 msgstr "اسے حذف کرنے کے لیے اس چیٹ کا ٹیب بند کریں"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "ونڈو بند کریں"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3293,6 +3297,10 @@ msgstr "فولڈر منتخب کنندہ نہیں کھل سکا"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "GitHub سائن اِن نہیں کھل سکا۔ براہِ کرم دوبارہ کوشش کریں۔"
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "اس دستاویز کو نئی ونڈو میں نہیں کھولا جا سکا۔"
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8618,6 +8626,11 @@ msgstr "ڈیفالٹ ایپ میں کھولیں"
 msgid "Open in file manager"
 msgstr "فائل مینیجر میں کھولیں"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "نئی ونڈو میں کھولیں"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "Slidev میں کھولیں"
@@ -12654,6 +12667,10 @@ msgstr "یہ دستاویز ایڈیٹر میں پہلے ہی فعال ہے۔ گ
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "اس دستاویز میں مطلوبہ خصوصیات غائب ہیں"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "یہ دستاویز حذف کر دی گئی تھی"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

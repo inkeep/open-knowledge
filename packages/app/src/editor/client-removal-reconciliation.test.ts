@@ -21,6 +21,8 @@ function createPorts(
     deferredClears?: boolean;
     remapActiveTarget?: boolean;
     clearRejects?: boolean;
+    /** Present = a surface that handles active-doc deletion itself (note window). */
+    deletedStateHandled?: boolean;
   } = {},
 ) {
   const log: string[] = [];
@@ -66,6 +68,14 @@ function createPorts(
     clearActiveTargetForRemoval: (docName) => log.push(`clear-target:${docName}`),
     navigateToDocument: (docName) => log.push(`navigate:${docName}`),
     navigateHome: () => log.push('navigate:home'),
+    ...(options.deletedStateHandled === undefined
+      ? {}
+      : {
+          showDocumentDeletedState: (docName: string) => {
+            log.push(`deleted-state:${docName}`);
+            return options.deletedStateHandled === true;
+          },
+        }),
   };
   return { clearDeferred, log, reconciler: createClientRemovalReconciler(ports) };
 }
@@ -208,6 +218,44 @@ describe('ClientRemovalReconciler', () => {
       'clear-target:deleted',
       'navigate:home',
     ]);
+  });
+
+  test('a surface that shows its own deleted state suppresses navigate-home', async () => {
+    // The note window has exactly one document and no home surface to navigate
+    // to, so it takes over and shows an explicit deleted state instead.
+    const { log, reconciler } = createPorts({
+      activePoolDocName: 'deleted',
+      deletedStateHandled: true,
+    });
+    await reconciler.reconcileAuthRemoval({ docName: 'deleted' });
+
+    expect(log).toContain('deleted-state:deleted');
+    expect(log).not.toContain('navigate:home');
+    // Cleanup still runs — the window stops showing a document that is gone.
+    expect(log).toContain('remove-tab:deleted');
+    expect(log).toContain('clear-target:deleted');
+  });
+
+  test('a surface that declines still navigates home', async () => {
+    const { log, reconciler } = createPorts({
+      activePoolDocName: 'deleted',
+      deletedStateHandled: false,
+    });
+    await reconciler.reconcileAuthRemoval({ docName: 'deleted' });
+
+    expect(log).toContain('deleted-state:deleted');
+    expect(log).toContain('navigate:home');
+  });
+
+  test('an inactive document never offers the deleted state', async () => {
+    const { log, reconciler } = createPorts({
+      activePoolDocName: 'other',
+      deletedStateHandled: true,
+    });
+    await reconciler.reconcileAuthRemoval({ docName: 'deleted' });
+
+    expect(log).not.toContain('deleted-state:deleted');
+    expect(log).not.toContain('navigate:home');
   });
 
   test('auth removal of an inactive document leaves unrelated navigation intact', async () => {

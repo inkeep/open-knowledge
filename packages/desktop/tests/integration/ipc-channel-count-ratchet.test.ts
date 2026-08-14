@@ -430,10 +430,32 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * `write-text`'s payload to carry both would erase the type safety
  * of both channels' callers.
  *
+ * Bumped from 93 to 94 for the pop-out note window:
+ *
+ *   - `ok:window:open-note` — the doc-tab context menu and the command
+ *     palette both ask main to pop a document into its own
+ *     `--ok-mode=note` BrowserWindow. Main owns it because only main can
+ *     create a window, resolve the sender's project from `windowsByPath`,
+ *     and consult the note-window registry for focus-existing dedup.
+ *
+ *     Could not fold. `ok:menu:dispatch` is contractually the custom-drawn
+ *     Windows/Linux menu bar and nothing else ("the menubar is one
+ *     surface"), so an unrelated verb there would break that contract.
+ *     `ok:project:open` is keyed by project path and opens a PROJECT
+ *     window, a different lifecycle and a different registry. There is no
+ *     existing window-opening channel with a compatible payload.
+ *
+ *     The same slot also carries a discriminated `dispatch-to-main` verb for
+ *     conversation/comment actions started in a reduced note renderer. Main
+ *     already owns the note→project-window association, so widening this
+ *     window-routing channel preserves that boundary and adds no channel.
+ *     One slot serves both renderer-originated open entry points and the
+ *     handoff; the Window-menu entry point is main-originated and adds none.
+ *
  * The typed-ipc migration remains the committed end state, with the
  * `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 93;
+const REQUEST_CHANNEL_CAP = 94;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

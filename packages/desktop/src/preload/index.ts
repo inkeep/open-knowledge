@@ -47,6 +47,8 @@ import type {
   OkMcpWiringShowPayload,
   OkMenuAction,
   OkMenuDispatchRequest,
+  OkNoteWindowMainAction,
+  OkNoteWindowMainActionResult,
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
@@ -601,6 +603,34 @@ const bridge: OkDesktopBridge = {
 
   navigator: {
     open: () => invoke('ok:navigator:open'),
+  },
+
+  noteWindow: {
+    open: async (docName: string, entryPoint: 'tab-menu' | 'palette') => {
+      const result = await invoke('ok:window:open-note', { kind: 'open', docName, entryPoint });
+      // `ok:window:open-note` is overloaded (`open` + `dispatch-to-main`), so its
+      // result type unions both verbs' responses. Fail loudly on the one arm
+      // that would otherwise slip through the cast as a silent lie — a dispatch
+      // success `{ ok: true }` with no `outcome`, which a caller branching on
+      // `outcome` would read as `undefined` while the type insists it is
+      // `'created' | 'focused'`. A well-behaved main handler never returns it
+      // for an `open` request; this makes a future branch bug loud, not silent.
+      if (result.ok && !('outcome' in result)) {
+        throw new Error('ok:window:open-note returned a non-open result for an open request');
+      }
+      return result as Awaited<ReturnType<OkDesktopBridge['noteWindow']['open']>>;
+    },
+    dispatchToMain: (action: OkNoteWindowMainAction) =>
+      invoke('ok:window:open-note', {
+        kind: 'dispatch-to-main',
+        action,
+      }) as Promise<OkNoteWindowMainActionResult>,
+    onMainAction(cb: (action: OkNoteWindowMainAction) => void) {
+      const listener = (_event: IpcRendererEvent, action: OkNoteWindowMainAction) => cb(action);
+      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      ipcRenderer.on('ok:note-window:main-action', listener);
+      return () => ipcRenderer.removeListener('ok:note-window:main-action', listener);
+    },
   },
 
   seed: {

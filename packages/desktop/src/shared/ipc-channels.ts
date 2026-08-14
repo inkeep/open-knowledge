@@ -30,7 +30,16 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 93 (ratchet cap 93). The 74→75 bump reconciled a merge collision:
+ * Count is 94 (ratchet cap 94). The 93→94 bump added the pop-out note window
+ * (`ok:window:open-note`): the doc-tab context menu and the palette both need
+ * main to spawn a `--ok-mode=note` BrowserWindow for a document. The same
+ * channel now carries the discriminated note→main conversation handoff; this
+ * widens its window-routing contract without adding a second request slot. It
+ * could not fold — `ok:menu:dispatch` is contractually the custom-drawn
+ * Windows/Linux menu bar alone, and `ok:project:open` is keyed by project path
+ * and opens a project window. One slot covers both renderer surfaces and the
+ * handoff; the Window-menu entry point is main-originated and adds none.
+ * The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -122,6 +131,8 @@ import type {
   OkMenuDispatchRequest,
   OkMenuDispatchRole,
   OkMenuRendererSnapshot,
+  OkNoteWindowMainAction,
+  OkNoteWindowMainActionResult,
   OkPtyAdoptResult,
   OkPtyCreateResult,
   OkPtyListEntry,
@@ -1187,6 +1198,29 @@ export interface RequestChannels {
    * dropdown, `CommandPalette`. No payload, no return — IPC-ack only.
    */
   'ok:navigator:open': { args: []; result: undefined };
+  /**
+   * Popped-note-window dispatch. `open` creates/focuses a note window from an
+   * editor renderer; `dispatch-to-main` carries a conversation/comments intent
+   * from a note renderer back to its owning project window.
+   *
+   * Could not fold. `ok:menu:dispatch` is contractually the custom-drawn
+   * Windows/Linux menu bar and nothing else; `ok:project:open` is keyed by
+   * project path and opens a project window. The Window-menu entry point needs
+   * no channel at all — it runs main-side — so this one channel serves both
+   * renderer-originated surfaces and the feedback handoff without another
+   * request channel.
+   */
+  'ok:window:open-note': {
+    args: [
+      request:
+        | { kind: 'open'; docName: string; entryPoint: 'tab-menu' | 'palette' }
+        | { kind: 'dispatch-to-main'; action: OkNoteWindowMainAction },
+    ];
+    result:
+      | { ok: true; outcome: 'created' | 'focused' }
+      | { ok: false; reason: 'no-project' | 'invalid-request' }
+      | OkNoteWindowMainActionResult;
+  };
   /**
    * Toast A "Relaunch now" action: renderer invokes this after the user
    * clicks the sonner action button. Main handler calls

@@ -285,6 +285,11 @@ function createBridge() {
   };
 }
 
+/** A popped-out note window: same bridge shape, `note` mode. */
+function createNoteWindowBridge() {
+  return { ...createBridge(), config: { mode: 'note' as const, ptyAvailable: true } };
+}
+
 function renderApp({ bridge = null }: { bridge?: ReturnType<typeof createBridge> | null } = {}) {
   if (bridge) {
     Object.defineProperty(window, 'okDesktop', {
@@ -350,6 +355,34 @@ describe('App runtime wiring', () => {
     cleanup();
     __resetLocalMenuActionBusForTests();
     vi.restoreAllMocks();
+  });
+
+  describe('note window chrome reduction', () => {
+    test('drops the sidebar, the palette, and agent-driven navigation', () => {
+      renderApp({ bridge: createNoteWindowBridge() as ReturnType<typeof createBridge> });
+
+      expect(screen.queryByTestId('file-sidebar')).toBeNull();
+      expect(screen.queryByTestId('command-palette')).toBeNull();
+      // SystemDocSubscriber retargets the window to whatever doc an agent is
+      // writing — right for the workspace window, wrong for a parked pop-out.
+      expect(screen.queryByTestId('system-doc-subscriber')).toBeNull();
+    });
+
+    test('keeps the editor and the connecting banner', () => {
+      renderApp({ bridge: createNoteWindowBridge() as ReturnType<typeof createBridge> });
+
+      expect(screen.getByTestId('editor-pane')).not.toBeNull();
+      expect(screen.getByTestId('connecting-banner')).not.toBeNull();
+    });
+
+    test('an ordinary editor window keeps all of it', () => {
+      renderApp({ bridge: createBridge() });
+
+      expect(screen.getByTestId('file-sidebar')).not.toBeNull();
+      expect(screen.getByTestId('command-palette')).not.toBeNull();
+      expect(screen.getByTestId('system-doc-subscriber')).not.toBeNull();
+      expect(screen.getByTestId('editor-pane')).not.toBeNull();
+    });
   });
 
   test('imports and mounts the app shell providers and core surfaces', () => {

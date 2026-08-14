@@ -132,6 +132,7 @@ export type MenuSection =
   | 'view-tree'
   | 'view-history'
   | 'terminal'
+  | 'window'
   | 'help-install'
   | 'help-links'
   | 'help-updates';
@@ -317,6 +318,22 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     keywords: ['graph panel network'],
     availability: { requiresActiveDoc: true },
     palette: { group: 'commands', visibility: 'always' },
+  },
+  {
+    // Pops the active document into its own window. Desktop-only (it spawns a
+    // BrowserWindow) and needs a document to pop, so with neither the palette
+    // simply omits the row — the palette's availability mechanism hides, it has
+    // no disabled state. Hidden in a single-file session too: that window is
+    // already one document, so a second one adds nothing.
+    id: 'open-in-new-window',
+    labelKey: 'openInNewWindow',
+    keywords: ['pop out', 'detach', 'separate window', 'second monitor'],
+    availability: { host: 'desktop', requiresActiveDoc: true, singleFileHidden: true },
+    palette: { group: 'commands', visibility: 'always' },
+    // The Window menu is where every incumbent puts this, and unlike the
+    // palette a menu leaf DISABLES rather than hides, which is the right
+    // affordance for a menu the user opened deliberately.
+    menu: [{ section: 'window', order: 0 }],
   },
   {
     id: 'initialize-starter-pack',

@@ -2600,6 +2600,10 @@ msgstr "টার্মিনাল বন্ধ করুন"
 msgid "Close this chat's tab to delete it"
 msgstr "এটি মুছতে এই চ্যাটের ট্যাব বন্ধ করুন"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "উইন্ডো বন্ধ করুন"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3289,6 +3293,10 @@ msgstr "ফোল্ডার নির্বাচক খোলা যায়
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "GitHub সাইন-ইন খোলা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।"
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "এই নথিটি নতুন উইন্ডোতে খোলা যায়নি।"
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8614,6 +8622,11 @@ msgstr "ডিফল্ট অ্যাপে খুলুন"
 msgid "Open in file manager"
 msgstr "ফাইল ম্যানেজারে খুলুন"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "নতুন উইন্ডোতে খুলুন"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "Slidev-এ খুলুন"
@@ -12650,6 +12663,10 @@ msgstr "এই নথিটি সম্পাদকে আগে থেকে�
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "এই নথিতে আবশ্যক প্রপার্টি অনুপস্থিত"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "এই নথিটি মুছে ফেলা হয়েছে"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

@@ -13,6 +13,7 @@ import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import {
   buildDocShareInput,
   buildFolderShareInput,
@@ -22,6 +23,7 @@ import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 import { PresenceBar } from '@/presence/PresenceBar';
 import { BetaBadge } from './BetaBadge';
+import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { HelpPopover } from './HelpPopover';
 import { InstanceBadge } from './InstanceBadge';
 import { NavigationHistoryControls } from './NavigationHistoryControls';
@@ -38,6 +40,8 @@ const AppMenubar = lazy(() =>
 
 interface EditorHeaderProps {
   children?: ReactNode;
+  /** Editor-mode switch promoted into the titlebar in a popped-out note. */
+  noteModeToggle?: ReactNode;
   onSignIn?: () => void;
   onSetIdentity?: () => void;
   onOpenSearch?: () => void;
@@ -45,6 +49,7 @@ interface EditorHeaderProps {
 
 export function EditorHeader({
   children,
+  noteModeToggle,
   onSignIn,
   onSetIdentity,
   onOpenSearch,
@@ -63,6 +68,13 @@ export function EditorHeader({
   // (sidebar toggle, tab strip, Settings) while leaving the editor + the
   // doc-scoped actions (Share / sync / agent handoff) intact.
   const singleFile = useSingleFileMode();
+  // A popped-out note window reduces the header the same way a single-file
+  // session does, and for the same reason: neither has a file sidebar, a
+  // project switcher, or anywhere for project chrome to act. Gating only on
+  // `singleFile` left a pop-out showing a Files toggle for a sidebar that is
+  // not there — caught by the two-window smoke, invisible to the dom tier.
+  const noteWindow = isNoteWindow();
+  const reducedChrome = singleFile || noteWindow;
   const sidebarShortcut = formatShortcut('toggle-files-sidebar');
   const sidebarShortcutLabel = formatShortcutLabel('toggle-files-sidebar');
   const searchShortcut = formatShortcut('command-palette');
@@ -109,6 +121,7 @@ export function EditorHeader({
   // token (defined under `html.electron-mode`) so the magic 78px lives in one
   // place; the `,1rem` fallback is the precedent-#49 safe form.
   const isCollapsed = sidebarState === 'collapsed';
+  const reserveTrafficLights = isElectronHost && (isCollapsed || noteWindow);
   const appMenubar = shouldShowAppMenubar() ? (
     <Suspense fallback={null}>
       <AppMenubar />
@@ -166,17 +179,17 @@ export function EditorHeader({
           off and on a throwaway server, so a share link would point at a
           session that's gone on close. Hidden here (mirrors the
           sidebar/Settings gates) rather than rendered disabled. */}
-      {!singleFile && (
+      {!reducedChrome && (
         <ShareButton input={shareInput} onClickWhenNoRemote={() => setPublishOpen(true)} />
       )}
-      <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />
+      {!noteWindow && <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />}
       <PresenceBar />
       <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
       <InstanceBadge />
       <BetaBadge />
       {/* Settings is unavailable in single-file mode (config editing is inert). */}
-      {!singleFile && <SettingsButton />}
-      <HelpPopover />
+      {!reducedChrome && <SettingsButton />}
+      {!noteWindow && <HelpPopover />}
     </>
   );
 
@@ -185,11 +198,13 @@ export function EditorHeader({
       ref={headerRef}
       data-electron-drag={isElectronHost ? '' : undefined}
       style={{
-        ['--editor-header-leading-offset' as string]:
-          isElectronHost && isCollapsed ? 'var(--ok-titlebar-reserve-left, 1rem)' : '0px',
+        ['--editor-header-leading-offset' as string]: reserveTrafficLights
+          ? 'var(--ok-titlebar-reserve-left, 1rem)'
+          : '0px',
       }}
       className={cn(
-        'group/editor-header relative flex h-12 shrink-0 items-center bg-muted/35 shadow-[inset_0_-1px_0_var(--border)]',
+        'group/editor-header relative flex h-12 shrink-0 items-center',
+        noteWindow ? 'bg-background' : 'bg-muted/35 shadow-[inset_0_-1px_0_var(--border)]',
         isElectronHost && '[-webkit-app-region:drag]',
       )}
     >
@@ -219,14 +234,18 @@ export function EditorHeader({
         className={cn(
           'absolute inset-y-0 left-0 z-20 flex items-center gap-1 px-3',
           isElectronHost && '[-webkit-app-region:drag]',
-          isElectronHost && isCollapsed && 'left-[var(--ok-titlebar-reserve-left,1rem)]',
+          reserveTrafficLights && 'left-[var(--ok-titlebar-reserve-left,1rem)]',
+          noteWindow && 'max-w-[calc(50%-4rem)] overflow-hidden',
         )}
       >
         {/* The menubar renders in single-file windows too: the project-chrome
             group below is absent there, so without this slot Window / Help /
-            Exit would have no reachable surface at all. */}
+            Exit would have no reachable surface at all. A focused note window
+            deliberately omits app-wide menu chrome, matching auxiliary editor
+            windows on Windows/Linux. */}
         {singleFile && appMenubar}
-        {!singleFile && (
+        {noteWindow && <EditorBreadcrumb docName={activeDocName} includeCurrentPage />}
+        {!reducedChrome && (
           <>
             <ButtonGroup
               aria-label={t`Workspace navigation`}
@@ -282,6 +301,15 @@ export function EditorHeader({
         )}
       </div>
 
+      {noteWindow && noteModeToggle ? (
+        <div
+          data-note-window-mode-toggle=""
+          className="absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center [-webkit-app-region:no-drag] [&_[data-slot=toggle-group]]:bg-transparent [&_[data-slot=toggle-group]]:p-0 [&_[data-slot=toggle-group-item]]:size-8 [&_[data-slot=toggle-group-item]]:shadow-none"
+        >
+          {noteModeToggle}
+        </div>
+      ) : null}
+
       <div
         ref={trailingActionsRef}
         data-electron-drag={isElectronHost ? '' : undefined}
@@ -301,8 +329,10 @@ export function EditorHeader({
           isElectronHost && 'mr-[var(--ok-titlebar-reserve-right,0px)]',
         )}
       >
-        {headerActions}
-        {!singleFile && <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />}
+        {!noteWindow && headerActions}
+        {!reducedChrome && (
+          <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />
+        )}
       </div>
     </header>
   );

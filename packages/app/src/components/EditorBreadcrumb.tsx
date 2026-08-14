@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 
 interface EditorBreadcrumbProps {
   docName: string | null;
+  /** Include the active document as the final, current-page breadcrumb item. */
+  includeCurrentPage?: boolean;
   /** Optional extra classes for the outer breadcrumb nav (e.g. layout overrides). */
   className?: string;
 }
@@ -33,7 +35,9 @@ type BreadcrumbNode =
   | { kind: 'ellipsis'; hidden: readonly string[] };
 
 /**
- * Folder-path breadcrumb for the active doc — renders nothing at project root.
+ * Folder-path breadcrumb for the active doc. By default it renders nothing at
+ * project root; titlebar callers can include the active document as the final
+ * current-page item.
  *
  * Pure display: no click / hover navigation behavior. Every segment renders
  * as a non-link `BreadcrumbPage`. Folder segments derive from
@@ -47,11 +51,10 @@ type BreadcrumbNode =
  * item, so a screen reader still announces the full hierarchy while sighted
  * users get the compact `root › … › leaf` form.
  *
- * Mounted in EditorToolbar's left grid cell. The mount point scopes its own
- * `pointer-events-auto` so it doesn't get swallowed by the parent grid's
- * `pointer-events-none` overlay; this component itself does NOT need
- * pointer-events scoping because it is display-only — the mount-side scoping
- * is what surfaces the truncation-tooltip `title` to the pointer.
+ * EditorToolbar's mount point scopes its own `pointer-events-auto` so it
+ * doesn't get swallowed by the parent grid's `pointer-events-none` overlay;
+ * this component itself does NOT need pointer-events scoping because it is
+ * display-only. It is also mounted directly in the draggable note titlebar.
  *
  * The full `min-w-0` chain (nav → list → item → page) plus `overflow-hidden`
  * on the list is load-bearing: the toolbar mounts this in a `grid-cols-3`
@@ -62,7 +65,11 @@ type BreadcrumbNode =
  * spread-props (BreadcrumbPage forwards every attr to its inner span), so the
  * native truncation tooltip continues to reveal the full segment on hover.
  */
-export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) {
+export function EditorBreadcrumb({
+  docName,
+  includeCurrentPage = false,
+  className,
+}: EditorBreadcrumbProps) {
   if (!docName) return null;
   // A template shows its owning folder path, derived from the content shape and
   // hiding the `.ok/templates/` segment (matching the name-only tab label); a
@@ -71,12 +78,16 @@ export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) 
   // so the breadcrumb and tab label split the path through one primitive.
   const template = parseTemplateContentDocName(docName);
   const managed = template ? null : parseManagedArtifactName(docName);
-  const segments = template
+  const folderSegments = template
     ? template.folder.split('/').filter(Boolean)
     : managed
       ? []
       : tabParts(docName, '').prefix.replace(/\/$/, '').split('/').filter(Boolean);
+  const segments = includeCurrentPage
+    ? [...folderSegments, tabParts(docName, '').label]
+    : folderSegments;
   if (segments.length === 0) return null;
+  const currentPageKey = includeCurrentPage ? segments.join('/') : null;
 
   // Stable per-segment key: full prefix slice up to that segment.
   // Disambiguates identical names at different depths (e.g. `notes/notes`).
@@ -99,9 +110,15 @@ export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) 
 
   return (
     <Breadcrumb className={cn('flex min-w-0 items-center', className)}>
-      <BreadcrumbList className="min-w-0 flex-nowrap gap-1 overflow-hidden text-muted-foreground/70 text-xs">
+      <BreadcrumbList
+        className={cn(
+          'min-w-0 flex-nowrap gap-1 overflow-hidden text-muted-foreground/70',
+          includeCurrentPage ? 'text-sm' : 'text-xs',
+        )}
+      >
         {nodes.map((node, index) => {
           const key = node.kind === 'segment' ? node.key : 'ellipsis';
+          const isCurrentPage = node.kind === 'segment' && node.key === currentPageKey;
           return (
             <Fragment key={key}>
               {/* Separator is a SIBLING of the item — shadcn renders both as
@@ -134,8 +151,11 @@ export function EditorBreadcrumb({ docName, className }: EditorBreadcrumbProps) 
               ) : (
                 <BreadcrumbItem className="min-w-0">
                   <BreadcrumbPage
-                    current={false}
-                    className="min-w-0 truncate font-normal text-muted-foreground/70"
+                    current={isCurrentPage}
+                    className={cn(
+                      'min-w-0 truncate font-normal',
+                      isCurrentPage ? 'font-medium text-foreground' : 'text-muted-foreground/70',
+                    )}
                     title={node.value}
                   >
                     <UserText>{node.value}</UserText>

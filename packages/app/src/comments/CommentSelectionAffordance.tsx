@@ -27,7 +27,6 @@ import { posToDOMRect } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { Button } from '@/components/ui/button';
 import {
   ComposerMentionInput,
@@ -39,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { setCommentDraftRange } from './anchor-decorations';
 import { captureSelectionContext } from './anchor-search';
 import { useCommentsPanelOnScreen } from './comments-panel-visibility';
+import { revealComments } from './reveal-queue';
 import { selectedSpan } from './selected-span';
 import { createThread, emitStartComment, subscribeStartComment } from './store';
 
@@ -286,7 +286,7 @@ export function CommentSelectionAffordance({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => requestDocPanelTab('comments')}
+            onClick={() => revealComments('doc', docName)}
             className="px-2 text-muted-foreground hover:text-foreground"
           >
             <Trans>View comments</Trans>

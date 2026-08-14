@@ -13,6 +13,7 @@ import {
   isSkillBundleShapedPath,
   isSkillDocName,
   isSkillTabId,
+  localTabSessionKeyForMode,
   localTabSessionStorageKey,
   nextActiveTabAfterClose,
   nextActiveTabAfterCloseMany,
@@ -622,6 +623,23 @@ describe('editor tab state', () => {
       updatedAt: '2026-05-06T00:00:00.000Z',
       ...persistedWorkspace(['a', 'b'], ['a'], 'b'),
     });
+  });
+
+  test('a note window gets no local tab-session key, so it cannot clobber the editor window', () => {
+    // Every desktop window shares one `file://` origin, so a popped-out note
+    // window writing the origin-derived key would overwrite the main editor
+    // window's tabs. Single-document windows persist nothing at all.
+    expect(localTabSessionKeyForMode('note', 'file://')).toBeNull();
+  });
+
+  test('a desktop editor window gets no local key either (it persists via the bridge)', () => {
+    expect(localTabSessionKeyForMode('editor', 'file://')).toBeNull();
+  });
+
+  test('the browser host still gets the origin-derived key', () => {
+    expect(localTabSessionKeyForMode(undefined, 'http://localhost:5173')).toBe(
+      localTabSessionStorageKey('http://localhost:5173'),
+    );
   });
 
   test('local tab session storage round-trips serializable state', () => {

@@ -14,6 +14,10 @@ describe('resolveOkDesktopMode', () => {
     expect(resolveOkDesktopMode('editor')).toBe('editor');
   });
 
+  test('maps the note flag to the popped-out note window mode', () => {
+    expect(resolveOkDesktopMode('note')).toBe('note');
+  });
+
   test('falls back to editor when the flag is absent', () => {
     expect(resolveOkDesktopMode(undefined)).toBe('editor');
   });

@@ -38,6 +38,7 @@ import { CommentsBoundary } from '@/comments/CommentsBoundary';
 import { loadFollowFilePref } from '@/components/acp/follow-file';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
 import { anchorFromHash } from '@/lib/doc-hash';
+import { claimNoteWindowInitialFocus } from '@/lib/note-window-focus';
 import { mark } from '@/lib/perf';
 import { wrapExtensionsWithTiming } from '@/lib/perf/cold-mount-instrumentation';
 import { useIdentity } from '../presence/identity';
@@ -1048,6 +1049,26 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       editor.off('transaction', onTransaction);
     };
   }, [editor, provider]);
+
+  // A popped-out note window has nothing else to focus, so the first editor
+  // surface to mount takes the caret. The claim is one-shot per window, so an
+  // Activity reveal or a mode flip later in the session cannot yank focus back.
+  // View-guarded like this file's other `'create'` effects: `editor.view` is a
+  // throwing proxy until ProseMirror mounts.
+  useEffect(() => {
+    const focusIfClaimed = () => {
+      if (editor.isDestroyed || !getEditorView(editor)) return;
+      if (claimNoteWindowInitialFocus()) editor.commands.focus();
+    };
+    if (getEditorView(editor)) {
+      focusIfClaimed();
+    } else {
+      editor.on('create', focusIfClaimed);
+    }
+    return () => {
+      editor.off('create', focusIfClaimed);
+    };
+  }, [editor]);
 
   // Rename-snapshot consumption — one-shot, on the editor's first `'create'`.
   // The rename snapshot (HTML + scrollTop + selection, see editor-cache.ts)

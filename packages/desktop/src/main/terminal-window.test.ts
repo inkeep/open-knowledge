@@ -282,4 +282,46 @@ describe('resolveTerminalWindowProject', () => {
   test('no focused project (Navigator / no window) resolves to null', () => {
     expect(resolveTerminalWindowProject({ editor: null, terminal: undefined })).toBeNull();
   });
+
+  test('a focused note window contributes its project instead of opening project-less', () => {
+    // A pop-out is in neither windowsByPath nor the terminal registry, so
+    // without this arm New Terminal Window from a focused pop-out silently
+    // opened a home-directory shell.
+    expect(
+      resolveTerminalWindowProject({
+        editor: null,
+        terminal: undefined,
+        note: {
+          projectRoot: '/Users/me/proj',
+          collabUrl: 'ws://localhost:5200/collab',
+          apiOrigin: 'http://localhost:5200',
+          currentDocName: 'notes/alpha',
+        },
+      }),
+    ).toEqual({
+      projectPath: '/Users/me/proj',
+      projectName: 'proj',
+      collabUrl: 'ws://localhost:5200/collab',
+      apiOrigin: 'http://localhost:5200',
+    });
+  });
+
+  test('an editor context still wins over a focused note window', () => {
+    const resolved = resolveTerminalWindowProject({
+      editor: {
+        projectPath: '/Users/me/editor',
+        projectName: 'editor',
+        port: 5300,
+        apiOrigin: 'http://localhost:5300',
+      },
+      terminal: undefined,
+      note: {
+        projectRoot: '/Users/me/proj',
+        collabUrl: 'ws://localhost:5200/collab',
+        apiOrigin: 'http://localhost:5200',
+        currentDocName: 'notes/alpha',
+      },
+    });
+    expect(resolved?.projectPath).toBe('/Users/me/editor');
+  });
 });

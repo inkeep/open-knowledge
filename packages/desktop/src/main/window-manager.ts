@@ -788,6 +788,22 @@ export interface WindowManagerDeps {
    * injections typically pass a much smaller value.
    */
   utilityInitTimeoutMs?: number;
+  /**
+   * Notified after a server restart has successfully recreated a project's
+   * window on the fresh server, before the old window closes.
+   *
+   * Exists for popped-out note windows. They live outside `windowsByPath`, so
+   * the recreate above does not reach them, and their attach argv is a frozen
+   * snapshot — a note window left behind would hold a collab URL pointing at
+   * the terminated server and could never reconnect, even though the project is
+   * healthy again. The window manager stays unaware of the note registry (as it
+   * is of the terminal registry); the consumer wires the recreate.
+   */
+  onProjectServerRestarted?(args: {
+    readonly projectPath: string;
+    /** The FRESH server's origin, so the recreate attaches to the new port. */
+    readonly apiOrigin: string;
+  }): void;
   /** Logger. */
   log?: {
     info(obj: object, msg: string): void;
@@ -1485,8 +1501,9 @@ export class WindowManager {
     // exists — see the failure branch below.
     const originating = this.windowsByPath.get(canonicalKey);
     if (originating) this.windowsByPath.delete(canonicalKey);
+    let recreated: ProjectContext;
     try {
-      await this.createProjectWindow({
+      recreated = await this.createProjectWindow({
         projectPath: resolved,
         pendingServerRestartedToast: true,
         localOpCliArgs: opts?.localOpCliArgs,
@@ -1510,6 +1527,33 @@ export class WindowManager {
         this.windowsByPath.set(canonicalKey, originating);
       }
       return { ok: false, reason: 'other' };
+    }
+    // The project window is back on the fresh server. Note windows are not in
+    // `windowsByPath`, so they were not recreated above and still hold argv
+    // pointing at the terminated server — recreate them before the old window
+    // closes, so the pop-outs come back with the project rather than lingering
+    // as permanently disconnected windows.
+    //
+    // Isolated in its own try/catch: the note-window recreate is a SECONDARY
+    // concern, so a throw in the injected callback (a `BrowserWindow`
+    // constructor failure under memory pressure, say) must not skip the
+    // `closeAndAwait` teardown below and strand the old window as a zombie
+    // pointing at the terminated server.
+    try {
+      this.deps.onProjectServerRestarted?.({
+        projectPath: resolved,
+        apiOrigin: recreated.apiOrigin,
+      });
+    } catch (err) {
+      this.deps.log?.warn(
+        {
+          event: 'desktop-server-restart',
+          outcome: 'note-recreate-failed',
+          err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+          projectPath: resolved,
+        },
+        '[window-manager] project window recreated, but a note-window recreate threw',
+      );
     }
     if (originating) await this.closeAndAwait(originating.window);
     return { ok: true };

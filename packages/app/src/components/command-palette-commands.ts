@@ -37,6 +37,7 @@ import {
   Settings,
   Sparkles,
   SpellCheck,
+  SquareArrowOutUpRight,
   SquareTerminal,
   Trash2,
   UnfoldVertical,
@@ -50,6 +51,7 @@ import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import { hashFromSkills } from '@/lib/doc-hash';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
+import { openDocInNoteWindow } from '@/lib/open-note-window';
 import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
 import type { ViewMenuState } from '@/lib/view-menu-state-store';
 
@@ -181,6 +183,7 @@ const PALETTE_COMMAND_LABELS = {
   newFile: msg`New file`,
   newFolder: msg`New folder`,
   openGraph: msg`Open graph`,
+  openInNewWindow: msg`Open in New Window`,
   initializeStarterPack: msg`Initialize starter pack`,
   newSkill: msg`New skill`,
   newProject: msg`New project`,
@@ -275,6 +278,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'new-file': FilePlus2,
   'new-folder': FolderPlus,
   'open-graph': Network,
+  'open-in-new-window': SquareArrowOutUpRight,
   'initialize-starter-pack': Package,
   'new-skill': Sparkles,
   'new-project': Plus,
@@ -334,6 +338,12 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'open-graph': (ctx) => {
     ctx.closePalette();
     requestDocPanelTab('graph');
+  },
+  'open-in-new-window': (ctx) => {
+    ctx.closePalette();
+    // `requiresActiveDoc` already gated the row, so a null here would mean the
+    // availability evaluation and the dispatch disagreed.
+    if (ctx.activeDocName) void openDocInNoteWindow(ctx.activeDocName, 'palette');
   },
   'initialize-starter-pack': (ctx) => {
     ctx.closePalette();

@@ -72,8 +72,10 @@ import { TiptapEditor } from '@/editor/TiptapEditor';
 import type { EditorModeValue } from '@/editor/use-editor-mode';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
+import { cn } from '@/lib/utils';
 import { DiffViewBoundary } from './DiffViewBoundary';
 import { DocumentBoundary } from './DocumentBoundary';
 import { DocumentErrorBoundary } from './DocumentErrorBoundary';
@@ -1032,7 +1034,7 @@ export function ScrollPreservingContainer({
       //   - TOOLBAR_HEIGHT in editor/extensions/frozen-table-headers.ts: the
       //     plane frozen table header rows pin to (and the occluder block in
       //     globals.css must stay at least this tall).
-      //   - TOOLBAR_OVERLAP_PX in editor/SourceEditor.tsx: CM6 ignores ancestor
+      //   - editorToolbarOverlapPx in editor/SourceEditor.tsx: CM6 ignores ancestor
       //     scroll-padding-top, so full-page source mode restates the inset via
       //     EditorView.scrollMargins. Deliberately scope-limited to source-mode —
       //     nested CM consumers of `createNestedCMExtensions` (e.g.,
@@ -1040,11 +1042,14 @@ export function ScrollPreservingContainer({
       //     and have no programmatic scroll-into-view call sites today; adding
       //     a `scrollMargins` contribution in the shared factory would mis-align
       //     nested CM scrolls if they ever become scrollable.
-      //   - TOOLBAR_OVERLAP_PX in editor/mode-switch-landing.ts: the mode-switch
+      //   - editorToolbarOverlapPx in editor/mode-switch-landing.ts: the mode-switch
       //     capture probes step in from this inset, and the landing hands it to
       //     the controller as the target's resting offset below the toolbar.
       // The toolbar itself: components/EditorToolbar.tsx.
-      className="editor-doc-scroll subtle-scrollbar h-full overflow-y-auto pt-14 scroll-pt-14"
+      className={cn(
+        'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',
+        isNoteWindow() ? 'pt-0 scroll-pt-0' : 'pt-14 scroll-pt-14',
+      )}
       style={{ overflowAnchor: 'auto' }}
     >
       {children}

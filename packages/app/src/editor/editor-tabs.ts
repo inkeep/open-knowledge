@@ -819,6 +819,25 @@ export function localTabSessionStorageKey(projectKey: string): string {
   return `${LOCAL_TAB_SESSION_PREFIX}${projectKey}`;
 }
 
+/**
+ * The localStorage tab-session key for a desktop window mode, or null when that
+ * mode must not use localStorage at all.
+ *
+ * Two modes opt out, for different reasons:
+ *   - `editor` persists through the desktop bridge instead, keyed per project.
+ *   - `note` persists nothing. A popped-out window shows a single document, so
+ *     there is no tab session worth saving, and every desktop window shares one
+ *     `file://` origin — a note window writing this key would clobber the main
+ *     editor window's tabs.
+ *
+ * Every other caller (the browser host, where the origin really is per-project)
+ * gets the origin-derived key.
+ */
+export function localTabSessionKeyForMode(mode: string | undefined, origin: string): string | null {
+  if (mode === 'editor' || mode === 'note') return null;
+  return localTabSessionStorageKey(origin);
+}
+
 export function readLocalTabSessionState(
   storage: Pick<Storage, 'getItem'> | null,
   key: string,

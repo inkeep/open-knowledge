@@ -121,6 +121,17 @@ describe('createShowGateRegistry — dual-signal show contract', () => {
     expect(win.show).toHaveBeenCalledTimes(1);
   });
 
+  test('note window reveals on the same dual signal as every other kind', () => {
+    const win = makeWindow();
+    env.registry.register(win, { kind: 'note' });
+
+    win.fireReadyToShow();
+    expect(win.show).not.toHaveBeenCalled();
+
+    env.registry.fireThemeApplied(win);
+    expect(win.show).toHaveBeenCalledTimes(1);
+  });
+
   test('onShown fires once with the window kind after a successful show', () => {
     const onShown = vi.fn((_kind: 'editor' | 'navigator') => {});
     const registry = createShowGateRegistry({
@@ -239,6 +250,20 @@ describe('createShowGateRegistry — timeout fallback', () => {
       event: 'show-gate-timeout',
       missing: 'theme-applied',
       windowKind: 'editor',
+    });
+  });
+
+  test('note window + timeout → show called with the note kind in the warning', () => {
+    const win = makeWindow();
+    env.registry.register(win, { kind: 'note' });
+    win.fireReadyToShow();
+    expect(win.show).not.toHaveBeenCalled();
+    env.timers[0]?.cb();
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(env.warns[0]?.obj).toEqual({
+      event: 'show-gate-timeout',
+      missing: 'theme-applied',
+      windowKind: 'note',
     });
   });
 

@@ -2604,6 +2604,10 @@ msgstr "關閉終端機"
 msgid "Close this chat's tab to delete it"
 msgstr "關閉此對話的分頁後才能刪除"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "關閉視窗"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3293,6 +3297,10 @@ msgstr "無法開啟資料夾選擇器"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "無法開啟 GitHub 登入頁。請再試一次。"
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "無法在新視窗中開啟此文件。"
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8618,6 +8626,11 @@ msgstr "用預設應用程式打開"
 msgid "Open in file manager"
 msgstr "在檔案管理程式中打開"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "在新視窗中開啟"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "在 Slidev 中開啟"
@@ -12654,6 +12667,10 @@ msgstr "這份文件已經在編輯器中開啟了。請用「開啟」來摺疊
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "這份文件缺少必要的屬性"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "此文件已被刪除"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

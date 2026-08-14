@@ -15,6 +15,7 @@
  */
 
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import type { OkNoteWindowMainAction } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   OkDesktopConfig,
   OkLocalOpAuthEvent,
@@ -49,6 +50,11 @@ export interface EventChannels {
   'ok:project:recent-removed-missing': { payload: OkRecentRemovedMissingInfo };
   /** Main → renderer menu-action dispatch (File → New Doc, Edit → Toggle Sidebar, etc.). */
   'ok:menu-action': { payload: OkMenuAction };
+  /**
+   * A popped-out note window handed a conversation/comments intent to its
+   * owning project window. Main focuses that window before sending.
+   */
+  'ok:note-window:main-action': { payload: OkNoteWindowMainAction };
   /**
    * `autoUpdater.on('update-downloaded')` fan-out to every open BrowserWindow
    * so renderer Toast A ("Update downloaded" + "Relaunch now" action) can

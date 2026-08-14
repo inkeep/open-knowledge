@@ -486,6 +486,11 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         navigator: {
           open: async () => {},
         },
+        noteWindow: {
+          open: async () => ({ ok: true as const, outcome: 'created' as const }),
+          dispatchToMain: async () => ({ ok: true as const }),
+          onMainAction: () => () => {},
+        },
         seed: {
           plan: async () => ({ ok: false, error: { kind: 'no-project', message: 'test mock' } }),
           apply: async () => ({ ok: false, error: { kind: 'no-project', message: 'test mock' } }),

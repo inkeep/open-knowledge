@@ -319,7 +319,7 @@ export function createThread(args: {
       // Only after the server accepted it. Revealing optimistically would open
       // the panel on a comment that then failed to anchor. Doc scope: the thing
       // to show is the comment just made, beside the passage it is on.
-      revealComments('doc');
+      revealComments('doc', args.docName);
       emitCommentPosted();
     })
     .catch((err: unknown) => {
@@ -363,7 +363,7 @@ export function createPropertyThread(args: {
       // Same as the passage path above: not chained into the outer `.catch`, so
       // it has to carry its own.
       void refresh(args.docName).catch(() => undefined);
-      revealComments('doc');
+      revealComments('doc', args.docName);
       emitCommentPosted();
     })
     .catch((err: unknown) => {

@@ -31,6 +31,31 @@ describe('EditorBreadcrumb (Tier-3 mount)', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  test('optionally renders the active document as the current breadcrumb page', () => {
+    render(<EditorBreadcrumb docName="meetings/2026/notes" includeCurrentPage />);
+
+    const nav = screen.getByRole('navigation', { name: /breadcrumb/i });
+    const pages = [...nav.querySelectorAll('[data-slot="breadcrumb-page"]')];
+    expect(pages.map((page) => page.textContent)).toEqual(['meetings', '2026', 'notes']);
+    expect(pages[0]?.getAttribute('aria-current')).toBeNull();
+    expect(pages[1]?.getAttribute('aria-current')).toBeNull();
+    expect(pages[2]?.getAttribute('aria-current')).toBe('page');
+    expectVisualClassTokens(nav.querySelector('[data-slot="breadcrumb-list"]')?.className, [
+      'text-sm',
+    ]);
+    expectVisualClassTokens(pages[2]?.className, ['font-medium', 'text-foreground']);
+  });
+
+  test('renders a root-level document when the current page is requested', () => {
+    render(<EditorBreadcrumb docName="notes" includeCurrentPage />);
+
+    const currentPage = screen
+      .getByRole('navigation', { name: /breadcrumb/i })
+      .querySelector('[data-slot="breadcrumb-page"]');
+    expect(currentPage?.textContent).toBe('notes');
+    expect(currentPage?.getAttribute('aria-current')).toBe('page');
+  });
+
   test('renders folder segments with chevron separators for a nested docName', () => {
     render(<EditorBreadcrumb docName="meetings/2026/q1/notes" />);
 

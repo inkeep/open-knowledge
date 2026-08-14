@@ -71,6 +71,7 @@ import { docNameFromHash, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { ProfilerBoundary } from '@/lib/perf';
 import {
@@ -365,6 +366,7 @@ function EditorAreaInner({
   renderWorkspaceHeader = renderTabsWithoutHeader,
 }: EditorAreaProps) {
   const { t } = useLingui();
+  const noteWindow = isNoteWindow();
   const {
     activeDocName,
     activeProvider,
@@ -529,8 +531,8 @@ function EditorAreaInner({
   // doc-panel neutralization — compute it up here so effects can depend on it.
   // Keyed off visibility rather than has-tabs so the panel's feedback is
   // immediate during the seconds-long agent spawn.
-  const agentsColumnPresent = agentsVisible;
-  const terminalColumnPresent = terminalVisible && terminalPlacement === 'right';
+  const agentsColumnPresent = !noteWindow && agentsVisible;
+  const terminalColumnPresent = !noteWindow && terminalVisible && terminalPlacement === 'right';
   const resizableRailColumnPresent = terminalColumnPresent || agentsColumnPresent;
   // The agents panel is the one surface with a persistent edge affordance: it is
   // discoverable in a way a chord is not, and an agent conversation is the thing a
@@ -540,11 +542,11 @@ function EditorAreaInner({
   // The terminal has NO reveal tab. It is a developer surface reached by ⌘J (and
   // the View menu), and a second permanent tab hovering over the editor footer's
   // bottom-right was clutter competing with the Ask AI composer for that corner.
-  const rightRevealTabPresent = !agentsVisible && onRevealAgents != null;
+  const rightRevealTabPresent = !noteWindow && !agentsVisible && onRevealAgents != null;
   const terminalContainer =
     terminalPlacement === 'right' ? rightTerminalContainer : bottomTerminalContainer;
   const terminalShowing = terminalVisible && terminalContainer != null;
-  const agentsShowing = agentsVisible && agentsContainer != null;
+  const agentsShowing = agentsColumnPresent && agentsContainer != null;
   // Report the attach points up to EditorPane (which owns the long-lived session
   // hosts). EditorArea only says where to attach — the VS Code / Zed pattern of
   // owning the terminal above the layout that changes.
@@ -1878,17 +1880,19 @@ function EditorAreaInner({
         visibleDocNames={renderableVisibleDocNames}
         activityHosts={activityHosts}
         parkingHost={parkingHost}
-        renderToolbar={(docName, provider) => (
-          <PaneDocumentToolbar
-            docName={docName}
-            provider={provider}
-            isSourceMode={isSourceMode}
-            onModeChange={onModeChange}
-            isPanelCollapsed={isCollapsed}
-            onTogglePanel={togglePanel}
-            reserveRightGutter={docName === activeDocName && rightRevealTabPresent && isCollapsed}
-          />
-        )}
+        renderToolbar={(docName, provider) =>
+          noteWindow ? null : (
+            <PaneDocumentToolbar
+              docName={docName}
+              provider={provider}
+              isSourceMode={isSourceMode}
+              onModeChange={onModeChange}
+              isPanelCollapsed={isCollapsed}
+              onTogglePanel={togglePanel}
+              reserveRightGutter={docName === activeDocName && rightRevealTabPresent && isCollapsed}
+            />
+          )
+        }
         isSourceMode={isSourceMode}
         editorPlaceholder={poolActiveDocName === activeDocName ? editorPlaceholder : undefined}
         previousDocName={previousDocName ?? undefined}
@@ -2042,6 +2046,13 @@ function EditorAreaInner({
       </ResizablePanel>
     </>
   );
+
+  // A popped-out note window carries no doc-panel rail, so the editor takes the
+  // window's full width. Cleared after the branches above rather than guarding
+  // each one: every branch that builds a rail is equally out of scope here, and
+  // one exit keeps the layout arithmetic below honest (`rightPanel == null`
+  // feeds `editorAbsorbsResidual`).
+  if (noteWindow) rightPanel = null;
 
   // The editor absorbs the residual width whenever something on the right claims
   // space — the doc panel (when present and not collapsed) or a resizable rail.

@@ -2604,6 +2604,10 @@ msgstr "Fermer le terminal"
 msgid "Close this chat's tab to delete it"
 msgstr "Fermez l'onglet de ce chat pour le supprimer"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "Fermer la fenêtre"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3293,6 +3297,10 @@ msgstr "Impossible d'ouvrir le sélecteur de dossier"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "Impossible d'ouvrir la connexion GitHub. Veuillez réessayer."
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "Impossible d'ouvrir ce document dans une nouvelle fenêtre."
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8618,6 +8626,11 @@ msgstr "Ouvrir dans l'application par défaut"
 msgid "Open in file manager"
 msgstr "Ouvrir dans le gestionnaire de fichiers"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "Ouvrir dans une nouvelle fenêtre"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "Ouvrir dans Slidev"
@@ -12654,6 +12667,10 @@ msgstr "Ce document est déjà actif dans l'éditeur. Utilisez Ouvrir pour rédu
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "Il manque des propriétés obligatoires à ce document"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "Ce document a été supprimé"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

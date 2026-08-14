@@ -155,3 +155,19 @@ export function logIpcError(payload: IpcErrorLogPayload): void {
     console.warn(JSON.stringify({ ...safe, _causeSerializationFailed: true }));
   }
 }
+
+/**
+ * Preserve an unexpected main-process failure before Electron serializes the
+ * rejection down to its message for the invoking renderer.
+ */
+export async function withIpcErrorLogging<T>(
+  payload: Omit<IpcErrorLogPayload, 'event' | 'cause'>,
+  run: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (cause) {
+    logIpcError({ event: 'ipc.error', ...payload, cause });
+    throw cause;
+  }
+}

@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/react';
-import { TOOLBAR_HEIGHT } from '../extensions/frozen-table-headers';
+import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 
 /**
  * Floating-UI clipping options that keep selection-anchored menus inside the
@@ -34,7 +34,7 @@ export function deriveEditorClipOptions(editor: Editor) {
       // (recycle/remount race) — fall back to the default boundary this pass.
     }
     const padding = {
-      top: TOOLBAR_HEIGHT,
+      top: editorToolbarOverlapPx(),
       bottom:
         readRootInlinePxVar('--ask-composer-height') +
         readRootInlinePxVar('--conflict-footer-height'),

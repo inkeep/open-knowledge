@@ -17,6 +17,8 @@
  * degrades per what is enabled and available.
  */
 
+import { routeNoteWindowActionToMain } from '@/lib/note-window-main-actions';
+
 const ACTIVE_TERMINAL_INPUT_EVENT = 'open-knowledge:active-terminal-input';
 
 export interface ActiveTerminalInputDetail {
@@ -56,14 +58,16 @@ export function requestActiveTerminalInput(
     ? new EventTarget()
     : window,
 ): void {
+  const detail: ActiveTerminalInputDetail = {
+    text,
+    newTab: options?.newTab === true,
+    submit: options?.submit === true,
+    ...(options?.target === 'agents' ? { target: 'agents' as const } : {}),
+  };
+  if (routeNoteWindowActionToMain({ kind: 'active-input', ...detail }, target)) return;
   target.dispatchEvent(
     new CustomEvent<ActiveTerminalInputDetail>(ACTIVE_TERMINAL_INPUT_EVENT, {
-      detail: {
-        text,
-        newTab: options?.newTab === true,
-        submit: options?.submit === true,
-        ...(options?.target === 'agents' ? { target: 'agents' as const } : {}),
-      },
+      detail,
     }),
   );
 }

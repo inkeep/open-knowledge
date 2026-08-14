@@ -109,6 +109,13 @@ function setWindowsHost() {
   });
 }
 
+function setNoteHost() {
+  Object.defineProperty(window, 'okDesktop', {
+    configurable: true,
+    value: { config: { mode: 'note' }, menu: {}, platform: 'win32' },
+  });
+}
+
 async function renderHeader(tabs?: ReactNode) {
   const { EditorHeader } = await import('./EditorHeader');
   render(
@@ -447,6 +454,46 @@ describe('EditorHeader runtime behavior', () => {
     expect(screen.queryByTestId('sidebar-trigger')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Search/ })).toBeNull();
     expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
+  });
+
+  test('note windows put document context in the titlebar without Resources or sync chrome', async () => {
+    setNoteHost();
+    sidebarState = 'expanded';
+    const { EditorHeader } = await import('./EditorHeader');
+    render(
+      <TooltipProvider delayDuration={0}>
+        <EditorHeader noteModeToggle={<button type="button">mode switch</button>} />
+      </TooltipProvider>,
+    );
+
+    const leadingZone = document.querySelector(
+      '[data-editor-header-leading-actions]',
+    ) as HTMLElement;
+    const header = document.querySelector('header') as HTMLElement;
+    expect(leadingZone.textContent).toContain('docs');
+    expect(leadingZone.textContent).toContain('notes');
+    expect(
+      leadingZone.querySelector('[data-slot="breadcrumb-page"][aria-current="page"]')?.textContent,
+    ).toBe('notes');
+    expectVisualClassTokens(header.className, ['bg-background']);
+    expectVisualClassTokensAbsent(header.className, [
+      'bg-muted/35',
+      'shadow-[inset_0_-1px_0_var(--border)]',
+    ]);
+    expectVisualClassTokens(leadingZone.className, ['left-[var(--ok-titlebar-reserve-left,1rem)]']);
+    expect(screen.getByRole('button', { name: 'mode switch' })).toBeTruthy();
+    const modeToggle = document.querySelector('[data-note-window-mode-toggle]') as HTMLElement;
+    expectVisualClassTokens(modeToggle.className, [
+      '[&_[data-slot=toggle-group]]:bg-transparent',
+      '[&_[data-slot=toggle-group]]:p-0',
+      '[&_[data-slot=toggle-group-item]]:size-8',
+      '[&_[data-slot=toggle-group-item]]:shadow-none',
+    ]);
+    expect(screen.queryByRole('button', { name: 'Resources' })).toBeNull();
+    expect(screen.queryByTestId('sync-status-badge')).toBeNull();
+    expect(screen.queryByTestId('presence-bar')).toBeNull();
+    expect(screen.queryByTestId('beta-badge')).toBeNull();
+    expect(screen.queryByTestId('app-menubar')).toBeNull();
   });
 
   test('renders workspace tabs between the global action zones', async () => {

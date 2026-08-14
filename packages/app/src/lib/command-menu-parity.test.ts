@@ -549,6 +549,9 @@ describe('command identity registry (Phase 2b)', () => {
       'new-file',
       'new-folder',
       'open-graph',
+      // Invokes the note-window bridge channel directly. The menu-action bus is
+      // renderer-local, and this has to reach main to spawn a BrowserWindow.
+      'open-in-new-window',
       'initialize-starter-pack',
       'new-project',
       'open-folder',

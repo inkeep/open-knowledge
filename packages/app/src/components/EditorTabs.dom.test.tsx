@@ -1288,6 +1288,53 @@ describe('EditorTabs runtime behavior', () => {
     expect(moveTabToNewPane).toHaveBeenCalledWith(newId, 'right');
   });
 
+  test('offers Open in New Window on document tabs only, and never on the web host', async () => {
+    const { folderId, assetId, newId } = defaultTabs();
+
+    // Web host: no desktop bridge, so the pop-out entry point does not exist.
+    await renderEditorTabs();
+    expect(screen.queryAllByTestId('editor-tab-context-open-in-new-window')).toHaveLength(0);
+
+    cleanup();
+    const openNoteWindow = vi.fn(async () => ({ ok: true as const, outcome: 'created' as const }));
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: { noteWindow: { open: openNoteWindow } },
+    });
+    await renderEditorTabs();
+
+    // One per file-backed DOCUMENT tab. A folder and an asset carry their own
+    // id prefixes; a blank "New tab" has no prefix and so parses as a doc, but
+    // is backed by no file — all three are excluded.
+    const items = screen.getAllByTestId('editor-tab-context-open-in-new-window');
+    const docTabCount = visibleTabIds.filter(
+      (id) => id !== folderId && id !== assetId && id !== newId,
+    ).length;
+    expect(items).toHaveLength(docTabCount);
+    expect(docTabCount).toBe(3);
+
+    fireEvent.click(items[0] as HTMLElement);
+    expect(openNoteWindow).toHaveBeenCalledWith('docs/team/notes', 'tab-menu');
+  });
+
+  test('popping a tab out leaves the origin tab list untouched', async () => {
+    const openNoteWindow = vi.fn(async () => ({ ok: true as const, outcome: 'created' as const }));
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: { noteWindow: { open: openNoteWindow } },
+    });
+    await renderEditorTabs();
+
+    fireEvent.click(
+      screen.getAllByTestId('editor-tab-context-open-in-new-window')[0] as HTMLElement,
+    );
+
+    // Keep-both: the origin tab stays open, so nothing on the origin side moves.
+    expect(closeTab).not.toHaveBeenCalled();
+    expect(closeTabs).not.toHaveBeenCalled();
+    expect(moveTabToNewPane).not.toHaveBeenCalled();
+  });
+
   test('disables move-to-pane actions when the pane has only one tab', async () => {
     activeDocName = 'docs/team/notes';
     activeTabId = 'docs/team/notes';

@@ -163,10 +163,12 @@ import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
+import { docNameFromActiveTarget, EditorActiveTargetRegistry } from './active-target-registry.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { registerAppImageDeepLinks } from './appimage-integration.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu, revealMenuLabel } from './asset-menu.ts';
+import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
@@ -297,7 +299,7 @@ import {
   spawnCursor as spawnCursorImpl,
   trashItem as trashItemImpl,
 } from './ipc-handlers.ts';
-import { logIpcError } from './ipc-log.ts';
+import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
 import {
   detectGraphicalAuthCommand,
@@ -315,6 +317,25 @@ import {
 import { installApplicationMenu } from './menu.ts';
 import type { MenuTranslator } from './menu-translator.ts';
 import { beginNavigatorHandoff, createNavigatorWindow } from './navigator-window.ts';
+import {
+  closeNoteWindowsForProject,
+  dispatchNoteWindowMainActionToProject,
+  type NoteBrowserWindow,
+  type NoteWindowProject,
+  noteWindowNativeChromeOptions,
+  noteWindowTitle,
+  openNoteWindow,
+  resolveNoteWindowProject,
+  resolveWindowProjectScope,
+} from './note-window.ts';
+import {
+  getNoteWindowContext,
+  listNoteWindows,
+  listNoteWindowsForProject,
+  type NoteWindowEntryPoint,
+  setNoteWindowDoc,
+  touchNoteWindow,
+} from './note-window-registry.ts';
 import { runOkInit } from './ok-init.ts';
 import {
   type OnboardingFlowKind,
@@ -344,6 +365,7 @@ import {
   applyReducedTransparency,
   type BrowserWindowVibrancyTarget,
   type ReducedTransparencyDeps,
+  setPreferredWindowVibrancy,
   type VibrancyMaterial,
 } from './reduced-transparency-handler.ts';
 import { removeGitFolder } from './remove-git-folder.ts';
@@ -390,14 +412,17 @@ import {
   normalizeTerminalRestartSnapshot,
   type PersistedWindowBounds,
   parseAppState,
+  type RestoredWindow,
   removeRecentProject,
   type SchemaIncompatibilityDiagnostic,
   saveAppStateToDir,
   setLastUsedProjectParent,
+  setNoteWindowBounds,
   setProjectSessionState,
   setProjectWindowBounds,
   setSpellCheckEnabled as setSpellCheckEnabledState,
   type UpdateChannel,
+  windowRestoreKey,
 } from './state-store.ts';
 import { isTerminalConsented, isTerminalConsentedWithGrace } from './terminal-consent.ts';
 import { commitTerminalDockState } from './terminal-dock-persistence.ts';
@@ -492,9 +517,7 @@ import {
 // Default vibrancy material — `VibrancyMaterial` is the canonical narrow
 // union from `reduced-transparency-handler.ts`. Pinning here lets the
 // prefers-reduced-transparency restore path re-enable to the same material
-// without a wider cast. `'sidebar'` is the chosen material; `'window'` is
-// the documented fallback if the Electron #27882 border quirk recurs on a
-// future Electron upgrade.
+// without a wider cast.
 const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
 
 const AGENTS_HUB_DIR = AGENTS_SKILLS_ROOT.split('/')[0] ?? '.agents';
@@ -636,6 +659,89 @@ function applyProjectWindowPlacement(win: BrowserWindow, projectPath: string | u
 }
 
 /**
+ * Place a note window at its project's remembered frame, or cascade.
+ *
+ * Cascades rather than reusing the frame when another note window for the same
+ * project is already sitting there — stacking a second pop-out exactly on top of
+ * the first reads as nothing having happened. The remembered frame also goes
+ * through the same display-intersection gate as project windows, so a frame
+ * saved on a monitor that is no longer connected falls back to cascade instead
+ * of opening off-screen.
+ */
+function applyNoteWindowPlacement(
+  win: BrowserWindow,
+  projectRoot: string,
+  restoredBounds?: PersistedWindowBounds,
+): void {
+  // A restored window owns its recorded frame outright: it was positioned
+  // individually, and the collision check below is about NEW pop-outs stacking,
+  // which does not apply to putting a saved layout back.
+  const saved = restoredBounds ?? appState.noteWindowBounds[projectRoot];
+  const occupied =
+    restoredBounds === undefined &&
+    listNoteWindowsForProject(projectRoot).some((windowId) => {
+      if (windowId === win.id) return false;
+      return BrowserWindow.fromId(windowId)?.isDestroyed() === false;
+    });
+  const placement = occupied
+    ? null
+    : resolveRestoredPlacement({
+        saved,
+        workAreas: screen.getAllDisplays().map((d) => d.workArea),
+        minSize: WINDOW_MIN_SIZE.EDITOR,
+      });
+  if (!placement) {
+    applyCascadePosition(win);
+    return;
+  }
+  win.setBounds(placement.bounds);
+  registerCascadeAnchor(win);
+}
+
+/**
+ * Track a note window's focus, for two consumers that both need "most recently
+ * used": the restore snapshot's ordering, and the registry's tiebreak when
+ * in-place navigation lands two windows on one (project, document) identity.
+ *
+ * Keyed on the window's CURRENT document, read at focus time rather than
+ * captured at creation, so a window that navigated is ordered under the
+ * identity it actually has.
+ */
+function trackNoteWindowFocus(win: BrowserWindow): void {
+  win.on('focus', () => {
+    if (win.isDestroyed()) return;
+    touchNoteWindow(win.id);
+    editorViewMenuStates.select(win.id);
+    refreshApplicationMenu();
+    const context = getNoteWindowContext(win.id);
+    if (!context) return;
+    recordWindowFocusSeq(
+      windowRestoreKey({
+        kind: 'doc',
+        projectPath: context.projectRoot,
+        docName: context.currentDocName,
+      }),
+    );
+  });
+}
+
+/** Persist a note window's frame as its project's remembered pop-out slot. */
+function trackNoteWindowBounds(win: BrowserWindow, projectRoot: string): void {
+  const persist = () => {
+    if (win.isDestroyed()) return;
+    appState = setNoteWindowBounds(appState, projectRoot, {
+      ...win.getNormalBounds(),
+      isMaximized: win.isMaximized(),
+      isFullScreen: win.isFullScreen(),
+    });
+    saveAppState(appState);
+  };
+  win.on('moved', persist);
+  win.on('resized', persist);
+  win.on('close', persist);
+}
+
+/**
  * Persist a project window's frame so the next open of the same project
  * restores it. macOS emits `'moved'` / `'resized'` once per completed drag
  * (not continuously), and the mode events + `'close'` are one-shot, so each
@@ -734,7 +840,32 @@ let windowRestoreSnapshotWritten = false;
 function captureWindowRestoreSnapshot(reason: string): void {
   if (windowRestoreSnapshotWritten) return;
   windowRestoreSnapshotWritten = true;
-  const windows = sortWindowsByFocusSequence(wm?.getOpenWindows() ?? [], projectFocusSeq);
+  // Note windows live outside `windowsByPath`, so `getOpenWindows()` cannot see
+  // them — they come from their own registry. Each carries the document it is
+  // showing NOW (in-place navigation may have moved it off the one it opened
+  // with) and its own frame. Both sets sort together, so focus recency is
+  // global; the boot filter re-groups projects ahead of pop-outs at open time
+  // while preserving that order within each group.
+  const noteWindows: RestoredWindow[] = listNoteWindows().flatMap(({ windowId, context }) => {
+    const win = BrowserWindow.fromId(windowId);
+    if (!win || win.isDestroyed()) return [];
+    return [
+      {
+        kind: 'doc' as const,
+        projectPath: context.projectRoot,
+        docName: context.currentDocName,
+        bounds: {
+          ...win.getNormalBounds(),
+          isMaximized: win.isMaximized(),
+          isFullScreen: win.isFullScreen(),
+        },
+      },
+    ];
+  });
+  const windows = sortWindowsByFocusSequence(
+    [...(wm?.getOpenWindows() ?? []), ...noteWindows],
+    projectFocusSeq,
+  );
   appState = { ...appState, pendingWindowRestore: windows };
   if (!saveAppState(appState)) {
     // Persist failed — the next boot may not reopen everything that was open.
@@ -1305,12 +1436,19 @@ const bugReportSidecar = createBugReportSidecarStore({
  * folder / asset / null state, main rebuilds the menu so Rename /
  * Duplicate / Move to Trash flip enabled/disabled per scope.
  *
- * Module-scope rather than per-window because the menu is a singleton
- * (`Menu.setApplicationMenu` replaces the global menu). Last-write-wins
- * across multiple project windows — matches the existing recent-projects
- * pattern at `appState.recentProjects`.
+ * Keyed per window even though the menu is a singleton
+ * (`Menu.setApplicationMenu` replaces the global menu), because reads take the
+ * FOCUSED window's target. One shared snapshot was survivable while every
+ * editor window was its own project, but popped-out note windows put two
+ * windows on one project: whichever pushed last would own the File menu's scope
+ * regardless of which window the user was looking at.
  */
-let editorActiveTarget: EditorActiveTargetSnapshot = { kind: null };
+const editorActiveTargets = new EditorActiveTargetRegistry();
+
+/** The active target the application menu should reflect right now. */
+function currentActiveTarget(): EditorActiveTargetSnapshot {
+  return editorActiveTargets.current(BrowserWindow.getFocusedWindow()?.id ?? null);
+}
 
 /**
  * View-menu state pushed by the renderer via
@@ -1482,7 +1620,36 @@ function ensureWindowManager() {
         trackEphemeralWindowFocus(win, opts.focusKey);
       }
       attachSpellcheckMenuToWindow(win);
-      win.on('closed', () => editorViewMenuStates.delete(win.id));
+      win.on('closed', () => {
+        editorViewMenuStates.delete(win.id);
+        // Drop the window's active target too, so a closed window cannot keep
+        // supplying the menu's fallback scope after it is gone.
+        editorActiveTargets.delete(win.id);
+      });
+      // A project's popped-out note windows close with its main window: they
+      // never survive as independents. In dev the project's forked server dies
+      // with this window, so a surviving pop-out's argv-frozen collab URL could
+      // never reach a respawned server — an unrecoverable orphan.
+      //
+      // `windowRestoreSnapshotWritten` is the quit discriminator. Every clean-
+      // exit path captures the restore snapshot at its earliest teardown hook,
+      // which precedes this cascade, so on quit the note windows are already
+      // recorded and come back next launch. A mid-session project close finds
+      // the flag false and they are gone for good.
+      if (opts.projectPath !== undefined) {
+        const noteProjectRoot = opts.projectPath;
+        win.on('closed', () => {
+          closeNoteWindowsForProject({
+            projectRoot: noteProjectRoot,
+            reason: windowRestoreSnapshotWritten ? 'quit' : 'project-close',
+            closingProjectWindow: win as unknown as BrowserWindowLike,
+            activeProjectWindow: wm?.getWindowFor(noteProjectRoot)?.window,
+            closeWindowById: (windowId) => {
+              BrowserWindow.fromId(windowId)?.close();
+            },
+          });
+        });
+      }
       // Per-window PTY reap: closing the window kills its shell (no orphan).
       // Idempotent — the manager no-ops for a window that never opened one. The
       // onReap clears the window's retained dock-visibility so it can't restore
@@ -1759,6 +1926,9 @@ function ensureWindowManager() {
     realpathSync: (p) => realpathSync(p),
     onUtilityMessage: (msg) => {
       ensureDebugIpc().handleUtilityMessage(msg);
+    },
+    onProjectServerRestarted: ({ projectPath, apiOrigin }) => {
+      recreateNoteWindowsForProject(projectPath, apiOrigin);
     },
     onUtilityExit: (utility) => {
       ensureDebugIpc().cancelPendingForUtility(utility);
@@ -2855,7 +3025,8 @@ function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebConte
 }
 
 async function runApplicationMenuRefresh(): Promise<void> {
-  const focusedWindowId = BrowserWindow.getFocusedWindow()?.id ?? null;
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const focusedWindowId = focusedWindow?.id ?? null;
   const editorViewMenuState = editorViewMenuStates.current(focusedWindowId);
   // installApplicationMenu is async because it dynamically imports
   // `electron.Menu` (see menu.ts header — keeps `buildMenuTemplate`
@@ -2968,6 +3139,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // View menu history traversal uses the same focused-renderer action channel.
     onNavigateBack: () => sendMenuActionToFocused('navigate-back'),
     onNavigateForward: () => sendMenuActionToFocused('navigate-forward'),
+    noteWindow: focusedWindow !== null && getNoteWindowContext(focusedWindow.id) !== undefined,
     // File menu state-aware items. activeTarget drives enable/disable;
     // per-item handlers fire `ok:menu-action` to the focused renderer which
     // already knows the current scope (sidebar selection + editor
@@ -2975,7 +3147,16 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // primitives the sidebar context menus invoke). Routes through the
     // existing `onMenuAction` channel so there's no new IPC surface for the
     // renderer to subscribe to.
-    activeTarget: editorActiveTarget,
+    activeTarget: currentActiveTarget(),
+    // Main-originated, unlike the tab menu and the palette: main already knows
+    // the focused window and its active document, so there is nothing to ask
+    // the renderer for and no channel to add.
+    onOpenInNewWindow: () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      const docName = docNameFromActiveTarget(editorActiveTargets.current(focused?.id ?? null));
+      if (!docName) return;
+      openNoteWindowForDoc({ origin: focused, docName, entryPoint: 'window-menu' });
+    },
     onNewFile: () => sendMenuActionToFocused('new-doc'),
     onNewFolder: () => sendMenuActionToFocused('new-folder'),
     onNewFromTemplate: () => sendMenuActionToFocused('new-from-template'),
@@ -3771,6 +3952,7 @@ function openTerminalWindow(): void {
   const project = resolveTerminalWindowProject({
     editor: editorCtx ?? null,
     terminal: focused ? getTerminalWindowContext(focused.id) : undefined,
+    note: focused ? getNoteWindowContext(focused.id) : undefined,
   });
   const rendererEntryPath = app.isPackaged
     ? join(process.resourcesPath, 'app', 'index.html')
@@ -3805,6 +3987,242 @@ function openTerminalWindow(): void {
     project,
   });
   recordTerminalWindowOpened();
+}
+
+/**
+ * Reopen one popped-out window from a relaunch snapshot, after its project's
+ * window and server are up.
+ *
+ * Declines silently when the project did not come up after all — the boot
+ * filter already dropped entries whose project was absent from the snapshot,
+ * but a project window can still fail to open, and a lone pop-out with nothing
+ * to attach to is worse than a missing one. A document deleted while the app
+ * was closed still opens: the window shows the deleted state, which tells the
+ * user what happened instead of quietly dropping a window they left open.
+ */
+function restoreNoteWindow(entry: {
+  readonly projectPath: string;
+  readonly docName: string;
+  readonly bounds?: PersistedWindowBounds;
+}): void {
+  const ctx = wm?.getWindowFor(entry.projectPath);
+  if (!ctx) return;
+  openNoteWindowForDoc({
+    origin: null,
+    docName: entry.docName,
+    // No entryPoint: a restore is not an adoption.
+    project: {
+      projectPath: ctx.projectPath,
+      projectName: ctx.projectName,
+      collabUrl: collabUrlFromApiOrigin(ctx.apiOrigin),
+      apiOrigin: ctx.apiOrigin,
+    },
+    restoredBounds: entry.bounds,
+  });
+}
+
+/**
+ * Recreate a project's note windows against its freshly restarted server.
+ *
+ * A note window's attach argv is a frozen snapshot taken at creation, so after
+ * a restart it still points at the terminated server — and the replacement
+ * usually binds a different port, so the old window could never reconnect on
+ * its own. Closing and reopening on the current scope is the whole fix; the
+ * documents come back because each window's CURRENT document is read from the
+ * registry, not its birth document.
+ */
+function recreateNoteWindowsForProject(projectRoot: string, apiOrigin: string): void {
+  const docNames = listNoteWindowsForProject(projectRoot)
+    .map((windowId) => getNoteWindowContext(windowId)?.currentDocName)
+    .filter((docName): docName is string => docName !== undefined);
+  if (docNames.length === 0) return;
+
+  closeNoteWindowsForProject({
+    projectRoot,
+    // Not a quit and not a user closing the project: the windows are coming
+    // straight back, so neither the restore snapshot nor a teardown applies.
+    reason: 'project-close',
+    closeWindowById: (windowId) => {
+      BrowserWindow.fromId(windowId)?.close();
+    },
+  });
+
+  const project: NoteWindowProject = {
+    projectPath: projectRoot,
+    projectName: basename(projectRoot),
+    collabUrl: collabUrlFromApiOrigin(apiOrigin),
+    apiOrigin,
+  };
+  for (const docName of docNames) {
+    // Isolate each recreate: the windows were already closed above, so a throw
+    // on one (a `BrowserWindow` constructor failure, say) would otherwise lose
+    // every pop-out after it. No entryPoint: the app is putting back what was
+    // already open, so this must not count as an adoption.
+    try {
+      openNoteWindowForDoc({ origin: null, docName, project });
+    } catch (err) {
+      getLogger('note-window').warn(
+        { err, projectRoot, docName },
+        'failed to recreate a note window after server restart',
+      );
+    }
+  }
+}
+
+/**
+ * The project scope a window's main-side actions operate against, resolving an
+ * editor window through `windowsByPath` and a note window through the note
+ * registry. See `resolveWindowProjectScope` for why the fallback exists.
+ */
+function windowProjectScope(win: BrowserWindow | null): {
+  projectPath: string | undefined;
+  apiOrigin: string | undefined;
+} {
+  if (!win) return { projectPath: undefined, apiOrigin: undefined };
+  return resolveWindowProjectScope({
+    editor: wm?.getContextForBrowserWindow(win as unknown as BrowserWindowLike),
+    note: getNoteWindowContext(win.id),
+  });
+}
+
+/** The project path for a window, for the containment-gated shell handlers. */
+function windowProjectPath(win: BrowserWindow | null): string | undefined {
+  return windowProjectScope(win).projectPath;
+}
+
+/**
+ * Keep a note window's title and its dedup identity on the document it is
+ * actually showing.
+ *
+ * A note window is single-document, but not fixed to the document it was born
+ * with: wiki links navigate it in place, and a rename retargets it. Both arrive
+ * here as an active-target push, which is why the title rides this existing
+ * channel instead of a new one.
+ *
+ * No-ops for every other window kind. A non-doc target (the window is showing a
+ * folder or an asset, reachable through in-place navigation) leaves the title
+ * alone rather than blanking it — a stale-but-real name beats an empty title
+ * bar.
+ */
+function applyNoteWindowTargetChange(win: BrowserWindow, target: EditorActiveTargetSnapshot): void {
+  if (getNoteWindowContext(win.id) === undefined) return;
+  const docName = docNameFromActiveTarget(target);
+  if (!docName) return;
+  setNoteWindowDoc(win.id, docName);
+  if (!win.isDestroyed()) win.setTitle(noteWindowTitle(docName));
+}
+
+/**
+ * Pop a document into its own `--ok-mode=note` window, or focus the window
+ * already showing it.
+ *
+ * One helper behind all three entry points: the doc-tab context menu and the
+ * palette reach it through `ok:window:open-note`, the Window menu calls it
+ * directly in main. `origin` is the invoking window, which supplies the project
+ * — an editor window through `windowsByPath`, or another note window through
+ * the registry so popping out from inside a pop-out works.
+ */
+function openNoteWindowForDoc(args: {
+  readonly origin: BrowserWindow | null;
+  readonly docName: string;
+  /** Undefined for opens the user did not initiate (a restart recreate). */
+  readonly entryPoint?: NoteWindowEntryPoint;
+  /** An explicit project, for callers with no origin window to resolve from. */
+  readonly project?: NoteWindowProject;
+  /** This window's OWN frame from a relaunch snapshot, which beats the
+   *  per-project slot: each pop-out was positioned individually. */
+  readonly restoredBounds?: PersistedWindowBounds;
+}): { ok: true; outcome: 'created' | 'focused' } | { ok: false; reason: 'no-project' } {
+  const { origin, docName, entryPoint } = args;
+  const editorCtx =
+    origin && wm ? wm.getContextForBrowserWindow(origin as unknown as BrowserWindowLike) : null;
+  const project =
+    args.project ??
+    resolveNoteWindowProject({
+      editor: editorCtx ?? null,
+      note: origin ? getNoteWindowContext(origin.id) : undefined,
+      collabUrlFromApiOrigin,
+      projectNameFromPath: (projectPath) => basename(projectPath),
+    });
+  if (!project) return { ok: false, reason: 'no-project' };
+
+  const rendererEntryPath = app.isPackaged
+    ? join(process.resourcesPath, 'app', 'index.html')
+    : join(__dirname, '../renderer/index.html');
+  const nativeChrome = noteWindowNativeChromeOptions(process.platform);
+
+  const result = openNoteWindow({
+    createWindow: (opts) => {
+      const win = new BrowserWindow({
+        ...DEFAULT_WIN_OPTS,
+        ...nativeChrome,
+        minWidth: WINDOW_MIN_SIZE.EDITOR.width,
+        minHeight: WINDOW_MIN_SIZE.EDITOR.height,
+        title: opts.title,
+        webPreferences: {
+          ...DEFAULT_WIN_OPTS.webPreferences,
+          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          preload: join(__dirname, '../preload/index.js'),
+        },
+      });
+      // Main owns the title so it can track the displayed document; the
+      // renderer's static <title> must not overwrite it (same as every other
+      // window factory).
+      win.on('page-title-updated', (e) => {
+        e.preventDefault();
+      });
+      if (nativeChrome.vibrancy !== undefined) {
+        setPreferredWindowVibrancy(win, nativeChrome.vibrancy);
+      }
+      attachSpellcheckMenuToWindow(win);
+      return win as unknown as NoteBrowserWindow;
+    },
+    rendererEntryPath,
+    rendererDevUrl,
+    appVersion: app.getVersion(),
+    showGate,
+    project,
+    docName,
+    entryPoint,
+    // Same external-link net every editor window gets from
+    // `WindowManager.attachSafetyNet`, wired here because a note window is
+    // created outside the window manager. `openExternal` is window-independent;
+    // `openAsset` is scoped to this window's project so containment resolves
+    // against the right root.
+    attachSafetyNet: (win) =>
+      attachAssetSafetyNet(win.webContents, {
+        editorOrigin: project.apiOrigin,
+        openExternal: handleShellOpenExternal({
+          openExternal: (url) => shell.openExternal(url),
+        }),
+        openAsset: (relPath) =>
+          openAssetSafely(
+            {
+              projectPath: project.projectPath,
+              platform: process.platform,
+              openPath: (canonical) => shell.openPath(canonical),
+            },
+            relPath,
+          ),
+      }),
+    placeWindow: (win) => {
+      const browserWindow = win as unknown as BrowserWindow;
+      applyNoteWindowPlacement(browserWindow, project.projectPath, args.restoredBounds);
+      trackNoteWindowBounds(browserWindow, project.projectPath);
+      trackNoteWindowFocus(browserWindow);
+    },
+    onClosed: (windowId) => {
+      editorActiveTargets.delete(windowId);
+    },
+    focusWindowById: (windowId) => {
+      const win = BrowserWindow.fromId(windowId);
+      if (!win || win.isDestroyed()) return false;
+      if (win.isMinimized()) win.restore();
+      win.focus();
+      return true;
+    },
+  });
+  return { ok: true, outcome: result.outcome };
 }
 
 /**
@@ -4685,10 +5103,7 @@ function registerIpcHandlers() {
     // validateSpawnPath + isPathWithinProject checks inside the impl refuse
     // any out-of-scope path when a project IS bound.
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
-      callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
-        : undefined;
+    const callerProjectPath = windowProjectPath(callerWin);
     const outcome = await spawnCursorImpl(
       {
         platform: process.platform,
@@ -4749,10 +5164,7 @@ function registerIpcHandlers() {
   // asset scope.
   handle('ok:shell:open-asset', async (event, relPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
-      callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
-        : undefined;
+    const callerProjectPath = windowProjectPath(callerWin);
     if (!callerProjectPath) {
       logIpcError({
         event: 'ipc.error',
@@ -4783,10 +5195,7 @@ function registerIpcHandlers() {
 
   handle('ok:shell:reveal-asset', async (event, relPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
-      callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
-        : undefined;
+    const callerProjectPath = windowProjectPath(callerWin);
     if (!callerProjectPath) {
       logIpcError({
         event: 'ipc.error',
@@ -4826,9 +5235,7 @@ function registerIpcHandlers() {
   handle('ok:shell:show-asset-menu', async (event, params) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     if (!callerWin || !wm) return undefined;
-    const projectPath = wm.getContextForBrowserWindow(
-      callerWin as unknown as BrowserWindowLike,
-    )?.projectPath;
+    const projectPath = windowProjectPath(callerWin);
     if (!projectPath) return undefined;
     popAssetMenu(
       {
@@ -4873,10 +5280,7 @@ function registerIpcHandlers() {
     // Resolve caller window's project directory (undefined for Navigator).
     // Validation, refusal, and security rationale live in `showItemInFolderImpl`.
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
-      callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
-        : undefined;
+    const callerProjectPath = windowProjectPath(callerWin);
     const result = showItemInFolderImpl(
       {
         platform: process.platform,
@@ -4941,10 +5345,7 @@ function registerIpcHandlers() {
 
   handle('ok:shell:trash-item', async (event, absPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
-    const callerProjectPath =
-      callerWin && wm
-        ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
-        : undefined;
+    const callerProjectPath = windowProjectPath(callerWin);
     // Path normalization happens at span-creation time using the renderer
     // input (pre-realpath). The post-realpath canonical path is what we'd
     // emit to logs/index — but it may include the user home prefix, so we
@@ -4994,13 +5395,17 @@ function registerIpcHandlers() {
     return result;
   });
 
-  handle('ok:editor:active-target-changed', async (_event, target) => {
-    // Last-write-wins across windows — see `editorActiveTarget` declaration.
-    // The renderer pushes after each navigation; main rebuilds the menu so
-    // Rename / Duplicate / Move to Trash flip enabled/disabled per the new
-    // scope. No attempt to dedupe identical successive pushes — the rebuild
-    // is cheap and the renderer dedupes upstream where it matters.
-    editorActiveTarget = target;
+  handle('ok:editor:active-target-changed', async (event, target) => {
+    // The renderer pushes after each navigation; main records it against the
+    // SENDING window and rebuilds the menu so Rename / Duplicate / Move to
+    // Trash flip enabled/disabled per the focused window's scope. No attempt to
+    // dedupe identical successive pushes — the rebuild is cheap and the
+    // renderer dedupes upstream where it matters.
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      editorActiveTargets.update(win.id, target);
+      applyNoteWindowTargetChange(win, target);
+    }
     refreshApplicationMenu();
     return undefined;
   });
@@ -5052,15 +5457,15 @@ function registerIpcHandlers() {
     if (!callerWin || !wm) {
       return { ok: false as const, reason: 'read-error' as const, detail: 'no window context' };
     }
-    const ctx = wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike);
-    if (!ctx?.projectPath || !ctx.apiOrigin) {
+    const { projectPath, apiOrigin } = windowProjectScope(callerWin);
+    if (!projectPath || !apiOrigin) {
       return { ok: false as const, reason: 'read-error' as const, detail: 'no project context' };
     }
     return copyImageToClipboard(
       {
-        projectPath: ctx.projectPath,
+        projectPath,
         platform: process.platform,
-        assetOrigin: ctx.apiOrigin,
+        assetOrigin: apiOrigin,
         clipboard,
         nativeImage,
       },
@@ -5145,7 +5550,7 @@ function registerIpcHandlers() {
           showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
           canCheckForUpdates: autoUpdaterHandle != null,
           canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
-          activeTarget: editorActiveTarget ?? { kind: null },
+          activeTarget: currentActiveTarget(),
           viewMenuState: (() => {
             const win = BrowserWindow.fromWebContents(event.sender);
             return win ? editorViewMenuStates.get(win.id) : editorViewMenuStates.current();
@@ -5992,6 +6397,36 @@ function registerIpcHandlers() {
   handle('ok:navigator:open', async () => {
     openNavigator();
     return undefined;
+  });
+
+  handle('ok:window:open-note', async (event, request) => {
+    return withIpcErrorLogging(
+      {
+        channel: 'ok:window:open-note',
+        reason: 'unexpected',
+        handler: 'openNoteWindow',
+      },
+      async () => {
+        if (request.kind === 'dispatch-to-main') {
+          const origin = BrowserWindow.fromWebContents(event.sender);
+          return dispatchNoteWindowMainActionToProject({
+            originWindowId: origin?.id ?? null,
+            action: request.action,
+            getContext: getNoteWindowContext,
+            focusProjectWindow: (projectRoot) => wm?.focusWindowForProject(projectRoot) ?? null,
+            send: (target, action) =>
+              sendToRenderer(target.webContents, 'ok:note-window:main-action', action),
+          });
+        }
+        const docName = typeof request.docName === 'string' ? request.docName.trim() : '';
+        if (!docName) return { ok: false as const, reason: 'invalid-request' as const };
+        return openNoteWindowForDoc({
+          origin: BrowserWindow.fromWebContents(event.sender),
+          docName,
+          entryPoint: request.entryPoint === 'palette' ? 'palette' : 'tab-menu',
+        });
+      },
+    );
   });
 
   // Schema-incompatibility IPC handlers. The pure handler bodies live in
@@ -7411,14 +7846,36 @@ function bootPrimaryInstance(): void {
         // the last (most recently focused) entry — otherwise a sibling that
         // reveals later would bury it. Waiting for all reveals also keeps
         // `bringToFront`'s own reveal from bypassing the target's gate.
+        // Pop-outs are held back from this concurrent wave. They attach to
+        // their project's server, so one opened alongside its project would
+        // race it and find nothing to attach to; they open after the wave
+        // settles, when the project windows and servers exist.
+        const docActions = orderedKeys
+          .map((key) => actionByKey.get(key))
+          .filter((action) => action?.kind === 'doc');
         const opens = orderedKeys.map((key) => {
           const action = actionByKey.get(key);
-          if (action === undefined) return Promise.resolve();
+          if (action === undefined || action.kind === 'doc') return Promise.resolve();
           return action.kind === 'project'
             ? openProjectOrFallbackToNavigator(action.projectPath, 'recents')
             : openEphemeralFile(action.filePath);
         });
         void Promise.allSettled(opens)
+          .then(() => {
+            for (const action of docActions) {
+              // Isolate each restore: a throw on one (a `BrowserWindow`
+              // constructor failure, say) would otherwise skip both the
+              // remaining pop-outs and the bring-to-front `.then` below.
+              try {
+                restoreNoteWindow(action);
+              } catch (err) {
+                getLogger('note-window').warn(
+                  { err },
+                  'failed to restore a note window on relaunch',
+                );
+              }
+            }
+          })
           .then(() => {
             // A deep link that arrived mid-restore already put the window the
             // user asked for in front. Raising the restore target now would

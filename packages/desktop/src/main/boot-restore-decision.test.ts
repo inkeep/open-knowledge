@@ -264,3 +264,58 @@ describe('resolveRestoreActions (file→project collapse + dedup ordering)', () 
     expect(actionByKey.size).toBe(0);
   });
 });
+
+describe('resolveRestoreActions (popped-out note windows)', () => {
+  const identity = (filePath: string): RestoredWindow => ({ kind: 'file', filePath });
+  const PROJECT: RestoredWindow = { kind: 'project', projectPath: '/tmp/a' };
+  const DOC: RestoredWindow = { kind: 'doc', projectPath: '/tmp/a', docName: 'notes/alpha' };
+
+  test('a pop-out opens after its project, whatever the focus order said', () => {
+    // The open loop is sequential, so this ordering is what gives the pop-out a
+    // server to attach to. Focus recency put the pop-out first here.
+    const { orderedKeys } = resolveRestoreActions([DOC, PROJECT], identity);
+
+    expect(orderedKeys).toHaveLength(2);
+    expect(orderedKeys[0]).toBe('/tmp/a');
+    expect(orderedKeys[1]).toContain('notes/alpha');
+  });
+
+  test('a pop-out whose project is absent is dropped silently', () => {
+    // The project was removed, or its window did not survive. A lone pop-out
+    // has nothing to attach to, and an error window for a document the user
+    // did not ask to reopen is worse than its absence.
+    const { orderedKeys, actionByKey } = resolveRestoreActions([DOC], identity);
+
+    expect(orderedKeys).toEqual([]);
+    expect(actionByKey.size).toBe(0);
+  });
+
+  test('a pop-out of another project is dropped while its sibling survives', () => {
+    const other: RestoredWindow = { kind: 'doc', projectPath: '/tmp/gone', docName: 'notes/x' };
+    const { orderedKeys } = resolveRestoreActions([PROJECT, DOC, other], identity);
+
+    expect(orderedKeys).toHaveLength(2);
+    expect(orderedKeys.some((k) => k.includes('notes/x'))).toBe(false);
+  });
+
+  test('several pop-outs of one project keep their relative focus order', () => {
+    const beta: RestoredWindow = { kind: 'doc', projectPath: '/tmp/a', docName: 'notes/beta' };
+    const { orderedKeys } = resolveRestoreActions([beta, PROJECT, DOC], identity);
+
+    expect(orderedKeys[0]).toBe('/tmp/a');
+    expect(orderedKeys[1]).toContain('notes/beta');
+    expect(orderedKeys[2]).toContain('notes/alpha');
+  });
+
+  test('two pop-outs of one project both restore', () => {
+    const beta: RestoredWindow = { kind: 'doc', projectPath: '/tmp/a', docName: 'notes/beta' };
+    const { actionByKey } = resolveRestoreActions([PROJECT, DOC, beta], identity);
+
+    expect(actionByKey.size).toBe(3);
+  });
+
+  test('a project with no pop-outs is untouched', () => {
+    const { orderedKeys } = resolveRestoreActions([PROJECT], identity);
+    expect(orderedKeys).toEqual(['/tmp/a']);
+  });
+});

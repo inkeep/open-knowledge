@@ -25,6 +25,7 @@
 
 import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
+import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import {
   Menubar,
   MenubarCheckboxItem,
@@ -50,7 +51,7 @@ export function AppMenubar() {
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const [snapshot, setSnapshot] = useState<OkMenuRendererSnapshot | null>(null);
 
-  if (bridge == null || bridge.menu == null || bridge.platform === 'darwin') return null;
+  if (!shouldShowAppMenubar() || bridge == null || bridge.menu == null) return null;
   const menu: NonNullable<OkDesktopBridge['menu']> = bridge.menu;
 
   const dispatch = (request: OkMenuDispatchRequest): void => {

@@ -995,6 +995,22 @@ describe('EditorArea session-panel edge reveal tabs', () => {
     expect(panels?.contains(agentMount)).toBe(true);
     expect(header?.contains(agentMount)).toBe(false);
   });
+
+  test('a note window never renders the agents reveal tab', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: {
+        config: { mode: 'note' },
+        editor: { notifyViewMenuStateChanged: () => {} },
+      },
+    });
+    try {
+      renderArea({ agentsVisible: false });
+      expect(screen.queryByRole('button', { name: 'Open agents panel' })).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
 });
 
 describe('EditorArea terminal placement', () => {

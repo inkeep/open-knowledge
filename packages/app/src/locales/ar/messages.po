@@ -2604,6 +2604,10 @@ msgstr "إغلاق الطرفية"
 msgid "Close this chat's tab to delete it"
 msgstr "أغلق علامة تبويب هذه المحادثة لحذفها"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "إغلاق النافذة"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3293,6 +3297,10 @@ msgstr "تعذّر فتح منتقي المجلدات"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "تعذّر فتح تسجيل الدخول إلى GitHub. يرجى المحاولة مرة أخرى."
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "تعذر فتح هذا المستند في نافذة جديدة."
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8618,6 +8626,11 @@ msgstr "فتح في التطبيق الافتراضي"
 msgid "Open in file manager"
 msgstr "فتح في مدير الملفات"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "فتح في نافذة جديدة"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "فتح في Slidev"
@@ -12654,6 +12667,10 @@ msgstr "هذا المستند نشط بالفعل في المحرر. استخد�
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "ينقص هذا المستند خصائص مطلوبة"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "تم حذف هذا المستند"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

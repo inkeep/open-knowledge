@@ -77,7 +77,10 @@ function missing(property: string): LintDiagnostic {
 }
 
 describe('EditorToolbar runtime layout', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    Reflect.deleteProperty(window, 'okDesktop');
+  });
 
   async function renderToolbar(
     activeDocName = 'docs/Page.md',
@@ -161,6 +164,17 @@ describe('EditorToolbar runtime layout', () => {
     expect(tooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
       formatShortcut('toggle-document-panel'),
     );
+  });
+
+  test('hides the document-panel toggle in a note window', async () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: { config: { mode: 'note' } },
+    });
+
+    await renderToolbar();
+
+    expect(document.querySelector('[data-doc-panel-toggle]')).toBeNull();
   });
 
   test('a tree-hidden doc gets the not-in-sidebar indicator beside the breadcrumb', async () => {

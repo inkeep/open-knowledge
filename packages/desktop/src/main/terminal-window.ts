@@ -17,6 +17,7 @@
  */
 
 import { basename } from 'node:path';
+import type { NoteWindowContext } from './note-window-registry.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
@@ -142,6 +143,9 @@ interface EditorProjectContext {
 export function resolveTerminalWindowProject(args: {
   readonly editor: EditorProjectContext | null;
   readonly terminal: TerminalWindowContext | undefined;
+  /** A focused NOTE window's project, so New Terminal Window invoked from a
+   *  pop-out inherits that project instead of opening project-less. */
+  readonly note?: NoteWindowContext | undefined;
 }): TerminalWindowProject | null {
   if (args.editor) {
     return {
@@ -157,6 +161,14 @@ export function resolveTerminalWindowProject(args: {
       projectName: basename(args.terminal.projectRoot),
       collabUrl: args.terminal.collabUrl ?? '',
       apiOrigin: args.terminal.apiOrigin ?? '',
+    };
+  }
+  if (args.note) {
+    return {
+      projectPath: args.note.projectRoot,
+      projectName: basename(args.note.projectRoot),
+      collabUrl: args.note.collabUrl,
+      apiOrigin: args.note.apiOrigin,
     };
   }
   return null;

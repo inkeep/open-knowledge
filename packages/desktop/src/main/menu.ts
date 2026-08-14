@@ -180,6 +180,14 @@ export interface MenuDeps {
    */
   activeTarget?: EditorActiveTargetSnapshot;
   /**
+   * Window → Open in New Window click handler — pops the focused window's
+   * active document into its own note window. Main-originated: it resolves the
+   * document from the per-window active-target registry and creates the window
+   * directly, so this entry point adds no IPC channel. Disabled when
+   * `activeTarget.kind` is not `'doc'` (nothing to pop).
+   */
+  onOpenInNewWindow?(): void;
+  /**
    * File → New file click handler. Routes through the renderer-side
    * inline-rename flow at FileTree's startCreating helper — same path the
    * sidebar empty-space context menu uses. Optional because the menu is
@@ -295,6 +303,8 @@ export interface MenuDeps {
    * the keypress to this menu item before it reaches the renderer.
    */
   onToggleSidebar?(): void;
+  /** The focused window is a reduced single-document pop-out. */
+  noteWindow?: boolean;
   docPanelVisible?: boolean;
   onToggleDocPanel?(): void;
   /**
@@ -489,6 +499,10 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     click: (d) => () => d.onNavigateForward?.(),
     enabled: (d) => d.onNavigateForward !== undefined,
   },
+  'open-in-new-window': {
+    click: (d) => () => d.onOpenInNewWindow?.(),
+    enabled: (d) => d.onOpenInNewWindow !== undefined,
+  },
   'new-file': { click: (d) => () => d.onNewFile?.(), enabled: (d) => d.onNewFile !== undefined },
   'new-folder': {
     click: (d) => () => d.onNewFolder?.(),
@@ -580,6 +594,7 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   uninstall: { click: (d) => () => d.onUninstall?.(), present: (d) => d.onUninstall !== undefined },
   'new-terminal': {
     click: (d) => () => d.onNewTerminal?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onNewTerminal !== undefined,
   },
   'new-terminal-window': {
@@ -588,6 +603,7 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   },
   'kill-terminal': {
     click: (d) => () => d.onKillTerminal?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onKillTerminal !== undefined,
   },
   'toggle-spell-check': {
@@ -597,22 +613,27 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   },
   'toggle-sidebar': {
     click: (d) => () => d.onToggleSidebar?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onToggleSidebar !== undefined,
   },
   'toggle-doc-panel': {
     click: (d) => () => d.onToggleDocPanel?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onToggleDocPanel !== undefined,
   },
   'toggle-terminal': {
     click: (d) => () => d.onToggleTerminal?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onToggleTerminal !== undefined,
   },
   'move-terminal': {
     click: (d) => () => d.onMoveTerminal?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onMoveTerminal !== undefined,
   },
   'toggle-agent-panel': {
     click: (d) => () => d.onToggleAgentPanel?.(),
+    present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onToggleAgentPanel !== undefined,
   },
   'toggle-show-hidden-files': {
@@ -682,8 +703,10 @@ function menuCommandContext(deps: MenuDeps): CommandContext {
     terminalLive: deps.terminalLive === true,
     canExpandAll: deps.canExpandAll ?? true,
     canCollapseAll: deps.canCollapseAll ?? true,
-    // No Open-graph leaf in the menu; the field is palette-only.
-    hasActiveDoc: false,
+    // Window → Open in New Window is the one menu leaf that gates on this, so
+    // it derives from the pushed target rather than being hard-false. Open
+    // graph, the other `requiresActiveDoc` command, stays palette-only.
+    hasActiveDoc: deps.activeTarget?.kind === 'doc',
     showInstallSkill: SHOW_INSTALL_SKILL,
   };
 }
@@ -985,6 +1008,9 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: translate(NATIVE_MENU_LABELS.menuWindow),
       submenu: [
+        // Pop-out heads the menu, above the OS window roles — it acts on the
+        // document, where the roles act on the window itself.
+        ...withTrailingSep(leafOf('window')),
         roleItem('minimize'),
         ...(isMac
           ? ([

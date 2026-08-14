@@ -2604,6 +2604,10 @@ msgstr "Close terminal"
 msgid "Close this chat's tab to delete it"
 msgstr "Close this chat's tab to delete it"
 
+#: src/components/NoteWindowDeletedState.tsx
+msgid "Close window"
+msgstr "Close window"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
@@ -3293,6 +3297,10 @@ msgstr "Could not open folder picker"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Could not open GitHub sign-in. Please try again."
 msgstr "Could not open GitHub sign-in. Please try again."
+
+#: src/lib/open-note-window.ts
+msgid "Could not open this document in a new window."
+msgstr "Could not open this document in a new window."
 
 #: src/components/FileTree.tsx
 msgid "Could not reach server"
@@ -8618,6 +8626,11 @@ msgstr "Open in default app"
 msgid "Open in file manager"
 msgstr "Open in file manager"
 
+#: src/components/command-palette-commands.ts
+#: src/components/EditorTabs.tsx
+msgid "Open in New Window"
+msgstr "Open in New Window"
+
 #: src/components/SlidesToolbarControls.tsx
 msgid "Open in Slidev"
 msgstr "Open in Slidev"
@@ -12654,6 +12667,10 @@ msgstr "This document is already active in the editor. Use Open to collapse the 
 #: src/components/AddPropertiesButton.tsx
 msgid "This document is missing required properties"
 msgstr "This document is missing required properties"
+
+#: src/components/NoteWindowDeletedState.tsx
+msgid "This document was deleted"
+msgstr "This document was deleted"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

@@ -9,6 +9,8 @@
  * desktop gate.
  */
 
+import { routeNoteWindowActionToMain } from '@/lib/note-window-main-actions';
+
 const THREAD_LAUNCH_EVENT = 'open-knowledge:agent-thread-launch';
 
 export interface AgentThreadLaunchDetail {
@@ -32,6 +34,7 @@ export function requestAgentThreadLaunch(
     ? new EventTarget()
     : window,
 ): void {
+  if (routeNoteWindowActionToMain({ kind: 'agent-thread', ...detail }, target)) return;
   target.dispatchEvent(new CustomEvent<AgentThreadLaunchDetail>(THREAD_LAUNCH_EVENT, { detail }));
 }
 

@@ -1,4 +1,4 @@
-import { type RestoredWindow, windowRestoreKey } from './state-store.ts';
+import { type RestoredWindow, restoreSurvivorPath, windowRestoreKey } from './state-store.ts';
 
 export interface BootRestoreInput {
   pendingRestore: RestoredWindow[] | null;
@@ -45,7 +45,7 @@ export function bootRestoreDecision(input: BootRestoreInput): BootRestoreDecisio
   // decision only survivor-filters.
   const restorable =
     pendingRestore !== null && !optionHeld
-      ? pendingRestore.filter((w) => pathExists(windowRestoreKey(w)))
+      ? pendingRestore.filter((w) => pathExists(restoreSurvivorPath(w)))
       : [];
 
   if (restorable.length > 0) {
@@ -103,7 +103,37 @@ export function resolveRestoreActions(
     orderedKeys.push(key);
     actionByKey.set(key, action);
   }
-  return { orderedKeys, actionByKey };
+
+  // A pop-out attaches to its project's server, so it can only restore if that
+  // project restores too. An orphan is dropped SILENTLY: the user removed the
+  // project or its window did not survive, and an error window for a document
+  // they did not ask to reopen would be worse than its absence.
+  //
+  // Surviving pop-outs then sort after every project window. The open loop is
+  // sequential, so this is what makes "project first" true rather than
+  // incidental — a pop-out opened before its project would have no server to
+  // attach to. Within each group the focus order above is preserved, so the
+  // final key is still the raise target.
+  const restoredProjects = new Set(
+    [...actionByKey.values()]
+      .filter(
+        (action): action is Extract<RestoredWindow, { kind: 'project' }> =>
+          action.kind === 'project',
+      )
+      .map((action) => action.projectPath),
+  );
+  const projectKeys: string[] = [];
+  const docKeys: string[] = [];
+  for (const key of orderedKeys) {
+    const action = actionByKey.get(key);
+    if (action?.kind !== 'doc') {
+      projectKeys.push(key);
+      continue;
+    }
+    if (restoredProjects.has(action.projectPath)) docKeys.push(key);
+    else actionByKey.delete(key);
+  }
+  return { orderedKeys: [...projectKeys, ...docKeys], actionByKey };
 }
 
 /**

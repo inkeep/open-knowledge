@@ -15,6 +15,7 @@
  */
 
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import { routeNoteWindowActionToMain } from '@/lib/note-window-main-actions';
 
 const TERMINAL_LAUNCH_EVENT = 'open-knowledge:terminal-launch';
 
@@ -44,6 +45,18 @@ export function requestTerminalLaunch(
     ? new EventTarget()
     : window,
 ): void {
+  if (
+    routeNoteWindowActionToMain(
+      {
+        kind: 'terminal-launch',
+        prompt,
+        cli,
+        stage: options?.stage === true,
+      },
+      target,
+    )
+  )
+    return;
   target.dispatchEvent(
     new CustomEvent<TerminalLaunchDetail>(TERMINAL_LAUNCH_EVENT, {
       detail: { prompt, cli, stage: options?.stage === true },

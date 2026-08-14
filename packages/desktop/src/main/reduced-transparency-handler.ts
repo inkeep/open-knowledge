@@ -15,9 +15,10 @@
  *      reduce)` block in globals.css reverts the alpha-aware outer canvas
  *      to solid `var(--sidebar)` — the renderer side is purely declarative
  *      and runs whether or not `window.okDesktop` is present.
- *   2. Per-window material differentiation. All open windows share the
- *      Electron one-vibrancy-per-window constraint; the runtime toggle
- *      applies uniformly.
+ *   2. Material policy. Windows use the shared default unless their factory
+ *      registers a preferred material for a native-chrome compatibility
+ *      reason. The accessibility toggle still applies uniformly: reduced
+ *      transparency disables every material.
  *   3. State.json caching. The preference is observed live via matchMedia
  *      and recovers on cold-launch by the same path; nothing to cache.
  *
@@ -92,6 +93,16 @@ export interface ReducedTransparencyDeps {
  */
 const lastAppliedMaterial = new WeakMap<BrowserWindowVibrancyTarget, VibrancyMaterial | null>();
 
+/** Per-window native material exceptions registered by BrowserWindow factories. */
+const preferredMaterial = new WeakMap<BrowserWindowVibrancyTarget, VibrancyMaterial>();
+
+export function setPreferredWindowVibrancy(
+  win: BrowserWindowVibrancyTarget,
+  material: VibrancyMaterial,
+): void {
+  preferredMaterial.set(win, material);
+}
+
 /**
  * Apply the user's `prefers-reduced-transparency` preference to every open
  * BrowserWindow's vibrancy material, skipping windows already at the target
@@ -111,7 +122,6 @@ export function applyReducedTransparency(
   deps: ReducedTransparencyDeps,
   reducedTransparency: boolean,
 ): void {
-  const material: VibrancyMaterial | null = reducedTransparency ? null : deps.defaultVibrancy;
   // Four-way partition of the windows we iterated: applied (windowCount) +
   // skipped (already at target) + failed (threw and was caught) + destroyed
   // (filtered mid-teardown). All four are emitted so the counts sum to
@@ -121,16 +131,25 @@ export function applyReducedTransparency(
   let skippedCount = 0;
   let failedCount = 0;
   let destroyedCount = 0;
+  const vibrancyMaterials: Partial<Record<VibrancyMaterial | 'none', number>> = {};
+  const recordMaterial = (material: VibrancyMaterial | null): void => {
+    const key = material ?? 'none';
+    vibrancyMaterials[key] = (vibrancyMaterials[key] ?? 0) + 1;
+  };
   for (const win of deps.getAllWindows()) {
     if (win.isDestroyed?.() === true) {
       destroyedCount += 1;
       continue;
     }
+    const material: VibrancyMaterial | null = reducedTransparency
+      ? null
+      : (preferredMaterial.get(win) ?? deps.defaultVibrancy);
     // Idempotence guard: skip a window already at the target material (see
     // `lastAppliedMaterial` for the flicker rationale). `material` is never
     // `undefined`, so the WeakMap's absent-key `undefined` reads as "never
     // applied to this window" and falls through to apply.
     if (lastAppliedMaterial.get(win) === material) {
+      recordMaterial(material);
       skippedCount += 1;
       continue;
     }
@@ -139,6 +158,7 @@ export function applyReducedTransparency(
       // Memo only AFTER a successful native call — a throw leaves the window
       // unmemoized so the next pass re-attempts rather than skipping it.
       lastAppliedMaterial.set(win, material);
+      recordMaterial(material);
       windowCount += 1;
     } catch (err) {
       failedCount += 1;
@@ -156,7 +176,8 @@ export function applyReducedTransparency(
     JSON.stringify({
       event: 'reduced-transparency-applied',
       reducedTransparency,
-      vibrancy: material,
+      vibrancy: reducedTransparency ? null : deps.defaultVibrancy,
+      vibrancyMaterials,
       windowCount,
       skippedCount,
       failedCount,

@@ -47,6 +47,17 @@ export interface ClientRemovalReconciliationPorts {
   clearActiveTargetForRemoval(docName: string): void;
   navigateToDocument(docName: string): void;
   navigateHome(): void;
+  /**
+   * Offer the surface a chance to handle the deletion of the ACTIVE document
+   * itself, returning true when it did.
+   *
+   * Exists for the popped-out note window, which shows exactly one document and
+   * so has nowhere to navigate home TO — the home surface is a workspace view it
+   * deliberately does not have. It shows an explicit deleted state instead.
+   * Absent (or returning false) keeps the workspace window's navigate-home
+   * behavior unchanged.
+   */
+  showDocumentDeletedState?(docName: string): boolean;
 }
 
 function uniqueDocNames(docNames: readonly string[]): string[] {
@@ -102,7 +113,7 @@ export function createClientRemovalReconciler(
       await ports.closeAndClear(docName);
       ports.removeDocumentTab(docName);
       ports.clearActiveTargetForRemoval(docName);
-      if (wasActive) ports.navigateHome();
+      if (wasActive && ports.showDocumentDeletedState?.(docName) !== true) ports.navigateHome();
     },
   };
 }

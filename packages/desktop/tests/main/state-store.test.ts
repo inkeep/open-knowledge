@@ -12,13 +12,16 @@ import {
   type PersistedWindowBounds,
   parseAppState,
   removeRecentProject,
+  restoreSurvivorPath,
   type SaveAppStateFs,
   saveAppStateToDir,
   setLastUsedProjectParent,
+  setNoteWindowBounds,
   setProjectSessionState,
   setProjectWindowBounds,
   setSpellCheckEnabled,
   setTerminalDockState,
+  windowRestoreKey,
 } from '../../src/main/state-store.ts';
 
 function persistedWorkspace(
@@ -864,5 +867,179 @@ describe('state-store (projectWindowBounds — per-project window frame memory)'
     const next = removeRecentProject(s, '/tmp/a');
     expect(next.projectWindowBounds['/tmp/a']).toBeUndefined();
     expect(next.projectWindowBounds['/tmp/b']).toEqual(BOUNDS);
+  });
+});
+
+describe('state-store (noteWindowBounds — per-project pop-out frame memory)', () => {
+  const FRAME: PersistedWindowBounds = {
+    x: 2400,
+    y: 120,
+    width: 900,
+    height: 1000,
+    isMaximized: false,
+    isFullScreen: false,
+  };
+
+  test('emptyState seeds an empty map', () => {
+    expect(emptyState().noteWindowBounds).toEqual({});
+  });
+
+  test('setNoteWindowBounds immutably records a frame', () => {
+    const original = emptyState();
+    const next = setNoteWindowBounds(original, '/tmp/a', FRAME);
+
+    expect(next.noteWindowBounds['/tmp/a']).toEqual(FRAME);
+    expect(original.noteWindowBounds).toEqual({});
+  });
+
+  test('the pop-out slot is independent of the project window frame', () => {
+    // Same key, different fields: a user who parks pop-outs on a second monitor
+    // must not have that overwrite where the project window itself opens.
+    let s = setProjectWindowBounds(emptyState(), '/tmp/a', {
+      ...FRAME,
+      x: 0,
+      y: 0,
+    });
+    s = setNoteWindowBounds(s, '/tmp/a', FRAME);
+
+    expect(s.projectWindowBounds['/tmp/a']?.x).toBe(0);
+    expect(s.noteWindowBounds['/tmp/a']?.x).toBe(2400);
+  });
+
+  test('round-trips through parseAppState', () => {
+    const s = setNoteWindowBounds(emptyState(), '/tmp/a', FRAME);
+    const reparsed = parseAppState(JSON.parse(JSON.stringify(s)));
+
+    expect(reparsed?.noteWindowBounds['/tmp/a']).toEqual(FRAME);
+  });
+
+  test('state written before the field existed parses to an empty map', () => {
+    // The additive contract: an older build's state has no such key, and this
+    // build must read it without a schema bump.
+    const legacy = { ...emptyState() } as Record<string, unknown>;
+    delete legacy.noteWindowBounds;
+
+    expect(parseAppState(legacy)?.noteWindowBounds).toEqual({});
+  });
+
+  test('a corrupt value coerces to an empty map rather than throwing', () => {
+    const parsed = parseAppState({ ...emptyState(), noteWindowBounds: 'nonsense' });
+    expect(parsed?.noteWindowBounds).toEqual({});
+  });
+
+  test('a corrupt entry is dropped while healthy siblings survive', () => {
+    const parsed = parseAppState({
+      ...emptyState(),
+      noteWindowBounds: { '/tmp/a': FRAME, '/tmp/broken': { x: 'no' } },
+    });
+
+    expect(parsed?.noteWindowBounds['/tmp/a']).toEqual(FRAME);
+    expect(parsed?.noteWindowBounds['/tmp/broken']).toBeUndefined();
+  });
+
+  test('removeRecentProject clears the pop-out slot with everything else', () => {
+    // One key deletes all of a project's persisted state; a leaked pop-out
+    // frame would resurrect a forgotten project's window position.
+    let s = setNoteWindowBounds(emptyState(), '/tmp/a', FRAME);
+    s = setProjectWindowBounds(s, '/tmp/a', FRAME);
+    s = removeRecentProject(s, '/tmp/a');
+
+    expect(s.noteWindowBounds['/tmp/a']).toBeUndefined();
+    expect(s.projectWindowBounds['/tmp/a']).toBeUndefined();
+  });
+
+  test('the schema version is unchanged — the field is additive', () => {
+    expect(setNoteWindowBounds(emptyState(), '/tmp/a', FRAME).schemaVersion).toBe(
+      emptyState().schemaVersion,
+    );
+  });
+});
+
+describe('state-store (doc restore entries — popped-out note windows)', () => {
+  const FRAME: PersistedWindowBounds = {
+    x: 2400,
+    y: 120,
+    width: 900,
+    height: 1000,
+    isMaximized: false,
+    isFullScreen: false,
+  };
+  const DOC = {
+    kind: 'doc' as const,
+    projectPath: '/tmp/a',
+    docName: 'notes/alpha',
+    bounds: FRAME,
+  };
+
+  test('a doc key does not collide with its own project window key', () => {
+    // Both windows restore, so one key cannot stand for both — a collision
+    // would silently drop the pop-out at the dedup step.
+    expect(windowRestoreKey(DOC)).not.toBe(
+      windowRestoreKey({ kind: 'project', projectPath: '/tmp/a' }),
+    );
+  });
+
+  test('two pop-outs of one project get distinct keys', () => {
+    expect(windowRestoreKey(DOC)).not.toBe(windowRestoreKey({ ...DOC, docName: 'notes/beta' }));
+  });
+
+  test('the survivor path for a pop-out is its project folder, not its key', () => {
+    // The key is a composite identity and would never stat. The right survivor
+    // question is whether the PROJECT still exists.
+    expect(restoreSurvivorPath(DOC)).toBe('/tmp/a');
+    expect(restoreSurvivorPath({ kind: 'project', projectPath: '/tmp/a' })).toBe('/tmp/a');
+    expect(restoreSurvivorPath({ kind: 'file', filePath: '/tmp/loose.md' })).toBe('/tmp/loose.md');
+  });
+
+  test('round-trips a doc entry with its frame', () => {
+    const s = { ...emptyState(), pendingWindowRestore: [DOC] };
+    const reparsed = parseAppState(JSON.parse(JSON.stringify(s)));
+
+    expect(reparsed?.pendingWindowRestore).toEqual([DOC]);
+  });
+
+  test('a doc entry with a corrupt frame keeps the document and drops the frame', () => {
+    // The document is the point of the window; the pixels are a nicety.
+    const parsed = parseAppState({
+      ...emptyState(),
+      pendingWindowRestore: [{ ...DOC, bounds: { x: 'nope' } }],
+    });
+
+    expect(parsed?.pendingWindowRestore).toEqual([
+      { kind: 'doc', projectPath: '/tmp/a', docName: 'notes/alpha' },
+    ]);
+  });
+
+  test('a doc entry missing its document name is dropped', () => {
+    const parsed = parseAppState({
+      ...emptyState(),
+      pendingWindowRestore: [{ kind: 'doc', projectPath: '/tmp/a' }],
+    });
+
+    expect(parsed?.pendingWindowRestore).toEqual([]);
+  });
+
+  test('an unknown kind is dropped while known kinds survive', () => {
+    // This is the forward-compatibility contract that let the union grow
+    // without a schema bump: an older build treats `doc` exactly this way.
+    const parsed = parseAppState({
+      ...emptyState(),
+      pendingWindowRestore: [
+        { kind: 'project', projectPath: '/tmp/a' },
+        { kind: 'newer-kind', whatever: true },
+        DOC,
+      ],
+    });
+
+    expect(parsed?.pendingWindowRestore).toEqual([{ kind: 'project', projectPath: '/tmp/a' }, DOC]);
+  });
+
+  test('two pop-outs of one project both survive the de-dupe', () => {
+    const parsed = parseAppState({
+      ...emptyState(),
+      pendingWindowRestore: [DOC, { ...DOC, docName: 'notes/beta' }],
+    });
+
+    expect(parsed?.pendingWindowRestore).toHaveLength(2);
   });
 });

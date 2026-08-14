@@ -962,6 +962,13 @@ describe('WindowManager', () => {
         return { pid: 6666 };
       };
 
+      // Note windows live outside windowsByPath, so the recreate below does not
+      // reach them, and their attach argv is frozen at creation — a pop-out left
+      // behind would hold a URL for the terminated server forever. The hook has
+      // to carry the FRESH origin, not the old one.
+      const restarted: Array<{ projectPath: string; apiOrigin: string }> = [];
+      env.deps.onProjectServerRestarted = (args) => restarted.push({ ...args });
+
       const wm = new WindowManager(env.deps);
       const attached = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
       expect(attached.ownsServer).toBe(false);
@@ -976,6 +983,11 @@ describe('WindowManager', () => {
       const ctx = wm.getContextForBrowserWindow(env.windows[1] as BrowserWindowLike);
       expect(ctx?.port).toBe(60000);
 
+      // The note-window recreate hook fired once, carrying the NEW origin.
+      expect(restarted).toHaveLength(1);
+      expect(restarted[0]?.projectPath).toBe('/tmp/dragon');
+      expect(restarted[0]?.apiOrigin).toContain('60000');
+
       // Same-version respawn → no drift notification on the new window.
       const newWindow = env.windows[1];
       if (!newWindow) throw new Error('no recreated window');
@@ -988,6 +1000,52 @@ describe('WindowManager', () => {
       ).mock.calls.filter((c: unknown[]) => c[0] === 'ok:server-restarted');
       expect(restartedSends.length).toBe(1);
       expect((restartedSends[0] as unknown[])[1]).toEqual({ appRuntime: '0.8.2' });
+    });
+
+    test('a note-window recreate hook that throws does not fail the restart or strand the old window', async () => {
+      // The recreate hook is a SECONDARY concern (note windows live outside
+      // windowsByPath). A throw in it — a `BrowserWindow` constructor failure
+      // under memory pressure, say — must not propagate out of the restart and
+      // skip the `closeAndAwait` teardown, which would leave the old window as a
+      // zombie pointing at the terminated server.
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      let killed = false;
+      let spawned = false;
+      const oldLock = { ...liveLock, pid: 5555, protocolVersion: 1, runtimeVersion: '0.8.0' };
+      const freshLock = {
+        ...liveLock,
+        pid: 6666,
+        port: 60000,
+        protocolVersion: 1,
+        runtimeVersion: '0.8.2',
+      };
+      enableAttachProbe({
+        readServerLock: () => (spawned ? freshLock : killed ? null : oldLock),
+        isProcessAlive: (pid) => (pid === 5555 ? !killed : true),
+      });
+      env.deps.killProbe = vi.fn((_pid: number, signal: string) => {
+        if (signal === 'SIGTERM') killed = true;
+      });
+      env.deps.spawnDetachedServer = async () => {
+        spawned = true;
+        return { pid: 6666 };
+      };
+      env.deps.onProjectServerRestarted = () => {
+        throw new Error('recreate boom');
+      };
+
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      const originating = env.windows[0];
+      if (!originating) throw new Error('no originating window');
+
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+      // Isolated: the restart still succeeds and the fresh window came up…
+      expect(outcome).toEqual({ ok: true });
+      expect(env.windows.length).toBe(2);
+      // …and the old window was still torn down despite the hook throwing.
+      expect(originating.isDestroyed?.()).toBe(true);
     });
 
     test('restartAttachedServer returns eperm without recreating when the kill is blocked', async () => {

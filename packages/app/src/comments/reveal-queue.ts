@@ -21,6 +21,7 @@
 
 import { requestDocPanelTab } from '@/components/doc-panel-events';
 import type { PanelScope } from '@/components/PanelScopeHeader';
+import { routeNoteWindowActionToMain } from '@/lib/note-window-main-actions';
 
 const COMMENT_SCOPE_EVENT = 'open-knowledge:comments-scope';
 
@@ -60,13 +61,22 @@ export function subscribeCommentScopeRequests(onRequest: (scope: PanelScope) => 
 }
 
 /** Open the doc panel on the Comments tab, set to `scope`. */
-export function revealComments(scope: PanelScope): void {
+export function revealComments(scope: PanelScope, docName?: string): void {
+  if (
+    docName !== undefined &&
+    typeof window !== 'undefined' &&
+    routeNoteWindowActionToMain(
+      { kind: 'reveal-comments', docName, scope: scope === 'project' ? 'queue' : 'doc' },
+      window,
+    )
+  )
+    return;
   pendingScope = scope;
   requestDocPanelTab('comments');
   bus.dispatchEvent(new CustomEvent<PanelScope>(COMMENT_SCOPE_EVENT, { detail: scope }));
 }
 
 /** The project-wide queue — what the composer chip counts, spanning documents. */
-export function revealQueue(): void {
-  revealComments('project');
+export function revealQueue(docName?: string): void {
+  revealComments('project', docName);
 }

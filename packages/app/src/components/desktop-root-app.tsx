@@ -13,8 +13,15 @@ const TerminalWindowApp = lazy(() =>
 /**
  * Pick the root surface for the current window from the desktop bridge's mode.
  * `terminal` and `navigator` are dedicated Electron window types; everything
- * else — editor windows, and the web / CLI distribution where `bridge` is
- * undefined — renders the full editor shell.
+ * else — editor windows, popped-out `note` windows, and the web / CLI
+ * distribution where `bridge` is undefined — renders the full editor shell.
+ *
+ * `note` deliberately shares the editor root rather than getting a dedicated
+ * one. Its reduced chrome comes from a flag read inside the tree
+ * (`isNoteWindow`), the same shape single-file mode uses, which keeps the
+ * pooled hybrid render tree and the DocumentContext machinery (tab remap,
+ * rename following, delete reconciliation) intact instead of hand-composing
+ * around them.
  */
 export function selectDesktopRootApp(bridge: OkDesktopBridge | undefined): ReactElement {
   if (bridge?.config.mode === 'terminal') {
