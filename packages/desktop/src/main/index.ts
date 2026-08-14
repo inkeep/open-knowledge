@@ -53,7 +53,6 @@ import {
   editorConfigPathDisplay,
   editorEntryLocator,
   getOkArtifactPaths,
-  HOSTS_WITH_USER_SKILL_DIR,
   isEntryUpToDate,
   isOwnManagedEntry,
   type McpInstallOptions,
@@ -73,6 +72,7 @@ import {
   writeUserMcpConfigs,
 } from '@inkeep/open-knowledge';
 import {
+  AGENTS_SKILLS_ROOT,
   CLIENT_VERSION_HEADER,
   hasUninstallFeedbackContent,
   type LanguagePreference,
@@ -86,6 +86,7 @@ import {
   type UninstallFeedbackAnswers,
   type UninstallIntent,
   type UninstallScreenSpec,
+  USER_SKILL_HOSTS,
 } from '@inkeep/open-knowledge-core';
 import type {
   OkTerminalDockStateWriteResult,
@@ -495,6 +496,8 @@ import {
 // the documented fallback if the Electron #27882 border quirk recurs on a
 // future Electron upgrade.
 const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
+
+const AGENTS_HUB_DIR = AGENTS_SKILLS_ROOT.split('/')[0] ?? '.agents';
 
 // Chrome stack is per-platform. Electron applies `titleBarStyle:
 // 'hiddenInset'` / `vibrancy` / `visualEffectState` / `transparent` /
@@ -6229,12 +6232,23 @@ function registerIntegrationsSettingsIpc(): void {
             id,
             name,
             installed: existsSync(join(home, '.agents', 'skills', name)),
-            // Central copy always; per-host copies only where the host root
-            // exists (mirrors installUserBundleToHostDirs' skipped-host-absent).
+            // Mirror the reclaim's own destination set and BOTH its gates, so
+            // this row can never advertise a copy that will not be written.
+            //
+            // USER_SKILL_HOSTS, not the project-shaped host list: that one drops
+            // Copilot and Pi by design, which silently omitted `~/.copilot`,
+            // `~/.pi/agent` and `~/.gemini` from a list users read as complete.
+            // And map `skillsRoot`, not `hostDir + '/skills'`: Pi's user root is
+            // `.pi/agent/skills`, which the naive shape renders as a `~/.pi/skills`
+            // that does not exist.
             paths: [
-              `~/.agents/skills/${name}`,
-              ...HOSTS_WITH_USER_SKILL_DIR.filter((h) => existsSync(join(home, h.hostDir))).map(
-                (h) => `~/${h.hostDir}/skills/${name}`,
+              // The hub is written only when it already exists — the reclaim
+              // never creates it. Same gate here.
+              ...(existsSync(join(home, AGENTS_HUB_DIR))
+                ? [`~/${AGENTS_SKILLS_ROOT}/${name}`]
+                : []),
+              ...USER_SKILL_HOSTS.filter((h) => existsSync(join(home, h.hostDir))).map(
+                (h) => `~/${h.skillsRoot}/${name}`,
               ),
             ],
           };
