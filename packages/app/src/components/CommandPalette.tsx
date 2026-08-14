@@ -876,7 +876,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     (trimmedDeferredQuery === '' ||
       VISIBLE_TARGETS.some((target) => {
         const displayName = target.displayName;
-        return matchesCommandQuery(t`Open with AI ${displayName}`, deferredQuery, [
+        return matchesCommandQuery(t`Open with AI ${displayName} Desktop`, deferredQuery, [
           target.id,
           'agent handoff',
           'open in',
@@ -1463,7 +1463,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             <CommandGroup heading={t`Open with AI`}>
               {VISIBLE_TARGETS.filter((target) => {
                 const displayName = target.displayName;
-                return matchesCommandQuery(t`Open with AI ${displayName}`, deferredQuery, [
+                return matchesCommandQuery(t`Open with AI ${displayName} Desktop`, deferredQuery, [
                   target.id,
                   'agent handoff',
                   'open in',
@@ -1493,14 +1493,16 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 // `aria-label` composes the hint into the accessible name so
                 // AT users hear "Open with AI Codex, Not installed" rather than
                 // the bare "Open with AI Codex" that matches an enabled row.
+                // "<app> Desktop" everywhere these targets are named, so the
+                // palette row reads as the same thing the launcher menus list.
                 const accessibleLabel = hint
-                  ? t`Open with AI ${displayName}, ${hint}`
-                  : t`Open with AI ${displayName}`;
+                  ? t`Open with AI ${displayName} Desktop, ${hint}`
+                  : t`Open with AI ${displayName} Desktop`;
 
                 return (
                   <CommandItem
                     key={target.id}
-                    value={`send to ai ${target.displayName} ${target.id} agent open in`}
+                    value={`send to ai ${target.displayName} desktop ${target.id} agent open in`}
                     disabled={!enabled}
                     onSelect={() => {
                       if (!enabled || !handoffInput) return;
@@ -1511,7 +1513,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                     aria-label={accessibleLabel}
                   >
                     <span className="flex-1">
-                      <Trans>Open with AI {displayName}</Trans>
+                      <Trans>Open with AI {displayName} Desktop</Trans>
                     </span>
                     {hint ? (
                       <span aria-hidden="true" className="ml-auto text-muted-foreground text-xs">

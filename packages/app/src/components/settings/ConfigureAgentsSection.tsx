@@ -2,9 +2,9 @@
  * Settings → User → Configure agents.
  *
  * The single user-owned surface controlling which agents appear in the agent
- * launcher menus (footer "Ask", empty-state "Create with", header "Open with
+ * launcher menus (footer + empty-state "Ask", header "Open with
  * AI", the file-tree right-click submenus, and the dock New-chat picker). Lists
- * every agent in three groups — In app / Terminal / Desktop — each with a
+ * every agent in three groups — In app / Terminal / External apps — each with a
  * toggle. The toggle is the source of truth: enabling shows the agent in every
  * menu, disabling hides it.
  *
@@ -20,7 +20,7 @@
 import { TERMINAL_CLI_IDS, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';
-import { Search, WifiOff } from 'lucide-react';
+import { ArrowUpRight, Search, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useState } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
@@ -98,10 +98,14 @@ function AgentRow({
 
 function AgentGroup({
   label,
+  labelIcon,
   children,
   labelId,
 }: {
   label: ReactNode;
+  /** Decorative mark beside the heading — the external-action arrow on the
+   *  external-apps group, matching that section's launcher headers. */
+  labelIcon?: ReactNode;
   labelId: string;
   children: ReactNode;
 }): ReactNode {
@@ -109,9 +113,10 @@ function AgentGroup({
     <section aria-labelledby={labelId}>
       <h4
         id={labelId}
-        className="mb-2 font-mono text-muted-foreground text-xs uppercase tracking-wide"
+        className="mb-2 flex items-center gap-1.5 font-mono text-muted-foreground text-xs uppercase tracking-wide"
       >
         {label}
+        {labelIcon}
       </h4>
       <div className="divide-y overflow-hidden rounded-md border">{children}</div>
     </section>
@@ -164,7 +169,15 @@ export function ConfigureAgentsSection(): ReactNode {
     terminalLaunch !== null
       ? TERMINAL_CLI_IDS.filter((cli) => matches(TERMINAL_CLIS[cli].displayName))
       : [];
-  const desktopTargets = VISIBLE_TARGETS.filter((target) => matches(target.displayName));
+  // Filter on the RENDERED label ("Claude Desktop"), not the bare brand, so a
+  // search for "desktop" finds this group the way the eye does — plus the
+  // target id, mirroring the command palette's keywords: the id preserves the
+  // Codex lineage after the ChatGPT rebrand, so searching "codex" still finds
+  // that row.
+  const desktopTargets = VISIBLE_TARGETS.filter((target) => {
+    const { displayName } = target;
+    return matches(t`${displayName} Desktop`) || matches(target.id);
+  });
 
   // With a query active, hide a group that has no matches; when every group is
   // empty, show a single no-results line instead of three empty boxes.
@@ -380,21 +393,29 @@ export function ConfigureAgentsSection(): ReactNode {
         </AgentGroup>
       ) : null}
 
-      {/* Desktop — installed app launchers (deep-link handoff). */}
+      {/* External apps — detected desktop apps reached by deep-link handoff.
+          Every installed one is on by default; the toggle is how a user hides
+          one, or shows one they haven't installed yet (it routes to the
+          installer). */}
       {showDesktop ? (
-        <AgentGroup label={t`Desktop`} labelId="settings-configure-agents-desktop">
+        <AgentGroup
+          label={t`External apps`}
+          labelId="settings-configure-agents-desktop"
+          labelIcon={<ArrowUpRight aria-hidden="true" className="size-3" />}
+        >
           {desktopTargets.map((target) => {
             const installed = states[target.id]?.installed ?? null;
+            const { displayName } = target;
             return (
               <AgentRow
                 key={target.id}
                 icon={<TargetIcon id={target.id} className="size-4" aria-hidden="true" />}
-                name={target.displayName}
+                name={t`${displayName} Desktop`}
                 // Only show the hint once the probe positively reports absent;
                 // `null` is detection-pending, not "not installed".
                 hint={installed === false ? t`Not installed` : undefined}
-                checked={isDesktopTargetEnabled(overrides, target.id)}
-                ariaLabel={t`Enable ${target.displayName}`}
+                checked={isDesktopTargetEnabled(overrides, target.id, installed)}
+                ariaLabel={t`Enable ${displayName} Desktop`}
                 testId={`configure-agents-desktop-${target.id}`}
                 onToggle={(next) => setAgentEnabled(desktopEnabledKey(target.id), next)}
               />

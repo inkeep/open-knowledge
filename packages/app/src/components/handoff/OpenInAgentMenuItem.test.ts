@@ -167,9 +167,9 @@ describe('computeRowState — branch 3: not installed → install affordance onl
       isElectronHost: true,
     });
     expect(state.enabled).toBe(false);
-    expect(state.tooltip?.message).toBe('Requires Codex Desktop.');
-    expect(state.tooltip?.installAction.label).toBe('Install Codex Desktop →');
-    expect(state.tooltip?.installAction.url).toBe('https://openai.com/codex');
+    expect(state.tooltip?.message).toBe('Requires ChatGPT Desktop.');
+    expect(state.tooltip?.installAction.label).toBe('Install ChatGPT Desktop →');
+    expect(state.tooltip?.installAction.url).toBe('https://developers.openai.com/codex/app');
   });
 
   test('Claude Cowork disabled tooltip — install affordance', async () => {

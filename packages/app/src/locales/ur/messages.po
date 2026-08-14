@@ -628,6 +628,11 @@ msgstr "{displayName} CLI"
 msgid "{displayName} CLI, {hint}"
 msgstr "{displayName} CLI، {hint}"
 
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "{displayName} Desktop"
+msgstr "{displayName} Desktop"
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -1712,19 +1717,24 @@ msgstr "کیا آپ واقعی منتخب آئٹمز حذف کرنا چاہتے 
 msgid "Ask"
 msgstr "پوچھیں"
 
-#. placeholder {0}: resolvedTarget.displayName
-#: src/components/BottomComposer.tsx
-msgid "Ask {0}"
-msgstr "{0} سے پوچھیں"
-
 #. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
 msgid "Ask {0} CLI"
 msgstr "{0} CLI سے پوچھیں"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "{agentName} سے پوچھیں"
+
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+msgid "Ask {agentName}, {hint}"
+msgstr "{agentName} سے پوچھیں، {hint}"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -1745,6 +1755,10 @@ msgstr "منتخب حصے کے بارے میں AI سے پوچھیں"
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
 msgstr "AI سے {flatId} ٹھیک کرنے کو کہیں"
+
+#: src/components/BottomComposer.tsx
+msgid "Ask an agent"
+msgstr "ایجنٹ سے پوچھیں"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -3918,16 +3932,6 @@ msgstr "کچھ عمدہ بنائیں۔"
 msgid "Create template"
 msgstr "ٹیمپلیٹ بنائیں"
 
-#. placeholder {0}: getDisplayNameDefault(selectedAgentId)
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0}"
-msgstr "{0} کے ساتھ بنائیں"
-
-#. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0} CLI"
-msgstr "{0} CLI کے ساتھ بنائیں"
-
 #: src/components/RecentProjectsMenu.tsx
 msgid "create worktree"
 msgstr "ورک ٹری بنائیں"
@@ -4235,15 +4239,6 @@ msgstr "{field} کی تفصیل"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "ڈیزائن"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Desktop"
-msgstr "ڈیسک ٹاپ"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4829,6 +4824,10 @@ msgstr "{0} فعال کریں"
 msgid "Enable {displayName} CLI"
 msgstr "{displayName} CLI فعال کریں"
 
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "Enable {displayName} Desktop"
+msgstr "{displayName} Desktop فعال کریں"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Enable {file}"
 msgstr "{file} فعال کریں"
@@ -5057,6 +5056,15 @@ msgstr "دریافت کریں"
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "مہارتیں دریافت کریں"
+
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/handoff/AgentSplitButton.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "External apps"
+msgstr "بیرونی ایپس"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "External link"
@@ -8455,6 +8463,10 @@ msgstr "{0} کو GitHub پر کھولیں (نئے ٹیب میں کھلتا ہے)
 msgid "Open {basename}"
 msgstr "{basename} کھولیں"
 
+#: src/components/handoff/agent-launcher-labels.tsx
+msgid "Open {displayName} Desktop"
+msgstr "{displayName} Desktop کھولیں"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "{keyName} براؤزر میں کھولیں"
@@ -8745,14 +8757,14 @@ msgstr "AI کے ساتھ کھولیں"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Open with AI {displayName}"
-msgstr "AI {displayName} کے ساتھ کھولیں"
+msgid "Open with AI {displayName} Desktop"
+msgstr "AI {displayName} Desktop کے ساتھ کھولیں"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Open with AI {displayName}, {hint}"
-msgstr "AI {displayName} کے ساتھ کھولیں، {hint}"
+msgid "Open with AI {displayName} Desktop, {hint}"
+msgstr "AI {displayName} Desktop کے ساتھ کھولیں، {hint}"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Open with AI {targetDisplayName}"
@@ -11647,19 +11659,6 @@ msgstr "منتخب اقتباس کو ایجنٹ پینل میں تیار رکھ�
 msgid "Star us on GitHub"
 msgstr "GitHub پر ہمیں ستارہ دیں"
 
-#: src/components/BottomComposer.tsx
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Start {agentName}"
-msgstr "{agentName} شروع کریں"
-
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Start {agentName}, {hint}"
-msgstr "{agentName} شروع کریں، {hint}"
-
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
 msgstr "＋ بٹن سے چیٹ شروع کریں، یا کسی صفحے سے ایجنٹ شروع کریں۔"
@@ -11673,7 +11672,6 @@ msgstr "نئی گفتگو شروع کریں"
 msgid "Start a new OpenKnowledge project."
 msgstr "نیا OpenKnowledge پروجیکٹ شروع کریں۔"
 
-#: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Start an agent"
 msgstr "ایجنٹ شروع کریں"

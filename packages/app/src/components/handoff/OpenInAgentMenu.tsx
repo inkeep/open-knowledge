@@ -12,28 +12,32 @@
  * reaches the deep-link dispatch and the docked-terminal launch alike.
  *
  * Behavior:
- *   - Render only targets where `states[t.id]?.installed === true`, scoped to
- *     `VISIBLE_TARGETS`.
- *   - Installed app launchers sit under a "Desktop" section label; the docked
+ *   - Render the targets `isDesktopTargetEnabled` admits, scoped to
+ *     `VISIBLE_TARGETS`: the ones the probe reports installed, plus any the
+ *     user explicitly enabled in Settings (those route to their installer),
+ *     minus any they turned off.
+ *   - Detected app launchers sit under an "External apps" section label; the docked
  *     terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`:
  *     CLIs the probe hasn't ruled out), each with a "<Brand> CLI"
  *     accessible name — sit under a "Terminal" section label. The terminal
  *     section is absent on the web host (`useTerminalLaunch()` is null — no shell).
- *   - Empty state: when nothing is install-detected and there is no terminal
- *     launcher, render a "No installed agents found" hint (no section labels).
+ *   - Empty state: when no section has rows, only the Configure-agents item
+ *     remains visible — no section labels, no hint text.
  *
  * The `input` prop is supplied by the surface (EditorHeader). When `null` (no
  * active doc / workspace not loaded), the trigger is disabled.
  */
 
 import {
+  type HandoffTarget,
+  type InstallState,
   type TargetData,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
   type TerminalCli,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowUpRight, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
@@ -51,6 +55,7 @@ import { type EnabledOverrides, useEnabledOverrides } from '@/lib/acp/enabled-ag
 import { type RegisteredAgent, useRegisteredAgents } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { openAgentSettings } from '@/lib/use-settings-route';
+import { DesktopAppName } from './agent-launcher-labels';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { type TerminalLaunchContextValue, useTerminalLaunch } from './TerminalLaunchContext';
 import { cliIconTargetId } from './terminal-cli-display';
@@ -73,6 +78,8 @@ interface OpenInAgentMenuProps {
 interface OpenWithAiPanelProps {
   /** User enable/disable overrides — filters the rows to enabled agents. */
   readonly overrides: EnabledOverrides;
+  /** Install state per target — external-app rows are detection-driven. */
+  readonly installStates: Record<HandoffTarget, InstallState>;
   /** Docked-terminal launcher when present (desktop); null on the web host. */
   readonly terminalLaunch: TerminalLaunchContextValue | null;
   /** Disable every dispatch row — set when there is nothing to dispatch
@@ -97,7 +104,7 @@ interface OpenWithAiPanelProps {
 }
 
 /**
- * Popover body — the instruction input and the Desktop / Terminal row
+ * Popover body — the instruction input and the External apps / Terminal row
  * sections. Pure: install state, the launcher, and the pick handlers are
  * injected, so it renders deterministically in tests without the dispatch /
  * install-probe hooks. Instruction state is local and resets on each open
@@ -105,6 +112,7 @@ interface OpenWithAiPanelProps {
  */
 function OpenWithAiPanel({
   overrides,
+  installStates,
   terminalLaunch,
   disabled,
   registeredAgents,
@@ -116,11 +124,11 @@ function OpenWithAiPanel({
   const { t } = useLingui();
   const [instruction, setInstruction] = useState('');
 
-  // Desktop rows are the agents the user ENABLED in Configure agents (source of
-  // truth), not just install-detected ones — a not-installed one still shows
-  // and routes to its installer on launch.
-  const installedTargets = VISIBLE_TARGETS.filter((target) =>
-    isDesktopTargetEnabled(overrides, target.id),
+  // External-app rows are the desktop apps detected on this machine, minus
+  // anything the user turned off in Configure agents. An explicitly enabled but
+  // not-installed app still shows and routes to its installer on launch.
+  const enabledTargets = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id, installStates[target.id]?.installed),
   );
   // Only the in-app agents the user has enabled appear as rows.
   const enabledRegisteredAgents = registeredAgents.filter((agent) =>
@@ -129,7 +137,7 @@ function OpenWithAiPanel({
 
   // Three labeled sections orient the user: "In this app" over the server-
   // hosted agent-thread launcher (always present — threads work on every
-  // host), "Desktop" over the installed app launchers, "Terminal" over the
+  // host), "External apps" over the detected desktop apps, "Terminal" over the
   // docked-terminal CLI rows. The Agents row always shows, so the empty state
   // never appears while it is present.
   // The Terminal CLIs the user ENABLED in Configure agents. Each section renders
@@ -139,7 +147,7 @@ function OpenWithAiPanel({
         isTerminalCliEnabled(overrides, cli, terminalLaunch.installedClis),
       )
     : [];
-  const showDesktopSection = installedTargets.length > 0;
+  const showDesktopSection = enabledTargets.length > 0;
   const showTerminalSection = terminalClis.length > 0;
   const showThreadSection = enabledRegisteredAgents.length > 0;
 
@@ -178,6 +186,7 @@ function OpenWithAiPanel({
                   className="h-auto w-full justify-start gap-1.5 rounded-md px-1.5 py-1 font-normal text-foreground"
                   disabled={disabled}
                   data-testid={`open-in-agent-thread-start-${agent.id}`}
+                  aria-label={t`Ask ${agentName}`}
                   onClick={() =>
                     onStartThreadWith({ source: agent.source, id: agent.id }, instruction)
                   }
@@ -187,7 +196,7 @@ function OpenWithAiPanel({
                     iconUrl={agent.iconUrl}
                     className="size-4"
                   />
-                  <span>{t`Start ${agentName}`}</span>
+                  <span>{agentName}</span>
                 </Button>
               );
             })}
@@ -202,8 +211,8 @@ function OpenWithAiPanel({
             // `codex` / `cursor-agent` in the docked terminal with the same
             // scope prompt (plus instruction) the deep-link puts in `q=`.
             // Visible text is the brand name; the accessible name is "<Brand>
-            // CLI" so AT users can tell each apart from the matching Desktop
-            // row (WCAG 2.5.3 — the name contains the visible label).
+            // CLI" so AT users can tell each apart from the matching
+            // external-app row (WCAG 2.5.3 — the name contains the visible label).
             <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
               <legend
                 className="px-1.5 py-1 font-medium text-muted-foreground text-xs"
@@ -232,23 +241,24 @@ function OpenWithAiPanel({
             </fieldset>
           ) : null}
           {showDesktopSection ? (
-            // Desktop app launchers follow the Terminal section. The separator sits
+            // Detected desktop apps follow the Terminal section. The separator sits
             // OUTSIDE the <fieldset> — <legend> must be its first child.
             <>
               {showTerminalSection ? <Separator className="my-1" /> : null}
               <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
                 <legend
-                  className="px-1.5 py-1 font-medium text-muted-foreground text-xs"
+                  className="flex items-center gap-1.5 px-1.5 py-1 font-medium text-muted-foreground text-xs"
                   data-testid="open-in-agent-desktop-label"
                 >
-                  <Trans>Desktop</Trans>
+                  <Trans>External apps</Trans>
+                  <ArrowUpRight aria-hidden="true" className="size-3" />
                 </legend>
-                {installedTargets.map((target) => {
+                {enabledTargets.map((target) => {
                   // Destructure `displayName` so the Lingui macro emits the named
-                  // placeholder `Open with AI {displayName}` — the same catalog
-                  // message the sibling surfaces (OpenInAgentMenuItem, the submenus)
-                  // already produce. Interpolating `target.displayName` directly
-                  // would emit a positional `{0}` and fork a duplicate entry.
+                  // placeholder `Open with AI {displayName} Desktop` — the same
+                  // catalog message the sibling submenus produce. Interpolating
+                  // `target.displayName` directly would emit a positional `{0}`
+                  // and fork a duplicate entry.
                   const { displayName } = target;
                   return (
                     <Button
@@ -258,11 +268,13 @@ function OpenWithAiPanel({
                       className="h-auto w-full justify-start gap-1.5 rounded-md px-1.5 py-1 font-normal text-foreground"
                       disabled={disabled}
                       data-testid={`open-in-agent-item-${target.id}`}
-                      aria-label={t`Open with AI ${displayName}`}
+                      aria-label={t`Open with AI ${displayName} Desktop`}
                       onClick={() => onPick(target, instruction)}
                     >
                       <TargetIcon id={target.id} aria-hidden="true" />
-                      <span>{displayName}</span>
+                      <span>
+                        <DesktopAppName displayName={displayName} />
+                      </span>
                     </Button>
                   );
                 })}
@@ -352,7 +364,7 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   const handlePick = (target: TargetData, instruction: string): void => {
     const next = inputWith(instruction);
     if (next === null) return;
-    // An enabled-but-not-installed Desktop agent routes to its installer
+    // An enabled-but-not-installed desktop app routes to its installer
     // rather than a failing deep-link dispatch.
     if (states[target.id]?.installed !== true) {
       void openInstallUrl(target);
@@ -440,6 +452,7 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
       >
         <OpenWithAiPanel
           overrides={overrides}
+          installStates={states}
           terminalLaunch={terminalLaunch}
           disabled={input === null}
           registeredAgents={registeredAgents}

@@ -13,6 +13,7 @@ import {
   enabledThreadAgents,
   type LauncherSelectionInputs,
   resolveLauncherSelection,
+  unresolvedDesktopTargets,
 } from './launcher-selection';
 import type { RegisteredAgent } from './registered-agents';
 
@@ -51,9 +52,32 @@ describe('enabled-set helpers', () => {
     expect(clis).not.toContain('cursor'); // probed absent
   });
 
-  test('enabledDesktopTargets: off by default, on with an override', () => {
-    expect(enabledDesktopTargets({})).toEqual([]);
-    expect(enabledDesktopTargets({ [desktopEnabledKey('cursor')]: true })).toEqual(['cursor']);
+  test('unresolvedDesktopTargets: only targets with no answer and no override', () => {
+    expect(unresolvedDesktopTargets({}, {})).toContain('cursor');
+    expect(unresolvedDesktopTargets({}, { cursor: { installed: false } })).not.toContain('cursor');
+    expect(unresolvedDesktopTargets({}, { cursor: { installed: true } })).not.toContain('cursor');
+    // An explicit toggle is an answer, so the pending window doesn't apply.
+    expect(unresolvedDesktopTargets({ [desktopEnabledKey('cursor')]: false }, {})).not.toContain(
+      'cursor',
+    );
+  });
+
+  test('enabledDesktopTargets: detected by default, overridable both ways', () => {
+    expect(enabledDesktopTargets({}, {})).toEqual([]);
+    // Detection alone is enough — no override needed.
+    expect(enabledDesktopTargets({}, { cursor: { installed: true } })).toEqual(['cursor']);
+    // A pending probe is not "installed".
+    expect(enabledDesktopTargets({}, { cursor: { installed: null } })).toEqual([]);
+    // Overrides win in both directions.
+    expect(enabledDesktopTargets({ [desktopEnabledKey('cursor')]: true }, {})).toEqual(['cursor']);
+    expect(
+      enabledDesktopTargets(
+        { [desktopEnabledKey('cursor')]: false },
+        {
+          cursor: { installed: true },
+        },
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -144,6 +168,45 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
     expect(
       resolveLauncherSelection(
         inputs({ sticky: 'cursor', desktopSelectable: true, enabledDesktopTargets: [] }),
+      ),
+    ).toEqual({ kind: 'none' });
+  });
+
+  test('a remembered desktop pick holds while its probe is still in flight', () => {
+    // Cold start: nothing detected yet, so the pick would otherwise flash the
+    // in-app default for the probe's duration before snapping back.
+    expect(
+      resolveLauncherSelection(
+        inputs({
+          sticky: 'cursor',
+          desktopSelectable: true,
+          enabledDesktopTargets: [],
+          unresolvedDesktopTargets: ['cursor'],
+          effectiveThreadAgent: claude,
+        }),
+      ),
+    ).toEqual({ kind: 'desktop', target: 'cursor' });
+    // A positive not-installed answer still degrades it.
+    expect(
+      resolveLauncherSelection(
+        inputs({
+          sticky: 'cursor',
+          desktopSelectable: true,
+          enabledDesktopTargets: [],
+          unresolvedDesktopTargets: [],
+          effectiveThreadAgent: claude,
+        }),
+      ),
+    ).toEqual({ kind: 'thread', agent: claude });
+    // And a pending target that was never picked is not promoted.
+    expect(
+      resolveLauncherSelection(
+        inputs({
+          sticky: null,
+          desktopSelectable: true,
+          enabledDesktopTargets: [],
+          unresolvedDesktopTargets: ['cursor'],
+        }),
       ),
     ).toEqual({ kind: 'none' });
   });

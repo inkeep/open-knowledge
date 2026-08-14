@@ -1,6 +1,6 @@
 /**
  * Behavioral tests for the Settings → Configure agents section: it renders the
- * agent groups (In app / Terminal / Desktop) with toggles, and flipping a toggle
+ * agent groups (In app / Terminal / External apps) with toggles, and flipping a toggle
  * persists an enable/disable override to the `enabled-agents` store so the
  * launcher dropdowns show/hide that agent.
  */
@@ -99,9 +99,11 @@ vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states, refresh: () => Promise.resolve() }),
 }));
 
-// Web-host default: no docked terminal → the Terminal group is absent.
+// Web-host default: no docked terminal → the Terminal group is absent. The
+// Terminal-group describe below swaps this value in and restores it after.
+let terminalLaunchValue: { installedClis: Record<string, boolean> } | null = null;
 vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({
-  useTerminalLaunch: () => null,
+  useTerminalLaunch: () => terminalLaunchValue,
 }));
 
 vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
@@ -149,11 +151,11 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('ConfigureAgentsSection', () => {
-  test('renders In app + Desktop groups (no Terminal on the web host)', async () => {
+  test('renders In app + External apps groups (no Terminal on the web host)', async () => {
     renderSection();
     await waitFor(() => expect(screen.getByText('Claude Agent')).toBeTruthy());
     expect(screen.getByText('In app')).toBeTruthy();
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
   });
 
@@ -166,7 +168,7 @@ describe('ConfigureAgentsSection', () => {
   test('a row shows the catalog description as its subtitle, never the license or an install signal', async () => {
     renderSection();
     // The human blurb, not the SPDX license. (A global "Not installed" check
-    // would hit the Desktop group's own install hint, so scope to the license.)
+    // would hit the external-apps group's own install hint, so scope to the license.)
     expect(await screen.findByText('ACP wrapper for Cursor')).toBeTruthy();
     expect(screen.getByText('ACP wrapper for Gemini')).toBeTruthy();
     expect(screen.queryByText('Apache-2.0')).toBeNull();
@@ -230,20 +232,45 @@ describe('ConfigureAgentsSection', () => {
     expect(getDefaultRegisteredAgent()?.id).toBe('codex-acp');
   });
 
-  test('toggling a Desktop agent on persists a true override (Desktop is off by default)', async () => {
+  test('a detected external app is on with no override; a missing one is off', async () => {
+    renderSection();
+    // `claude-code` probes installed, `codex` probes absent (see the mock above).
+    const detected = await screen.findByTestId('configure-agents-desktop-claude-code');
+    const missing = await screen.findByTestId('configure-agents-desktop-codex');
+    expect(overrides()['desktop:claude-code']).toBeUndefined();
+    expect(detected.getAttribute('aria-checked')).toBe('true');
+    expect(missing.getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('toggling on an absent external app persists a true override and keeps the row', async () => {
+    // The escape hatch: a user turns on an app they have not installed, and the
+    // row stays put so selecting it can route to the installer.
+    renderSection();
+    const toggle = await screen.findByTestId('configure-agents-desktop-codex');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(overrides()['desktop:codex']).toBe(true));
+    const after = await screen.findByTestId('configure-agents-desktop-codex');
+    expect(after.getAttribute('aria-checked')).toBe('true');
+    // Still labeled as not installed — the override shows it, it does not claim
+    // the app is there.
+    expect(screen.getByText('Not installed')).toBeTruthy();
+  });
+
+  test('toggling a detected external app off persists a false override', async () => {
     renderSection();
     const toggle = await screen.findByTestId('configure-agents-desktop-claude-code');
-    // Desktop is opt-in — off by default with no override yet.
-    expect(overrides()['desktop:claude-code']).toBeUndefined();
     fireEvent.click(toggle);
-    await waitFor(() => expect(overrides()['desktop:claude-code']).toBe(true));
+    await waitFor(() => expect(overrides()['desktop:claude-code']).toBe(false));
   });
 
   test('search filters agents across groups', async () => {
     renderSection();
     await screen.findByText('Claude Agent'); // catalog resolved
     fireEvent.change(screen.getByTestId('configure-agents-search'), { target: { value: 'codex' } });
-    // In-app 'Claude Agent' no longer matches; the Desktop 'Codex' row does.
+    // In-app 'Claude Agent' no longer matches; the ChatGPT Desktop row does
+    // (via its `codex` target id — the label no longer contains the query).
     await waitFor(() => expect(screen.queryByText('Claude Agent')).toBeNull());
     expect(screen.getByTestId('configure-agents-desktop-codex')).toBeTruthy();
     expect(screen.queryByTestId('configure-agents-no-results')).toBeNull();
@@ -256,5 +283,48 @@ describe('ConfigureAgentsSection', () => {
       target: { value: 'zzzznope' },
     });
     await waitFor(() => expect(screen.getByTestId('configure-agents-no-results')).toBeTruthy());
+  });
+});
+
+describe('ConfigureAgentsSection — Terminal group (docked terminal present)', () => {
+  beforeEach(async () => {
+    terminalLaunchValue = { installedClis: { claude: true, codex: false } };
+    // The enabled-agents store is module-level state; localStorage.clear() in
+    // the outer beforeEach doesn't reset it, and any later setAgentEnabled
+    // flushes the whole in-memory map back to storage. Re-sync from the
+    // now-empty storage so this describe starts from no overrides.
+    const { reloadEnabledAgentsFromStorage } = await import('@/lib/acp/enabled-agents');
+    reloadEnabledAgentsFromStorage();
+  });
+  afterEach(() => {
+    terminalLaunchValue = null;
+  });
+
+  test('renders the Terminal group with per-CLI rows', async () => {
+    renderSection();
+    await screen.findByTestId('configure-agents-terminal-claude');
+    expect(screen.getByText('Terminal')).toBeTruthy();
+    expect(screen.getByTestId('configure-agents-terminal-codex')).toBeTruthy();
+  });
+
+  test('an absent CLI shows the Not installed hint; a present one does not', async () => {
+    renderSection();
+    await screen.findByTestId('configure-agents-terminal-codex');
+    // codex CLI probed absent -> hint; claude probed present -> no hint. The
+    // desktop rows also render "Not installed" hints in other states, so
+    // scope the assertion to row containers.
+    const codexRow = screen.getByTestId('configure-agents-terminal-codex').closest('div[class]');
+    expect(codexRow?.parentElement?.textContent ?? '').toContain('Not installed');
+  });
+
+  test('toggling a CLI writes the terminal: override key, not the desktop one', async () => {
+    renderSection();
+    const toggle = await screen.findByTestId('configure-agents-terminal-claude');
+    // Overrides persist in localStorage across this file's tests — assert the
+    // click's DELTA: it writes the terminal key and leaves the desktop key as-is.
+    const desktopKeyBefore = overrides()['desktop:claude-code'];
+    fireEvent.click(toggle);
+    await waitFor(() => expect(overrides()['terminal:claude']).toBe(false));
+    expect(overrides()['desktop:claude-code']).toBe(desktopKeyBefore);
   });
 });

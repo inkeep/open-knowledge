@@ -628,6 +628,11 @@ msgstr "{displayName} CLI"
 msgid "{displayName} CLI, {hint}"
 msgstr "{displayName} CLI, {hint}"
 
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "{displayName} Desktop"
+msgstr "{displayName} Desktop"
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -1708,19 +1713,24 @@ msgstr "আপনি কি নিশ্চিতভাবে নির্বা
 msgid "Ask"
 msgstr "জিজ্ঞেস করুন"
 
-#. placeholder {0}: resolvedTarget.displayName
-#: src/components/BottomComposer.tsx
-msgid "Ask {0}"
-msgstr "{0}-কে জিজ্ঞেস করুন"
-
 #. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
 msgid "Ask {0} CLI"
 msgstr "{0} CLI-কে জিজ্ঞেস করুন"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "{agentName}-কে জিজ্ঞেস করুন"
+
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+msgid "Ask {agentName}, {hint}"
+msgstr "{agentName}-কে জিজ্ঞেস করুন, {hint}"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -1741,6 +1751,10 @@ msgstr "নির্বাচিত অংশ নিয়ে AI-কে জি�
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
 msgstr "AI-কে {flatId} ঠিক করতে বলুন"
+
+#: src/components/BottomComposer.tsx
+msgid "Ask an agent"
+msgstr "একটি এজেন্টকে জিজ্ঞেস করুন"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -3914,16 +3928,6 @@ msgstr "দারুণ কিছু তৈরি করুন।"
 msgid "Create template"
 msgstr "টেমপ্লেট তৈরি করুন"
 
-#. placeholder {0}: getDisplayNameDefault(selectedAgentId)
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0}"
-msgstr "{0} দিয়ে তৈরি করুন"
-
-#. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0} CLI"
-msgstr "{0} CLI দিয়ে তৈরি করুন"
-
 #: src/components/RecentProjectsMenu.tsx
 msgid "create worktree"
 msgstr "ওয়ার্কট্রি তৈরি করুন"
@@ -4231,15 +4235,6 @@ msgstr "{field}-এর বিবরণ"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "নকশা"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Desktop"
-msgstr "ডেস্কটপ"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4825,6 +4820,10 @@ msgstr "{0} চালু করুন"
 msgid "Enable {displayName} CLI"
 msgstr "{displayName} CLI চালু করুন"
 
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "Enable {displayName} Desktop"
+msgstr "{displayName} Desktop চালু করুন"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Enable {file}"
 msgstr "{file} চালু করুন"
@@ -5053,6 +5052,15 @@ msgstr "ঘুরে দেখুন"
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "স্কিল ঘুরে দেখুন"
+
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/handoff/AgentSplitButton.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "External apps"
+msgstr "বাহ্যিক অ্যাপ"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "External link"
@@ -8451,6 +8459,10 @@ msgstr "{0} GitHub-এ খুলুন (নতুন ট্যাবে খো�
 msgid "Open {basename}"
 msgstr "{basename} খুলুন"
 
+#: src/components/handoff/agent-launcher-labels.tsx
+msgid "Open {displayName} Desktop"
+msgstr "{displayName} Desktop খুলুন"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "{keyName} ব্রাউজারে খুলুন"
@@ -8741,14 +8753,14 @@ msgstr "AI দিয়ে খুলুন"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Open with AI {displayName}"
-msgstr "AI {displayName} দিয়ে খুলুন"
+msgid "Open with AI {displayName} Desktop"
+msgstr "AI {displayName} Desktop দিয়ে খুলুন"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Open with AI {displayName}, {hint}"
-msgstr "AI {displayName} দিয়ে খুলুন, {hint}"
+msgid "Open with AI {displayName} Desktop, {hint}"
+msgstr "AI {displayName} Desktop দিয়ে খুলুন, {hint}"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Open with AI {targetDisplayName}"
@@ -11643,19 +11655,6 @@ msgstr "নির্বাচিত অংশ এজেন্ট প্যান
 msgid "Star us on GitHub"
 msgstr "GitHub-এ আমাদের স্টার দিন"
 
-#: src/components/BottomComposer.tsx
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Start {agentName}"
-msgstr "{agentName} শুরু করুন"
-
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Start {agentName}, {hint}"
-msgstr "{agentName} শুরু করুন, {hint}"
-
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
 msgstr "＋ বোতাম দিয়ে চ্যাট শুরু করুন, বা কোনো পৃষ্ঠা থেকে এজেন্ট চালু করুন।"
@@ -11669,7 +11668,6 @@ msgstr "একটি নতুন আলাপ শুরু করুন"
 msgid "Start a new OpenKnowledge project."
 msgstr "একটি নতুন OpenKnowledge প্রকল্প শুরু করুন।"
 
-#: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Start an agent"
 msgstr "একটি এজেন্ট শুরু করুন"

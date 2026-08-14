@@ -158,7 +158,6 @@
       "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
     ],
     "1ZXkqM": ["Turn it off any time in Settings."],
-    "1ZpfyB": ["Open with AI ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Following the agent's edits"],
     "1bDVu5": ["Workspace Command Palette"],
     "1d1F11": ["Select all files and folders"],
@@ -173,6 +172,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
+    "1vczDE": ["Open ", ["displayName"], " Desktop"],
     "1vn0CI": ["Invalid server response"],
     "1xui0Q": ["Failed to load local files"],
     "2277Tu": ["Collapse graph"],
@@ -351,7 +351,6 @@
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
     "4o57um": ["Game over · press space to play again"],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
-    "4rjwLG": ["Create with ", ["0"], " CLI"],
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],
     "4uNLmk": ["Pulling"],
@@ -394,7 +393,6 @@
     "5OTgC7": ["Open and focus the bottom Ask AI prompt composer."],
     "5OqaJi": ["Enter a project name"],
     "5PHgV2": ["You can also create one from a terminal with <0>ok bug-report</0>."],
-    "5PrrYw": ["Start ", ["agentName"]],
     "5QGTaA": ["Could not copy relative path"],
     "5SwVv1": ["Not installed"],
     "5Szq6N": [
@@ -531,6 +529,7 @@
     "78G7R3": [
       "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
     ],
+    "7Ag-Xu": ["Ask ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Failed"],
     "7FA2iI": ["Couldn't read the comments waiting to send — nothing was sent."],
     "7FamGZ": ["Go to line"],
@@ -703,7 +702,6 @@
     "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
     "9dVehq": ["More grant options"],
-    "9dw5bW": ["Create with ", ["0"]],
     "9euN0m": [
       [
         "count",
@@ -810,7 +808,6 @@
     "B6Lac2": ["+", ["overflowCount"], " more"],
     "B6NpZ7": ["Renamed to \"", ["next"], "\""],
     "BAH4qX": ["Selected graph item"],
-    "BBqGS9": ["Desktop"],
     "BD0XSC": ["Failed to load project templates"],
     "BEkF-P": [
       ["userName"],
@@ -848,6 +845,7 @@
     "BlLxpG": ["Search skills"],
     "BowKyI": ["Show details"],
     "Bv5a9_": ["Selection statistics"],
+    "BwKH4d": ["External apps"],
     "Bx4EXG": ["Actions for ", ["label"]],
     "By-7Pn": ["Toggle a bullet list."],
     "ByIOcK": ["The index files stay in place. Open Knowledge removes only the Git rule it added."],
@@ -896,6 +894,7 @@
       "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
     ],
     "CXj9C-": ["New property name"],
+    "CZBqrX": [["displayName"], " Desktop"],
     "C_Lyvh": ["Failed to save theme setting"],
     "C_WGy8": [
       "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
@@ -2309,7 +2308,6 @@
     ],
     "WpE38V": ["Found one skill: ", ["0"]],
     "Wq6Wcm": ["Please enter a valid email address."],
-    "WqLq6M": ["Open with AI ", ["displayName"]],
     "Wtw22s": ["Installing"],
     "WuntOK": ["Preview of the screenshot"],
     "WyQxwa": ["Connect this project to GitHub to share."],
@@ -2671,6 +2669,7 @@
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
     "ak4LLg": ["Clear menu"],
     "akmOT9": ["Edit this comment"],
+    "an0aL5": ["Ask an agent"],
     "anmUZq": ["Missing a feature"],
     "aoT2xX": ["This comment is on the whole property"],
     "arUUsK": ["Product updates"],
@@ -2799,6 +2798,7 @@
     "ccNps_": ["Only modified"],
     "cd3THN": ["Document structure"],
     "cd5EXh": ["Report a bug"],
+    "cdBape": ["Enable ", ["displayName"], " Desktop"],
     "cdm00A": ["No Incoming"],
     "cdmk8A": ["Uncommitted changes"],
     "cgl-gn": ["Connected to GitHub"],
@@ -3098,7 +3098,6 @@
     "gpbKxw": ["Link validation is unavailable."],
     "gqk-3R": ["Moved ", ["0"], " to ", ["destination"], "."],
     "gtEbeW": ["Highlight"],
-    "gtGQ9S": ["Start ", ["agentName"], ", ", ["hint"]],
     "gv5w9J": ["owner/repo, a git URL, or a local path"],
     "gvApb7": [
       "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
@@ -3639,7 +3638,6 @@
     "nP-KFo": ["New ", ["0"], " chat"],
     "nTM8ab": ["Give it a name before editing its colors."],
     "nTwL53": ["Open a doc to share its URL."],
-    "nUNZL4": ["Ask ", ["0"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
     "nYKerc": ["(user-level only)"],
     "nYeBmY": [["hours"], "h ago"],
@@ -3941,6 +3939,7 @@
     "rgPqOw": ["Convert the current block to a paragraph."],
     "ri6zS-": ["The schema file does not exist or failed to load — adding a field creates it."],
     "riqekz": ["Suggestion menu navigation"],
+    "rl35Vz": ["Open with AI ", ["displayName"], " Desktop, ", ["hint"]],
     "rlUzXK": ["Could not validate folder. Please try again."],
     "rmorj0": [
       "This is a preview of ",
@@ -4288,6 +4287,7 @@
       "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
     ],
     "wGSHzy": ["Activate one of the first eight editor tabs."],
+    "wHZ58m": ["Open with AI ", ["displayName"], " Desktop"],
     "wIM7ul": ["Press space or tap the blob to start"],
     "wJijgU": ["Location"],
     "wJo9oS": ["Close find"],

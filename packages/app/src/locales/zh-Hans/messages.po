@@ -628,6 +628,11 @@ msgstr "{displayName} CLI"
 msgid "{displayName} CLI, {hint}"
 msgstr "{displayName} CLI，{hint}"
 
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "{displayName} Desktop"
+msgstr "{displayName} Desktop"
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -1712,19 +1717,24 @@ msgstr "确定要删除所选项目吗？"
 msgid "Ask"
 msgstr "询问"
 
-#. placeholder {0}: resolvedTarget.displayName
-#: src/components/BottomComposer.tsx
-msgid "Ask {0}"
-msgstr "询问 {0}"
-
 #. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
 msgid "Ask {0} CLI"
 msgstr "询问 {0} CLI"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "询问 {agentName}"
+
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+msgid "Ask {agentName}, {hint}"
+msgstr "询问 {agentName}，{hint}"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -1745,6 +1755,10 @@ msgstr "就选中内容问 AI"
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
 msgstr "让 AI 修复 {flatId}"
+
+#: src/components/BottomComposer.tsx
+msgid "Ask an agent"
+msgstr "询问智能体"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -3918,16 +3932,6 @@ msgstr "创造点了不起的东西。"
 msgid "Create template"
 msgstr "创建模板"
 
-#. placeholder {0}: getDisplayNameDefault(selectedAgentId)
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0}"
-msgstr "用 {0} 创建"
-
-#. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0} CLI"
-msgstr "用 {0} CLI 创建"
-
 #: src/components/RecentProjectsMenu.tsx
 msgid "create worktree"
 msgstr "创建 worktree"
@@ -4235,15 +4239,6 @@ msgstr "{field} 的描述"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "设计"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Desktop"
-msgstr "桌面"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4829,6 +4824,10 @@ msgstr "启用 {0}"
 msgid "Enable {displayName} CLI"
 msgstr "启用 {displayName} CLI"
 
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "Enable {displayName} Desktop"
+msgstr "启用 {displayName} Desktop"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Enable {file}"
 msgstr "启用 {file}"
@@ -5057,6 +5056,15 @@ msgstr "探索"
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "探索技能"
+
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/handoff/AgentSplitButton.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "External apps"
+msgstr "外部应用"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "External link"
@@ -8455,6 +8463,10 @@ msgstr "在 GitHub 上打开 {0}（在新标签页中打开）"
 msgid "Open {basename}"
 msgstr "打开 {basename}"
 
+#: src/components/handoff/agent-launcher-labels.tsx
+msgid "Open {displayName} Desktop"
+msgstr "打开 {displayName} Desktop"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "在浏览器中打开 {keyName}"
@@ -8745,14 +8757,14 @@ msgstr "用 AI 打开"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Open with AI {displayName}"
-msgstr "用 AI {displayName} 打开"
+msgid "Open with AI {displayName} Desktop"
+msgstr "用 AI {displayName} Desktop 打开"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Open with AI {displayName}, {hint}"
-msgstr "用 AI {displayName} 打开，{hint}"
+msgid "Open with AI {displayName} Desktop, {hint}"
+msgstr "用 AI {displayName} Desktop 打开，{hint}"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Open with AI {targetDisplayName}"
@@ -11647,19 +11659,6 @@ msgstr "把选中的内容放入智能体面板，随时可以补充并发送。
 msgid "Star us on GitHub"
 msgstr "在 GitHub 上给我们点个星"
 
-#: src/components/BottomComposer.tsx
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Start {agentName}"
-msgstr "启动 {agentName}"
-
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Start {agentName}, {hint}"
-msgstr "启动 {agentName}，{hint}"
-
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
 msgstr "使用 ＋ 按钮开始对话，或从页面启动智能体。"
@@ -11673,7 +11672,6 @@ msgstr "开始新对话"
 msgid "Start a new OpenKnowledge project."
 msgstr "开始一个新的 OpenKnowledge 项目。"
 
-#: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Start an agent"
 msgstr "启动一个智能体"

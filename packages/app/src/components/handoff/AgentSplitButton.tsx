@@ -1,9 +1,10 @@
 import type { HandoffTarget, TargetData, TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
+import { DesktopAppName } from '@/components/handoff/agent-launcher-labels';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
 import { Button } from '@/components/ui/button';
@@ -20,12 +21,12 @@ import {
 
 /**
  * Presentational split button that pairs a primary action with an agent picker:
- * `[ primary ▸ | ⌄ ]`. Shared by the empty-state "Create with <agent>" composer
- * and the footer "Ask <agent>" composer so the two surfaces can't drift.
+ * `[ primary ▸ | ⌄ ]`. Shared by the empty-state create composer and the footer
+ * "Ask <agent>" composer so the two surfaces can't drift.
  *
  * It owns only the view — the joined `ButtonGroup`, the primary button, and the
- * chevron menu listing the installed app agents ("Desktop") plus the optional
- * docked-terminal Claude CLI ("Terminal"). Everything stateful (which agent is
+ * chevron menu listing the detected desktop apps ("External apps") plus the
+ * optional docked-terminal Claude CLI ("Terminal"). Everything stateful (which agent is
  * selected, where that preference is stored, what the primary button does, the
  * pending/disabled affordance, the label verb) stays in the parent and arrives
  * as props. The parent composes `primary` (icon + label + any spinner) and the
@@ -47,7 +48,7 @@ export interface TerminalCliRow {
   readonly cli: TerminalCli;
   /** Visible row text (e.g. "Claude"). */
   readonly label: ReactNode;
-  /** Accessible name, distinct from a same-named Desktop row (WCAG 2.5.3). */
+  /** Accessible name, distinct from the same-named external-app row (WCAG 2.5.3). */
   readonly ariaLabel: string;
   readonly selected: boolean;
   readonly onSelect: () => void;
@@ -96,7 +97,7 @@ export function AgentSplitButton({
   primary,
   onPrimary,
   primaryDisabled = false,
-  installedTargets,
+  enabledTargets,
   selectedTargetId,
   onSelectTarget,
   threadAgents,
@@ -114,8 +115,9 @@ export function AgentSplitButton({
   primary: ReactNode;
   onPrimary: () => void;
   primaryDisabled?: boolean;
-  /** Installed app agents, rendered as the "Desktop" section. */
-  installedTargets: readonly TargetData[];
+  /** Enabled desktop apps — detected installs plus Settings-enabled overrides
+   *  (`enabledDesktopTargets`) — rendered as the "External apps" section. */
+  enabledTargets: readonly TargetData[];
   /** Checkmarked row; `null` when the terminal (or nothing) is selected. */
   selectedTargetId: HandoffTarget | null;
   onSelectTarget: (target: TargetData) => void;
@@ -156,7 +158,7 @@ export function AgentSplitButton({
   testIds: AgentSplitButtonTestIds;
 }) {
   const { t } = useLingui();
-  const showDesktop = installedTargets.length > 0;
+  const showDesktop = enabledTargets.length > 0;
   const cliRows = terminals && terminals.length > 0 ? terminals : null;
   const showTerminal = cliRows != null || terminal != null;
   const hasOptions = showDesktop || showTerminal;
@@ -252,8 +254,8 @@ export function AgentSplitButton({
                   </DropdownMenuLabel>
                   {/* The visible text is the bare CLI name while the accessible
                       name carries "<name> CLI" so AT users can tell it apart
-                      from a same-named Desktop row (WCAG 2.5.3 — the accessible
-                      name contains the visible label). */}
+                      from the same-named external-app row (WCAG 2.5.3 — the
+                      accessible name contains the visible label). */}
                   {cliRows ? (
                     cliRows.map((row) => (
                       <DropdownMenuItem
@@ -301,21 +303,28 @@ export function AgentSplitButton({
                 </DropdownMenuGroup>
               ) : null}
               {showDesktop ? (
-                // Desktop app launchers follow the Terminal section.
+                // Installed desktop apps follow the Terminal section. Selecting
+                // one hands the work OUT of OK — the section header carries the
+                // external-action arrow the app uses everywhere else for that,
+                // and each row is suffixed "Desktop" so it reads apart from the
+                // same-named Terminal row above it.
                 <>
                   {showTerminal ? <DropdownMenuSeparator /> : null}
-                  <DropdownMenuGroup aria-label={t`Desktop`}>
-                    <DropdownMenuLabel>
-                      <Trans>Desktop</Trans>
+                  <DropdownMenuGroup aria-label={t`External apps`}>
+                    <DropdownMenuLabel className="flex items-center gap-1.5">
+                      <Trans>External apps</Trans>
+                      <ArrowUpRight aria-hidden="true" className="size-3" />
                     </DropdownMenuLabel>
-                    {installedTargets.map((target) => (
+                    {enabledTargets.map((target) => (
                       <DropdownMenuItem
                         key={target.id}
                         onSelect={() => onSelectTarget(target)}
                         data-testid={testIds.option(target.id)}
                       >
                         <TargetIcon id={target.id} aria-hidden="true" className="size-4" />
-                        <span className="flex-1">{target.displayName}</span>
+                        <span className="flex-1">
+                          <DesktopAppName displayName={target.displayName} />
+                        </span>
                         {selectedTargetId === target.id ? (
                           <Check aria-hidden="true" className="size-4 text-muted-foreground" />
                         ) : null}

@@ -58,7 +58,7 @@ describe('OpenInAgentMenuItem runtime behavior', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Open with AI Codex' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open with AI ChatGPT' }));
 
     expect(selected).toEqual(['codex']);
   });

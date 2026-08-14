@@ -10,13 +10,12 @@
  * `DropdownMenuSub` inside `ContextMenuContent`) detaches keyboard navigation
  * because Radix submenus inherit roving focus from their parent root primitive.
  *
- * Installed app launchers sit under a "Desktop" section label; the docked
+ * Detected desktop apps sit under an "External apps" section label; the docked
  * terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`: CLIs the
  * probe hasn't ruled out) — sit under a "Terminal" section label.
  *
- * When there is nothing to render (no installed targets and no terminal
- * launcher), the entire submenu is hidden so the user doesn't land on an empty
- * flyout.
+ * The submenu always renders with at least the Configure-agents item; when no
+ * agent section has rows, that item is all that remains (no section labels).
  */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
@@ -30,7 +29,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowUpRight, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
@@ -53,6 +52,7 @@ import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
 import { useRegisteredAgents } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { openAgentSettings } from '@/lib/use-settings-route';
+import { DesktopAppName } from './agent-launcher-labels';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { useTerminalLaunch } from './TerminalLaunchContext';
 import { cliIconTargetId } from './terminal-cli-display';
@@ -97,11 +97,11 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
   const inputMissing = input === null;
   const hint = emptySpaceRowHint(inputMissing);
 
-  // Rows are the agents the user ENABLED in Configure agents (source of truth),
-  // not just install-detected ones — an enabled-but-not-installed Desktop agent
+  // Rows are the desktop apps detected on this machine, minus anything the user
+  // turned off in Configure agents. An explicitly enabled but not-installed app
   // still shows and routes to its installer on select.
-  const installedTargets = VISIBLE_TARGETS.filter((target) =>
-    isDesktopTargetEnabled(overrides, target.id),
+  const enabledTargets = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id, installStates[target.id]?.installed),
   );
   const enabledRegisteredAgents = registeredAgents.filter((agent) =>
     isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
@@ -113,7 +113,7 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
       )
     : [];
   // Each section renders only when it has rows, so an empty header never shows.
-  const showDesktopSection = installedTargets.length > 0;
+  const showDesktopSection = enabledTargets.length > 0;
   // Keep the `terminalLaunch !== null` alias so TS narrows it inside the section.
   const showTerminalSection = terminalLaunch !== null && terminalClis.length > 0;
   const showThreadSection = enabledRegisteredAgents.length > 0;
@@ -146,16 +146,14 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
                   }}
                   disabled={inputMissing}
                   data-testid={`empty-space-open-in-thread-${agent.id}`}
-                  aria-label={hint ? t`Start ${agentName}, ${hint}` : undefined}
+                  aria-label={hint ? t`Ask ${agentName}, ${hint}` : t`Ask ${agentName}`}
                 >
                   <RegisteredAgentIcon
                     agentId={agent.id}
                     iconUrl={agent.iconUrl}
                     className="size-4"
                   />
-                  <span className="flex-1">
-                    <Trans>Start {agentName}</Trans>
-                  </span>
+                  <span className="flex-1">{agentName}</span>
                   {hint ? (
                     <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
                       {hint}
@@ -181,7 +179,7 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
                 terminal with the project-scope prompt. Visible text is the
                 brand name; the accessible name is "<Brand> CLI" (plus the "No
                 workspace" hint when input is missing), so it contains the
-                visible label and AT users can tell it apart from a Desktop row
+                visible label and AT users can tell it apart from an external-app row
                 (WCAG 2.5.3 — name contains visible label). */}
             {terminalClis.map((cli) => {
               const { displayName } = TERMINAL_CLIS[cli];
@@ -209,20 +207,24 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
           </ContextMenuGroup>
         ) : null}
         {showDesktopSection ? (
-          // Desktop app launchers follow the Terminal section.
+          // Detected desktop apps follow the Terminal section. Selecting one
+          // hands the work OUT of OK — hence the external-action arrow on the
+          // header and the "Desktop" suffix that tells each row apart from the
+          // same-named Terminal row above it.
           <>
             {/* Separator only when a Terminal section sits above this one. */}
             {showTerminalSection ? <ContextMenuSeparator /> : null}
-            <ContextMenuGroup aria-label={t`Desktop`}>
-              <ContextMenuLabel>
-                <Trans>Desktop</Trans>
+            <ContextMenuGroup aria-label={t`External apps`}>
+              <ContextMenuLabel className="flex items-center gap-1.5">
+                <Trans>External apps</Trans>
+                <ArrowUpRight aria-hidden="true" className="size-3" />
               </ContextMenuLabel>
-              {installedTargets.map((target) => {
+              {enabledTargets.map((target) => {
                 const enabled = !inputMissing;
                 const { displayName } = target;
                 const accessibleLabel = hint
-                  ? t`Open with AI ${displayName}, ${hint}`
-                  : t`Open with AI ${displayName}`;
+                  ? t`Open with AI ${displayName} Desktop, ${hint}`
+                  : t`Open with AI ${displayName} Desktop`;
                 return (
                   <ContextMenuItem
                     key={target.id}
@@ -240,7 +242,9 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
                     aria-label={accessibleLabel}
                   >
                     <TargetIcon id={target.id} aria-hidden="true" />
-                    <span className="flex-1">{target.displayName}</span>
+                    <span className="flex-1">
+                      <DesktopAppName displayName={displayName} />
+                    </span>
                     {hint ? (
                       <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
                         {hint}

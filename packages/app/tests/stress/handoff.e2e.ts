@@ -13,11 +13,12 @@
  *
  * Per-target rows carry `data-testid="file-tree-open-in-<target.id>"`
  * (e.g. `file-tree-open-in-cursor`); seeded in-app agent rows carry
- * `file-tree-open-in-thread-<agent.id>`. Desktop rows are gated by ENABLEMENT
- * (the Configure-agents toggle), not install detection: Desktop targets are OFF
- * by default, so a cell that expects a Desktop row seeds an enable override via
- * `enableDesktopTargets` before boot. Install state only decides, for an enabled
- * row, whether selecting it dispatches (installed) or opens the installer (not).
+ * `file-tree-open-in-thread-<agent.id>`. External-app rows are DETECTION-driven:
+ * an app the install probe reports present shows without any opt-in, so most
+ * cells just set `install`. An explicit Configure-agents override still wins
+ * either way, which is what `enableDesktopTargets` seeds for the
+ * enabled-but-not-installed cell. Install state also decides, for a visible row,
+ * whether selecting it dispatches (installed) or opens the installer (not).
  *
  * Cell coverage:
  *   - Cells 1, 4: cowork-UI-hidden invariant — `claude-cowork` is filtered
@@ -25,15 +26,15 @@
  *     Dispatch by ID still works through `KNOWN_TARGETS` (covered by
  *     `useHandoffDispatch.test.ts`); these cells guard only the render-surface
  *     hide. Cells 2, 8: happy paths for enabled + installed targets.
- *   - Cell 3: an enabled-but-not-installed Desktop target still renders
- *     (visibility is enablement-based) and selecting it opens the installer
- *     instead of dispatching.
+ *   - Cell 3: a target the user enabled explicitly renders even though the probe
+ *     reports it not installed, and selecting it opens the installer instead of
+ *     dispatching.
  *   - Cell 5: Web Cursor happy path — POSTs to `/api/handoff` (target:
  *     `cursor`, with `workspacePath`) and asserts on the captured request.
  *     Server owns the `cursor <path>` + `open <url>` recipe; renderer just
  *     builds the URL and POSTs. This cell is the web mirror of cell 2.
- *   - Cell 7: with Desktop off and nothing installed, every per-target row is
- *     hidden, but the seeded in-app agent rows still render.
+ *   - Cell 7: with nothing installed, every per-target row is hidden, but the
+ *     seeded in-app agent rows still render.
  * Each cell maps to the numbered scenarios in that section. Mocking at the
  * `window.okDesktop` bridge boundary (Electron host) + `page.route` on
  * `/api/installed-agents` (web host) via `fixtures/handoff-mocks.ts`.
@@ -48,10 +49,10 @@
  *     navigate to `claude://` etc., triggering a protocol-handler dialog
  *     (ignored in headless) OR a real navigation to `https://claude.ai/...`
  *     (would leave the app). See `handoff-mocks.ts` for the full rationale.
- *   - Cell 3 seeds an enable override for a Desktop target the probe reports NOT
- *     installed, then asserts the row still renders (visibility is enablement-
- *     based) and that selecting it opens the installer rather than dispatching a
- *     handoff.
+ *   - Cell 3 seeds an enable override for a target the probe reports NOT
+ *     installed, then asserts the row still renders (an explicit override beats
+ *     detection) and that selecting it opens the installer rather than
+ *     dispatching a handoff.
  *
  * Host-specific notes:
  *   - Electron host cells MUST inject `window.okDesktop` via `addInitScript`
@@ -133,11 +134,10 @@ async function openHandoffSubmenu(page: Page): Promise<void> {
 }
 
 /**
- * Enable Desktop targets in the Configure-agents store before boot. Desktop
- * hand-offs are OFF by default (opt-in), so a cell that expects a Desktop row
- * must enable it first — the same override the user writes by flipping the
- * toggle in Settings → Configure agents. Visibility now derives from enablement,
- * not install detection; install state only decides dispatch-vs-installer.
+ * Force-enable external apps in the Configure-agents store before boot — the
+ * same override the user writes by flipping the toggle in Settings → Configure
+ * agents. Detected apps need no seed; this is for the cell that wants a row for
+ * an app the probe reports NOT installed.
  *
  * Call BEFORE `page.goto(...)` — `addInitScript` runs on the fresh document.
  */
@@ -222,8 +222,6 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    // Desktop rows are opt-in — enable the visible targets so their rows render.
-    await enableDesktopTargets(page, ['claude-code', 'codex', 'cursor']);
     await seedAndNavigate(page, api);
 
     await waitForProbeSettled(page, 'electron');
@@ -251,7 +249,6 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    await enableDesktopTargets(page, ['claude-code', 'codex', 'cursor']);
     await seedAndNavigate(page, api);
 
     await waitForProbeSettled(page, 'electron');
@@ -284,15 +281,15 @@ test.describe('handoff — 8-cell matrix', () => {
     await expect(page.getByText('Opened in Cursor.')).toBeVisible();
   });
 
-  test('cell 3: Electron enabled-but-not-installed Desktop target renders and routes to its installer', async ({
+  test('cell 3: Electron enabled-but-not-installed external app renders and routes to its installer', async ({
     page,
     api,
     workerServer,
   }) => {
-    // Codex is enabled in Configure agents but the probe reports it not
-    // installed. Visibility is enablement-based now (not install-based), so the
-    // row renders anyway; selecting it opens the installer (openInstallUrl →
-    // openExternal) instead of dispatching a handoff.
+    // Codex is force-enabled in Configure agents but the probe reports it not
+    // installed. An explicit override beats detection, so the row renders
+    // anyway; selecting it opens the installer (openInstallUrl → openExternal)
+    // instead of dispatching a handoff.
     const cfg: HandoffMockConfig = {
       host: 'electron',
       install: { claude: true, codex: false, cursor: true },
@@ -300,7 +297,7 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    await enableDesktopTargets(page, ['codex', 'cursor']);
+    await enableDesktopTargets(page, ['codex']);
     await seedAndNavigate(page, api);
 
     await waitForProbeSettled(page, 'electron');
@@ -318,7 +315,7 @@ test.describe('handoff — 8-cell matrix', () => {
       })
       .toBe(1);
     const captured = await readCapturedHandoff(page);
-    expect(captured.openExternalCalls[0]).toBe('https://openai.com/codex');
+    expect(captured.openExternalCalls[0]).toBe('https://developers.openai.com/codex/app');
     expect(captured.handoffApiCalls.length).toBe(0);
   });
 
@@ -338,7 +335,6 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    await enableDesktopTargets(page, ['claude-code', 'codex', 'cursor']);
     await seedAndNavigate(page, api);
 
     await waitForProbeSettled(page, 'web');
@@ -363,7 +359,6 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    await enableDesktopTargets(page, ['claude-code', 'codex', 'cursor']);
     await seedAndNavigate(page, api);
 
     await waitForProbeSettled(page, 'web');
@@ -403,7 +398,7 @@ test.describe('handoff — 8-cell matrix', () => {
     expect(captured.anchorClicks.length).toBe(0);
   });
 
-  test('cell 7: Web — every per-target Desktop row hidden, seeded in-app agent rows still offered, no claude.ai fallback', async ({
+  test('cell 7: Web — every per-target external-app row hidden, seeded in-app agent rows still offered, no claude.ai fallback', async ({
     page,
     api,
     workerServer,
@@ -429,8 +424,8 @@ test.describe('handoff — 8-cell matrix', () => {
     await waitForProbeSettled(page, 'web');
     await openHandoffSubmenu(page);
 
-    // Every per-target Desktop row is hidden (Desktop is opt-in and nothing is
-    // enabled here), and there's no claude.ai web fallback. The submenu is still
+    // Every per-target external-app row is hidden (nothing is installed and the
+    // user set no override), and there's no claude.ai web fallback. It is still
     // not a dead end: the enabled in-app agent is server-hosted, so its per-agent
     // thread row renders even with zero installed editors (the old generic "Start
     // an agent" row + "no installed agents" hint are gone).
@@ -479,7 +474,6 @@ test.describe('handoff — 8-cell matrix', () => {
         }),
       });
     });
-    await enableDesktopTargets(page, ['claude-code', 'codex', 'cursor']);
     await seedAndNavigate(page, api);
 
     await waitForProbeSettled(page, 'electron');

@@ -15,7 +15,7 @@
  * re-derives selection every render (no stale snapshots).
  */
 
-import type { HandoffTarget, TerminalCli } from '@inkeep/open-knowledge-core';
+import type { HandoffTarget, InstallState, TerminalCli } from '@inkeep/open-knowledge-core';
 import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { parseStickyCliId, parseStickyThreadAgent } from '../unified-agent-store';
@@ -24,7 +24,7 @@ import {
   isInAppAgentEnabled,
   isTerminalCliEnabled,
 } from './agent-visibility';
-import type { EnabledOverrides } from './enabled-agents';
+import { desktopEnabledKey, type EnabledOverrides } from './enabled-agents';
 import type { RegisteredAgent } from './registered-agents';
 
 /** What a primary launcher button launches. `none` = nothing enabled to launch. */
@@ -54,9 +54,33 @@ export function enabledTerminalClis(
   return TERMINAL_CLI_IDS.filter((cli) => isTerminalCliEnabled(overrides, cli, installedClis));
 }
 
-/** Desktop targets the user has ENABLED (opt-in; independent of install state). */
-export function enabledDesktopTargets(overrides: EnabledOverrides): HandoffTarget[] {
-  return VISIBLE_TARGETS.filter((t) => isDesktopTargetEnabled(overrides, t.id)).map((t) => t.id);
+/**
+ * Desktop targets the user has ENABLED. `isDesktopTargetEnabled` folds in
+ * install detection (shown when probed installed), so callers pass the live
+ * probe map from `useInstalledAgents`.
+ */
+export function enabledDesktopTargets(
+  overrides: EnabledOverrides,
+  installStates: Partial<Record<HandoffTarget, InstallState>>,
+): HandoffTarget[] {
+  return VISIBLE_TARGETS.filter((t) =>
+    isDesktopTargetEnabled(overrides, t.id, installStates[t.id]?.installed),
+  ).map((t) => t.id);
+}
+
+/**
+ * Desktop targets the probe hasn't answered for yet (`installed == null`) and the
+ * user hasn't overridden either way — i.e. the ones whose visibility is still
+ * genuinely unknown, as opposed to known-absent.
+ */
+export function unresolvedDesktopTargets(
+  overrides: EnabledOverrides,
+  installStates: Partial<Record<HandoffTarget, InstallState>>,
+): HandoffTarget[] {
+  return VISIBLE_TARGETS.filter(
+    (t) =>
+      overrides[desktopEnabledKey(t.id)] === undefined && installStates[t.id]?.installed == null,
+  ).map((t) => t.id);
 }
 
 export interface LauncherSelectionInputs {
@@ -70,6 +94,11 @@ export interface LauncherSelectionInputs {
   readonly enabledClis: readonly TerminalCli[];
   /** Enabled desktop targets ({@link enabledDesktopTargets}). */
   readonly enabledDesktopTargets: readonly HandoffTarget[];
+  /** Desktop targets whose install probe has not resolved yet
+   *  ({@link unresolvedDesktopTargets}). A REMEMBERED desktop pick survives this
+   *  window rather than flashing the in-app default for the ~100 ms the probe
+   *  takes; it never promotes a target that was never picked. */
+  readonly unresolvedDesktopTargets?: readonly HandoffTarget[];
   /** Install map — the default CLI prefers an installed enabled CLI over an
    *  unknown-install one. */
   readonly installedClis: Partial<Record<TerminalCli, boolean>>;
@@ -100,6 +129,7 @@ export function resolveLauncherSelection(inputs: LauncherSelectionInputs): Launc
     effectiveThreadAgent,
     enabledClis,
     enabledDesktopTargets: desktopTargets,
+    unresolvedDesktopTargets: pendingDesktopTargets = [],
     installedClis,
     terminalAvailable,
     threadsAvailable,
@@ -122,7 +152,16 @@ export function resolveLauncherSelection(inputs: LauncherSelectionInputs): Launc
     const cli = parseStickyCliId(sticky);
     if (cli !== null && enabledClis.includes(cli)) return { kind: 'cli', cli };
   }
-  if (desktopSelectable && sticky !== null && desktopTargets.includes(sticky as HandoffTarget)) {
+  // A remembered desktop pick also holds while its probe is still in flight —
+  // otherwise every cold start flashes the in-app default for the probe's
+  // duration before snapping back to the app the user actually chose. Only a
+  // POSITIVE not-installed answer (or a Settings toggle) degrades it.
+  if (
+    desktopSelectable &&
+    sticky !== null &&
+    (desktopTargets.includes(sticky as HandoffTarget) ||
+      pendingDesktopTargets.includes(sticky as HandoffTarget))
+  ) {
     return { kind: 'desktop', target: sticky as HandoffTarget };
   }
 
@@ -135,10 +174,9 @@ export function resolveLauncherSelection(inputs: LauncherSelectionInputs): Launc
     return { kind: 'cli', cli };
   }
   // An enabled Desktop app is a valid default only when nothing higher-priority
-  // is enabled — the user opted it in, so defaulting to it beats stranding the
-  // primary on a disabled Create button with no picker to reach it. It never
-  // outranks an in-app agent or CLI, and a fresh install (in-app seeded, Desktop
-  // off) never reaches here.
+  // is enabled — it beats stranding the primary on a disabled Create button with
+  // no picker to reach it. It never outranks an in-app agent or CLI, so a
+  // detected desktop app never displaces the seeded in-app default.
   if (desktopSelectable && desktopTargets.length > 0) {
     return { kind: 'desktop', target: desktopTargets[0] };
   }

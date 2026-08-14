@@ -4,22 +4,10 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import {
-  desktopEnabledKey,
-  reloadEnabledAgentsFromStorage,
-  setAgentEnabled,
-} from '@/lib/acp/enabled-agents';
+import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { TerminalLaunchProvider } from './TerminalLaunchContext';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
-
-// Desktop is enablement-gated now (off by default); these tests express Desktop
-// visibility via `states` install flags, so translate installed → enabled.
-function enableInstalledDesktop(): void {
-  for (const [id, state] of Object.entries(states)) {
-    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
-  }
-}
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -84,7 +72,6 @@ const input: HandoffDispatchInput = {
 };
 
 async function renderMenu(menuInput: HandoffDispatchInput | null = input) {
-  enableInstalledDesktop();
   const { OpenInAgentMenu } = await import('./OpenInAgentMenu');
   render(
     <TooltipProvider>
@@ -94,7 +81,6 @@ async function renderMenu(menuInput: HandoffDispatchInput | null = input) {
 }
 
 async function renderMenuWithTerminal(menuInput: HandoffDispatchInput | null = input) {
-  enableInstalledDesktop();
   const { OpenInAgentMenu } = await import('./OpenInAgentMenu');
   render(
     <TooltipProvider>
@@ -169,7 +155,9 @@ describe('OpenInAgentMenu runtime behavior', () => {
 
     // The "Desktop" section label renders above the app-agent rows (assert before
     // the click, which closes the popover and unmounts the panel).
-    expect(screen.getByTestId('open-in-agent-desktop-label').textContent).toContain('Desktop');
+    expect(screen.getByTestId('open-in-agent-desktop-label').textContent).toContain(
+      'External apps',
+    );
 
     // No instruction typed → the bare input dispatches unchanged. `toStrictEqual`
     // (not `toEqual`) proves no `instruction` key was added: strict equality
@@ -273,7 +261,7 @@ describe('OpenInAgentMenu runtime behavior', () => {
     expect(screen.getByTestId('open-in-agent-settings')).toBeTruthy();
   });
 
-  test('groups installed agents under Desktop and the CLI launch under Terminal', async () => {
+  test('groups detected desktop apps under External apps and the CLI launch under Terminal', async () => {
     states = {
       'claude-code': { installed: true, lastChecked: 1 },
       codex: { installed: true, lastChecked: 1 },
@@ -282,16 +270,16 @@ describe('OpenInAgentMenu runtime behavior', () => {
     await renderMenuWithTerminal();
     await openMenu();
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
     expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
     expect(screen.getByTestId('open-in-agent-terminal-codex')).toBeTruthy();
     expect(screen.getByTestId('open-in-agent-terminal-cursor')).toBeTruthy();
     // Each section is a named role="group" (via <fieldset>/<legend>) so
     // assistive tech announces it.
-    expect(screen.getByRole('group', { name: 'Desktop' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'External apps' })).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Terminal' })).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the Desktop one.
+    // Terminal-first: the Terminal section label precedes the External apps one.
     const terminalLabel = screen.getByTestId('open-in-agent-terminal-label');
     const desktopLabel = screen.getByTestId('open-in-agent-desktop-label');
     expect(
@@ -310,12 +298,12 @@ describe('OpenInAgentMenu runtime behavior', () => {
     expect(dispatchCalls).toEqual([]);
   });
 
-  test('omits the Terminal section but keeps Desktop when no terminal launcher is present', async () => {
+  test('omits the Terminal section but keeps External apps when no terminal launcher is present', async () => {
     states = { 'claude-code': { installed: true, lastChecked: 1 } };
     await renderMenu();
     await openMenu();
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
     expect(screen.queryByTestId('open-in-agent-terminal-claude')).toBeNull();
   });

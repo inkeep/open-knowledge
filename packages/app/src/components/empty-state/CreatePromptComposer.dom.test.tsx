@@ -1,8 +1,9 @@
 /**
  * Behavioral tests for the empty-state CreatePromptComposer's chevron dropdown:
- * the "Desktop" section (app-agent rows) and the desktop-gated "Terminal" section
- * (the "Claude" CLI row). Every row SELECTS a create target — Desktop picks an app
- * agent, Terminal picks the docked Claude CLI — and the primary Create button
+ * the "External apps" section (detected desktop apps) and the desktop-gated
+ * "Terminal" section (the "Claude" CLI row). Every row SELECTS a create target —
+ * an external-app row picks a desktop app, Terminal picks the docked Claude CLI —
+ * and the primary button
  * performs the selected target (app deep-link or terminal launch), reusing the same
  * create-scope handoff input. Pins selection -> button reflection, that the CLI
  * launch carries the typed brief verbatim, section gating, and the visible-text vs
@@ -19,11 +20,7 @@ import type { HandoffDispatchInput } from '@/components/handoff/useHandoffDispat
 // mock keep the real `buildCreateHandoffInput` (whose exact output shape the CLI
 // tests assert) while spying on the thread-launch + app-dispatch entry points.
 import * as handoffModule from '@/components/handoff/useHandoffDispatch';
-import {
-  desktopEnabledKey,
-  reloadEnabledAgentsFromStorage,
-  setAgentEnabled,
-} from '@/lib/acp/enabled-agents';
+import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import type { Workspace } from '@/lib/workspace-paths';
 
@@ -182,18 +179,9 @@ const launchCalls: HandoffDispatchInput[] = [];
 const { CreatePromptComposer } = await import('./CreatePromptComposer');
 const { TerminalLaunchProvider } = await import('@/components/handoff/TerminalLaunchContext');
 
-// Desktop is enablement-gated now (off by default); these tests express Desktop
-// visibility via `states`, so translate installed → enabled at render.
-function enableInstalledDesktopTargets() {
-  for (const [id, state] of Object.entries(states)) {
-    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
-  }
-}
-
 async function renderComposer(
   opts: { withTerminal: boolean; scenario?: CreateScenario } = { withTerminal: true },
 ) {
-  enableInstalledDesktopTargets();
   const value = opts.withTerminal
     ? { launchInTerminal: (i: HandoffDispatchInput) => launchCalls.push(i), installedClis: {} }
     : null;
@@ -209,7 +197,7 @@ async function renderComposer(
   });
 }
 
-describe('CreatePromptComposer Desktop / Terminal sections', () => {
+describe('CreatePromptComposer External apps / Terminal sections', () => {
   afterEach(() => {
     cleanup();
     launchCalls.length = 0;
@@ -223,34 +211,34 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     reloadEnabledAgentsFromStorage();
   });
 
-  test('renders Desktop and Terminal sections with the CLI launch row when a launcher is present', async () => {
+  test('renders External apps and Terminal sections with the CLI launch row when a launcher is present', async () => {
     states = { ...installedAll };
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: true });
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the Desktop one.
+    // Terminal-first: the Terminal section label precedes the External apps one.
     expect(
-      screen.getByText('Terminal').compareDocumentPosition(screen.getByText('Desktop')) &
+      screen.getByText('Terminal').compareDocumentPosition(screen.getByText('External apps')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.getByTestId('create-with-cli-claude')).toBeTruthy();
-    // Two separators: Terminal | Desktop, and the Configure agents footer. No
+    // Two separators: Terminal | External apps, and the Configure agents footer. No
     // In-app section here (no enabled in-app agents), so no generic thread row.
     expect(screen.queryAllByTestId('menu-separator')).toHaveLength(2);
     expect(screen.queryByTestId('create-agent-option-thread')).toBeNull();
   });
 
-  test('omits the Terminal section (label, row) on the web host while keeping Desktop', async () => {
+  test('omits the Terminal section (label, row) on the web host while keeping External apps', async () => {
     states = { ...installedAll };
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: false });
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
     expect(screen.queryByTestId('create-with-cli-claude')).toBeNull();
-    // One separator remains: In-this-app | Desktop (Terminal absent on web).
+    // One separator remains: In-this-app | External apps (Terminal absent on web).
     expect(screen.queryAllByTestId('menu-separator')).toHaveLength(1);
   });
 
@@ -264,7 +252,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     fireEvent.click(row);
 
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain('Start Claude Agent');
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude Agent');
     });
     // Selecting thread mode does not launch the terminal.
     expect(launchCalls).toEqual([]);
@@ -280,7 +268,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     fireEvent.change(field, { target: { value: 'Build a coffee wiki' } });
     fireEvent.click(screen.getByTestId('create-agent-option-thread-registry:claude-acp')); // thread mode
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain('Start Claude Agent');
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude Agent');
     });
 
     // Enter must perform the SAME action as the Create button — launch the in-app
@@ -305,9 +293,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     // Selecting the CLI row reflects in the primary button and does NOT launch yet.
     fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
     expect(launchCalls).toEqual([]);
 
@@ -337,15 +323,13 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     });
     fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
     fireEvent.click(screen.getByTestId('create-with-agent'));
     expect(launchCalls).toEqual([]);
   });
 
-  test('Desktop selection items set the default and do not launch the terminal', async () => {
+  test('External-app selection items set the default and do not launch the terminal', async () => {
     states = { ...installedAll };
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: true });
@@ -353,7 +337,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     fireEvent.click(screen.getByTestId('create-agent-option-codex'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain('Create with Codex');
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Open ChatGPT Desktop');
     });
     expect(launchCalls).toEqual([]);
   });
@@ -377,9 +361,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     fireEvent.change(field, { target: { value: 'Build a wiki' } });
     fireEvent.click(screen.getByTestId('create-with-cli-claude')); // enter CLI mode
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
 
     // Plain Enter submits (Shift+Enter newlines) — matches the bottom composer.
@@ -396,22 +378,20 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     ]);
   });
 
-  test('selecting a Desktop agent after CLI reverts the button and does not launch', async () => {
+  test('selecting an external app after CLI reverts the button and does not launch', async () => {
     states = { ...installedAll };
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: true });
 
     fireEvent.click(screen.getByTestId('create-with-cli-claude')); // enter CLI mode
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
 
-    // Switching back to a Desktop agent must clear CLI mode (chooseAgent -> setCliMode(false)).
+    // Switching back to an external app must clear CLI mode (chooseAgent -> setCliMode(false)).
     fireEvent.click(screen.getByTestId('create-agent-option-codex'));
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain('Create with Codex');
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Open ChatGPT Desktop');
     });
     expect(launchCalls).toEqual([]);
   });
@@ -433,9 +413,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
     fireEvent.change(field, { target: { value: 'draft a spec' } });
     fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
     fireEvent.keyDown(field, { key: 'Enter' });
 
@@ -462,9 +440,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
 
     fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
 
     // Enter on an empty field surfaces the validation error (role=alert,
@@ -528,9 +504,7 @@ describe('CreatePromptComposer Desktop / Terminal sections', () => {
 
     fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
     await waitFor(() => {
-      expect(screen.getByTestId('create-with-agent').textContent).toContain(
-        'Create with Claude CLI',
-      );
+      expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(launchCalls[0]?.createDescription).toBe(prefilled);

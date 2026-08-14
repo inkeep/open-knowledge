@@ -29,8 +29,8 @@
 
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronDown, TextQuote, X } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { ArrowUpRight, ChevronDown, TextQuote, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
@@ -43,6 +43,7 @@ import { type BatchPreparedItem, dispatchComments, subscribeCommentPosted } from
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
+import { AskAgentNameLabel, OpenDesktopAppLabel } from '@/components/handoff/agent-launcher-labels';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
@@ -76,6 +77,7 @@ import {
   enabledDesktopTargets,
   enabledTerminalClis,
   resolveLauncherSelection,
+  unresolvedDesktopTargets,
 } from '@/lib/acp/launcher-selection';
 import {
   pickEffectiveDefaultAgent,
@@ -168,15 +170,6 @@ function useRotatingSuggestion(
   return { text: phrases[safeIndex] ?? '', visible };
 }
 
-/**
- * "Start {agentName}" with the named placeholder — keeps the catalog message
- * shared with the launcher menus' t-macro form (`t\`Start ${agentName}\``);
- * inlining a member expression would emit a positional `{0}` and fork it.
- */
-function StartAgentNameLabel({ agentName }: { agentName: string }): ReactNode {
-  return <Trans>Start {agentName}</Trans>;
-}
-
 export function BottomComposer({
   docName,
   surface,
@@ -219,7 +212,7 @@ export function BottomComposer({
   const reduced = useReducedMotion();
   const workspace = useWorkspace();
   const { pageMeta } = usePageList();
-  const { states } = useInstalledAgents();
+  const { states, refresh: refreshInstalledAgents } = useInstalledAgents();
   const overrides = useEnabledOverrides();
   const { dispatch } = useHandoffDispatch();
   // Desktop-only docked-terminal launcher (null on web). Its presence is what
@@ -555,7 +548,8 @@ export function BottomComposer({
     effectiveThreadAgent: defaultThreadAgent,
     enabledClis:
       terminalLaunch !== null ? enabledTerminalClis(overrides, terminalLaunch.installedClis) : [],
-    enabledDesktopTargets: enabledDesktopTargets(overrides),
+    enabledDesktopTargets: enabledDesktopTargets(overrides, states),
+    unresolvedDesktopTargets: unresolvedDesktopTargets(overrides, states),
     installedClis: terminalLaunch?.installedClis ?? {},
     terminalAvailable: terminalLaunch !== null,
     threadsAvailable: true,
@@ -579,13 +573,13 @@ export function BottomComposer({
     (!isEmpty || pinnedSelection !== null || hasQueuedComments) &&
     (isTerminalSelected || resolvedTarget !== null || isThreadSelected);
 
-  // Picker options for the split button's menu. Desktop rows are the agents the
-  // user has ENABLED in Configure agents (source of truth), not just the
-  // install-detected ones — an enabled-but-not-installed agent still shows and
-  // routes to its installer on launch.
+  // Picker options for the split button's menu. External-app rows are the
+  // desktop apps detected on this machine, minus anything the user turned off in
+  // Configure agents (and plus anything they turned on that isn't installed —
+  // that one routes to its installer on launch).
   // `agentProbePending` distinguishes "still detecting" from "none" for the hint.
   const desktopAgents = VISIBLE_TARGETS.filter((target) =>
-    isDesktopTargetEnabled(overrides, target.id),
+    isDesktopTargetEnabled(overrides, target.id, states[target.id]?.installed),
   );
   const agentProbePending = VISIBLE_TARGETS.some((target) => states[target.id]?.installed == null);
 
@@ -1137,24 +1131,28 @@ export function BottomComposer({
               <span>
                 {isThreadSelected ? (
                   defaultThreadAgent !== null ? (
-                    <StartAgentNameLabel agentName={defaultThreadAgent.name} />
+                    <AskAgentNameLabel agentName={defaultThreadAgent.name} />
                   ) : (
-                    <Trans>Start an agent</Trans>
+                    <Trans>Ask an agent</Trans>
                   )
                 ) : selectedCli !== null ? (
                   <Trans>Ask {TERMINAL_CLIS[selectedCli].displayName} CLI</Trans>
                 ) : resolvedTarget ? (
-                  <Trans>Ask {resolvedTarget.displayName}</Trans>
+                  <OpenDesktopAppLabel displayName={resolvedTarget.displayName} />
                 ) : (
                   <Trans>Ask</Trans>
                 )}
               </span>
+              {/* The external-action arrow only rides the desktop-app primary:
+                  that click leaves OK for another app, where every other primary
+                  stays in this window. */}
+              {resolvedTarget ? <ArrowUpRight aria-hidden className="size-3.5" /> : null}
               {pending ? <Spinner className="size-3.5" aria-hidden /> : null}
             </>
           }
           onPrimary={submit}
           primaryDisabled={!canSend}
-          installedTargets={desktopAgents}
+          enabledTargets={desktopAgents}
           selectedTargetId={isTerminalSelected ? null : (resolvedTarget?.id ?? null)}
           onSelectTarget={handleSelectAgent}
           threadAgents={enabledThreadAgents.map((agent) => ({
@@ -1170,6 +1168,13 @@ export function BottomComposer({
             onSelect: () => handleSelectThreadAgent(agent),
           }))}
           onOpenSettings={openAgentSettings}
+          // Detection drives which external apps appear, so re-probe as the menu
+          // opens — an app installed since boot shows up on this open rather than
+          // waiting for the next window focus. Throttled per scheme in the probe
+          // coordinator.
+          onMenuOpenChange={(open) => {
+            if (open) void refreshInstalledAgents();
+          }}
           terminals={cliRows}
           menuEmptyState={
             <p className="px-2 py-1.5 text-sm text-muted-foreground" aria-live="polite">

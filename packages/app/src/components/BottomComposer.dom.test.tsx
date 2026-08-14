@@ -28,11 +28,7 @@ import {
 } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
-import {
-  desktopEnabledKey,
-  reloadEnabledAgentsFromStorage,
-  setAgentEnabled,
-} from '@/lib/acp/enabled-agents';
+import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import {
   getDefaultRegisteredAgent,
   registerAgent,
@@ -306,19 +302,10 @@ const ALL_INSTALLED: Record<string, { installed: boolean | null }> = {
   cursor: { installed: true },
 };
 
-// Desktop is enablement-gated now (off by default); these tests express Desktop
-// visibility via `installStates`, so translate installed → enabled at render.
-function enableInstalledDesktopTargets() {
-  for (const [id, state] of Object.entries(installStates)) {
-    if (state.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
-  }
-}
-
 async function renderComposer(
   docName = 'notes',
   extra: Partial<{ dismissed: boolean; onDismiss: () => void; onReopen: () => void }> = {},
 ) {
-  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   const { TooltipProvider } = await import('@/components/ui/tooltip');
   // Production wraps the app in one provider (main.tsx); the comments chip's
@@ -339,7 +326,6 @@ async function renderComposerWithTerminal(
   docName = 'notes',
   installedClis: Record<string, boolean> = {},
 ) {
-  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
   const { TooltipProvider } = await import('@/components/ui/tooltip');
@@ -365,7 +351,6 @@ async function renderComposerWithTerminal(
 // Variant whose launcher throws (no terminal session could be opened) — exercises
 // the try/catch guard around launchInTerminal.
 async function renderComposerWithThrowingTerminal(docName = 'notes') {
-  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
   return render(
@@ -395,7 +380,6 @@ async function renderComposerWithInstalledClis(installed: Record<string, boolean
 
 // Folder mode: the composer is scoped to a folder (no open doc, no surface).
 async function renderFolderComposer(folderPath = 'specs/foo') {
-  enableInstalledDesktopTargets();
   const { BottomComposer } = await import('./BottomComposer');
   return render(<BottomComposer folderPath={folderPath} />);
 }
@@ -701,7 +685,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
 
     // Persisted as the in-app-thread sentinel; the primary reflects the choice.
     expect(loadStickyDefaultAgent()).toBe('in-app-thread');
-    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Start Claude Agent');
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Ask Claude Agent');
 
     fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
     fireEvent.keyDown(getInput(), { key: 'Enter' });
@@ -722,7 +706,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     await renderComposer();
 
     expect(loadStickyDefaultAgent()).toBeNull();
-    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Start Claude Agent');
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Ask Claude Agent');
 
     fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
     fireEvent.keyDown(getInput(), { key: 'Enter' });
@@ -746,7 +730,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
 
     expect(loadStickyDefaultAgent()).toBe('in-app-thread');
     expect(getDefaultRegisteredAgent()).toMatchObject({ id: 'claude-acp' });
-    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Start Claude Agent');
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Ask Claude Agent');
 
     fireEvent.change(getInput(), { target: { value: 'summarize this doc' } });
     fireEvent.keyDown(getInput(), { key: 'Enter' });
@@ -895,14 +879,14 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     expect(screen.getByTestId('ask-ai-send').textContent).not.toContain('Claude CLI');
   });
 
-  test('the Ask X picker lists the Terminal section before the Desktop section (Terminal-first)', async () => {
+  test('the Ask X picker lists the Terminal section before the External apps section (Terminal-first)', async () => {
     const user = userEvent.setup();
     await renderComposerWithTerminal();
 
     await user.click(screen.getByTestId('ask-ai-agent-trigger'));
-    // The split button's picker leads with Terminal, then Desktop.
+    // The split button's picker leads with Terminal, then the external apps.
     const terminalLabel = await screen.findByText('Terminal');
-    const desktopLabel = screen.getByText('Desktop');
+    const desktopLabel = screen.getByText('External apps');
     expect(
       terminalLabel.compareDocumentPosition(desktopLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -922,7 +906,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
   test('a sticky agent from a prior session is preselected on mount', async () => {
     saveStickyDefaultAgent('codex');
     await renderComposer();
-    expect(screen.getByTestId('ask-ai-send').textContent).toContain('Codex');
+    expect(screen.getByTestId('ask-ai-send').textContent).toContain('ChatGPT');
   });
 
   test('a sticky agent that is no longer installed falls back to first-installed', async () => {
@@ -1451,7 +1435,6 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
   });
 
   test('declines ⇧⌘L while an overlay owns the keyboard', async () => {
-    enableInstalledDesktopTargets();
     const { BottomComposer } = await import('./BottomComposer');
     const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
       '@/components/ui/dialog'

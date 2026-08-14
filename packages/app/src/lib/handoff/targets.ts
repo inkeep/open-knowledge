@@ -37,12 +37,19 @@ export const KNOWN_TARGETS = [
     tagline: "Agentic coding in Claude Desktop's Code tab.",
   },
   {
+    // OpenAI folded the Codex desktop app into the ChatGPT app (July 2026):
+    // the app users see is branded ChatGPT on every OS, while the codex://
+    // scheme, the com.openai.codex bundle ID, and the terminal `codex` CLI
+    // keep the Codex name. The id stays `codex` — Settings overrides and
+    // recorded handoffs key on it.
     id: 'codex',
-    displayName: 'Codex',
-    appBrandName: 'Codex Desktop',
+    displayName: 'ChatGPT',
+    appBrandName: 'ChatGPT Desktop',
     schemes: ['codex:'],
-    installUrl: 'https://openai.com/codex',
-    tagline: "OpenAI's coding agent, terminal-native.",
+    // The vendor's canonical app homepage (its own .deb metadata names it);
+    // currently 308-redirects to the ChatGPT-branded download page.
+    installUrl: 'https://developers.openai.com/codex/app',
+    tagline: "OpenAI's ChatGPT desktop app, home of the Codex agent.",
   },
   {
     id: 'cursor',

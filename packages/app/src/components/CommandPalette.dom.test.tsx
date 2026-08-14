@@ -344,7 +344,7 @@ describe('CommandPalette DOM behavior', () => {
 
     expect(document.body.textContent).not.toContain('No active doc');
     expect(screen.queryByTestId('command-palette-open-graph')).toBeNull();
-    expect(screen.queryByText('Open with AI Codex')).toBeNull();
+    expect(screen.queryByText('Open with AI ChatGPT Desktop')).toBeNull();
 
     cleanup();
     await renderPalette({ bridge: null, docName: 'docs/active' });

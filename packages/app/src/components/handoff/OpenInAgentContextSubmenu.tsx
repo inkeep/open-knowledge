@@ -3,14 +3,15 @@
  * inside FileTree row ContextMenus.
  *
  * Behavior:
- *   - Render only targets where `installStates[t.id].installed === true`.
- *   - Installed app launchers sit under a "Desktop" section label; the docked
+ *   - Render the targets `isDesktopTargetEnabled` admits: probed-installed,
+ *     plus any explicitly enabled in Settings (those route to their
+ *     installer), minus any turned off.
+ *   - Detected desktop apps sit under an "External apps" section label; the docked
  *     terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`:
  *     CLIs the probe hasn't ruled out) — sit under a "Terminal"
  *     section label, gated on a desktop terminal bridge.
- *   - Empty state: when no targets are install-detected and there is no
- *     terminal launcher, render a disabled "No installed agents found" item
- *     (no section labels then).
+ *   - Empty state: when no section has rows, only the Configure-agents item
+ *     remains visible — no section labels, no hint text.
  *   - Status-hint code path remains for the `inputMissing` case (right-click
  *     on a node with no workspace metadata) — orthogonal to install state.
  *
@@ -38,7 +39,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowUpRight, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
@@ -61,6 +62,7 @@ import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
 import { useRegisteredAgents } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { openAgentSettings } from '@/lib/use-settings-route';
+import { DesktopAppName } from './agent-launcher-labels';
 import { TargetIcon } from './OpenInAgentMenuItem';
 import { useTerminalLaunch } from './TerminalLaunchContext';
 import { cliIconTargetId } from './terminal-cli-display';
@@ -90,7 +92,8 @@ interface OpenInAgentContextSubmenuProps {
    *  `useInstalledAgents()` call so every file row shares one coordinator. */
   readonly installStates: Record<HandoffTarget, InstallState>;
   /** Host classifier — left in the prop signature for consumers that already
-   *  thread it; uninstalled rows aren't rendered so it isn't read here.
+   *  thread it; the row's own install check decides dispatch-vs-installer, so
+   *  it isn't read here.
    *  Web-host Cursor uses the same probe + filter as every other target now
    *  that `cursor-two-step.ts` has a `/api/spawn-cursor` fetch fallback. */
   readonly isElectronHost: boolean;
@@ -115,11 +118,11 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
   const inputMissing = input === null;
   const hint = contextRowHint(inputMissing);
 
-  // Rows are the agents the user ENABLED in Configure agents (source of truth),
-  // not just install-detected ones — an enabled-but-not-installed Desktop agent
+  // Rows are the desktop apps detected on this machine, minus anything the user
+  // turned off in Configure agents. An explicitly enabled but not-installed app
   // still shows and routes to its installer on select.
-  const installedTargets = VISIBLE_TARGETS.filter((target) =>
-    isDesktopTargetEnabled(overrides, target.id),
+  const enabledTargets = VISIBLE_TARGETS.filter((target) =>
+    isDesktopTargetEnabled(overrides, target.id, installStates[target.id]?.installed),
   );
   const enabledRegisteredAgents = registeredAgents.filter((agent) =>
     isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
@@ -130,7 +133,7 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
       )
     : [];
   // Each section renders only when it has rows, so an empty header never shows.
-  const showDesktopSection = installedTargets.length > 0;
+  const showDesktopSection = enabledTargets.length > 0;
   // Keep the `terminalLaunch !== null` alias so TS narrows it inside the section.
   const showTerminalSection = terminalLaunch !== null && terminalClis.length > 0;
   const showThreadSection = enabledRegisteredAgents.length > 0;
@@ -164,16 +167,14 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
                   }}
                   disabled={inputMissing}
                   data-testid={`file-tree-open-in-thread-${agent.id}`}
-                  aria-label={hint ? t`Start ${agentName}, ${hint}` : undefined}
+                  aria-label={hint ? t`Ask ${agentName}, ${hint}` : t`Ask ${agentName}`}
                 >
                   <RegisteredAgentIcon
                     agentId={agent.id}
                     iconUrl={agent.iconUrl}
                     className="size-4"
                   />
-                  <span className="flex-1">
-                    <Trans>Start {agentName}</Trans>
-                  </span>
+                  <span className="flex-1">{agentName}</span>
                   {hint ? (
                     <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
                       {hint}
@@ -200,7 +201,7 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
                 text is the brand name; the accessible name is "<Brand> CLI"
                 (plus the "No workspace" hint when input is missing), so it
                 contains the visible label and AT users can tell it apart from a
-                Desktop row (WCAG 2.5.3 — name contains visible label). */}
+                external-app row (WCAG 2.5.3 — name contains visible label). */}
             {terminalClis.map((cli) => {
               const { displayName } = TERMINAL_CLIS[cli];
               return (
@@ -228,20 +229,24 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
           </DropdownMenuGroup>
         ) : null}
         {showDesktopSection ? (
-          // Desktop app launchers follow the Terminal section.
+          // Detected desktop apps follow the Terminal section. Selecting one
+          // hands the work OUT of OK — hence the external-action arrow on the
+          // header and the "Desktop" suffix that tells each row apart from the
+          // same-named Terminal row above it.
           <>
             {/* Separator only when a Terminal section sits above this one. */}
             {showTerminalSection ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuGroup aria-label={t`Desktop`}>
-              <DropdownMenuLabel>
-                <Trans>Desktop</Trans>
+            <DropdownMenuGroup aria-label={t`External apps`}>
+              <DropdownMenuLabel className="flex items-center gap-1.5">
+                <Trans>External apps</Trans>
+                <ArrowUpRight aria-hidden="true" className="size-3" />
               </DropdownMenuLabel>
-              {installedTargets.map((target) => {
+              {enabledTargets.map((target) => {
                 const enabled = !inputMissing;
                 const { displayName } = target;
                 const accessibleLabel = hint
-                  ? t`Open with AI ${displayName}, ${hint}`
-                  : t`Open with AI ${displayName}`;
+                  ? t`Open with AI ${displayName} Desktop, ${hint}`
+                  : t`Open with AI ${displayName} Desktop`;
                 return (
                   <DropdownMenuItem
                     key={target.id}
@@ -260,7 +265,9 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
                     aria-label={accessibleLabel}
                   >
                     <TargetIcon id={target.id} aria-hidden="true" />
-                    <span className="flex-1">{target.displayName}</span>
+                    <span className="flex-1">
+                      <DesktopAppName displayName={displayName} />
+                    </span>
                     {hint ? (
                       <span aria-hidden="true" className="ml-2 text-muted-foreground text-xs">
                         {hint}

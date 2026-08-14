@@ -5,11 +5,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu';
-import {
-  desktopEnabledKey,
-  reloadEnabledAgentsFromStorage,
-  setAgentEnabled,
-} from '@/lib/acp/enabled-agents';
+import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { TerminalLaunchProvider } from './TerminalLaunchContext';
@@ -102,12 +98,6 @@ async function renderSubmenu({
   withTerminal?: boolean;
   onBeforeLaunch?: () => void;
 } = {}) {
-  // Desktop is enablement-gated now (off by default); these tests express
-  // Desktop visibility via install state, so enable the installed targets to
-  // preserve that intent.
-  for (const [id, state] of Object.entries(states)) {
-    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
-  }
   const { OpenInAgentContextSubmenu } = await import('./OpenInAgentContextSubmenu');
   const dispatchCalls: Array<{ input: HandoffDispatchInput; target: HandoffTarget }> = [];
   const dispatch = vi.fn(async (target: HandoffTarget, nextInput: HandoffDispatchInput) => {
@@ -181,7 +171,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     expect(screen.queryByTestId('file-tree-open-in-cursor') === null).toBe(true);
     expect(screen.queryByTestId('file-tree-open-in-claude-web-fallback') === null).toBe(true);
 
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Open with AI Codex' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open with AI ChatGPT Desktop' }));
 
     expect(dispatchCalls).toEqual([{ input: readyInput, target: 'codex' }]);
   });
@@ -189,7 +179,9 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
   test('keeps rows disabled with a No workspace label while input is missing', async () => {
     const { dispatch } = await renderSubmenu({ input: null });
 
-    const codex = screen.getByRole('menuitem', { name: 'Open with AI Codex, No workspace' });
+    const codex = screen.getByRole('menuitem', {
+      name: 'Open with AI ChatGPT Desktop, No workspace',
+    });
     expect(codex.getAttribute('data-disabled')).toBe('');
     expect(codex.textContent).toContain('No workspace');
 
@@ -217,7 +209,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
         cursor: { installed: false, lastChecked: 1 },
       }),
     });
-    // No enabled agents (none registered, Desktop off by default) → empty
+    // Nothing detected and nothing registered → empty
     // sections are hidden; the Configure agents footer is still reachable.
     expect(screen.queryByTestId('file-tree-open-in-thread')).toBeNull();
     expect(screen.queryByText('No installed agents found')).toBeNull();
@@ -229,7 +221,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     await renderSubmenu({ input: null });
     const row = screen.getByTestId('file-tree-open-in-thread-claude-acp');
     expect(row.getAttribute('data-disabled')).toBe('');
-    expect(row.getAttribute('aria-label')).toBe('Start Claude Agent, No workspace');
+    expect(row.getAttribute('aria-label')).toBe('Ask Claude Agent, No workspace');
     await userEvent.click(row);
     expect(threadLaunchCalls).toEqual([]);
   });
@@ -241,9 +233,11 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
 
     // The generic picker row is replaced by per-agent rows (+ the Settings row).
     expect(screen.queryByTestId('file-tree-open-in-thread')).toBeNull();
-    expect(screen.getByTestId('file-tree-open-in-thread-codex-acp').textContent).toContain(
-      'Start Codex',
-    );
+    // Rows name the agent; the verb lives on the row's accessible name and on
+    // the composer primaries, not in the visible row text.
+    const codexRow = screen.getByTestId('file-tree-open-in-thread-codex-acp');
+    expect(codexRow.textContent).toContain('Codex');
+    expect(codexRow.getAttribute('aria-label')).toBe('Ask Codex');
 
     await userEvent.click(screen.getByTestId('file-tree-open-in-thread-claude-acp'));
     expect(threadLaunchCalls).toEqual([readyInput]);
@@ -275,14 +269,14 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     expect(callOrder).toEqual(['dismiss', 'launch']);
   });
 
-  test('groups installed agents under Desktop and the CLI launch under Terminal', async () => {
+  test('groups detected desktop apps under External apps and the CLI launch under Terminal', async () => {
     await renderSubmenu({ withTerminal: true });
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the Desktop one.
+    // Terminal-first: the Terminal section label precedes the External apps one.
     expect(
-      screen.getByText('Terminal').compareDocumentPosition(screen.getByText('Desktop')) &
+      screen.getByText('Terminal').compareDocumentPosition(screen.getByText('External apps')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     // Separator divides the two populated sections.
@@ -324,15 +318,15 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     expect(launchCalls).toEqual([]);
   });
 
-  test('omits the Terminal section but keeps Desktop when no terminal launcher is present', async () => {
+  test('omits the Terminal section but keeps External apps when no terminal launcher is present', async () => {
     await renderSubmenu();
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
     expect(screen.queryByTestId('file-tree-open-in-terminal-claude')).toBeNull();
   });
 
-  test('renders only the Terminal section (no In app, no Desktop) when nothing else is enabled', async () => {
+  test('renders only the Terminal section (no In app, no External apps) when nothing else is enabled', async () => {
     await renderSubmenu({
       withTerminal: true,
       states: installStates({
@@ -344,7 +338,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     });
 
     expect(screen.getByText('Terminal')).toBeTruthy();
-    expect(screen.queryByText('Desktop')).toBeNull();
+    expect(screen.queryByText('External apps')).toBeNull();
     // No enabled in-app agents → the In app section is hidden.
     expect(screen.queryByText('In app')).toBeNull();
     expect(screen.getByTestId('file-tree-open-in-terminal-claude')).toBeTruthy();

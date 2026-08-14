@@ -40,7 +40,7 @@ describe('AgentSplitButton non-modal contract', () => {
       <AgentSplitButton
         primary="Ask Claude"
         onPrimary={() => {}}
-        installedTargets={[]}
+        enabledTargets={[]}
         selectedTargetId={null}
         onSelectTarget={() => {}}
         thread={{ selected: true, onSelect: () => {} }}

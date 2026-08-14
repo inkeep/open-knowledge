@@ -158,7 +158,6 @@
       "Beralih ke <0>lokal saja</0> akan ditolak sampai semuanya berhenti dilacak lewat<1> git rm --cached</1>."
     ],
     "1ZXkqM": ["Matikan kapan saja di Pengaturan."],
-    "1ZpfyB": ["Buka dengan AI ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Mengikuti suntingan agen"],
     "1bDVu5": ["Palet Perintah Ruang Kerja"],
     "1d1F11": ["Pilih semua berkas dan folder"],
@@ -173,6 +172,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Tolak"],
     "1u-mAI": ["Sinkronisasinya tidak bisa dimulai. Periksa koneksi Anda, lalu coba lagi."],
+    "1vczDE": ["Buka ", ["displayName"], " Desktop"],
     "1vn0CI": ["Respons server tidak valid"],
     "1xui0Q": ["Gagal memuat berkas lokal"],
     "2277Tu": ["Ciutkan graf"],
@@ -350,7 +350,6 @@
     "4nj6n8": ["/api/config mengembalikan HTTP ", ["code"]],
     "4o57um": ["Permainan berakhir · tekan spasi untuk main lagi"],
     "4pDZ2N": ["\"", ["0"], "\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat"],
-    "4rjwLG": ["Buat dengan CLI ", ["0"]],
     "4sKwf6": ["Berkas sudah ada"],
     "4sUdTJ": ["pratinjau bertema"],
     "4uNLmk": ["Melakukan pull"],
@@ -397,7 +396,6 @@
     "5OTgC7": ["Membuka dan memfokuskan penyusun prompt Tanya AI di bawah."],
     "5OqaJi": ["Masukkan nama proyek"],
     "5PHgV2": ["Anda juga bisa membuatnya dari terminal dengan <0>ok bug-report</0>."],
-    "5PrrYw": ["Mulai ", ["agentName"]],
     "5QGTaA": ["Jalur relatif tidak dapat disalin"],
     "5SwVv1": ["Belum terpasang"],
     "5Szq6N": [
@@ -531,6 +529,7 @@
     "78G7R3": [
       "Memvalidasi frontmatter dokumen terhadap berkas JSON Schema, dibatasi ke kumpulan dokumen lewat glob."
     ],
+    "7Ag-Xu": ["Tanya ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Gagal"],
     "7FA2iI": ["Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang dikirim."],
     "7FamGZ": ["Ke baris"],
@@ -705,7 +704,6 @@
     "9bG48P": ["Mengirim"],
     "9clcD5": ["Buka dokumen bertag #", ["chip"]],
     "9dVehq": ["Opsi pemberian izin lainnya"],
-    "9dw5bW": ["Buat dengan ", ["0"]],
     "9euN0m": [["count", "plural", { "other": ["#", " peserta lagi dari dokumen lain"] }]],
     "9fhQRL": ["Kanal beta"],
     "9fvog2": ["Pratinjau tidak tersedia: ", ["errorDetail"]],
@@ -797,7 +795,6 @@
     "B6Lac2": ["+", ["overflowCount"], " lagi"],
     "B6NpZ7": ["Diganti nama menjadi \"", ["next"], "\""],
     "BAH4qX": ["Item graf terpilih"],
-    "BBqGS9": ["Desktop"],
     "BD0XSC": ["Gagal memuat templat proyek"],
     "BEkF-P": [["userName"], ", ", ["tabCount", "plural", { "other": ["#", " tab bersamaan"] }]],
     "BGHHtQ": ["Satu halaman"],
@@ -827,6 +824,7 @@
     "BlLxpG": ["Cari keterampilan"],
     "BowKyI": ["Tampilkan detail"],
     "Bv5a9_": ["Statistik pilihan"],
+    "BwKH4d": ["Aplikasi eksternal"],
     "Bx4EXG": ["Tindakan untuk ", ["label"]],
     "By-7Pn": ["Menyalakan atau mematikan daftar berpoin."],
     "ByIOcK": [
@@ -877,6 +875,7 @@
       "Open Knowledge menyimpan file navigasi bernama index.md di setiap folder yang berisi Markdown, masing-masing mencantumkan dokumen folder tersebut berdasarkan jenis dan tautan ke subfoldernya. Itu menulis ulang file-file ini saat dokumen Anda berubah, dan apa pun yang Anda edit sendiri ke dalamnya akan diganti."
     ],
     "CXj9C-": ["Nama properti baru"],
+    "CZBqrX": [["displayName"], " Desktop"],
     "C_Lyvh": ["Gagal menyimpan pengaturan tema"],
     "C_WGy8": [
       "Berkas ini terlalu besar untuk dibuka di penyunting teks bawaan (batas 1 MB). Gunakan Buka berkas di bawah untuk membukanya di aplikasi lain."
@@ -2328,7 +2327,6 @@
     ],
     "WpE38V": ["Ditemukan satu keterampilan: ", ["0"]],
     "Wq6Wcm": ["Silakan masukkan alamat surel yang valid."],
-    "WqLq6M": ["Buka dengan AI ", ["displayName"]],
     "Wtw22s": ["Memasang"],
     "WuntOK": ["Pratinjau tangkapan layar"],
     "WyQxwa": ["Hubungkan proyek ini ke GitHub untuk membagikannya."],
@@ -2685,6 +2683,7 @@
     ],
     "ak4LLg": ["Kosongkan menu"],
     "akmOT9": ["Sunting komentar ini"],
+    "an0aL5": ["Tanya agen"],
     "anmUZq": ["Ada fitur yang kurang"],
     "aoT2xX": ["Komentar ini berlaku untuk seluruh properti"],
     "arUUsK": ["Kabar terbaru produk"],
@@ -2823,6 +2822,7 @@
     "ccNps_": ["Hanya yang diubah"],
     "cd3THN": ["Struktur dokumen"],
     "cd5EXh": ["Laporkan bug"],
+    "cdBape": ["Aktifkan ", ["displayName"], " Desktop"],
     "cdm00A": ["Tidak Ada Masuk"],
     "cdmk8A": ["Perubahan yang belum di-commit"],
     "cgl-gn": ["Terhubung ke GitHub"],
@@ -3114,7 +3114,6 @@
     "gpbKxw": ["Validasi tautan tidak tersedia."],
     "gqk-3R": [["0"], " dipindahkan ke ", ["destination"], "."],
     "gtEbeW": ["Sorotan"],
-    "gtGQ9S": ["Mulai ", ["agentName"], ", ", ["hint"]],
     "gv5w9J": ["pemilik/repo, sebuah URL git, atau jalur lokal"],
     "gvApb7": [
       "Ubah apa yang Anda baca menjadi artikel yang jelas dan tepercaya. Simpan sebuah sumber, cari tahu maknanya, lalu simpan versi finalnya agar bisa Anda andalkan nanti."
@@ -3677,7 +3676,6 @@
     "nP-KFo": ["Obrolan ", ["0"], " baru"],
     "nTM8ab": ["Beri nama sebelum menyunting warnanya."],
     "nTwL53": ["Buka sebuah dokumen untuk membagikan URL-nya."],
-    "nUNZL4": ["Tanya ", ["0"]],
     "nWv1ja": ["Kelola berkas tersembunyi di Pengaturan → Pola abaikan."],
     "nYKerc": ["(hanya tingkat pengguna)"],
     "nYeBmY": [["hours"], " j lalu"],
@@ -3967,6 +3965,7 @@
       "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidang akan membuatnya."
     ],
     "riqekz": ["Navigasi menu saran"],
+    "rl35Vz": ["Buka dengan AI ", ["displayName"], " Desktop, ", ["hint"]],
     "rlUzXK": ["Folder tidak dapat divalidasi. Silakan coba lagi."],
     "rmorj0": [
       "Ini pratinjau ",
@@ -4308,6 +4307,7 @@
       "Properti berubah, tetapi tidak bisa dibandingkan — YAML gagal diurai. Kedua versi ditampilkan apa adanya."
     ],
     "wGSHzy": ["Mengaktifkan salah satu dari delapan tab penyunting pertama."],
+    "wHZ58m": ["Buka dengan AI ", ["displayName"], " Desktop"],
     "wIM7ul": ["Tekan spasi atau ketuk blob untuk mulai"],
     "wJijgU": ["Lokasi"],
     "wJo9oS": ["Tutup pencarian"],

@@ -1,7 +1,7 @@
 import { type HandoffTarget, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Check, ChevronDown, SlidersHorizontal, Sparkles } from 'lucide-react';
-import { type ReactNode, useRef, useState } from 'react';
+import { ArrowUpRight, Check, ChevronDown, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
@@ -14,6 +14,11 @@ import {
   useCreateSuggestions,
 } from '@/components/empty-state/use-create-suggestions';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
+import {
+  AskAgentNameLabel,
+  DesktopAppName,
+  OpenDesktopAppLabel,
+} from '@/components/handoff/agent-launcher-labels';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
@@ -46,6 +51,7 @@ import {
   enabledDesktopTargets,
   enabledTerminalClis,
   resolveLauncherSelection,
+  unresolvedDesktopTargets,
 } from '@/lib/acp/launcher-selection';
 import {
   pickEffectiveDefaultAgent,
@@ -73,32 +79,23 @@ interface CreatePromptComposerProps {
 }
 
 /**
- * "Start {agentName}" with the named placeholder — keeps the catalog message
- * shared with the launcher menus' t-macro form (`t\`Start ${agentName}\``);
- * inlining a member expression would emit a positional `{0}` and fork it.
- */
-function StartAgentNameLabel({ agentName }: { agentName: string }): ReactNode {
-  return <Trans>Start {agentName}</Trans>;
-}
-
-/**
  * Empty-state prompt composer — a free-form `@`-mention input (the shared
  * `ComposerMentionInput`, so the brief can reference existing docs/files as
- * `@path` chips) plus a split "Create with <agent>" button. Typing a brief and
+ * `@path` chips) plus a split "Ask <agent>" button. Typing a brief and
  * creating hands it off to the selected coding agent via `useHandoffDispatch`
  * (the same dispatch path as the editor's "Open with AI" surface), which
  * composes the create-scope prompt — brief + the explicit `@path` mentions — so
  * the agent scaffolds the project to match.
  *
- * The chevron menu has two sections. "Desktop" lists installed agents only (no
- * web fallback, so an agent that can't be launched is never offered — mirrors
- * the "Open with AI" menu); picking one sets the default the primary button
- * creates with. "Terminal" (desktop only) adds a row per agent CLI (Claude,
- * Codex, Cursor) that launches the docked-terminal CLI with the same
+ * The chevron menu has two sections. "External apps" lists the desktop apps
+ * detected on this machine (an app that can't be launched is never offered —
+ * mirrors the "Open with AI" menu); picking one sets the default the primary
+ * button creates with. "Terminal" (desktop only) adds a row per agent CLI
+ * (Claude, Codex, Cursor) that launches the docked-terminal CLI with the same
  * create-scope input. The two differ on purpose: every row selects the create
- * target — Desktop items pick an installed app agent, a Terminal row picks the
- * docked-terminal CLI — and the Create button performs the selected target (app
- * deep-link or terminal launch).
+ * target — an external-app row picks an installed desktop app, a Terminal row
+ * picks the docked-terminal CLI — and the button performs the selected target
+ * (app deep-link or terminal launch).
  * When nothing is installed, Create is disabled and the footer shows a "no
  * agents" hint.
  *
@@ -140,7 +137,8 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     effectiveThreadAgent: defaultThreadAgent,
     enabledClis:
       terminalLaunch !== null ? enabledTerminalClis(overrides, terminalLaunch.installedClis) : [],
-    enabledDesktopTargets: enabledDesktopTargets(overrides),
+    enabledDesktopTargets: enabledDesktopTargets(overrides, states),
+    unresolvedDesktopTargets: unresolvedDesktopTargets(overrides, states),
     installedClis: terminalLaunch?.installedClis ?? {},
     terminalAvailable: terminalLaunch !== null,
     threadsAvailable: true,
@@ -185,11 +183,11 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
   // Starter-brief chips, per surface — shared with the embedded CopyablePromptList.
   const suggestions = useCreateSuggestions(scenario);
 
-  // Desktop rows are the agents the user ENABLED in Configure agents (Desktop is
-  // off by default; enabling is opt-in). An enabled-but-not-installed agent
-  // still shows and routes to its installer on Create.
+  // External-app rows are the desktop apps detected on this machine, minus
+  // anything the user turned off in Configure agents. An explicitly enabled but
+  // not-installed app still shows and routes to its installer on Create.
   const selectableTargets = VISIBLE_TARGETS.filter((target) =>
-    isDesktopTargetEnabled(overrides, target.id),
+    isDesktopTargetEnabled(overrides, target.id, states[target.id]?.installed),
   );
   const probeSettled = VISIBLE_TARGETS.every((target) => states[target.id]?.installed != null);
   const hasEnabledTerminalCli =
@@ -479,7 +477,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                       iconUrl={defaultThreadAgent.iconUrl}
                       className="size-3.5"
                     />
-                    <StartAgentNameLabel agentName={defaultThreadAgent.name} />
+                    <AskAgentNameLabel agentName={defaultThreadAgent.name} />
                   </>
                 ) : cliSelected && selectedCli !== null ? (
                   <>
@@ -488,12 +486,15 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                       aria-hidden="true"
                       className="size-3.5"
                     />
-                    <Trans>Create with {TERMINAL_CLIS[selectedCli].displayName} CLI</Trans>
+                    <Trans>Ask {TERMINAL_CLIS[selectedCli].displayName} CLI</Trans>
                   </>
                 ) : selectedAgentId !== null ? (
+                  // External apps get "Open <app> Desktop ↗" rather than "Ask":
+                  // the click leaves OK, and saying so is what the arrow marks.
                   <>
                     <TargetIcon id={selectedAgentId} aria-hidden="true" className="size-3.5" />
-                    <Trans>Create with {getDisplayNameDefault(selectedAgentId)}</Trans>
+                    <OpenDesktopAppLabel displayName={getDisplayNameDefault(selectedAgentId)} />
+                    <ArrowUpRight aria-hidden="true" className="size-3.5" />
                   </>
                 ) : null}
               </Button>
@@ -585,12 +586,16 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                     </DropdownMenuGroup>
                   ) : null}
                   {showDesktopSection ? (
-                    // Desktop app launchers follow the Terminal section.
+                    // Detected desktop apps follow the Terminal section. Picking
+                    // one hands the brief OUT of OK, so the header carries the
+                    // app's external-action arrow and each row is suffixed
+                    // "Desktop" to read apart from the same-named Terminal row.
                     <>
                       {showTerminalSection ? <DropdownMenuSeparator /> : null}
-                      <DropdownMenuGroup aria-label={t`Desktop`}>
-                        <DropdownMenuLabel>
-                          <Trans>Desktop</Trans>
+                      <DropdownMenuGroup aria-label={t`External apps`}>
+                        <DropdownMenuLabel className="flex items-center gap-1.5">
+                          <Trans>External apps</Trans>
+                          <ArrowUpRight aria-hidden="true" className="size-3" />
                         </DropdownMenuLabel>
                         {selectableTargets.map((target) => (
                           <DropdownMenuItem
@@ -599,7 +604,9 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                             data-testid={`create-agent-option-${target.id}`}
                           >
                             <TargetIcon id={target.id} aria-hidden="true" className="size-4" />
-                            <span className="flex-1">{target.displayName}</span>
+                            <span className="flex-1">
+                              <DesktopAppName displayName={target.displayName} />
+                            </span>
                             {!cliSelected && target.id === selectedAgentId ? (
                               <Check aria-hidden="true" className="size-4 text-muted-foreground" />
                             ) : null}

@@ -110,7 +110,7 @@ export function CommentSendFooter({
           explicit at this call site — the component still renders those sections
           for every other sender. */}
         <AgentSplitButton
-          installedTargets={[]}
+          enabledTargets={[]}
           selectedTargetId={null}
           onSelectTarget={() => {}}
           primary={

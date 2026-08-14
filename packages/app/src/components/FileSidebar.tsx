@@ -623,16 +623,16 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           // index [0] when Claude Desktop is installed — never gets picked
           // as the default. Matches the render-surface precedent in
           // OpenInAgentEmptySpaceSubmenu.tsx.
-          const installedTargets = VISIBLE_TARGETS.filter(
+          const enabledTargets = VISIBLE_TARGETS.filter(
             (target) => handoffInstallStates[target.id]?.installed === true,
           );
-          if (installedTargets.length === 0) {
+          if (enabledTargets.length === 0) {
             toast.error(t`No AI agents installed`);
             return;
           }
           const input = buildSendToAiInputForActiveTarget(activeTarget, workspace);
           if (!input) return;
-          const [defaultTarget] = installedTargets;
+          const [defaultTarget] = enabledTargets;
           if (!defaultTarget) return;
           void dispatchHandoff(defaultTarget.id, input);
           return;

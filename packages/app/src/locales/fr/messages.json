@@ -186,7 +186,6 @@
       "Le passage à <0>local uniquement</0> sera refusé tant qu'ils ne seront pas retirés du suivi via<1> git rm --cached</1>."
     ],
     "1ZXkqM": ["Désactivez-le à tout moment dans Paramètres."],
-    "1ZpfyB": ["Ouvrir avec l'IA ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Suivi des modifications de l'agent"],
     "1bDVu5": ["Palette de commandes de l'espace de travail"],
     "1d1F11": ["Sélectionner tous les fichiers et dossiers"],
@@ -207,6 +206,7 @@
     "1u-mAI": [
       "Impossible de démarrer la synchronisation. Vérifiez votre connexion, puis réessayez."
     ],
+    "1vczDE": ["Ouvrir ", ["displayName"], " Desktop"],
     "1vn0CI": ["Réponse du serveur invalide"],
     "1xui0Q": ["Échec du chargement des fichiers locaux"],
     "2277Tu": ["Réduire le graphe"],
@@ -432,7 +432,6 @@
       ["0"],
       " » retiré de tous les autres emplacements — son dossier source se charge toujours"
     ],
-    "4rjwLG": ["Créer avec la CLI ", ["0"]],
     "4sKwf6": ["Le fichier existe déjà"],
     "4sUdTJ": ["aperçu thématisé"],
     "4uNLmk": ["Tirage en cours"],
@@ -485,7 +484,6 @@
     "5OTgC7": ["Ouvre et met le focus sur la zone d'invite Demander à l'IA en bas."],
     "5OqaJi": ["Saisissez un nom de projet"],
     "5PHgV2": ["Vous pouvez aussi en créer un depuis un terminal avec <0>ok bug-report</0>."],
-    "5PrrYw": ["Démarrer ", ["agentName"]],
     "5QGTaA": ["Impossible de copier le chemin relatif"],
     "5SwVv1": ["Non installé"],
     "5Szq6N": [
@@ -659,6 +657,7 @@
     "78G7R3": [
       "Valide le frontmatter des documents à l'aide de fichiers JSON Schema, appliqués à des ensembles de documents par glob."
     ],
+    "7Ag-Xu": ["Demander à ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Échec"],
     "7FA2iI": ["Impossible de lire les commentaires en attente d'envoi — rien n'a été envoyé."],
     "7FamGZ": ["Aller à la ligne"],
@@ -849,7 +848,6 @@
     "9bG48P": ["Envoi en cours"],
     "9clcD5": ["Ouvrir les documents étiquetés #", ["chip"]],
     "9dVehq": ["Plus d'options d'autorisation"],
-    "9dw5bW": ["Créer avec ", ["0"]],
     "9euN0m": [
       [
         "count",
@@ -977,7 +975,6 @@
     "B6Lac2": ["+", ["overflowCount"], " de plus"],
     "B6NpZ7": ["Renommé en « ", ["next"], " »"],
     "BAH4qX": ["Élément du graphe sélectionné"],
-    "BBqGS9": ["Bureau"],
     "BD0XSC": ["Échec du chargement des modèles du projet"],
     "BEkF-P": [
       ["userName"],
@@ -1019,6 +1016,7 @@
     "BlLxpG": ["Rechercher des compétences"],
     "BowKyI": ["Afficher les détails"],
     "Bv5a9_": ["Statistiques de la sélection"],
+    "BwKH4d": ["Applications externes"],
     "Bx4EXG": ["Actions pour ", ["label"]],
     "By-7Pn": ["Bascule une liste à puces."],
     "ByIOcK": [
@@ -1075,6 +1073,7 @@
       "Open Knowledge conserve un fichier de navigation nommé index.md dans chaque dossier contenant Markdown, chacun répertoriant les documents de ce dossier par type et établissant un lien vers ses sous-dossiers. Il réécrit ces fichiers à mesure que vos documents changent, et tout ce que vous y modifiez vous-même est remplacé."
     ],
     "CXj9C-": ["Nom de la nouvelle propriété"],
+    "CZBqrX": [["displayName"], " Desktop"],
     "C_Lyvh": ["Échec de l'enregistrement du réglage de thème"],
     "C_WGy8": [
       "Ce fichier est trop volumineux pour l'éditeur de texte intégré (limite de 1 Mo). Utilisez Ouvrir le fichier ci-dessous pour l'ouvrir dans une autre application."
@@ -2715,7 +2714,6 @@
     ],
     "WpE38V": ["Une compétence trouvée : ", ["0"]],
     "Wq6Wcm": ["Veuillez saisir une adresse e-mail valide."],
-    "WqLq6M": ["Ouvrir avec l'IA ", ["displayName"]],
     "Wtw22s": ["Installation"],
     "WuntOK": ["Aperçu de la capture d'écran"],
     "WyQxwa": ["Connectez ce projet à GitHub pour le partager."],
@@ -3131,6 +3129,7 @@
     ],
     "ak4LLg": ["Effacer le menu"],
     "akmOT9": ["Modifier ce commentaire"],
+    "an0aL5": ["Demander à un agent"],
     "anmUZq": ["Une fonctionnalité manquante"],
     "aoT2xX": ["Ce commentaire porte sur toute la propriété"],
     "arUUsK": ["Nouveautés du produit"],
@@ -3297,6 +3296,7 @@
     "ccNps_": ["Modifiées uniquement"],
     "cd3THN": ["Structure du document"],
     "cd5EXh": ["Signaler un bug"],
+    "cdBape": ["Activer ", ["displayName"], " Desktop"],
     "cdm00A": ["Aucun lien entrant"],
     "cdmk8A": ["Modifications non validées"],
     "cgl-gn": ["Connecté à GitHub"],
@@ -3646,7 +3646,6 @@
     "gpbKxw": ["La validation des liens est indisponible."],
     "gqk-3R": [["0"], " déplacé vers ", ["destination"], "."],
     "gtEbeW": ["Surlignage"],
-    "gtGQ9S": ["Démarrer ", ["agentName"], ", ", ["hint"]],
     "gv5w9J": ["owner/repo, une URL git, ou un chemin local"],
     "gvApb7": [
       "Transformez ce que vous lisez en articles clairs et fiables. Enregistrez une source, dégagez-en le sens, puis conservez la version finale pour pouvoir vous y fier plus tard."
@@ -4257,7 +4256,6 @@
     "nP-KFo": ["Nouvelle discussion ", ["0"]],
     "nTM8ab": ["Donnez-lui un nom avant de modifier ses couleurs."],
     "nTwL53": ["Ouvrez un document pour partager son URL."],
-    "nUNZL4": ["Demander à ", ["0"]],
     "nWv1ja": ["Gérez les fichiers masqués dans Paramètres → Motifs d'exclusion."],
     "nYKerc": ["(niveau utilisateur uniquement)"],
     "nYeBmY": ["il y a ", ["hours"], " h"],
@@ -4611,6 +4609,7 @@
       "Le fichier de schéma n'existe pas ou n'a pas pu être chargé — ajouter un champ le crée."
     ],
     "riqekz": ["Navigation dans le menu de suggestions"],
+    "rl35Vz": ["Ouvrir avec l'IA ", ["displayName"], " Desktop, ", ["hint"]],
     "rlUzXK": ["Impossible de valider le dossier. Veuillez réessayer."],
     "rmorj0": [
       "Ceci est un aperçu de ",
@@ -5011,6 +5010,7 @@
       "Les propriétés ont changé, mais la comparaison a échoué : le YAML n'a pas pu être analysé. Les deux versions sont affichées telles quelles."
     ],
     "wGSHzy": ["Active l'un des huit premiers onglets de l'éditeur."],
+    "wHZ58m": ["Ouvrir avec l'IA ", ["displayName"], " Desktop"],
     "wIM7ul": ["Appuyez sur espace ou touchez le blob pour commencer"],
     "wJijgU": ["Emplacement"],
     "wJo9oS": ["Fermer la recherche"],

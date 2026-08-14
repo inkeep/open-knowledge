@@ -4,7 +4,6 @@ import { CommentQueueShortcut } from '@/comments/CommentQueueShortcut';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConnectingBanner } from '@/components/ConnectingBanner';
 import { CreateProjectMenuTrigger } from '@/components/CreateProjectMenuTrigger';
-import { DesktopAgentMigration } from '@/components/DesktopAgentMigration';
 import { EditorPane } from '@/components/EditorPane';
 import { FeedbackMenuTrigger } from '@/components/FeedbackMenuTrigger';
 import { FileSidebar } from '@/components/FileSidebar';
@@ -688,9 +687,6 @@ function AppBody() {
             Desktop-only — the `new-project` menu action never fires in
             the web host, so the dialog stays unmounted there. */}
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
-        {/* One-time upgrade migration: carry an existing user's installed desktop
-            apps over into the new opt-in Desktop model. Desktop-only. */}
-        {desktopBridge ? <DesktopAgentMigration /> : null}
         {/* Help → Report a bug… opens ReportBugDialog here — same
             desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
         {desktopBridge ? <ReportBugMenuTrigger /> : null}

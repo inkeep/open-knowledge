@@ -628,6 +628,11 @@ msgstr ""
 msgid "{displayName} CLI, {hint}"
 msgstr ""
 
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "{displayName} Desktop"
+msgstr ""
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -1708,18 +1713,23 @@ msgstr ""
 msgid "Ask"
 msgstr ""
 
-#. placeholder {0}: resolvedTarget.displayName
-#: src/components/BottomComposer.tsx
-msgid "Ask {0}"
-msgstr ""
-
 #. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
 msgid "Ask {0} CLI"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/handoff/agent-launcher-labels.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
+msgstr ""
+
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+msgid "Ask {agentName}, {hint}"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -1740,6 +1750,10 @@ msgstr ""
 
 #: src/components/ProblemsPanel.tsx
 msgid "Ask AI to fix {flatId}"
+msgstr ""
+
+#: src/components/BottomComposer.tsx
+msgid "Ask an agent"
 msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -3914,16 +3928,6 @@ msgstr ""
 msgid "Create template"
 msgstr ""
 
-#. placeholder {0}: getDisplayNameDefault(selectedAgentId)
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0}"
-msgstr ""
-
-#. placeholder {0}: TERMINAL_CLIS[selectedCli].displayName
-#: src/components/empty-state/CreatePromptComposer.tsx
-msgid "Create with {0} CLI"
-msgstr ""
-
 #: src/components/RecentProjectsMenu.tsx
 msgid "create worktree"
 msgstr ""
@@ -4230,15 +4234,6 @@ msgstr ""
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
-msgstr ""
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Desktop"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -4825,6 +4820,10 @@ msgstr ""
 msgid "Enable {displayName} CLI"
 msgstr ""
 
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "Enable {displayName} Desktop"
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Enable {file}"
 msgstr ""
@@ -5052,6 +5051,15 @@ msgstr ""
 
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
+msgstr ""
+
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/handoff/AgentSplitButton.tsx
+#: src/components/handoff/OpenInAgentContextSubmenu.tsx
+#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/settings/ConfigureAgentsSection.tsx
+msgid "External apps"
 msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -8451,6 +8459,10 @@ msgstr ""
 msgid "Open {basename}"
 msgstr ""
 
+#: src/components/handoff/agent-launcher-labels.tsx
+msgid "Open {displayName} Desktop"
+msgstr ""
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr ""
@@ -8741,13 +8753,13 @@ msgstr ""
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Open with AI {displayName}"
+msgid "Open with AI {displayName} Desktop"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Open with AI {displayName}, {hint}"
+msgid "Open with AI {displayName} Desktop, {hint}"
 msgstr ""
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
@@ -11643,19 +11655,6 @@ msgstr ""
 msgid "Star us on GitHub"
 msgstr ""
 
-#: src/components/BottomComposer.tsx
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Start {agentName}"
-msgstr ""
-
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-msgid "Start {agentName}, {hint}"
-msgstr ""
-
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
 msgstr ""
@@ -11669,7 +11668,6 @@ msgstr ""
 msgid "Start a new OpenKnowledge project."
 msgstr ""
 
-#: src/components/BottomComposer.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Start an agent"
 msgstr ""

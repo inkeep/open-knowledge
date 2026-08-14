@@ -6,11 +6,7 @@ import type { ReactNode } from 'react';
 import { act } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu';
-import {
-  desktopEnabledKey,
-  reloadEnabledAgentsFromStorage,
-  setAgentEnabled,
-} from '@/lib/acp/enabled-agents';
+import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { TerminalLaunchProvider } from './TerminalLaunchContext';
@@ -95,9 +91,6 @@ async function renderSubmenu({
   states?: Record<HandoffTarget, InstallState>;
   withTerminal?: boolean;
 } = {}) {
-  for (const [id, state] of Object.entries(states)) {
-    if (state?.installed === true) setAgentEnabled(desktopEnabledKey(id), true);
-  }
   const { OpenInAgentEmptySpaceSubmenu } = await import('./OpenInAgentEmptySpaceSubmenu');
   const dispatchCalls: Array<{ input: HandoffDispatchInput; target: HandoffTarget }> = [];
   const dispatch = vi.fn(async (target: HandoffTarget, nextInput: HandoffDispatchInput) => {
@@ -176,7 +169,7 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     expect(screen.queryByTestId('empty-space-open-in-cursor') === null).toBe(true);
     expect(screen.queryByTestId('empty-space-open-in-claude-web-fallback') === null).toBe(true);
 
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Open with AI Codex' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open with AI ChatGPT Desktop' }));
 
     expect(dispatchCalls).toEqual([{ input: readyInput, target: 'codex' }]);
   });
@@ -185,7 +178,9 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     const { dispatch } = await renderSubmenu({ input: null });
     await openEmptySpaceSubmenu();
 
-    const codex = screen.getByRole('menuitem', { name: 'Open with AI Codex, No workspace' });
+    const codex = screen.getByRole('menuitem', {
+      name: 'Open with AI ChatGPT Desktop, No workspace',
+    });
     expect(codex.getAttribute('data-disabled')).toBe('');
     expect(codex.textContent).toContain('No workspace');
 
@@ -216,7 +211,7 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     await openEmptySpaceSubmenu();
     const row = screen.getByTestId('empty-space-open-in-thread-claude-acp');
     expect(row.getAttribute('data-disabled')).toBe('');
-    expect(row.getAttribute('aria-label')).toBe('Start Claude Agent, No workspace');
+    expect(row.getAttribute('aria-label')).toBe('Ask Claude Agent, No workspace');
     await userEvent.click(row);
     expect(threadLaunchCalls).toEqual([]);
   });
@@ -244,15 +239,15 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     expect(threadLaunchCalls).toEqual([]);
   });
 
-  test('groups installed agents under Desktop and the CLI launch under Terminal', async () => {
+  test('groups detected desktop apps under External apps and the CLI launch under Terminal', async () => {
     await renderSubmenu({ withTerminal: true });
     await openEmptySpaceSubmenu();
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the Desktop one.
+    // Terminal-first: the Terminal section label precedes the External apps one.
     expect(
-      screen.getByText('Terminal').compareDocumentPosition(screen.getByText('Desktop')) &
+      screen.getByText('Terminal').compareDocumentPosition(screen.getByText('External apps')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     // Separator divides the two populated sections.
@@ -296,16 +291,16 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     expect(launchCalls).toEqual([]);
   });
 
-  test('omits the Terminal section but keeps Desktop when no terminal launcher is present', async () => {
+  test('omits the Terminal section but keeps External apps when no terminal launcher is present', async () => {
     await renderSubmenu();
     await openEmptySpaceSubmenu();
 
-    expect(screen.getByText('Desktop')).toBeTruthy();
+    expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
     expect(screen.queryByTestId('empty-space-open-in-terminal-claude')).toBeNull();
   });
 
-  test('renders only the Terminal section (no In app, no Desktop) when nothing else is enabled', async () => {
+  test('renders only the Terminal section (no In app, no External apps) when nothing else is enabled', async () => {
     await renderSubmenu({
       withTerminal: true,
       states: installStates({
@@ -318,7 +313,7 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     await openEmptySpaceSubmenu();
 
     expect(screen.getByText('Terminal')).toBeTruthy();
-    expect(screen.queryByText('Desktop')).toBeNull();
+    expect(screen.queryByText('External apps')).toBeNull();
     expect(screen.queryByText('In app')).toBeNull();
     expect(screen.getByTestId('empty-space-open-in-terminal-claude')).toBeTruthy();
     // A single separator sits before the Configure agents footer.

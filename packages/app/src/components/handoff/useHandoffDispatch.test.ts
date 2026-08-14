@@ -149,7 +149,7 @@ describe('getDisplayNameDefault — KNOWN_TARGETS lookup', () => {
     const { getDisplayNameDefault } = await import('./useHandoffDispatch');
     expect(getDisplayNameDefault('claude-cowork')).toBe('Claude Cowork');
     expect(getDisplayNameDefault('claude-code')).toBe('Claude');
-    expect(getDisplayNameDefault('codex')).toBe('Codex');
+    expect(getDisplayNameDefault('codex')).toBe('ChatGPT');
     expect(getDisplayNameDefault('cursor')).toBe('Cursor');
   });
 

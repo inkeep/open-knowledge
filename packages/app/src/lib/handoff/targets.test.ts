@@ -54,7 +54,8 @@ describe('KNOWN_TARGETS', () => {
     const byId = new Map(KNOWN_TARGETS.map((t) => [t.id, t.displayName]));
     expect(byId.get('claude-cowork')).toBe('Claude Cowork');
     expect(byId.get('claude-code')).toBe('Claude');
-    expect(byId.get('codex')).toBe('Codex');
+    // 'ChatGPT' since OpenAI's July-2026 app merge — SPEC 7.2 carries the corrigendum.
+    expect(byId.get('codex')).toBe('ChatGPT');
     expect(byId.get('cursor')).toBe('Cursor');
     expect(byId.get('copilot')).toBe('GitHub Copilot');
     expect(byId.get('opencode')).toBe('OpenCode');

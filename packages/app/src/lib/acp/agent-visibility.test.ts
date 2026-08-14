@@ -61,15 +61,19 @@ describe('agent-visibility — terminal (fail-open default)', () => {
   });
 });
 
-describe('agent-visibility — desktop (off by default)', () => {
-  test('defaults to off regardless of install detection (opt-in)', () => {
-    expect(isDesktopTargetEnabled({}, 'claude-code')).toBe(false);
-    expect(isDesktopTargetEnabled({}, 'codex')).toBe(false);
+describe('agent-visibility — desktop (detected by default)', () => {
+  test('follows install detection; a pending probe stays hidden', () => {
+    expect(isDesktopTargetEnabled({}, 'claude-code', true)).toBe(true);
+    expect(isDesktopTargetEnabled({}, 'codex', false)).toBe(false);
+    // Strict `=== true`: unlike the fail-open terminal rule, an unresolved
+    // probe waits rather than offering a row that may not launch.
+    expect(isDesktopTargetEnabled({}, 'codex', null)).toBe(false);
+    expect(isDesktopTargetEnabled({}, 'codex', undefined)).toBe(false);
   });
 
-  test('override wins — an enabled target shows, disabled stays hidden', () => {
+  test('override wins — shows a not-installed target, hides an installed one', () => {
     const key = desktopEnabledKey('cursor');
-    expect(isDesktopTargetEnabled({ [key]: true }, 'cursor')).toBe(true);
-    expect(isDesktopTargetEnabled({ [key]: false }, 'cursor')).toBe(false);
+    expect(isDesktopTargetEnabled({ [key]: true }, 'cursor', false)).toBe(true);
+    expect(isDesktopTargetEnabled({ [key]: false }, 'cursor', true)).toBe(false);
   });
 });

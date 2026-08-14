@@ -9,7 +9,8 @@
  *   - In app   → registered (enabling registers; nothing installs to detect)
  *   - Terminal → fail-open: shown unless positively absent on PATH
  *                (`installed[cli] === false`); an unresolved probe still shows
- *   - Desktop  → off (opt-in; the user enables desktop hand-offs in Settings)
+ *   - Desktop  → detected: shown when the OS-level probe reports the app
+ *                installed (`installed === true`)
  */
 
 import type { HandoffTarget, TerminalCli } from '@inkeep/open-knowledge-core';
@@ -58,13 +59,18 @@ export function isTerminalCliEnabled(
 }
 
 /**
- * Desktop target: default OFF. Desktop hand-offs are opt-in — the user enables
- * the apps they want in Settings → Configure agents. Install detection only
- * drives the "Not installed" hint in Settings, not the default.
+ * Desktop target: default DETECTED — an app the OS-level probe reports
+ * installed (`claude://` handler registered on macOS/Windows, `xdg-mime` on
+ * Linux) shows without the user opting in. Strict `=== true`, unlike the
+ * fail-open Terminal rule: a desktop row deep-links into an app, so an
+ * unresolved probe (`null`) waits rather than offering a row that may not
+ * launch. Settings still wins in both directions — an explicit override shows a
+ * not-installed app (it routes to its installer) or hides an installed one.
  */
 export function isDesktopTargetEnabled(
   overrides: EnabledOverrides,
   targetId: HandoffTarget,
+  installed: boolean | null | undefined,
 ): boolean {
-  return resolveEnabled(overrides[desktopEnabledKey(targetId)], false);
+  return resolveEnabled(overrides[desktopEnabledKey(targetId)], installed === true);
 }

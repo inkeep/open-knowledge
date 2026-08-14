@@ -176,7 +176,6 @@
       "Mudar para <0>somente local</0> será recusado até que eles deixem de ser rastreados com<1> git rm --cached</1>."
     ],
     "1ZXkqM": ["Desligue-o a qualquer momento nas Configurações."],
-    "1ZpfyB": ["Abrir com a IA ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Acompanhando as edições do agente"],
     "1bDVu5": ["Paleta de comandos do espaço de trabalho"],
     "1d1F11": ["Selecionar todos os arquivos e pastas"],
@@ -191,6 +190,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Rejeitar"],
     "1u-mAI": ["Não deu para iniciar a sincronização. Verifique sua conexão e tente de novo."],
+    "1vczDE": ["Abrir ", ["displayName"], " Desktop"],
     "1vn0CI": ["Resposta do servidor inválida"],
     "1xui0Q": ["Falha ao carregar os arquivos locais"],
     "2277Tu": ["Recolher o grafo"],
@@ -414,7 +414,6 @@
       ["0"],
       "\" foi removido de todos os outros locais — a pasta de origem dele continua carregando"
     ],
-    "4rjwLG": ["Criar com a CLI do ", ["0"]],
     "4sKwf6": ["O arquivo já existe"],
     "4sUdTJ": ["pré-visualização com tema"],
     "4uNLmk": ["Fazendo pull"],
@@ -463,7 +462,6 @@
     "5OTgC7": ["Abre e foca o compositor de prompts de Perguntar à IA na parte de baixo."],
     "5OqaJi": ["Digite um nome de projeto"],
     "5PHgV2": ["Você também pode criar um por um terminal com <0>ok bug-report</0>."],
-    "5PrrYw": ["Iniciar ", ["agentName"]],
     "5QGTaA": ["Não foi possível copiar o caminho relativo"],
     "5SwVv1": ["Não instalado"],
     "5Szq6N": [
@@ -631,6 +629,7 @@
     "78G7R3": [
       "Valida o frontmatter dos documentos contra arquivos JSON Schema, restrito a conjuntos de documentos por glob."
     ],
+    "7Ag-Xu": ["Perguntar ao ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Falhou"],
     "7FA2iI": ["Não deu para ler os comentários que aguardam envio — nada foi enviado."],
     "7FamGZ": ["Ir para a linha"],
@@ -815,7 +814,6 @@
     "9bG48P": ["Enviando"],
     "9clcD5": ["Abrir os documentos com a tag #", ["chip"]],
     "9dVehq": ["Mais opções de permissão"],
-    "9dw5bW": ["Criar com ", ["0"]],
     "9euN0m": [
       [
         "count",
@@ -939,7 +937,6 @@
     "B6Lac2": ["+", ["overflowCount"], " mais"],
     "B6NpZ7": ["Renomeado para \"", ["next"], "\""],
     "BAH4qX": ["Item selecionado do grafo"],
-    "BBqGS9": ["Desktop"],
     "BD0XSC": ["Falha ao carregar os modelos do projeto"],
     "BEkF-P": [
       ["userName"],
@@ -981,6 +978,7 @@
     "BlLxpG": ["Buscar habilidades"],
     "BowKyI": ["Mostrar detalhes"],
     "Bv5a9_": ["Estatísticas da seleção"],
+    "BwKH4d": ["Aplicativos externos"],
     "Bx4EXG": ["Ações de ", ["label"]],
     "By-7Pn": ["Liga ou desliga uma lista com marcadores."],
     "ByIOcK": [
@@ -1037,6 +1035,7 @@
       "Open Knowledge mantém um arquivo de navegação denominado index.md em cada pasta que contém Markdown, cada um listando os documentos dessa pasta por tipo e vinculando-os às suas subpastas. Ele reescreve esses arquivos à medida que seus documentos são alterados e tudo o que você mesmo edita neles é substituído."
     ],
     "CXj9C-": ["Nome da nova propriedade"],
+    "CZBqrX": [["displayName"], " Desktop"],
     "C_Lyvh": ["Falha ao salvar a configuração de tema"],
     "C_WGy8": [
       "Este arquivo é grande demais para abrir no editor de texto integrado (limite de 1 MB). Use Abrir arquivo, abaixo, para abri-lo em outro app."
@@ -2640,7 +2639,6 @@
     ],
     "WpE38V": ["Uma habilidade encontrada: ", ["0"]],
     "Wq6Wcm": ["Digite um endereço de e-mail válido."],
-    "WqLq6M": ["Abrir com a IA ", ["displayName"]],
     "Wtw22s": ["Instalando"],
     "WuntOK": ["Pré-visualização da captura de tela"],
     "WyQxwa": ["Conecte este projeto ao GitHub para compartilhar."],
@@ -3038,6 +3036,7 @@
     ],
     "ak4LLg": ["Limpar menu"],
     "akmOT9": ["Editar este comentário"],
+    "an0aL5": ["Perguntar a um agente"],
     "anmUZq": ["Faltava um recurso"],
     "aoT2xX": ["Este comentário é sobre a propriedade inteira"],
     "arUUsK": ["Novidades do produto"],
@@ -3192,6 +3191,7 @@
     "ccNps_": ["Somente os modificados"],
     "cd3THN": ["Estrutura do documento"],
     "cd5EXh": ["Relatar um erro"],
+    "cdBape": ["Ativar ", ["displayName"], " Desktop"],
     "cdm00A": ["Sem entrada"],
     "cdmk8A": ["Alterações sem commit"],
     "cgl-gn": ["Conectado ao GitHub"],
@@ -3541,7 +3541,6 @@
     "gpbKxw": ["A validação de links não está disponível."],
     "gqk-3R": [["0"], " movido para ", ["destination"], "."],
     "gtEbeW": ["Destaque"],
-    "gtGQ9S": ["Iniciar ", ["agentName"], ", ", ["hint"]],
     "gv5w9J": ["dono/repo, uma URL de git ou um caminho local"],
     "gvApb7": [
       "Transforme o que você lê em artigos claros e confiáveis. Salve uma fonte, descubra o que ela significa e guarde a versão final para poder se apoiar nela depois."
@@ -4138,7 +4137,6 @@
     "nP-KFo": ["Novo chat do ", ["0"]],
     "nTM8ab": ["Dê um nome antes de editar as cores."],
     "nTwL53": ["Abra um documento para compartilhar a URL dele."],
-    "nUNZL4": ["Perguntar ao ", ["0"]],
     "nWv1ja": ["Gerencie os arquivos ocultos em Configurações → Padrões de exclusão."],
     "nYKerc": ["(somente no nível do usuário)"],
     "nYeBmY": ["há ", ["hours"], " h"],
@@ -4464,6 +4462,7 @@
       "O arquivo de esquema não existe ou falhou ao carregar — adicionar um campo o cria."
     ],
     "riqekz": ["Navegação pelo menu de sugestões"],
+    "rl35Vz": ["Abrir com a IA ", ["displayName"], " Desktop, ", ["hint"]],
     "rlUzXK": ["Não foi possível validar a pasta. Tente de novo."],
     "rmorj0": [
       "Isto é uma pré-visualização de ",
@@ -4850,6 +4849,7 @@
       "As propriedades mudaram, mas não foi possível compará-las — o YAML não pôde ser analisado. As duas versões são exibidas como foram escritas."
     ],
     "wGSHzy": ["Ativa uma das oito primeiras abas do editor."],
+    "wHZ58m": ["Abrir com a IA ", ["displayName"], " Desktop"],
     "wIM7ul": ["Pressione espaço ou toque no blob para começar"],
     "wJijgU": ["Local"],
     "wJo9oS": ["Fechar busca"],
