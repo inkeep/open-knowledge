@@ -319,6 +319,17 @@ export type ThreadEvent =
       sourceHost: string;
       /** The agent whose launch is blocked on this decision. */
       agentName: string;
+      /**
+       * Why the offer appeared: the interpreter is absent, it is installed and
+       * cannot run, or OK's own previously-downloaded copy is damaged and is
+       * being replaced. Each wants different advice — telling someone whose
+       * `npx` is present-but-broken that it "isn't installed" sends them to
+       * install a second copy that their broken one still shadows on PATH, and
+       * `damaged` is about OK's copy, not anything the user installed.
+       * Optional: events persisted before this field existed replay as
+       * `missing`, which is what they were.
+       */
+      reason?: 'missing' | 'broken' | 'damaged';
       ts: number;
     }
   | {
@@ -475,13 +486,13 @@ export type ThreadClientFrame =
   | {
       /**
        * Answer a `runtime_consent_request`: allow (or refuse) OK to download
-       * the managed runtime a blocked launch needs. `remember` persists the
-       * decision for future launches on this machine.
+       * the managed runtime a blocked launch needs. The answer covers this
+       * launch only — the offer reappears next time an agent needs the runtime.
        */
       op: 'runtime_consent_response';
       threadId: string;
       requestId: string;
-      outcome: { kind: 'granted'; remember?: boolean } | { kind: 'declined'; remember?: boolean };
+      outcome: { kind: 'granted' } | { kind: 'declined' };
     }
   | { op: 'set_mode'; threadId: string; modeId: string }
   | {
@@ -766,7 +777,9 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       const outcome = frame.outcome as Record<string, unknown> | undefined;
       if (typeof outcome !== 'object' || outcome === null) return null;
       if (outcome.kind !== 'granted' && outcome.kind !== 'declined') return null;
-      if (outcome.remember !== undefined && typeof outcome.remember !== 'boolean') return null;
+      // A pre-removal client still sends `remember`; ignore it rather than
+      // reject the frame. Rejecting would drop a skewed renderer's grant on
+      // the floor — the user clicks Download and the launch just stays parked.
       return frame as unknown as ThreadClientFrame;
     }
     case 'set_mode':

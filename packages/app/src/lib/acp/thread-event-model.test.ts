@@ -313,6 +313,36 @@ describe('buildThreadRenderModel', () => {
     });
   });
 
+  test('a request with no reason reads as missing — what pre-field events were', () => {
+    const model = buildThreadRenderModel([consentRequest()]);
+    const card = model.items.find((i) => i.kind === 'runtime_consent');
+    if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
+    // The card picks its sentence off this; defaulting the other way would tell
+    // every replayed thread its interpreter is broken.
+    expect(card.reason).toBe('missing');
+  });
+
+  test('a broken-interpreter request carries that through to the card', () => {
+    const model = buildThreadRenderModel([
+      { ...consentRequest(), reason: 'broken' } as ThreadEvent,
+    ]);
+    const card = model.items.find((i) => i.kind === 'runtime_consent');
+    if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
+    expect(card.reason).toBe('broken');
+  });
+
+  // The repair offer. Its copy is about OK's own copy being damaged, so the
+  // card must not fall back to either interpreter sentence — both describe
+  // something the user installed.
+  test('a damaged-runtime request carries that through to the card', () => {
+    const model = buildThreadRenderModel([
+      { ...consentRequest(), reason: 'damaged' } as ThreadEvent,
+    ]);
+    const card = model.items.find((i) => i.kind === 'runtime_consent');
+    if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
+    expect(card.reason).toBe('damaged');
+  });
+
   test('grant → progress → spawning drives the card through running to done', () => {
     const model = buildThreadRenderModel([
       consentRequest(),

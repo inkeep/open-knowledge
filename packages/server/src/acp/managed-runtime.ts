@@ -12,10 +12,11 @@
  *
  * Two hard rules distinguish this from Zed's implementation:
  *
- *   1. **Consent.** Nothing downloads without the user's explicit go-ahead
- *      (persisted per-runtime under `~/.ok/`). The gate + prompt live in the
- *      thread manager; this module only reads/writes the decision and does the
- *      download once told to.
+ *   1. **Consent.** Nothing downloads without the user's explicit go-ahead,
+ *      asked per launch and never persisted — a stored "no" has no UI to undo
+ *      it, and a stored "yes" would authorize a later download the user never
+ *      saw. The gate + prompt live in the thread manager; this module only does
+ *      the download once told to.
  *   2. **Verification.** Every archive is checked against the publisher's
  *      SHA-256 (Node's `SHASUMS256.txt`, uv's per-asset `.sha256`) before it
  *      is trusted — an unverified download is discarded.
@@ -32,7 +33,7 @@ import { arch, homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { FileLockTimeoutError, withFileLock } from '@inkeep/open-knowledge-core/server';
-import { tracedMkdir, tracedRename, tracedRm, tracedWriteFile } from '../fs-traced.ts';
+import { tracedMkdir, tracedRename, tracedRm } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import {
   type DownloadProgress,
@@ -324,6 +325,43 @@ export async function cleanupManagedRuntimeStaging(
 }
 
 /**
+ * Move a damaged install out of the way so the next `ensureManagedRuntime`
+ * re-downloads instead of adopting it. Renamed rather than deleted: the rename
+ * is atomic and safe while another agent still holds files open inside the
+ * tree, and the `.install-` prefix hands the leftover to the same stale-staging
+ * sweep that collects crashed downloads. Deletion is best-effort after that.
+ *
+ * Returns false when the tree is still in place — a Windows rename fails with
+ * EBUSY/EPERM while another agent has the launcher open. The caller MUST NOT
+ * treat that as "replaced": re-downloading finds the damaged copy on the
+ * fast path and hands it back, so a failure reported as a fresh install would
+ * name the wrong culprit.
+ */
+export async function quarantineManagedRuntime(
+  kind: ManagedRuntimeKind,
+  log: PinoLogger,
+  root: string = defaultRuntimeRoot(),
+): Promise<boolean> {
+  const versionDir = join(root, kind, sanitizeSegment(versionOf(kind)));
+  const quarantined = join(
+    dirname(versionDir),
+    `.install-damaged-${sanitizeSegment(versionOf(kind))}-${randomUUID()}`,
+  );
+  try {
+    await tracedRename(versionDir, quarantined);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return true;
+    log.warn({ err, kind, versionDir }, '[managed-runtime] could not quarantine damaged runtime');
+    return false;
+  }
+  log.info({ kind, versionDir }, '[managed-runtime] quarantined damaged runtime');
+  await tracedRm(quarantined, { recursive: true, force: true }).catch(() => {
+    // The stale-staging sweep collects it later.
+  });
+  return true;
+}
+
+/**
  * Download + verify + install a managed runtime once per pinned version;
  * later launches reuse the extracted tree. Verified against the publisher's
  * SHA-256 before it is trusted. Extraction lands beside the destination and
@@ -446,58 +484,5 @@ export async function ensureManagedRuntime(
     await tracedRm(stagingDir, { recursive: true, force: true }).catch(() => {
       // Best-effort temp cleanup.
     });
-  }
-}
-
-// --- Consent persistence ----------------------------------------------------
-//
-// A machine-/user-level decision (the download is user-level, shared across
-// projects), stored beside the runtime cache rather than in a project's
-// committed config — a teammate's clone must not pre-grant a download on this
-// machine (same locality reasoning as `server.lock` / `acp-agents.json`).
-
-export type RuntimeConsentDecision = 'granted' | 'declined';
-
-export interface RuntimeConsentState {
-  node?: RuntimeConsentDecision;
-  uv?: RuntimeConsentDecision;
-}
-
-const CONSENT_FILE = 'acp-runtime-consent.json';
-
-/** Read the persisted per-runtime consent decisions (empty on any read/parse error). */
-export async function readRuntimeConsent(home: string = okHomeDir()): Promise<RuntimeConsentState> {
-  let text: string;
-  try {
-    const { readFile } = await import('node:fs/promises');
-    text = await readFile(join(home, CONSENT_FILE), 'utf8');
-  } catch {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    const pick = (v: unknown): RuntimeConsentDecision | undefined =>
-      v === 'granted' || v === 'declined' ? v : undefined;
-    return { node: pick(parsed.node), uv: pick(parsed.uv) };
-  } catch {
-    return {};
-  }
-}
-
-/** Persist a per-runtime consent decision, merging with any existing state. */
-export async function writeRuntimeConsent(
-  kind: ManagedRuntimeKind,
-  decision: RuntimeConsentDecision,
-  log: PinoLogger,
-  home: string = okHomeDir(),
-): Promise<void> {
-  try {
-    const current = await readRuntimeConsent(home);
-    const next = { version: 1, ...current, [kind]: decision, updatedAt: Date.now() };
-    await tracedMkdir(home, { recursive: true });
-    await tracedWriteFile(join(home, CONSENT_FILE), `${JSON.stringify(next, null, 2)}\n`);
-  } catch (err) {
-    // Non-fatal: a failed persist just means we re-ask next time.
-    log.warn({ err, kind }, '[managed-runtime] consent persist failed');
   }
 }

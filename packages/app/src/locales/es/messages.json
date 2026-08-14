@@ -1961,6 +1961,21 @@
     "OETysD": [
       "Todavía no hay páginas índice. Los índices aparecen cuando las páginas acumulan enlaces entrantes en el grafo."
     ],
+    "OJ4VDl": [
+      "Este agente funciona con ",
+      ["0"],
+      ", que está instalado pero no arranca: su ",
+      ["1"],
+      " parece estar dañado. Open Knowledge puede descargar una copia privada de ",
+      ["2"],
+      " ",
+      ["3"],
+      " (unos ",
+      ["4"],
+      " MB desde ",
+      ["5"],
+      ") que no tocará el resto de tu sistema."
+    ],
     "OJOA7Z": ["⋯ ", ["0"], " líneas sin cambios"],
     "OJTOUj": ["Requiere ", ["brand"], "."],
     "OJeiSH": ["No se pudo añadir la propiedad"],
@@ -3589,6 +3604,7 @@
     "hZoBHK": ["Contenido inicial vacío"],
     "haHgQj": ["Ruta relativa copiada"],
     "habOU_": ["No se pudo actualizar el ajuste de aprobación automática — ", ["detail"]],
+    "hadECI": [["0"], " necesita reemplazo"],
     "he3ygx": ["Copiar"],
     "hgF0al": ["Usar ", ["0"], " para el modo claro activo"],
     "hgf5io": ["Blob Run"],
@@ -3792,6 +3808,19 @@
     ],
     "jxtXZI": ["Instalar la CLI de gh"],
     "k0dL2I": ["Reconectando con el servicio de agentes…"],
+    "k0jsmJ": [
+      "La copia propia de ",
+      ["0"],
+      " de Open Knowledge está dañada y no arranca. Puede descargar una copia nueva de ",
+      ["1"],
+      " ",
+      ["2"],
+      " (unos ",
+      ["3"],
+      " MB desde ",
+      ["4"],
+      ") para reemplazarla."
+    ],
     "k2fEi7": [
       "Los complementos de usuario son personales de este dispositivo: actívalos o desactívalos aquí. La elección vive en tu configuración de usuario y nunca se guarda en el proyecto. Cada complemento activado tiene su propia página bajo Complementos en la barra lateral de ajustes."
     ],
@@ -4200,7 +4229,6 @@
     ],
     "ogAuyr": ["Volver a la vista de documento"],
     "ohUJJM": ["Complementos"],
-    "oi4zaa": ["Recordarlo para los próximos agentes"],
     "ojGc_T": ["Abrir el comentario"],
     "omXJcU": ["Cerrar las demás"],
     "onTlRk": ["No se pudo actualizar la compartición de habilidades"],

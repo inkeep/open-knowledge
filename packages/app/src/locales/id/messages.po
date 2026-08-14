@@ -329,6 +329,11 @@ msgstr "{0} membiarkan {1} bertindak tanpa bertanya"
 msgid "{0} needs {1}"
 msgstr "{0} membutuhkan {1}"
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr "{0} perlu diganti"
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8469,6 +8474,15 @@ msgstr "Buka di worktree"
 msgid "Open it there"
 msgstr "Buka di sana"
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr "Salinan {0} milik Open Knowledge sendiri rusak dan tidak bisa berjalan. Open Knowledge dapat mengunduh salinan baru {1} {2} (sekitar {3} MB dari {4}) untuk menggantinya."
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr "Buka tautan"
@@ -9711,10 +9725,6 @@ msgstr "Relevansi"
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "Muat ulang"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
-msgstr "Ingat ini untuk agen berikutnya"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12384,6 +12394,16 @@ msgstr "Agen ini belum mengumumkan perintahnya"
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
 msgstr "Agen ini memerlukan Anda masuk dulu — lihat pemberitahuan di bawah."
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
+msgstr "Agen ini berjalan lewat {0}, yang sudah terpasang tetapi tidak bisa jalan — {1}-nya tampak rusak. Open Knowledge bisa mengunduh salinan pribadi {2} {3} (sekitar {4} MB dari {5}) yang tidak akan menyentuh bagian lain sistem Anda."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

@@ -329,6 +329,11 @@ msgstr "{0} {1}-কে না জিজ্ঞেস করেই কাজ ক�
 msgid "{0} needs {1}"
 msgstr "{0}-এর {1} দরকার"
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr "{0} প্রতিস্থাপন করা দরকার"
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8469,6 +8474,15 @@ msgstr "ওয়ার্কট্রিতে খুলুন"
 msgid "Open it there"
 msgstr "সেটি সেখানেই খুলুন"
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr "Open Knowledge-এর নিজস্ব {0} অনুলিপিটি নষ্ট এবং চলছে না। এটি প্রতিস্থাপনের জন্য {1} {2}-এর একটি নতুন অনুলিপি ডাউনলোড করতে পারে (প্রায় {3} MB, {4} থেকে)।"
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr "লিংক খুলুন"
@@ -9711,10 +9725,6 @@ msgstr "প্রাসঙ্গিকতা"
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "আবার লোড করুন"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
-msgstr "ভবিষ্যতের এজেন্টদের জন্য এটি মনে রাখুন"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12384,6 +12394,16 @@ msgstr "এই এজেন্ট এখনও তার কমান্ড ঘ�
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
 msgstr "এই এজেন্টের জন্য আপনাকে আগে সাইন ইন করতে হবে — নিচের বিজ্ঞপ্তিটি দেখুন।"
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
+msgstr "এই এজেন্টটি {0}-এর মাধ্যমে চলে, যা ইনস্টল করা আছে কিন্তু চলছে না — এর {1} নষ্ট বলে মনে হচ্ছে। Open Knowledge {2} {3}-এর একটি ব্যক্তিগত অনুলিপি ডাউনলোড করতে পারে (প্রায় {4} MB, {5} থেকে) যা আপনার সিস্টেমের বাকি অংশ স্পর্শ করবে না।"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

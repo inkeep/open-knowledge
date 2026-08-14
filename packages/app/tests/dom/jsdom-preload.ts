@@ -11,7 +11,7 @@
  */
 
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterAll, afterEach, vi } from 'vitest';
 
 // React's test path checks this global before installing act warnings.
 // @testing-library/react also sets it, but assert it early so the flag is live
@@ -25,6 +25,24 @@ import { afterEach } from 'vitest';
 // across tests accumulates duplicate DOM ("found multiple elements").
 afterEach(() => {
   cleanup();
+});
+
+// `cleanup()` unmounts, but @tiptap/react defers the editor's own `destroy()`
+// into a 0 ms timer. When the last test in a file leaves one pending, vitest
+// tears the jsdom environment down first and the destroy then runs in a world
+// with no `document` — a ReferenceError nothing is awaiting, which vitest can
+// only report as an unhandled error that fails the whole run while every test
+// passes. One macrotask at file end lets it land while the DOM still exists.
+//
+// Deliberately `afterAll`, not `afterEach`: a tick between tests also lets
+// other deferred work run against a tree whose providers cleanup just removed,
+// which fails honest tests (`usePageList must be used within …`). At file end
+// there is nothing left to re-render.
+//
+// Skipped under fake timers, where a real 0 ms timer would never fire — and
+// where the pending fake destroy is discarded with the timer queue anyway.
+afterAll(async () => {
+  if (!vi.isFakeTimers()) await new Promise((resolve) => setTimeout(resolve, 0));
 });
 
 const domWindow = globalThis.window as (Window & typeof globalThis) | undefined;

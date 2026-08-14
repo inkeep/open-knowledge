@@ -324,7 +324,7 @@ export class AgentThreadClient {
   respondRuntimeConsent(
     threadId: string,
     requestId: string,
-    outcome: { kind: 'granted'; remember?: boolean } | { kind: 'declined'; remember?: boolean },
+    outcome: { kind: 'granted' } | { kind: 'declined' },
   ): void {
     this.send({ op: 'runtime_consent_response', threadId, requestId, outcome });
   }

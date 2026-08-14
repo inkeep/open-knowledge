@@ -329,6 +329,11 @@ msgstr "{0} کی بدولت {1} بغیر پوچھے عمل کرتا ہے"
 msgid "{0} needs {1}"
 msgstr "{0} کو {1} درکار ہے"
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr "{0} کو تبدیل کرنا ضروری ہے"
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8473,6 +8478,15 @@ msgstr "ورک ٹری میں کھولیں"
 msgid "Open it there"
 msgstr "اسے وہیں کھولیں"
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr "Open Knowledge کی اپنی {0} نقل خراب ہے اور چلتی نہیں۔ یہ اسے تبدیل کرنے کے لیے {1} {2} کی نئی نقل ڈاؤن لوڈ کر سکتا ہے (تقریباً {3} MB، {4} سے)۔"
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr "لنک کھولیں"
@@ -9715,10 +9729,6 @@ msgstr "مطابقت"
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "دوبارہ لوڈ کریں"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
-msgstr "مستقبل کے ایجنٹس کے لیے یہ یاد رکھیں"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12388,6 +12398,16 @@ msgstr "اس ایجنٹ نے ابھی تک اپنی کمانڈز کا اعلان
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
 msgstr "اس ایجنٹ کے لیے آپ کا پہلے سائن اِن کرنا ضروری ہے — نیچے دی گئی اطلاع دیکھیں۔"
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
+msgstr "یہ ایجنٹ {0} کے ذریعے چلتا ہے، جو نصب تو ہے مگر چلتا نہیں — اس کا {1} خراب لگتا ہے۔ Open Knowledge {2} {3} کی ایک نجی نقل ڈاؤن لوڈ کر سکتا ہے (تقریباً {4} MB، {5} سے) جو آپ کے باقی سسٹم کو نہیں چھوئے گی۔"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

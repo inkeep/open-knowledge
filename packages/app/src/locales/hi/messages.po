@@ -329,6 +329,11 @@ msgstr "{0} {1} को बिना पूछे काम करने दे�
 msgid "{0} needs {1}"
 msgstr "{0} को {1} चाहिए"
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr "{0} को बदलना ज़रूरी है"
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8469,6 +8474,15 @@ msgstr "वर्कट्री में खोलें"
 msgid "Open it there"
 msgstr "इसे वहाँ खोलें"
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr "Open Knowledge की अपनी {0} प्रति खराब हो गई है और चलती नहीं। यह इसे बदलने के लिए {1} {2} की नई प्रति डाउनलोड कर सकता है (लगभग {3} MB, {4} से)।"
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr "लिंक खोलें"
@@ -9711,10 +9725,6 @@ msgstr "प्रासंगिकता"
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "फिर से लोड करें"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
-msgstr "इसे भविष्य के एजेंट के लिए याद रखें"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12384,6 +12394,16 @@ msgstr "इस एजेंट ने अभी तक अपने कमां
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
 msgstr "इस एजेंट के लिए पहले आपका साइन इन करना ज़रूरी है — नीचे दी सूचना देखें।"
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
+msgstr "यह एजेंट {0} के ज़रिए चलता है, जो इंस्टॉल तो है पर चलता नहीं — इसका {1} खराब लगता है। Open Knowledge {2} {3} की एक निजी प्रति डाउनलोड कर सकता है (लगभग {4} MB, {5} से) जो आपके बाकी सिस्टम को नहीं छुएगी।"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

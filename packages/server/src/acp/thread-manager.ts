@@ -76,15 +76,20 @@ import { buildPromptBlocks } from './attachment-blocks.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
   AgentLaunchError,
+  brokenInterpreterHint,
+  declinedRepairHint,
   envPath,
   isPathQualified,
   preflightLaunch,
+  probeInterpreterHealth,
   type ResolvedLaunch,
   resolveCustomLaunch,
   resolveRegistryLaunch,
   rewriteLaunchToManagedRuntime,
   spawnAcpAgent,
   terminateAgentTree,
+  undeletableManagedRuntimeHint,
+  unrepairableManagedRuntimeHint,
   withLoginShellPath,
 } from './launch.ts';
 import {
@@ -98,10 +103,9 @@ import {
   findManagedRuntime,
   type ManagedRuntime,
   type ManagedRuntimeKind,
-  readRuntimeConsent,
+  quarantineManagedRuntime,
   runtimeDownloadSupported,
   runtimeForInterpreter,
-  writeRuntimeConsent,
 } from './managed-runtime.ts';
 import type { AcpPermissionStore } from './permissions.ts';
 import {
@@ -300,7 +304,6 @@ interface ThreadRecord {
   pendingRuntimeConsent: Map<
     string,
     {
-      runtime: ManagedRuntimeKind;
       resolve: (decision: 'granted' | 'declined' | 'timeout' | 'closed') => void;
       timer: ReturnType<typeof setTimeout>;
     }
@@ -419,15 +422,13 @@ export interface AcpThreadManagerOptions {
   ) => HarnessManagedMcpEntryHit | null | Promise<HarnessManagedMcpEntryHit | null>;
   /**
    * Test seam for the managed-runtime download path — override the install
-   * cache root, the download `fetch`, and the consent-store home so a test can
-   * drive the consent/download flow without touching the real `~/.ok` or the
-   * network. Unset in production (defaults resolve to `~/.ok/runtimes` +
-   * global `fetch` + `~/.ok`).
+   * cache root and the download `fetch` so a test can drive the
+   * consent/download flow without touching the real `~/.ok` or the network.
+   * Unset in production (defaults resolve to `~/.ok/runtimes` + global `fetch`).
    */
   runtimeInstall?: {
     root?: string;
     fetchImpl?: typeof fetch;
-    consentHome?: string;
   };
   /**
    * The user's login-shell PATH, consulted only after a PATH-resolved command
@@ -478,6 +479,14 @@ export class AcpThreadManager {
   private readonly unwatchedTurnKillMs: number;
   private readonly persistence: ThreadPersistenceStore;
   private readonly resolveLoginShellPath: () => Promise<string | null>;
+  /**
+   * Interpreters that answered `--version` cleanly, keyed by command + the PATH
+   * they were probed under — see {@link AcpThreadManager.ensureInterpreterRuns}.
+   * Healthy verdicts only, so a repaired Node is picked up without a restart;
+   * `retryThread` clears it alongside the login-shell memo so the user's retry
+   * re-checks an interpreter that broke after it was cached.
+   */
+  private readonly healthyInterpreters = new Set<string>();
   private destroyed = false;
   private initialized = false;
 
@@ -783,11 +792,12 @@ export class AcpThreadManager {
     }
     if (record.closed) return null;
 
-    // Ensure the launch command exists. If the interpreter (npx/uvx) is
-    // missing, offer to download a managed runtime (consent-gated) and rewrite
-    // the launch to use it; otherwise this throws an actionable install hint
-    // rather than letting the missing command surface as an opaque async
-    // `spawn ENOENT`.
+    // Ensure the launch command exists AND can actually run. If the
+    // interpreter (npx/uvx) is missing, or present but unable to start, offer
+    // to download a managed runtime (consent-gated) and rewrite the launch to
+    // use it; otherwise this throws an actionable install hint rather than
+    // letting the failure surface as an opaque async `spawn ENOENT` or a
+    // handshake that never completes.
     const launchable = await this.ensureLaunchable(record, launch);
     if (launchable === null) return null;
     launch = launchable;
@@ -852,6 +862,23 @@ export class AcpThreadManager {
         return;
       }
       const tail = record.stderrTail.slice(-10).join('\n');
+      // An exit reaching here is unexpected — the closed / archived / already-
+      // error cases returned above — so it is the kind of thing an operator
+      // reading a bug report needs, and `exited` alone doesn't reach the log
+      // the way a failure status does.
+      this.opts.log.warn(
+        {
+          threadId: record.info.threadId,
+          agentId: record.info.agent.id,
+          code,
+          signal,
+          // The shared helper, like every other failure path: the status
+          // detail is trimmed to 10 lines for the reader, but the log wants
+          // the whole tail an operator is going to grep.
+          machineDetail: stderrTailDetail(record),
+        },
+        '[acp-threads] agent exited unexpectedly',
+      );
       this.emitStatus(
         record,
         'exited',
@@ -967,10 +994,11 @@ export class AcpThreadManager {
   }
 
   /**
-   * Preflight the launch; on a command the inherited PATH can't resolve, try
-   * the login shell's PATH, then — for npx/uvx only — a managed runtime
-   * (already-installed → persisted-consent → interactive consent → download)
-   * and return the rewritten launch. Returns null only when the thread closed
+   * Make `launch` spawnable. Preflight it; on a command the inherited PATH
+   * can't resolve, try the login shell's PATH; then — for npx/uvx only — check
+   * that the interpreter we settled on can actually run, and route a missing OR
+   * broken one to a managed runtime (already-installed → persisted-consent →
+   * interactive consent → download). Returns null only when the thread closed
    * mid-flight; throws an actionable {@link AgentLaunchError} on decline /
    * unsupported platform / failed install (callers map it to an error status).
    */
@@ -978,6 +1006,7 @@ export class AcpThreadManager {
     record: ThreadRecord,
     launch: ResolvedLaunch,
   ): Promise<ResolvedLaunch | null> {
+    let candidate: ResolvedLaunch;
     try {
       await preflightLaunch(launch);
       // Preflight only proves the TOP-LEVEL command resolves. The adapter goes
@@ -986,25 +1015,183 @@ export class AcpThreadManager {
       // preflighted still needs the login shell's PATH, not just one that
       // failed. The merge is append-only: it can add resolutions, never
       // redirect a command that already resolved to a different binary.
-      return await this.withLoginShellPathIfEligible(launch);
+      candidate = await this.withLoginShellPathIfEligible(launch);
     } catch (err) {
       if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') throw err;
       // A terminal would have found it: adopt the login shell's PATH rather
       // than download a runtime (or blame the user) for a tool they have.
       const viaLoginShell = await this.retryWithLoginShellPath(launch);
-      if (viaLoginShell !== null) return viaLoginShell;
-      // Only npx/uvx have a managed fallback — a binary/custom command doesn't.
-      if (launch.kind !== 'npx' && launch.kind !== 'uvx') throw err;
-      const runtimeKind = runtimeForInterpreter(launch.kind);
-      // No download target for this platform → keep the original install hint.
-      if (!runtimeDownloadSupported(runtimeKind)) throw err;
-      const runtime = await this.provideManagedRuntime(record, runtimeKind);
-      if (runtime === null) return null; // closed mid-flight
-      const rewritten = rewriteLaunchToManagedRuntime(launch, runtime);
-      // The managed launcher must itself be executable before we spawn it.
-      await preflightLaunch(rewritten);
-      return rewritten;
+      if (viaLoginShell === null) return this.fallbackToManagedRuntime(record, launch, err);
+      candidate = viaLoginShell;
     }
+    if (record.closed) return null;
+    return this.ensureInterpreterRuns(record, candidate);
+  }
+
+  /**
+   * Guard the case preflight structurally cannot see: an npx/uvx interpreter
+   * that resolves and carries the execute bit yet dies the moment it runs (see
+   * {@link probeInterpreterHealth}). Both `ensureLaunchable` success paths land
+   * here — a login-shell-resolved interpreter can be just as broken as an
+   * inherited-PATH one.
+   *
+   * A broken interpreter goes STRAIGHT to the managed runtime, never back
+   * through the login-shell retry: that merge is append-only, so a shell PATH
+   * cannot shadow an interpreter that already resolves. Non-interpreter kinds
+   * pass through untouched — a binary/custom command has no managed fallback,
+   * so probing it could only add latency and a failure mode with no remedy.
+   */
+  private async ensureInterpreterRuns(
+    record: ThreadRecord,
+    launch: ResolvedLaunch,
+  ): Promise<ResolvedLaunch | null> {
+    if (launch.kind !== 'npx' && launch.kind !== 'uvx') return launch;
+    const brokenDetail = await this.probeInterpreterOnce(launch);
+    if (record.closed) return null;
+    if (brokenDetail === null) return launch;
+    this.opts.log.warn(
+      {
+        threadId: record.info.threadId,
+        agentId: record.info.agent.id,
+        cmd: launch.cmd,
+        kind: launch.kind,
+        detail: brokenDetail,
+      },
+      '[acp-threads] interpreter is installed but failed to run — offering the managed runtime',
+    );
+    const cause = new AgentLaunchError(
+      'command-not-found',
+      brokenInterpreterHint(launch, brokenDetail),
+    );
+    // Also the message a decline lands on: the stock decline hint says the
+    // interpreter "isn't installed", which is the one thing we just proved
+    // wrong — it is installed, it just can't run.
+    return this.fallbackToManagedRuntime(record, launch, cause, cause);
+  }
+
+  /**
+   * Route an npx/uvx interpreter that is missing or broken to the managed
+   * runtime, returning the rewritten launch. Returns null only when the thread
+   * closed mid-flight; rethrows `cause` when this launch kind or platform has
+   * no managed fallback, so the actionable hint reaches the user instead of a
+   * generic failure. `declineCause`, when given, replaces the generic
+   * "isn't installed" message the user would otherwise get for declining.
+   */
+  private async fallbackToManagedRuntime(
+    record: ThreadRecord,
+    launch: ResolvedLaunch,
+    cause: AgentLaunchError,
+    declineCause?: AgentLaunchError,
+  ): Promise<ResolvedLaunch | null> {
+    // Only npx/uvx have a managed fallback — a binary/custom command doesn't.
+    if (launch.kind !== 'npx' && launch.kind !== 'uvx') throw cause;
+    const runtimeKind = runtimeForInterpreter(launch.kind);
+    // No download target for this platform → keep the actionable hint.
+    if (!runtimeDownloadSupported(runtimeKind)) throw cause;
+    const runtime = await this.provideManagedRuntime(
+      record,
+      runtimeKind,
+      // The broken-interpreter path is the one that supplies its own decline
+      // message, and it is exactly the path whose offer needs the other copy.
+      declineCause === undefined ? 'missing' : 'broken',
+    ).catch((err: unknown) => {
+      // `command-not-found` out of the runtime provider is the decline hint
+      // (an install failure carries `install-failed`), so this swap can only
+      // ever replace that one message.
+      if (declineCause !== undefined && err instanceof AgentLaunchError) {
+        throw err.code === 'command-not-found' ? declineCause : err;
+      }
+      throw err;
+    });
+    if (runtime === null) return null; // closed mid-flight
+    const rewritten = rewriteLaunchToManagedRuntime(launch, runtime);
+    // The managed launcher must itself be executable before we spawn it.
+    await preflightLaunch(rewritten);
+    // And it must actually RUN. `findManagedRuntime`'s already-installed fast
+    // path admits a runtime on the same exists-plus-execute-bit evidence
+    // preflight uses, so one left damaged by an interrupted extraction or an
+    // earlier layout sails through — and spawning it puts the user back on the
+    // opaque "connection closed" with nothing left to try.
+    const brokenManaged = await this.probeInterpreterOnce(rewritten);
+    if (brokenManaged === null) return rewritten;
+    return this.repairManagedRuntime(record, launch, runtimeKind, brokenManaged);
+  }
+
+  /**
+   * Replace a damaged copy of OK's own runtime: discard it, offer a fresh
+   * download, and probe once more. This copy is OK's, not the user's, so the
+   * remedy is ours to carry out rather than a `rm -rf` instruction to follow.
+   *
+   * One attempt, structurally — this is the only caller of the quarantine and
+   * it never re-enters itself, so a runtime that arrives broken twice reports
+   * instead of looping. A later launch may try again, which is fine: every
+   * download is gated on the prompt, so nothing refetches behind the user.
+   */
+  private async repairManagedRuntime(
+    record: ThreadRecord,
+    launch: ResolvedLaunch,
+    runtimeKind: ManagedRuntimeKind,
+    detail: string,
+  ): Promise<ResolvedLaunch | null> {
+    const logContext = {
+      threadId: record.info.threadId,
+      agentId: record.info.agent.id,
+      runtime: runtimeKind,
+      detail,
+    };
+    this.opts.log.warn(
+      logContext,
+      "[acp-threads] OK's own managed runtime failed to run — replacing it",
+    );
+    // A failed quarantine leaves the damaged tree exactly where the install
+    // fast path will find it, so re-downloading would hand the same copy back
+    // and the retry's failure would name the wrong cause.
+    const cleared = await quarantineManagedRuntime(
+      runtimeKind,
+      this.opts.log,
+      this.opts.runtimeInstall?.root,
+    );
+    if (!cleared) {
+      throw new AgentLaunchError('install-failed', undeletableManagedRuntimeHint(launch, detail));
+    }
+
+    const fresh = await this.provideManagedRuntime(record, runtimeKind, 'damaged').catch(
+      (err: unknown) => {
+        if (err instanceof AgentLaunchError && err.code === 'command-not-found') {
+          throw new AgentLaunchError('command-not-found', declinedRepairHint(launch));
+        }
+        throw err;
+      },
+    );
+    if (fresh === null) return null; // closed mid-flight
+    const rewritten = rewriteLaunchToManagedRuntime(launch, fresh);
+    await preflightLaunch(rewritten);
+    const stillBroken = await this.probeInterpreterOnce(rewritten);
+    if (stillBroken === null) return rewritten;
+    this.opts.log.error(
+      { ...logContext, detail: stillBroken },
+      '[acp-threads] a freshly downloaded managed runtime failed to run',
+    );
+    throw new AgentLaunchError(
+      'install-failed',
+      unrepairableManagedRuntimeHint(rewritten, stillBroken),
+    );
+  }
+
+  /**
+   * {@link probeInterpreterHealth}, memoized per command + PATH. Healthy
+   * verdicts only: a failing probe is the slow path anyway, and re-running it
+   * lets a user who repairs their Node mid-session out of the managed runtime
+   * without restarting the server.
+   */
+  private async probeInterpreterOnce(launch: ResolvedLaunch): Promise<string | null> {
+    // Both fields, JSON-encoded rather than concatenated: a command or PATH
+    // holding the delimiter would otherwise let two launches share a verdict.
+    const healthKey = JSON.stringify([launch.cmd, envPath(launch.env) ?? '']);
+    if (this.healthyInterpreters.has(healthKey)) return null;
+    const detail = await probeInterpreterHealth(launch, undefined, this.opts.log);
+    if (detail === null) this.healthyInterpreters.add(healthKey);
+    return detail;
   }
 
   /**
@@ -1061,16 +1248,14 @@ export class AcpThreadManager {
   private async provideManagedRuntime(
     record: ThreadRecord,
     runtimeKind: ManagedRuntimeKind,
+    reason: 'missing' | 'broken' | 'damaged',
   ): Promise<ManagedRuntime | null> {
     const root = this.opts.runtimeInstall?.root;
     await cleanupManagedRuntimeStaging(runtimeKind, this.opts.log, root);
     const existing = await findManagedRuntime(runtimeKind, root).catch(() => null);
     if (existing !== null) return existing;
 
-    const persisted = (await readRuntimeConsent(this.opts.runtimeInstall?.consentHome))[
-      runtimeKind
-    ];
-    const decision = persisted ?? (await this.requestRuntimeConsent(record, runtimeKind));
+    const decision = await this.requestRuntimeConsent(record, runtimeKind, reason);
     if (decision === 'closed' || record.closed) return null;
     if (decision !== 'granted') {
       throw new AgentLaunchError('command-not-found', declinedRuntimeHint(runtimeKind));
@@ -1096,6 +1281,7 @@ export class AcpThreadManager {
   private requestRuntimeConsent(
     record: ThreadRecord,
     runtimeKind: ManagedRuntimeKind,
+    reason: 'missing' | 'broken' | 'damaged',
   ): Promise<'granted' | 'declined' | 'timeout' | 'closed'> {
     const requestId = crypto.randomUUID();
     const d = describeRuntime(runtimeKind);
@@ -1109,6 +1295,7 @@ export class AcpThreadManager {
       approxSizeMB: d.approxSizeMB,
       sourceHost: d.sourceHost,
       agentName: record.info.agent.name,
+      reason,
       ts: Date.now(),
     });
     return new Promise((resolvePromise) => {
@@ -1123,11 +1310,7 @@ export class AcpThreadManager {
         resolvePromise('timeout');
       }, RUNTIME_CONSENT_TIMEOUT_MS);
       timer.unref?.();
-      record.pendingRuntimeConsent.set(requestId, {
-        runtime: runtimeKind,
-        resolve: resolvePromise,
-        timer,
-      });
+      record.pendingRuntimeConsent.set(requestId, { resolve: resolvePromise, timer });
     });
   }
 
@@ -1135,7 +1318,7 @@ export class AcpThreadManager {
   respondRuntimeConsent(
     threadId: string,
     requestId: string,
-    outcome: { kind: 'granted'; remember?: boolean } | { kind: 'declined'; remember?: boolean },
+    outcome: { kind: 'granted' } | { kind: 'declined' },
   ): void {
     const t = this.mustGet(threadId);
     const pending = t.pendingRuntimeConsent.get(requestId);
@@ -1143,14 +1326,6 @@ export class AcpThreadManager {
     t.pendingRuntimeConsent.delete(requestId);
     clearTimeout(pending.timer);
     const decision = outcome.kind === 'granted' ? 'granted' : 'declined';
-    if (outcome.remember === true) {
-      void writeRuntimeConsent(
-        pending.runtime,
-        decision,
-        this.opts.log,
-        this.opts.runtimeInstall?.consentHome,
-      );
-    }
     this.appendEvent(t, {
       kind: 'runtime_consent_resolved',
       requestId,
@@ -1605,6 +1780,7 @@ export class AcpThreadManager {
     t.resumeInFlight = true;
     try {
       resetSharedLoginShellPathProvider();
+      this.healthyInterpreters.clear();
       // Before anything is torn down: an unknown agent (or an unreachable
       // registry) must reject the retry outright rather than leave the thread
       // half-dismantled.
@@ -2826,6 +3002,11 @@ export class AcpThreadManager {
           status,
           detail,
           reason: failure?.reason,
+          // The agent's own last words. `detail` is the user-facing summary
+          // ("initialize failed: ACP connection closed"), which names the
+          // symptom; the cause — a dyld abort, a missing API key, a stack
+          // trace — only ever appears here.
+          machineDetail: failure?.machineDetail,
         },
         '[acp-threads] thread failure status',
       );

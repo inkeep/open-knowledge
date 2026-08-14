@@ -329,6 +329,11 @@ msgstr "{0} permite que {1} actúe sin preguntar"
 msgid "{0} needs {1}"
 msgstr "{0} necesita {1}"
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr "{0} necesita reemplazo"
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8473,6 +8478,15 @@ msgstr "Abrir en un worktree"
 msgid "Open it there"
 msgstr "Abrirlo ahí"
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr "La copia propia de {0} de Open Knowledge está dañada y no arranca. Puede descargar una copia nueva de {1} {2} (unos {3} MB desde {4}) para reemplazarla."
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr "Abrir el enlace"
@@ -9715,10 +9729,6 @@ msgstr "Relevancia"
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "Recargar"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
-msgstr "Recordarlo para los próximos agentes"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12388,6 +12398,16 @@ msgstr "Este agente aún no ha anunciado sus comandos"
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
 msgstr "Este agente necesita que inicies sesión primero; mira el aviso de abajo."
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
+msgstr "Este agente funciona con {0}, que está instalado pero no arranca: su {1} parece estar dañado. Open Knowledge puede descargar una copia privada de {2} {3} (unos {4} MB desde {5}) que no tocará el resto de tu sistema."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

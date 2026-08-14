@@ -193,6 +193,9 @@ describe('parseThreadClientFrame', () => {
   });
 
   test('runtime_consent_response validates the granted/declined outcome', () => {
+    // `remember` is gone from the type but a pre-removal renderer still sends
+    // it. The frame must survive: rejecting it would park the launch forever
+    // on a grant the user did click.
     expect(
       parseThreadClientFrame(
         JSON.stringify({
@@ -204,7 +207,7 @@ describe('parseThreadClientFrame', () => {
       ),
     ).toMatchObject({
       op: 'runtime_consent_response',
-      outcome: { kind: 'granted', remember: true },
+      outcome: { kind: 'granted' },
     });
     expect(
       parseThreadClientFrame(
@@ -216,7 +219,7 @@ describe('parseThreadClientFrame', () => {
         }),
       ),
     ).toMatchObject({ outcome: { kind: 'declined' } });
-    // Unknown outcome kind, non-boolean remember, and missing ids all reject.
+    // Unknown outcome kind and missing ids reject.
     expect(
       parseThreadClientFrame(
         JSON.stringify({
@@ -224,16 +227,6 @@ describe('parseThreadClientFrame', () => {
           threadId: 't',
           requestId: 'c',
           outcome: { kind: 'maybe' },
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      parseThreadClientFrame(
-        JSON.stringify({
-          op: 'runtime_consent_response',
-          threadId: 't',
-          requestId: 'c',
-          outcome: { kind: 'granted', remember: 'yes' },
         }),
       ),
     ).toBeNull();

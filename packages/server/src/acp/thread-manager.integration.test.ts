@@ -23,7 +23,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
-import { getLogger } from '../logger.ts';
+import { getLogger, type PinoLogger } from '../logger.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
 import { ACP_ENVIRONMENT_NOTE, AcpThreadManager, MAX_QUEUED_PROMPTS } from './thread-manager.ts';
@@ -71,6 +71,7 @@ function makeManager(
     resolveLoginShellPath?: () => Promise<string | null>;
     agentPresenceBroadcaster?: AgentPresenceBroadcaster;
     sessionManager?: AgentSessionManager;
+    log?: PinoLogger;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -3246,4 +3247,152 @@ describe('AcpThreadManager agent presence', () => {
 
     await manager.closeThread(info.threadId);
   }, 45_000);
+});
+
+/**
+ * A thread's failure detail is what a bug report is diagnosed from, and the
+ * transcript that shows it to the user is neither collected into a diagnostic
+ * bundle nor guaranteed to survive (the user can delete a thread). The server
+ * log is, so an agent's own last words have to reach it explicitly — nothing
+ * else on these paths forwards them.
+ */
+function writeCrashingAgentEntry(localDir: string, id: string, stderrLine: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  // Dies before the handshake, the way an interpreter that can't load its own
+  // libraries does — the last thing it says is on stderr.
+  writeFileSync(agentPath, `process.stderr.write(${JSON.stringify(`${stderrLine}\n`)});\n`);
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+/**
+ * Agent that completes the handshake, then dies mid-session with something on
+ * stderr — the "it was working and then it wasn't" shape.
+ */
+function writeExitAfterReadyAgentEntry(
+  localDir: string,
+  id: string,
+  stderrLine: string,
+  dieFile: string,
+): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+import { existsSync } from 'node:fs';
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+// Dies only when the test says so, and with no request in flight. A timed
+// exit raced session setup: landing first, it failed the pending session/new,
+// which puts the thread in 'error' — a status whose exit is a known echo and
+// is deliberately not logged again.
+setInterval(() => {
+  if (!existsSync(${JSON.stringify(dieFile)})) return;
+  process.stderr.write(${JSON.stringify(stderrLine)} + '\\n');
+  process.exit(7);
+}, 20);
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+    } else if (msg.method === 'session/new') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'quitter-session' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+/** Logger that keeps every line so a test can assert on what an operator sees. */
+function capturingLog(sink: { obj: Record<string, unknown>; msg: string }[]): PinoLogger {
+  const record = (obj: unknown, msg?: unknown): void => {
+    if (typeof obj === 'string') sink.push({ obj: {}, msg: obj });
+    else sink.push({ obj: (obj ?? {}) as Record<string, unknown>, msg: String(msg ?? '') });
+  };
+  const self = {
+    fatal: record,
+    error: record,
+    warn: record,
+    info: record,
+    debug: record,
+    trace: record,
+    child: () => self,
+  };
+  return self as unknown as PinoLogger;
+}
+
+describe('agent failures reach the server log', () => {
+  test('an agent that dies before the handshake logs its last words', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+    writeCrashingAgentEntry(
+      localDir,
+      'crasher',
+      'dyld[5034]: Library not loaded: libicui18n.74.dylib',
+    );
+
+    const manager = makeManager(contentDir, localDir, { log: capturingLog(lines) });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'crasher' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      15_000,
+      'the thread to fail',
+    );
+
+    // The user-facing detail names only the symptom ("ACP connection closed");
+    // the cause rides on machineDetail, so the log line must carry that too.
+    const failureLine = lines.find((l) => l.msg.includes('thread failure status'));
+    expect(failureLine).toBeDefined();
+    expect(String(failureLine?.obj.detail)).not.toContain('libicui18n.74.dylib');
+    expect(String(failureLine?.obj.machineDetail)).toContain('libicui18n.74.dylib');
+  }, 30_000);
+
+  test('an agent that dies after going ready logs the unexpected exit', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+    const dieFile = join(localDir, 'die-now');
+    writeExitAfterReadyAgentEntry(localDir, 'quitter', 'agent ran out of memory', dieFile);
+
+    const manager = makeManager(contentDir, localDir, { log: capturingLog(lines) });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'quitter' } });
+    // Ready FIRST, then kill it: with no request in flight, the exit is the
+    // only thing that can move the status, so the assertion can't race.
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      'the agent to go ready',
+    );
+    writeFileSync(dieFile, 'now');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'exited',
+      15_000,
+      'the agent to exit',
+    );
+
+    // 'exited' is not a failure status, so nothing else would have logged it —
+    // yet an agent vanishing mid-session is exactly what a report is about.
+    const exitLine = lines.find((l) => l.msg.includes('agent exited unexpectedly'));
+    expect(exitLine).toBeDefined();
+    expect(exitLine?.obj.code).toBe(7);
+    expect(String(exitLine?.obj.machineDetail)).toContain('ran out of memory');
+  }, 30_000);
 });

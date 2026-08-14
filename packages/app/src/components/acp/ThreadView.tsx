@@ -78,7 +78,6 @@ import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -2860,7 +2859,6 @@ function RuntimeConsentPrompt({
 }): ReactNode {
   const { t } = useLingui();
   const client = getAgentThreadClient();
-  const [remember, setRemember] = useState(true);
   const downloadLabelId = useId();
 
   if (item.resolved === 'declined' || item.resolved === 'timeout') {
@@ -2939,30 +2937,31 @@ function RuntimeConsentPrompt({
     >
       <div className="mb-1 flex items-center gap-1.5 font-medium">
         <Download className="size-4 shrink-0" aria-hidden="true" />
-        <span>{t`${item.agentName} needs ${item.displayName}`}</span>
+        <span>
+          {item.reason === 'damaged'
+            ? t`${item.displayName} needs replacing`
+            : t`${item.agentName} needs ${item.displayName}`}
+        </span>
       </div>
       <p className="mb-2 text-muted-foreground text-xs">
-        {t`This agent runs through ${item.provides}, which isn't installed. Open Knowledge can download a private copy of ${item.displayName} ${item.version} (about ${item.approxSizeMB} MB from ${item.sourceHost}) that won't touch the rest of your system.`}
+        {item.reason === 'damaged'
+          ? // This copy is OK's own, so the user has nothing to repair and no
+            // reason to hear about their system interpreter.
+            t`Open Knowledge's own copy of ${item.displayName} is damaged and won't run. It can download a fresh copy of ${item.displayName} ${item.version} (about ${item.approxSizeMB} MB from ${item.sourceHost}) to replace it.`
+          : item.reason === 'broken'
+            ? // Telling someone whose interpreter is present-but-broken that it
+              // "isn't installed" sends them to install a second copy the broken
+              // one still shadows on PATH.
+              t`This agent runs through ${item.provides}, which is installed but won't run — its ${item.displayName} looks broken. Open Knowledge can download a private copy of ${item.displayName} ${item.version} (about ${item.approxSizeMB} MB from ${item.sourceHost}) that won't touch the rest of your system.`
+            : t`This agent runs through ${item.provides}, which isn't installed. Open Knowledge can download a private copy of ${item.displayName} ${item.version} (about ${item.approxSizeMB} MB from ${item.sourceHost}) that won't touch the rest of your system.`}
       </p>
-      <label
-        htmlFor={`runtime-consent-remember-${item.requestId}`}
-        className="mb-2 flex w-fit items-center gap-1.5 text-muted-foreground text-xs"
-      >
-        <Checkbox
-          id={`runtime-consent-remember-${item.requestId}`}
-          checked={remember}
-          onCheckedChange={(value) => setRemember(value === true)}
-          data-testid="agent-thread-runtime-consent-remember"
-        />
-        {t`Remember this for future agents`}
-      </label>
       <div className="flex flex-wrap gap-1.5">
         <Button
           type="button"
           size="sm"
           className="h-7 text-xs"
           onClick={() =>
-            client.respondRuntimeConsent(threadId, item.requestId, { kind: 'granted', remember })
+            client.respondRuntimeConsent(threadId, item.requestId, { kind: 'granted' })
           }
           data-testid="agent-thread-runtime-consent-allow"
         >
@@ -2974,7 +2973,7 @@ function RuntimeConsentPrompt({
           variant="outline"
           className="h-7 text-xs"
           onClick={() =>
-            client.respondRuntimeConsent(threadId, item.requestId, { kind: 'declined', remember })
+            client.respondRuntimeConsent(threadId, item.requestId, { kind: 'declined' })
           }
           data-testid="agent-thread-runtime-consent-decline"
         >

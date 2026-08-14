@@ -329,6 +329,11 @@ msgstr "{0} 允许 {1} 无需询问即可执行"
 msgid "{0} needs {1}"
 msgstr "{0} 需要 {1}"
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr "{0} 需要替换"
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8473,6 +8478,15 @@ msgstr "在 worktree 中打开"
 msgid "Open it there"
 msgstr "在那里打开"
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr "Open Knowledge 自己的 {0} 副本已损坏，无法运行。它可以下载一份新的 {1} {2}（约 {3} MB，来自 {4}）来替换它。"
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr "打开链接"
@@ -9715,10 +9729,6 @@ msgstr "相关度"
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "重新加载"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
-msgstr "为以后的智能体记住这个选择"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12388,6 +12398,16 @@ msgstr "此智能体尚未公布其命令"
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
 msgstr "这个智能体需要你先登录——请看下方的提示。"
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
+msgstr "这个智能体通过 {0} 运行，但它虽然已安装却无法运行——它的 {1} 似乎已损坏。Open Knowledge 可以下载一份 {2} {3} 的私有副本（约 {4} MB，来自 {5}），不会影响你系统的其余部分。"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

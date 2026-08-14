@@ -329,6 +329,11 @@ msgstr ""
 msgid "{0} needs {1}"
 msgstr ""
 
+#. placeholder {0}: item.displayName
+#: src/components/acp/ThreadView.tsx
+msgid "{0} needs replacing"
+msgstr ""
+
 #. placeholder {0}: selected.size
 #. placeholder {1}: projects.length
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -8469,6 +8474,15 @@ msgstr ""
 msgid "Open it there"
 msgstr ""
 
+#. placeholder {0}: item.displayName
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.version
+#. placeholder {3}: item.approxSizeMB
+#. placeholder {4}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge's own copy of {0} is damaged and won't run. It can download a fresh copy of {1} {2} (about {3} MB from {4}) to replace it."
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Open link"
 msgstr ""
@@ -9710,10 +9724,6 @@ msgstr ""
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
-msgstr ""
-
-#: src/components/acp/ThreadView.tsx
-msgid "Remember this for future agents"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -12383,6 +12393,16 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "This agent needs you to sign in first — see the notice below."
+msgstr ""
+
+#. placeholder {0}: item.provides
+#. placeholder {1}: item.displayName
+#. placeholder {2}: item.displayName
+#. placeholder {3}: item.version
+#. placeholder {4}: item.approxSizeMB
+#. placeholder {5}: item.sourceHost
+#: src/components/acp/ThreadView.tsx
+msgid "This agent runs through {0}, which is installed but won't run — its {1} looks broken. Open Knowledge can download a private copy of {2} {3} (about {4} MB from {5}) that won't touch the rest of your system."
 msgstr ""
 
 #. placeholder {0}: item.provides

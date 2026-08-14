@@ -1,6 +1,6 @@
 /**
- * Managed-runtime download path: checksum verification, atomic install,
- * fast-path reuse, and consent persistence. The download is exercised
+ * Managed-runtime download path: checksum verification, atomic install, and
+ * fast-path reuse. The download is exercised
  * end-to-end against a real `tar` extract of a synthetic runtime tree served
  * through a fake `fetch` — no network, but the archive → verify → extract →
  * rename → locate-launcher pipeline runs for real.
@@ -9,6 +9,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -27,11 +28,9 @@ import {
   describeRuntime,
   ensureManagedRuntime,
   findManagedRuntime,
-  type ManagedRuntimeKind,
+  quarantineManagedRuntime,
   RuntimeInstallError,
-  readRuntimeConsent,
   runtimeForInterpreter,
-  writeRuntimeConsent,
 } from './managed-runtime.ts';
 
 const log = getLogger('managed-runtime-test');
@@ -316,27 +315,54 @@ describe('ensureManagedRuntime', () => {
   });
 });
 
-describe('runtime consent persistence', () => {
-  test('round-trips a per-runtime decision and merges without clobbering', async () => {
-    const home = tmp();
-    expect(await readRuntimeConsent(home)).toEqual({});
-    await writeRuntimeConsent('node', 'granted', log, home);
-    expect(await readRuntimeConsent(home)).toEqual({ node: 'granted' });
-    await writeRuntimeConsent('uv', 'declined', log, home);
-    expect(await readRuntimeConsent(home)).toEqual({ node: 'granted', uv: 'declined' });
+describe('quarantineManagedRuntime', () => {
+  test('clears the way for a re-download and drops the damaged tree', async () => {
+    const stage = tmp();
+    const root = tmp();
+    const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
+    await ensureManagedRuntime('node', log, { root, fetchImpl: makeFetch(bytes, sha) });
+    expect(await findManagedRuntime('node', root)).not.toBeNull();
+
+    expect(await quarantineManagedRuntime('node', log, root)).toBe(true);
+
+    // Gone from the fast path, and nothing left behind for the staging sweep
+    // to trip over — the install-shaped name is the fallback, not the plan.
+    expect(await findManagedRuntime('node', root)).toBeNull();
+    expect(readdirSync(join(root, 'node'))).toHaveLength(0);
+    const again = await ensureManagedRuntime('node', log, {
+      root,
+      fetchImpl: makeFetch(bytes, sha),
+    });
+    expect(existsSync(again.kind === 'node' ? again.npxBin : again.uvxBin)).toBe(true);
   });
 
-  test('ignores an unparseable consent file', async () => {
-    const home = tmp();
-    writeFileSync(join(home, 'acp-runtime-consent.json'), '{ not json');
-    expect(await readRuntimeConsent(home)).toEqual({});
-  });
+  // Denying write on the parent is how this forces the rename to fail. Root
+  // ignores the mode, and Windows doesn't enforce it that way at all — on
+  // either the rename would succeed and the assertion would measure nothing.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports failure instead of pretending the tree is gone',
+    async () => {
+      const stage = tmp();
+      const root = tmp();
+      const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
+      await ensureManagedRuntime('node', log, { root, fetchImpl: makeFetch(bytes, sha) });
+      const kindDir = join(root, 'node');
+      // Renaming the version dir needs write permission on its parent. Denying
+      // it is the portable stand-in for the Windows EBUSY this guards: another
+      // agent holding the launcher open blocks the rename there. A false verdict
+      // would send the caller on to re-download, adopt the SAME damaged copy off
+      // the fast path, and blame the machine for a fresh copy that never landed.
+      chmodSync(kindDir, 0o500);
+      try {
+        expect(await quarantineManagedRuntime('node', log, root)).toBe(false);
+        expect(await findManagedRuntime('node', root)).not.toBeNull();
+      } finally {
+        chmodSync(kindDir, 0o700);
+      }
+    },
+  );
 
-  const kinds: ManagedRuntimeKind[] = ['node', 'uv'];
-  test.each(kinds)('overwrites a prior %s decision', async (kind) => {
-    const home = tmp();
-    await writeRuntimeConsent(kind, 'declined', log, home);
-    await writeRuntimeConsent(kind, 'granted', log, home);
-    expect((await readRuntimeConsent(home))[kind]).toBe('granted');
+  test('treats an already-absent runtime as cleared', async () => {
+    expect(await quarantineManagedRuntime('node', log, tmp())).toBe(true);
   });
 });

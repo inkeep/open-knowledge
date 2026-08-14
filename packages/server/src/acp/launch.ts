@@ -352,6 +352,169 @@ function missingCommandHint(launch: ResolvedLaunch): string {
   }
 }
 
+/**
+ * The launch-error detail for an npx/uvx interpreter that is installed but
+ * cannot RUN (see {@link probeInterpreterHealth}). Reaches the user on either
+ * dead end: a host with no managed runtime to fall back to, or a managed
+ * runtime the user declined. Distinct from {@link missingCommandHint}: the
+ * command is right there, so a "was not found" message sends the user hunting
+ * for an install they already have.
+ */
+export function brokenInterpreterHint(launch: ResolvedLaunch, detail: string): string {
+  // Switched whole, like `missingCommandHint`: the Homebrew/icu4c cause is
+  // Node-specific, and pasting it into a uv failure sends that user to inspect
+  // a runtime with nothing to do with it — the wrong-address problem this hint
+  // exists to fix.
+  const cause =
+    launch.kind === 'uvx'
+      ? 'That usually means its uv is broken. Reinstall or repair uv and try again.'
+      : 'That usually means its Node.js is broken — on macOS a common cause is a Homebrew `node` whose `icu4c` library was upgraded out from under it. Reinstall or repair Node.js and try again.';
+  return `\`${launch.cmd}\` is installed but failed to run (${detail}). ${cause}`;
+}
+
+/**
+ * The launch-error detail for a REPLACED copy of OK's own runtime still
+ * failing to run — the fallback's fallback, after the damaged copy was
+ * discarded and re-downloaded. Deliberately not {@link brokenInterpreterHint}:
+ * a verified archive that won't run twice in a row is not a broken system
+ * Node/uv, so pointing at Homebrew would send the user to repair something
+ * blameless.
+ */
+export function unrepairableManagedRuntimeHint(launch: ResolvedLaunch, detail: string): string {
+  const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
+  return `OK downloaded a fresh copy of ${runtime} and it still can't run (${detail}). Something on this machine is stopping it — antivirus, a security policy, or an unsupported CPU are the usual causes.`;
+}
+
+/**
+ * The launch-error detail for a damaged copy of OK's own runtime that could
+ * not be replaced: the rename that clears the way for a fresh download failed,
+ * which on Windows means another agent still holds files open inside the tree.
+ * Distinct from {@link unrepairableManagedRuntimeHint} because nothing was
+ * re-downloaded — claiming a fresh copy also failed would name the wrong
+ * culprit and send the user hunting for a machine-level cause that isn't there.
+ */
+export function undeletableManagedRuntimeHint(launch: ResolvedLaunch, detail: string): string {
+  const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
+  return `OK's own copy of ${runtime} is damaged (${detail}) and couldn't be replaced — another agent may still be using it. Close other agent threads and try again.`;
+}
+
+/**
+ * The launch-error detail for a user who declined the re-download of OK's own
+ * damaged runtime. Not the stock decline hint: that one says the interpreter
+ * isn't installed, when the actual state is that OK's copy is present and
+ * broken and the user just refused the fix.
+ */
+export function declinedRepairHint(launch: ResolvedLaunch): string {
+  const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
+  return `OK's own copy of ${runtime} is damaged and can't run this agent. Start the agent again to let OK download a fresh copy.`;
+}
+
+/** Cap on probe stderr retained while waiting for the verdict. */
+const PROBE_STDERR_MAX = 2_000;
+/** Cap on the stderr excerpt carried in a probe verdict (it reaches the user). */
+const PROBE_DETAIL_MAX = 300;
+
+/**
+ * Confirm a resolved npx/uvx interpreter can actually EXECUTE, by running it
+ * with `--version`.
+ *
+ * {@link preflightLaunch} proves only that the command file exists and carries
+ * the execute bit — which a fatally broken interpreter also does. A Homebrew
+ * `node` whose linked `icu4c` was upgraded out from under it aborts the instant
+ * it starts (`dyld: Library not loaded: …/libicui18n.NN.dylib` → SIGABRT), so
+ * the agent dies before the ACP handshake and the user sees only
+ * `initialize failed: ACP connection closed`. Catching it here lets the caller
+ * route to the managed runtime — the same remedy a MISSING interpreter already
+ * gets.
+ *
+ * Returns a short failure detail (signal or exit code, plus the first stderr
+ * line) when the probe crashes or exits non-zero, and `null` when it runs
+ * cleanly. A probe still alive at `timeoutMs` also counts as `null`: a slow
+ * `--version` is not the crash-on-startup this guards, and blocking every
+ * launch on it would be a worse regression than letting the real spawn proceed.
+ * `--version` is universal to npx/uvx, fast, network-free and side-effect-free
+ * (no package install). Spawned the way {@link spawnAcpAgent} spawns the real
+ * agent — same Windows command resolution, same `launch.env` — so the probe
+ * exercises the interpreter the launch actually will.
+ */
+export function probeInterpreterHealth(
+  launch: ResolvedLaunch,
+  timeoutMs = 5_000,
+  log?: PinoLogger,
+): Promise<string | null> {
+  const win = process.platform === 'win32';
+  const resolved = win ? resolveWindowsCommand(launch.cmd, envPath(launch.env)) : launch.cmd;
+  const wrap = win && /\.(cmd|bat)$/i.test(resolved);
+  const { cmd, args } = wrap
+    ? windowsCmdWrap(resolved, ['--version'])
+    : { cmd: resolved, args: ['--version'] };
+  return new Promise((settleProbe) => {
+    let child: ChildProcess;
+    try {
+      child = spawn(cmd, args, {
+        env: launch.env,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        shell: false,
+        // Same reason as the real agent spawn: an interpreter that hangs has
+        // usually already forked, and only a process GROUP kill reaches the
+        // fork. Without this a timed-out probe leaks the grandchild.
+        detached: !win,
+        windowsHide: true,
+        windowsVerbatimArguments: wrap,
+      });
+    } catch (err) {
+      settleProbe(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    let stderr = '';
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => {
+      if (stderr.length < PROBE_STDERR_MAX) stderr += chunk;
+    });
+    let settled = false;
+    const settle = (detail: string | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settleProbe(detail);
+    };
+    const timer = setTimeout(() => {
+      // Group kill, not `child.kill`: an npx that hangs has usually already
+      // forked, and signalling only the wrapper leaves the fork running.
+      terminateAgentTree(child, { graceMs: 0, forceWaitMs: 0 }).catch(() => {
+        // Best-effort: the verdict below stands either way.
+      });
+      // A timeout answers "healthy enough" and is otherwise indistinguishable
+      // from a clean run, so without this line an interpreter that hangs every
+      // launch spends the full budget invisibly and the operator sees only the
+      // downstream handshake failure.
+      log?.debug(
+        { cmd: launch.cmd, kind: launch.kind, timeoutMs },
+        '[acp-launch] interpreter health probe timed out — proceeding with the launch',
+      );
+      settle(null);
+    }, timeoutMs);
+    timer.unref?.();
+    child.on('error', (err) => settle(err.message));
+    child.on('exit', (code, signal) => {
+      if (signal === null && (code === null || code === 0)) {
+        settle(null);
+        return;
+      }
+      const firstStderrLine = stderr
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line !== '');
+      const reason = signal ?? `exit code ${code}`;
+      settle(
+        firstStderrLine !== undefined
+          ? `${reason}: ${firstStderrLine.slice(0, PROBE_DETAIL_MAX)}`
+          : reason,
+      );
+    });
+  });
+}
+
 /** Case-insensitive `PATH` lookup (Windows spells it `Path`), falling back to the process env. */
 export function envPath(env: Record<string, string>): string | undefined {
   for (const [k, v] of Object.entries(env)) {

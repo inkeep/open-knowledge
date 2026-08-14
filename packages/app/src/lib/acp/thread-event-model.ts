@@ -120,6 +120,8 @@ interface RenderedRuntimeConsent {
   approxSizeMB: number;
   sourceHost: string;
   agentName: string;
+  /** Absent on events persisted before the field existed — those were `missing`. */
+  reason: 'missing' | 'broken' | 'damaged';
   /** null while awaiting the user's answer. */
   resolved: 'granted' | 'declined' | 'timeout' | null;
   /**
@@ -351,6 +353,7 @@ export class ThreadRenderModelBuilder {
           approxSizeMB: event.approxSizeMB,
           sourceHost: event.sourceHost,
           agentName: event.agentName,
+          reason: event.reason ?? 'missing',
           resolved: null,
           install: null,
           progress: null,

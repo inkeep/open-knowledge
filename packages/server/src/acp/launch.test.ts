@@ -15,14 +15,19 @@ import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   AgentLaunchError,
+  brokenInterpreterHint,
+  declinedRepairHint,
   isPathQualified,
   mergedEnv,
   overlaySetsPath,
   preflightLaunch,
+  probeInterpreterHealth,
   type ResolvedLaunch,
   resolveWindowsCommand,
   spawnAcpAgent,
   terminateAgentTree,
+  undeletableManagedRuntimeHint,
+  unrepairableManagedRuntimeHint,
   windowsCmdWrap,
   withHostedAgentMarker,
   withLoginShellPath,
@@ -255,6 +260,207 @@ describe('preflightLaunch', () => {
     expect(err).toBeInstanceOf(AgentLaunchError);
     expect((err as AgentLaunchError).code).toBe('command-not-found');
     expect((err as AgentLaunchError).message).toContain(missing);
+  });
+});
+
+/**
+ * The gap preflight structurally cannot see: an interpreter that resolves and
+ * is executable, yet dies the moment it runs (a Homebrew `node`
+ * whose `icu4c` was upgraded out from under it aborts under dyld).
+ */
+describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
+  /** A fake `npx` on PATH that behaves however `body` says. */
+  const fakeNpx = (body: string): ResolvedLaunch => {
+    const dir = tmp();
+    writeFileSync(join(dir, 'npx'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return {
+      cmd: 'npx',
+      args: ['-y', '@fake/agent'],
+      env: { PATH: dir },
+      kind: 'npx',
+      pathFromOverlay: true,
+    };
+  };
+
+  test('an interpreter that answers --version is healthy', async () => {
+    await expect(probeInterpreterHealth(fakeNpx('exit 0'))).resolves.toBeNull();
+  });
+
+  test('a non-zero exit reports the code and the first stderr line', async () => {
+    const detail = await probeInterpreterHealth(fakeNpx('echo "cannot find module" >&2\nexit 3'));
+    expect(detail).toContain('exit code 3');
+    expect(detail).toContain('cannot find module');
+  });
+
+  // The reported shape: the dyld failure aborts the process, so there is no
+  // exit code at all — only a signal and the linker's message on stderr.
+  test('a crash reports the signal with the linker message', async () => {
+    const detail = await probeInterpreterHealth(
+      fakeNpx('echo "dyld[1]: Library not loaded: libicui18n.74.dylib" >&2\nkill -ABRT $$'),
+    );
+    expect(detail).toContain('SIGABRT');
+    expect(detail).toContain('libicui18n.74.dylib');
+  });
+
+  test('a failure with a silent stderr still reports the exit code', async () => {
+    expect(await probeInterpreterHealth(fakeNpx('exit 9'))).toBe('exit code 9');
+  });
+
+  test('an unspawnable command reports the spawn error rather than throwing', async () => {
+    const detail = await probeInterpreterHealth({
+      cmd: join(tmp(), 'not-a-real-npx'),
+      args: [],
+      env: {},
+      kind: 'npx',
+      pathFromOverlay: false,
+    });
+    expect(detail).not.toBeNull();
+  });
+
+  // A slow `--version` is not the crash this guards, and blocking every launch
+  // on it would be the worse regression — so a hang reads as healthy-enough.
+  test('a hung probe times out as healthy and does not leak the process', async () => {
+    const dir = tmp();
+    const beat = join(dir, 'heartbeat');
+    // A GRANDchild (the fixture shell backgrounds it), so it outlives a kill
+    // aimed at the direct child alone and dies only with the process group.
+    //
+    // It proves it stopped by ceasing to write, rather than by disappearing
+    // from a process check: an orphan reparents to init, and where init doesn't
+    // reap (a container's PID 1), a dead process lingers as a zombie that
+    // `kill(pid, 0)` still reports as alive. Verified on Linux — the group kill
+    // does land there; the process-existence check is what lies.
+    writeFileSync(
+      join(dir, 'npx'),
+      `#!/bin/sh\n(while : ; do echo tick >> ${beat}; /bin/sleep 0.05; done) &\nwait\n`,
+      { mode: 0o755 },
+    );
+    const launch: ResolvedLaunch = {
+      cmd: 'npx',
+      args: [],
+      env: { PATH: dir },
+      kind: 'npx',
+      pathFromOverlay: true,
+    };
+    expect(await probeInterpreterHealth(launch, 500)).toBeNull();
+    // It was running: otherwise this test would pass against a fixture that
+    // never started, proving nothing about the kill.
+    await waitFor(() => existsSync(beat), 5_000, 'the grandchild to start ticking');
+
+    // The kill is deliberately not awaited — the verdict must not wait on it —
+    // so allow a moment for the group signal to land, then require a quiet
+    // window with no new ticks.
+    const beats = (): number => readFileSync(beat, 'utf8').length;
+    let stopped = false;
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const before = beats();
+      await new Promise((r) => setTimeout(r, 400));
+      if (beats() === before) {
+        stopped = true;
+        break;
+      }
+    }
+    expect(stopped).toBe(true);
+  }, 20_000);
+});
+
+describe('brokenInterpreterHint', () => {
+  test('names Node.js for npx and points at the Homebrew icu4c cause', () => {
+    const hint = brokenInterpreterHint(
+      { cmd: 'npx', args: [], env: {}, kind: 'npx', pathFromOverlay: false },
+      'SIGABRT',
+    );
+    expect(hint).toContain('Node.js');
+    expect(hint).toContain('icu4c');
+    // "not found" would send the user after an install they already have.
+    expect(hint).not.toContain('was not found');
+  });
+
+  test('names uv for uvx, with no Node-specific cause pasted in', () => {
+    const hint = brokenInterpreterHint(
+      { cmd: 'uvx', args: [], env: {}, kind: 'uvx', pathFromOverlay: false },
+      'exit code 1',
+    );
+    expect(hint).toContain('uv');
+    // The Homebrew/icu4c story belongs to Node. Matching on the display name
+    // alone missed this: the offending clause spells it `node` in backticks.
+    expect(hint).not.toContain('Node.js');
+    expect(hint).not.toContain('node');
+    expect(hint).not.toContain('icu4c');
+  });
+
+  test("a replacement that still won't run blames the machine, not the user", () => {
+    const hint = unrepairableManagedRuntimeHint(
+      {
+        cmd: '/home/u/.ok/runtimes/node/bin/npx',
+        args: [],
+        env: {},
+        kind: 'npx',
+        pathFromOverlay: false,
+      },
+      'SIGABRT',
+    );
+    expect(hint).toContain('SIGABRT');
+    // The remedy is no longer homework: OK already replaced the copy, so what
+    // is left to say is what could still be stopping it.
+    expect(hint).not.toContain('delete that directory');
+    // The user did not install this one, so "reinstall or repair" is advice
+    // they cannot act on — and their system Node may be blameless.
+    expect(hint).not.toContain('Reinstall or repair');
+    expect(hint).not.toContain('icu4c');
+  });
+
+  // Symmetry with the sibling hint's two-branch coverage: testing one branch
+  // is how the Node-specific advice reached uv users in the first place.
+  test('the managed-runtime hints name uv for a uvx runtime', () => {
+    const uvx = {
+      cmd: '/home/u/.ok/runtimes/uv/uvx',
+      args: [],
+      env: {},
+      kind: 'uvx',
+      pathFromOverlay: false,
+    } as const;
+    for (const hint of [
+      unrepairableManagedRuntimeHint(uvx, 'SIGABRT'),
+      undeletableManagedRuntimeHint(uvx, 'SIGABRT'),
+      declinedRepairHint(uvx),
+    ]) {
+      expect(hint).toContain('uv');
+      expect(hint).not.toContain('Node.js');
+    }
+  });
+
+  // A quarantine that failed means nothing was re-downloaded. Reusing the
+  // fresh-copy wording here would send the user hunting for a machine-level
+  // cause when the actual blocker is another agent holding the tree open.
+  test('the un-replaceable hint does not claim a fresh copy was tried', () => {
+    const hint = undeletableManagedRuntimeHint(
+      {
+        cmd: '/home/u/.ok/runtimes/node/bin/npx',
+        args: [],
+        env: {},
+        kind: 'npx',
+        pathFromOverlay: false,
+      },
+      'SIGABRT',
+    );
+    expect(hint).toContain('damaged');
+    expect(hint).not.toContain('downloaded a fresh copy');
+  });
+
+  // Declining the repair must not reach for the stock decline hint, which says
+  // the interpreter isn't installed — OK's copy is installed, just damaged.
+  test('the declined-repair hint says damaged, not missing', () => {
+    const hint = declinedRepairHint({
+      cmd: '/home/u/.ok/runtimes/node/bin/npx',
+      args: [],
+      env: {},
+      kind: 'npx',
+      pathFromOverlay: false,
+    });
+    expect(hint).toContain('damaged');
+    expect(hint).not.toContain("isn't installed");
   });
 });
 

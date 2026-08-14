@@ -1939,6 +1939,21 @@
     "OETysD": [
       "Ainda não há páginas de índice. Os índices aparecem quando as páginas acumulam links de entrada no grafo."
     ],
+    "OJ4VDl": [
+      "Este agente roda pelo ",
+      ["0"],
+      ", que está instalado mas não executa: o ",
+      ["1"],
+      " dele parece estar quebrado. O Open Knowledge pode baixar uma cópia privada do ",
+      ["2"],
+      " ",
+      ["3"],
+      " (cerca de ",
+      ["4"],
+      " MB de ",
+      ["5"],
+      ") que não vai mexer no resto do seu sistema."
+    ],
     "OJOA7Z": ["⋯ ", ["0"], " linhas inalteradas"],
     "OJTOUj": ["Requer ", ["brand"], "."],
     "OJeiSH": ["Falha ao adicionar a propriedade"],
@@ -3517,6 +3532,7 @@
     "hZoBHK": ["Conteúdo inicial vazio"],
     "haHgQj": ["Caminho relativo copiado"],
     "habOU_": ["Falha ao atualizar a configuração de aprovação automática — ", ["detail"]],
+    "hadECI": [["0"], " precisa ser substituído"],
     "he3ygx": ["Copiar"],
     "hgF0al": ["Usar ", ["0"], " no modo claro ativo"],
     "hgf5io": ["Blob Run"],
@@ -3718,6 +3734,19 @@
     ],
     "jxtXZI": ["Instalar a CLI gh"],
     "k0dL2I": ["Reconectando ao serviço de agentes…"],
+    "k0jsmJ": [
+      "A cópia de ",
+      ["0"],
+      " do próprio Open Knowledge está danificada e não executa. Ele pode baixar uma cópia nova de ",
+      ["1"],
+      " ",
+      ["2"],
+      " (cerca de ",
+      ["3"],
+      " MB de ",
+      ["4"],
+      ") para substituí-la."
+    ],
     "k2fEi7": [
       "Os plugins de usuário são pessoais deste dispositivo — ligue ou desligue aqui. A escolha fica na sua configuração de usuário e nunca vai para o projeto. Cada plugin ativado ganha uma página própria em Plugins, na barra lateral de configurações."
     ],
@@ -4124,7 +4153,6 @@
     ],
     "ogAuyr": ["Voltar para a visualização do documento"],
     "ohUJJM": ["Plugins"],
-    "oi4zaa": ["Lembrar disso para os próximos agentes"],
     "ojGc_T": ["Abrir o comentário"],
     "omXJcU": ["Fechar as outras"],
     "onTlRk": ["Não deu para atualizar o compartilhamento de habilidades"],

@@ -1990,6 +1990,21 @@
     "OETysD": [
       "Pas encore de pages pivots. Les pivots apparaissent une fois que les pages accumulent des liens entrants dans le graphe."
     ],
+    "OJ4VDl": [
+      "Cet agent fonctionne via ",
+      ["0"],
+      ", qui est installé mais ne démarre pas : son ",
+      ["1"],
+      " semble cassé. Open Knowledge peut télécharger une copie privée de ",
+      ["2"],
+      " ",
+      ["3"],
+      " (environ ",
+      ["4"],
+      " Mo depuis ",
+      ["5"],
+      ") qui ne touchera pas au reste de votre système."
+    ],
     "OJOA7Z": ["⋯ ", ["0"], " lignes inchangées"],
     "OJTOUj": ["Nécessite ", ["brand"], "."],
     "OJeiSH": ["Échec de l'ajout de la propriété"],
@@ -3620,6 +3635,7 @@
     "hZoBHK": ["Contenu de départ vide"],
     "haHgQj": ["Chemin relatif copié"],
     "habOU_": ["Échec de la mise à jour du réglage d'approbation automatique — ", ["detail"]],
+    "hadECI": [["0"], " doit être remplacé"],
     "he3ygx": ["Copier"],
     "hgF0al": ["Utiliser ", ["0"], " pour le mode clair actif"],
     "hgf5io": ["Blob Run"],
@@ -3825,6 +3841,19 @@
     ],
     "jxtXZI": ["Installer la CLI gh"],
     "k0dL2I": ["Reconnexion au service d'agents…"],
+    "k0jsmJ": [
+      "La copie de ",
+      ["0"],
+      " propre à Open Knowledge est endommagée et ne démarre pas. Open Knowledge peut télécharger une nouvelle copie de ",
+      ["1"],
+      " ",
+      ["2"],
+      " (environ ",
+      ["3"],
+      " Mo depuis ",
+      ["4"],
+      ") pour la remplacer."
+    ],
     "k2fEi7": [
       "Les plugins utilisateur sont propres à cet appareil — activez-les ou désactivez-les ici. Ce choix réside dans votre configuration utilisateur et n'est jamais validé dans le projet. Chaque plugin activé obtient sa propre page sous Plugins dans la barre latérale des paramètres."
     ],
@@ -4237,7 +4266,6 @@
     ],
     "ogAuyr": ["Retour à la vue document"],
     "ohUJJM": ["Plugins"],
-    "oi4zaa": ["Mémoriser ce choix pour les prochains agents"],
     "ojGc_T": ["Ouvrir le commentaire"],
     "omXJcU": ["Fermer les autres"],
     "onTlRk": ["Impossible de mettre à jour le partage des compétences"],

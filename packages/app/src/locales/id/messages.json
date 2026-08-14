@@ -1693,6 +1693,21 @@
     "OETysD": [
       "Belum ada halaman pusat. Pusat muncul begitu halaman mengumpulkan tautan graf masuk."
     ],
+    "OJ4VDl": [
+      "Agen ini berjalan lewat ",
+      ["0"],
+      ", yang sudah terpasang tetapi tidak bisa jalan — ",
+      ["1"],
+      "-nya tampak rusak. Open Knowledge bisa mengunduh salinan pribadi ",
+      ["2"],
+      " ",
+      ["3"],
+      " (sekitar ",
+      ["4"],
+      " MB dari ",
+      ["5"],
+      ") yang tidak akan menyentuh bagian lain sistem Anda."
+    ],
     "OJOA7Z": ["⋯ ", ["0"], " baris tidak berubah"],
     "OJTOUj": ["Memerlukan ", ["brand"], "."],
     "OJeiSH": ["Gagal menambahkan properti"],
@@ -3090,6 +3105,7 @@
     "hZoBHK": ["Isi awal kosong"],
     "haHgQj": ["Jalur relatif disalin"],
     "habOU_": ["Gagal memperbarui pengaturan persetujuan otomatis — ", ["detail"]],
+    "hadECI": [["0"], " perlu diganti"],
     "he3ygx": ["Salin"],
     "hgF0al": ["Pakai ", ["0"], " untuk mode terang yang aktif"],
     "hgf5io": ["Blob Run"],
@@ -3288,6 +3304,19 @@
     ],
     "jxtXZI": ["Pasang CLI gh"],
     "k0dL2I": ["Menyambung ulang ke layanan agen…"],
+    "k0jsmJ": [
+      "Salinan ",
+      ["0"],
+      " milik Open Knowledge sendiri rusak dan tidak bisa berjalan. Open Knowledge dapat mengunduh salinan baru ",
+      ["1"],
+      " ",
+      ["2"],
+      " (sekitar ",
+      ["3"],
+      " MB dari ",
+      ["4"],
+      ") untuk menggantinya."
+    ],
     "k2fEi7": [
       "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Pilihan ini ada di konfigurasi pengguna Anda dan tidak pernah di-commit ke proyek. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
     ],
@@ -3657,7 +3686,6 @@
     ],
     "ogAuyr": ["Kembali ke tampilan dokumen"],
     "ohUJJM": ["Plugin"],
-    "oi4zaa": ["Ingat ini untuk agen berikutnya"],
     "ojGc_T": ["Buka komentar"],
     "omXJcU": ["Tutup yang lain"],
     "onTlRk": ["Berbagi keterampilan tidak bisa diperbarui"],
