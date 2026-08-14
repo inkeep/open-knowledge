@@ -1894,6 +1894,28 @@ describe('createServer() server-lock integration (V0-1)', () => {
     await server.destroy();
   });
 
+  test('acquire stamps the port=0 sentinel even when an explicit port is configured', async () => {
+    // The lock is acquired before any side effect, HTTP listen included, so at
+    // this point nothing is bound. `port` is the sentinel every consumer reads
+    // as "the listener is accepting": the desktop's spawn gate admits a lock as
+    // ready on `port > 0` and immediately opens a window against it. Stamping a
+    // configured port here would make that gate fire before the socket exists,
+    // so the port stays 0 until `updateServerLockPort` writes the bound one.
+    const server = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      port: 8080,
+      quiet: true,
+    });
+    await server.ready;
+
+    const lockPath = join(tmpDir, '.ok', LOCAL_DIR, 'server.lock');
+    const acquired = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(acquired.port).toBe(0);
+
+    await server.destroy();
+  });
+
   test('destroy() drains server.lock even when a shutdown phase throws (CC8)', async () => {
     const server = createServer({
       contentDir: tmpDir,

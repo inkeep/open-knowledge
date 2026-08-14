@@ -1105,7 +1105,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   // Acquire server lock BEFORE any side effects (shadow repo init, file watcher,
   // HTTP listen, etc.). Collides fast with another running server in the same
-  // project. Port may be 0 here — the CLI rewrites it post-listen via
+  // project. Port is always 0 here — the bound port is written post-listen via
   // `updateServerLockPort(lockDir, realPort)`.
   //
   // Anchored to projectDir, not contentDir: per-project runtime state lives at
@@ -1122,7 +1122,13 @@ export function createServer(options: ServerOptions): ServerInstance {
   const acpPermissions = new AcpPermissionStore(lockDir, getLogger('acp-permissions'));
 
   acquireServerLock(lockDir, {
-    port: options.port ?? 0,
+    // Always the sentinel, never `options.port` — this runs before listen, and
+    // `port > 0` is what every consumer reads as "the listener is accepting"
+    // (the desktop spawn gate opens a window on it). Stamping a configured port
+    // here advertised a socket that did not exist yet, so a project pinning
+    // `server.port` raced the bind while an ephemeral one held the gate
+    // correctly. The bound port lands post-listen via `updateServerLockPort`.
+    port: 0,
     worktreeRoot: projectDir,
     kind: options.lockKind ?? 'interactive',
     // Every server booted through `createServer` wires Hocuspocus + WS

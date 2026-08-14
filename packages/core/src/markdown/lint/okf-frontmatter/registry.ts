@@ -1,4 +1,3 @@
-
 import { compileAppliesTo } from '../applies-to.ts';
 import { validateFrontmatterSource } from '../frontmatter-validate.ts';
 import { isOkfRuleEnabled, type OkfRuleId, type OkfRuleToggles } from '../okf-rule-meta.ts';
