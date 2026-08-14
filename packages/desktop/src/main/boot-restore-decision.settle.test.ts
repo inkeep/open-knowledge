@@ -4,8 +4,9 @@ import { describe, expect, test } from 'vitest';
 // delivery has SETTLED, then reads the launch flag, then delegates to the pure
 // `bootRestoreDecision`. On macOS the `open-url` Apple Event is delivered
 // asynchronously and can land after the synchronous boot read, so the flag must
-// not be read until the settle await resolves — otherwise a cold-start share is
-// buried by the `lastOpenedProject` restore. These tests pin that contract.
+// not be read until the settle await resolves. Otherwise a cold-start share is
+// buried by whichever default it should have outranked: the clean-exit restore
+// snapshot, or `lastOpenedProject`. These tests pin that contract.
 import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
 import { registerProtocolHandler } from './url-scheme.ts';
 
@@ -140,7 +141,34 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
     });
   });
 
-  test('an update-relaunch snapshot still beats a URL delivered during the settle window', async () => {
+  test('no URL during the settle window still restores a non-empty snapshot', async () => {
+    const { control } = makeHandler();
+    const settle = manualSettle();
+
+    const decisionPromise = resolveBootRestoreDecision({
+      pendingRestore: [{ kind: 'project', projectPath: '/projects/a' }],
+      lastOpenedProject: '/projects/last',
+      optionHeld: false,
+      pathExists: () => true,
+      urlLaunchOwnsWindow: control.urlLaunchOwnsWindow,
+      waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
+    });
+
+    // The ordinary icon launch, through the coordinator. The launch flag is the
+    // single input that can now erase a whole session, so the coordinator must
+    // not infer a claim from anything else it holds: a settle that merely timed
+    // out, or the presence of a snapshot, must still restore every window.
+    settle.release();
+    const decision = await decisionPromise;
+
+    expect(decision).toEqual({
+      clearSnapshot: true,
+      action: 'restore',
+      windows: [{ kind: 'project', projectPath: '/projects/a' }],
+    });
+  });
+
+  test('a share delivered during the settle window suppresses a non-empty restore snapshot (action none)', async () => {
     const { control, deliver } = makeHandler();
     const settle = manualSettle();
 
@@ -153,19 +181,38 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
       waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
     });
 
-    // A share lands mid-settle, but the pure ranking is unchanged: the
-    // update-relaunch snapshot outranks a URL claim, through the coordinator too.
+    // A share lands mid-settle and claims the launch. It outranks the clean-exit
+    // snapshot, through the coordinator too, so the previous window set is NOT
+    // restored and the snapshot is still consumed (`clearSnapshot`).
     deliver(SHARE_URL);
     expect(control.urlLaunchOwnsWindow()).toBe(true);
 
     settle.release();
     const decision = await decisionPromise;
 
-    expect(decision).toEqual({
-      clearSnapshot: true,
-      action: 'restore',
-      windows: [{ kind: 'project', projectPath: '/projects/a' }],
+    expect(decision).toEqual({ clearSnapshot: true, action: 'none' });
+  });
+
+  test('a single-file URL delivered during the settle window suppresses a non-empty restore snapshot (action none)', async () => {
+    const { control, deliver } = makeHandler();
+    const settle = manualSettle();
+
+    const decisionPromise = resolveBootRestoreDecision({
+      pendingRestore: [{ kind: 'project', projectPath: '/projects/a' }],
+      lastOpenedProject: '/projects/last',
+      optionHeld: false,
+      pathExists: () => true,
+      urlLaunchOwnsWindow: control.urlLaunchOwnsWindow,
+      waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
     });
+
+    deliver(SINGLE_FILE_URL);
+    expect(control.urlLaunchOwnsWindow()).toBe(true);
+
+    settle.release();
+    const decision = await decisionPromise;
+
+    expect(decision).toEqual({ clearSnapshot: true, action: 'none' });
   });
 
   test('reads the launch flag STRICTLY AFTER the settle await resolves', async () => {

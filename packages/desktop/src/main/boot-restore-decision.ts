@@ -7,13 +7,14 @@ export interface BootRestoreInput {
   pathExists: (p: string) => boolean;
   /**
    * `true` when a launch-claiming URL that opens its own window has been seen
-   * this run — a single-file deep-link (`ok <file>` → `openknowledge://open?file=`)
-   * OR a valid share. The URL flush owns the initial window, so the boot path
-   * opens NO default window — restoring the previous project / Navigator
-   * alongside the URL-driven window both clutters the launch and races it for
-   * focus (the reported "two windows, one is the splash"). Ranked below the
-   * clean-exit window-restore snapshot (which must never be dropped) and above
-   * `lastOpenedProject` / Navigator.
+   * this run: a single-file deep-link (`ok <file>` → `openknowledge://open?file=`)
+   * or a valid share. The URL flush owns the initial window, so the boot path
+   * opens NO default window. Restoring the previous project / Navigator alongside
+   * the URL-driven window both clutters the launch and races it for focus (two
+   * overlapping windows, one of them the splash). Ranked ABOVE the clean-exit
+   * window-restore snapshot: an explicit file or share open is a deliberate "view
+   * just this" intent, so the prior session's windows stay closed. The snapshot
+   * is still consumed (`clearSnapshot`) so it cannot resurface on the next boot.
    */
   urlLaunch: boolean;
 }
@@ -24,19 +25,29 @@ export type BootRestoreDecision =
   | { clearSnapshot: boolean; action: 'navigator' }
   | { clearSnapshot: boolean; action: 'none' };
 
-// Pure boot-restore decision. A non-null `pendingRestore` means the previous
-// run exited cleanly and snapshotted its window set — every clean exit writes
-// one (normal quit, "Relaunch now" update, and install-on-quit alike), not just
-// update relaunches. It is always consumed (`clearSnapshot`) even when Option
-// suppresses the actual restore. A non-null-but-empty/all-missing snapshot
-// opens the Navigator and deliberately does NOT fall through to
-// `lastOpenedProject` — the relaunch is honored as "nothing was open" rather
-// than reopening a stale project. A null snapshot is the cold-boot path that
-// restores `lastOpenedProject`. When a single-file deep-link claims the
-// launch (`urlLaunch`), open no default window — the URL flush owns it.
+// Pure boot-restore decision. Priority order: a launch-claiming URL first, then
+// a surviving clean-exit snapshot, then `lastOpenedProject`, then Navigator.
+//
+// When a launch-claiming URL owns the window (`urlLaunch`, a single-file
+// deep-link or a valid share), open no default window: the URL flush owns the
+// initial window set, so restoring the previous project / Navigator on top would
+// only clutter and race it. A non-null `pendingRestore` means the previous run
+// exited cleanly and snapshotted its window set. Every clean exit writes one
+// (normal quit, "Relaunch now" update, and install-on-quit alike), not just
+// update relaunches. It is always consumed (`clearSnapshot`) even when Option or
+// a URL launch suppresses the actual restore. A non-null-but-empty/all-missing
+// snapshot opens the Navigator and deliberately does NOT fall through to
+// `lastOpenedProject`: the relaunch is honored as "nothing was open" rather than
+// reopening a stale project. A null snapshot is the cold-boot path that restores
+// `lastOpenedProject`.
 export function bootRestoreDecision(input: BootRestoreInput): BootRestoreDecision {
   const { pendingRestore, lastOpenedProject, optionHeld, pathExists, urlLaunch } = input;
   const clearSnapshot = pendingRestore !== null;
+
+  if (urlLaunch) {
+    return { clearSnapshot, action: 'none' };
+  }
+
   // Filter each entry by whether its target still exists on disk — a project
   // folder or loose file deleted/moved since the snapshot is silently skipped
   // (`windowRestoreKey` is the project path or the canonical file path). The
@@ -50,9 +61,6 @@ export function bootRestoreDecision(input: BootRestoreInput): BootRestoreDecisio
 
   if (restorable.length > 0) {
     return { clearSnapshot, action: 'restore', windows: restorable };
-  }
-  if (urlLaunch) {
-    return { clearSnapshot, action: 'none' };
   }
   if (
     pendingRestore === null &&
@@ -159,9 +167,11 @@ export interface SettledBootRestoreInput extends Omit<BootRestoreInput, 'urlLaun
  * cold-start URL delivery has settled, then reads the launch flag and delegates
  * to the pure `bootRestoreDecision`. This closes the ordering race where the
  * boot path read `urlLaunchOwnsWindow` before the macOS Apple Event carrying a
- * share was delivered — leaving a cold-start share buried by the
- * `lastOpenedProject` restore. The producer (OS event delivery) cannot be
- * ordered from here, so the barrier lives on this consumer boundary.
+ * share was delivered, leaving a cold-start share buried by whichever default
+ * it should have outranked: the clean-exit window-restore snapshot (the common
+ * case, since every clean quit writes one) or `lastOpenedProject`. The producer
+ * (OS event delivery) cannot be ordered from here, so the barrier lives on this
+ * consumer boundary.
  */
 export async function resolveBootRestoreDecision(
   input: SettledBootRestoreInput,

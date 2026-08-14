@@ -142,8 +142,9 @@ describe('bootRestoreDecision', () => {
     expect(decision).toEqual({ clearSnapshot: false, action: 'navigator' });
   });
 
-  // urlLaunch — a single-file deep-link (`ok <file>`) claims the launch, so the
-  // boot path opens NO default window (the URL flush owns it).
+  // urlLaunch: a launch-claiming URL (single-file deep-link or valid share) owns
+  // the window, so the boot path opens NO default window (the URL flush owns it),
+  // outranking even a non-empty snapshot.
   test('urlLaunch suppresses lastOpened restore (action none)', () => {
     const decision = bootRestoreDecision({
       pendingRestore: null,
@@ -166,10 +167,15 @@ describe('bootRestoreDecision', () => {
     expect(decision).toEqual({ clearSnapshot: false, action: 'none' });
   });
 
-  test('urlLaunch does NOT override a snapshot restore (snapshot wins)', () => {
-    // A real update relaunch carries no deep-link, so this combo is theoretical
-    // — but the restore must never be dropped, so the snapshot ranks above
-    // urlLaunch.
+  test('urlLaunch overrides a non-empty snapshot restore (action none, snapshot still consumed)', () => {
+    // An explicit file or share open is a deliberate "view just this" intent, so
+    // it wins over the clean-exit snapshot and the previous session's windows
+    // stay closed. The snapshot is still consumed (`clearSnapshot`) so it cannot
+    // resurface on the next boot.
+    //
+    // The only case here that pins that ranking: rank the snapshot first again
+    // and this is the one assertion that flips (to `restore`). Don't fold it
+    // into the Option-held sibling below, which passes under either ordering.
     const decision = bootRestoreDecision({
       pendingRestore: [proj('/projects/a'), proj('/projects/b')],
       lastOpenedProject: '/projects/last',
@@ -177,11 +183,23 @@ describe('bootRestoreDecision', () => {
       pathExists: existsIn(['/projects/a', '/projects/b']),
       urlLaunch: true,
     });
-    expect(decision).toEqual({
-      clearSnapshot: true,
-      action: 'restore',
-      windows: [proj('/projects/a'), proj('/projects/b')],
+    expect(decision).toEqual({ clearSnapshot: true, action: 'none' });
+  });
+
+  test('urlLaunch with the Option key held still suppresses restore (action none)', () => {
+    // Two suppressors at once. Neither cancels the other and neither promotes
+    // the snapshot: the boot opens nothing and still consumes it. Says nothing
+    // about the URL-vs-snapshot ranking, since Option already empties
+    // `restorable` and this passes under either ordering. See the sibling above
+    // for that guard.
+    const decision = bootRestoreDecision({
+      pendingRestore: [proj('/projects/a'), proj('/projects/b')],
+      lastOpenedProject: '/projects/last',
+      optionHeld: true,
+      pathExists: existsIn(['/projects/a', '/projects/b']),
+      urlLaunch: true,
     });
+    expect(decision).toEqual({ clearSnapshot: true, action: 'none' });
   });
 });
 

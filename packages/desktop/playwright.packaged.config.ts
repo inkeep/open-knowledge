@@ -24,8 +24,14 @@ import { defineConfig } from '@playwright/test';
  * is the smallest set that proves a DMG boots, reaches the renderer, and can
  * complete the first-run flow. Widening or narrowing it is a deliberate act —
  * `tests/unit/playwright-packaged-config.test.ts` pins the list.
+ *
+ * `cold-single-file-launch.e2e.ts` is here because it is packaged-ONLY in a
+ * stronger sense than the rest: it starts the app through Launch Services
+ * rather than launching Electron itself, so there is no unpackaged shape of it
+ * to run. It is the only tier that observes the cold Apple-Event boot path.
  */
 export const PACKAGED_SMOKE_SUBSET = [
+  'cold-single-file-launch.e2e.ts',
   'consent-dialog.e2e.ts',
   'create-new-project.e2e.ts',
   'mcp-wiring.e2e.ts',

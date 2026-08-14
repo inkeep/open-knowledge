@@ -17,11 +17,13 @@ describe('playwright.packaged.config', () => {
     // makes the gate weaker than the spec says it is. Either direction should
     // require editing this assertion on purpose.
     expect([...PACKAGED_SMOKE_SUBSET]).toEqual([
+      'cold-single-file-launch.e2e.ts',
       'consent-dialog.e2e.ts',
       'create-new-project.e2e.ts',
       'mcp-wiring.e2e.ts',
     ]);
     expect(packagedConfig.testMatch).toEqual([
+      '**/cold-single-file-launch.e2e.ts',
       '**/consent-dialog.e2e.ts',
       '**/create-new-project.e2e.ts',
       '**/mcp-wiring.e2e.ts',

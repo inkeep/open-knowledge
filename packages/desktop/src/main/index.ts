@@ -2746,12 +2746,28 @@ async function openEphemeralFile(filePath: string): Promise<void> {
   try {
     plan = prepareSingleFileOpen(filePath);
   } catch (err) {
+    // The dialog is the user's copy; this is the operator's. Without it a
+    // "launched `ok <file>` and got the Navigator" report has no trace naming
+    // which file was attempted or which error class fired, while the sibling
+    // catch below is fully diagnosable. `warn` rather than `error` because the
+    // common cause is a file the user should not have opened (missing, or not
+    // markdown), not a fault in the app.
+    getLogger('project').warn({ file: filePath, err }, 'single-file open could not be prepared');
     // Typed user-facing errors (missing / not-a-file / not-markdown) render a
     // native dialog rather than a stack trace.
     dialog.showErrorBox(
       'Cannot open this file',
       `${filePath}\n\n${err instanceof Error ? err.message : String(err)}`,
     );
+    // Same zero-window fallback as the create-window catch below. The launch
+    // claim is recorded when the URL is parsed, before any window exists, so a
+    // cold `ok <file>` has already suppressed the boot restore by the time this
+    // throws. Without the fallback the app is left running with no window at
+    // all, which off macOS is unrecoverable: `window-all-closed` fires only
+    // when a window closes, and none was ever created.
+    if (BrowserWindow.getAllWindows().length === 0) {
+      openNavigator();
+    }
     return;
   }
 
@@ -7468,6 +7484,16 @@ function bootPrimaryInstance(): void {
         }
         return 'connect';
       }
+      // Neither remaining choice opens a window, and a valid share claims the
+      // launch at parse time, before any window exists, so a cold launch has
+      // already suppressed its boot restore by the time this is answered.
+      // Declining would otherwise leave the app running with no window at all,
+      // which off macOS is unrecoverable: `window-all-closed` fires only when a
+      // window closes, and none was ever created. Same recovery as the Connect
+      // branch above.
+      if (BrowserWindow.getAllWindows().length === 0) {
+        openNavigator();
+      }
       if (response === 1) {
         // Route through the outbound-scheme allowlist rather than calling
         // shell.openExternal directly: sharedUrl comes from an untrusted deep
@@ -7732,16 +7758,21 @@ function bootPrimaryInstance(): void {
       applyHarvestedAuthSock(process.env, await authSockHarvest, shellEnvLogger);
 
       // Every project open spawns a NEW editor window. Boot restore order:
-      //   1. A clean exit left a `pendingWindowRestore` snapshot — open EVERY
-      //      project that was open before, not just the last one. The snapshot
-      //      is consumed unconditionally (cleared to null + persisted) before
-      //      any window opens, so a crash mid-restore can't loop it. A
-      //      non-null-but-empty/all-missing snapshot opens the Navigator and
-      //      deliberately does NOT fall through to `lastOpenedProject` — the
-      //      relaunch is honored as "nothing was open" rather than reopening a
-      //      stale project.
-      //   2. Otherwise restore `lastOpenedProject` into one editor window.
-      //   3. Holding Option (`--navigator`) or having nothing to restore
+      //   1. A launch-claiming single-file or share URL owns the initial window
+      //      set, so no default restore window opens. Any snapshot is still
+      //      consumed on this path (cleared to null + persisted like every
+      //      other), so the suppressed window set is discarded permanently
+      //      rather than held back for the next boot.
+      //   2. Otherwise, a clean exit left a `pendingWindowRestore` snapshot —
+      //      open EVERY project that was open before, not just the last one.
+      //      The snapshot is consumed unconditionally (cleared to null +
+      //      persisted) before any window opens, so a crash mid-restore can't
+      //      loop it. A non-null-but-empty/all-missing snapshot opens the
+      //      Navigator and deliberately does NOT fall through to
+      //      `lastOpenedProject` — the relaunch is honored as "nothing was
+      //      open" rather than reopening a stale project.
+      //   3. Otherwise restore `lastOpenedProject` into one editor window.
+      //   4. Holding Option (`--navigator`) or having nothing to restore
       //      opens the Navigator instead.
       const decision = await resolveBootRestoreDecision({
         pendingRestore: appState.pendingWindowRestore,
@@ -7757,21 +7788,33 @@ function bootPrimaryInstance(): void {
         urlLaunchOwnsWindow: protocolControl.urlLaunchOwnsWindow,
         waitForUrlLaunchSettled: protocolControl.waitForUrlLaunchSettled,
       });
+      // Size of the snapshot this boot is about to consume, read BEFORE the
+      // clear below overwrites it. On the URL-claim path the snapshot is
+      // discarded without being restored, so this is the only record of how
+      // much the launch threw away.
+      const snapshotWindowCount = appState.pendingWindowRestore?.length ?? 0;
       // Field signal distinguishing "a URL owned the launch" from "restored
       // despite an inbound share" — the settled flag/decision pair is otherwise
-      // unobservable outside a debugger.
+      // unobservable outside a debugger. Carrying the count keeps a suppressed
+      // boot (`action: 'none'`) distinguishable from one that simply had
+      // nothing to restore.
       getLogger('startup').info(
-        { urlLaunch: protocolControl.urlLaunchOwnsWindow(), action: decision.action },
+        {
+          urlLaunch: protocolControl.urlLaunchOwnsWindow(),
+          action: decision.action,
+          snapshotWindowCount,
+        },
         'boot-restore decision',
       );
       if (decision.clearSnapshot) {
         appState = { ...appState, pendingWindowRestore: null };
         if (!saveAppState(appState)) {
           // Persisting the cleared snapshot failed, so it may replay on the
-          // next boot. The existsSync filter limits the blast radius to
-          // projects that still exist on disk.
+          // next boot. This is the raw entry count: the replaying boot re-runs
+          // the existsSync filter, which limits the blast radius to projects
+          // that still exist on disk.
           console.warn('[main] failed to persist cleared window-restore snapshot', {
-            windowCount: decision.action === 'restore' ? decision.windows.length : 0,
+            windowCount: snapshotWindowCount,
           });
         }
       }

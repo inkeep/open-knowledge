@@ -61,19 +61,16 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
   test.skip(!DARWIN, 'Deep-link URL scheme is macOS-only in v0 (D51 NOT NOW).');
   test.skip(!TARGET.exists, TARGET.missingReason);
 
-  // Explicit visibility of the coverage gap — appears in test-run output as
-  // a named skip so the missing coverage can't be overlooked when scanning
-  // CI logs (signed DMG + Launch Services binding required).
-  test.skip('cold-start Apple-Event delivery — deferred until signed DMG enables Launch Services binding', () => {
-    // Intentionally empty. Implementation requires:
-    //   1. Signed + notarized DMG so macOS Launch Services binds
-    //      `openknowledge://` to this bundle instead of the generic
-    //      Electron shell.
-    //   2. A harness that fires `open openknowledge://...` against a
-    //      not-yet-running installed .app (i.e. no `_electron.launch`
-    //      pre-boot) and asserts the queue-then-flush path catches the
-    //      Apple Event that fires before `whenReady`.
-  });
+  // Cold-start Apple-Event delivery is covered by
+  // `cold-single-file-launch.e2e.ts`, which runs in the packaged tier.
+  //
+  // That coverage was long deferred on the belief that it needed a signed +
+  // notarized DMG so Launch Services would bind `openknowledge://` to this
+  // bundle rather than the generic Electron shell. Naming the bundle directly
+  // (`open -a <bundle> <target>`) sidesteps scheme resolution entirely, and a
+  // document open involves no scheme at all — so an ad-hoc-signed local build
+  // delivers real `open-file` and `open-url` Apple Events. Signing gates
+  // Gatekeeper, not Apple-Event delivery.
 
   test('open(1) shell-out post-launch routes extension-less docName to renderer hash', async ({
     captureStderrFor,
