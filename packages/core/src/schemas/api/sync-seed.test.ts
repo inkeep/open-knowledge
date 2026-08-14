@@ -7,6 +7,8 @@ import {
   PushPermissionSchema,
   SeedApplyRequestSchema,
   SeedApplySuccessSchema,
+  SeedInstallPackSkillRequestSchema,
+  SeedInstallPackSkillSuccessSchema,
   SeedPlanSuccessSchema,
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
@@ -475,6 +477,28 @@ describe('SeedApplySuccessSchema', () => {
   });
   test('rejects missing result field', () => {
     expect(SeedApplySuccessSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('SeedInstallPackSkill schemas', () => {
+  test('require a pack id and report created-vs-existing skills', () => {
+    expect(SeedInstallPackSkillRequestSchema.safeParse({ packId: 'okf' }).success).toBe(true);
+    expect(SeedInstallPackSkillRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      SeedInstallPackSkillSuccessSchema.safeParse({
+        installedHosts: ['Claude Code'],
+        skills: [{ name: 'okf-knowledge-base', created: true }],
+      }).success,
+    ).toBe(true);
+  });
+
+  test('rejects incomplete skill results', () => {
+    expect(
+      SeedInstallPackSkillSuccessSchema.safeParse({
+        installedHosts: [],
+        skills: [{ name: 'okf-knowledge-base' }],
+      }).success,
+    ).toBe(false);
   });
 });
 

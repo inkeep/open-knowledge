@@ -39,7 +39,12 @@ import {
 import { classifyFsPath, normalizeFsPath } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
-import { extractPageIcon, extractPageTitle } from './page-identity.ts';
+import {
+  extractPageDescription,
+  extractPageIcon,
+  extractPageTitle,
+  extractPageType,
+} from './page-identity.ts';
 import { toPosix } from './path-utils.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
 import { getMeter, withSpan } from './telemetry.ts';
@@ -58,7 +63,18 @@ type WatcherBackend = 'parcel' | 'chokidar';
 // Subset of DiskEvent that classifyEvents emits — markdown-only.
 type MarkdownDiskEvent =
   | { kind: 'create'; path: string; docName: string; content: string }
-  | { kind: 'update'; path: string; docName: string; content: string }
+  | {
+      kind: 'update';
+      path: string;
+      docName: string;
+      content: string;
+      /** Rendered index fields before this update replaced the cached entry. */
+      previousIndexedFields?: {
+        title?: string;
+        description?: string;
+        type?: string;
+      };
+    }
   | { kind: 'delete'; path: string; docName: string }
   | {
       kind: 'rename';
@@ -155,6 +171,15 @@ export interface FileIndexEntry {
    */
   title?: string;
   icon?: string;
+  /**
+   * Frontmatter `description` and `type`, cached on the same terms as `title`:
+   * derived from content already in hand, never a extra read. The generated
+   * root index groups by `type` and renders `description`, and it rebuilds on
+   * every qualifying write — re-reading every document per rebuild is the cost
+   * this avoids. Both stay `undefined` when the frontmatter omits them.
+   */
+  description?: string;
+  type?: string;
 }
 
 export interface FolderIndexEntry {
@@ -173,8 +198,18 @@ export interface FolderIndexEntry {
 function derivePageMeta(
   content: string,
   docName: string,
-): { title: string; icon: string | undefined } {
-  return { title: extractPageTitle(content, docName), icon: extractPageIcon(content) };
+): {
+  title: string;
+  icon: string | undefined;
+  description: string | undefined;
+  type: string | undefined;
+} {
+  return {
+    title: extractPageTitle(content, docName),
+    icon: extractPageIcon(content),
+    description: extractPageDescription(content),
+    type: extractPageType(content),
+  };
 }
 
 /**
@@ -817,8 +852,19 @@ export function isSelfWrite(filePath: string, hash: string): boolean {
   const queue = writeTracker.get(filePath);
   if (!queue) return false;
   const idx = queue.findIndex((e) => e.hash === hash);
-  if (idx < 0) return false;
-  queue.splice(idx, 1);
+  if (idx < 0) {
+    // The file has moved to bytes we did not author. Any older registrations
+    // for this path describe writes that the filesystem has already passed,
+    // even when a backend coalesced away their individual events. Retaining
+    // them could misclassify a later external edit that happens to restore
+    // those bytes as one of our own writes.
+    writeTracker.delete(filePath);
+    return false;
+  }
+  // Reaching a later queued hash also proves every earlier registered write
+  // has been observed or coalesced. Keep only registrations for writes that
+  // were made after the matching one.
+  queue.splice(0, idx + 1);
   if (queue.length === 0) writeTracker.delete(filePath);
   return true;
 }
@@ -1440,7 +1486,25 @@ export async function handleRawEvents(
       );
     }
   }
-  const fileEvents = rescuedCreates.length > 0 ? safeEvents.concat(rescuedCreates) : safeEvents;
+  // Linux can collapse `rm -r folder` to one unlinkDir event. Re-expand that
+  // event from the last trustworthy file-index snapshot so descendants leave
+  // every downstream index even when the backend emitted no per-file unlink.
+  // Explicit child deletes already present in the batch win, and the normal
+  // classifier handles rename pairing when the folder was moved rather than
+  // destroyed.
+  const batchPaths = new Set(safeEvents.map((event) => event.path));
+  const collapsedDeletes: RawFileEvent[] = [];
+  for (const folderEvent of folderEvents) {
+    if (folderEvent.kind !== 'folder-delete') continue;
+    const prefix = `${folderEvent.relativePath}/`;
+    for (const [indexedPath, entry] of fileIndex) {
+      if (!indexedPath.startsWith(prefix) || batchPaths.has(entry.canonicalPath)) continue;
+      batchPaths.add(entry.canonicalPath);
+      collapsedDeletes.push({ type: 'delete', path: entry.canonicalPath });
+    }
+  }
+
+  const fileEvents = safeEvents.concat(rescuedCreates, collapsedDeletes);
 
   const mdEvents = fileEvents.filter((e) => isSupportedDocFile(e.path));
   const assetEvents = fileEvents.filter((e) =>
@@ -1482,6 +1546,19 @@ export async function handleRawEvents(
   for (const event of diskEvents) {
     let isSelf = false;
 
+    const previousIndexedFields =
+      event.kind === 'update'
+        ? (() => {
+            const previous = fileIndex.get(event.docName);
+            if (previous?.kind !== 'markdown') return undefined;
+            return {
+              title: previous.title,
+              description: previous.description,
+              type: previous.type,
+            };
+          })()
+        : undefined;
+
     if (event.kind !== 'delete' && event.kind !== 'rename') {
       const hash = contentHash(event.content);
       let checkPath = event.path;
@@ -1513,6 +1590,11 @@ export async function handleRawEvents(
       }
       isSelf = isSelfWrite(checkPath, hash);
     }
+
+    const dispatchedEvent =
+      event.kind === 'update' && previousIndexedFields !== undefined
+        ? { ...event, previousIndexedFields }
+        : event;
 
     updateFileIndex(event, fileIndex);
 
@@ -1587,7 +1669,7 @@ export async function handleRawEvents(
           'disk.path.role': classifyFsPath(rawPath),
         },
       },
-      async () => onDiskEvent(event),
+      async () => onDiskEvent(dispatchedEvent),
     );
   }
 

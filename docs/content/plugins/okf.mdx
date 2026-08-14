@@ -1,0 +1,114 @@
+---
+title: OKF
+icon: LuGlobe
+description: Keep a project portable to Google's Open Knowledge Format with advisory rules, agent-readable schemas, an optional index generator, and a companion skill.
+---
+
+The **OKF** project plugin checks whether a knowledge base stays portable to [Google's Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) v0.2. Findings are advisory warnings and never block a save or an agent edit.
+
+<Callout>
+  **Beta.** Off until a project enables it. The [Open Knowledge Format starter pack](/docs/workflows/supporting-open-knowledge-format) enables it while creating an OKF-ready bundle.
+</Callout>
+
+## Turn on the plugin
+
+Open **Settings → This project → Plugins** and switch on **OKF**. The setting lands in the project's `.ok/config.yml`, so committing it gives every collaborator the same checks. Changes apply immediately, with no restart and no Save button.
+
+The plugin's settings page then holds its controls: a recommended agent skill, optional generated indexes, and one switch per rule.
+
+## Install the agent skill
+
+The plugin recommends **Open Knowledge Format guidance** (`okf-knowledge-base`), a project skill that helps agents choose document types, preserve provenance, and avoid inventing unsupported metadata. Click **Install skill** to add it. The [starter pack](/docs/workflows/supporting-open-knowledge-format) installs the same skill, so it may already be present. In that case the page shows **Already in project** and leaves the existing copy untouched.
+
+The skill is optional. The plugin's checks are the same with or without it.
+
+## Maintain generated indexes
+
+**Maintain index.md** creates and maintains a navigation file in every folder that contains Markdown, listing that folder's documents by type and linking its subfolders.
+
+Generated indexes are machine-owned: OpenKnowledge rewrites them as documents change, so manual edits are replaced. Turning the setting on shows a disclosure before any files are written. In a Git project it also adds a scoped `.gitattributes` rule (`merge=union`) so concurrent index changes merge cleanly. If another attribute already controls those paths, index maintenance pauses and the plugin page explains what to resolve.
+
+Turning it off stops rebuilds and removes the Git rule, but leaves the generated files in place.
+
+## Tune the rules
+
+Every rule is on while the plugin is enabled unless you switch it off. Findings report under source `okf` with the rule id as the code (`okf/no-wiki-links`). There are no automatic fixes because each finding needs a content decision.
+
+### Rule reference
+
+| Group | Rule | What it checks |
+| --- | --- | --- |
+| Document structure | `no-wiki-links` | Flags `[[wiki-links]]` outside code because other OKF consumers may render them literally |
+| Document structure | `log-shape` | Requires real ISO `YYYY-MM-DD` headings in newest-first order in `log.md` |
+| Document structure | `index-shape` | Requires navigation lists under section headings and links in every `index.md` entry |
+| Document structure | `reserved-casing` | Flags reserved `Index.md` or `Log.md` filenames that are not lowercase |
+| Frontmatter | `frontmatter-required` | Requires a non-empty `type` on every non-reserved document |
+| Frontmatter | `frontmatter-recommended` | Validates the shape of optional `title`, `description`, `resource`, and `tags` fields |
+| Frontmatter | `frontmatter-provenance` | Validates optional `sources`, `generated`, `verified`, `status`, and `stale_after` metadata |
+| Frontmatter | `frontmatter-computation` | Requires `runtime` on documents typed `Attested Computation` |
+| Frontmatter | `frontmatter-reserved-index` | Disallows frontmatter on `index.md`, except at the bundle root |
+| Frontmatter | `frontmatter-root-index` | Checks the bundle root's quoted `okf_version` value |
+| Project | `project-no-mdx` | Flags `.mdx` files because OKF consumers scan for `.md` |
+
+Reserved filenames match exactly and case-sensitively: `5-index.md` and `notes-log.md` are ordinary documents that need a `type`, and `reserved-casing` catches `Index.md` and `Log.md`.
+
+### Where rules run
+
+| Rules | Surfaces |
+| --- | --- |
+| Document structure, Frontmatter | Editor (live), Problems panel → **This doc**, `ok lint`, MCP `lint` |
+| Project | Problems panel → **Project**, `ok audit`, MCP `audit` |
+
+Project rules need the whole file tree, which is why they run only on project-scope surfaces.
+
+## Generated schema files
+
+While a frontmatter rule is enabled, OpenKnowledge writes its JSON Schema under `.ok/okf/` so agents can read the exact field contract rather than guess:
+
+```text
+.ok/okf/required.schema.json
+.ok/okf/recommended.schema.json
+.ok/okf/provenance.schema.json
+.ok/okf/computation.schema.json
+.ok/okf/reserved-index.schema.json
+.ok/okf/root-index.schema.json
+```
+
+The directory mirrors the rule switches: toggling a rule off deletes its schema, and disabling the plugin removes them all. The files are generated and gitignored. The plugin validates from its own compiled copy and never reads them back, so editing one changes nothing. Tune the rule switches instead.
+
+Agent reads advertise the governing schemas through the same channel as [Frontmatter schemas](/docs/advanced/content-rules/frontmatter).
+
+## Configuration
+
+The settings above map to the project config:
+
+```yaml
+contentRules:
+  okf:
+    enabled: true
+    generate:
+      index: true
+    rules:
+      no-wiki-links: false
+```
+
+Omit a rule to leave it on, or set it to `false` to silence only that rule. Unknown rule ids are ignored for forward compatibility, so check the spelling if a disabled rule keeps reporting. Generated indexes stay off unless `generate.index` is explicitly `true`.
+
+See the [configuration reference](/docs/reference/configuration) for the surrounding file shape.
+
+## What the plugin writes
+
+| Path | When | Ownership |
+| --- | --- | --- |
+| `.ok/config.yml` | You change a plugin setting | Project configuration, committed when you want to share it |
+| `.ok/okf/*.schema.json` | The matching frontmatter rule is enabled | Generated and gitignored. Deleted when the rule or plugin is switched off |
+| `**/index.md` | You opt into generated indexes | Generated. Manual edits are replaced |
+| `.gitattributes` | Generated indexes are enabled in a Git project | OpenKnowledge manages only its scoped rule |
+| Project skill directory | You install the recommended skill or seed the OKF pack | Editable project skill |
+
+## See also
+
+- [Supporting the Open Knowledge Format](/docs/workflows/supporting-open-knowledge-format): start a project with the OKF starter pack
+- [Content rules overview](/docs/advanced/content-rules/overview): where warnings appear and how editor, CLI, and agent surfaces agree
+- [Frontmatter schemas](/docs/advanced/content-rules/frontmatter): validate frontmatter against your own JSON Schema files
+- [Skills](/docs/features/skills): project skill installation and editing

@@ -121,6 +121,9 @@
     "0ySP5u": ["Changes save automatically to this theme."],
     "0zAhu6": ["every doc"],
     "10g8I_": ["Turn off Only markdown files"],
+    "110eEb": [
+      "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+    ],
     "11ukmX": ["Rename failed: ", ["0"]],
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
@@ -138,6 +141,9 @@
     "1GhYxC": ["of ", ["totalPages"]],
     "1HBhDS": ["Checking out files"],
     "1J0c0X": ["Still couldn't reach ", ["displayName"], " — try one more time?"],
+    "1JpLgH": [
+      "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
+    ],
     "1LtA5r": ["Symlinks the skill to ", ["path"]],
     "1MGRQl": ["Terminal sessions"],
     "1NgrlY": ["Other ways to install"],
@@ -151,6 +157,7 @@
     "1XSMhZ": [
       "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
     ],
+    "1ZXkqM": ["Turn it off any time in Settings."],
     "1ZpfyB": ["Open with AI ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Following the agent's edits"],
     "1bDVu5": ["Workspace Command Palette"],
@@ -290,6 +297,8 @@
     "3o3tur": ["Starter content"],
     "3oh0nQ": ["Nested .okignore error in ", ["path"]],
     "3pU8e-": ["Pin tab"],
+    "3qDsdf": ["Install skill"],
+    "3ri_4O": ["Keeps your knowledge base aligned with the Open Knowledge Format."],
     "3s-k7L": [
       [
         "0",
@@ -429,6 +438,9 @@
     ],
     "5tcmwY": ["Add value"],
     "5vAI6Z": ["It didn't fit into my workflow"],
+    "5w38tn": [
+      "Index maintenance stayed off because Open Knowledge could not reach the project server. Try again when the project reconnects."
+    ],
     "5wV2qQ": ["and more"],
     "5y_9lO": ["Waiting for authorization"],
     "6-wLTJ": [["behind"], " behind origin"],
@@ -565,6 +577,7 @@
     "7d1a0d": ["Public"],
     "7dZnmw": ["Relevance"],
     "7hctf2": ["Describe the project you want to create"],
+    "7idx48": ["OKF agent skill installed"],
     "7jIIFX": ["You're all set up!"],
     "7kb4LU": ["Approved"],
     "7l15X4": ["failed"],
@@ -572,6 +585,7 @@
     "7m3Ade": ["installs:"],
     "7qRHf0": ["Install for Claude Chat & Cowork"],
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
+    "7wogIQ": [["0", "plural", { "one": ["Plugin"], "other": ["Plugins"] }]],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
     "851WA-": ["This can be configured in Settings > AI tools & CLI"],
@@ -631,6 +645,7 @@
     "8nWu1k": ["Empty diagram"],
     "8oWgty": ["Mark every comment to send"],
     "8qgfac": ["MCP servers"],
+    "8rZ1pk": ["Enable ", ["id"]],
     "8ruqQi": ["Broken internal links"],
     "8sMErm": ["Enable Follow?"],
     "8t9CRE": ["Starting ", ["agentName"], "…"],
@@ -814,6 +829,9 @@
     "BQKHuL": ["Restart terminal"],
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Couldn't restart the server. Try `ok start` in this folder."],
+    "BVkqD9": [
+      "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
+    ],
     "BY-g4_": ["Add pattern"],
     "Ba4D2x": ["Template imported"],
     "Bdha5y": ["Publishing..."],
@@ -832,6 +850,7 @@
     "Bv5a9_": ["Selection statistics"],
     "Bx4EXG": ["Actions for ", ["label"]],
     "By-7Pn": ["Toggle a bullet list."],
+    "ByIOcK": ["The index files stay in place. Open Knowledge removes only the Git rule it added."],
     "BymzO4": ["Document outline"],
     "C-mmmK": [
       "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to ",
@@ -873,6 +892,9 @@
       "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
     ],
     "CXTwen": ["Can't safely edit this project config"],
+    "CXcveY": [
+      "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
+    ],
     "CXj9C-": ["New property name"],
     "C_Lyvh": ["Failed to save theme setting"],
     "C_WGy8": [
@@ -896,6 +918,9 @@
     "Cu6GXQ": ["The source folder itself does not move."],
     "CvsD6Y": ["via ", ["viaTags"]],
     "CwOXMT": ["Value for ", ["keyName"]],
+    "CxCOFx": [
+      "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
+    ],
     "CxVk-w": ["Comment on ", ["address"]],
     "D-NlUC": ["System"],
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
@@ -954,6 +979,9 @@
     "DhT_PK": ["OpenKnowledge imported a skill"],
     "DiFKSL": ["Counting markdown files"],
     "DiZ3pq": ["Icon picker"],
+    "DjNcDy": [
+      "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
+    ],
     "DmkTrb": ["Couldn’t create this theme. Try again."],
     "Dnn2XG": ["Automatic"],
     "DpjYd6": ["Jump to the anchored text"],
@@ -1168,6 +1196,9 @@
     "GNkUvW": ["Queued — sends when this run finishes"],
     "GQ3O42": ["Trash"],
     "GQDSBN": ["Layout options"],
+    "GROUfG": [
+      "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
+    ],
     "GSYWCm": ["Hide document panel"],
     "GUYwCr": ["Dismiss notice"],
     "GUZHkL": ["Missing palette colors"],
@@ -1324,6 +1355,7 @@
     "IxHMdF": ["Couldn't delete that comment."],
     "IxyZXD": ["Screenshot"],
     "Izh19j": ["Reading from ", ["tail"]],
+    "J0uRhj": ["Checking skill"],
     "J1XRO3": ["Theme colors"],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2_JuX": ["nothing (", ["0"], " cannot match a doc)"],
@@ -1344,6 +1376,7 @@
     "JHf6qZ": ["you@company.com"],
     "JJcBCm": [["0"], " total"],
     "JK-Ave": ["Hide thumbnails"],
+    "JKXcOi": ["Already in project"],
     "JL3si7": ["Updating"],
     "JLUTgi": ["No tags yet — author `#tagname` in any doc to populate the index."],
     "JLzQi_": ["Close ", ["accessibleLabel"]],
@@ -1435,6 +1468,9 @@
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
+    "L3BcJ4": [
+      "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
+    ],
     "L3CEC1": ["this item"],
     "L3w0_C": [
       "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
@@ -1897,6 +1933,12 @@
     "R6ABfU": ["Work directly, no plan step"],
     "R9IDFz": ["Renames the folder on disk and the id agents use to invoke it."],
     "R9dK63": ["Sample image"],
+    "RB_g_C": [
+      "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
+    ],
+    "RD6H9q": [
+      "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+    ],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
     "RG3yW6": ["Enter a name for this theme."],
@@ -1966,6 +2008,9 @@
     "SF9qpO": ["Share your email for followups"],
     "SFEWV6": ["Couldn't load the OpenKnowledge skills. Try again."],
     "SFN6dN": ["Heading 3"],
+    "SIPelo": [
+      "Index maintenance is paused because Open Knowledge could not confirm the required Git merge rule. Check Git and .gitattributes, then try again."
+    ],
     "SInSnF": ["Reference <0>", ["0"], "</0>"],
     "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
@@ -2278,6 +2323,7 @@
     "X7u0xR": [["0"], " templates available"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
+    "XAnapw": ["Git merge rule"],
     "XAyxsa": ["Check out remote branch"],
     "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
     "XBgr2S": ["Copy in"],
@@ -2399,6 +2445,9 @@
     "Y_iImT": ["Unresolvable file ", ["identity"], ". Go to reference."],
     "Y_kL7X": ["Customize how the editor looks and behaves."],
     "Ya3PlJ": ["Permission required"],
+    "YaVU2F": [
+      "In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent index changes combine before the next rebuild."
+    ],
     "YaeyFh": ["Pulls may overwrite uncommitted edits in your local files."],
     "Yb82LN": ["ID: ", ["0"]],
     "Yea-K5": ["Restore to this point"],
@@ -2525,6 +2574,7 @@
     "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creating…"],
     "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
+    "_G7A92": ["Maintain index.md"],
     "_GRWOJ": ["Change the embeddings provider?"],
     "_HgF9q": ["Sort by"],
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
@@ -2609,10 +2659,12 @@
       "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
     ],
     "aalx4E": ["Editing broken MDX source: ", ["reason"]],
+    "aatPoi": ["Generated files"],
     "abiHje": ["Delete selected items"],
     "adsMWO": ["Resolving deltas"],
     "ah_ekO": ["\"", ["name"], "\" is already up to date"],
     "aiArms": ["We couldn't clone this repository."],
+    "aiOceC": ["Enable indexes"],
     "ajHi4O": [
       "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
     ],
@@ -2745,11 +2797,13 @@
     ],
     "cb-0G0": ["Clear color"],
     "ccNps_": ["Only modified"],
+    "cd3THN": ["Document structure"],
     "cd5EXh": ["Report a bug"],
     "cdm00A": ["No Incoming"],
     "cdmk8A": ["Uncommitted changes"],
     "cgl-gn": ["Connected to GitHub"],
     "chL5IG": ["Community"],
+    "ciozf1": ["Skill already in project"],
     "cjtjry": ["Traverse OpenKnowledge navigation history backward."],
     "cklVjM": ["Timeline"],
     "clJ3qM": ["Done."],
@@ -2929,6 +2983,7 @@
     "fbdLmk": ["Toggle bold formatting."],
     "fbsiBw": ["Something went wrong starting the terminal."],
     "fcgvCA": ["Claude"],
+    "fdKQAE": ["Turning it off"],
     "fdeFfN": ["(binary file, not previewable)"],
     "fevEu0": ["Pull latest changes"],
     "ffH3Rt": ["Add Comment (Enter)"],
@@ -3012,12 +3067,16 @@
     "gUx34c": [
       "The language OpenKnowledge speaks; System follows your operating system. Your own notes stay in the language you wrote them in."
     ],
+    "gVMkEr": [
+      "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
+    ],
     "gY7wnY": ["Signing in to ", ["agentName"], "…"],
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gZiT5e": ["Replace these symlinks with independent copies?"],
     "gayL_Q": ["Release plan"],
     "gbHcbI": ["Failed to delete property"],
+    "gfYI3o": ["Disable ", ["id"]],
     "gfb-CM": ["Could not fetch branch — sign in to GitHub and try again."],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
     "gfohmY": ["Connect tools"],
@@ -3076,6 +3135,9 @@
     "hLKfZe": ["Use a token instead"],
     "hLod4_": ["Convert to template"],
     "hLy8b1": ["Updated to Version ", ["version"]],
+    "hPQBsa": [
+      "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
+    ],
     "hQXiDc": ["Search branches..."],
     "hQjvzi": ["A .zip or .skill archive."],
     "hS0wC4": ["OpenKnowledge restored an earlier version of ", ["subject"]],
@@ -3211,6 +3273,9 @@
     "iz1LdD": [
       "Changed outside OK since it last wrote here — the state shown is what's on disk now"
     ],
+    "j-o6Z2": [
+      "Index maintenance stayed off because the project setting could not be saved. Check the project file permissions, then try again."
+    ],
     "j15ZSH": ["Send comments to"],
     "j2229h": ["Removing OpenKnowledge files…"],
     "j2kt1j": [
@@ -3294,6 +3359,7 @@
     "k4CuuV": [
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
     ],
+    "k5rKNs": ["Frontmatter"],
     "k7Hoig": ["No content changes at this version."],
     "k8xtrB": [
       "Not required for a localhost endpoint like <0>",
@@ -3333,7 +3399,9 @@
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
     ],
+    "kVS5tE": ["Maintain generated indexes in every folder?"],
     "kVgQUA": ["Delete this chat?"],
+    "kVzuTI": ["Recommended agent skill"],
     "kYL1lH": ["Agent activity"],
     "k_Dqw1": [
       [
@@ -3425,7 +3493,9 @@
     "lWNpNB": ["Add cursors or select matching occurrences through CodeMirror."],
     "lXKZGw": ["Heading 1"],
     "lY27jj": [["0"], "y ago"],
+    "lY7Unt": ["Enabling index generation"],
     "lZAiSP": ["Backlinks response did not match expected shape."],
+    "lZoQdy": ["Open skill"],
     "lZvQrY": ["Use ", ["0"], " as the dark theme"],
     "l_6JHD": ["Search icons..."],
     "l_FAT6": ["Use letters, digits, <0>-</0> or <1>_</1> only."],
@@ -3443,6 +3513,7 @@
     "ljHjfg": ["That branch is already open in another worktree."],
     "lkYioO": ["Show or hide document panel"],
     "ll2yNl": ["Content directory"],
+    "llXHHh": [["pluginCount", "plural", { "one": ["plugin"], "other": ["plugins"] }]],
     "lmBPt0": [
       "Only external links trigger a request. Links to other documents in this project preview from the local index and never leave your computer."
     ],
@@ -3509,6 +3580,9 @@
           ]
         }
       ]
+    ],
+    "mhnCt3": [
+      "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
     ],
     "mk2poV": ["e.g. server.ts"],
     "mlvM8g": ["Couldn't re-place that comment."],
@@ -3773,6 +3847,9 @@
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
+    "qTT48-": [
+      "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
+    ],
     "qTcVwj": ["Browse or upload a skill for this project."],
     "qTcZZu": ["Failed to load tags. Press <0>Esc</0> and re-open to retry."],
     "qX-ABr": ["Or to use browser sign-in instead:"],
@@ -3823,6 +3900,7 @@
     "r51jLC": ["File saved & Claude Desktop App opened"],
     "r6ncaO": ["Close tab"],
     "r6y-jM": ["Warning"],
+    "r7IaYp": ["Open Knowledge Format guidance"],
     "r871ed": [
       "Your knowledge base is now on GitHub at <0>",
       ["ownerLogin"],
@@ -3852,6 +3930,9 @@
     "rZVMkf": ["Visual editor replace input focused"],
     "radOpL": ["Image ", ["identity"], ". Go to reference."],
     "rageVb": ["Custom HTML with a live preview pane (sandboxed iframe)."],
+    "rarziH": [
+      "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
+    ],
     "rbrHTd": ["Approved — ", ["optionName"]],
     "rcJmK8": ["Convert locations to copies"],
     "rdU729": ["Layout"],
@@ -3902,6 +3983,7 @@
     "sER-bs": ["Files"],
     "sFhaTJ": ["Disambiguates similarly-named templates in the menu."],
     "sGZLfB": ["Failed to fetch repositories"],
+    "sHDllh": ["Stop maintaining index.md"],
     "sICrVf": ["Restored to the version from ", ["0"]],
     "sIGbBZ": ["Convert selection to footnote"],
     "sIxSSP": ["Resolve conflict in your terminal"],
@@ -3915,6 +3997,7 @@
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
     "sR0I-f": ["Collapse all files"],
+    "sSRndh": ["Start maintaining index.md"],
     "sW5OjU": ["required"],
     "sZ2IOu": [
       "This ",
@@ -3929,6 +4012,9 @@
     "saIASg": ["Second item"],
     "saYiIO": ["Path cannot contain null bytes"],
     "scu3wk": ["Model"],
+    "scyoP9": [
+      "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
+    ],
     "se-tU0": ["Could not fix ", ["0"], " of ", ["total"], " files."],
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
@@ -3979,6 +4065,9 @@
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge wrote a document"],
+    "tM5uzl": [
+      "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
+    ],
     "tN5WTS": ["The provider rejected the request. Check the API key and the model id."],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
@@ -4040,6 +4129,9 @@
     "uGaIIS": ["Check out worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
     "uJfwF8": ["Already installed — nothing new to import."],
+    "uK2peg": [
+      "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
+    ],
     "uKRYiW": ["Sync status unavailable — server error."],
     "uL_Wx8": ["The terminal stopped unexpectedly."],
     "uM6jnS": ["Restore failed"],
@@ -4096,6 +4188,9 @@
     "uyOQ4e": ["Theme copied as base16 YAML"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "other": ["tokens"] }]],
     "v-h2hx": ["Delete ", ["targetGitPath"]],
+    "v15iQB": [
+      "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
+    ],
     "v2ZW0K": ["Enable terminal"],
     "v2a04T": ["markdownlint rules"],
     "v41fCm": ["File not found"],

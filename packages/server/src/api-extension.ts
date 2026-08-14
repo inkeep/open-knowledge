@@ -170,6 +170,8 @@ import {
   SearchSuccessSchema,
   SeedApplyRequestSchema,
   SeedApplySuccessSchema,
+  SeedInstallPackSkillRequestSchema,
+  SeedInstallPackSkillSuccessSchema,
   SeedListPacksSuccessSchema,
   SeedPlanSuccessSchema,
   SemanticIndexStatusSchema,
@@ -679,6 +681,7 @@ import {
 import {
   applySeed,
   coercePackId,
+  installPackSkillOnDemand,
   listStarterPacks,
   planSeed,
   type ScaffoldPlan,
@@ -2401,6 +2404,20 @@ async function renameTrackedPathInGit(
   });
 }
 
+const GeneratedIndexSettingsStatusSchema = z.object({
+  enabled: z.boolean(),
+  active: z.boolean(),
+  git: z.object({
+    state: z.enum(['not-applicable', 'ready', 'missing', 'conflict', 'unavailable']),
+    ownership: z.enum(['open-knowledge', 'existing']).optional(),
+  }),
+  applied: z.boolean().optional(),
+  reason: z.enum(['git-conflict', 'git-unavailable', 'config-write']).optional(),
+});
+const GeneratedIndexSettingsRequestSchema = z.object({ enabled: z.boolean() }).strict();
+
+export type GeneratedIndexSettingsStatus = z.infer<typeof GeneratedIndexSettingsStatusSchema>;
+
 export interface ApiExtensionOptions {
   /**
    * The boot-built ingress policy. Drives the browser-Origin allowlists (the
@@ -2413,6 +2430,9 @@ export interface ApiExtensionOptions {
   durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
   contentDir: string;
+  /** Read and mutate the config + Git-attribute joint admission state. */
+  getGeneratedIndexSettingsStatus?: () => GeneratedIndexSettingsStatus;
+  setGeneratedIndexEnabled?: (enabled: boolean) => Promise<GeneratedIndexSettingsStatus>;
   /**
    * No-project ephemeral single-file mode. When `true`, the contentDir-tree
    * write handlers (`PUT /api/folder-config`, `PUT /api/template`) are inert —
@@ -2842,6 +2862,8 @@ export function createApiExtension(
     hocuspocus,
     sessionManager,
     contentDir,
+    getGeneratedIndexSettingsStatus,
+    setGeneratedIndexEnabled,
     serverInstanceId,
     getFileIndex,
     getAttachmentFolderPath,
@@ -12243,6 +12265,46 @@ export function createApiExtension(
       handler: 'seed-apply',
       method: 'POST',
       preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'seed-apply' }),
+    },
+  );
+
+  /**
+   * `POST /api/seed/install-pack-skill` — install only a pack's companion
+   * skills. It deliberately skips scaffold files and required-plugin changes:
+   * the settings card is a separate user-owned install action, not a replay of
+   * `ok seed` and not a side effect of the plugin toggle.
+   */
+  const handleSeedInstallPackSkill = withValidation(
+    SeedInstallPackSkillRequestSchema,
+    async (_req, res, body) => {
+      const packId = coercePackId(body.packId);
+      if (packId === undefined) {
+        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
+          handler: 'seed-install-pack-skill',
+          detail: `Pack id "${body.packId}" is not registered.`,
+        });
+        return;
+      }
+      try {
+        const result = await installPackSkillOnDemand(contentDir, packId);
+        successResponse(res, 200, SeedInstallPackSkillSuccessSchema, result, {
+          handler: 'seed-install-pack-skill',
+        });
+      } catch (err) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to install pack skill.',
+          { handler: 'seed-install-pack-skill', cause: err },
+        );
+      }
+    },
+    {
+      handler: 'seed-install-pack-skill',
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: 'seed-install-pack-skill' }),
     },
   );
 
@@ -21946,9 +22008,56 @@ export function createApiExtension(
     handleSkillsResolveRef,
   } = createSkillsShHandlers({ log, skillsHome, projectDir, contentDir, resolveSkillDirForRead });
 
+  const handleGetGeneratedIndexSettings = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      if (!getGeneratedIndexSettingsStatus) {
+        errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
+          handler: 'generated-index-settings-get',
+        });
+        return;
+      }
+      successResponse(
+        res,
+        200,
+        GeneratedIndexSettingsStatusSchema,
+        getGeneratedIndexSettingsStatus(),
+        {
+          handler: 'generated-index-settings-get',
+          extraHeaders: { 'Cache-Control': 'no-store' },
+        },
+      );
+    },
+    { handler: 'generated-index-settings-get', method: 'GET', skipBodyParse: true },
+  );
+
+  const handleSetGeneratedIndexSettings = withValidation(
+    GeneratedIndexSettingsRequestSchema,
+    async (_req, res, body) => {
+      if (!setGeneratedIndexEnabled) {
+        errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
+          handler: 'generated-index-settings-set',
+        });
+        return;
+      }
+      const result = await setGeneratedIndexEnabled(body.enabled);
+      successResponse(res, 200, GeneratedIndexSettingsStatusSchema, result, {
+        handler: 'generated-index-settings-set',
+        extraHeaders: { 'Cache-Control': 'no-store' },
+      });
+    },
+    { handler: 'generated-index-settings-set', method: 'POST' },
+  );
+
+  const handleGeneratedIndexSettings = methodRouter(
+    { GET: handleGetGeneratedIndexSettings, POST: handleSetGeneratedIndexSettings },
+    { handler: 'generated-index-settings' },
+  );
+
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/api/config': handleApiConfig,
     '/api/config/diagnostics': handleConfigDiagnostics,
+    '/api/generated-index/settings': handleGeneratedIndexSettings,
     '/api/comments': handleCommentsRoute,
     '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,
@@ -22052,6 +22161,7 @@ export function createApiExtension(
     '/api/skill/install-state': handleSkillInstallState,
     '/api/seed/plan': handleSeedPlan,
     '/api/seed/apply': handleSeedApply,
+    '/api/seed/install-pack-skill': handleSeedInstallPackSkill,
     '/api/seed/packs': handleSeedPacks,
     '/api/client-logs': handleClientLogs,
   };
@@ -22076,6 +22186,7 @@ export function createApiExtension(
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',
     '/api/lint/fix',
+    '/api/generated-index/settings',
     '/api/create-page',
     '/api/create-folder',
     '/api/duplicate-path',
@@ -22126,6 +22237,7 @@ export function createApiExtension(
     '/api/skills/resolve-ref',
     '/api/skill-targets',
     '/api/seed/apply',
+    '/api/seed/install-pack-skill',
     '/api/client-logs',
   ]);
   // Every `/api/local-op/*` endpoint mutates local filesystem state or

@@ -1125,10 +1125,76 @@ export const ConfigSchema = z.looseObject({
             .default([]),
         })
         .default({ enabled: false, schemas: [] }),
+      okf: z
+        .object({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project',
+              description:
+                'Whether the OKF plugin (Open Knowledge Format portability + conformance rules) contributes diagnostics. Advisory warnings; never blocks a write.',
+            })
+            .default(false),
+          // Per-rule opt-outs. No severity map: OKF findings are uniformly
+          // advisory warnings, so a rule is only ever on or off. Deliberately
+          // PARTIAL — absent means the rule runs, so a config records only
+          // deviations and a newly registered rule is live without anyone
+          // editing their config.
+          //
+          // The key space is OPEN, matching `markdownlint.rules`, and that is
+          // load-bearing rather than lax. `config.yml` is committed and shared,
+          // and this rule set grows: with a closed enum, a config written after
+          // a new rule shipped fails to parse on any older build — and because
+          // a schema failure defaults the WHOLE document, that one unknown key
+          // silently reverts `content.dir`, the theme, and every other setting.
+          // An unrecognized id is inert instead (`isOkfRuleEnabled` only ever
+          // looks up registered ids); the settings pane is what keeps a human
+          // from typo'ing one in the first place.
+          rules: z
+            .record(z.string(), z.boolean())
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project',
+              description:
+                'Per-rule opt-outs for the OKF plugin, keyed by rule id (e.g. no-wiki-links). Omit a rule to leave it enabled; set false to silence it while keeping the plugin on.',
+            })
+            .optional(),
+          // The producer half of the format. Every other key under a plugin
+          // describes what it REPORTS; these make it write files, which is why
+          // they are opt-in separately from `enabled` rather than riding it. A
+          // user who turned the plugin on to see conformance warnings did not
+          // thereby ask OK to start owning documents in their tree.
+          //
+          // Keyed by artifact rather than a flat `generateIndex` boolean: a
+          // second generated file is then a value, not a schema reshape of a
+          // structure users already have in their config files.
+          generate: z
+            .object({
+              index: z
+                .boolean()
+                .register(fieldRegistry, {
+                  scope: 'project',
+                  agentSettable: false,
+                  reload: 'live',
+                  defaultScope: 'project',
+                  description:
+                    'Whether OK generates and maintains a navigation index.md in every folder that contains Markdown, each listing the documents in that folder grouped by frontmatter type and linking to its subfolders. OK owns these files: edits to them are replaced on the next rebuild.',
+                })
+                .default(false),
+            })
+            .default({ index: false }),
+        })
+        .default({ enabled: false, generate: { index: false } }),
     })
     .default({
       markdownlint: { enabled: false },
       frontmatter: { enabled: false, schemas: [] },
+      okf: { enabled: false, generate: { index: false } },
     }),
   // Validation-surface behavior (the unified audit plane's non-plugin knobs).
   // PROJECT scope, like `contentRules`: how broken links are classified and

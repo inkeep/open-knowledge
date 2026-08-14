@@ -9,12 +9,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core';
+import { OPENKNOWLEDGE_SKILLS_REPO, RENAMED_PACK_SKILLS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { readInstalledSkills } from '../installed-skills-marker.ts';
 import {
   classifyPresentPackSkill,
   installPackSkill,
+  installPackSkillOnDemand,
   resolvePackSkillSources,
 } from './install-pack-skill.ts';
 
@@ -31,9 +32,8 @@ function tmpProject(): string {
 
 /**
  * The pack's orientation-skill name AS RESOLVED ON THIS MACHINE. Names are
- * frontmatter-driven and `resolvePackSkillSources` probes a co-installed OK
- * Desktop bundle before the repo assets, so a hardcoded name would pin the test
- * to whichever bundle this machine happens to carry.
+ * frontmatter-driven, so the shared resolver remains the name authority when a
+ * pack is decomposed or renamed.
  */
 function orientationName(packId: string): string {
   const [first] = resolvePackSkillSources(packId);
@@ -42,6 +42,49 @@ function orientationName(packId: string): string {
 }
 
 describe('installPackSkill', () => {
+  test('published Knowledge Base and OKF skill IDs stay stable for skills.sh updates', () => {
+    expect(resolvePackSkillSources('knowledge-base').map(({ name }) => name)).toEqual([
+      'knowledge-base',
+      'consolidate-notes',
+      'research-with-sources',
+    ]);
+    expect(resolvePackSkillSources('okf').map(({ name }) => name)).toEqual(['okf-knowledge-base']);
+    expect(RENAMED_PACK_SKILLS['open-knowledge-pack-okf']).toBe('okf-knowledge-base');
+  });
+
+  test('on-demand install reports a newly-authored OKF skill', async () => {
+    const proj = tmpProject();
+    setUpEditor(proj, '.claude');
+
+    const result = await installPackSkillOnDemand(proj, 'okf');
+
+    expect(result).toEqual({
+      installedHosts: ['Claude Code'],
+      skills: [{ name: 'okf-knowledge-base', created: true }],
+    });
+    expect(existsSync(join(proj, '.claude', 'skills', 'okf-knowledge-base', 'SKILL.md'))).toBe(
+      true,
+    );
+  });
+
+  test('on-demand install recognizes and preserves an existing same-name skill', async () => {
+    const proj = tmpProject();
+    setUpEditor(proj, '.claude');
+    const skillDir = join(proj, '.claude', 'skills', 'okf-knowledge-base');
+    mkdirSync(skillDir, { recursive: true });
+    const authored =
+      '---\nname: okf-knowledge-base\ndescription: team guidance\n---\nDo not replace me.\n';
+    writeFileSync(join(skillDir, 'SKILL.md'), authored, 'utf-8');
+
+    const result = await installPackSkillOnDemand(proj, 'okf');
+
+    expect(result).toEqual({
+      installedHosts: [],
+      skills: [{ name: 'okf-knowledge-base', created: false }],
+    });
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf-8')).toBe(authored);
+  });
+
   test('authors the pack skill IN PLACE at the default home (store retirement)', async () => {
     const proj = tmpProject();
     setUpEditor(proj, '.claude');
@@ -108,10 +151,8 @@ describe('installPackSkill', () => {
     // (name == SKILL.md frontmatter, per the Agent Skills standard).
     //
     // Assert against `resolvePackSkillSources` rather than a hardcoded name list:
-    // it probes a co-installed OK Desktop bundle first, so a machine with an older
-    // desktop build resolves a different (possibly not-yet-decomposed) pack. The
-    // invariant under test is "every resolved source installs, and members are not
-    // nested inside the root skill" — not which sources this machine resolves.
+    // the invariant under test is "every resolved source installs, and members are
+    // not nested inside the root skill" — not the pack's current member count.
     const proj = tmpProject();
     setUpEditor(proj, '.claude');
     const sources = resolvePackSkillSources('software-lifecycle');

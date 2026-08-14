@@ -31,6 +31,7 @@ import type {
   OkBugReportSendResult,
   ReportBundleLevel,
 } from './logger-types.ts';
+import type { LintPluginId } from './markdown/lint/types.ts';
 import type { LocalOpOkInitResponse } from './schemas/api/local-op.ts';
 import type {
   BranchInfoResponse,
@@ -724,9 +725,18 @@ export interface OkScaffoldPlan {
   skipped: OkScaffoldSkipEntry[];
   warnings: string[];
   /** Project-local skills shipped by the pack. `pending` means apply would
-   *  author or refresh the skill source. `conflict` means a user-owned skill
-   *  holds the name; apply will neither install nor clobber it. */
+   * author or refresh the skill source. `conflict` means a user-owned skill
+   * holds the name; apply will neither install nor clobber it. */
   packSkills?: { name: string; pending: boolean; conflict?: boolean }[];
+  /**
+   * Lint plugins the pack requires. `pending` means apply would turn one on.
+   *
+   * `id` is the plugin union rather than a bare `string`: this interface is
+   * hand-mirrored from the server's `ScaffoldPlan`, and the preload passes one
+   * where the other is expected — so a widened field here does not read as
+   * "more permissive", it fails to assign.
+   */
+  requiredPlugins?: { id: LintPluginId; pending: boolean }[];
 }
 export interface OkScaffoldApplyError {
   path: string;
@@ -738,6 +748,8 @@ export interface OkScaffoldApplyResult {
   durationMs: number;
   /** Editor display-names that received the pack's project skill (e.g. "Claude Code"). */
   packSkillsInstalled: string[];
+  /** Required plugins this apply actually turned on; empty when all were already enabled. */
+  pluginsEnabled: LintPluginId[];
   /** Pack skills skipped because a user-owned same-named skill holds the name. */
   packSkillConflicts: { name: string; hosts?: string[] }[];
 }

@@ -121,6 +121,9 @@
     "0ySP5u": ["Perubahan disimpan otomatis ke tema ini."],
     "0zAhu6": ["semua dokumen"],
     "10g8I_": ["Matikan Hanya berkas markdown"],
+    "110eEb": [
+      "Open Knowledge membuat dan memelihara file navigasi bernama index.md di setiap folder yang berisi Markdown."
+    ],
     "11ukmX": ["Gagal mengganti nama: ", ["0"]],
     "12F9WL": ["(tanpa id)"],
     "151wvk": ["Tampilkan bilah sisi"],
@@ -138,6 +141,9 @@
     "1GhYxC": ["dari ", ["totalPages"]],
     "1HBhDS": ["Mengambil berkas"],
     "1J0c0X": ["Masih tidak dapat menghubungi ", ["displayName"], ". Coba sekali lagi?"],
+    "1JpLgH": [
+      "Dalam dokumen indeks: entri berada di bawah judul bagian dan masing-masing membawa tautan. Prosa seputar daftar itu baik-baik saja."
+    ],
     "1LtA5r": ["Menautkan keterampilan secara symlink ke ", ["path"]],
     "1MGRQl": ["Sesi terminal"],
     "1NgrlY": ["Cara lain untuk memasang"],
@@ -151,6 +157,7 @@
     "1XSMhZ": [
       "Beralih ke <0>lokal saja</0> akan ditolak sampai semuanya berhenti dilacak lewat<1> git rm --cached</1>."
     ],
+    "1ZXkqM": ["Matikan kapan saja di Pengaturan."],
     "1ZpfyB": ["Buka dengan AI ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Mengikuti suntingan agen"],
     "1bDVu5": ["Palet Perintah Ruang Kerja"],
@@ -289,6 +296,8 @@
     "3o3tur": ["Isi awal"],
     "3oh0nQ": ["Galat .okignore bersarang di ", ["path"]],
     "3pU8e-": ["Sematkan tab"],
+    "3qDsdf": ["Instal keterampilan"],
+    "3ri_4O": ["Menjaga basis pengetahuan Anda tetap selaras dengan Open Knowledge Format."],
     "3s-k7L": [["0", "plural", { "other": ["Tampilkan ", "#", " alat lagi"] }]],
     "3uSzeS": ["Gambar dari mana saja · berkas non-gambar harus berada di ruang kerja"],
     "3v62tp": ["Populer di skills.sh"],
@@ -432,6 +441,9 @@
     ],
     "5tcmwY": ["Tambahkan nilai"],
     "5vAI6Z": ["Tidak cocok dengan alur kerja saya"],
+    "5w38tn": [
+      "Pemeliharaan indeks terhenti karena Open Knowledge tidak dapat menjangkau server proyek. Coba lagi saat proyek tersambung kembali."
+    ],
     "5wV2qQ": ["dan lainnya"],
     "5y_9lO": ["Menunggu otorisasi"],
     "6-wLTJ": [["behind"], " di belakang origin"],
@@ -567,6 +579,7 @@
     "7d1a0d": ["Publik"],
     "7dZnmw": ["Relevansi"],
     "7hctf2": ["Jelaskan proyek yang ingin Anda buat"],
+    "7idx48": ["OKF keterampilan agen diinstal"],
     "7jIIFX": ["Semuanya sudah siap!"],
     "7kb4LU": ["Disetujui"],
     "7l15X4": ["gagal"],
@@ -574,6 +587,7 @@
     "7m3Ade": ["pemasangan:"],
     "7qRHf0": ["Pasang untuk Claude Chat & Cowork"],
     "7uBlRT": ["Menyalin item pohon berkas yang sedang difokus agar Tempel bisa menggandakannya."],
+    "7wogIQ": [["0", "plural", { "other": ["Plugin"] }]],
     "80c4-P": ["Kode disalin ke papan klip"],
     "81H_23": ["Tambahkan properti"],
     "851WA-": ["Ini bisa diatur di Pengaturan > Alat AI & CLI"],
@@ -629,6 +643,7 @@
     "8nWu1k": ["Diagram kosong"],
     "8oWgty": ["Tandai semua komentar untuk dikirim"],
     "8qgfac": ["Server MCP"],
+    "8rZ1pk": ["Aktifkan ", ["id"]],
     "8ruqQi": ["Tautan internal rusak"],
     "8sMErm": ["Aktifkan Ikuti?"],
     "8t9CRE": ["Memulai ", ["agentName"], "…"],
@@ -793,6 +808,9 @@
     "BQKHuL": ["Mulai ulang terminal"],
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."],
+    "BVkqD9": [
+      "Pemeliharaan indeks dihentikan sementara karena atribut Git lainnya mengontrol index.md. Perbarui .gitattributes sehingga jalur index.md yang dicakup menggunakan merge=union, lalu coba lagi."
+    ],
     "BY-g4_": ["Tambahkan pola"],
     "Ba4D2x": ["Templat diimpor"],
     "Bdha5y": ["Menerbitkan..."],
@@ -811,6 +829,9 @@
     "Bv5a9_": ["Statistik pilihan"],
     "Bx4EXG": ["Tindakan untuk ", ["label"]],
     "By-7Pn": ["Menyalakan atau mematikan daftar berpoin."],
+    "ByIOcK": [
+      "File indeks tetap di tempatnya. Open Knowledge hanya menghapus aturan Git yang ditambahkannya."
+    ],
     "BymzO4": ["Kerangka dokumen"],
     "C-mmmK": [
       "Id model yang dilayani endpoint Anda. Ukuran vektornya terdeteksi otomatis — kosongkan bidang ini untuk kembali ke ",
@@ -852,6 +873,9 @@
       "<0>~/.ok/bin</0> dan <1>~/.ok/env.sh</1> tetap ada apa pun pilihannya — aplikasi selalu memeliharanya."
     ],
     "CXTwen": ["Konfigurasi proyek ini tidak bisa disunting dengan aman"],
+    "CXcveY": [
+      "Open Knowledge menyimpan file navigasi bernama index.md di setiap folder yang berisi Markdown, masing-masing mencantumkan dokumen folder tersebut berdasarkan jenis dan tautan ke subfoldernya. Itu menulis ulang file-file ini saat dokumen Anda berubah, dan apa pun yang Anda edit sendiri ke dalamnya akan diganti."
+    ],
     "CXj9C-": ["Nama properti baru"],
     "C_Lyvh": ["Gagal menyimpan pengaturan tema"],
     "C_WGy8": [
@@ -875,6 +899,9 @@
     "Cu6GXQ": ["Folder sumbernya sendiri tidak berpindah."],
     "CvsD6Y": ["via ", ["viaTags"]],
     "CwOXMT": ["Nilai untuk ", ["keyName"]],
+    "CxCOFx": [
+      "Dalam proyek Git, Open Knowledge menambahkan aturan tercakup ke file .gitattributes di root repositori agar perubahan indeks yang bersamaan dapat digabungkan."
+    ],
     "CxVk-w": ["Komentari ", ["address"]],
     "D-NlUC": ["Sistem"],
     "D-Oh1s": ["Cara menyiapkan ", ["0"], " (terbuka di peramban)"],
@@ -936,6 +963,9 @@
     "DhT_PK": ["OpenKnowledge mengimpor sebuah keterampilan"],
     "DiFKSL": ["Menghitung berkas markdown"],
     "DiZ3pq": ["Pemilih ikon"],
+    "DjNcDy": [
+      "Bentuk title, description, resource, dan tags saat Anda menggunakannya. Tidak ada yang diperlukan; mendeklarasikan satu hanya menyematkan tipenya, jadi tags yang ditulis sebagai string yang dipisahkan koma akan ditandai."
+    ],
     "DmkTrb": ["Tema ini tidak dapat dibuat. Coba lagi."],
     "Dnn2XG": ["Otomatis"],
     "DpjYd6": ["Lompat ke teks berjangkar"],
@@ -1158,6 +1188,9 @@
     "GNkUvW": ["Dalam antrean — dikirim saat proses ini selesai"],
     "GQ3O42": ["Tempat Sampah"],
     "GQDSBN": ["Opsi tata letak"],
+    "GROUfG": [
+      "File .mdx apa pun. Formatnya hanya .md saja, sehingga pembaca yang memindai .md tidak akan pernah membukanya — dan jika ada .md dengan nama yang sama, maka yang dibaca adalah yang tersebut."
+    ],
     "GSYWCm": ["Sembunyikan panel dokumen"],
     "GUYwCr": ["Tutup pemberitahuan"],
     "GUZHkL": ["Warna palet tidak lengkap"],
@@ -1325,6 +1358,7 @@
     "IxHMdF": ["Komentar itu tidak bisa dihapus."],
     "IxyZXD": ["Tangkapan layar"],
     "Izh19j": ["Membaca dari ", ["tail"]],
+    "J0uRhj": ["Memeriksa keterampilan"],
     "J1XRO3": ["Warna tema"],
     "J2Mv98": ["Nama (mis. ", ["login"], ")"],
     "J2_JuX": ["tidak apa pun (", ["0"], " tidak bisa cocok dengan sebuah dokumen)"],
@@ -1347,6 +1381,7 @@
     "JHf6qZ": ["anda@perusahaan.com"],
     "JJcBCm": [["0"], " total"],
     "JK-Ave": ["Sembunyikan gambar mini"],
+    "JKXcOi": ["Sudah dalam proyek"],
     "JL3si7": ["Memperbarui"],
     "JLUTgi": ["Belum ada tag — tulis `#namatag` di dokumen mana pun untuk mengisi indeksnya."],
     "JLzQi_": ["Tutup ", ["accessibleLabel"]],
@@ -1444,6 +1479,9 @@
     "L-rMC9": ["Setel ulang ke bawaan"],
     "L1BQTH": [["0"], " belum terpasang — membuka halaman unduhannya."],
     "L1ZE3M": ["Statistik dokumen"],
+    "L3BcJ4": [
+      "Yang ini perlu melihat file Anda, bukan hanya dokumen yang terbuka, sehingga muncul saat Anda menjalankan audit proyek, bukan saat Anda mengetik."
+    ],
     "L3CEC1": ["item ini"],
     "L3w0_C": [
       "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Tambahkan <0>slides: true</0> ke frontmatter dokumen, lalu buka dengan aksi Slidev. Perenderan ditangani oleh CLI Slidev, yang tidak disertakan OpenKnowledge."
@@ -1902,6 +1940,12 @@
     "R6ABfU": ["Bekerja langsung, tanpa tahap perencanaan"],
     "R9IDFz": ["Mengganti nama folder di disk dan id yang dipakai agen untuk memanggilnya."],
     "R9dK63": ["Contoh gambar"],
+    "RB_g_C": [
+      "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
+    ],
+    "RD6H9q": [
+      "Open Knowledge menulis ulang file index.md ini seiring perubahan dokumen, sehingga pengeditan manual pada file tersebut diganti."
+    ],
     "RDjuBN": ["Penyiapan"],
     "RDrXh4": ["Atur pengaturan pengguna, proyek, dan integrasi."],
     "RG3yW6": ["Masukkan nama untuk tema ini."],
@@ -1970,6 +2014,9 @@
     "SF9qpO": ["Bagikan surel Anda untuk tindak lanjut"],
     "SFEWV6": ["Keterampilan OpenKnowledge tidak dapat dimuat. Coba lagi."],
     "SFN6dN": ["Judul 3"],
+    "SIPelo": [
+      "Pemeliharaan indeks dihentikan sementara karena Open Knowledge tidak dapat mengonfirmasi aturan penggabungan Git yang diperlukan. Centang Git dan .gitattributes, lalu coba lagi."
+    ],
     "SInSnF": ["Referensi <0>", ["0"], "</0>"],
     "SItQRc": ["Bagaimana pendapat Anda tentang OpenKnowledge?"],
     "SOPwPh": ["Pulihkan hingga suntingan ini"],
@@ -2295,6 +2342,7 @@
     "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
+    "XAnapw": ["Git aturan penggabungan"],
     "XAyxsa": ["Ambil cabang remote"],
     "XBBZnv": ["Target tautan \"", ["shown"], "\" tidak merujuk ke dokumen yang ada."],
     "XBgr2S": ["Salin ke sini"],
@@ -2412,6 +2460,9 @@
     "Y_iImT": ["File ", ["identity"], " tidak dapat ditentukan. Buka referensi."],
     "Y_kL7X": ["Sesuaikan tampilan dan perilaku penyunting."],
     "Ya3PlJ": ["Perlu izin"],
+    "YaVU2F": [
+      "Dalam proyek Git, Open Knowledge juga menambahkan aturan cakupan .gitattributes sehingga perubahan indeks secara bersamaan digabungkan sebelum pembangunan kembali berikutnya."
+    ],
     "YaeyFh": ["Pull bisa menimpa suntingan yang belum di-commit di berkas lokal Anda."],
     "Yb82LN": ["ID: ", ["0"]],
     "Yea-K5": ["Pulihkan hingga titik ini"],
@@ -2531,6 +2582,7 @@
     "_Bix3-": ["Kemunculan ", ["localizedFirstMessage"]],
     "_DwR-n": ["Membuat…"],
     "_FLBbi": [["sizeText"], " · rahasia disunting · crash dump tidak disunting"],
+    "_G7A92": ["Pertahankan index.md"],
     "_GRWOJ": ["Ganti penyedia embedding?"],
     "_HgF9q": ["Urutkan menurut"],
     "_IGfXZ": ["OpenKnowledge berhenti tak terduga terakhir kali."],
@@ -2617,10 +2669,12 @@
       "Tidak bisa terhubung ke layanan agen. Pastikan server OpenKnowledge berjalan dan mutakhir (mulai ulang jika sudah berjalan), lalu coba lagi."
     ],
     "aalx4E": ["Menyunting sumber MDX yang rusak: ", ["reason"]],
+    "aatPoi": ["File yang dihasilkan"],
     "abiHje": ["Hapus item terpilih"],
     "adsMWO": ["Menyelesaikan delta"],
     "ah_ekO": ["\"", ["name"], "\" sudah yang terbaru"],
     "aiArms": ["Kami tidak bisa mengkloning repositori ini."],
+    "aiOceC": ["Aktifkan indeks"],
     "ajHi4O": [
       "Sinkronisasi otomatis dijeda — Anda tidak punya izin push ke repo ini. Beralih ke Ikuti agar tetap menerima pembaruan."
     ],
@@ -2767,11 +2821,13 @@
     ],
     "cb-0G0": ["Hapus warna"],
     "ccNps_": ["Hanya yang diubah"],
+    "cd3THN": ["Struktur dokumen"],
     "cd5EXh": ["Laporkan bug"],
     "cdm00A": ["Tidak Ada Masuk"],
     "cdmk8A": ["Perubahan yang belum di-commit"],
     "cgl-gn": ["Terhubung ke GitHub"],
     "chL5IG": ["Komunitas"],
+    "ciozf1": ["Keterampilan sudah ada dalam proyek"],
     "cjtjry": ["Menyusuri riwayat navigasi OpenKnowledge ke belakang."],
     "cklVjM": ["Lini masa"],
     "clJ3qM": ["Selesai."],
@@ -2952,6 +3008,7 @@
     "fbdLmk": ["Menyalakan atau mematikan format tebal."],
     "fbsiBw": ["Ada yang tidak beres saat memulai terminal."],
     "fcgvCA": ["Claude"],
+    "fdKQAE": ["Mematikannya"],
     "fdeFfN": ["(berkas biner, tidak bisa dipratinjau)"],
     "fevEu0": ["Tarik perubahan terbaru"],
     "ffH3Rt": ["Tambah Komentar (Enter)"],
@@ -3026,12 +3083,16 @@
     "gUx34c": [
       "Bahasa yang digunakan OpenKnowledge; Sistem mengikuti sistem operasi Anda. Catatan Anda sendiri tetap dalam bahasa saat Anda menulisnya."
     ],
+    "gVMkEr": [
+      "Dalam dokumen log: judul entri diawali dengan tanggal ISO YYYY-MM-DD, terbaru terlebih dahulu. Berapa banyak title yang Anda gunakan, dan apakah entri merupakan poin, terserah Anda."
+    ],
     "gY7wnY": ["Sedang masuk ke ", ["agentName"], "…"],
     "gYz2ep": ["Kedaluwarsa dalam ", ["timeLabel"]],
     "gZElfU": ["Memperbaiki ", ["0"], " dari ", ["1"], " berkas"],
     "gZiT5e": ["Ganti symlink-symlink ini dengan salinan mandiri?"],
     "gayL_Q": ["Rencana rilis"],
     "gbHcbI": ["Gagal menghapus properti"],
+    "gfYI3o": ["Nonaktifkan ", ["id"]],
     "gfb-CM": ["Cabang tidak dapat diambil — masuk ke GitHub lalu coba lagi."],
     "gfdqcY": ["Perubahannya tidak bisa diterapkan: ", ["0"]],
     "gfohmY": ["Hubungkan alat"],
@@ -3092,6 +3153,9 @@
     "hLKfZe": ["Pakai token saja"],
     "hLod4_": ["Ubah menjadi templat"],
     "hLy8b1": ["Diperbarui ke Versi ", ["version"]],
+    "hPQBsa": [
+      "File yang dicadangkan diberi nama index.md dan log.md dalam huruf kecil. Pada sistem file peka huruf besar-kecil, Index.md dibaca sebagai dokumen biasa dan kehilangan maknanya."
+    ],
     "hQXiDc": ["Cari cabang..."],
     "hQjvzi": ["Arsip .zip atau .skill."],
     "hS0wC4": ["OpenKnowledge memulihkan versi sebelumnya dari ", ["subject"]],
@@ -3240,6 +3304,9 @@
     "iz1LdD": [
       "Diubah di luar OK sejak terakhir kali OK menulis di sini — keadaan yang ditampilkan adalah apa yang ada di disk sekarang"
     ],
+    "j-o6Z2": [
+      "Pemeliharaan indeks tidak dilakukan karena pengaturan proyek tidak dapat disimpan. Periksa izin file proyek, lalu coba lagi."
+    ],
     "j15ZSH": ["Kirim komentar ke"],
     "j2229h": ["Menghapus berkas OpenKnowledge…"],
     "j2kt1j": [
@@ -3327,6 +3394,7 @@
     "k4CuuV": [
       "Folder dan templat siap pakai agar Anda cepat memulai. Pilih sebuah paket untuk melihat apa yang akan dibuat, lalu tambahkan ke proyek Anda."
     ],
+    "k5rKNs": ["frontmatter"],
     "k7Hoig": ["Tidak ada perubahan isi pada versi ini."],
     "k8xtrB": [
       "Tidak diperlukan untuk endpoint localhost seperti <0>",
@@ -3366,7 +3434,9 @@
     "kV2YZv": [
       "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
     ],
+    "kVS5tE": ["Pertahankan indeks generated di setiap folder?"],
     "kVgQUA": ["Hapus obrolan ini?"],
+    "kVzuTI": ["Keterampilan agen yang direkomendasikan"],
     "kYL1lH": ["Aktivitas agen"],
     "k_Dqw1": [["0", "plural", { "other": ["Tidak ada masalah di ", "#", " dokumen."] }]],
     "k_pade": [
@@ -3458,7 +3528,9 @@
     "lWNpNB": ["Menambahkan kursor atau memilih kemunculan yang cocok lewat CodeMirror."],
     "lXKZGw": ["Judul 1"],
     "lY27jj": [["0"], " thn lalu"],
+    "lY7Unt": ["Mengaktifkan pembuatan indeks"],
     "lZAiSP": ["Respons tautan balik tidak sesuai bentuk yang diharapkan."],
+    "lZoQdy": ["Keterampilan terbuka"],
     "lZvQrY": ["Pakai ", ["0"], " sebagai tema gelap"],
     "l_6JHD": ["Cari ikon..."],
     "l_FAT6": ["Pakai hanya huruf, angka, <0>-</0>, atau <1>_</1>."],
@@ -3478,6 +3550,7 @@
     "ljHjfg": ["Cabang itu sudah terbuka di worktree lain."],
     "lkYioO": ["Tampilkan atau sembunyikan panel dokumen"],
     "ll2yNl": ["Direktori konten"],
+    "llXHHh": [["pluginCount", "plural", { "other": ["plugin"] }]],
     "lmBPt0": [
       "Hanya tautan eksternal yang memicu permintaan. Tautan ke dokumen lain di proyek ini dipratinjau dari indeks lokal dan tidak pernah keluar dari komputer Anda."
     ],
@@ -3545,6 +3618,9 @@
           ]
         }
       ]
+    ],
+    "mhnCt3": [
+      "Setiap dokumen konsep memiliki tipe yang tidak kosong. Ini adalah keseluruhan batas kesesuaian OKF — dokumen yang hanya memiliki satu jenis sudah sepenuhnya sesuai."
     ],
     "mk2poV": ["mis. server.ts"],
     "mlvM8g": ["Komentar itu tidak bisa ditempatkan ulang."],
@@ -3804,6 +3880,9 @@
     "qRZh7J": ["Biarkan Tab keluar dari penyunting sumber alih-alih menambah indentasi."],
     "qSKu2v": ["Navigasi dan pemilihan di sumber"],
     "qSxaOz": ["Terima penghapusan mereka"],
+    "qTT48-": [
+      "Tautan wiki seperti [[Page]] — cara yang didukung untuk membuat tautan di sini, tetapi pembaca eksternal tidak menyelesaikan apa pun dan memperlihatkan tanda kurung."
+    ],
     "qTcVwj": ["Telusuri atau unggah sebuah keterampilan untuk proyek ini."],
     "qTcZZu": ["Gagal memuat tag. Tekan <0>Esc</0> lalu buka lagi untuk mencoba ulang."],
     "qX-ABr": ["Atau, untuk memakai proses masuk lewat peramban:"],
@@ -3845,6 +3924,7 @@
     "r51jLC": ["Berkas tersimpan & aplikasi Claude Desktop terbuka"],
     "r6ncaO": ["Tutup tab"],
     "r6y-jM": ["Peringatan"],
+    "r7IaYp": ["Open Knowledge Format bimbingan"],
     "r871ed": [
       "Basis pengetahuan Anda kini ada di GitHub di <0>",
       ["ownerLogin"],
@@ -3874,6 +3954,9 @@
     "rZVMkf": ["Bidang penggantian penyunting visual sedang difokus"],
     "radOpL": ["Gambar ", ["identity"], ". Buka referensi."],
     "rageVb": ["HTML khusus dengan panel pratinjau langsung (iframe tersekat)."],
+    "rarziH": [
+      "Membantu agen pengkodean memilih jenis dokumen OKF, mempertahankan asal, dan menghindari penemuan metadata yang tidak didukung."
+    ],
     "rbrHTd": ["Disetujui — ", ["optionName"]],
     "rcJmK8": ["Ubah lokasi menjadi salinan"],
     "rdU729": ["Tata letak"],
@@ -3926,6 +4009,7 @@
     "sER-bs": ["Berkas"],
     "sFhaTJ": ["Membedakan templat yang namanya mirip di menu."],
     "sGZLfB": ["Gagal mengambil repositori"],
+    "sHDllh": ["Berhenti mempertahankan index.md"],
     "sICrVf": ["Dipulihkan ke versi dari ", ["0"]],
     "sIGbBZ": ["Ubah pilihan menjadi catatan kaki"],
     "sIxSSP": ["Selesaikan konfliknya di terminal Anda"],
@@ -3939,6 +4023,7 @@
     "sOxZaS": ["Gagal memuat graf"],
     "sQoLn0": ["Keluar"],
     "sR0I-f": ["Ciutkan semua berkas"],
+    "sSRndh": ["Mulai pertahankan index.md"],
     "sW5OjU": ["wajib"],
     "sZ2IOu": [
       ["targetNoun"],
@@ -3952,6 +4037,9 @@
     "saIASg": ["Item kedua"],
     "saYiIO": ["Jalur tidak boleh memuat bita null"],
     "scu3wk": ["Model"],
+    "scyoP9": [
+      "Dokumen indeks tidak membawa frontmatter, kecuali dokumen yang ada di akar basis pengetahuan Anda. Dokumen log tidak tercakup — OKF tidak membatasi frontmatter mereka."
+    ],
     "se-tU0": ["Tidak dapat memperbaiki ", ["0"], " dari ", ["total"], " berkas."],
     "seeS6l": ["Siapkan OpenKnowledge di folder ini?"],
     "sgmRY8": ["Unduhan ", ["0"], " dilewati."],
@@ -4004,6 +4092,9 @@
     "tHKQ6j": ["Mengganti nama"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge menulis sebuah dokumen"],
+    "tM5uzl": [
+      "Keluarga asal, kepercayaan, dan siklus hidup: sources, generated, verified, status, dan stale_after. Setiap bidang bersifat opsional, dan ketidakhadiran tidak pernah merupakan kesalahan."
+    ],
     "tN5WTS": ["Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."],
     "tP5DDk": ["Terapkan tautan"],
     "tUvUfp": ["Pakai folder yang sudah Anda punya."],
@@ -4066,6 +4157,9 @@
     "uGaIIS": ["Ambil worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
     "uJfwF8": ["Sudah terpasang — tidak ada yang baru untuk diimpor."],
+    "uK2peg": [
+      "Periksa proyek Anda terhadap Open Knowledge Format. Matikan kapan saja di Pengaturan."
+    ],
     "uKRYiW": ["Status sinkronisasi tidak tersedia — galat server."],
     "uL_Wx8": ["Terminal berhenti tak terduga."],
     "uM6jnS": ["Gagal memulihkan"],
@@ -4111,6 +4205,9 @@
     "uyOQ4e": ["Tema disalin sebagai YAML base16"],
     "uynXup": [["tokens", "plural", { "other": ["token"] }]],
     "v-h2hx": ["Hapus ", ["targetGitPath"]],
+    "v15iQB": [
+      "Kontrak perhitungan yang dibuktikan. Hanya berlaku untuk dokumen yang diketik Attested Computation, dimana OKF memerlukan runtime; konsep biasa tidak terpengaruh."
+    ],
     "v2ZW0K": ["Aktifkan terminal"],
     "v2a04T": ["Aturan markdownlint"],
     "v41fCm": ["Berkas tidak ditemukan"],

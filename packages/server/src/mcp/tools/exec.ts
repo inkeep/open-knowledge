@@ -21,6 +21,7 @@
  */
 import { stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
+import { okfAdvertisedSchemaMappings } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { argsOf, extractReferencedPaths, nonFlagArgs } from '../../bash/extract-paths.ts';
 import { createBashInstance, execBash, StdoutOverflowError } from '../../bash/index.ts';
@@ -574,15 +575,25 @@ export async function buildExecResult(
   // differ only when the caller targets a subdirectory of the project.
   const { cwd, executionCwd, config, url: resolvedServerUrl } = context;
 
-  // Read-time schema advertisement: when the frontmatter plugin is enabled,
-  // enrichment resolves which schema files govern each listed doc/folder
-  // server-side (the agent never evaluates an appliesTo glob).
+  // Read-time schema advertisement: enrichment resolves which schemas govern each
+  // listed doc/folder server-side (the agent never evaluates an appliesTo glob).
+  //
+  // Two sources, one list. The frontmatter plugin contributes the project's authored
+  // mappings; the OKF plugin contributes its built-in profile, advertised by the
+  // `.ok/okf/` path each schema is materialized to so an agent can open the contract.
+  // They are concatenated rather than resolved separately so there is a single
+  // selection path — a doc governed by both sees both, in plugin-registry order.
   const frontmatterSlice = config.contentRules.frontmatter;
+  const okfSlice = config.contentRules.okf;
+  const advertisedSchemas = [
+    ...(frontmatterSlice.enabled ? frontmatterSlice.schemas : []),
+    ...(okfSlice.enabled ? okfAdvertisedSchemaMappings(okfSlice.rules) : []),
+  ];
   const enrichSchemaDeps =
-    frontmatterSlice.enabled && frontmatterSlice.schemas.length > 0
+    advertisedSchemas.length > 0
       ? {
           contentDir: resolve(cwd, config.content.dir),
-          frontmatterSchemas: frontmatterSlice.schemas,
+          frontmatterSchemas: advertisedSchemas,
         }
       : {};
 

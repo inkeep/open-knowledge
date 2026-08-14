@@ -180,6 +180,10 @@ const EXEMPT_HANDLERS = new Set([
   'handleSavedThemesList',
   'handleSavedTheme',
   'handleTemplate',
+  // `/api/generated-index/settings` coordinates project config with a scoped
+  // `.gitattributes` rule. It authors no document content, so there is no
+  // document contributor identity to record.
+  'handleGeneratedIndexSettings',
   // `/api/lint/config` (GET) + `/api/lint/markdownlint-config` (POST) — the markdown
   // linter's effective-config read and the native `.markdownlint.*` rule write.
   // Project-configuration writes (lint rules), not agent-authored document
@@ -381,6 +385,9 @@ const EXEMPT_HANDLERS = new Set([
   // GET (enumerates registered packs from `STARTER_PACKS`); identity-free.
   'handleSeedPlan',
   'handleSeedApply',
+  // Installs the selected pack skill on behalf of the local user through the
+  // same fs-direct seed machinery. It does not author agent-attributed content.
+  'handleSeedInstallPackSkill',
   'handleSeedPacks',
   'handleAgentActivity',
   'handleAgentBurstDiff',

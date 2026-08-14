@@ -7,8 +7,8 @@ import {
   GitMerge,
   Laptop,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
 import type { AutoSyncOnboardingVariant } from '@/components/auto-sync-onboarding-gate';
+import { DisclosureWarning, DisclosureWarningItem } from '@/components/DisclosureWarning';
 import { DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 interface SyncVariantProps {
@@ -49,24 +49,16 @@ export function AutoSyncEnableDialogIntro({ variant = 'full' }: SyncVariantProps
 
 export function AutoSyncEnableWarning({ variant = 'full' }: SyncVariantProps) {
   return (
-    <div role="note" className="text-sm space-y-5">
-      <p className="flex items-center gap-1.5 text-xs font-semibold font-mono uppercase tracking-wider text-primary">
-        <span aria-hidden="true" className="mb-[3px] flex items-center justify-center">
-          ◇
-        </span>
-        <Trans>Heads up</Trans>
-      </p>
-      <div className="space-y-5">
-        {variant === 'follow' ? <PullOnlyBullets /> : <FullSyncBullets />}
-      </div>
-    </div>
+    <DisclosureWarning>
+      {variant === 'follow' ? <PullOnlyBullets /> : <FullSyncBullets />}
+    </DisclosureWarning>
   );
 }
 
 function FullSyncBullets() {
   return (
     <>
-      <WarningBullet
+      <DisclosureWarningItem
         icon={
           <ArrowRightLeft
             aria-hidden="true"
@@ -76,7 +68,7 @@ function FullSyncBullets() {
         title={<Trans>Uncommitted changes</Trans>}
         body={<Trans>Pulls may overwrite uncommitted edits in your local files.</Trans>}
       />
-      <WarningBullet
+      <DisclosureWarningItem
         icon={
           <GitCommitVertical
             aria-hidden="true"
@@ -91,7 +83,7 @@ function FullSyncBullets() {
           </Trans>
         }
       />
-      <WarningBullet
+      <DisclosureWarningItem
         icon={<Eye aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
         title={<Trans>Shared repositories</Trans>}
         body={<Trans>Collaborators see your in-progress edits as soon as they sync.</Trans>}
@@ -103,7 +95,7 @@ function FullSyncBullets() {
 function PullOnlyBullets() {
   return (
     <>
-      <WarningBullet
+      <DisclosureWarningItem
         icon={
           <ArrowDownToLine
             aria-hidden="true"
@@ -113,7 +105,7 @@ function PullOnlyBullets() {
         title={<Trans>Updates flow in</Trans>}
         body={<Trans>New changes from your remote appear in your copy automatically.</Trans>}
       />
-      <WarningBullet
+      <DisclosureWarningItem
         icon={
           <Laptop aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         }
@@ -124,7 +116,7 @@ function PullOnlyBullets() {
           </Trans>
         }
       />
-      <WarningBullet
+      <DisclosureWarningItem
         icon={
           <GitMerge aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         }
@@ -137,25 +129,5 @@ function PullOnlyBullets() {
         }
       />
     </>
-  );
-}
-
-function WarningBullet({
-  icon,
-  title,
-  body,
-}: {
-  icon: ReactNode;
-  title: ReactNode;
-  body: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      {icon}
-      <div className="space-y-0.5">
-        <p className="font-medium">{title}</p>
-        <p className="text-muted-foreground">{body}</p>
-      </div>
-    </div>
   );
 }

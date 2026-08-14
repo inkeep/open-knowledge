@@ -7,6 +7,7 @@
  * each starter folder's `.ok/frontmatter.yml` + `.ok/templates/<name>.md`.
  */
 
+import type { LintPluginId } from '@inkeep/open-knowledge-core';
 import type { PackId } from './starter.ts';
 
 /**
@@ -74,6 +75,17 @@ export interface ScaffoldPlan {
    */
   packSkills?: { name: string; pending: boolean; conflict?: boolean }[];
   /**
+   * Lint plugins the pack requires. `pending` is true when the plugin is not
+   * currently enabled and apply would turn it on — the same "is there work to
+   * do?" signal `packSkills[].pending` carries.
+   *
+   * Present whenever the pack declares a requirement, enabled or not, because
+   * the dialog discloses the requirement either way: a user who turned the
+   * plugin off needs to see that seeding will turn it back on, and a user who
+   * already has it on is owed the same statement of what the pack depends on.
+   */
+  requiredPlugins?: { id: LintPluginId; pending: boolean }[];
+  /**
    * Set when the pack ships skills but this project has no usable skill home,
    * so apply cannot install any of them (OK never creates an agent folder on
    * the user's behalf). Nothing is pending in that case — a plan that promised
@@ -103,6 +115,13 @@ export interface ApplyResult {
    * pack ships no skill.
    */
   packSkillsInstalled: string[];
+  /**
+   * Required plugins this apply actually turned on. Empty when the pack
+   * declares none, or when every one was already enabled — so a non-empty
+   * value is exactly the set the user's config changed for, which is what a
+   * caller reports back ("Enabled the OKF plugin").
+   */
+  pluginsEnabled: LintPluginId[];
   /** Pack skills skipped because a user-owned same-named skill holds the name. */
   packSkillConflicts: PackSkillConflict[];
 }

@@ -376,7 +376,13 @@ function resolveCanonicalDocPath(abs: string, contentDir: string): string {
 
 type Scope = { kind: 'dir' | 'file'; path: string };
 
-function resolveScope(targetPath: string | undefined, contentDir: string): Scope {
+/**
+ * Classify an audit target as a single file or a directory to walk. Exported because
+ * every validator that walks the tree must agree with the lint walk about what a scope
+ * MEANS — a validator that treats a doc-scoped target as a directory calls `readdir` on a
+ * file and silently reports nothing.
+ */
+export function resolveScope(targetPath: string | undefined, contentDir: string): Scope {
   if (targetPath === undefined || targetPath === '') return { kind: 'dir', path: contentDir };
   const abs = isAbsolute(targetPath) ? targetPath : resolve(contentDir, targetPath);
   try {

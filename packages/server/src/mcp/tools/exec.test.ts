@@ -1236,6 +1236,110 @@ describe('exec — frontmatter schemas_applicable read-time advertisement', () =
   });
 });
 
+describe('exec — OKF schemas_applicable read-time advertisement', () => {
+  // The same wiring root as the block above, for the OTHER source feeding it. The
+  // OKF plugin contributes built-in schemas that no user authored, and its branch of
+  // `enrichSchemaDeps` is a second `...spread` beside the frontmatter one — a place a
+  // deletion is invisible, because every unit test below it calls the resolver
+  // directly and stays green.
+  //
+  // What it advertises is a PATH, not an opaque name, so an agent that reads one of
+  // these entries can open the file and learn the contract. That is the whole reason
+  // the schemas are materialized, and this is where the two halves meet.
+  const OKF_CONFIG: Config = ConfigSchema.parse({
+    contentRules: { okf: { enabled: true } },
+  });
+
+  test('cat advertises the OKF schemas governing a concept document', async () => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'guide.md'), '---\ntype: Reference\n---\nBody\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat content/guide.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: OKF_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toEqual([
+      '.ok/okf/required.schema.json',
+      '.ok/okf/recommended.schema.json',
+      '.ok/okf/provenance.schema.json',
+      '.ok/okf/computation.schema.json',
+    ]);
+  });
+
+  test('a reserved index advertises only its own schema, not the concept families', async () => {
+    // Proves the scoping survives the wiring rather than only the resolver: the two
+    // index scopes are disjoint, and a root index must not be asked for a `type`.
+    const project = await bootstrap();
+    writeFileSync(resolve(project, 'index.md'), '# Index\n\n* [a](a.md) - a\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat index.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: OKF_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toEqual(['.ok/okf/root-index.schema.json']);
+  });
+
+  test('a log advertises nothing — OKF does not constrain its frontmatter', async () => {
+    const project = await bootstrap();
+    writeFileSync(resolve(project, 'log.md'), '---\ntype: Log\n---\n\n# L\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat log.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: OKF_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toBeUndefined();
+  });
+
+  test('a rule switched off stops being advertised as governing', async () => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'guide.md'), '---\ntype: Reference\n---\nBody\n');
+    const partial: Config = ConfigSchema.parse({
+      contentRules: {
+        okf: {
+          enabled: true,
+          rules: { 'frontmatter-provenance': false, 'frontmatter-computation': false },
+        },
+      },
+    });
+
+    const result = (await buildExecResult(
+      { command: 'cat content/guide.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: partial },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toEqual([
+      '.ok/okf/required.schema.json',
+      '.ok/okf/recommended.schema.json',
+    ]);
+  });
+
+  test('plugin disabled → no OKF advertisement at all', async () => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'guide.md'), '---\ntype: Reference\n---\nBody\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat content/guide.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toBeUndefined();
+  });
+});
+
 describe('exec — mutation-sweep scoping and honesty', () => {
   const OVER_CAP = 1005;
 

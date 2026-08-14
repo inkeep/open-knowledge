@@ -65,6 +65,11 @@ const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
     why: 'Managed-rename spine (paired). System origin tracked by no UndoManager.',
     contract: 'attribution-sweep-coverage.test.ts (identity threading)',
   },
+  GENERATED_ARTIFACT_ORIGIN: {
+    undo: 'system-not-undoable',
+    why: 'Machine-maintained generated documents are reconciled through a paired system write and are tracked by no UndoManager.',
+    contract: 'generated-artifact.test.ts, server-factory.test.ts (generated index wiring)',
+  },
   MERMAID_SOURCE_ORIGIN: {
     undo: 'system-not-undoable',
     why: 'Mermaid diagram seed/reconcile into Y.Text(source); system origin, markdown bridge gated off.',

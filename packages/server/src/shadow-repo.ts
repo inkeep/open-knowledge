@@ -27,6 +27,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { SYSTEM_WRITER_DISPLAY_NAMES } from '@inkeep/open-knowledge-core';
 import {
   type AutoConsolidationTrigger,
   CHECKPOINT_KIND_REGISTRY,
@@ -37,6 +38,7 @@ import {
   formatImportSubject,
   formatOkActor,
   formatParkSubject,
+  OK_GENERATOR_WRITER_ID,
   type OkActorEntry,
   type ParsedCheckpoint,
   parseCheckpoint,
@@ -693,25 +695,44 @@ async function commitWipFromTreeInner(
 
 // ─── Classified writer-identity constants ─────────────────────────────────
 
+// Display names come from `SYSTEM_WRITER_DISPLAY_NAMES` in core: the editor
+// matches on them to choose a timeline icon and cannot import this module, so
+// the strings have to live somewhere both sides can reach.
+
 /** Non-attributable file-system writes (disk changes, reconciliation). */
 export const FILE_SYSTEM_WRITER: WriterIdentity = {
   id: 'file-system',
-  name: 'File System',
+  name: SYSTEM_WRITER_DISPLAY_NAMES.fileSystem,
   email: 'file-system@openknowledge.local',
 };
 
 /** Non-attributable upstream git-pull imports. */
 export const GIT_UPSTREAM_WRITER: WriterIdentity = {
   id: 'git-upstream',
-  name: 'Git (upstream)',
+  name: SYSTEM_WRITER_DISPLAY_NAMES.gitUpstream,
   email: 'git@openknowledge.local',
 };
 
 /** Non-attributable internal service bookkeeping. */
 export const SERVICE_WRITER: WriterIdentity = {
   id: 'openknowledge-service',
-  name: 'OpenKnowledge (service)',
+  name: SYSTEM_WRITER_DISPLAY_NAMES.service,
   email: 'service@openknowledge.local',
+};
+
+/**
+ * Artifacts OK authors itself — today the generated root `index.md`.
+ *
+ * Deliberately NOT `SERVICE_WRITER`: that one is the fallback for work with no
+ * contributor behind it, and precedent #25 reserves it for exactly that. A
+ * generated document is an authoring action with a real author; the author just
+ * is not a person. Keeping them apart is what lets a reader tell "OK wrote this
+ * file" from "OK flushed something nobody claimed".
+ */
+export const OK_GENERATOR_WRITER: WriterIdentity = {
+  id: OK_GENERATOR_WRITER_ID,
+  name: SYSTEM_WRITER_DISPLAY_NAMES.generator,
+  email: `${OK_GENERATOR_WRITER_ID}@openknowledge.local`,
 };
 
 // ─── Upstream import ─────────────────────────────────────────────────────────

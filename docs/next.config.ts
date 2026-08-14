@@ -111,6 +111,16 @@ const nextConfig: NextConfig = {
         destination: '/docs/migrate/obsidian',
         permanent: true,
       },
+      {
+        source: '/docs/advanced/content-rules/okf',
+        destination: '/docs/plugins/okf',
+        permanent: true,
+      },
+      {
+        source: '/docs/advanced/content-rules/okf/',
+        destination: '/docs/plugins/okf',
+        permanent: true,
+      },
       // `/download` has no page of its own, so the bare path 404s; forward it
       // to the stable channel. permanent:false (307, not 308) keeps it a soft
       // alias — `/download` can later become a real channel-picker page

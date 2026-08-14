@@ -41,6 +41,7 @@ import {
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
+  atomicWriteFile,
   collectConfigDiagnostics,
   readConfigSafely,
   resolveConfigPath,
@@ -58,7 +59,12 @@ import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
-import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
+import {
+  type CommentDocHooks,
+  createApiExtension,
+  type GeneratedIndexSettingsStatus,
+  isSafeDocName,
+} from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
 import {
@@ -92,6 +98,23 @@ import {
   createConflictLifecycleSeedExtension,
   entryMatchesDocName,
 } from './conflict-lifecycle-seed.ts';
+import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './content/generated-artifact.ts';
+import {
+  type GeneratedIndexGitAttributesStatus,
+  inspectGeneratedIndexGitAttributes,
+  updateGeneratedIndexGitAttributes,
+} from './content/generated-index-git-attributes.ts';
+import {
+  collectIndexDirectories,
+  directoryChainToRoot,
+  directoryOf,
+  indexedFieldsChanged,
+  indexedMetadataChanged,
+  isGeneratedIndexDocName,
+  type PreviousIndexedFields,
+  planDirectoryIndexRegenerations,
+  ROOT_INDEX_DOC_NAME,
+} from './content/regenerate-index.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
@@ -124,9 +147,11 @@ import {
   type DiskEvent,
   pathToDocName,
   reconcileFileIndexAfterFilterRebuild,
+  registerWrite,
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
+import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync } from './fs-traced.ts';
 import type {
   CheckPushPermissionOptions,
   DetectGhFn,
@@ -148,6 +173,7 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
 } from './ingress-policy.ts';
+import { ensureOkfSchemaFiles } from './lint/write-okf-schemas.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { localTargetInventoryFromWatcher } from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
@@ -211,6 +237,7 @@ import {
   commitUpstreamImport,
   destroyShadowRepo,
   initShadowRepo,
+  OK_GENERATOR_WRITER,
   type ParkableDoc,
   parkBranch,
   readParkedState,
@@ -423,7 +450,30 @@ export interface ServerOptions {
    * unmounted by the boot layer (`bootServer`), not here. Default `false`.
    */
   ephemeral?: boolean;
+  /** Internal deterministic test seam for generated-index lifecycle coverage. */
+  generatedIndexTestHooks?: {
+    beforePlan?: (context: { fullSweep: boolean; signal: AbortSignal }) => Promise<void> | void;
+    beforeDecision?: (context: {
+      directory: string;
+      fullSweep: boolean;
+      signal: AbortSignal;
+    }) => Promise<void> | void;
+    afterWrite?: (context: {
+      docName: string;
+      fullSweep: boolean;
+      signal: AbortSignal;
+    }) => Promise<void> | void;
+    onKickWhileInFlight?: () => void;
+    onIdle?: () => void;
+  };
 }
+
+type GeneratedIndexSweepResult =
+  | { status: 'completed'; indexCount: number }
+  | { status: 'disabled'; indexCount: number }
+  | { status: 'blocked'; indexCount: number }
+  | { status: 'failed'; indexCount: number }
+  | { status: 'cancelled'; indexCount: number };
 
 export interface ServerInstance {
   hocuspocus: Hocuspocus;
@@ -471,8 +521,10 @@ export interface ServerInstance {
   readonly serverInstanceId: string;
   readonly durabilityState: DocumentDurabilityState;
   destroy: () => Promise<void>;
-  /** Resolves when async init (shadow repo, file watcher subscription) is complete. */
+  /** Resolves when async init (shadow repo and file watcher subscription) is complete. */
   ready: Promise<void>;
+  /** Settles after the post-readiness boot sweep finishes or shutdown cancels it. */
+  generatedIndexSweepReady: Promise<GeneratedIndexSweepResult>;
   /**
    * Names of subsystems that failed to initialize during boot.
    * Read AFTER `await ready` for a stable list; reads before may return a partial result.
@@ -524,6 +576,26 @@ export interface ServerInstance {
  */
 const PARK_SNAPSHOT_ORIGIN = (() => {
   const ctx = Object.freeze({ origin: 'park-snapshot', paired: true as const });
+  return Object.freeze({
+    source: 'local' as const,
+    skipStoreHooks: false,
+    context: ctx,
+  }) satisfies PairedWriteOrigin;
+})();
+
+/**
+ * Origin for a generated artifact landing in a LOADED document.
+ *
+ * skipStoreHooks: false — the CRDT write is the only write on this path, so
+ * persistence has to carry it to disk. The resulting flush calls back with the
+ * artifact's own docName, which the scheduler refuses, so the store does not
+ * re-enter generation.
+ *
+ * paired: true — `replaceRawBody` mutates Y.Text and the fragment in one
+ * transact, which is the marker every paired origin must declare.
+ */
+const GENERATED_ARTIFACT_ORIGIN = (() => {
+  const ctx = Object.freeze({ origin: 'generated-index', paired: true as const });
   return Object.freeze({
     source: 'local' as const,
     skipStoreHooks: false,
@@ -805,7 +877,12 @@ export function createServer(options: ServerOptions): ServerInstance {
     // to an effective base (rules placeholder), which the resolver fills from the
     // native `.markdownlint.*` file.
     const persisted = project.value.contentRules as PersistedLinterConfig | undefined;
-    return persisted ? toEffectiveBase(persisted) : DEFAULT_LINTER_CONFIG;
+    const base = persisted ? toEffectiveBase(persisted) : DEFAULT_LINTER_CONFIG;
+    // The OKF plugin advertises its schemas by path, so the files have to exist by
+    // the time anything reads a document — and only while their rules do. This is
+    // the funnel that knows the plugin state, and it no-ops until that changes.
+    ensureOkfSchemaFiles(projectDir, base.plugins.okf);
+    return base;
   }
 
   // Same fresh-per-request contract as `readLinterBaseConfig`: the broken-link
@@ -916,7 +993,10 @@ export function createServer(options: ServerOptions): ServerInstance {
   // re-apply: `SyncEngine.setMode` and `SemanticSearchService.applyConfig`
   // both early-return when the value is unchanged. A future non-idempotent
   // consumer added here would double-fire.
-  function applyPersistedConfigToConsumers(configDocName: string): void {
+  function applyPersistedConfigToConsumers(
+    configDocName: string,
+    generatedIndexEnabledOverride?: boolean,
+  ): void {
     let appliedAutoSyncMode: SyncMode | undefined;
     if (
       configDocName === CONFIG_DOC_NAME_PROJECT ||
@@ -977,6 +1057,29 @@ export function createServer(options: ServerOptions): ServerInstance {
         );
       }
       cc1Broadcaster?.signal('lint-config');
+      const generatedIndexEnabled =
+        generatedIndexEnabledOverride ??
+        readLinterBaseConfig().plugins.okf?.generate?.index === true;
+      if (!generatedIndexEnabled) {
+        void updateGeneratedIndexGitAttributes({
+          projectDir,
+          contentDir,
+          generatedDocNames: generatedIndexDocNamesForGitAttributes(),
+          enabled: false,
+        }).then((result) => {
+          if (!result.ok) {
+            log.warn(
+              { state: result.status.state },
+              '[index] could not remove Open Knowledge generated-index Git attributes',
+            );
+          }
+        });
+      }
+      // Reconcile on every project-config persist. A config persist carries no
+      // directory, so it sweeps the whole tree: the generator's fresh read makes
+      // disable a no-op and makes false → true materialize immediately, and
+      // duplicate producer/watcher notifications collapse in the debounce.
+      scheduleFullIndexSweep();
     }
     log.info(
       {
@@ -1270,6 +1373,545 @@ export function createServer(options: ServerOptions): ServerInstance {
     cc1Broadcaster?.signal(channel);
   }
 
+  // ─── Generated per-directory indexes ─────────────────────────────────────
+  //
+  // Trailing-edge debounce, longer than CC1's 100ms because the work ends in a
+  // file write rather than a signal: a burst of edits across several documents
+  // should produce one rebuild per affected directory, not one per document.
+  const INDEX_REGENERATION_DEBOUNCE_MS = 500;
+  let indexRegenerationTimer: NodeJS.Timeout | undefined;
+  let indexRegenerationImmediate: NodeJS.Immediate | undefined;
+  let indexRegenerationInFlight: Promise<void> | undefined;
+  let indexRegenerationReady = false;
+  let indexRegenerationClosed = false;
+  const indexRegenerationAbort = new AbortController();
+  // The directories whose index a settled burst must rebuild. A Set so repeated
+  // edits to one directory collapse to a single rebuild; drained on each fire.
+  const pendingIndexDirectories = new Set<string>();
+  // A trigger that carries no directory — config-persist, boot — rebuilds every
+  // directory. Kept apart from the set so an empty set never reads as a sweep.
+  let pendingIndexFullSweep = false;
+  let pendingBootIndexSweep = false;
+
+  let generatedIndexSweepSettled = false;
+  let generatedIndexBootSweepCount = 0;
+  let resolveGeneratedIndexSweep!: (result: GeneratedIndexSweepResult) => void;
+  const generatedIndexSweepReady = new Promise<GeneratedIndexSweepResult>((resolve) => {
+    resolveGeneratedIndexSweep = resolve;
+  });
+
+  function settleGeneratedIndexSweep(result: GeneratedIndexSweepResult): void {
+    if (generatedIndexSweepSettled) return;
+    generatedIndexSweepSettled = true;
+    resolveGeneratedIndexSweep(result);
+  }
+
+  type IndexRegenerationRequest =
+    | { fullSweep: true }
+    | { fullSweep: false; directories: ReadonlySet<string> };
+
+  type IndexRegenerationPassResult =
+    | GeneratedIndexSweepResult
+    | { status: 'deferred'; indexCount: number };
+
+  function hasPendingIndexRegeneration(): boolean {
+    return pendingIndexFullSweep || pendingIndexDirectories.size > 0;
+  }
+
+  function armIndexRegeneration(): void {
+    if (indexRegenerationClosed || !indexRegenerationReady) return;
+    if (indexRegenerationTimer !== undefined) clearTimeout(indexRegenerationTimer);
+    indexRegenerationTimer = setTimeout(() => {
+      indexRegenerationTimer = undefined;
+      kickIndexRegeneration();
+    }, INDEX_REGENERATION_DEBOUNCE_MS);
+    // A pending rebuild must not hold a test's process open; the index is
+    // rebuilt on the next qualifying write anyway.
+    indexRegenerationTimer.unref?.();
+  }
+
+  function deferBootIndexSweep(): void {
+    if (indexRegenerationClosed) {
+      settleGeneratedIndexSweep({ status: 'cancelled', indexCount: 0 });
+      return;
+    }
+    pendingIndexFullSweep = true;
+    pendingBootIndexSweep = true;
+    indexRegenerationImmediate = setImmediate(() => {
+      indexRegenerationImmediate = undefined;
+      kickIndexRegeneration();
+    });
+  }
+
+  function kickIndexRegeneration(): void {
+    if (indexRegenerationClosed || !indexRegenerationReady || !hasPendingIndexRegeneration()) {
+      return;
+    }
+    if (indexRegenerationInFlight !== undefined) {
+      options.generatedIndexTestHooks?.onKickWhileInFlight?.();
+      return;
+    }
+    if (durabilityState.isBatchInProgress()) {
+      armIndexRegeneration();
+      return;
+    }
+
+    // Snapshot and drain synchronously. Work scheduled while this pass awaits is
+    // retained for one trailing-edge follow-up rather than overlapping it.
+    const fullSweep = pendingIndexFullSweep;
+    const directories = new Set(pendingIndexDirectories);
+    const includesBootSweep = pendingBootIndexSweep;
+    pendingIndexFullSweep = false;
+    pendingIndexDirectories.clear();
+    pendingBootIndexSweep = false;
+    const request: IndexRegenerationRequest = fullSweep
+      ? { fullSweep: true }
+      : { fullSweep: false, directories };
+
+    indexRegenerationInFlight = (async () => {
+      const result = await regenerateIndexes(request, indexRegenerationAbort.signal);
+      if (result.status === 'deferred') {
+        // A branch batch began after this pass was admitted. A full sweep after
+        // settlement is the conservative repair for any partial work.
+        pendingIndexFullSweep = true;
+        if (includesBootSweep) {
+          generatedIndexBootSweepCount += result.indexCount;
+          pendingBootIndexSweep = true;
+        }
+        return;
+      }
+      if (includesBootSweep) {
+        generatedIndexBootSweepCount += result.indexCount;
+        if (result.status === 'completed' && hasPendingIndexRegeneration()) {
+          // Live work that arrived while boot was sweeping is part of the same
+          // readiness boundary. Carry the boot token into the coalesced pass so
+          // callers never observe a stale index immediately after readiness.
+          pendingBootIndexSweep = true;
+        } else {
+          settleGeneratedIndexSweep({ ...result, indexCount: generatedIndexBootSweepCount });
+        }
+      }
+    })()
+      .catch((err: unknown) => {
+        log.warn({ err }, '[index] index regeneration coordinator failed');
+        if (includesBootSweep) settleGeneratedIndexSweep({ status: 'failed', indexCount: 0 });
+      })
+      .finally(() => {
+        indexRegenerationInFlight = undefined;
+        if (indexRegenerationClosed) {
+          if (includesBootSweep) {
+            settleGeneratedIndexSweep({ status: 'cancelled', indexCount: 0 });
+          }
+          return;
+        }
+        if (hasPendingIndexRegeneration() && indexRegenerationTimer === undefined) {
+          armIndexRegeneration();
+        } else if (!hasPendingIndexRegeneration() && indexRegenerationTimer === undefined) {
+          options.generatedIndexTestHooks?.onIdle?.();
+        }
+      });
+  }
+
+  async function closeIndexRegeneration(): Promise<void> {
+    if (!indexRegenerationClosed) {
+      const inFlight = indexRegenerationInFlight;
+      indexRegenerationClosed = true;
+      indexRegenerationAbort.abort();
+      if (indexRegenerationTimer !== undefined) {
+        clearTimeout(indexRegenerationTimer);
+        indexRegenerationTimer = undefined;
+      }
+      if (indexRegenerationImmediate !== undefined) {
+        clearImmediate(indexRegenerationImmediate);
+        indexRegenerationImmediate = undefined;
+      }
+      pendingIndexDirectories.clear();
+      pendingIndexFullSweep = false;
+      pendingBootIndexSweep = false;
+      // An in-flight boot sweep owns its visited count. Let its cooperative
+      // cancellation settle the public promise after the current atomic write
+      // drains; only a queued/not-yet-started sweep has visited zero indexes.
+      if (inFlight === undefined) {
+        settleGeneratedIndexSweep({ status: 'cancelled', indexCount: 0 });
+      }
+    }
+    await indexRegenerationInFlight;
+  }
+
+  /**
+   * Ask for a rebuild of the index that owns `docName` — the directory the
+   * document lives in.
+   *
+   * A generated index at any depth is refused here, not scheduled. Suppressing
+   * the watcher's echo of the write is not enough: a resident index reaches disk
+   * through the persistence flush, whose completion hook calls this scheduler
+   * directly, so an index that accepted its own write would schedule itself
+   * forever. Matching only the root name would let each generated child slip
+   * through. The per-directory byte comparison is the second layer, so a miss
+   * here settles after one pass instead of spinning.
+   */
+  function scheduleIndexRegeneration(docName: string): void {
+    if (indexRegenerationClosed || isGeneratedIndexDocName(docName)) return;
+    pendingIndexDirectories.add(directoryOf(docName));
+    armIndexRegeneration();
+  }
+
+  /**
+   * A folder was created or deleted: rebuild its parent chain. A child's
+   * existence flows into every ancestor index above it, so the whole chain up to
+   * the root can move. Ancestors without an index of their own produce no
+   * decision and drop out at the byte comparison.
+   */
+  function scheduleSubdirectoryIndexRegeneration(directory: string): void {
+    if (indexRegenerationClosed) return;
+    for (const ancestor of directoryChainToRoot(directory)) {
+      pendingIndexDirectories.add(ancestor);
+    }
+    armIndexRegeneration();
+  }
+
+  /**
+   * Reconcile the navigation edge above a document that just left its old path.
+   * If other admitted markdown still keeps that directory in the desired set,
+   * only its own index changes. If the directory just fell out of the set, its
+   * index is deliberately preserved as an orphan and the parent chain rebuilds
+   * to stop linking to it.
+   */
+  function scheduleIndexRegenerationAfterRemoval(docName: string): void {
+    const fileIndex = watcher?.getFileIndex();
+    if (!fileIndex) {
+      scheduleIndexRegeneration(docName);
+      return;
+    }
+
+    const sourceDirectory = directoryOf(docName);
+    const desiredDirectories = collectIndexDirectories(fileIndex.keys());
+    if (desiredDirectories.has(sourceDirectory)) {
+      scheduleIndexRegeneration(docName);
+      return;
+    }
+
+    scheduleSubdirectoryIndexRegeneration(directoryOf(sourceDirectory));
+  }
+
+  /**
+   * A trigger with no directory in hand — a config-persist that may have flipped
+   * the setting on, or boot against an unindexed tree — rebuilds every directory
+   * rather than guessing a target.
+   */
+  function scheduleFullIndexSweep(): void {
+    if (indexRegenerationClosed) return;
+    pendingIndexFullSweep = true;
+    armIndexRegeneration();
+  }
+
+  /**
+   * The rendered index fields the file index currently caches for a document,
+   * or undefined when it holds no markdown entry. Read at the API mutation seam
+   * before that seam overwrites the entry, so an update there can compare the
+   * old fields against the new bytes and skip the rebuild when none moved.
+   */
+  function currentIndexedFields(docName: string): PreviousIndexedFields | undefined {
+    const entry = watcher?.getFileIndex().get(docName);
+    if (!entry) return undefined;
+    return { title: entry.title, description: entry.description, type: entry.type };
+  }
+
+  /**
+   * The collaborators every generated artifact writes through. Assembled once;
+   * the dispatch itself lives in `content/generated-artifact.ts`, where it is
+   * testable without a booted server.
+   */
+  let generatedAttributionPending = false;
+  const generatedArtifactEnv: GeneratedArtifactEnv = {
+    origin: GENERATED_ARTIFACT_ORIGIN,
+    writer: OK_GENERATOR_WRITER,
+    isConflict: (docName) =>
+      syncEngine
+        ?.getConflicts()
+        .some((entry) => entryMatchesDocName(entry, docName, projectDir, contentDir)) === true,
+    getDocument: (docName) => hocuspocus.documents.get(docName),
+    writeDisk: async (absPath, markdown) => {
+      tracedMkdirSync(dirname(absPath), { recursive: true });
+      await atomicWriteFile(absPath, markdown, { fs: tracedAtomicFs });
+    },
+    registerWrite: (absPath, markdown) => registerWrite(absPath, contentHash(markdown)),
+    noteFileIndex: (event) =>
+      watcher?.mutateFileIndex({
+        kind: event.kind,
+        path: event.absPath,
+        docName: event.docName,
+        content: event.markdown,
+      }),
+    signalFiles: () => signalChannel('files'),
+    attribute: async (docName, writer) => {
+      recordContributor(docName, writer.id, writer.name, writer.id);
+      generatedAttributionPending = true;
+    },
+  };
+
+  /** The docName of the index that lives in `directory` ('' for the root). */
+  function indexDocNameFor(directory: string): string {
+    return directory === '' ? ROOT_INDEX_DOC_NAME : `${directory}/${ROOT_INDEX_DOC_NAME}`;
+  }
+
+  function generatedIndexDocNamesForGitAttributes(): string[] {
+    const directories = watcher
+      ? collectIndexDirectories(watcher.getFileIndex().keys())
+      : new Set<string>(['']);
+    return [...directories].map(indexDocNameFor);
+  }
+
+  function toGeneratedIndexSettingsStatus(
+    git: GeneratedIndexGitAttributesStatus,
+  ): GeneratedIndexSettingsStatus {
+    const enabled = readLinterBaseConfig().plugins.okf?.generate?.index === true;
+    const admitted = git.state === 'ready' || git.state === 'not-applicable';
+    return {
+      enabled,
+      active: enabled && admitted,
+      git:
+        git.state === 'ready'
+          ? { state: git.state, ownership: git.ownership }
+          : { state: git.state },
+    };
+  }
+
+  function getGeneratedIndexSettingsStatus(): GeneratedIndexSettingsStatus {
+    return toGeneratedIndexSettingsStatus(
+      inspectGeneratedIndexGitAttributes({
+        projectDir,
+        contentDir,
+        generatedDocNames: generatedIndexDocNamesForGitAttributes(),
+      }),
+    );
+  }
+
+  async function setGeneratedIndexEnabled(enabled: boolean): Promise<GeneratedIndexSettingsStatus> {
+    const attributes = await updateGeneratedIndexGitAttributes({
+      projectDir,
+      contentDir,
+      generatedDocNames: generatedIndexDocNamesForGitAttributes(),
+      enabled,
+    });
+    if (!attributes.ok) {
+      return {
+        ...getGeneratedIndexSettingsStatus(),
+        applied: false,
+        reason: attributes.status.state === 'conflict' ? 'git-conflict' : 'git-unavailable',
+      };
+    }
+
+    const configResult = await writeConfigPatch({
+      cwd: projectDir,
+      scope: 'project',
+      patch: { contentRules: { okf: { generate: { index: enabled } } } },
+    });
+    if (!configResult.ok) {
+      try {
+        await attributes.rollback();
+      } catch (err) {
+        log.error({ err }, '[index] could not roll back generated-index Git attributes');
+      }
+      return { ...getGeneratedIndexSettingsStatus(), applied: false, reason: 'config-write' };
+    }
+
+    try {
+      const content = readFileSync(configResult.path, 'utf-8');
+      applyExternalConfigChange(
+        hocuspocus.documents.get(CONFIG_DOC_NAME_PROJECT) ?? null,
+        CONFIG_DOC_NAME_PROJECT,
+        content,
+        persistence.configPersistenceCtx,
+      );
+    } catch (err) {
+      // The durable config and attribute already agree. The config watcher is
+      // the recovery path for this in-memory reflection, so do not roll either
+      // durable write back after the operation has committed.
+      log.warn({ err }, '[index] generated-index settings reflection deferred to config watcher');
+    }
+    applyPersistedConfigToConsumers(CONFIG_DOC_NAME_PROJECT, enabled);
+    return { ...getGeneratedIndexSettingsStatus(), applied: true };
+  }
+
+  /**
+   * Rebuild the generated indexes a settled burst asked for.
+   *
+   * A full sweep rebuilds every directory; otherwise only the directories the
+   * request names. The plan is computed over the whole document set either way —
+   * a directory's index links its in-set children, so the full set is what makes
+   * one pass internally consistent — and only the requested indexes are written.
+   * Decisions arrive deepest-first, so a child index lands before the parent that
+   * links it.
+   *
+   * Current bytes are read here, at the write, not fed to the planner: the write
+   * layer does its own byte comparison, so the planner's `changed` flag would
+   * only add a redundant disk read for every directory in the set, including ones
+   * this request will not write.
+   *
+   * Failure is never fatal. A knowledge base whose index is one rebuild stale
+   * still works; a server that fell over because it could not write a navigation
+   * file does not.
+   */
+  async function regenerateIndexes(
+    request: IndexRegenerationRequest,
+    signal: AbortSignal,
+  ): Promise<IndexRegenerationPassResult> {
+    let generatedIndexCount = 0;
+    const sweepStartedAt = request.fullSweep ? performance.now() : undefined;
+    const generationIsDisabled = () => readLinterBaseConfig().plugins.okf?.generate?.index !== true;
+    try {
+      if (signal.aborted) return { status: 'cancelled', indexCount: 0 };
+      if (generationIsDisabled()) {
+        return { status: 'disabled', indexCount: 0 };
+      }
+
+      const fileIndex = watcher?.getFileIndex();
+      if (!fileIndex) return { status: 'failed', indexCount: 0 };
+
+      try {
+        await options.generatedIndexTestHooks?.beforePlan?.({
+          fullSweep: request.fullSweep,
+          signal,
+        });
+        if (signal.aborted) return { status: 'cancelled', indexCount: generatedIndexCount };
+        if (generationIsDisabled()) {
+          return { status: 'disabled', indexCount: generatedIndexCount };
+        }
+        if (durabilityState.isBatchInProgress()) {
+          return { status: 'deferred', indexCount: generatedIndexCount };
+        }
+        const decisions = planDirectoryIndexRegenerations({
+          docs: fileIndex,
+          docExtension: getDocExtension,
+          currentMarkdownFor: () => null,
+        });
+        const gitAttributes = inspectGeneratedIndexGitAttributes({
+          projectDir,
+          contentDir,
+          generatedDocNames: decisions.map(({ directory }) => indexDocNameFor(directory)),
+        });
+        if (gitAttributes.state !== 'ready' && gitAttributes.state !== 'not-applicable') {
+          log.warn(
+            { state: gitAttributes.state },
+            '[index] generated index regeneration paused by Git attributes',
+          );
+          return { status: 'blocked', indexCount: generatedIndexCount };
+        }
+
+        for (const { directory, markdown } of decisions) {
+          if (!request.fullSweep && !request.directories.has(directory)) continue;
+          if (signal.aborted) {
+            return { status: 'cancelled', indexCount: generatedIndexCount };
+          }
+          if (generationIsDisabled()) {
+            return { status: 'disabled', indexCount: generatedIndexCount };
+          }
+          if (durabilityState.isBatchInProgress()) {
+            return { status: 'deferred', indexCount: generatedIndexCount };
+          }
+
+          await options.generatedIndexTestHooks?.beforeDecision?.({
+            directory,
+            fullSweep: request.fullSweep,
+            signal,
+          });
+          if (signal.aborted) {
+            return { status: 'cancelled', indexCount: generatedIndexCount };
+          }
+          if (generationIsDisabled()) {
+            return { status: 'disabled', indexCount: generatedIndexCount };
+          }
+
+          const docName = indexDocNameFor(directory);
+          const absPath = resolve(contentDir, `${docName}.md`);
+          let currentMarkdown: string | null;
+          try {
+            currentMarkdown = readFileSync(absPath, 'utf-8');
+          } catch (error) {
+            // A missing index is the ordinary first-run case. Anything else
+            // (permissions, a directory in the way, I/O) also reads as absent
+            // here, which would overwrite a file we simply could not read — so
+            // say so rather than letting it pass as "not there yet".
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+              log.warn(
+                { err: error, path: normalizeFsPath(absPath) },
+                '[index] could not read the existing generated index; treating it as absent',
+              );
+            }
+            currentMarkdown = null;
+          }
+
+          generatedIndexCount += 1;
+          const outcome = await writeGeneratedArtifact(
+            { docName, absPath, markdown, currentMarkdown },
+            generatedArtifactEnv,
+          );
+          if (outcome === 'blocked-conflict') {
+            log.warn(
+              {
+                event: 'generated-index-regeneration',
+                outcome: 'blocked',
+                directory,
+                reason: 'conflict',
+              },
+              '[index] generated index regeneration blocked by active conflict',
+            );
+          } else {
+            log.info(
+              {
+                event: 'generated-index-regeneration',
+                outcome: outcome === 'unchanged' ? 'unchanged' : 'written',
+                directory,
+              },
+              '[index] generated index regeneration completed',
+            );
+          }
+          await options.generatedIndexTestHooks?.afterWrite?.({
+            docName,
+            fullSweep: request.fullSweep,
+            signal,
+          });
+
+          // A child index that had no file until this write means a directory just
+          // entered the tree, so the parent that should now link it must rebuild.
+          // The parent will not rebuild on its own: the document-event guard
+          // refuses an index's own write, so nothing else re-teaches it. This is
+          // the deliberate, narrow exception to that guard, kept bounded two ways —
+          // it fires only on a child index's first appearance (no prior file) and
+          // only outside a full sweep, which already builds every parent in the
+          // same pass — and it terminates, because the parent's own byte comparison
+          // stops the walk once nothing further changes.
+          if (!request.fullSweep && directory !== '' && currentMarkdown === null) {
+            scheduleSubdirectoryIndexRegeneration(directoryOf(directory));
+          }
+        }
+      } finally {
+        if (generatedAttributionPending) {
+          // Generated disk writes have no store hook to schedule attribution.
+          // Flush once per single-flight pass so every landed artifact is durable
+          // without paying one serialized shadow commit per directory. Waiting
+          // first matters: flushContributors joins an existing commit but does
+          // not itself drain contributors recorded after that commit started.
+          await persistence.waitForPendingCommits();
+          await persistence.flushContributors();
+          generatedAttributionPending = false;
+        }
+        if (sweepStartedAt !== undefined) {
+          recordBootPhase(
+            'generatedIndexSweepMs',
+            Math.round((performance.now() - sweepStartedAt) * 100) / 100,
+          );
+          setBootField('generatedIndexCount', generatedIndexCount);
+        }
+      }
+      return { status: 'completed', indexCount: generatedIndexCount };
+    } catch (err) {
+      log.warn({ err }, '[index] index regeneration failed');
+      return { status: 'failed', indexCount: generatedIndexCount };
+    }
+  }
+
   // LRU cache of docNames renamed away or deleted, durable across restarts
   // via the removal journal at `.ok/local/removed-docs.json`. Read by
   // `removalRedirectGuard` (registered below) to reject WebSocket
@@ -1551,6 +2193,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       onDiskFlush: (docName, sv, persistedMarkdown, previousMarkdown) => {
         cc1Broadcaster?.emitDiskAck(docName, sv);
         if (isReservedForUserTree(docName)) return;
+        // Before the asset check, which returns early: a title or description
+        // edit changes no asset reference, so anything downstream of that
+        // return never sees the writes this feature exists for.
+        if (indexedFieldsChanged(previousMarkdown, persistedMarkdown, docName)) {
+          scheduleIndexRegeneration(docName);
+        }
         if (!assetReferencesChanged(previousMarkdown, persistedMarkdown)) return;
         invalidateReferencedAssetsCache?.();
         signalChannel('files');
@@ -2098,13 +2746,60 @@ export function createServer(options: ServerOptions): ServerInstance {
       sessionManager,
       commentDocHooksRef,
       contentDir,
+      getGeneratedIndexSettingsStatus,
+      setGeneratedIndexEnabled,
       contentFilter,
       serverInstanceId,
       getFileIndex: () => (watcher ? watcher.getFileIndex() : new Map()),
       getAttachmentFolderPath: readProjectAttachmentFolderPath,
       getAllFilesIndex: () => (watcher ? watcher.getAllFilesIndex() : new Map()),
       getFileIndexGeneration: () => watcher?.getFileIndexGeneration() ?? 0,
-      mutateFileIndex: (event) => watcher?.mutateFileIndex(event),
+      mutateFileIndex: (event) => {
+        // Read before the mutation overwrites the cached entry: an update knows
+        // whether an index-visible field moved only by comparing the old fields
+        // against the new bytes, and the pre-mutation file index is the only
+        // place the old fields still exist here.
+        const previousIndexedFields =
+          event.kind === 'update' ? currentIndexedFields(event.docName) : undefined;
+        watcher?.mutateFileIndex(event);
+        // API mutations register their disk writes, so the watcher correctly
+        // suppresses the echo. Schedule at this typed mutation seam or direct
+        // creates such as /api/create-page never reach another invalidator.
+        switch (event.kind) {
+          case 'update':
+            // An agent rewriting only body prose moves nothing the index shows,
+            // so gate on the rendered fields — the same predicate the watcher's
+            // update path uses — rather than rebuilding on every write. Create
+            // and delete change membership and always schedule.
+            if (indexedMetadataChanged(previousIndexedFields, event.content, event.docName)) {
+              scheduleIndexRegeneration(event.docName);
+            }
+            break;
+          case 'create':
+          case 'conflict':
+            scheduleIndexRegeneration(event.docName);
+            break;
+          case 'delete':
+            scheduleIndexRegenerationAfterRemoval(event.docName);
+            break;
+          case 'rename':
+            scheduleIndexRegenerationAfterRemoval(event.oldDocName);
+            scheduleIndexRegeneration(event.newDocName);
+            break;
+          case 'folder-create':
+          case 'folder-delete':
+            scheduleSubdirectoryIndexRegeneration(event.relativePath);
+            break;
+          case 'asset-create':
+          case 'asset-delete':
+          case 'file-create':
+          case 'file-update':
+          case 'file-delete':
+            break;
+          default:
+            assertNeverDiskEvent(event);
+        }
+      },
       getFolderIndex: () => (watcher ? watcher.getFolderIndex() : new Map()),
       getAliasMap: () => (watcher ? watcher.getAliasMap() : new Map()),
       getFolderAliasIndex: () => (watcher ? watcher.getFolderAliasIndex() : new Map()),
@@ -2483,12 +3178,19 @@ export function createServer(options: ServerOptions): ServerInstance {
           log.info({ docName: event.docName }, `[reconcile] create: ${event.docName}`);
           await derivedDocumentIndex.recordDiskUpsert(event.docName, event.content);
           signalChannel('files');
+          // Membership changed. A disk-originated create never reaches
+          // `onDiskFlush` — that fires when persistence writes OUT — so the
+          // watcher is the only place this arrives.
+          scheduleIndexRegeneration(event.docName);
           onUpstreamAdd(event.docName);
           break;
         }
 
         case 'update': {
           const { docName, content: theirs } = event;
+          if (indexedMetadataChanged(event.previousIndexedFields, theirs, docName)) {
+            scheduleIndexRegeneration(docName);
+          }
           const document = hocuspocus.documents.get(docName);
           if (!document) {
             await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
@@ -2625,6 +3327,11 @@ export function createServer(options: ServerOptions): ServerInstance {
             await derivedDocumentIndex.recordDiskDelete(docName);
             signalChannel('files');
             onUpstreamDelete(docName);
+            // Same reason as the loaded path below, and the COMMON case: a
+            // document deleted from the file tree or a shell was usually never
+            // opened, so this branch is where most deletions land. Omitting it
+            // leaves the index linking to a file that is gone.
+            scheduleIndexRegenerationAfterRemoval(docName);
             console.info(
               JSON.stringify({
                 event: 'recently-removed-docs-populate',
@@ -2685,6 +3392,10 @@ export function createServer(options: ServerOptions): ServerInstance {
           await forceUnloadDocument(document);
           signalChannel('files');
           onUpstreamDelete(docName);
+          // A deleted document must leave the index. Nothing else reports this:
+          // deletion produces no flush, so without this the entry survives as a
+          // link to a file that is gone.
+          scheduleIndexRegenerationAfterRemoval(docName);
           console.info(
             JSON.stringify({
               event: 'recently-removed-docs-populate',
@@ -2722,6 +3433,12 @@ export function createServer(options: ServerOptions): ServerInstance {
               source: 'watcher-rename',
             }),
           );
+          // A rename empties the source directory's index of this entry and
+          // adds it to the destination's, so both must rebuild — scheduling only
+          // one strands the moved document in the other. A same-directory rename
+          // resolves to a single directory, which the pending set dedupes.
+          scheduleIndexRegenerationAfterRemoval(oldDocName);
+          scheduleIndexRegeneration(newDocName);
           break;
         }
 
@@ -2778,6 +3495,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         case 'folder-create':
         case 'folder-delete': {
           signalChannel('files');
+          // A folder create or delete changes its parent's child listing, which
+          // every ancestor index above it reflects.
+          scheduleSubdirectoryIndexRegeneration(event.relativePath);
           break;
         }
         // file-* events maintain the in-memory fileIndex as `kind:'file'`. Like
@@ -2989,6 +3709,16 @@ export function createServer(options: ServerOptions): ServerInstance {
       const t0 = Date.now();
       const phaseErrors: Array<{ phase: string; error: string }> = [];
       shutdownAllowsUnload = true;
+
+      // Close the generator before watcher or shadow teardown. Cancellation is
+      // cooperative: an already-started atomic write finishes, then the
+      // single-flight pass observes the signal and drains before teardown.
+      try {
+        await closeIndexRegeneration();
+      } catch (err) {
+        log.warn({ err }, '[index] generated index shutdown drain failed');
+        phaseErrors.push({ phase: 'generated-index-drain', error: String(err) });
+      }
 
       // Stop contributing to the process-wide workload gauges before any
       // teardown phase runs — a mid-destroy sample would otherwise read
@@ -4782,17 +5512,26 @@ export function createServer(options: ServerOptions): ServerInstance {
   // (so it could be passed into createApiExtension before initAsync ran).
   // Settle it now from initAsync's completion. Errors propagate through the
   // same channel callers awaited before.
-  initAsync().then(resolveReady, (err) => {
-    // A pre-index startup failure would otherwise strand coordinator callers
-    // behind unresolved admission/readiness barriers. Failed server startup
-    // has no recovery path, so close releases every waiter with a rejection.
-    void derivedDocumentIndex.close();
-    // A failure BEFORE the branch scope was aligned leaves this deferred
-    // pending, which would park WebSocket admission forever. Release it (no-op
-    // when the alignment already ran) so the branch gate falls through instead.
-    resolveBranchScopeAligned();
-    rejectReady(err);
-  });
+  initAsync().then(
+    () => {
+      indexRegenerationReady = true;
+      // Promise continuations run before the macrotask below, so callers can
+      // observe readiness without paying synchronous planner cost.
+      resolveReady();
+      deferBootIndexSweep();
+    },
+    (err) => {
+      indexRegenerationClosed = true;
+      indexRegenerationAbort.abort();
+      settleGeneratedIndexSweep({ status: 'failed', indexCount: 0 });
+      // A pre-index startup failure would otherwise strand coordinator callers
+      // behind unresolved admission/readiness barriers. Failed server startup
+      // has no recovery path, so close releases every waiter with a rejection.
+      void derivedDocumentIndex.close();
+      resolveBranchScopeAligned();
+      rejectReady(err);
+    },
+  );
 
   return {
     hocuspocus,
@@ -4809,6 +5548,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     serverInstanceId,
     destroy,
     ready,
+    generatedIndexSweepReady,
     degraded,
     lockDir,
     get syncEngine() {

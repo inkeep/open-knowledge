@@ -137,6 +137,10 @@ const EXEMPT_HANDLERS = new Set([
   'handleTagsForName',
   'handlePages',
   'handleFolderConfig',
+  // `/api/generated-index/settings` coordinates project config with a scoped
+  // `.gitattributes` rule. It has no content-document target, so a per-doc
+  // conflict cannot apply.
+  'handleGeneratedIndexSettings',
   // `/api/saved-themes` (list) + `/api/saved-theme` (save/delete) — user-global
   // theme-store operations. They target scheme files under `<home>/.ok/themes`,
   // not a Y.Doc, so the per-doc conflict-refusal gate does not apply — same
@@ -298,6 +302,9 @@ const EXEMPT_HANDLERS = new Set([
   'handleSkillDuplicate',
   'handleSeedPlan',
   'handleSeedApply',
+  // Pack-skill installation authors a new bundle fs-direct or refreshes its
+  // editor projection; it does not mutate an existing content Y.Doc body.
+  'handleSeedInstallPackSkill',
   'handleSeedPacks',
   'handleShareConstructUrl',
   'handleSharePublishOwners',

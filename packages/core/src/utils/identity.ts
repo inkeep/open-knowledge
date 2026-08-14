@@ -3,6 +3,27 @@ import { randomUUID } from './random-uuid.ts';
 
 // --- Constants ---
 
+/**
+ * Display names for the classified (non-session) shadow-repo writers.
+ *
+ * Here, not beside the server's `WriterIdentity` constants, because BOTH sides
+ * need them: the server writes these into commits, and the editor matches on
+ * them to choose a timeline icon. The editor cannot reach the server's module —
+ * nor `shadow-repo-layout`, which imports `node:fs` and is deliberately kept off
+ * the browser-safe barrel — so a shared string has to live somewhere neutral,
+ * and identity/display constants already do.
+ *
+ * A hand-copied string on the editor side drifts silently: the miss renders a
+ * HUMAN icon next to content no human wrote, which is exactly the confusion the
+ * classified writer ids exist to prevent, and nothing else in the UI flags it.
+ */
+export const SYSTEM_WRITER_DISPLAY_NAMES = {
+  fileSystem: 'File System',
+  gitUpstream: 'Git (upstream)',
+  service: 'OpenKnowledge (service)',
+  generator: 'OpenKnowledge (generated)',
+} as const;
+
 export const AGENT_COLORS = [
   '#D97757', // claude
   '#1B1912', // cursor

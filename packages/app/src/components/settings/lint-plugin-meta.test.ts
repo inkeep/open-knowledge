@@ -24,4 +24,15 @@ describe('LINT_PLUGIN_META ⟷ plugin registry', () => {
       expect(meta.label.length).toBeGreaterThan(0);
     }
   });
+
+  test('OKF declares its companion agent skill without making it a plugin dependency', () => {
+    expect(LINT_PLUGIN_META.find((plugin) => plugin.id === 'okf')?.recommendedSkills).toEqual([
+      { packId: 'okf', name: 'okf-knowledge-base' },
+    ]);
+    expect(
+      LINT_PLUGIN_META.filter((plugin) => plugin.id !== 'okf').every(
+        (plugin) => plugin.recommendedSkills === undefined,
+      ),
+    ).toBe(true);
+  });
 });

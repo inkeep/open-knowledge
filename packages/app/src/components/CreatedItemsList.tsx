@@ -1,7 +1,9 @@
+import type { LintPluginId } from '@inkeep/open-knowledge-core';
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { File, Folder, Hexagon, type LucideIcon } from 'lucide-react';
+import { File, Folder, Hexagon, type LucideIcon, Puzzle } from 'lucide-react';
 import { Fragment } from 'react';
+import { LINT_PLUGIN_META } from '@/components/settings/lint-plugin-meta';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OkScaffoldPlan, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
 import { skillDisplayName } from '@/lib/skill-scope';
@@ -104,6 +106,11 @@ export function CreatedItemsList({
   const folders = describeFolderCards(plan, selectedPack);
   const files = describeFileCards(plan);
   const pendingSkills = (plan.packSkills ?? []).filter((s) => s.pending);
+  // Pending only, mirroring skills — and it happens to be exactly the set that
+  // needs explaining. A plugin already on did not "turn back on", so it has
+  // nothing to disclose; a pending one is either new or was deliberately
+  // switched off, and that is the case the user is owed a reason for.
+  const pendingPlugins = (plan.requiredPlugins ?? []).filter((p) => p.pending);
   // Derive the counts straight from the rows so the summary line always
   // matches what's rendered. Counting `plan.created` directly diverged in
   // subfolder mode, where the plan also creates the parent folder (e.g.
@@ -112,6 +119,7 @@ export function CreatedItemsList({
   const fileCount = files.length;
   const templateCount = folders.reduce((sum, f) => sum + f.templateCount, 0);
   const skillCount = pendingSkills.length;
+  const pluginCount = pendingPlugins.length;
 
   // One-line blurbs for the reserved root files, grounded in each file's
   // frontmatter `description` (authored in `packs`' `rootFiles`, server-side).
@@ -164,6 +172,13 @@ export function CreatedItemsList({
           label: t`${plural(skillCount, { one: 'skill', other: 'skills' })}`,
         }
       : null,
+    pluginCount > 0
+      ? {
+          key: 'plugins',
+          n: pluginCount,
+          label: t`${plural(pluginCount, { one: 'plugin', other: 'plugins' })}`,
+        }
+      : null,
   ].filter((c): c is { key: string; n: number; label: string } => c !== null);
 
   // Rows are grouped into their own sections (Folders / Files / Skill) rather
@@ -199,6 +214,24 @@ export function CreatedItemsList({
     title: skill.name,
     description: t`Guides your AI agents on how to work here.`,
   }));
+  // What each plugin does, so the row reads like its neighbors (which describe
+  // the thing, not where it came from). Keyed per plugin rather than one shared
+  // sentence: a pack requiring a different plugin must not inherit this text.
+  // Resolved here rather than as a field on LINT_PLUGIN_META because that is a
+  // plain module — a `t` macro there would bind at import, not at render.
+  const pluginDescriptions: Partial<Record<LintPluginId, string>> = {
+    okf: t`Checks your project against the Open Knowledge Format. Turn it off any time in Settings.`,
+  };
+  // The disclosure this section exists for: a user who turned a plugin off and
+  // then seeds a pack that requires it needs to see, here, that it is coming
+  // back on — and the description says it stays theirs to turn off again.
+  const pluginRows: PreviewRow[] = pendingPlugins.map((plugin) => ({
+    key: `plugin:${plugin.id}`,
+    icon: Puzzle,
+    name: LINT_PLUGIN_META.find((meta) => meta.id === plugin.id)?.label ?? plugin.id,
+    title: plugin.id,
+    description: pluginDescriptions[plugin.id] ?? t`Turn it off any time in Settings.`,
+  }));
 
   // Ordered, non-empty sections. Labels pluralize with their own count so a
   // single item reads "Skill" / "File", not "Skills" / "Files".
@@ -217,6 +250,11 @@ export function CreatedItemsList({
       key: 'skill',
       label: t`${plural(skillRows.length, { one: 'Skill', other: 'Skills' })}`,
       rows: skillRows,
+    },
+    {
+      key: 'plugin',
+      label: t`${plural(pluginRows.length, { one: 'Plugin', other: 'Plugins' })}`,
+      rows: pluginRows,
     },
   ].filter((s) => s.rows.length > 0);
 

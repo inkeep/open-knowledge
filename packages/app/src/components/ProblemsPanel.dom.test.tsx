@@ -115,6 +115,7 @@ function lintConfigWith(plugins: { markdownlint: boolean; frontmatter: boolean }
       plugins: {
         markdownlint: { enabled: plugins.markdownlint, rules: {} },
         frontmatter: { enabled: plugins.frontmatter, schemas: [] },
+        okf: { enabled: false },
       },
     },
     configFile: null,

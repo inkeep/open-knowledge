@@ -54,7 +54,14 @@ import { discoverGitRepository } from './git-repository.ts';
  *   file-system                → 'classified-file-system'           (disk reconcile)
  *   git-upstream               → 'classified-git-upstream'          (HEAD-move import boundary)
  *   openknowledge-service      → 'classified-openknowledge-service' (park / service)
+ *   ok-generator               → 'classified-ok-generator'          (OK-authored artifacts)
  *   server, human-*, upstream  → 'unknown'                          (legacy, swept on GC)
+ *
+ * `ok-generator` is distinct from `openknowledge-service` on purpose: the service
+ * writer is the no-contributor fallback for housekeeping, while a generated
+ * artifact is a deliberate authoring action that simply has no human behind it.
+ * Folding the two would put generated content under the id this precedent
+ * reserves for unattributable work.
  *
  * `git-author-<hash>` gives each distinct upstream commit author their own WIP
  * ref so the per-doc Timeline query (which diffs each ref's chain) attributes a
@@ -69,10 +76,19 @@ export type WriterClassification =
   | 'classified-file-system'
   | 'classified-git-upstream'
   | 'classified-openknowledge-service'
+  | 'classified-ok-generator'
   | 'unknown';
 
 /** Prefix for per-author upstream-import writer ids: `git-author-<fnv1a(email)>`. */
 export const GIT_AUTHOR_WRITER_PREFIX = 'git-author-';
+
+/**
+ * Writer id for artifacts OK authors itself (today: the generated root `index.md`).
+ * Lives here so `parseWriterId`, the ref regex, and the server's `WriterIdentity`
+ * constant all read one string — a drifted copy would land commits on a ref the
+ * parser classifies as 'unknown'.
+ */
+export const OK_GENERATOR_WRITER_ID = 'ok-generator';
 
 /**
  * Stable writer id for an upstream commit author, keyed by email so the same
@@ -104,12 +120,12 @@ export interface ParsedWriter {
  * should flow through `parseWriterId`.
  *
  * Recognized ids — `agent-<uuid>`, `principal-<uuid>`, `git-author-<hash>`,
- * `file-system`, `git-upstream`, `openknowledge-service`.
+ * `file-system`, `git-upstream`, `openknowledge-service`, `ok-generator`.
  * Legacy ids (`human-*`, `upstream`, `server`) do NOT match → 'unknown',
  * so they are eligible for GC by the allowlist sweep.
  */
 const WRITER_ID_RE =
-  /^(agent-[^/]+|principal-[^/]+|git-author-[^/]+|file-system|git-upstream|openknowledge-service)$/;
+  /^(agent-[^/]+|principal-[^/]+|git-author-[^/]+|file-system|git-upstream|openknowledge-service|ok-generator)$/;
 
 /**
  * Compatibility view of shared repository discovery for shadow-repo callers.
@@ -881,6 +897,8 @@ export function parseWriterId(id: string): ParsedWriter {
     return { id, classification: 'classified-git-upstream', isAgent: null };
   if (id === 'openknowledge-service')
     return { id, classification: 'classified-openknowledge-service', isAgent: null };
+  if (id === OK_GENERATOR_WRITER_ID)
+    return { id, classification: 'classified-ok-generator', isAgent: null };
   // Unreachable given the regex, but keeps the type narrowing honest.
   return { id, classification: 'unknown', isAgent: null };
 }

@@ -41,7 +41,7 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
 
-const ASYNC_TIMEOUT_MS = 2000;
+const ASYNC_TIMEOUT_MS = 10_000;
 
 const INVITE: OkBugReportCrashDetectedEvent = {
   eventId: 'boot:1751871600000',

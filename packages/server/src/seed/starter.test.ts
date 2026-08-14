@@ -70,22 +70,23 @@ describe('STARTER_FOLDERS — Karpathy three-layer starter pack', () => {
     expect(entry?.starterTemplate).toBe('clip');
   });
 
-  test('research description references research tool + provisional status + sources + grounding rule', () => {
+  test('research description references research tool + OKF draft status + sources + grounding rule', () => {
     const entry = STARTER_FOLDERS.find((f) => f.path === 'research');
     expect(entry).toBeDefined();
     expect(entry?.description).toContain('Provisional analysis');
     expect(entry?.description).toContain('external-sources');
-    expect(entry?.description).toContain('status: provisional');
+    expect(entry?.description).toContain('status: draft');
     expect(entry?.description).toContain('consolidate');
     expect(entry?.description.toLowerCase()).toMatch(/cite/);
     expect(entry?.tags).toEqual(['research', 'provisional', 'layer-research']);
     expect(entry?.starterTemplate).toBe('research-log');
   });
 
-  test('articles description references consolidate + canonical status + supersedes chain + traceable evidence', () => {
+  test('articles description references consolidate + OKF stable status + supersedes chain + traceable evidence', () => {
     const entry = STARTER_FOLDERS.find((f) => f.path === 'articles');
     expect(entry).toBeDefined();
     expect(entry?.description).toContain('Canonical knowledge');
+    expect(entry?.description).toContain('status: stable');
     expect(entry?.description).toContain('source of truth');
     expect(entry?.description).toContain('supersedes:');
     expect(entry?.description).toContain('research/');
@@ -121,6 +122,11 @@ describe('STARTER_TEMPLATES', () => {
         ).toBe(true);
       }
     }
+  });
+
+  test('knowledge lifecycle templates use OKF v0.2 statuses', () => {
+    expect(documentFrontmatter(STARTER_TEMPLATES['research-log'] ?? '')).toContain('status: draft');
+    expect(documentFrontmatter(STARTER_TEMPLATES.article ?? '')).toContain('status: stable');
   });
 });
 
@@ -307,11 +313,10 @@ describe('STARTER_PACKS — all packs structural validation', () => {
     }
   });
 
-  // OKF reserved files (lowercase `index.md` / `log.md`) are frontmatter-free
-  // BY REQUIREMENT — any frontmatter on a reserved file is an OKF §9 rule-3
-  // violation (see the okf pack + okf-conformance.test.ts). They are the sole
-  // exemption to the "every rootFile carries a title" convention; every other
-  // rootFile across every pack still must.
+  // OKF reserved files follow their format-specific frontmatter contracts rather
+  // than the starter registry's general `title` convention. The root index may
+  // declare only `okf_version`; log frontmatter is unconstrained when a pack
+  // chooses to ship one.
   const OKF_RESERVED_ROOTFILES = new Set(OKF_RESERVED_FILENAMES);
 
   test('every non-reserved rootFile body has frontmatter with a non-empty title', () => {

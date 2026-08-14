@@ -110,6 +110,11 @@ const KNOWN_PAIRED_WRITE_ORIGINS = new Set<string>([
   'FILE_WATCHER_ORIGIN',
   'AGENT_WRITE_ORIGIN',
   'undoOrigin',
+  // A generated artifact (today the root index) landing in a loaded document.
+  // Routes through `replaceRawBody`, a sanctioned primitive, and declares
+  // `paired`. Declared in `server-factory.ts`; the transact that USES it is in
+  // `content/generated-artifact.ts` via `env.origin` — see the props set below.
+  'GENERATED_ARTIFACT_ORIGIN',
 ]);
 
 /**
@@ -125,6 +130,12 @@ const KNOWN_PAIRED_WRITE_ORIGIN_PROPS = new Set<string>([
   'session.origin',
   'session.undoOrigin',
   'templateSession.origin',
+  // The generated-artifact dispatch takes its origin as an injected
+  // collaborator so the write path is exercisable without a booted server. The
+  // ORIGIN itself is still statically auditable — `GENERATED_ARTIFACT_ORIGIN`
+  // above, declared with `paired: true` — but the call site names a parameter,
+  // so this scan cannot resolve it. The env's type pins the contract.
+  'env.origin',
 ]);
 
 // ─── AST helpers ─────────────────────────────────────────────

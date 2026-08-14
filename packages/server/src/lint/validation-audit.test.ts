@@ -641,6 +641,146 @@ describe('local-target findings (files, images, reference-style)', () => {
   });
 });
 
+describe('the OKF project validator', () => {
+  /** OKF on, everything else off, so the plane carries only project findings. */
+  const okfOnly: LinterConfig = {
+    ...DEFAULT_LINTER_CONFIG,
+    plugins: {
+      ...DEFAULT_LINTER_CONFIG.plugins,
+      markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: false },
+      okf: { enabled: true },
+    },
+  } as LinterConfig;
+
+  /** Write a file without indexing it — these checks judge the tree, not link graph. */
+  function writeFile(rel: string, body = '---\ntype: Note\n---\n\nBody.\n'): void {
+    const abs = join(root, rel);
+    mkdirSync(join(abs, '..'), { recursive: true });
+    writeFileSync(abs, body, 'utf-8');
+  }
+
+  const auditOkf = async (overrides: Partial<ValidationAuditDeps> = {}) =>
+    runValidationAudit(
+      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off', ...overrides })),
+    );
+
+  test('a mis-cased reserved file reaches the plane under the okf source', async () => {
+    writeFile('Index.md', '# Index\n\n* [a](a.md) - a\n');
+    const result = await auditOkf();
+    const row = result.files.find((f) => f.file === 'Index.md');
+    expect(row?.diagnostics.map((d) => d.code)).toContain('reserved-casing');
+    expect(row?.diagnostics.every((d) => d.source === 'okf')).toBe(true);
+  });
+
+  test('a DOC-SCOPED audit still reports — the shape the Problems panel asks for', async () => {
+    // The panel scopes to the open document, which resolves to a FILE path. Handing that
+    // to the tree walk as a directory made `readdir` throw and the validator return
+    // nothing, so every project finding was invisible in the panel while the
+    // whole-project tests stayed green.
+    writeFile('guide.md');
+    writeFile('guide.mdx');
+    const scoped = await runValidationAudit(
+      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      { targetPath: 'guide.mdx' },
+    );
+    expect(scoped.files.flatMap((f) => f.diagnostics).map((d) => d.code)).toEqual([
+      'project-no-mdx',
+    ]);
+    expect(scoped.warnings).toEqual([]);
+  });
+
+  test('a doc-scoped audit keeps its sibling context', async () => {
+    // Scoping to one file still walks its directory, so a shadowed .mdx is still known
+    // to be shadowed. Linting the file alone would silently downgrade the message.
+    writeFile('guide.md');
+    writeFile('guide.mdx');
+    const scoped = await runValidationAudit(
+      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      { targetPath: 'guide.mdx' },
+    );
+    const message = scoped.files.flatMap((f) => f.diagnostics)[0]?.message ?? '';
+    expect(message).toContain("won't be picked up");
+    expect(message).toContain('shadowed by');
+  });
+
+  test('a doc-scoped audit reports only that document', async () => {
+    writeFile('one.mdx');
+    writeFile('two.mdx');
+    const scoped = await runValidationAudit(
+      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      { targetPath: 'one.mdx' },
+    );
+    expect(scoped.files.map((f) => f.file)).toEqual(['one.mdx']);
+  });
+
+  test('an .mdx beside its .md is flagged, and the .md is not', async () => {
+    writeFile('guide.md');
+    writeFile('guide.mdx');
+    const result = await auditOkf();
+    expect(result.files.find((f) => f.file === 'guide.mdx')?.diagnostics[0]?.code).toBe(
+      'project-no-mdx',
+    );
+    expect(result.files.find((f) => f.file === 'guide.md')).toBeUndefined();
+  });
+
+  test('a clean project produces no okf findings', async () => {
+    writeFile('index.md', '# Index\n\n* [a](a.md) - a\n');
+    writeFile('a.md');
+    const result = await auditOkf();
+    const okf = result.files.flatMap((f) => f.diagnostics).filter((d) => d.source === 'okf');
+    expect(okf).toEqual([]);
+  });
+
+  test('the plugin switched off is a clean empty contribution, not a warning', async () => {
+    writeFile('Index.md');
+    const off = {
+      ...okfOnly,
+      plugins: { ...okfOnly.plugins, okf: { enabled: false } },
+    } as LinterConfig;
+    const result = await auditOkf({ baseConfig: off });
+    expect(result.files.flatMap((f) => f.diagnostics)).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('a single rule can be switched off without silencing its siblings', async () => {
+    // The two now run in different validators — casing per document, .mdx over the tree —
+    // and one toggle map governs both.
+    writeFile('Index.md');
+    writeFile('guide.mdx');
+    const oneOff = {
+      ...okfOnly,
+      plugins: {
+        ...okfOnly.plugins,
+        okf: { enabled: true, rules: { 'reserved-casing': false } },
+      },
+    } as LinterConfig;
+    const result = await auditOkf({ baseConfig: oneOff });
+    const codes = result.files.flatMap((f) => f.diagnostics).map((d) => d.code);
+    expect(codes).toContain('project-no-mdx');
+    expect(codes).not.toContain('reserved-casing');
+  });
+
+  test('a scoped audit sees only its subtree', async () => {
+    // Honest limitation, pinned rather than papered over: scoping narrows the walk, so
+    // a violation outside the scope reports nothing. A reader scoping an audit should
+    // not read that silence as a clean project.
+    writeFile('Index.md');
+    mkdirSync(join(root, 'sub'), { recursive: true });
+    writeFile('sub/keeper.md');
+
+    const whole = await auditOkf();
+    expect(whole.files.flatMap((f) => f.diagnostics).map((d) => d.code)).toContain(
+      'reserved-casing',
+    );
+
+    const scoped = await runValidationAudit(
+      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      { targetPath: 'sub' },
+    );
+    expect(scoped.files.flatMap((f) => f.diagnostics)).toEqual([]);
+  });
+});
+
 describe('toValidationCountsPlane', () => {
   test('tallies the merged plane per file and per source, dropping the bodies', async () => {
     // One doc carrying BOTH a lint finding and a dead link, so the split is

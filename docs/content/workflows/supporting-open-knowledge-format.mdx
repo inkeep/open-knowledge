@@ -2,87 +2,74 @@
 title: Supporting the Open Knowledge Format
 sidebarTitle: Open Knowledge Format
 icon: LuFileCode
-description: "Start a knowledge base that already follows Google's Open Knowledge Format, so any OKF tool can read it later. You get the right setup out of the box, and you're still free to write however you like."
+description: "Start with a small OKF v0.2 knowledge base, keep it portable as it grows, and give agents the format guidance they need."
 ---
-OpenKnowledge ships a starter pack named **`okf`** that scaffolds a knowledge base **conformant with Google's [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) from the first commit** — without enforcing anything. You get a portable, OKF-ready bundle out of the box, and you stay free to author however you like.
+
+The **Open Knowledge Format (OKF)** is a portable convention for agent-readable knowledge: Markdown files, YAML frontmatter, and standard links. Use this workflow when the knowledge base may move between tools, teams, or organizations and you want that portability built in from the first file.
+
+OpenKnowledge's **Open Knowledge Format** starter pack creates the minimum useful OKF v0.2 bundle. It also enables the [OKF plugin](/docs/plugins/okf), which warns when later edits would be misread by another OKF consumer.
 
 <Callout type="info">
-  **OKF here means Google's Open Knowledge _Format_** — a vendor-neutral file-format spec (a directory of markdown files with YAML frontmatter), announced by Google Cloud in June 2026. Read the [OKF v0.1 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+  **OKF here means Google's Open Knowledge _Format_.** The format keeps its conformance floor deliberately small: every non-reserved document needs parseable YAML frontmatter with a non-empty `type`. Read the [OKF v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 </Callout>
 
-```html preview
-<div style="padding:18px">
-  <div id="okf" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center"></div>
-  <div class="cap">One rule keeps the bundle conformant: every non-reserved doc carries a non-empty <code>type</code>. Reserved index.md and log.md stay frontmatter-free.</div>
-</div>
-<style>
-.cap{margin-top:12px;color:var(--muted-foreground);font-size:12.5px;text-align:center}
-.cap::before{content:"\2713  ";color:var(--primary);font-weight:700}
-#okf .doc{border:1px solid var(--border);border-radius:10px;padding:9px 12px;background:var(--card);min-width:118px;transition:border-color .3s,box-shadow .3s}
-#okf .doc.on{border-color:var(--primary);box-shadow:0 0 0 3px var(--accent-soft)}
-#okf .doc .f{font-weight:600;font-size:12px}
-#okf .doc .ty{font-size:11px;margin-top:3px;color:var(--accent-ink)}
-#okf .doc .rv{font-size:11px;margin-top:3px;color:var(--muted-foreground)}
-@media (prefers-reduced-motion:reduce){#okf .doc{transition:none}}
-</style>
-<script>
-var docs=[["concept.md","type: concept",0],["reference.md","type: reference",0],["note.md","type: note",0],["index.md","reserved · no frontmatter",1],["log.md","reserved · no frontmatter",1]];
-var root=document.getElementById("okf"),cards=[];
-docs.forEach(function(d){var el=document.createElement("div");el.className="doc";var f=document.createElement("div");f.className="f";f.textContent=d[0];var m=document.createElement("div");m.className=d[2]?"rv":"ty";m.textContent=d[1];el.appendChild(f);el.appendChild(m);root.appendChild(el);cards.push(el);});
-var cur=0;
-function set(i){cards.forEach(function(c,j){c.classList.toggle("on",j===i);});}
-set(0);
-if(!matchMedia("(prefers-reduced-motion:reduce)").matches){setInterval(function(){cur=(cur+1)%cards.length;set(cur);},1200);}
-</script>
+## Start with the OKF pack
+
+Seeding needs an initialized project. Run [`ok init`](../get-started/quickstart.mdx), then pick **Open Knowledge Format** in the starter-pack picker, or run:
+
+```bash
+ok seed --pack okf
 ```
 
-The point is portability from day one: a knowledge base you can hand to any tool that reads Google's Open Knowledge Format, already conformant so indexing, exporting, or sharing with an OKF-aware consumer later is never a migration project. And the discipline is **pre-populated, not enforced** — you get conformance without the editor linting or blocking you.
+The pack adds:
 
-## What the pack seeds
+| Path | What it provides |
+| --- | --- |
+| `index.md` | The bundle root, declaring `okf_version: "0.2"` and linking to Getting started |
+| `concepts/getting-started.md` | A typed guide to the bundle's purpose and conventions |
+| `concepts/.ok/templates/concept.md` | A starting shape for new concepts, including `type: Concept` and `status: draft` |
+| Project configuration | The OKF plugin enabled for this project |
+| `okf-knowledge-base` | Project skill that teaches agents the format's types, provenance, links, indexes, and logs |
 
-In an initialized project (`ok init` first), pick **Open Knowledge Format** in the starter-pack picker (behind **Show more**), or run `ok seed --pack okf`. It scaffolds:
+Existing files with the same paths are left alone. Re-seeding fills only what is missing.
 
-| Path | Purpose | Template |
-|---|---|---|
-| `concepts/` | Durable ideas and definitions | `concept` |
-| `references/` | External sources and citations | `reference` |
-| `notes/` | Working notes and observations | `note` |
-| `welcome.md` | A real typed document (`type: Document`), so a strict OKF consumer has something to accept | — (seeded file) |
-| `index.md` | Reserved OKF navigation hub | — (reserved) |
-| `log.md` | Reserved OKF change history | — (reserved) |
+## Keep the bundle portable
 
-Each of the three content folders (`concepts/`, `references/`, `notes/`) ships its **own template**, so new docs start with the right `type` and section skeleton already in place — you never hand-set the frontmatter. The conventions also ship as a project-local skill (`okf-knowledge-base`) installed alongside the seed, so your agent learns the pack's discipline without a hand-written `CLAUDE.md`. Like every seeded file, that `SKILL.md` is committed to your repo and editable; see [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+The starter gives the project a conformant starting point. Three habits keep it portable:
 
-## Conformance is pre-populated, not enforced
+1. Give every non-reserved `.md` document parseable frontmatter with a non-empty `type`.
+2. Keep reserved `index.md` and `log.md` filenames lowercase. An index normally has no frontmatter; only the bundle-root index may declare `okf_version`.
+3. Use standard Markdown links. OpenKnowledge understands `[[wiki-links]]`, but another OKF consumer may not.
 
-This is the key design decision. OKF asks exactly one thing of every **non-reserved** document: a **non-empty `type`** in its frontmatter. Reserved `index.md` / `log.md` stay frontmatter-free, and links are standard markdown.
+Types are an open vocabulary. Choose a useful, stable name for the concept instead of forcing every document into a fixed taxonomy.
 
-The pack bakes those habits into the seeded content and documents them — but it changes nothing about how OpenKnowledge itself behaves:
+## Use the plugin for ongoing feedback
 
-- OpenKnowledge's native frontmatter schema stays **open-shaped**.
-- Nothing is **linted** for OKF conformance.
+The starter pack shapes the initial files; the **OKF project plugin** watches what happens afterward. Its warnings are advisory and never block a save or an agent edit.
 
-So three habits are all it takes to keep the KB handable to a strict OKF consumer as it grows:
+The plugin:
 
-1. Every non-reserved doc carries a non-empty `type`.
-2. `index.md` / `log.md` stay lowercase and frontmatter-free.
-3. Links use standard markdown (`[text](./path.md)`).
+- checks document structure, frontmatter, reserved files, links, and `.mdx` use;
+- advertises generated OKF schemas to agents so they can read the contract before writing;
+- offers the companion OKF agent skill when it is not already in the project;
+- can optionally maintain an `index.md` in every Markdown folder.
 
-OpenKnowledge also accepts `[[wiki-link]]` shorthand as a native superset, but nothing normalizes it to standard links — seeded content uses standard links so the bundle is conformant as-is.
+Open **Settings → Plugins → OKF** to tune its rules or generated indexes. See the [OKF plugin](/docs/plugins/okf) page for the controls and complete rule reference.
 
-## Cadence
+You can also enable the plugin in an existing project without seeding the starter pack. It reports portability gaps but does not rewrite your documents. Index generation is a separate opt-in because those files are machine-owned.
 
-Three habits keep the bundle handable to a strict OKF consumer as it grows. The seeded templates already do the first; the rest is light discipline, not enforcement.
+## Work with agents
 
-| When | Do |
-|---|---|
-| Creating a doc | Use **New from template** — it sets `type` for you |
-| Reserved files | Keep `index.md` / `log.md` lowercase and frontmatter-free |
-| Links | Use standard markdown links; `[[wiki-link]]` shorthand stays as written |
-| Handing it off | Nothing special — the bundle is conformant as you go |
+The project skill gives an agent the judgment the deterministic rules cannot: choosing useful types, recording only real provenance, and preserving trust and lifecycle metadata without inventing it.
+
+Try:
+
+<CopyPrompt>Create a concept for our deployment policy. Follow the OKF guidance, use standard Markdown links, and record only provenance supported by the project.</CopyPrompt>
+
+The plugin checks the resulting shape. The skill guides the content decision.
 
 ## Further reading
 
-- **[Open Knowledge Format spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)** — the canonical OKF v0.1 specification (Google Cloud).
-- **[`STARTER_PACKS` registry](https://github.com/inkeep/open-knowledge/blob/main/packages/server/src/seed/starter.ts)** — canonical source for the `okf` pack content.
-- **[Karpathy's LLM wiki workflow](./karpathy-llm-wiki.mdx)** and **[Entity vault workflow](./entity-vault.mdx)** — other starter-pack-driven workflows in OpenKnowledge.
+- **[OKF plugin](/docs/plugins/okf).** Enable the plugin, install its recommended skill, tune rules, and opt into generated indexes.
+- **[Content rules overview](/docs/advanced/content-rules/overview).** Where warnings appear in the editor, CLI, and agent tools.
+- **[Open Knowledge Format v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).** The portable format OpenKnowledge implements.

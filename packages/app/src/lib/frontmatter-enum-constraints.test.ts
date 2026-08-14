@@ -1,4 +1,4 @@
-import type { LinterConfig } from '@inkeep/open-knowledge-core';
+import type { LinterConfig, OkfRuleId } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { enumConstraintsForDoc } from './frontmatter-enum-constraints.ts';
 
@@ -29,6 +29,68 @@ const DOC_SCHEMA = {
     owner: { type: 'string' },
   },
 };
+
+/**
+ * The OKF profile is a second source of governing schemas, carrying no files and
+ * gated on its own plugin. These exercise the REAL built-in schemas rather than a
+ * stand-in, so a change to the shipped `status` vocabulary fails here.
+ */
+function configWithOkf(
+  okf: { enabled: boolean; rules?: Partial<Record<OkfRuleId, boolean>> },
+  frontmatter: { enabled: boolean; schemas: Parameters<typeof configWith>[0] } = {
+    enabled: false,
+    schemas: [],
+  },
+): LinterConfig {
+  return {
+    enabled: true,
+    plugins: {
+      markdownlint: { enabled: false, rules: {} },
+      frontmatter,
+      okf,
+    },
+  } as LinterConfig;
+}
+
+describe('enumConstraintsForDoc — the OKF profile', () => {
+  test('OKF alone supplies the status vocabulary, with the frontmatter plugin off', () => {
+    const constraints = enumConstraintsForDoc(configWithOkf({ enabled: true }), 'notes/concept');
+    expect(constraints.get('status')).toEqual({
+      values: ['draft', 'stable', 'deprecated'],
+      multi: false,
+    });
+  });
+
+  test('with OKF off it supplies nothing', () => {
+    expect(enumConstraintsForDoc(configWithOkf({ enabled: false }), 'notes/concept').size).toBe(0);
+  });
+
+  test('a disabled rule withdraws its schema from the vocabulary', () => {
+    const constraints = enumConstraintsForDoc(
+      configWithOkf({ enabled: true, rules: { 'frontmatter-provenance': false } }),
+      'notes/concept',
+    );
+    expect(constraints.has('status')).toBe(false);
+  });
+
+  test('the two sources intersect rather than one winning', () => {
+    // The project's own schema offers draft/review/published; OKF offers
+    // draft/stable/deprecated. Only `draft` satisfies both, and the panel must
+    // offer only what validates against every governing schema.
+    const constraints = enumConstraintsForDoc(
+      configWithOkf(
+        { enabled: true },
+        { enabled: true, schemas: [{ file: 'a.json', schema: DOC_SCHEMA }] },
+      ),
+      'notes/concept',
+    );
+    expect(constraints.get('status')).toEqual({ values: ['draft'], multi: false });
+  });
+
+  test('scoping is honored — a nested index is governed by a schema with no vocabularies', () => {
+    expect(enumConstraintsForDoc(configWithOkf({ enabled: true }), 'notes/index').size).toBe(0);
+  });
+});
 
 describe('enumConstraintsForDoc', () => {
   test('enum fields map to single-select; array items.enum to multi', () => {

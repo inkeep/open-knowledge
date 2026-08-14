@@ -20,6 +20,7 @@ import {
   getWipRefPattern,
   gitAuthorWriterId,
   MalformedGitPointerError,
+  OK_GENERATOR_WRITER_ID,
   type OkActorEntry,
   parseCheckpoint,
   parseContributors,
@@ -213,6 +214,20 @@ describe('parseWriterId (D34 taxonomy)', () => {
     const p = parseWriterId('git-author-1a2b3c4d');
     expect(p.classification).toBe('classified-git-author');
     expect(p.isAgent).toBe(null);
+  });
+
+  test('"ok-generator" → classified-ok-generator, isAgent null', () => {
+    const p = parseWriterId(OK_GENERATOR_WRITER_ID);
+    expect(p.classification).toBe('classified-ok-generator');
+    expect(p.isAgent).toBe(null);
+  });
+
+  test('the generator writer id is classified, never "unknown"', () => {
+    // The classification is what keeps the ref out of the GC's age-out list AND
+    // out of the first-run allowlist sweep, which deletes 'unknown' refs. A
+    // constant that drifted from the regex would silently make generated history
+    // collectable.
+    expect(parseWriterId(OK_GENERATOR_WRITER_ID).classification).not.toBe('unknown');
   });
 
   test('gitAuthorWriterId is stable per email and case/space-insensitive', () => {

@@ -13,6 +13,14 @@ export interface LintPluginMeta {
   label: string;
   /** Docs page for the plugin, linked from its settings panel. */
   docUrl: string;
+  /**
+   * Feature-maturity tag. A property of the plugin rather than a check against
+   * its id at each render site, so every surface that shows a plugin agrees on
+   * whether it is beta and a graduation is one edit here.
+   */
+  beta?: boolean;
+  /** Companion skills the plugin recommends as a separate, explicit install. */
+  recommendedSkills?: readonly { packId: string; name: string }[];
 }
 
 const DOCS_BASE = 'https://openknowledge.ai/docs/advanced/content-rules';
@@ -24,5 +32,12 @@ export const LINT_PLUGIN_META: LintPluginMeta[] = [
     // biome-ignore lint/plugin/no-unwrapped-user-facing-string: names the frontmatter plugin, and `frontmatter` is a GLOSSARY never-translate term — this label is the plugin's name beside `markdownlint`, not copy.
     label: 'Frontmatter schemas',
     docUrl: `${DOCS_BASE}/frontmatter`,
+  },
+  {
+    id: 'okf',
+    label: 'OKF',
+    docUrl: 'https://openknowledge.ai/docs/plugins/okf',
+    beta: true,
+    recommendedSkills: [{ packId: 'okf', name: 'okf-knowledge-base' }],
   },
 ];

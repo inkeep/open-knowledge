@@ -263,6 +263,11 @@ msgstr ""
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr ""
 
+#. placeholder {0}: pluginRows.length
+#: src/components/CreatedItemsList.tsx
+msgid "{0, plural, one {Plugin} other {Plugins}}"
+msgstr ""
+
 #. placeholder {0}: editorList.hiddenCount
 #: src/components/McpConsentDialogBody.tsx
 msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
@@ -629,7 +634,9 @@ msgstr ""
 msgid "{docName} is {0}. OpenKnowledge currently opens files up to {1}."
 msgstr ""
 
+#. placeholder {0}: OKF_RULE_IDS.length
 #. placeholder {0}: entries.length
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{enabledCount}/{0} on"
 msgstr ""
@@ -790,6 +797,10 @@ msgstr ""
 
 #: src/lib/share/clone-controller.ts
 msgid "{phase} — {pct}%"
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr ""
 
 #: src/components/PropertyDisclosure.tsx
@@ -1543,6 +1554,10 @@ msgstr ""
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Already in project"
+msgstr ""
+
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Already installed — nothing new to import."
 msgstr ""
@@ -1586,6 +1601,10 @@ msgstr ""
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
 msgstr ""
 
 #. placeholder {0}: summary.name
@@ -2148,6 +2167,7 @@ msgstr ""
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -2288,6 +2308,10 @@ msgstr ""
 msgid "Checking sign-in status"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Checking skill"
+msgstr ""
+
 #: src/components/ImportSkillForm.tsx
 msgid "Checking source"
 msgstr ""
@@ -2302,6 +2326,10 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
+msgstr ""
+
+#: src/components/CreatedItemsList.tsx
+msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
 msgstr ""
 
 #: src/components/ImportSkillForm.tsx
@@ -4300,6 +4328,10 @@ msgstr ""
 msgid "Disable {file}"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {id}"
+msgstr ""
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr ""
@@ -4400,6 +4432,10 @@ msgstr ""
 
 #: src/components/EditorFooter.tsx
 msgid "Document statistics"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Document structure"
 msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
@@ -4793,6 +4829,10 @@ msgstr ""
 msgid "Enable {file}"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {id}"
+msgstr ""
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -4815,6 +4855,10 @@ msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enable indexes"
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
@@ -4843,6 +4887,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enable Themes"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enabling index generation"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
@@ -4913,6 +4961,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Escape"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -5690,6 +5742,10 @@ msgstr ""
 msgid "From the {0} plugin"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter"
+msgstr ""
+
 #: src/components/TemplateForm.tsx
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr ""
@@ -5732,6 +5788,10 @@ msgstr ""
 msgid "General"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Generated files"
+msgstr ""
+
 #: src/components/TerminalCliMissingBanner.tsx
 msgid "Get {displayName}"
 msgstr ""
@@ -5763,6 +5823,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Git merge rule"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -5919,7 +5983,7 @@ msgstr ""
 msgid "Headings"
 msgstr ""
 
-#: src/components/AutoSyncEnableWarning.tsx
+#: src/components/DisclosureWarning.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr ""
@@ -5939,6 +6003,10 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Help"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr ""
 
 #. Subtext for the open-knowledge-discovery skill row
@@ -6273,8 +6341,16 @@ msgstr ""
 msgid "Importing"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr ""
 
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -6293,6 +6369,14 @@ msgstr ""
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app (beta)"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent index changes combine before the next rebuild."
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -6317,6 +6401,26 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Indented blockquote for citations."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because Open Knowledge could not confirm the required Git merge rule. Check Git and .gitattributes, then try again."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because the project setting could not be saved. Check the project file permissions, then try again."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -6507,6 +6611,10 @@ msgstr ""
 msgid "Install selected"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Install skill"
+msgstr ""
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "Install skills"
 msgstr ""
@@ -6516,6 +6624,7 @@ msgid "Install the gh CLI"
 msgstr ""
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Installed"
@@ -6727,6 +6836,10 @@ msgstr ""
 
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
 msgstr ""
 
 #. placeholder {0}: toName.trim()
@@ -7102,6 +7215,14 @@ msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Lost connection to \"{docName}\"."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain generated indexes in every folder?"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain index.md"
 msgstr ""
 
 #: src/components/SkillInstallMenu.tsx
@@ -8248,6 +8369,10 @@ msgstr ""
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "OKF agent skill installed"
+msgstr ""
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr ""
@@ -8262,6 +8387,10 @@ msgstr ""
 
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr ""
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
@@ -8486,6 +8615,22 @@ msgstr ""
 msgid "Open it there"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge Format guidance"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+msgstr ""
+
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
 #. placeholder {2}: item.version
@@ -8530,6 +8675,10 @@ msgstr ""
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
 msgid "Open shared {targetNoun}"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open skill"
 msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
@@ -9368,6 +9517,7 @@ msgid "project"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -9637,6 +9787,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Recommended agent skill"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -10076,6 +10230,10 @@ msgstr ""
 msgid "research-note"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
+msgstr ""
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Reset"
 msgstr ""
@@ -10318,6 +10476,7 @@ msgid "Rule editing is available for the project's root markdownlint config"
 msgstr ""
 
 #: src/components/LintConfigEditor.tsx
+#: src/components/settings/LintingSection.tsx
 msgid "Rules"
 msgstr ""
 
@@ -11260,6 +11419,10 @@ msgstr ""
 msgid "Skill \"{name}\" created"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Skill already in project"
+msgstr ""
+
 #: src/components/ExploreSkills.tsx
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr ""
@@ -11519,6 +11682,10 @@ msgstr ""
 msgid "Start here: what this is and how it's organized."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Start maintaining index.md"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Start source completion"
 msgstr ""
@@ -11612,6 +11779,10 @@ msgstr ""
 
 #: src/components/ProblemsPanel.tsx
 msgid "Stop fixing. Files already fixed stay fixed."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Stop maintaining index.md"
 msgstr ""
 
 #: src/lib/project-fix-sweep-store.ts
@@ -12117,6 +12288,10 @@ msgstr ""
 msgid "The agent's persona, values, and voice."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
 msgstr ""
@@ -12175,6 +12350,10 @@ msgstr ""
 msgid "the git exclude file isn't writable"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
+msgstr ""
+
 #: src/lib/locale-load-failure-notice.ts
 msgid "The interface is still in the language you were reading. Check your connection, then reload to try again."
 msgstr ""
@@ -12209,6 +12388,10 @@ msgstr ""
 
 #: src/components/PropertyDiffBlock.tsx
 msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -12246,6 +12429,10 @@ msgstr ""
 
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr ""
 
 #: src/components/SkillInstallMenu.tsx
@@ -12559,6 +12746,10 @@ msgstr ""
 #. placeholder {2}: scopeLabels[toScope]
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "This moves <0>{name}</0> from {0} to {1}, relocating its files on disk and re-installing it in your editors at the {2} level."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -12924,6 +13115,10 @@ msgstr ""
 msgid "Turn {display} back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
 msgstr ""
 
+#: src/components/CreatedItemsList.tsx
+msgid "Turn it off any time in Settings."
+msgstr ""
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"
 msgstr ""
@@ -12947,6 +13142,10 @@ msgstr ""
 
 #: src/components/SeedDialog.tsx
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning it off"
 msgstr ""
 
 #: src/components/acp/working-status.ts
@@ -13637,6 +13836,10 @@ msgstr ""
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Wiki link suggestions"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx

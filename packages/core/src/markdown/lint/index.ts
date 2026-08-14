@@ -1,3 +1,4 @@
+
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { LintDiagnostic } from './types.ts';
 
@@ -11,7 +12,11 @@ export async function lintDocument(
   for (const plugin of LINT_PLUGINS) {
     const slice = config.plugins[plugin.id];
     if (!slice.enabled) continue;
-    diagnostics.push(...(await plugin.lint(text, slice as never, { docName })));
+    try {
+      diagnostics.push(...(await plugin.lint(text, slice as never, { docName })));
+    } catch (err) {
+      console.warn(`[lint] plugin "${plugin.id}" failed${docName ? ` on "${docName}"` : ''}`, err);
+    }
   }
   return diagnostics;
 }
@@ -22,7 +27,11 @@ export function fixDocument(text: string, config: LinterConfig): string {
   for (const plugin of LINT_PLUGINS) {
     const slice = config.plugins[plugin.id];
     if (!slice.enabled || !plugin.fix) continue;
-    out = plugin.fix(out, slice as never);
+    try {
+      out = plugin.fix(out, slice as never);
+    } catch (err) {
+      console.warn(`[lint] plugin "${plugin.id}" fix failed`, err);
+    }
   }
   return out;
 }
@@ -88,6 +97,33 @@ export {
 } from './frontmatter-validate.ts';
 export { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';
 export {
+  OKF_SCHEMA_DIR,
+  type OkfSchemaFile,
+  okfSchemaPathFor,
+  renderOkfSchemaFiles,
+} from './okf-frontmatter/materialize.ts';
+export {
+  OKF_FRONTMATTER_REGISTRY,
+  okfAdvertisedSchemaMappings,
+  runOkfFrontmatterRules,
+  selectOkfFrontmatterSchemas,
+} from './okf-frontmatter/registry.ts';
+export {
+  OKF_PROJECT_REGISTRY,
+  type OkfProjectFinding,
+  runOkfProjectRules,
+} from './okf-project/rules.ts';
+export {
+  assertNeverOkfRuleGroupId,
+  assertNeverOkfRuleId,
+  isOkfRuleEnabled,
+  OKF_RULE_GROUPS,
+  OKF_RULE_IDS,
+  type OkfRuleGroupId,
+  type OkfRuleId,
+  type OkfRuleToggles,
+} from './okf-rule-meta.ts';
+export {
   DEFAULT_LINTER_CONFIG,
   LINT_PLUGINS,
   type LinterConfig,
@@ -120,6 +156,7 @@ export type {
   MarkdownlintRuleSeverity,
   MarkdownlintRuleWriteValue,
   MarkdownlintSlice,
+  OkfSlice,
   ResolvedFrontmatterSchemaEntry,
   RuleCatalogEntry,
   RuleOptionSpec,

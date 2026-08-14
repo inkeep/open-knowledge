@@ -3,7 +3,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -20,6 +22,7 @@ import * as Y from 'yjs';
 import { MAX_AGENT_SESSIONS } from './agent-sessions.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
+import { updateGeneratedIndexGitAttributes } from './content/generated-index-git-attributes.ts';
 import { DerivedDocumentIndex } from './derived-document-index.ts';
 import { classifyGitError } from './error-classification.ts';
 import { applyExternalChange } from './external-change.ts';
@@ -3711,5 +3714,1268 @@ describe('buildSyncCredentialArgs()', () => {
     const argv = ["/Users/o'brien/OpenKnowledge.app/cli.sh"];
     const args = buildSyncCredentialArgs(argv);
     expect(argvFromHelper(args)).toEqual([...argv, 'auth', 'git-credential']);
+  });
+});
+
+/**
+ * The generated index's WIRING, at real fidelity — a real server, a real
+ * watcher, real disk, a real shadow repo.
+ *
+ * This layer is where the feature's two shipped bugs lived, and neither was
+ * visible to a unit test: the config key was dropped in the persisted→runtime
+ * lift, and the delete branch for an unloaded document never scheduled a
+ * rebuild. Both left every pure test green. So each trigger gets exercised
+ * end-to-end against the index file it is supposed to move, rather than against
+ * the scheduler being called.
+ */
+describe('createServer() — generated index wiring', () => {
+  let projectDir: string;
+  let contentDir: string;
+  let server: ServerInstance | null;
+  let shadowHandle: Awaited<ReturnType<typeof initShadowRepo>>;
+  let localHttp: import('node:http').Server | null = null;
+
+  const indexPath = () => join(contentDir, 'index.md');
+  const readIndex = () => readFileSync(indexPath(), 'utf-8');
+
+  /** The index that lives in a subdirectory, addressed by its content path. */
+  const indexPathAt = (dir: string) => join(contentDir, dir, 'index.md');
+  const readIndexAt = (dir: string) => readFileSync(indexPathAt(dir), 'utf-8');
+  async function waitForIndexAt(
+    dir: string,
+    predicate: (markdown: string) => boolean,
+  ): Promise<void> {
+    await vi.waitFor(
+      () => {
+        expect(existsSync(indexPathAt(dir))).toBe(true);
+        expect(predicate(readIndexAt(dir))).toBe(true);
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+  }
+
+  /** A typed doc, which is the only shape the index renders. */
+  function writeDoc(rel: string, title: string, type = 'note', description?: string): void {
+    const fm = [
+      `title: ${title}`,
+      `type: ${type}`,
+      ...(description ? [`description: ${description}`] : []),
+    ];
+    mkdirSync(join(contentDir, rel, '..'), { recursive: true });
+    writeFileSync(join(contentDir, rel), `---\n${fm.join('\n')}\n---\n\n# ${title}\n`, 'utf-8');
+  }
+
+  async function waitForIndex(predicate: (markdown: string) => boolean): Promise<void> {
+    await vi.waitFor(
+      () => {
+        expect(existsSync(indexPath())).toBe(true);
+        expect(predicate(readIndex())).toBe(true);
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+  }
+
+  async function bootServer(): Promise<ServerInstance> {
+    await ensureProjectGit(projectDir);
+    await prepareGeneratedIndexGitAttributes();
+    shadowHandle = await initShadowRepo(projectDir);
+    server = createServer({
+      contentDir,
+      projectDir,
+      contentRoot: 'content',
+      quiet: true,
+      shadowRepo: shadowHandle,
+      skipStateManifestCheck: true,
+    });
+    await server.ready;
+    await server.generatedIndexSweepReady;
+    return server;
+  }
+
+  async function startServerWithIndexHooks(
+    generatedIndexTestHooks: NonNullable<
+      Parameters<typeof createServer>[0]['generatedIndexTestHooks']
+    >,
+  ): Promise<ServerInstance> {
+    await ensureProjectGit(projectDir);
+    await prepareGeneratedIndexGitAttributes();
+    shadowHandle = await initShadowRepo(projectDir);
+    server = createServer({
+      contentDir,
+      projectDir,
+      contentRoot: 'content',
+      quiet: true,
+      shadowRepo: shadowHandle,
+      skipStateManifestCheck: true,
+      generatedIndexTestHooks,
+    });
+    return server;
+  }
+
+  async function prepareGeneratedIndexGitAttributes(): Promise<void> {
+    const config = readConfigSafely({
+      absPath: resolveConfigPath('project', projectDir),
+      sideline: false,
+    });
+    if (config.value.contentRules?.okf?.generate?.index !== true) return;
+    const result = await updateGeneratedIndexGitAttributes({
+      projectDir,
+      contentDir,
+      generatedDocNames: ['index'],
+      enabled: true,
+    });
+    expect(result.ok).toBe(true);
+  }
+
+  /**
+   * A real loopback HTTP endpoint bound to the booted server's api-extension, so
+   * a test drives an agent write through the same request seam production does —
+   * the seam that decides whether an API write schedules an index rebuild. The
+   * server itself opens no listener; the api-extension is a Hocuspocus onRequest
+   * handler, identified by its priority among the configured extensions.
+   */
+  async function apiBaseUrl(): Promise<string> {
+    const apiExt = server?.hocuspocus.configuration.extensions.find(
+      (e: unknown) =>
+        typeof (e as { onRequest?: unknown }).onRequest === 'function' &&
+        (e as { priority?: number }).priority === 100,
+    ) as
+      | {
+          onRequest: (ctx: {
+            request: import('node:http').IncomingMessage;
+            response: import('node:http').ServerResponse;
+          }) => Promise<void>;
+        }
+      | undefined;
+    if (!apiExt) throw new Error('api-extension not found in extensions array');
+
+    const { createServer: createNodeHttp } = await import('node:http');
+    localHttp = createNodeHttp((req, res) => {
+      void apiExt.onRequest({ request: req, response: res });
+    });
+    await new Promise<void>((resolve) => localHttp?.listen(0, '127.0.0.1', resolve));
+    const address = localHttp.address();
+    if (typeof address !== 'object' || address === null) {
+      throw new Error('local HTTP server did not bind to a port');
+    }
+    return `http://127.0.0.1:${address.port}`;
+  }
+
+  /** Drive an agent markdown write through the API seam. */
+  async function agentWriteMd(baseUrl: string, docName: string, markdown: string): Promise<void> {
+    const res = await fetch(`${baseUrl}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ docName, markdown, position: 'replace' }),
+    });
+    const body = await res.text();
+    expect(res.status, body).toBe(200);
+  }
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(join(tmpdir(), 'ok-index-wiring-'));
+    // Shadow repo needs contentDir under projectDir so `git add <contentRoot>`
+    // has a valid pathspec — mirrors the real-world layout.
+    contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+    // Written as real YAML through the real config file, so the persisted →
+    // runtime lift that silently dropped this key is on the tested path.
+    writeFileSync(
+      join(projectDir, '.ok', 'config.yml'),
+      stringifyYaml({ contentRules: { okf: { enabled: true, generate: { index: true } } } }),
+      'utf-8',
+    );
+    server = null;
+  });
+
+  afterEach(async () => {
+    if (localHttp) {
+      await new Promise<void>((resolve, reject) =>
+        localHttp?.close((err) => (err ? reject(err) : resolve())),
+      );
+      localHttp = null;
+    }
+    await server?.destroy();
+    loggerFactory.reset();
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  test('the setting reaches the server through the real config file', async () => {
+    await bootServer();
+    writeDoc('note.md', 'A note', 'note', 'Something to index.');
+
+    // An index appearing at all is the end-to-end proof that
+    // `contentRules.okf.generateIndex` survived YAML parse → persisted shape →
+    // `toEffectiveBase` → the server's `=== true` gate. A key dropped anywhere
+    // in that chain leaves this file absent forever.
+    await waitForIndex((md) => md.includes('A note'));
+    expect(readIndex()).toContain('okf_version: "0.2"');
+  });
+
+  test('server readiness settles before the boot index sweep starts planning', async () => {
+    writeDoc('existing.md', 'Existing at boot', 'note');
+
+    let enterPlanning!: () => void;
+    const planningEntered = new Promise<void>((resolve) => {
+      enterPlanning = resolve;
+    });
+    let releasePlanning!: () => void;
+    const planningBarrier = new Promise<void>((resolve) => {
+      releasePlanning = resolve;
+    });
+    let readySettled = false;
+
+    const activeServer = await startServerWithIndexHooks({
+      beforePlan: async ({ fullSweep }) => {
+        if (!fullSweep) return;
+        enterPlanning();
+        await planningBarrier;
+      },
+    });
+    void activeServer.ready.then(() => {
+      readySettled = true;
+    });
+    let sweepSettled = false;
+    void activeServer.generatedIndexSweepReady.then(() => {
+      sweepSettled = true;
+    });
+
+    await planningEntered;
+    expect(readySettled).toBe(true);
+    expect(sweepSettled).toBe(false);
+    expect(existsSync(indexPath())).toBe(false);
+
+    releasePlanning();
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'completed',
+      indexCount: 1,
+    });
+    expect(existsSync(indexPath())).toBe(true);
+    expect(readIndex()).toContain('* [Existing at boot](./existing.md)');
+  });
+
+  test('a non-fatal boot sweep error reports a failed settlement', async () => {
+    const activeServer = await startServerWithIndexHooks({
+      beforePlan: () => {
+        throw new Error('injected generated-index failure');
+      },
+    });
+
+    await expect(activeServer.ready).resolves.toBeUndefined();
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'failed',
+      indexCount: 0,
+    });
+  });
+
+  test('disabling generation stops an in-flight sweep before its next write', async () => {
+    writeDoc('alpha/a.md', 'Alpha', 'note');
+    writeDoc('beta/b.md', 'Beta', 'note');
+
+    const preservedRoot = '# Existing root index\n';
+    const preservedBeta = '# Existing beta index\n';
+    writeFileSync(indexPath(), preservedRoot, 'utf-8');
+    writeFileSync(indexPathAt('beta'), preservedBeta, 'utf-8');
+    const rootMtime = statSync(indexPath()).mtimeMs;
+    const betaMtime = statSync(indexPathAt('beta')).mtimeMs;
+
+    let firstWriteFinished!: () => void;
+    const firstWrite = new Promise<void>((resolve) => {
+      firstWriteFinished = resolve;
+    });
+    let releaseFirstWrite!: () => void;
+    const firstWriteBarrier = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    let paused = false;
+
+    const activeServer = await startServerWithIndexHooks({
+      afterWrite: async ({ docName }) => {
+        if (paused || docName !== 'alpha/index') return;
+        paused = true;
+        firstWriteFinished();
+        await firstWriteBarrier;
+      },
+    });
+    await activeServer.ready;
+    await firstWrite;
+
+    writeFileSync(
+      join(projectDir, '.ok', 'config.yml'),
+      stringifyYaml({ contentRules: { okf: { enabled: true, generate: { index: false } } } }),
+      'utf-8',
+    );
+    releaseFirstWrite();
+
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'disabled',
+      indexCount: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 750));
+
+    expect(existsSync(indexPathAt('alpha'))).toBe(true);
+    expect(readIndex()).toBe(preservedRoot);
+    expect(readIndexAt('beta')).toBe(preservedBeta);
+    expect(statSync(indexPath()).mtimeMs).toBe(rootMtime);
+    expect(statSync(indexPathAt('beta')).mtimeMs).toBe(betaMtime);
+
+    writeDoc('beta/after-disable.md', 'After disable', 'note');
+    await new Promise((resolve) => setTimeout(resolve, 750));
+
+    expect(readIndex()).toBe(preservedRoot);
+    expect(readIndexAt('beta')).toBe(preservedBeta);
+    expect(statSync(indexPath()).mtimeMs).toBe(rootMtime);
+    expect(statSync(indexPathAt('beta')).mtimeMs).toBe(betaMtime);
+  });
+
+  test('boot sweep readiness waits for live requests coalesced behind it', async () => {
+    writeDoc('anchor.md', 'Anchor', 'note');
+
+    let firstPassEntered!: () => void;
+    const firstPassStarted = new Promise<void>((resolve) => {
+      firstPassEntered = resolve;
+    });
+    let releaseFirstPass!: () => void;
+    const firstPassBarrier = new Promise<void>((resolve) => {
+      releaseFirstPass = resolve;
+    });
+    let coordinatorIdle!: () => void;
+    const coordinatorSettled = new Promise<void>((resolve) => {
+      coordinatorIdle = resolve;
+    });
+    let blockedKickObserved!: () => void;
+    const followupDeferredBySingleFlight = new Promise<void>((resolve) => {
+      blockedKickObserved = resolve;
+    });
+    let passCount = 0;
+
+    const activeServer = await startServerWithIndexHooks({
+      beforePlan: async () => {
+        passCount++;
+        if (passCount !== 1) return;
+        firstPassEntered();
+        await firstPassBarrier;
+      },
+      onIdle: () => {
+        if (passCount === 2) coordinatorIdle();
+      },
+      onKickWhileInFlight: blockedKickObserved,
+    });
+    await activeServer.ready;
+    await firstPassStarted;
+    let sweepSettled = false;
+    void activeServer.generatedIndexSweepReady.then(() => {
+      sweepSettled = true;
+    });
+    const baseUrl = await apiBaseUrl();
+
+    await agentWriteMd(baseUrl, 'one', '---\ntitle: One\ntype: note\n---\n\n# One\n');
+    await agentWriteMd(baseUrl, 'two', '---\ntitle: Two\ntype: note\n---\n\n# Two\n');
+    await agentWriteMd(baseUrl, 'three', '---\ntitle: Three\ntype: note\n---\n\n# Three\n');
+
+    await followupDeferredBySingleFlight;
+    expect(passCount).toBe(1);
+    releaseFirstPass();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(sweepSettled).toBe(false);
+    await coordinatorSettled;
+    await expect(activeServer.generatedIndexSweepReady).resolves.toMatchObject({
+      status: 'completed',
+    });
+
+    expect(passCount).toBe(2);
+    expect(readIndex()).toContain('* [One](./one.md)');
+    expect(readIndex()).toContain('* [Two](./two.md)');
+    expect(readIndex()).toContain('* [Three](./three.md)');
+  });
+
+  test('destroy cancels and drains an in-flight generated-index write', async () => {
+    writeDoc('deep/note.md', 'Deep note', 'note');
+
+    let writePaused!: () => void;
+    const firstWritePaused = new Promise<void>((resolve) => {
+      writePaused = resolve;
+    });
+    let releaseWrite!: () => void;
+    const writeBarrier = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let abortObserved!: () => void;
+    const regenerationAborted = new Promise<void>((resolve) => {
+      abortObserved = resolve;
+    });
+    let blocked = false;
+
+    const activeServer = await startServerWithIndexHooks({
+      afterWrite: async ({ signal }) => {
+        if (blocked) return;
+        blocked = true;
+        signal.addEventListener('abort', abortObserved, { once: true });
+        writePaused();
+        await writeBarrier;
+      },
+    });
+    await activeServer.ready;
+    await firstWritePaused;
+
+    let destroySettled = false;
+    const destroying = activeServer.destroy().then(() => {
+      destroySettled = true;
+    });
+    await regenerationAborted;
+    expect(destroySettled).toBe(false);
+    expect(existsSync(indexPathAt('deep'))).toBe(true);
+    expect(existsSync(indexPath())).toBe(false);
+
+    releaseWrite();
+    await destroying;
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'cancelled',
+      indexCount: 1,
+    });
+    expect(existsSync(indexPath())).toBe(false);
+  });
+
+  test('creating a document lands its entry in its own folder index', async () => {
+    await bootServer();
+    writeDoc('concepts/first.md', 'First', 'concept');
+    // The entry lives in the folder's index, relative to that folder…
+    await waitForIndexAt('concepts', (md) => md.includes('* [First](./first.md)'));
+    // …and the root links the child index — written after it, deepest-first —
+    // rather than the document itself.
+    await waitForIndex((md) => md.includes('* [concepts](./concepts/index.md)'));
+    expect(readIndex()).not.toContain('./concepts/first.md');
+
+    writeDoc('concepts/second.md', 'Second', 'concept');
+    await waitForIndexAt('concepts', (md) => md.includes('* [Second](./second.md)'));
+    expect(readIndexAt('concepts')).toContain('* [First](./first.md)');
+  });
+
+  test('an external metadata update refreshes the existing entry', async () => {
+    writeDoc('note.md', 'Before', 'note', 'Old description');
+    await bootServer();
+    await waitForIndex((md) => md.includes('[Before]'));
+
+    writeDoc('note.md', 'After', 'concept', 'New description');
+
+    await waitForIndex(
+      (md) =>
+        md.includes('# concept') &&
+        md.includes('[After]') &&
+        md.includes('New description') &&
+        !md.includes('[Before]'),
+    );
+  });
+
+  test('settings endpoint commits the Git rule and config as one lifecycle operation', async () => {
+    writeFileSync(
+      join(projectDir, '.ok', 'config.yml'),
+      stringifyYaml({ contentRules: { okf: { enabled: true, generate: { index: false } } } }),
+      'utf-8',
+    );
+    writeDoc('waiting.md', 'Waiting', 'note');
+    const activeServer = await bootServer();
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'disabled',
+      indexCount: 0,
+    });
+    expect(existsSync(indexPath())).toBe(false);
+    expect(existsSync(join(projectDir, '.gitattributes'))).toBe(false);
+
+    const baseUrl = await apiBaseUrl();
+    const enabled = await fetch(`${baseUrl}/api/generated-index/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(enabled.status).toBe(200);
+    await expect(enabled.json()).resolves.toMatchObject({
+      enabled: true,
+      active: true,
+      applied: true,
+      git: { state: 'ready', ownership: 'open-knowledge' },
+    });
+
+    await waitForIndex((md) => md.includes('[Waiting]'));
+    expect(readFileSync(join(projectDir, '.gitattributes'), 'utf-8')).toContain(
+      '/content/**/index.md merge=union',
+    );
+
+    const indexBeforeDisable = readIndex();
+    const disabled = await fetch(`${baseUrl}/api/generated-index/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(disabled.status).toBe(200);
+    await expect(disabled.json()).resolves.toMatchObject({
+      enabled: false,
+      active: false,
+      applied: true,
+    });
+    expect(existsSync(join(projectDir, '.gitattributes'))).toBe(false);
+    expect(readIndex()).toBe(indexBeforeDisable);
+  });
+
+  test('settings endpoint rolls the Git rule back when the config write is rejected', async () => {
+    const invalidConfig = 'contentRules: [\n';
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), invalidConfig, 'utf-8');
+    writeDoc('waiting.md', 'Waiting', 'note');
+    const activeServer = await bootServer();
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'disabled',
+      indexCount: 0,
+    });
+
+    const response = await fetch(`${await apiBaseUrl()}/api/generated-index/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      enabled: false,
+      active: false,
+      applied: false,
+      reason: 'config-write',
+      git: { state: 'missing' },
+    });
+    expect(readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8')).toBe(invalidConfig);
+    expect(existsSync(join(projectDir, '.gitattributes'))).toBe(false);
+    expect(existsSync(indexPath())).toBe(false);
+  });
+
+  test('settings endpoint repairs a missing Git rule when config is already enabled', async () => {
+    writeFileSync(
+      join(projectDir, '.ok', 'config.yml'),
+      stringifyYaml({ contentRules: { okf: { enabled: true, generate: { index: true } } } }),
+      'utf-8',
+    );
+    const activeServer = await bootServer();
+    await activeServer.generatedIndexSweepReady;
+    unlinkSync(join(projectDir, '.gitattributes'));
+    expect(existsSync(join(projectDir, '.gitattributes'))).toBe(false);
+
+    const response = await fetch(`${await apiBaseUrl()}/api/generated-index/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      enabled: true,
+      active: true,
+      applied: true,
+      git: { state: 'ready', ownership: 'open-knowledge' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(readFileSync(join(projectDir, '.gitattributes'), 'utf-8')).toContain(
+      '/content/**/index.md merge=union',
+    );
+  });
+
+  test('external Git-attribute drift pauses regeneration and resumes after repair', async () => {
+    const logCapture = captureAllLoggers();
+    await bootServer();
+    writeDoc('note.md', 'Before drift', 'note');
+    await waitForIndex((md) => md.includes('[Before drift]'));
+    const preservedIndex = readIndex();
+    const preservedMtime = statSync(indexPath()).mtimeMs;
+
+    writeFileSync(
+      join(projectDir, '.gitattributes'),
+      '/content/index.md merge=ours\n/content/**/index.md merge=ours\n',
+      'utf-8',
+    );
+    writeDoc('note.md', 'Blocked by drift', 'note');
+
+    await vi.waitFor(
+      () => {
+        expect(
+          logCapture
+            .getCalls('warn', 'generated index regeneration paused by Git attributes')
+            .some((entry) => entry.payload.state === 'conflict'),
+        ).toBe(true);
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+    expect(readIndex()).toBe(preservedIndex);
+    expect(statSync(indexPath()).mtimeMs).toBe(preservedMtime);
+
+    const pausedStatus = await fetch(`${await apiBaseUrl()}/api/generated-index/settings`);
+    expect(pausedStatus.status).toBe(200);
+    await expect(pausedStatus.json()).resolves.toMatchObject({
+      enabled: true,
+      active: false,
+      git: { state: 'conflict' },
+    });
+
+    unlinkSync(join(projectDir, '.gitattributes'));
+    const repaired = await updateGeneratedIndexGitAttributes({
+      projectDir,
+      contentDir,
+      generatedDocNames: ['index'],
+      enabled: true,
+    });
+    expect(repaired.ok).toBe(true);
+
+    writeDoc('note.md', 'Recovered after repair', 'note');
+    await waitForIndex(
+      (md) => md.includes('[Recovered after repair]') && !md.includes('[Before drift]'),
+    );
+  });
+
+  test('deleting an unopened document removes its entry from its folder index', async () => {
+    // The regression that shipped: `case 'delete'` returns early when the
+    // document is not resident, and that branch skipped the rebuild — so the
+    // index kept a link to a file that no longer existed. Nothing here ever
+    // opens the doc, which is exactly the common case.
+    await bootServer();
+    writeDoc('concepts/doomed.md', 'Doomed', 'concept');
+    writeDoc('concepts/survivor.md', 'Survivor', 'concept');
+    await waitForIndexAt('concepts', (md) => md.includes('./doomed.md'));
+
+    unlinkSync(join(contentDir, 'concepts', 'doomed.md'));
+
+    await waitForIndexAt('concepts', (md) => !md.includes('./doomed.md'));
+    // The rest of the folder survives — this is a rebuild, not a truncation.
+    expect(readIndexAt('concepts')).toContain('./survivor.md');
+  });
+
+  test('an emptied section disappears rather than lingering as a bare heading', async () => {
+    await bootServer();
+    writeDoc('only.md', 'Only', 'solo-type');
+    writeDoc('keep.md', 'Keep', 'note');
+    await waitForIndex((md) => md.includes('## solo-type'));
+
+    unlinkSync(join(contentDir, 'only.md'));
+
+    await waitForIndex((md) => !md.includes('## solo-type'));
+    expect(readIndex()).toContain('## note');
+  });
+
+  test('a cross-directory rename through the watcher drops the source entry and lands the destination', async () => {
+    // `concepts` keeps a second document so it stays in the index set and is
+    // rebuilt to drop the moved entry, isolating the source-directory fix from
+    // the unrelated case of a directory losing its last document. `archive`
+    // starts populated so this is a plain move between two already-indexed
+    // folders, where the stale-source defect actually bites.
+    writeDoc('concepts/mover.md', 'Mover', 'concept');
+    writeDoc('concepts/keeper.md', 'Keeper', 'concept');
+    writeDoc('archive/anchor.md', 'Anchor', 'note');
+    await bootServer();
+    await waitForIndexAt('concepts', (md) => md.includes('./mover.md'));
+    await waitForIndexAt('archive', (md) => md.includes('./anchor.md'));
+
+    // Moving the exact bytes lets the watcher pair the same-batch delete+create
+    // by content hash into one `rename` event — the composed path the fix lives
+    // on. A split into a separate delete and create would each schedule their
+    // own directory, so the source would never go stale and the rename path
+    // would go unproven.
+    renameSync(join(contentDir, 'concepts', 'mover.md'), join(contentDir, 'archive', 'mover.md'));
+
+    // Endpoint-shaped: the destination lists the moved document and the source
+    // no longer does, while the source keeps its other entry.
+    await waitForIndexAt('archive', (md) => md.includes('./mover.md'));
+    await waitForIndexAt(
+      'concepts',
+      (md) => !md.includes('./mover.md') && md.includes('./keeper.md'),
+    );
+  });
+
+  test('moving a directory last admitted document preserves its orphan index', async () => {
+    writeDoc('source/only.md', 'Only', 'note');
+    writeDoc('destination/anchor.md', 'Anchor', 'note');
+    await bootServer();
+    await server?.generatedIndexSweepReady;
+    await waitForIndex(
+      (md) => md.includes('./source/index.md') && md.includes('./destination/index.md'),
+    );
+
+    const orphanBytes = readIndexAt('source');
+    const orphanMtime = statSync(indexPathAt('source')).mtimeMs;
+
+    renameSync(join(contentDir, 'source', 'only.md'), join(contentDir, 'destination', 'only.md'));
+
+    await waitForIndexAt(
+      'destination',
+      (md) => md.includes('./only.md') && md.includes('./anchor.md'),
+    );
+    await waitForIndex(
+      (md) => !md.includes('./source/index.md') && md.includes('./destination/index.md'),
+    );
+    expect(readIndexAt('source')).toBe(orphanBytes);
+    expect(statSync(indexPathAt('source')).mtimeMs).toBe(orphanMtime);
+  });
+
+  test('a rebuild lands on the ok-generator ref, not a human or service writer', async () => {
+    await bootServer();
+    writeDoc('note.md', 'A note', 'note', 'Something to index.');
+    await waitForIndex((md) => md.includes('A note'));
+
+    const sg = shadowGit(shadowHandle);
+    await vi.waitFor(
+      async () => {
+        const out = (await sg.raw('for-each-ref', '--format=%(refname)', 'refs/wip/')).trim();
+        // The whole point of the writer: generated bytes carry their own
+        // authorship instead of riding on whichever writer happens to drain.
+        expect(out).toContain('ok-generator');
+      },
+      { timeout: 20_000, interval: 100 },
+    );
+  });
+
+  test('logs one bounded written outcome for every attempted boot decision', async () => {
+    const logCapture = captureAllLoggers();
+    writeDoc('concepts/first.md', 'First', 'concept');
+
+    await bootServer();
+
+    const events = logCapture
+      .getCalls()
+      .filter((entry) => entry.payload.event === 'generated-index-regeneration');
+    expect(events.map((entry) => entry.payload)).toEqual([
+      { event: 'generated-index-regeneration', outcome: 'written', directory: 'concepts' },
+      { event: 'generated-index-regeneration', outcome: 'written', directory: '' },
+    ]);
+  });
+
+  test('a rebuild that computes identical bytes performs no write', async () => {
+    const logCapture = captureAllLoggers();
+    // The byte-compare fixed point. Writing the index mutates the file index and
+    // signals `files`, so a generator that wrote unconditionally would keep a
+    // tracked file permanently dirty in `git status` — and, if a future trigger
+    // ever fires on its own write, spin.
+    //
+    // The probe is a RESERVED file: creating `log.md` is a real watcher create,
+    // so a rebuild genuinely runs — but `log` is never an entry, so the bytes it
+    // computes are identical to what is already on disk. Exactly the case the
+    // compare exists to absorb.
+    await bootServer();
+    writeDoc('note.md', 'A note', 'note', 'A description.');
+    await waitForIndex((md) => md.includes('A note'));
+    const regenerationEvents = () =>
+      logCapture
+        .getCalls()
+        .filter((entry) => entry.payload.event === 'generated-index-regeneration');
+    const baselineEventCount = regenerationEvents().length;
+
+    const settled = statSync(indexPath()).mtimeMs;
+    const bytes = readIndex();
+
+    writeFileSync(join(contentDir, 'log.md'), '# Log\n\n## 2026-08-05\n\n- An entry.\n', 'utf-8');
+
+    await vi.waitFor(
+      () => {
+        expect(
+          regenerationEvents()
+            .slice(baselineEventCount)
+            .map((entry) => entry.payload),
+        ).toEqual([{ event: 'generated-index-regeneration', outcome: 'unchanged', directory: '' }]);
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+
+    // The rebuild ran and decided to do nothing — the file is untouched, not
+    // merely unchanged in content.
+    expect(readIndex()).toBe(bytes);
+    expect(statSync(indexPath()).mtimeMs).toBe(settled);
+  });
+
+  test('an unopened tracked index conflict preserves exact bytes until resolution', async () => {
+    writeDoc('concepts/first.md', 'First', 'concept');
+    const conflicted = [
+      '<<<<<<< HEAD',
+      '# Mine',
+      '=======',
+      '# Theirs',
+      '>>>>>>> incoming',
+      '',
+    ].join('\n');
+    writeFileSync(indexPathAt('concepts'), conflicted, 'utf-8');
+    mkdirSync(join(projectDir, '.ok', LOCAL_DIR), { recursive: true });
+    writeFileSync(
+      join(projectDir, '.ok', LOCAL_DIR, 'conflicts.json'),
+      JSON.stringify({
+        version: 1,
+        branch: 'main',
+        conflicts: [
+          {
+            file: 'content/concepts/index.md',
+            detectedAt: '2026-08-07T00:00:00.000Z',
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    const conflictedMtime = statSync(indexPathAt('concepts')).mtimeMs;
+
+    const logCapture = captureAllLoggers();
+    await bootServer();
+    expect(server?.hocuspocus.documents.has('concepts/index')).toBe(false);
+    expect(server?.syncEngine?.getConflicts()).toEqual([
+      expect.objectContaining({ file: 'content/concepts/index.md' }),
+    ]);
+
+    writeFileSync(
+      join(contentDir, 'concepts', 'log.md'),
+      '# Log\n\n## 2026-08-06\n\n- Trigger regeneration.\n',
+      'utf-8',
+    );
+
+    await vi.waitFor(
+      () => {
+        expect(
+          logCapture
+            .getCalls('warn', 'generated index regeneration blocked by active conflict')
+            .some((entry) => entry.payload.directory === 'concepts'),
+        ).toBe(true);
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+    expect(readIndexAt('concepts')).toBe(conflicted);
+    expect(statSync(indexPathAt('concepts')).mtimeMs).toBe(conflictedMtime);
+
+    await server?.syncEngine?.reconcileConflictsFromGit();
+    expect(server?.syncEngine?.getConflicts()).toEqual([]);
+    writeDoc('concepts/second.md', 'Second', 'concept');
+    await waitForIndexAt(
+      'concepts',
+      (md) => md.includes('* [First](./first.md)') && md.includes('* [Second](./second.md)'),
+    );
+    expect(readIndexAt('concepts')).not.toMatch(/^(<<<<<<<|=======|>>>>>>>)/m);
+  });
+
+  test('a live index conflict blocks regeneration until the conflict is resolved', async () => {
+    const logCapture = captureAllLoggers();
+    await bootServer();
+    writeDoc('concepts/first.md', 'First', 'concept');
+    await waitForIndexAt('concepts', (md) => md.includes('* [First](./first.md)'));
+    await waitForIndex((md) => md.includes('* [concepts](./concepts/index.md)'));
+
+    const canonical = readIndexAt('concepts');
+    const connection = await server?.hocuspocus.openDirectConnection('concepts/index');
+    const document = server?.hocuspocus.documents.get('concepts/index');
+    expect(document).toBeDefined();
+    expect(document?.getText('source').toString()).toBe(canonical);
+
+    const conflicted = [
+      '<<<<<<< HEAD',
+      canonical.trimEnd(),
+      '=======',
+      canonical.replace('[First]', '[Conflicted first]').trimEnd(),
+      '>>>>>>> incoming',
+      '',
+    ].join('\n');
+    writeFileSync(indexPathAt('concepts'), conflicted, 'utf-8');
+
+    await vi.waitFor(
+      () => {
+        expect(document?.getMap('lifecycle').get('status')).toBe('conflict');
+        expect(document?.getMap('lifecycle').get('reason')).toBe('conflict-markers');
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+
+    const regenerationEvents = () =>
+      logCapture
+        .getCalls()
+        .filter((entry) => entry.payload.event === 'generated-index-regeneration');
+    const baselineEventCount = regenerationEvents().length;
+    writeDoc('concepts/second.md', 'Second', 'concept');
+
+    await vi.waitFor(
+      () => {
+        expect(regenerationEvents().slice(baselineEventCount)).toEqual([
+          {
+            level: 'warn',
+            msg: '[index] generated index regeneration blocked by active conflict',
+            payload: {
+              event: 'generated-index-regeneration',
+              outcome: 'blocked',
+              directory: 'concepts',
+              reason: 'conflict',
+            },
+          },
+          {
+            level: 'info',
+            msg: '[index] generated index regeneration completed',
+            payload: {
+              event: 'generated-index-regeneration',
+              outcome: 'unchanged',
+              directory: '',
+            },
+          },
+        ]);
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+
+    expect(readIndexAt('concepts')).toBe(conflicted);
+    expect(document?.getText('source').toString()).toBe(canonical);
+    expect(document?.getMap('lifecycle').get('status')).toBe('conflict');
+    expect(document?.getMap('lifecycle').get('reason')).toBe('conflict-markers');
+
+    writeFileSync(indexPathAt('concepts'), canonical, 'utf-8');
+    await vi.waitFor(
+      () => {
+        expect(document?.getMap('lifecycle').get('status')).toBeUndefined();
+        expect(document?.getMap('lifecycle').get('reason')).toBeUndefined();
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+
+    writeDoc('concepts/third.md', 'Third', 'concept');
+    await waitForIndexAt(
+      'concepts',
+      (md) => md.includes('./second.md') && md.includes('./third.md'),
+    );
+    expect(readIndexAt('concepts')).not.toMatch(/^(<<<<<<<|=======|>>>>>>>)/m);
+
+    await connection?.disconnect();
+  });
+
+  test('a rebuild reaches an open document THROUGH the CRDT, not behind its back', async () => {
+    const logCapture = captureAllLoggers();
+    // The least-exercised path in the feature, and the one hardest to pin
+    // honestly: asserting only that the open document converges passes even
+    // when the CRDT branch is dead, because the disk write plus the watcher
+    // round-trip gets there too. That green would be a false pass — the
+    // dangerous code never ran.
+    //
+    // So assert the ORIGIN of the update that moved the document. Only the
+    // paired CRDT write carries `generated-index`; bytes arriving by way of the
+    // watcher carry the file-watcher's origin instead.
+    await bootServer();
+    writeDoc('first.md', 'First', 'note');
+    await waitForIndex((md) => md.includes('./first.md'));
+
+    const conn = await server?.hocuspocus.openDirectConnection('index');
+    const doc = server?.hocuspocus.documents.get('index');
+    expect(doc).toBeDefined();
+
+    const origins: unknown[] = [];
+    doc?.on('update', (_update: Uint8Array, origin: unknown) => origins.push(origin));
+    const regenerationEvents = () =>
+      logCapture
+        .getCalls()
+        .filter((entry) => entry.payload.event === 'generated-index-regeneration');
+    const baselineEventCount = regenerationEvents().length;
+
+    writeDoc('second.md', 'Second', 'note');
+
+    // The open editor's view converged — the outcome the branch exists for.
+    await vi.waitFor(
+      () => {
+        const live = doc?.getText('source').toString() ?? '';
+        expect(live).toContain('./second.md');
+        expect(live).toContain('./first.md');
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+
+    // …and it converged by the intended route.
+    const viaGenerator = origins.some(
+      (o) =>
+        typeof o === 'object' &&
+        o !== null &&
+        (o as { context?: { origin?: string } }).context?.origin === 'generated-index',
+    );
+    expect(viaGenerator).toBe(true);
+    expect(
+      regenerationEvents()
+        .slice(baselineEventCount)
+        .map((entry) => entry.payload),
+    ).toEqual([{ event: 'generated-index-regeneration', outcome: 'written', directory: '' }]);
+
+    await conn?.disconnect();
+  });
+
+  test('a document edit rebuilds only its own folder index, not a sibling', async () => {
+    await bootServer();
+    writeDoc('alpha/a.md', 'A one', 'note');
+    writeDoc('beta/b.md', 'B one', 'note');
+    await waitForIndexAt('alpha', (md) => md.includes('[A one]'));
+    await waitForIndexAt('beta', (md) => md.includes('[B one]'));
+
+    const betaBefore = readIndexAt('beta');
+    const betaMtimeBefore = statSync(indexPathAt('beta')).mtimeMs;
+
+    // Retitle the alpha document — an index-visible change scoped to alpha.
+    writeDoc('alpha/a.md', 'A renamed', 'note');
+    await waitForIndexAt('alpha', (md) => md.includes('[A renamed]') && !md.includes('[A one]'));
+
+    // The sibling was never rewritten: same bytes, same file, untouched. This is
+    // the "and no other" half — an edit's cost stays with its own directory.
+    expect(readIndexAt('beta')).toBe(betaBefore);
+    expect(statSync(indexPathAt('beta')).mtimeMs).toBe(betaMtimeBefore);
+  });
+
+  test('editing only body prose rebuilds no index', async () => {
+    await bootServer();
+    writeDoc('notes/n.md', 'A note', 'note', 'A description.');
+    await waitForIndexAt('notes', (md) => md.includes('[A note]'));
+
+    const before = readIndexAt('notes');
+    const mtimeBefore = statSync(indexPathAt('notes')).mtimeMs;
+
+    // Identical frontmatter and title; only the body below the heading changes,
+    // so nothing the index renders has moved.
+    writeFileSync(
+      join(contentDir, 'notes', 'n.md'),
+      '---\ntitle: A note\ntype: note\ndescription: A description.\n---\n\n# A note\n\nRewritten prose.\n',
+      'utf-8',
+    );
+
+    // Long enough to clear the 500 ms regeneration debounce several times over.
+    await new Promise((r) => setTimeout(r, 3_000));
+
+    expect(readIndexAt('notes')).toBe(before);
+    expect(statSync(indexPathAt('notes')).mtimeMs).toBe(mtimeBefore);
+  });
+
+  test('an agent write through the API that changes a field rebuilds its folder index', async () => {
+    await bootServer();
+    writeDoc('notes/n.md', 'Before', 'note', 'A description.');
+    await waitForIndexAt('notes', (md) => md.includes('[Before]'));
+    const api = await apiBaseUrl();
+
+    // Retitle through the agent write seam. `replace` with new frontmatter
+    // supersedes the old, so a field the index renders genuinely moves — the
+    // seam must schedule the rebuild rather than treating the write like prose.
+    await agentWriteMd(
+      api,
+      'notes/n',
+      '---\ntitle: After\ntype: note\ndescription: A description.\n---\n\n# After\n',
+    );
+
+    await waitForIndexAt('notes', (md) => md.includes('[After]') && !md.includes('[Before]'));
+  });
+
+  test('an agent write through the API that changes only body prose rebuilds no index', async () => {
+    await bootServer();
+    writeDoc('notes/n.md', 'A note', 'note', 'A description.');
+    await waitForIndexAt('notes', (md) => md.includes('[A note]'));
+    const api = await apiBaseUrl();
+
+    const before = readIndexAt('notes');
+    const mtimeBefore = statSync(indexPathAt('notes')).mtimeMs;
+
+    // Identical frontmatter and title, only the body below the heading changes —
+    // the API counterpart of the disk-path prose test above. The field predicate
+    // gates this seam too, so a prose-only write schedules no rebuild.
+    await agentWriteMd(
+      api,
+      'notes/n',
+      '---\ntitle: A note\ntype: note\ndescription: A description.\n---\n\n# A note\n\nRewritten prose.\n',
+    );
+
+    // Long enough to clear the 500 ms regeneration debounce several times over.
+    await new Promise((r) => setTimeout(r, 3_000));
+
+    expect(readIndexAt('notes')).toBe(before);
+    expect(statSync(indexPathAt('notes')).mtimeMs).toBe(mtimeBefore);
+  });
+
+  test('deleting a populated subdirectory drops it from its parent index', async () => {
+    await bootServer();
+    writeDoc('area/top.md', 'Top', 'note');
+    writeDoc('area/sub/deep.md', 'Deep', 'note');
+    // The parent carries both its own document and a link to the subdirectory.
+    await waitForIndexAt('area', (md) => md.includes('* [sub](./sub/index.md)'));
+    expect(readIndexAt('area')).toContain('./top.md');
+
+    rmSync(join(contentDir, 'area', 'sub'), { recursive: true, force: true });
+
+    // The parent drops the subdirectory link. Reaching `area` at all depends on
+    // the folder-delete invalidating the ancestor chain; the per-document delete
+    // alone would only schedule the now-empty `area/sub`.
+    await waitForIndexAt('area', (md) => !md.includes('./sub/index.md'));
+    // …while keeping its own document — a rebuild, not a truncation.
+    expect(readIndexAt('area')).toContain('./top.md');
+  });
+
+  test('deleting a directory last admitted document preserves its orphan index', async () => {
+    writeDoc('area/only.md', 'Only', 'note');
+    await bootServer();
+    await server?.generatedIndexSweepReady;
+    await waitForIndexAt('area', (md) => md.includes('./only.md'));
+    await waitForIndex((md) => md.includes('* [area](./area/index.md)'));
+
+    const orphanBytes = readIndexAt('area');
+    const orphanMtime = statSync(indexPathAt('area')).mtimeMs;
+
+    unlinkSync(join(contentDir, 'area', 'only.md'));
+
+    await waitForIndex((md) => !md.includes('./area/index.md'));
+    expect(readIndexAt('area')).toBe(orphanBytes);
+    expect(statSync(indexPathAt('area')).mtimeMs).toBe(orphanMtime);
+  });
+
+  test('a burst across two folders settles both in one convergence', async () => {
+    await bootServer();
+    // Three writes across two directories with no await between them, so they
+    // land inside one debounce window.
+    writeDoc('one/a.md', 'A', 'note');
+    writeDoc('one/b.md', 'B', 'note');
+    writeDoc('two/c.md', 'C', 'note');
+
+    // Both edits to `one` coalesce into its single index rather than racing.
+    await waitForIndexAt('one', (md) => md.includes('[A]') && md.includes('[B]'));
+    await waitForIndexAt('two', (md) => md.includes('[C]'));
+    // The root links both folders it grew (written last, deepest-first).
+    await waitForIndex((md) => md.includes('./one/index.md') && md.includes('./two/index.md'));
+  });
+
+  test('enabling generation sweeps nested folders, not only the root', async () => {
+    writeFileSync(
+      join(projectDir, '.ok', 'config.yml'),
+      stringifyYaml({ contentRules: { okf: { enabled: true, generate: { index: false } } } }),
+      'utf-8',
+    );
+    writeDoc('deep/leaf.md', 'Leaf', 'note');
+    await bootServer();
+    expect(existsSync(indexPath())).toBe(false);
+    expect(existsSync(indexPathAt('deep'))).toBe(false);
+
+    const baseUrl = await apiBaseUrl();
+    const enabled = await fetch(`${baseUrl}/api/generated-index/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(enabled.status).toBe(200);
+    await expect(enabled.json()).resolves.toMatchObject({
+      enabled: true,
+      active: true,
+      applied: true,
+    });
+
+    // A lifecycle enable carries no directory, so the whole tree is swept: the
+    // nested index appears, and the root links it (written last, deepest-first).
+    await waitForIndexAt('deep', (md) => md.includes('[Leaf]'));
+    await waitForIndex((md) => md.includes('./deep/index.md'));
+  });
+
+  test("a document in a pre-existing folder reaches the folder's parent index", async () => {
+    // The folder is on disk before boot, so its first document fires no
+    // folder-create — only the document event, which schedules just the folder's
+    // own index, not its parent chain. So the parent learns of the folder solely
+    // because writing the new child index re-schedules the parent. Remove that
+    // re-schedule and the parent stays stale forever: the child index's own write
+    // event is refused by the self-trigger guard, so nothing else re-teaches it.
+    mkdirSync(join(contentDir, 'concepts'), { recursive: true });
+    writeDoc('anchor.md', 'Anchor', 'note');
+    await bootServer();
+
+    // The root settles at boot listing the anchor and does not yet link the
+    // still-empty folder.
+    await waitForIndex((md) => md.includes('[Anchor]'));
+    expect(readIndex()).not.toContain('./concepts/index.md');
+
+    // The folder's first document. `writeDoc`'s mkdir is a no-op here, so no
+    // folder-create rides along to carry the news to the parent.
+    writeDoc('concepts/first.md', 'First', 'concept');
+
+    // The folder's own index appears…
+    await waitForIndexAt('concepts', (md) => md.includes('* [First](./first.md)'));
+    // …and the parent links it, with no second edit and no restart.
+    await waitForIndex((md) => md.includes('* [concepts](./concepts/index.md)'));
+
+    // The walk terminates: once the parent settles it does not re-trigger the
+    // child, so the child index is written once and then left untouched.
+    const childMtime = statSync(indexPathAt('concepts')).mtimeMs;
+    const rootMtime = statSync(indexPath()).mtimeMs;
+    await new Promise((r) => setTimeout(r, 2_000));
+    expect(statSync(indexPathAt('concepts')).mtimeMs).toBe(childMtime);
+    expect(statSync(indexPath()).mtimeMs).toBe(rootMtime);
+  });
+
+  test('a cold boot converges a multi-depth tree in a single pass', async () => {
+    // Markdown at three depths, plus a container whose only markdown lives in a
+    // descendant — all present before the server exists. The helper waits for
+    // the explicit boot-sweep settlement, so asserting immediately afterward
+    // with no polling proves one pass suffices for the whole tree.
+    writeDoc('root-note.md', 'Root note', 'note');
+    writeDoc('topic/overview.md', 'Overview', 'concept');
+    writeDoc('topic/deep/detail.md', 'Detail', 'concept');
+    writeDoc('container/leaf/item.md', 'Item', 'note');
+
+    const decisionOrder: string[] = [];
+    const activeServer = await startServerWithIndexHooks({
+      beforeDecision: ({ directory, fullSweep }) => {
+        if (fullSweep) decisionOrder.push(directory);
+      },
+    });
+    await activeServer.ready;
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'completed',
+      indexCount: 5,
+    });
+    expect(decisionOrder).toEqual(['container/leaf', 'topic/deep', 'container', 'topic', '']);
+
+    // Every markdown-bearing directory has an index, including the container that
+    // holds no document of its own.
+    expect(existsSync(indexPath())).toBe(true);
+    for (const dir of ['topic', 'topic/deep', 'container', 'container/leaf']) {
+      expect(existsSync(indexPathAt(dir))).toBe(true);
+    }
+
+    // The root carries its own document and links each top-level subdirectory's
+    // index — the child index document, never the documents nested inside it.
+    const root = readIndex();
+    expect(root).toContain('* [Root note](./root-note.md)');
+    expect(root).toContain('* [container](./container/index.md)');
+    expect(root).toContain('* [topic](./topic/index.md)');
+    expect(root).not.toContain('./topic/overview.md');
+
+    // A mid-level directory links its deeper child index. A top-down sweep would
+    // have written this parent before that child index existed and needed a
+    // second corrective pass to gain the link.
+    const topic = readIndexAt('topic');
+    expect(topic).toContain('* [Overview](./overview.md)');
+    expect(topic).toContain('* [deep](./deep/index.md)');
+
+    // The deepest directory carries its own document and no subdirectory section.
+    const deep = readIndexAt('topic/deep');
+    expect(deep).toContain('* [Detail](./detail.md)');
+    expect(deep).not.toContain('## Subdirectories');
+
+    // The container navigates purely by its subdirectory link — no empty type
+    // section for a document it does not hold.
+    const container = readIndexAt('container');
+    expect(container).toContain('* [leaf](./leaf/index.md)');
+    expect(container).not.toContain('## note');
+    expect(readIndexAt('container/leaf')).toContain('* [Item](./item.md)');
+  });
+
+  test('a second boot over a converged tree rewrites no index', async () => {
+    // The same multi-depth tree, converged by the first boot.
+    writeDoc('root-note.md', 'Root note', 'note');
+    writeDoc('topic/overview.md', 'Overview', 'concept');
+    writeDoc('topic/deep/detail.md', 'Detail', 'concept');
+    writeDoc('container/leaf/item.md', 'Item', 'note');
+    await bootServer();
+
+    // Snapshot every index's bytes and mtime once the first boot has settled.
+    const indexed = ['', 'topic', 'topic/deep', 'container', 'container/leaf'];
+    const snapshot = indexed.map((dir) => {
+      const path = dir === '' ? indexPath() : indexPathAt(dir);
+      return { path, bytes: readFileSync(path, 'utf-8'), mtime: statSync(path).mtimeMs };
+    });
+
+    // A second cold boot is a second full sweep over unchanged content. Boot runs
+    // the sweep unconditionally, so it genuinely re-plans every index — and the
+    // per-index byte comparison suppresses each write because the bytes on disk
+    // already match. A sweep that oscillated would rewrite at least one file.
+    await server?.destroy();
+    await bootServer();
+
+    for (const { path, bytes, mtime } of snapshot) {
+      expect(readFileSync(path, 'utf-8')).toBe(bytes);
+      expect(statSync(path).mtimeMs).toBe(mtime);
+    }
   });
 });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { agentIdentityFields, safeDocNameField, summaryField } from '../../schemas/api/_shared.ts';
 import { LocalTargetDiagnosticEvidenceSchema } from '../../schemas/api/agent-write.ts';
 import { DEFAULT_MARKDOWNLINT_CONFIG } from './default-config.ts';
+import type { OkfRuleId } from './okf-rule-meta.ts';
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { FrontmatterSchemaMapping, MarkdownlintRuleSetting } from './types.ts';
 
@@ -13,10 +14,16 @@ interface PersistedFrontmatterSlice {
   enabled: boolean;
   schemas?: FrontmatterSchemaMapping[];
 }
+interface PersistedOkfSlice {
+  enabled: boolean;
+  rules?: Partial<Record<OkfRuleId, boolean>>;
+  generate?: { index?: boolean };
+}
 export interface PersistedLinterConfig {
   enabled?: boolean;
   markdownlint: PersistedMarkdownlintSlice;
   frontmatter?: PersistedFrontmatterSlice;
+  okf?: PersistedOkfSlice;
 }
 
 export function toEffectiveBase(persisted: PersistedLinterConfig): LinterConfig {
@@ -31,6 +38,11 @@ export function toEffectiveBase(persisted: PersistedLinterConfig): LinterConfig 
         enabled: persisted.frontmatter?.enabled ?? false,
         schemas: persisted.frontmatter?.schemas ?? [],
       },
+      okf: {
+        enabled: persisted.okf?.enabled ?? false,
+        ...(persisted.okf?.rules === undefined ? {} : { rules: persisted.okf.rules }),
+        generate: { index: persisted.okf?.generate?.index ?? false },
+      },
     },
   };
 }
@@ -38,6 +50,7 @@ export function toEffectiveBase(persisted: PersistedLinterConfig): LinterConfig 
 const fullPluginShape = Object.fromEntries(
   LINT_PLUGINS.map((plugin) => [plugin.id, plugin.sliceSchema]),
 ) as z.ZodRawShape;
+
 
 export const LinterConfigSchema = z.object({
   enabled: z.boolean(),

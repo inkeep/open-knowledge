@@ -12,7 +12,11 @@
  * validate.
  */
 
-import { type LinterConfig, selectApplicableFrontmatterSchemas } from '@inkeep/open-knowledge-core';
+import {
+  type LinterConfig,
+  selectApplicableFrontmatterSchemas,
+  selectOkfFrontmatterSchemas,
+} from '@inkeep/open-knowledge-core';
 
 export interface FieldEnumConstraint {
   values: string[];
@@ -50,11 +54,22 @@ export function enumConstraintsForDoc(
   // so the offered values would depend on schema order and could violate a
   // schema seen earlier.
   const droppedToFreeText = new Set<string>();
-  const slice = config?.plugins.frontmatter;
-  if (!config?.enabled || !slice?.enabled || docName === undefined || docName === '') {
-    return constraints;
-  }
-  for (const { schema } of selectApplicableFrontmatterSchemas(slice.schemas, docName)) {
+  if (!config?.enabled || docName === undefined || docName === '') return constraints;
+
+  // Both schema sources feed the same intersection: the project's authored mappings
+  // and, when the OKF plugin is on, its built-in profile. A field governed by both
+  // must offer only values satisfying both, which is what the conjunction below
+  // already does — so the sources concatenate rather than branching.
+  const frontmatterSlice = config.plugins.frontmatter;
+  const okfSlice = config.plugins.okf;
+  const governing = [
+    ...(frontmatterSlice?.enabled
+      ? selectApplicableFrontmatterSchemas(frontmatterSlice.schemas, docName)
+      : []),
+    ...(okfSlice?.enabled ? selectOkfFrontmatterSchemas(okfSlice.rules, docName) : []),
+  ];
+
+  for (const { schema } of governing) {
     const properties = isRecord(schema.properties) ? schema.properties : {};
     for (const [field, rawProperty] of Object.entries(properties)) {
       if (!isRecord(rawProperty)) continue;

@@ -5,11 +5,18 @@
  * editor's write calls + gated visibility of controls.
  */
 
-import type { Config, ConfigBinding } from '@inkeep/open-knowledge-core';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  type Config,
+  type ConfigBinding,
+  OKF_RULE_GROUPS,
+  OKF_RULE_IDS,
+  type SkillsListEntry,
+} from '@inkeep/open-knowledge-core';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { describedTextOf } from './settings-a11y.test-helper';
 
 // Radix primitives reach for DOM globals the jsdom preload doesn't expose;
@@ -37,6 +44,69 @@ let mockProjectConfig: Config | null = null;
 let mockUserConfig: Config | null = null;
 let mockProjectSynced = true;
 let mockProjectBinding: ConfigBinding | null = null;
+const generatedIndexApiCalls: boolean[] = [];
+let mockGeneratedIndexActive: boolean | null = null;
+/** Drives `git.state` in the settings response; null keeps the healthy default. */
+let mockGeneratedIndexGitState:
+  | 'not-applicable'
+  | 'ready'
+  | 'missing'
+  | 'conflict'
+  | 'unavailable'
+  | null = null;
+/** Drives the POST outcome; null keeps the applied-cleanly default. */
+let mockGeneratedIndexApplyResult: {
+  applied: boolean;
+  reason?: 'git-conflict' | 'git-unavailable' | 'config-write';
+} | null = null;
+/** Makes the settings fetch reject, which is the notice's `connection` path. */
+let mockGeneratedIndexFetchRejects = false;
+let mockSkillsState:
+  | { status: 'idle' | 'loading' }
+  | { status: 'ready'; data: readonly SkillsListEntry[] }
+  | { status: 'error'; message: string } = { status: 'ready', data: [] };
+const installPackSkillCalls: string[] = [];
+const openSkillCalls: Array<[string, string]> = [];
+let installPackSkillResult:
+  | { ok: true; skills: Array<{ name: string; created: boolean }>; installedHosts: string[] }
+  | { ok: false; error: string } = {
+  ok: true,
+  skills: [{ name: 'okf-knowledge-base', created: true }],
+  installedHosts: ['Claude Code'],
+};
+
+function configuredGeneratedIndexEnabled(): boolean {
+  return mockProjectConfig?.contentRules?.okf?.generate?.index === true;
+}
+
+async function generatedIndexFetch(input: string | URL | Request, init?: RequestInit) {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (url !== '/api/generated-index/settings') throw new TypeError(`unmocked fetch: ${url}`);
+  if (mockGeneratedIndexFetchRejects) throw new TypeError('Failed to fetch');
+
+  const requested =
+    init?.method === 'POST'
+      ? (JSON.parse(String(init.body)) as { enabled: boolean }).enabled
+      : configuredGeneratedIndexEnabled();
+  if (init?.method === 'POST') generatedIndexApiCalls.push(requested);
+  const applyResult =
+    init?.method === 'POST' ? (mockGeneratedIndexApplyResult ?? { applied: true }) : {};
+  // The server reports `enabled` by re-reading config, so a POST that did not
+  // apply reports the value that is still on disk, not the one asked for.
+  const effectiveEnabled =
+    'applied' in applyResult && applyResult.applied === false
+      ? configuredGeneratedIndexEnabled()
+      : requested;
+  return new Response(
+    JSON.stringify({
+      enabled: effectiveEnabled,
+      active: mockGeneratedIndexActive ?? effectiveEnabled,
+      git: { state: mockGeneratedIndexGitState ?? 'not-applicable' },
+      ...applyResult,
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+}
 
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
@@ -90,6 +160,23 @@ vi.doMock('@/editor/lint-config-client', () => ({
   },
 }));
 
+vi.doMock('@/hooks/use-skills', () => ({
+  useSkills: () => mockSkillsState,
+}));
+
+vi.doMock('@/hooks/use-open-skill', () => ({
+  useOpenSkill: () => (scope: string, name: string) => {
+    openSkillCalls.push([scope, name]);
+  },
+}));
+
+vi.doMock('@/lib/skills-api', () => ({
+  installPackSkill: async (packId: string) => {
+    installPackSkillCalls.push(packId);
+    return installPackSkillResult;
+  },
+}));
+
 // The enable notice is a toast; capture it instead of rendering a Toaster so the
 // action's deep-link target is assertable without sonner's portal + timers.
 interface ToastOptions {
@@ -102,26 +189,36 @@ interface CapturedToast extends ToastOptions {
   message: string;
 }
 const successToasts: CapturedToast[] = [];
+const errorToasts: string[] = [];
 vi.doMock('sonner', () => ({
   toast: {
     success: (message: string, options?: ToastOptions) => {
       successToasts.push({ message, ...options });
     },
-    error: () => {},
+    error: (message: string) => {
+      errorToasts.push(message);
+    },
   },
 }));
 
-const { ProjectPluginsManageSection, UserPluginsManageSection, MarkdownlintPluginSection } =
-  await import('./LintingSection');
+const {
+  ProjectPluginsManageSection,
+  UserPluginsManageSection,
+  MarkdownlintPluginSection,
+  OkfPluginSection,
+} = await import('./LintingSection');
 
 interface SliceOverrides {
   markdownlint?: Record<string, unknown>;
+  /** Omitted entirely when absent, so the okf-off default stays representable. */
+  okf?: Record<string, unknown>;
 }
 
 function configWith(linter: SliceOverrides): Config {
   return {
     contentRules: {
       markdownlint: { enabled: true, ...linter.markdownlint },
+      ...(linter.okf === undefined ? {} : { okf: { enabled: true, ...linter.okf } }),
     },
   } as unknown as Config;
 }
@@ -158,11 +255,27 @@ beforeEach(() => {
   mockProjectLintData = null;
   writeMarkdownlintRuleCalls.length = 0;
   successToasts.length = 0;
+  generatedIndexApiCalls.length = 0;
+  mockGeneratedIndexActive = null;
+  mockGeneratedIndexGitState = null;
+  mockGeneratedIndexApplyResult = null;
+  mockGeneratedIndexFetchRejects = false;
+  installPackSkillCalls.length = 0;
+  openSkillCalls.length = 0;
+  errorToasts.length = 0;
+  mockSkillsState = { status: 'ready', data: [] };
+  installPackSkillResult = {
+    ok: true,
+    skills: [{ name: 'okf-knowledge-base', created: true }],
+    installedHosts: ['Claude Code'],
+  };
+  vi.stubGlobal('fetch', generatedIndexFetch);
   window.location.hash = '';
 });
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe('ProjectPluginsManageSection', () => {
@@ -178,8 +291,20 @@ describe('ProjectPluginsManageSection', () => {
     expect(screen.getByTestId('settings-plugins-audit-pointer').textContent).toContain(
       'Run a project audit from the Problems panel',
     );
+    // Beta tags follow `LINT_PLUGIN_META.beta`, so this asserts the rendered
+    // rows against that registry rather than a hardcoded plugin name — a
+    // graduation flips one flag and this test moves with it. The negative half
+    // is the point: a plugin without the flag must not show the tag.
     const list = screen.getByTestId('settings-plugins-list');
-    expect(within(list).queryByText('Beta')).toBeNull();
+    const labelled = (badge: HTMLElement) => badge.closest('label')?.textContent ?? '';
+    const tagged = within(list).getAllByText('Beta').map(labelled).sort();
+    const expected = LINT_PLUGIN_META.filter((plugin) => plugin.beta).map((plugin) => plugin.label);
+    expect(tagged).toHaveLength(expected.length);
+    for (const label of expected) {
+      expect(tagged.some((text) => text.includes(label))).toBe(true);
+    }
+    // markdownlint is GA — its row carries no tag.
+    expect(tagged.some((text) => text.includes('markdownlint'))).toBe(false);
   });
 
   test('every plugin toggle is described by its own row description', () => {
@@ -191,13 +316,16 @@ describe('ProjectPluginsManageSection', () => {
     mockProjectBinding = binding;
     render(<ProjectPluginsManageSection />);
 
-    // Both plugins, because their descriptions come from separate branches of
+    // Every plugin, because their descriptions come from separate branches of
     // PluginManageDescription and each carries the same screen-reader promise.
     expect(describedTextOf('settings-plugin-toggle-markdownlint')).toContain(
       'Common markdown issues',
     );
     expect(describedTextOf('settings-plugin-toggle-frontmatter')).toContain(
       'Validate document frontmatter',
+    );
+    expect(describedTextOf('settings-plugin-toggle-okf')).toBe(
+      'Keeps your knowledge base aligned with the Open Knowledge Format.',
     );
   });
 
@@ -208,6 +336,30 @@ describe('ProjectPluginsManageSection', () => {
     await userEvent.click(screen.getByTestId('settings-plugin-toggle-markdownlint'));
     expect(calls).toContainEqual({
       contentRules: { markdownlint: { enabled: false } },
+    });
+  });
+
+  test('renders the okf plugin row with an off toggle and a concise description', () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    render(<ProjectPluginsManageSection />);
+    const toggle = screen.getByTestId('settings-plugin-toggle-okf');
+    // Off — okf is absent from the mock config's contentRules.
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    // The row states the plugin's user-facing purpose without implementation detail.
+    const row = toggle.closest('div');
+    expect(row?.textContent).toContain(
+      'Keeps your knowledge base aligned with the Open Knowledge Format.',
+    );
+  });
+
+  test('toggling the okf plugin writes its enabled patch', async () => {
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    render(<ProjectPluginsManageSection />);
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-okf'));
+    expect(calls).toContainEqual({
+      contentRules: { okf: { enabled: true } },
     });
   });
 
@@ -413,5 +565,370 @@ describe('MarkdownlintPluginSection', () => {
     const rules = screen.getByTestId('settings-linting-markdownlint-rules');
     expect(rules.textContent).toContain('.markdownlint.json');
     expect(rules.textContent).toContain('governs linting');
+  });
+});
+
+// The panel is a per-rule config surface: identity header plus one switch per
+// registered OKF rule. The plugin's own on/off toggle lives on the manage page
+// above, and the sidebar only offers this panel once the plugin is on — so there
+// is no parent-disabled state to pin here.
+describe('OkfPluginSection', () => {
+  function renderPanel() {
+    render(
+      <TooltipProvider>
+        <OkfPluginSection />
+      </TooltipProvider>,
+    );
+  }
+
+  async function generatedIndexToggle(): Promise<HTMLButtonElement> {
+    const toggle = screen.getByTestId('settings-okf-generate-index') as HTMLButtonElement;
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+    return toggle;
+  }
+
+  test('renders the okf plugin panel with its identity header and concise description', () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    renderPanel();
+    const panel = screen.getByTestId('settings-plugin-okf');
+    expect(panel).toBeDefined();
+    expect(within(panel).getByText('OKF')).toBeDefined();
+    // okf is a project-scope plugin — the header carries a Project badge.
+    expect(screen.getByTestId('settings-scope-badge-project')).toBeDefined();
+    expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
+    expect(panel.textContent).toContain(
+      'Keeps your knowledge base aligned with the Open Knowledge Format.',
+    );
+  });
+
+  test('the header carries the Beta tag and a link to the plugin docs', () => {
+    // The manage row and this header are separate render sites; a badge on the
+    // row says nothing about whether the panel someone actually configures the
+    // plugin in shows its maturity.
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    renderPanel();
+    const panel = screen.getByTestId('settings-plugin-okf');
+    expect(within(panel).getByText('Beta')).toBeDefined();
+    const docsLink = screen.getByTestId('settings-plugin-okf-title-docs-link');
+    expect(docsLink.getAttribute('href')).toBe(
+      LINT_PLUGIN_META.find((plugin) => plugin.id === 'okf')?.docUrl,
+    );
+  });
+
+  test('offers the declared OKF agent skill as an explicit install', () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    renderPanel();
+
+    const card = screen.getByTestId('settings-okf-recommended-skill');
+    expect(screen.getByRole('heading', { name: 'Recommended agent skill' })).toBeDefined();
+    expect(card.textContent).toContain('Open Knowledge Format guidance');
+    expect(within(card).getByRole('button', { name: 'Install skill' })).toBeDefined();
+  });
+
+  test('reuses the skill-bundle picker before installing the OKF skill', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Install skill' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Install from OKF' });
+    expect(within(dialog).getByTestId('plugin-bundle-install')).toBeDefined();
+    expect(within(dialog).getByText('Project')).toBeDefined();
+    expect(dialog.textContent).not.toContain('Install into');
+    expect(dialog.textContent).toContain('okf-knowledge-base');
+    expect(installPackSkillCalls).toEqual([]);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Install selected' }));
+
+    await waitFor(() => expect(installPackSkillCalls).toEqual(['okf']));
+    expect(successToasts.at(-1)?.message).toContain('OKF agent skill installed');
+    expect(screen.getByTestId('settings-okf-recommended-skill').textContent).toContain('Installed');
+  });
+
+  test('recognizes a same-name project skill without claiming or overwriting it', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockSkillsState = {
+      status: 'ready',
+      data: [
+        {
+          name: 'okf-knowledge-base',
+          description: 'Team-authored OKF conventions',
+          scope: 'project',
+          path: '.agents/skills/okf-knowledge-base/SKILL.md',
+          installed: true,
+          hosts: ['agents'],
+        },
+      ],
+    };
+    renderPanel();
+
+    const card = screen.getByTestId('settings-okf-recommended-skill');
+    expect(card.textContent).toContain('Already in project');
+    expect(within(card).queryByRole('button', { name: 'Install skill' })).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'Open skill' }));
+    expect(openSkillCalls).toEqual([['project', 'okf-knowledge-base']]);
+    expect(installPackSkillCalls).toEqual([]);
+  });
+
+  test('surfaces install failure and leaves the action available', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    installPackSkillResult = { ok: false, error: 'Skill source could not be authored.' };
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Install skill' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Install selected' }),
+    );
+
+    await waitFor(() => expect(errorToasts).toContain('Skill source could not be authored.'));
+    expect(screen.getByTestId('settings-okf-recommended-skill').textContent).not.toContain(
+      'Installed',
+    );
+
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Install skill' })),
+    );
+    expect(screen.getByRole('button', { name: 'Install skill' })).toBeDefined();
+  });
+
+  test('renders a switch per registered rule, all on when config says nothing', () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    renderPanel();
+    const list = screen.getByTestId('settings-okf-rules-list');
+    // Every registered rule is addressable — not a hardcoded subset.
+    for (const id of OKF_RULE_IDS) {
+      const toggle = within(list).getByTestId(`settings-okf-rule-toggle-${id}`);
+      // Absent from config = on. This is the load-bearing default.
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+    }
+    expect(screen.getByTestId('settings-plugin-okf').textContent).toContain(
+      `${OKF_RULE_IDS.length}/${OKF_RULE_IDS.length} on`,
+    );
+  });
+
+  test('rules render inside their declared group, and every rule is reachable through one', () => {
+    // The groups are the only structure a reader has for deciding what to
+    // silence — a rule rendered outside its group, or a group that quietly
+    // swallowed another's rules, is invisible to the per-id assertions above.
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    renderPanel();
+
+    const seen: string[] = [];
+    for (const group of OKF_RULE_GROUPS) {
+      const block = screen.getByTestId(`settings-okf-rule-group-${group.id}`);
+      for (const id of group.ids) {
+        expect(within(block).getByTestId(`settings-okf-rule-toggle-${id}`)).toBeDefined();
+        seen.push(id);
+      }
+      // Each rule in the group carries its own sentence, not a bare id.
+      expect(block.textContent?.length ?? 0).toBeGreaterThan(group.ids.join('').length);
+    }
+    // No rule is orphaned outside a group, and none is rendered twice.
+    expect([...seen].sort()).toEqual([...OKF_RULE_IDS].sort());
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  test('a rule set to false in config renders off, its siblings stay on', () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { rules: { 'no-wiki-links': false } } });
+    renderPanel();
+    expect(
+      screen.getByTestId('settings-okf-rule-toggle-no-wiki-links').getAttribute('aria-checked'),
+    ).toBe('false');
+    expect(
+      screen.getByTestId('settings-okf-rule-toggle-index-shape').getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(screen.getByTestId('settings-plugin-okf').textContent).toContain(
+      `${OKF_RULE_IDS.length - 1}/${OKF_RULE_IDS.length} on`,
+    );
+  });
+
+  // These assert only the patch SHAPE the pane emits. What that shape does to the
+  // document is pinned by core's config-patch tests — a payload assertion alone
+  // once passed while re-enabling was silently impossible.
+  test('turning a rule off sends that rule as false', async () => {
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { rules: { 'log-shape': false } } });
+    renderPanel();
+    await userEvent.click(screen.getByTestId('settings-okf-rule-toggle-index-shape'));
+    // Only the touched key is sent: the walker leaves unmentioned keys alone, so
+    // an already-disabled sibling needs no re-sending to survive.
+    expect(calls).toContainEqual({
+      contentRules: { okf: { rules: { 'index-shape': false } } },
+    });
+  });
+
+  test('turning a rule back on sends null, which deletes the key', async () => {
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { rules: { 'index-shape': false } } });
+    renderPanel();
+    await userEvent.click(screen.getByTestId('settings-okf-rule-toggle-index-shape'));
+    // `null` is the walker's delete signal. Omitting the key means "leave alone",
+    // which would strand the rule in the off state with no way back.
+    expect(calls).toContainEqual({
+      contentRules: { okf: { rules: { 'index-shape': null } } },
+    });
+  });
+
+  test('rule switches are disabled until the config binding is ready', () => {
+    mockProjectBinding = null;
+    mockProjectSynced = false;
+    renderPanel();
+    const toggle = screen.getByTestId('settings-okf-rule-toggle-index-shape') as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+  });
+
+  test('enabling generation asks for confirmation before writing any file', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: {} });
+    renderPanel();
+
+    await user.click(await generatedIndexToggle());
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Maintain generated indexes in every folder?',
+    });
+    expect(dialog.textContent).toContain('index.md');
+    expect(dialog.textContent).toContain('.gitattributes');
+    expect(dialog.textContent).toMatch(/every folder/i);
+    expect(dialog.querySelector('[data-slot="dialog-body"]')).not.toBeNull();
+    const note = within(dialog).getByRole('note');
+    expect(note.textContent).toContain('Heads up');
+    expect(note.textContent).toContain('Generated files');
+    expect(note.textContent).toContain('Git merge rule');
+    expect(note.textContent).toContain('Turning it off');
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDefined();
+    expect(within(dialog).getByRole('button', { name: 'Enable indexes' })).toBeDefined();
+    expect(calls).toEqual([]);
+    expect(generatedIndexApiCalls).toEqual([]);
+    expect(screen.getByTestId('settings-okf-generate-index').getAttribute('aria-checked')).toBe(
+      'false',
+    );
+  });
+
+  test('declining the confirmation leaves generation off and writes nothing', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: {} });
+    renderPanel();
+
+    await user.click(await generatedIndexToggle());
+    await screen.findByRole('dialog');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(calls).toEqual([]);
+    expect(generatedIndexApiCalls).toEqual([]);
+    expect(screen.getByTestId('settings-okf-generate-index').getAttribute('aria-checked')).toBe(
+      'false',
+    );
+  });
+
+  test('confirming the disclosure coordinates enablement through the settings endpoint', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: {} });
+    renderPanel();
+
+    await user.click(await generatedIndexToggle());
+    await screen.findByRole('dialog');
+    await user.click(screen.getByTestId('settings-okf-generate-index-confirm-accept'));
+
+    await waitFor(() => expect(generatedIndexApiCalls).toEqual([true]));
+    expect(calls).toEqual([]);
+  });
+
+  test('disabling generation uses the settings endpoint with no confirmation or index removal', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { generate: { index: true } } });
+    renderPanel();
+
+    await user.click(await generatedIndexToggle());
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(generatedIndexApiCalls).toEqual([false]));
+    expect(calls).toEqual([]);
+  });
+
+  test('an enabled setting stays on and can be disabled when Git admission degrades', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { generate: { index: true } } });
+    mockGeneratedIndexActive = false;
+    renderPanel();
+
+    const toggle = await generatedIndexToggle();
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    await user.click(toggle);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(generatedIndexApiCalls).toEqual([false]));
+  });
+
+  // The notice has four branches. The Git-conflict one is covered end-to-end in
+  // okf-generated-index-settings.e2e.ts against a real .gitattributes; the three
+  // below need a server response the E2E cannot stage, so they are pinned here.
+  test('a config that could not be saved says so rather than reporting generation on', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: {} });
+    mockGeneratedIndexApplyResult = { applied: false, reason: 'config-write' };
+    renderPanel();
+
+    await user.click(await generatedIndexToggle());
+    await screen.findByRole('dialog');
+    await user.click(screen.getByTestId('settings-okf-generate-index-confirm-accept'));
+
+    const notice = await screen.findByTestId('settings-okf-generate-index-status');
+    expect(notice.textContent).toContain('the project setting could not be saved');
+    expect(screen.getByTestId('settings-okf-generate-index').getAttribute('aria-checked')).toBe(
+      'false',
+    );
+  });
+
+  test('an unreachable project server reads as a connection problem, not a silent no-op', async () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: {} });
+    mockGeneratedIndexFetchRejects = true;
+    renderPanel();
+
+    const notice = await screen.findByTestId('settings-okf-generate-index-status');
+    expect(notice.textContent).toContain('could not reach the project server');
+  });
+
+  test('an unconfirmable Git merge rule pauses generation and names Git as the cause', async () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { generate: { index: true } } });
+    mockGeneratedIndexGitState = 'unavailable';
+    mockGeneratedIndexActive = false;
+    renderPanel();
+
+    const notice = await screen.findByTestId('settings-okf-generate-index-status');
+    expect(notice.textContent).toContain('could not confirm the required Git merge rule');
+    // Distinct from the conflict branch, which blames a competing attribute.
+    expect(notice.textContent).not.toContain('another Git attribute');
   });
 });

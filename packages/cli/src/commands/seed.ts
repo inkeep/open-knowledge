@@ -14,6 +14,7 @@ import {
   AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   PROJECT_SKILL_EDITOR_IDS,
+  planHasOutstandingWork,
   skillRootActivationPath,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -129,12 +130,13 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
     };
   }
 
-  // A pending pack skill is outstanding work even when every folder/template
-  // already exists (see ScaffoldPlan.packSkills) — `applySeed` would still author
-  // and install it, so this is not a no-op. SeedDialog folds the same two signals.
-  // Nothing is pending when the project has no usable skill home: apply declines
-  // there, so this stays a no-op run after run and the message says why.
-  if (plan.created.length === 0 && !plan.packSkills?.some((s) => s.pending)) {
+  // A pending pack skill or a required plugin that is off is outstanding work
+  // even when every folder/template already exists — `applySeed` would still
+  // author the skill and enable the plugin, so this is not a no-op. Shared with
+  // SeedDialog so the CLI and the dialog cannot disagree about what "nothing to
+  // do" means. A refused skill install is not outstanding work because apply
+  // cannot perform it; the refusal note below explains what the user must do.
+  if (!planHasOutstandingWork(plan)) {
     const packName = STARTER_PACKS[packId].name;
     // A conflicted skill is present-but-not-ours: "already seeded" would
     // misread the user's own skill as the pack's, so say what's actually true.
@@ -212,6 +214,15 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
       ? `\n${dim(`Installed the ${packName} skills for: ${applyResult.packSkillsInstalled.join(', ')}`)}`
       : '';
 
+  // Name the plugins this run switched on. Silence here would leave a user who
+  // had one off to discover the change in Settings later with no explanation —
+  // the same disclosure the dialog owes, on the surface the CLI user is looking
+  // at. Only plugins actually flipped are listed, so a re-seed says nothing.
+  const pluginLine =
+    applyResult.pluginsEnabled.length > 0
+      ? `\n${dim(`Enabled plugin(s) included with this pack: ${applyResult.pluginsEnabled.join(', ')} — turn off any time in Settings.`)}`
+      : '';
+
   // Name collisions are not errors — the seed succeeded and the user's own
   // skill was left untouched — but silence would read as "pack installed".
   // `hosts` means the skill DID install — a same-named skill of the user's only
@@ -226,7 +237,7 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   return {
     status: 'applied',
-    message: `${success(`✓ Seeded ${packName}`)} ${dim(`(${applyResult.applied} entries, ${applyResult.durationMs}ms)`)}${skillLine}${skillHomeRefusalNote(plan, packName)}${conflictLines}`,
+    message: `${success(`✓ Seeded ${packName}`)} ${dim(`(${applyResult.applied} entries, ${applyResult.durationMs}ms)`)}${skillLine}${pluginLine}${skillHomeRefusalNote(plan, packName)}${conflictLines}`,
     plan,
     exitCode: 0,
   };

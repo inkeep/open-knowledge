@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 import { DEFAULT_MARKDOWNLINT_CONFIG, resolveMarkdownlintConfig } from './default-config.ts';
 import {
@@ -5,13 +6,18 @@ import {
   validateFrontmatterSource,
 } from './frontmatter-validate.ts';
 import { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';
+import { runOkfFrontmatterRules } from './okf-frontmatter/registry.ts';
+import { selectEnabledOkfRules } from './okf-rules.ts';
+import { runOkfRules } from './okf-runner.ts';
 import {
   type FrontmatterSlice,
   type LintDiagnostic,
   type LintPluginId,
   MARKDOWNLINT_RULE_SEVERITIES,
   type MarkdownlintSlice,
+  type OkfSlice,
 } from './types.ts';
+
 
 const MarkdownlintRuleSettingSchema = z.union([
   z.boolean(),
@@ -65,7 +71,23 @@ const frontmatterPlugin: LintPlugin<'frontmatter', FrontmatterSlice> = {
   },
 };
 
-export const LINT_PLUGINS = [markdownlintPlugin, frontmatterPlugin] as const;
+const okfPlugin: LintPlugin<'okf', OkfSlice> = {
+  id: 'okf',
+  sliceSchema: z.object({
+    enabled: z.boolean(),
+    rules: z.record(z.string(), z.boolean()).optional(),
+    generate: z.object({ index: z.boolean().optional() }).optional(),
+  }),
+  defaultSlice: { enabled: false },
+  async lint(text, slice, ctx) {
+    return [
+      ...runOkfRules(text, selectEnabledOkfRules(slice.rules), ctx.docName),
+      ...runOkfFrontmatterRules(text, slice.rules, ctx.docName),
+    ];
+  },
+};
+
+export const LINT_PLUGINS = [markdownlintPlugin, frontmatterPlugin, okfPlugin] as const;
 
 type LintPluginEntry = (typeof LINT_PLUGINS)[number];
 

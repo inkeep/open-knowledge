@@ -28,6 +28,8 @@ describe('boot-timings', () => {
     expect(t?.httpListenMs).toBeUndefined();
     expect(t?.readyMs).toBeUndefined();
     expect(t?.fileCount).toBeUndefined();
+    expect(t?.generatedIndexSweepMs).toBeUndefined();
+    expect(t?.generatedIndexCount).toBeUndefined();
     // The monotonic clock is armed, so bootElapsedMs is a finite number.
     expect(typeof bootElapsedMs()).toBe('number');
     expect(bootElapsedMs()).toBeGreaterThanOrEqual(0);
@@ -46,6 +48,7 @@ describe('boot-timings', () => {
     recordBootPhase('httpListenMs', 12);
     recordBootPhase('seedWalkMs', 34);
     recordBootPhase('indexesMs', 56);
+    recordBootPhase('generatedIndexSweepMs', 67.5);
     recordBootPhase('readyMs', 78);
     const t = getBootTimings();
     expect(t).toMatchObject({
@@ -53,20 +56,24 @@ describe('boot-timings', () => {
       httpListenMs: 12,
       seedWalkMs: 34,
       indexesMs: 56,
+      generatedIndexSweepMs: 67.5,
       readyMs: 78,
     });
   });
 
-  test('setBootField records the bounded file count', () => {
+  test('setBootField records bounded boot counts', () => {
     startBootTimings('2026-06-30T00:00:00.000Z');
     setBootField('fileCount', 42);
+    setBootField('generatedIndexCount', 7);
     expect(getBootTimings()?.fileCount).toBe(42);
+    expect(getBootTimings()?.generatedIndexCount).toBe(7);
   });
 
   test('recordBootPhase / setBootField are no-ops before startBootTimings', () => {
     resetBootTimingsForTest();
     recordBootPhase('httpListenMs', 99);
     setBootField('fileCount', 99);
+    setBootField('generatedIndexCount', 99);
     expect(getBootTimings()).toBeUndefined();
   });
 
@@ -81,9 +88,13 @@ describe('boot-timings', () => {
   test('a fresh startBootTimings drops prior phase values', () => {
     startBootTimings('2026-06-30T00:00:00.000Z');
     recordBootPhase('httpListenMs', 12);
+    recordBootPhase('generatedIndexSweepMs', 23);
+    setBootField('generatedIndexCount', 4);
     startBootTimings('2026-06-30T01:00:00.000Z');
     const t = getBootTimings();
     expect(t?.startedAt).toBe('2026-06-30T01:00:00.000Z');
     expect(t?.httpListenMs).toBeUndefined();
+    expect(t?.generatedIndexSweepMs).toBeUndefined();
+    expect(t?.generatedIndexCount).toBeUndefined();
   });
 });

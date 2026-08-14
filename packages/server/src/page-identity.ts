@@ -172,6 +172,42 @@ export function extractPageIcon(content: string): string | undefined {
   return icon;
 }
 
+/**
+ * A block-scalar indicator (`>` / `|`, with optional chomping and indentation
+ * digits) is what remains on the key's own line when the value spans following
+ * lines. `extractFrontmatterScalar` reads a single line, so it returns the
+ * indicator rather than the text. Treat that as absent: the indicator is a YAML
+ * artifact, and emitting it verbatim would put a literal `>` where a document's
+ * description belongs.
+ */
+const BLOCK_SCALAR_INDICATOR = /^[>|][+-]?\d*$/;
+
+function extractSingleLineScalar(content: string, key: string): string | undefined {
+  const { frontmatter } = stripFrontmatter(content);
+  const value = extractFrontmatterScalar(frontmatter, key);
+  if (!value || BLOCK_SCALAR_INDICATOR.test(value)) return undefined;
+  return value;
+}
+
+/**
+ * The `description:` scalar, or `undefined` when absent / blank. Kept on the
+ * same zero-dependency walk as `extractPageTitle` and `extractPageIcon` so the
+ * seed walk and every live disk event can enrich a file-index entry from the
+ * content they already hold, without a YAML parse per document.
+ */
+export function extractPageDescription(content: string): string | undefined {
+  return extractSingleLineScalar(content, 'description');
+}
+
+/**
+ * The `type:` scalar, or `undefined` when absent / blank. OKF's conformance
+ * floor is a non-empty `type` on every non-reserved document, which is what
+ * makes it the one field dependable enough to group a generated index by.
+ */
+export function extractPageType(content: string): string | undefined {
+  return extractSingleLineScalar(content, 'type');
+}
+
 export interface FrontmatterMetadata {
   cluster: string | undefined;
   category: string | undefined;

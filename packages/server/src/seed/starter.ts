@@ -33,6 +33,8 @@
  * existing test files and external consumers keep working without churn.
  */
 
+import type { LintPluginId } from '@inkeep/open-knowledge-core';
+
 /** Stable identifier for a pack. */
 export type PackId =
   | 'knowledge-base'
@@ -130,6 +132,20 @@ export interface StarterPack {
    * safety is enforced independently by `assertEntryPathInProject` at apply time.
    */
   rootFiles?: Readonly<Record<string, string>>;
+  /**
+   * Lint plugins this pack REQUIRES to deliver what it promises. Seeding the
+   * pack turns them on.
+   *
+   * A dependency the pack states about itself, not a config override it
+   * carries: the pack names the plugin, and the seed owns how that is spelled
+   * in `config.yml`. A pack that scaffolds conformant content and has no way
+   * to keep it conformant is only conformant at t=0.
+   *
+   * Seed-time only. Nothing re-asserts these later, and a user who turns one
+   * off afterward is not overridden — the plan discloses the enablement so
+   * they can see why it came back on and undo it in Settings.
+   */
+  requiredPlugins?: readonly LintPluginId[];
 }
 
 // ─── Pack 1: Knowledge base (the existing Karpathy three-layer) ──────────
@@ -149,7 +165,7 @@ const KNOWLEDGE_BASE_FOLDERS: readonly StarterFolder[] = [
     title: 'Research',
     uiSummary: 'Your work-in-progress take on what the sources mean.',
     description:
-      'Provisional analysis that synthesizes the external sources. Every claim cites a doc in `external-sources/`; `status: provisional`. Promoted to `articles/` via `consolidate` once the findings are stable.',
+      'Provisional analysis that synthesizes the external sources. Every claim cites a doc in `external-sources/`; stored as OKF `status: draft`. Promoted to `articles/` via `consolidate` once the findings are stable.',
     tags: ['research', 'provisional', 'layer-research'],
     starterTemplate: 'research-log',
   },
@@ -158,7 +174,7 @@ const KNOWLEDGE_BASE_FOLDERS: readonly StarterFolder[] = [
     title: 'Articles',
     uiSummary: 'The finished, trusted version you can rely on.',
     description:
-      'Canonical knowledge, committed after a team decision. The source of truth for the domain; carries a `supersedes:` chain back to the `research/` docs it replaces.',
+      'Canonical knowledge, committed after a team decision and stored as OKF `status: stable`. The source of truth for the domain; carries a `supersedes:` chain back to the `research/` docs it replaces.',
     tags: ['article', 'canonical', 'layer-consolidate'],
     starterTemplate: 'article',
   },
@@ -189,7 +205,7 @@ template:
   description: Provisional analysis synthesizing external sources. Every factual claim cites a doc in external-sources/. Promoted to articles/ via consolidate once findings are stable.
 type: research-note
 description: "Provisional findings that synthesize the cited sources, pending promotion to a canonical article."
-status: provisional
+status: draft
 sources: []
 created: {{date}}
 author: {{user}}
@@ -207,10 +223,10 @@ tags: [research, provisional]
   article: `---
 template:
   title: Canonical Article
-  description: Canonical knowledge committed after a team decision. Carries status:canonical plus a supersedes chain tying back to the research/ docs it replaces. Source-of-truth for the domain.
+  description: Canonical knowledge committed after a team decision. Carries OKF status:stable plus a supersedes chain tying back to the research/ docs it replaces. Source-of-truth for the domain.
 type: article
 description: "Canonical, team-approved reference for this topic."
-status: canonical
+status: stable
 supersedes: []
 authored: {{date}}
 author: {{user}}
@@ -1454,55 +1470,25 @@ description: "When the agent does scheduled work: daily briefings, end-of-day do
 
 // ─── Pack 7: OKF starter (Open Knowledge Format conformant-by-construction) ─
 //
-// A small mini-KB whose seeded content is conformant with Google's Open
-// Knowledge Format (OKF) v0.1 from commit one — WITHOUT enforcing anything.
-// OKF's one hard requirement is a non-empty `type` on every non-reserved doc
-// (§9 rules 1–2); plus reserved lowercase `index.md` (§6 navigation) and
-// `log.md` (§7 change-history) that carry NO frontmatter (§9 rule 3).
-//
-// Conformance is PURELY pre-populated content: the native frontmatter schema
-// stays open-shaped, nothing is linted, and `ok init` is untouched. The pack
-// is a normal `STARTER_PACKS` entry — same shape, invocation, and discovery as
-// every other pack.
+// The portable bundle stays deliberately small: one root index, one populated
+// domain folder, and one typed document. The nested `.ok/` files add
+// OpenKnowledge's authoring layer without pretending that folder taxonomies,
+// logs, provenance, or lifecycle metadata are part of OKF's conformance floor.
+// Every non-reserved document still has parseable frontmatter with a non-empty
+// `type`; the root index declares OKF v0.2 as a quoted string.
 //
 // Seeded content uses STANDARD markdown links (`[text](./path.md)`), not OK's
-// `[[…]]` shorthand: a conformant OKF bundle's link graph is plain markdown,
-// so authoring standard links keeps the seeded bundle portable to a strict
-// OKF consumer.
-//
-// Reserved files are frontmatter-free convention exemplars, valid at seed time;
-// the tool does not keep them live (the pack skill tells the author to maintain
-// them). `log.md` seeds a prose instruction (not a dated placeholder entry),
-// mirroring the other packs' root files — root files are written verbatim with
-// no `{{date}}` substitution, so a seeded date would be wrong.
+// `[[…]]` shorthand, so the bundle remains portable to strict OKF consumers.
 
 const OKF_FOLDERS: readonly StarterFolder[] = [
   {
     path: 'concepts',
     title: 'Concepts',
-    uiSummary: 'Ideas and definitions worth keeping.',
+    uiSummary: 'Durable knowledge, one concept per file.',
     description:
-      'Durable ideas and definitions, one file per concept. Each doc carries `type: concept` in its frontmatter. Link related concepts so the graph builds itself.',
-    tags: ['concept', 'okf'],
+      'Durable knowledge, one concept per file. New documents start as draft Concepts and use standard Markdown links for portable relationships.',
+    tags: ['okf'],
     starterTemplate: 'concept',
-  },
-  {
-    path: 'references',
-    title: 'References',
-    uiSummary: 'Sources and citations you rely on.',
-    description:
-      'External sources and citations you rely on, one file per source. Each doc carries `type: reference`. Link the docs that cite a reference so the evidence trail stays navigable.',
-    tags: ['reference', 'okf'],
-    starterTemplate: 'reference',
-  },
-  {
-    path: 'notes',
-    title: 'Notes',
-    uiSummary: 'Working notes and observations.',
-    description:
-      'Working notes and observations, one file per note. Each doc carries `type: note`. The lightest section — capture first, link as ideas connect.',
-    tags: ['note', 'okf'],
-    starterTemplate: 'note',
   },
 ] as const;
 
@@ -1515,113 +1501,42 @@ const OKF_TEMPLATES: Readonly<Record<string, string>> = {
   concept: `---
 template:
   title: Concept Name
-  description: One-line definition of the concept.
-type: concept
-description: "Explanation of a concept and how it connects to related ideas."
-created: {{date}}
-author: {{user}}
-tags: [concept]
----
-
-## Definition
-
-## Why it matters
-
-## Related
-
-- Link a related idea, e.g. \`[another concept](./another-concept.md)\`.
-`,
-  reference: `---
-template:
-  title: Reference Title
-  description: One-line summary of the source.
-type: reference
-description: "A reference entry kept for quick lookup."
-created: {{date}}
-author: {{user}}
-tags: [reference]
+  description: Durable knowledge about one concept.
+type: Concept
+status: draft
 ---
 
 ## Summary
 
-## Key points
+## Details
 
-## Where this is used
-
-- Link the docs that cite this reference.
-`,
-  note: `---
-template:
-  title: Note Title
-  description: One-line summary of the note.
-type: note
-description: "A freeform note."
-created: {{date}}
-author: {{user}}
-tags: [note]
----
-
-## Note
-
-## Links
+## Related
 `,
 };
 
-// A real, non-reserved seed doc — single frontmatter block carrying a non-empty
-// `type` (the OKF §9 rule-2 requirement). Gives a strict OKF consumer a typed
-// document to accept and gives `index.md` a real link target. `Document` is the
-// OKF floor (non-empty is all OKF needs); the author picks a more specific type
-// as the KB grows.
-const OKF_WELCOME_MD = `---
-title: Welcome
-description: Start here — what this knowledge base is and how it is organized.
-type: Document
-tags: [welcome]
+const OKF_GETTING_STARTED_MD = `---
+type: Guide
+title: Getting started
+description: Purpose and organization of this knowledge base.
+status: stable
 ---
 
-# Welcome
+# Getting started
 
-This knowledge base was scaffolded with the **OKF starter pack**, so it is conformant with the Open Knowledge Format (OKF) from the first commit.
+Use this knowledge base for durable concepts that people and agents can link, exchange, and reuse.
 
-## How it is organized
+Each concept needs parseable YAML frontmatter with a non-empty \`type\`. Use standard Markdown links so relationships remain portable to other OKF tools.
 
-- [index](./index.md) — the navigation hub (a reserved OKF file; carries no frontmatter).
-- [log](./log.md) — the change history (a reserved OKF file; carries no frontmatter).
-- [concepts/](./concepts/), [references/](./references/), [notes/](./notes/) — your content. Every document here carries a non-empty \`type\` in its frontmatter.
-
-## The one rule
-
-OKF requires exactly one thing of every non-reserved document: a non-empty \`type\`. The value is yours to choose — \`concept\`, \`reference\`, \`note\`, or anything that fits. \`Document\` is a fine generic fallback.
-
-See the project skill for the full set of conventions.
+The OpenKnowledge OKF plugin warns when content may not survive a handoff to another OKF consumer. Its companion skill provides the complete authoring guidance.
 `;
 
-// Reserved OKF §6 navigation file. Lowercase \`index.md\`, FRONTMATTER-FREE
-// (any frontmatter on a reserved file is a §9 rule-3 violation). A
-// progressive-disclosure link-list (standard markdown links) to the seeded
-// doc + sections.
-const OKF_INDEX_MD = `# Index
+const OKF_INDEX_MD = `---
+okf_version: "0.2"
+---
 
-The navigation hub for this knowledge base. Start with [welcome](./welcome.md), then explore by section.
+# Knowledge base
 
-## Sections
-
-- [welcome](./welcome.md) — what this knowledge base is and how it is organized
-- [concepts/](./concepts/) — durable ideas and definitions, one file per concept (\`type: concept\`)
-- [references/](./references/) — sources and citations you rely on (\`type: reference\`)
-- [notes/](./notes/) — working notes and observations (\`type: note\`)
-
-Every document outside this file and \`log.md\` carries a non-empty \`type\` in its frontmatter — that is all OKF requires.
-`;
-
-// Reserved OKF §7 change-history file. Lowercase \`log.md\`, FRONTMATTER-FREE.
-// Seeds a prose instruction documenting the newest-first dated-entry format
-// (\`## YYYY-MM-DD: summary\`) rather than a placeholder entry — mirroring the
-// other packs' log.md, and avoiding a stale seeded date (root files get no
-// \`{{date}}\` substitution). The author adds the first real entry on first edit.
-const OKF_LOG_MD = `# Log
-
-Change history for this knowledge base, newest entry first. Add a dated entry (\`## YYYY-MM-DD: <summary>\`) whenever you create, edit, or restructure content — one entry per working session, not per file.
+- [Getting started](./concepts/getting-started.md) — purpose and conventions.
 `;
 
 // ─── The registry ─────────────────────────────────────────────────────────
@@ -1676,18 +1591,19 @@ export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
     id: 'okf',
     name: 'Open Knowledge Format',
     description: "Wiki using Google's Open Knowledge Format.",
-    // Root scaffold: OKF reserved files (index.md / log.md) belong at the
-    // bundle root, so the project root IS the OKF bundle (no subfolder).
+    // The project root is the portable OKF bundle; `.ok/` remains an
+    // OpenKnowledge-only authoring layer nested inside it.
     defaultSubfolder: undefined,
     folders: OKF_FOLDERS,
     templates: OKF_TEMPLATES,
-    // `welcome.md` is a real non-reserved typed doc; `index.md` / `log.md` are
-    // the frontmatter-free OKF reserved files (§6 / §7).
     rootFiles: {
-      'welcome.md': OKF_WELCOME_MD,
       'index.md': OKF_INDEX_MD,
-      'log.md': OKF_LOG_MD,
+      'concepts/getting-started.md': OKF_GETTING_STARTED_MD,
     },
+    // The scaffold is OKF-conformant by construction, and nothing keeps it that
+    // way — the first doc written after seeding can drift silently. The plugin
+    // is what turns "conformant at t=0" into "conformance maintained".
+    requiredPlugins: ['okf'],
   },
   'writing-pipeline': {
     id: 'writing-pipeline',
@@ -1726,10 +1642,11 @@ export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
 export const STARTER_PACK_IDS: readonly PackId[] = Object.keys(STARTER_PACKS) as PackId[];
 
 /**
- * The OKF pack's reserved files (OKF §6 navigation + §7 change-history). These
- * are lowercase and FRONTMATTER-FREE by requirement — any frontmatter on a
- * reserved file is an OKF §9 rule-3 violation. Single source of truth so the
- * pack and its conformance tests can't drift on which files are reserved.
+ * The OKF pack's reserved files (OKF §8 navigation + §9 change-history). These
+ * are lowercase; §11 rule 3 asks reserved files follow §8/§9 structure — §8 keeps
+ * an index frontmatter-free (a root index MAY add `okf_version`), while §9 does not
+ * constrain a log's frontmatter. Single source of truth so the pack and its
+ * conformance tests can't drift on which files are reserved.
  */
 export const OKF_RESERVED_FILENAMES: readonly string[] = ['index.md', 'log.md'];
 

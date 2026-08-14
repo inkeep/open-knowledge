@@ -58,17 +58,29 @@ export function partitionFrontmatterProblems(diagnostics: readonly LintDiagnosti
 }
 
 /**
- * `config` with every plugin but frontmatter disabled. Derived from the plugin
- * registry rather than naming markdownlint: the registry is append-designed, so
- * a hardcoded list would silently start running a third plugin's pass here —
+ * `config` with every plugin but frontmatter disabled. Derived from the config's
+ * own plugin map rather than naming markdownlint: the registry is append-designed,
+ * so a hardcoded list would silently start running a third plugin's pass here —
  * the same growth `partitionFrontmatterProblems` guards its output against.
+ *
+ * Rebuilt rather than mutated in place. Assigning through a union-typed key
+ * (`plugins[id] = …`) asks for a value assignable to EVERY slice at once, which
+ * no single slice satisfies once the registry holds more than one shape — so the
+ * in-place form stopped compiling the moment a third plugin landed.
+ *
+ * Still driven by `LINT_PLUGINS`, not by the config's own keys: a config that
+ * predates a plugin has no entry for it, and the registry walk is what puts a
+ * disabled one there. Mapping `config.plugins` instead would leave that key
+ * absent, and `lintDocument` reads `slice.enabled` off every registered plugin
+ * without a presence check.
  */
 function frontmatterOnly(config: LinterConfig): LinterConfig {
-  const plugins = { ...config.plugins };
-  for (const { id } of LINT_PLUGINS) {
-    if (id === 'frontmatter') continue;
-    plugins[id] = { ...plugins[id], enabled: false };
-  }
+  const plugins = Object.fromEntries(
+    LINT_PLUGINS.map(({ id }) => [
+      id,
+      id === 'frontmatter' ? config.plugins[id] : { ...config.plugins[id], enabled: false },
+    ]),
+  ) as LinterConfig['plugins'];
   return { ...config, plugins };
 }
 

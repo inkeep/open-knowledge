@@ -4,8 +4,10 @@
  * "given the project (or a sub-path), what per-file diagnostics hold?" behind
  * one interface while owning its own execution model — the lint validator
  * walks the content tree via `auditProject`; the links validator reads the
- * derived document index. The engine fans out and merges everything into
- * one source-tagged diagnostic plane. Backs `GET /api/audit` + MCP `audit`.
+ * derived document index; the OKF project validator walks for the file LIST
+ * and judges it as a whole, reading no document. The engine fans out and merges
+ * everything into one source-tagged diagnostic plane. Backs `GET /api/audit` +
+ * MCP `audit`.
  */
 
 import {
@@ -25,6 +27,7 @@ import {
 import { getLogger } from '../logger.ts';
 import { AuditSupersededError, auditProject } from './audit.ts';
 import type { AuditCache } from './audit-cache.ts';
+import { createOkfProjectValidator } from './okf-project-validator.ts';
 
 type DeadLinksResult = Awaited<ReturnType<DerivedDocumentIndexApiPort['getDeadLinks']>>;
 type LocalTargetsResult = Awaited<
@@ -139,7 +142,7 @@ export interface ValidationAuditDeps {
  * one factory here — the engine body never changes.
  */
 export function createProjectValidators(deps: ValidationAuditDeps): ProjectValidator[] {
-  return [createLintValidator(deps), createLinksValidator(deps)];
+  return [createLintValidator(deps), createLinksValidator(deps), createOkfProjectValidator(deps)];
 }
 
 /** Fan out to every validator, then merge into one per-file diagnostic plane. */

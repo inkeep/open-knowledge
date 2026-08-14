@@ -266,3 +266,68 @@ describe('applySeed — codebase-wiki nested folder paths + wiki/-prefixed rootF
     );
   });
 });
+
+describe('applySeed — required plugins', () => {
+  let projectDir: string;
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(join(tmpdir(), 'seed-apply-plugins-'));
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  /** Seed `.ok/config.yml` with `body`, run the okf pack, return the config after. */
+  async function seedOkfWith(body: string): Promise<{ after: string; enabled: string[] }> {
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), body, 'utf-8');
+    const plan = await planSeed({ projectDir, packId: 'okf' });
+    const result = await applySeed(plan, { projectDir, packId: 'okf' });
+    expect(result.errors).toEqual([]);
+    return {
+      after: readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8'),
+      enabled: result.pluginsEnabled,
+    };
+  }
+
+  test('turns the plugin back on even when the user had switched it off', async () => {
+    // The decided behaviour, and the one worth pinning: a pack that cannot keep
+    // its own scaffold conformant is not delivering what it promised, so the
+    // seed asserts rather than defers. What makes it acceptable is that the plan
+    // disclosed it and Settings can undo it — neither of which this test covers.
+    const { after, enabled } = await seedOkfWith('contentRules:\n  okf:\n    enabled: false\n');
+
+    expect(enabled).toEqual(['okf']);
+    expect(after).toMatch(/okf:\s*\n\s*enabled: true/);
+  });
+
+  test('leaves the rest of the user config standing', async () => {
+    // Patched, not rewritten. A seed that silently dropped an unrelated setting
+    // or a hand-written comment would be a far worse trade than the enablement.
+    const { after } = await seedOkfWith(
+      '# my notes\ncontentRules:\n  okf:\n    enabled: false\n  markdownlint:\n    enabled: true\n',
+    );
+
+    expect(after).toContain('# my notes');
+    expect(after).toMatch(/markdownlint:\s*\n\s*enabled: true/);
+  });
+
+  test('re-seeding an already-enabled project writes nothing', async () => {
+    const { after, enabled } = await seedOkfWith('contentRules:\n  okf:\n    enabled: true\n');
+
+    // Empty means the config was not touched at all — the picker is re-runnable
+    // by contract, so a repeat run must not churn the file.
+    expect(enabled).toEqual([]);
+    expect(after).toBe('contentRules:\n  okf:\n    enabled: true\n');
+  });
+
+  test('a pack with no requirement reports none', async () => {
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
+    const plan = await planSeed({ projectDir, packId: 'knowledge-base' });
+    const result = await applySeed(plan, { projectDir, packId: 'knowledge-base' });
+
+    expect(result.pluginsEnabled).toEqual([]);
+    expect(plan.requiredPlugins).toBeUndefined();
+  });
+});

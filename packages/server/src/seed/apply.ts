@@ -1,12 +1,15 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { LintPluginId } from '@inkeep/open-knowledge-core';
 import { scanInPlaceSkills } from '../in-place-skills.ts';
+import { CONFIG_FILENAME } from '../init-project.ts';
 import {
   installPackSkill,
   resolvePackSkillHome,
   resolvePackSkillSources,
 } from './install-pack-skill.ts';
 import { assertEntryPathInProject } from './path-safety.ts';
+import { enableRequiredPlugins } from './required-plugins.ts';
 import { buildStarterFolderFrontmatterYaml, DEFAULT_PACK_ID, resolvePack } from './starter.ts';
 import type { ApplyError, ApplyResult, FileEntry, ScaffoldPlan, SeedOptions } from './types.ts';
 import { SeedRootDirError } from './types.ts';
@@ -84,7 +87,6 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
 
   let applied = 0;
   const errors: ApplyError[] = [];
-
   // Containment guard for every plan entry (lexical + realpath). Plan paths
   // come across a trust boundary (HTTP /api/seed/apply, IPC payload); a
   // malicious `..` segment or a symlinked ancestor would otherwise escape
@@ -178,11 +180,30 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     }
   }
 
+  // Turn on the plugins the pack requires. Unconditional by design: a user who
+  // had one off gets it back on, because a pack that cannot keep its own
+  // scaffold conformant is not delivering what it promised. What makes that
+  // acceptable is disclosure — the plan named the plugin before this ran — and
+  // reversibility: Settings can turn it straight back off, and nothing here
+  // re-asserts it later.
+  let pluginsEnabled: LintPluginId[] = [];
+  try {
+    pluginsEnabled = enableRequiredPlugins(projectDir, pack.requiredPlugins ?? []);
+  } catch (err) {
+    // Same channel as a failed file write: a seed that scaffolded the content
+    // but could not enable the plugin is partial, not clean.
+    errors.push({
+      path: `.ok/${CONFIG_FILENAME}`,
+      error: `could not enable required plugin(s): ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+
   return {
     applied,
     errors,
     durationMs: Date.now() - started,
     packSkillsInstalled: packSkillInstall.editors,
     packSkillConflicts: packSkillInstall.conflicts,
+    pluginsEnabled,
   };
 }

@@ -263,6 +263,11 @@ msgstr "{0, plural, one {No momento, corresponde a {1} de {2} documento.} many {
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr "{0, plural, one {Nenhum problema em # documento.} many {Nenhum problema em # documentos.} other {Nenhum problema em # documentos.}}"
 
+#. placeholder {0}: pluginRows.length
+#: src/components/CreatedItemsList.tsx
+msgid "{0, plural, one {Plugin} other {Plugins}}"
+msgstr "{0, plural, one {Plugin} many {Plugins} other {Plugins}}"
+
 #. placeholder {0}: editorList.hiddenCount
 #: src/components/McpConsentDialogBody.tsx
 msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
@@ -629,7 +634,9 @@ msgstr "CLI do {displayName}, {hint}"
 msgid "{docName} is {0}. OpenKnowledge currently opens files up to {1}."
 msgstr "{docName} ocupa {0}. Por enquanto, o OpenKnowledge abre arquivos de até {1}."
 
+#. placeholder {0}: OKF_RULE_IDS.length
 #. placeholder {0}: entries.length
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{enabledCount}/{0} on"
 msgstr "{enabledCount}/{0} ativos"
@@ -791,6 +798,10 @@ msgstr "{percent}% usado (restam {left}%)"
 #: src/lib/share/clone-controller.ts
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
+
+#: src/components/CreatedItemsList.tsx
+msgid "{pluginCount, plural, one {plugin} other {plugins}}"
+msgstr "{pluginCount, plural, one {plugin} many {plugins} other {plugins}}"
 
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
@@ -1543,6 +1554,10 @@ msgstr "Já coberta por uma pasta principal selecionada"
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
 msgstr "Já tem um repositório git? Adicione-o com <0>git remote add origin <url></0> na pasta deste projeto. Esta página se atualiza sozinha assim que um remoto for detectado."
 
+#: src/components/settings/LintingSection.tsx
+msgid "Already in project"
+msgstr "Já em projeto"
+
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Already installed — nothing new to import."
 msgstr "Já instalado — nada novo para importar."
@@ -1587,6 +1602,10 @@ msgstr "Outra operação de sincronização está em andamento. Tente de novo em
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
 msgstr "qualquer"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
+msgstr "Qualquer arquivo .mdx. O formato é apenas .md, portanto, um leitor que procura .md nunca o abre - e se existir um .md com o mesmo nome, ele o lê."
 
 #. placeholder {0}: summary.name
 #: src/components/settings/LintingSection.tsx
@@ -2148,6 +2167,7 @@ msgstr "Não é possível compartilhar este caminho."
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -2288,6 +2308,10 @@ msgstr "Extraindo arquivos"
 msgid "Checking sign-in status"
 msgstr "Verificando o estado da sessão"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Checking skill"
+msgstr "Verificando habilidade"
+
 #: src/components/ImportSkillForm.tsx
 msgid "Checking source"
 msgstr "Verificando a fonte"
@@ -2303,6 +2327,10 @@ msgstr "Verificando..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Lista de verificação com caixas de seleção."
+
+#: src/components/CreatedItemsList.tsx
+msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
+msgstr "Verifica seu projeto em relação ao Open Knowledge Format. Desligue-o a qualquer momento nas Configurações."
 
 #: src/components/ImportSkillForm.tsx
 msgid "Choose a skill archive"
@@ -4300,6 +4328,10 @@ msgstr "Desativar {0}"
 msgid "Disable {file}"
 msgstr "Desativar {file}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {id}"
+msgstr "Desativar {id}"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr "Desativar a pré-visualização de links externos"
@@ -4401,6 +4433,10 @@ msgstr "Painéis do documento"
 #: src/components/EditorFooter.tsx
 msgid "Document statistics"
 msgstr "Estatísticas do documento"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Document structure"
+msgstr "Estrutura do documento"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
@@ -4793,6 +4829,10 @@ msgstr "Ativar a CLI do {displayName}"
 msgid "Enable {file}"
 msgstr "Ativar {file}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {id}"
+msgstr "Habilitar {id}"
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -4816,6 +4856,10 @@ msgstr "Ativar Acompanhar?"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
 msgstr "Ativar a sincronização automática do git?"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enable indexes"
+msgstr "Habilitar índices"
 
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
@@ -4844,6 +4888,10 @@ msgstr "Ativar o terminal neste projeto"
 #: src/components/settings/LintingSection.tsx
 msgid "Enable Themes"
 msgstr "Ativar os temas"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enabling index generation"
+msgstr "Habilitando a geração de índice"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -4914,6 +4962,10 @@ msgstr "Erro:"
 #: src/components/CommandPalette.tsx
 msgid "Escape"
 msgstr "Esc"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
+msgstr "Todo documento conceitual carrega um tipo não vazio. Este é todo o piso de conformidade de OKF - um documento com apenas um tipo é totalmente compatível."
 
 #: src/components/settings/LintingSection.tsx
 msgid "every doc"
@@ -5690,6 +5742,10 @@ msgstr "A partir de um modelo"
 msgid "From the {0} plugin"
 msgstr "Do plugin {0}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter"
+msgstr "frontmatter"
+
 #: src/components/TemplateForm.tsx
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr "O frontmatter com que começa cada documento criado a partir deste modelo. Os valores são YAML — uma lista é <0>[a, b]</0>; <1>{{date}}</1> é preenchido na criação."
@@ -5732,6 +5788,10 @@ msgstr "Fim de jogo · pressione espaço para jogar de novo"
 msgid "General"
 msgstr "Geral"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Generated files"
+msgstr "Arquivos gerados"
+
 #: src/components/TerminalCliMissingBanner.tsx
 msgid "Get {displayName}"
 msgstr "Obter {displayName}"
@@ -5764,6 +5824,10 @@ msgstr "a configuração do git não está disponível"
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Sua identidade do git não está definida — os commits usam um autor padrão. Defina a sua para que os colegas vejam seu nome."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Git merge rule"
+msgstr "Git regra de mesclagem"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
@@ -5919,7 +5983,7 @@ msgstr "slug-do-titulo"
 msgid "Headings"
 msgstr "Títulos"
 
-#: src/components/AutoSyncEnableWarning.tsx
+#: src/components/DisclosureWarning.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "Atenção"
@@ -5940,6 +6004,10 @@ msgstr "Olá, mundo!"
 #: src/lib/native-menu-catalog.ts
 msgid "Help"
 msgstr "Ajuda"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
+msgstr "Ajuda os agentes de codificação a escolher tipos de documentos OKF, preservar a proveniência e evitar a invenção de metadados não suportados."
 
 #. Subtext for the open-knowledge-discovery skill row
 #. Subtext for the open-knowledge-discovery skill row
@@ -6273,9 +6341,17 @@ msgstr "Importado como \"{0}\" — o nome \"{1}\" já estava em uso."
 msgid "Importing"
 msgstr "Importando"
 
+#: src/components/settings/LintingSection.tsx
+msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
+msgstr "Em um documento de registro: os cabeçalhos de entrada levam a uma data ISO YYYY-MM-DD, o mais recente primeiro. Quantos titles você usa e se as entradas são marcadores depende de você."
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr "Em uma subpasta"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
+msgstr "Em um documento de índice: as entradas ficam sob o título de uma seção e cada uma carrega um link. A prosa em torno das listas está bem."
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6294,6 +6370,14 @@ msgstr "No app"
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app (beta)"
 msgstr "No app (beta)"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
+msgstr "Em projetos Git, o Open Knowledge adiciona uma regra com escopo ao arquivo .gitattributes na raiz do repositório para combinar alterações simultâneas nos índices."
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent index changes combine before the next rebuild."
+msgstr "Em projetos Git, Open Knowledge também adiciona uma regra .gitattributes com escopo definido para que as alterações de índice simultâneas sejam combinadas antes da próxima reconstrução."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
@@ -6318,6 +6402,26 @@ msgstr "Aumenta ou diminui o recuo do item de lista atual."
 #: src/editor/slash-command/items.tsx
 msgid "Indented blockquote for citations."
 msgstr "Citação em bloco recuada para citar fontes."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
+msgstr "Os documentos de índice não carregam frontmatter, exceto aquele na raiz da sua base de conhecimento. Os documentos de log não são cobertos — OKF não restringe seu frontmatter."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
+msgstr "A manutenção do índice está pausada porque outro atributo Git controla index.md. Atualize .gitattributes para que os caminhos index.md com escopo usem merge=union e tente novamente."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because Open Knowledge could not confirm the required Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "A manutenção do índice foi pausada porque Open Knowledge não pôde confirmar a regra de mesclagem Git necessária. Verifique Git e .gitattributes e tente novamente."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "A manutenção do índice permaneceu desativada porque Open Knowledge não conseguiu acessar o servidor do projeto. Tente novamente quando o projeto for reconectado."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "A manutenção do índice permaneceu desativada porque não foi possível salvar a configuração do projeto. Verifique as permissões do arquivo do projeto e tente novamente."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
@@ -6507,6 +6611,10 @@ msgstr "Instalar em todos os agentes"
 msgid "Install selected"
 msgstr "Instalar os selecionados"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Install skill"
+msgstr "Instalar habilidade"
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "Install skills"
 msgstr "Instalar habilidades"
@@ -6516,6 +6624,7 @@ msgid "Install the gh CLI"
 msgstr "Instalar a CLI gh"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Installed"
@@ -6728,6 +6837,10 @@ msgstr "Mantenha este projeto em sincronia com seu remoto do git. Acompanhar bus
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "Acompanhe as pessoas e empresas com quem você trabalha e as reuniões que tem com elas. Bom para lembrar quem é alguém, de onde você a conhece e sobre o que vocês falaram da última vez."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
+msgstr "Mantém sua base de conhecimento alinhada ao Open Knowledge Format."
 
 #. placeholder {0}: toName.trim()
 #: src/components/SkillForkDialog.tsx
@@ -7103,6 +7216,14 @@ msgstr "Procurando <0>{lookingForUrl}</0>."
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Lost connection to \"{docName}\"."
 msgstr "A conexão com \"{docName}\" foi perdida."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain generated indexes in every folder?"
+msgstr "Manter índices generated em todas as pastas?"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain index.md"
+msgstr "Manter index.md"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "make source"
@@ -8248,6 +8369,10 @@ msgstr "OK Desktop"
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "Da última vez o OK deixou esta pasta como {0} — algo fora do OK mudou isso desde então. O estado exibido é o que está no disco agora; o seu próximo Vincular/Desvincular prevalece."
 
+#: src/components/settings/LintingSection.tsx
+msgid "OKF agent skill installed"
+msgstr "OKF habilidade do agente instalada"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr "Ligada — passar o cursor sobre um link externo envia a URL dele ao site de destino para buscar uma pré-visualização."
@@ -8263,6 +8388,10 @@ msgstr "Em <0>{address}</0>"
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "Sobre o texto selecionado em <0>{address}</0>"
+
+#: src/components/settings/LintingSection.tsx
+msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
+msgstr "No índice raiz, okf_version é escrito como uma string entre aspas, como \"0.2\". Sem aspas, YAML lê-o como um número e 0.10 silenciosamente se torna 0.1."
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8486,6 +8615,22 @@ msgstr "Abrir em um worktree"
 msgid "Open it there"
 msgstr "Abrir por lá"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+msgstr "Open Knowledge cria e mantém um arquivo de navegação denominado index.md em cada pasta que contém Markdown."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge Format guidance"
+msgstr "Open Knowledge Format orientação"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
+msgstr "Open Knowledge mantém um arquivo de navegação denominado index.md em cada pasta que contém Markdown, cada um listando os documentos dessa pasta por tipo e vinculando-os às suas subpastas. Ele reescreve esses arquivos à medida que seus documentos são alterados e tudo o que você mesmo edita neles é substituído."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+msgstr "Open Knowledge reescreve esses arquivos index.md conforme os documentos são alterados, portanto, as edições manuais neles são substituídas."
+
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
 #. placeholder {2}: item.version
@@ -8531,6 +8676,10 @@ msgstr "Abrir as configurações"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Open shared {targetNoun}"
 msgstr "Abrir {targetNoun} compartilhado"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open skill"
+msgstr "Habilidade aberta"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Open source doc: {mirrorSrc}"
@@ -9368,6 +9517,7 @@ msgid "project"
 msgstr "projeto"
 
 #: src/components/CommandPalette.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -9638,6 +9788,10 @@ msgstr "Projeto recente"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "Abertos recentemente"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Recommended agent skill"
+msgstr "Habilidade recomendada do agente"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
@@ -10076,6 +10230,10 @@ msgstr "Pesquisar a extinção das aves que não voam"
 msgid "research-note"
 msgstr "nota-de-pesquisa"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
+msgstr "Os arquivos reservados são nomeados index.md e log.md em letras minúsculas. Em um sistema de arquivos que diferencia maiúsculas de minúsculas, Index.md é lido como um documento comum e perde seu significado."
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Reset"
 msgstr "Redefinir"
@@ -10318,6 +10476,7 @@ msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "A edição de regras está disponível para a configuração raiz do markdownlint do projeto"
 
 #: src/components/LintConfigEditor.tsx
+#: src/components/settings/LintingSection.tsx
 msgid "Rules"
 msgstr "Regras"
 
@@ -11260,6 +11419,10 @@ msgstr "A skill “{conflictName}” não foi instalada para {conflictHosts} —
 msgid "Skill \"{name}\" created"
 msgstr "Habilidade \"{name}\" criada"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Skill already in project"
+msgstr "Habilidade já em projeto"
+
 #: src/components/ExploreSkills.tsx
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "Descoberta de habilidades por <0>skills.sh</0>"
@@ -11519,6 +11682,10 @@ msgstr "Começar a partir de"
 msgid "Start here: what this is and how it's organized."
 msgstr "Comece por aqui: o que é isto e como está organizado."
 
+#: src/components/settings/LintingSection.tsx
+msgid "Start maintaining index.md"
+msgstr "Comece a manter index.md"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Start source completion"
 msgstr "Iniciar o autocompletar do código"
@@ -11613,6 +11780,10 @@ msgstr "Parar de corrigir arquivos"
 #: src/components/ProblemsPanel.tsx
 msgid "Stop fixing. Files already fixed stay fixed."
 msgstr "Para de corrigir. Os arquivos já corrigidos continuam corrigidos."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Stop maintaining index.md"
+msgstr "Pare de manter index.md"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -12117,6 +12288,10 @@ msgstr "O agente não está parando. A parada forçada fecha este chat e encerra
 msgid "The agent's persona, values, and voice."
 msgstr "A personalidade, os valores e a voz do agente."
 
+#: src/components/settings/LintingSection.tsx
+msgid "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
+msgstr "O contrato de computação atestada. Aplica-se apenas a documentos digitados Attested Computation, onde OKF requer um runtime; conceitos comuns não são afetados."
+
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
 msgstr "Não foi possível concluir a auditoria. Tente de novo."
@@ -12175,6 +12350,10 @@ msgstr "A fórmula <0>c = √(a² + b²)</0> é renderizada em linha."
 msgid "the git exclude file isn't writable"
 msgstr "o arquivo de exclusão do git não permite escrita"
 
+#: src/components/settings/LintingSection.tsx
+msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
+msgstr "Os arquivos de índice permanecem no lugar. Open Knowledge remove apenas a regra Git adicionada."
+
 #: src/lib/locale-load-failure-notice.ts
 msgid "The interface is still in the language you were reading. Check your connection, then reload to try again."
 msgstr "A interface continua no idioma que você estava lendo. Verifique sua conexão e recarregue para tentar de novo."
@@ -12210,6 +12389,10 @@ msgstr "O bloco de propriedades no topo deste documento tem um erro de formataç
 #: src/components/PropertyDiffBlock.tsx
 msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
 msgstr "As propriedades mudaram, mas não foi possível compará-las — o YAML não pôde ser analisado. As duas versões são exibidas como foram escritas."
+
+#: src/components/settings/LintingSection.tsx
+msgid "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
+msgstr "As famílias de origem, confiança e ciclo de vida: sources, generated, verified, status e stale_after. Cada campo é opcional e a ausência nunca é um erro."
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."
@@ -12247,6 +12430,10 @@ msgstr "O arquivo de esquema não existe ou falhou ao carregar — adicionar um 
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "o servidor respondeu, mas o server.lock ainda não tem porta"
+
+#: src/components/settings/LintingSection.tsx
+msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
+msgstr "As formas de title, description, resource e tags quando você as usa. Nenhum é obrigatório; declarar um apenas fixa seu tipo, então tags escrito como uma string separada por vírgula é sinalizado."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
@@ -12560,6 +12747,10 @@ msgstr "Isto pode demorar um pouco. Seu conteúdo markdown é preservado."
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "This moves <0>{name}</0> from {0} to {1}, relocating its files on disk and re-installing it in your editors at the {2} level."
 msgstr "Isto move <0>{name}</0> de {0} para {1}, realocando os arquivos dela no disco e reinstalando-a nos seus editores no nível {2}."
+
+#: src/components/settings/LintingSection.tsx
+msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
+msgstr "Este precisa ver seus arquivos, não apenas o documento aberto, para que apareça quando você executa uma auditoria de projeto, e não enquanto você digita."
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -12924,6 +13115,10 @@ msgstr "Transforma {0} de volta em um diretório real com um link simbólico por
 msgid "Turn {display} back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
 msgstr "Transforma {display} de volta em um diretório real com um link simbólico por habilidade para cada uma que ele enxerga agora — nada para de funcionar, e daí em diante o menu de cada habilidade cuida dela."
 
+#: src/components/CreatedItemsList.tsx
+msgid "Turn it off any time in Settings."
+msgstr "Desligue-o a qualquer momento nas Configurações."
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"
 msgstr "Desligar Somente arquivos markdown"
@@ -12948,6 +13143,10 @@ msgstr "Ligar a busca semântica?"
 #: src/components/SeedDialog.tsx
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr "Transforme o que você lê em artigos claros e confiáveis. Salve uma fonte, descubra o que ela significa e guarde a versão final para poder se apoiar nela depois."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning it off"
+msgstr "Desligando"
 
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
@@ -13638,6 +13837,10 @@ msgstr "Link wiki"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Wiki link suggestions"
 msgstr "Sugestões de link wiki"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
+msgstr "Links Wiki como [[Page]] — uma forma suportada de vincular aqui, mas um leitor externo não resolve nada e mostra os colchetes."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

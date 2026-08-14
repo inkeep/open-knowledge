@@ -8,30 +8,67 @@
  * (per-plugin on/off, one manage page per scope) and `MarkdownlintPluginSection`
  * (the full-catalog rule browser — see `markdownlint-rule-browser.tsx`).
  */
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
-
 import {
   type AppliesToPatternSummary,
+  assertNeverOkfRuleGroupId,
+  assertNeverOkfRuleId,
   type ConfigBinding,
   type ConfigPatch,
   type FrontmatterSchemaMapping,
   findZeroMatchAppliesToPatterns,
   humanFormat,
   isFrontmatterSchemaAsset,
+  isOkfRuleEnabled,
   type LintPluginId,
+  OKF_RULE_GROUPS,
+  OKF_RULE_IDS,
+  type OkfRuleGroupId,
+  type OkfRuleId,
+  OPENKNOWLEDGE_SKILLS_REPO,
   summarizeAppliesTo,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { ArrowUpRight, Plus, SquarePen, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import {
+  ArrowUpRight,
+  CircleAlert,
+  FileText,
+  GitMerge,
+  Plus,
+  Power,
+  SquarePen,
+  Trash2,
+} from 'lucide-react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
+import { DisclosureWarning, DisclosureWarningItem } from '@/components/DisclosureWarning';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { SkillPluginBundleDialog } from '@/components/SkillPluginBundleDialog';
 import { AlertDialog } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardAction,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { TagPillInput } from '@/components/ui/tag-pill-input';
 import {
@@ -41,10 +78,17 @@ import {
   useFrontmatterSchemaFiles,
   useProjectLintConfig,
 } from '@/editor/lint-config-client';
+import {
+  type GeneratedIndexSettingsIssue,
+  useGeneratedIndexSettings,
+} from '@/hooks/use-generated-index-settings';
+import { useOpenSkill } from '@/hooks/use-open-skill';
+import { useSkills } from '@/hooks/use-skills';
 import { useConfigContext } from '@/lib/config-provider';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { requestSchemaFieldsView } from '@/lib/schema-fields-view-intent';
+import { installPackSkill } from '@/lib/skills-api';
 import { countMatchingDocs } from './applies-to-folder-globs';
 import { AppliesToFolderPicker } from './applies-to-folder-picker';
 import { indexGlobProblemsByFile, parseAppliesToGlobProblem } from './applies-to-glob-problems';
@@ -96,6 +140,8 @@ function PluginManageDescription({ id }: { id: LintPluginId }) {
           Validate document frontmatter against JSON Schema files, scoped to doc sets by glob.
         </Trans>
       );
+    case 'okf':
+      return <Trans>Keeps your knowledge base aligned with the Open Knowledge Format.</Trans>;
   }
 }
 
@@ -140,8 +186,9 @@ export function ProjectPluginsManageSection() {
                   className="inline-flex items-center gap-1.5 text-sm font-medium"
                 >
                   {plugin.label}
+                  {plugin.beta ? <PluginBetaBadge /> : null}
                 </Label>
-                <p id={descriptionId} className="text-1sm text-muted-foreground">
+                <p id={descriptionId} className="text-sm text-muted-foreground">
                   <PluginManageDescription id={plugin.id} />
                 </p>
               </div>
@@ -286,6 +333,11 @@ function pluginDocUrl(id: LintPluginId): string | undefined {
   return LINT_PLUGIN_META.find((plugin) => plugin.id === id)?.docUrl;
 }
 
+/** Whether one plugin carries the Beta tag — read from the same registry the row does. */
+function pluginIsBeta(id: LintPluginId): boolean {
+  return LINT_PLUGIN_META.find((plugin) => plugin.id === id)?.beta === true;
+}
+
 /** markdownlint plugin: the full-catalog rule browser. */
 export function MarkdownlintPluginSection({
   initialRuleQuery,
@@ -327,6 +379,559 @@ export function MarkdownlintPluginSection({
       </PluginSectionHeader>
       <MarkdownlintRuleBrowser initialRuleQuery={initialRuleQuery} />
     </section>
+  );
+}
+
+/**
+ * What one OKF rule checks, in a sentence. Ids are untranslated identifiers (like
+ * the plugin labels in `LINT_PLUGIN_META`); only the prose is translated — the
+ * same split `PluginManageDescription` uses.
+ */
+function OkfRuleDescription({ id }: { id: OkfRuleId }) {
+  switch (id) {
+    case 'no-wiki-links':
+      return (
+        <Trans>
+          Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves
+          nothing and shows the brackets.
+        </Trans>
+      );
+    case 'log-shape':
+      return (
+        <Trans>
+          In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many
+          titles you use, and whether entries are bullets, is up to you.
+        </Trans>
+      );
+    case 'index-shape':
+      return (
+        <Trans>
+          In an index document: entries sit under a section heading and each one carries a link.
+          Prose around the lists is fine.
+        </Trans>
+      );
+    case 'reserved-casing':
+      return (
+        <Trans>
+          Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem,
+          Index.md is read as an ordinary document and loses its meaning.
+        </Trans>
+      );
+    case 'frontmatter-required':
+      return (
+        <Trans>
+          Every concept document carries a non-empty type. This is the whole of OKF's conformance
+          floor — a document with only a type is fully conformant.
+        </Trans>
+      );
+    case 'frontmatter-recommended':
+      return (
+        <Trans>
+          The shapes of title, description, resource, and tags when you use them. None are required;
+          declaring one only pins its type, so tags written as a comma-separated string is flagged.
+        </Trans>
+      );
+    case 'frontmatter-provenance':
+      return (
+        <Trans>
+          The provenance, trust, and lifecycle families: sources, generated, verified, status, and
+          stale_after. Every field is optional, and absence is never an error.
+        </Trans>
+      );
+    case 'frontmatter-computation':
+      return (
+        <Trans>
+          The attested-computation contract. Only applies to documents typed Attested Computation,
+          where OKF requires a runtime; ordinary concepts are unaffected.
+        </Trans>
+      );
+    case 'frontmatter-reserved-index':
+      return (
+        <Trans>
+          Index documents carry no frontmatter, except the one at your knowledge base's root. Log
+          documents are not covered — OKF does not constrain their frontmatter.
+        </Trans>
+      );
+    case 'frontmatter-root-index':
+      return (
+        <Trans>
+          On the root index, okf_version is written as a quoted string like "0.2". Unquoted, YAML
+          reads it as a number and 0.10 silently becomes 0.1.
+        </Trans>
+      );
+    case 'project-no-mdx':
+      return (
+        <Trans>
+          Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and
+          if a .md of the same name exists, reads that one instead.
+        </Trans>
+      );
+    default:
+      return assertNeverOkfRuleId(id);
+  }
+}
+
+/** The heading for one group of OKF rules. */
+function OkfGroupLabel({ id }: { id: OkfRuleGroupId }) {
+  switch (id) {
+    case 'structure':
+      return <Trans>Document structure</Trans>;
+    case 'frontmatter':
+      return <Trans>Frontmatter</Trans>;
+    case 'project':
+      return <Trans>Project</Trans>;
+    default:
+      return assertNeverOkfRuleGroupId(id);
+  }
+}
+
+/**
+ * When a group's rules behave differently from the rest, say so under its heading.
+ * Project rules compare files, so they cannot run against a single open document — a
+ * reader watching the Problems panel while typing would otherwise read their silence
+ * as a pass.
+ */
+function OkfGroupNote({ id }: { id: OkfRuleGroupId }) {
+  if (id !== 'project') return null;
+  return (
+    <p className="text-sm text-muted-foreground">
+      <Trans>
+        This one needs to see your files, not just the open document, so it appears when you run a
+        project audit rather than while you type.
+      </Trans>
+    </p>
+  );
+}
+
+function OkfRecommendedSkillCard({ packId, name }: { packId: string; name: string }) {
+  const { t } = useLingui();
+  const skills = useSkills();
+  const openSkill = useOpenSkill();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [optimisticStatus, setOptimisticStatus] = useState<'installed' | 'existing' | null>(null);
+  const installSkillTriggerRef = useRef<HTMLButtonElement>(null);
+  const description = t`Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata.`;
+  const entry =
+    skills.status === 'ready'
+      ? skills.data.find((skill) => skill.scope === 'project' && skill.name === name)
+      : undefined;
+  const status = entry
+    ? entry.origin?.source === OPENKNOWLEDGE_SKILLS_REPO
+      ? 'installed'
+      : 'existing'
+    : optimisticStatus;
+  const checking = skills.status === 'idle' || skills.status === 'loading';
+
+  async function installSelected(
+    selected: readonly string[],
+  ): Promise<ReadonlyMap<string, string> | null> {
+    if (!selected.includes(name)) return new Map();
+    const result = await installPackSkill(packId);
+    if (!result.ok) {
+      toast.error(result.error);
+      return null;
+    }
+    const installed = result.skills.find((skill) => skill.name === name);
+    const nextStatus = installed?.created === false ? 'existing' : 'installed';
+    setOptimisticStatus(nextStatus);
+    toast.success(
+      nextStatus === 'installed' ? t`OKF agent skill installed` : t`Skill already in project`,
+    );
+    return new Map([[name, name]]);
+  }
+
+  return (
+    <>
+      <Card size="sm" data-testid="settings-okf-recommended-skill">
+        <CardHeader>
+          <CardTitle>
+            <Trans>Open Knowledge Format guidance</Trans>
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+          {status === 'installed' ? (
+            <CardAction>
+              <Badge variant="secondary">
+                <Trans>Installed</Trans>
+              </Badge>
+            </CardAction>
+          ) : status === 'existing' ? (
+            <CardAction>
+              <Badge variant="outline">
+                <Trans>Already in project</Trans>
+              </Badge>
+            </CardAction>
+          ) : null}
+        </CardHeader>
+        <CardFooter className="justify-end gap-2">
+          {status !== null ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => openSkill('project', name)}
+            >
+              <Trans>Open skill</Trans>
+            </Button>
+          ) : (
+            <Button
+              ref={installSkillTriggerRef}
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={checking}
+              onClick={() => setDialogOpen(true)}
+            >
+              {checking ? <Trans>Checking skill</Trans> : <Trans>Install skill</Trans>}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+      <SkillPluginBundleDialog
+        bundle={
+          dialogOpen
+            ? { plugin: 'OKF', names: [name], descriptions: { [name]: description } }
+            : null
+        }
+        source={OPENKNOWLEDGE_SKILLS_REPO}
+        defaultScope="project"
+        installOverride={{ scope: 'project', installSelected }}
+        onOpenChange={setDialogOpen}
+        returnFocus={() => installSkillTriggerRef.current?.focus()}
+      />
+    </>
+  );
+}
+
+/**
+ * OKF plugin panel: the per-rule on/off list. The plugin's own toggle lives on the
+ * Plugins manage page — the sidebar only offers this panel once the plugin is on,
+ * so nothing here needs a parent-disabled state.
+ *
+ * A rule is on unless config says `false`, so the absent case reads as enabled and
+ * only deviations are written.
+ */
+export function OkfPluginSection() {
+  const { t } = useLingui();
+  const { contentRules, bindingReady, write } = useLinterConfig();
+  const rules = contentRules?.okf?.rules;
+  const enabledCount = OKF_RULE_IDS.filter((id) => isOkfRuleEnabled(rules, id)).length;
+  // Opt-in, unlike the rules: this one writes a file, so absent reads as off.
+  const generateIndex = contentRules?.okf?.generate?.index === true;
+  const generatedIndexSettings = useGeneratedIndexSettings();
+  const generateIndexEnabled = generatedIndexSettings.status?.enabled ?? generateIndex;
+  const [confirmingGenerateIndex, setConfirmingGenerateIndex] = useState(false);
+  const generateIndexTriggerRef = useRef<HTMLButtonElement>(null);
+  const recommendedSkills =
+    LINT_PLUGIN_META.find((plugin) => plugin.id === 'okf')?.recommendedSkills ?? [];
+
+  function toggleGenerateIndex(next: boolean): void {
+    if (next) {
+      // The config write starts generation, so the disclosure must complete before
+      // this controlled switch can move to its on state.
+      setConfirmingGenerateIndex(true);
+      return;
+    }
+    // This key has a schema default, so `false` is the concrete off state. Unlike
+    // rule overrides, disabling never needs the patch walker's delete signal.
+    void generatedIndexSettings.setEnabled(false);
+  }
+
+  async function confirmGenerateIndex(): Promise<void> {
+    await generatedIndexSettings.setEnabled(true);
+    setConfirmingGenerateIndex(false);
+  }
+
+  function toggleRule(id: OkfRuleId, next: boolean): void {
+    // Re-enabling must send an explicit `null`, which the patch walker turns into
+    // a `deleteIn`. OMITTING the key does NOT remove it: the walker treats
+    // `undefined` as "leave alone" (deep-partial semantics), so a rule switched
+    // off would stay off forever with no way back on from this pane.
+    const rules: Partial<Record<OkfRuleId, boolean | null>> = {};
+    rules[id] = next ? null : false;
+    if (write({ okf: { rules } })) {
+      emitLintConfigChanged();
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="settings-plugin-okf-title"
+      className="space-y-4"
+      data-testid="settings-plugin-okf"
+    >
+      <PluginSectionHeader
+        titleId="settings-plugin-okf-title"
+        title="OKF"
+        scope="project"
+        beta={pluginIsBeta('okf')}
+        docUrl={pluginDocUrl('okf')}
+      >
+        <Trans>Keeps your knowledge base aligned with the Open Knowledge Format.</Trans>
+      </PluginSectionHeader>
+
+      {recommendedSkills.length > 0 ? (
+        <div className="flex flex-col gap-2" data-testid="settings-okf-recommended-skills">
+          <h4 className="text-sm font-medium">
+            <Trans>Recommended agent skill</Trans>
+          </h4>
+          {recommendedSkills.map((skill) => (
+            <OkfRecommendedSkillCard key={skill.name} packId={skill.packId} name={skill.name} />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="space-y-2" data-testid="settings-okf-generated-files">
+        <h4 className="text-sm font-medium">
+          <Trans>Generated files</Trans>
+        </h4>
+        <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+          <div className="min-w-0">
+            <Label htmlFor="settings-okf-generate-index" className="text-sm font-medium">
+              <Trans>Maintain index.md</Trans>
+            </Label>
+            {/* States ownership plainly, because this is the one setting here
+                that writes to the user's tree rather than reporting on it. */}
+            <p className="text-sm text-muted-foreground">
+              <Trans>
+                Open Knowledge maintains a navigation file named index.md in every folder that
+                contains Markdown, each listing that folder's documents by type and linking to its
+                subfolders. It rewrites these files as your documents change, and anything you edit
+                into them yourself is replaced.
+              </Trans>
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <Trans>
+                In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent
+                index changes combine before the next rebuild.
+              </Trans>
+            </p>
+          </div>
+          <Switch
+            ref={generateIndexTriggerRef}
+            id="settings-okf-generate-index"
+            checked={generateIndexEnabled}
+            disabled={
+              !bindingReady ||
+              generatedIndexSettings.status === null ||
+              generatedIndexSettings.pending
+            }
+            onCheckedChange={toggleGenerateIndex}
+            aria-label={
+              generateIndexEnabled ? t`Stop maintaining index.md` : t`Start maintaining index.md`
+            }
+            data-testid="settings-okf-generate-index"
+          />
+        </div>
+        <GeneratedIndexSettingsNotice
+          enabled={generatedIndexSettings.status?.enabled ?? generateIndex}
+          gitState={generatedIndexSettings.status?.git.state}
+          issue={generatedIndexSettings.issue}
+        />
+        <Dialog open={confirmingGenerateIndex} onOpenChange={setConfirmingGenerateIndex}>
+          <DialogContent
+            className="sm:max-w-lg"
+            data-testid="settings-okf-generate-index-confirm"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              generateIndexTriggerRef.current?.focus();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <Trans>Maintain generated indexes in every folder?</Trans>
+              </DialogTitle>
+              <DialogDescription className="text-inherit">
+                <Trans>
+                  Open Knowledge creates and maintains a navigation file named index.md in every
+                  folder that contains Markdown.
+                </Trans>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogBody>
+              <DisclosureWarning>
+                <DisclosureWarningItem
+                  icon={
+                    <FileText
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                    />
+                  }
+                  title={<Trans>Generated files</Trans>}
+                  body={
+                    <Trans>
+                      Open Knowledge rewrites these index.md files as documents change, so manual
+                      edits to them are replaced.
+                    </Trans>
+                  }
+                />
+                <DisclosureWarningItem
+                  icon={
+                    <GitMerge
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                    />
+                  }
+                  title={<Trans>Git merge rule</Trans>}
+                  body={
+                    <Trans>
+                      In Git projects, Open Knowledge adds a scoped rule to the repository-root
+                      .gitattributes file so concurrent index changes combine.
+                    </Trans>
+                  }
+                />
+                <DisclosureWarningItem
+                  icon={
+                    <Power
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                    />
+                  }
+                  title={<Trans>Turning it off</Trans>}
+                  body={
+                    <Trans>
+                      The index files stay in place. Open Knowledge removes only the Git rule it
+                      added.
+                    </Trans>
+                  }
+                />
+              </DisclosureWarning>
+            </DialogBody>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">
+                  <Trans>Cancel</Trans>
+                </Button>
+              </DialogClose>
+              <Button
+                variant="secondary"
+                className="font-mono uppercase"
+                onClick={() => void confirmGenerateIndex()}
+                disabled={generatedIndexSettings.pending}
+                data-testid="settings-okf-generate-index-confirm-accept"
+              >
+                {generatedIndexSettings.pending ? (
+                  <>
+                    <Spinner aria-hidden="true" />
+                    <Trans>Enabling index generation</Trans>
+                  </>
+                ) : (
+                  <Trans>Enable indexes</Trans>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium">
+          <Trans>Rules</Trans>
+        </h4>
+        <span className="text-xs text-muted-foreground">
+          <Trans>
+            {enabledCount}/{OKF_RULE_IDS.length} on
+          </Trans>
+        </span>
+      </div>
+
+      <div className="space-y-4" data-testid="settings-okf-rules-list">
+        {OKF_RULE_GROUPS.map((group) => (
+          <div
+            key={group.id}
+            className="space-y-2"
+            data-testid={`settings-okf-rule-group-${group.id}`}
+          >
+            <h5 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <OkfGroupLabel id={group.id} />
+            </h5>
+            <OkfGroupNote id={group.id} />
+            <div className="divide-y rounded-md border">
+              {group.ids.map((id) => {
+                const on = isOkfRuleEnabled(rules, id);
+                return (
+                  <div key={id} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div className="min-w-0">
+                      <Label
+                        htmlFor={`settings-okf-rule-toggle-${id}`}
+                        className="text-sm font-medium"
+                      >
+                        {id}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        <OkfRuleDescription id={id} />
+                      </p>
+                    </div>
+                    <Switch
+                      id={`settings-okf-rule-toggle-${id}`}
+                      checked={on}
+                      disabled={!bindingReady}
+                      onCheckedChange={(next) => toggleRule(id, next)}
+                      aria-label={on ? t`Disable ${id}` : t`Enable ${id}`}
+                      data-testid={`settings-okf-rule-toggle-${id}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GeneratedIndexSettingsNotice({
+  enabled,
+  gitState,
+  issue,
+}: {
+  enabled: boolean;
+  gitState?: 'not-applicable' | 'ready' | 'missing' | 'conflict' | 'unavailable';
+  issue: GeneratedIndexSettingsIssue | null;
+}) {
+  const effectiveIssue =
+    issue ??
+    (enabled && gitState === 'conflict'
+      ? 'git-conflict'
+      : enabled && (gitState === 'missing' || gitState === 'unavailable')
+        ? 'git-unavailable'
+        : null);
+  if (effectiveIssue === null) return null;
+
+  return (
+    <div
+      role="status"
+      className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+      data-testid="settings-okf-generate-index-status"
+    >
+      <CircleAlert
+        aria-hidden="true"
+        className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300"
+      />
+      <p>
+        {effectiveIssue === 'git-conflict' ? (
+          <Trans>
+            Index maintenance is paused because another Git attribute controls index.md. Update
+            .gitattributes so the scoped index.md paths use merge=union, then try again.
+          </Trans>
+        ) : effectiveIssue === 'config-write' ? (
+          <Trans>
+            Index maintenance stayed off because the project setting could not be saved. Check the
+            project file permissions, then try again.
+          </Trans>
+        ) : effectiveIssue === 'connection' ? (
+          <Trans>
+            Index maintenance stayed off because Open Knowledge could not reach the project server.
+            Try again when the project reconnects.
+          </Trans>
+        ) : (
+          <Trans>
+            Index maintenance is paused because Open Knowledge could not confirm the required Git
+            merge rule. Check Git and .gitattributes, then try again.
+          </Trans>
+        )}
+      </p>
+    </div>
   );
 }
 
@@ -445,7 +1050,7 @@ function AppliesToSummaryLine({
             }
           />
           {zeroMatchBareNameAuthored ? (
-            <span className="ml-1 text-muted-foreground/60">
+            <span className="ms-1 text-muted-foreground/60">
               <Trans>(a bare folder name needs /** after it to match what's inside)</Trans>
             </span>
           ) : null}
@@ -531,7 +1136,7 @@ function SchemaFileRow({
         </div>
       </div>
       {on ? (
-        <div className="mt-2 space-y-1 pl-1.5">
+        <div className="mt-2 space-y-1 ps-1.5">
           <Label htmlFor={`frontmatter-schema-applies-${file}`} className="text-xs">
             <Trans>Applies to (globs — leading ! excludes; empty means every doc)</Trans>
           </Label>
@@ -714,6 +1319,7 @@ export function FrontmatterPluginSection() {
       <PluginSectionHeader
         titleId="settings-plugin-frontmatter-title"
         title={t`Frontmatter schemas`}
+        beta={pluginIsBeta('frontmatter')}
         docUrl={pluginDocUrl('frontmatter')}
       >
         <Trans>
@@ -731,7 +1337,7 @@ export function FrontmatterPluginSection() {
           <p className="font-medium">
             <Trans>Configuration problems</Trans>
           </p>
-          <ul className="list-disc pl-5 text-muted-foreground">
+          <ul className="list-disc ps-5 text-muted-foreground">
             {problems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}

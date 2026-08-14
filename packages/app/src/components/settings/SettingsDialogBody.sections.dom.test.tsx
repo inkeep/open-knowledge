@@ -132,6 +132,14 @@ vi.doMock('@/components/ui/input', () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
+vi.doMock('@/hooks/use-skills', () => ({
+  useSkills: () => ({ status: 'ready', data: [] }),
+}));
+
+vi.doMock('@/hooks/use-open-skill', () => ({
+  useOpenSkill: () => () => {},
+}));
+
 const SelectHandlerCtx = createContext<((value: string) => void) | undefined>(undefined);
 vi.doMock('@/components/ui/select', () => ({
   Select: ({

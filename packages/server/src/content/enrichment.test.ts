@@ -2,6 +2,7 @@ import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { okfAdvertisedSchemaMappings } from '@inkeep/open-knowledge-core';
 import { commitWip, initShadowRepo, type WriterIdentity } from '@inkeep/open-knowledge-server';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -334,6 +335,64 @@ describe('schemas_applicable — read-time schema advertisement', () => {
       frontmatterSchemas: MAPPINGS,
     });
     expect(meta.schemas_applicable).toEqual(['.ok/schemas/doc.schema.json']);
+  });
+
+  test('the OKF profile advertises by path, scoped per document', async () => {
+    // The OKF plugin contributes built-in schemas with no files on disk, so they
+    // advertise under `okf:` identifiers instead of paths. Enrichment must treat
+    // them as ordinary mappings — this is the only automated proof that the
+    // built-in profile reaches an agent at read time at all.
+    const project = await bootstrapProject();
+    mkdirSync(resolve(project, 'notes'), { recursive: true });
+    writeFileSync(resolve(project, 'notes', 'concept.md'), '---\ntype: Metric\n---\n');
+    writeFileSync(resolve(project, 'index.md'), '---\nokf_version: "0.2"\n---\n');
+    writeFileSync(resolve(project, 'notes', 'index.md'), '# Notes\n');
+    writeFileSync(resolve(project, 'log.md'), '---\ntype: Log\n---\n');
+
+    const advertise = async (path: string) =>
+      (
+        await enrichPath(path, {
+          projectDir: project,
+          frontmatterSchemas: okfAdvertisedSchemaMappings(undefined),
+        })
+      ).schemas_applicable;
+
+    // A concept is governed by the four unscoped families. Advertised by PATH, so an
+    // agent that sees one of these can open it and read the contract.
+    expect(await advertise('notes/concept.md')).toEqual([
+      '.ok/okf/required.schema.json',
+      '.ok/okf/recommended.schema.json',
+      '.ok/okf/provenance.schema.json',
+      '.ok/okf/computation.schema.json',
+    ]);
+    // The two index scopes are disjoint: root gets the version schema, nested
+    // gets the no-frontmatter one, and neither gets both — which is what keeps
+    // them from being jointly unsatisfiable on the root index.
+    expect(await advertise('index.md')).toEqual(['.ok/okf/root-index.schema.json']);
+    expect(await advertise('notes/index.md')).toEqual(['.ok/okf/reserved-index.schema.json']);
+    // A log carries no frontmatter schema at all, so it advertises nothing.
+    expect(await advertise('log.md')).toBeUndefined();
+  });
+
+  test('a rule switched off stops advertising its schema', async () => {
+    // Advertisement and enforcement read the same toggle map, so a rule the user
+    // turned off must not still be announced as governing the document.
+    const project = await bootstrapProject();
+    mkdirSync(resolve(project, 'notes'), { recursive: true });
+    writeFileSync(resolve(project, 'notes', 'concept.md'), '---\ntype: Metric\n---\n');
+    const meta = await enrichPath('notes/concept.md', {
+      projectDir: project,
+      // No cast here on purpose: the rule-id keys are typed, so a stale or
+      // misspelled id is a compile error rather than a silently-ignored key.
+      frontmatterSchemas: okfAdvertisedSchemaMappings({
+        'frontmatter-provenance': false,
+        'frontmatter-computation': false,
+      }),
+    });
+    expect(meta.schemas_applicable).toEqual([
+      '.ok/okf/required.schema.json',
+      '.ok/okf/recommended.schema.json',
+    ]);
   });
 
   test('a disabled mapping is not advertised', async () => {

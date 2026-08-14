@@ -1,3 +1,4 @@
+
 import Ajv, { type ValidateFunction } from 'ajv';
 import Ajv2019 from 'ajv/dist/2019.js';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -10,11 +11,16 @@ import {
   unwrapFrontmatterFences,
 } from '../../extensions/frontmatter.ts';
 import { compileAppliesTo } from './applies-to.ts';
-import type { LintDiagnostic, ResolvedFrontmatterSchemaEntry } from './types.ts';
+import type { LintDiagnostic, LintPluginId, ResolvedFrontmatterSchemaEntry } from './types.ts';
 
 export interface LoadedFrontmatterSchema {
   file: string;
   schema: Record<string, unknown>;
+  ruleId?: string;
+}
+
+export interface ValidateFrontmatterOptions {
+  source?: LintPluginId;
 }
 
 export function selectApplicableFrontmatterSchemas(
@@ -217,8 +223,10 @@ function pointerToDotPath(instancePath: string): string {
 export function validateFrontmatterSource(
   text: string,
   schemas: readonly LoadedFrontmatterSchema[],
+  options?: ValidateFrontmatterOptions,
 ): LintDiagnostic[] {
   if (schemas.length === 0) return [];
+  const source = options?.source ?? 'frontmatter';
   const { data, keyLines } = parseFrontmatterData(text);
   const lines = text.split('\n');
   const lineSpan = (line: number): LintDiagnostic['range'] => ({
@@ -227,17 +235,20 @@ export function validateFrontmatterSource(
   });
 
   const diagnostics: LintDiagnostic[] = [];
-  for (const { schema } of schemas) {
+  for (const { schema, ruleId } of schemas) {
     const validate = compileSchema(schema);
     if (!validate) continue;
     if (validate(data)) continue;
     for (const error of validate.errors ?? []) {
       const keyword = error.keyword;
+      if (keyword === 'if') continue;
       let line = 0;
       let message: string;
       let frontmatterScope: 'missing' | 'invalid' = 'invalid';
       let frontmatterProperty: string | undefined;
-      if (keyword === 'required' && error.instancePath === '') {
+      if (keyword === 'maxProperties' && error.instancePath === '') {
+        message = 'This document must not have frontmatter';
+      } else if (keyword === 'required' && error.instancePath === '') {
         const missing = String(
           (error.params as { missingProperty?: unknown }).missingProperty ?? '',
         );
@@ -263,8 +274,8 @@ export function validateFrontmatterSource(
       diagnostics.push({
         range: lineSpan(line),
         severity: 'warning',
-        source: 'frontmatter',
-        code: keyword,
+        source,
+        code: ruleId ?? keyword,
         message,
         frontmatterScope,
         ...(frontmatterProperty === undefined ? {} : { frontmatterProperty }),

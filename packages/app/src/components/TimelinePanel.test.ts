@@ -8,7 +8,7 @@
 
 import type { TimelineEntry } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { allSummariesFor } from './TimelinePanel.tsx';
+import { allSummariesFor, contributorIconKind } from './TimelinePanel.tsx';
 
 function baseEntry(overrides: Partial<TimelineEntry>): TimelineEntry {
   return {
@@ -80,5 +80,38 @@ describe('allSummariesFor (flat shape)', () => {
         }),
       ),
     ).toEqual(['Cleaned up']);
+  });
+});
+
+describe('contributorIconKind', () => {
+  // The list the server can write for a classified (non-session) writer. The
+  // app cannot import the server's `WriterIdentity` constants, so this is the
+  // hand-kept mirror — adding a system writer means adding it here.
+  const SYSTEM_WRITER_NAMES = [
+    'File System',
+    'Git (upstream)',
+    'OpenKnowledge (service)',
+    'OpenKnowledge (generated)',
+  ];
+
+  test('no system writer renders as a person', () => {
+    // The property that matters, stated once over the whole set. A writer that
+    // falls through gets a human icon beside content no human wrote, and
+    // nothing else in the UI would flag it.
+    for (const name of SYSTEM_WRITER_NAMES) {
+      expect(contributorIconKind(name)).not.toBe('person');
+    }
+  });
+
+  test('the generated writer gets its own icon family, distinct from the service writer', () => {
+    // Both are OK itself, but they mean different things: one authored a
+    // document, the other flushed something nobody claimed.
+    expect(contributorIconKind('OpenKnowledge (generated)')).toBe('generated');
+    expect(contributorIconKind('OpenKnowledge (service)')).toBe('upstream');
+  });
+
+  test('a human or unknown contributor still falls back to a person', () => {
+    expect(contributorIconKind('Serafin Garcia')).toBe('person');
+    expect(contributorIconKind('')).toBe('person');
   });
 });

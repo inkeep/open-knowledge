@@ -138,3 +138,41 @@ describe('CreatedItemsList — cards + count derivation', () => {
     expect(screen.queryByText('note.md')).toBeNull();
   });
 });
+
+describe('CreatedItemsList — required plugins', () => {
+  /**
+   * The disclosure these rows exist for. A user who turned a plugin off and
+   * then seeds a pack that requires it gets it back on; this is where they are
+   * told so. Asserting the row is present is the whole point — a silent
+   * re-enable is the failure mode.
+   */
+  test('a pending required plugin renders with its label and an undo pointer', async () => {
+    const plan: OkScaffoldPlan = {
+      created: [],
+      skipped: [],
+      warnings: [],
+      requiredPlugins: [{ id: 'okf', pending: true }],
+    };
+    await renderList(plan, pack([]));
+
+    // Named by its settings label, not its raw id, so it matches the toggle the
+    // user will go looking for.
+    expect(screen.getByText('OKF')).toBeTruthy();
+    // And the row says the choice remains theirs.
+    expect(screen.getByText(/turn it off any time in settings/i)).toBeTruthy();
+  });
+
+  test('an already-enabled required plugin renders no row', async () => {
+    // Nothing changed for it, so there is nothing to explain — showing it would
+    // be noise under a "what gets created" heading.
+    const plan: OkScaffoldPlan = {
+      created: [{ kind: 'file', path: 'log.md' }],
+      skipped: [],
+      warnings: [],
+      requiredPlugins: [{ id: 'okf', pending: false }],
+    };
+    await renderList(plan, pack([]));
+
+    expect(screen.queryByText('OKF')).toBeNull();
+  });
+});

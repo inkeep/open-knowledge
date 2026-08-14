@@ -1,4 +1,5 @@
 import type {
+  SeedInstallPackSkillSuccess,
   SkillDetail,
   SkillDiscover,
   SkillFrontmatter,
@@ -93,6 +94,23 @@ export async function searchSkills(query: string): Promise<WriteResult<SkillsSea
   const q = query.trim();
   if (q.length < 2) return { ok: true, results: [], backend: 'skills.sh', degraded: false };
   return getJson<SkillsSearchSuccess>(`/api/skills/search?q=${encodeURIComponent(q)}`);
+}
+
+/**
+ * POST `/api/seed/install-pack-skill` — explicitly install the companion
+ * skills shipped by one starter pack, without applying the pack's content
+ * scaffold or changing plugin configuration.
+ */
+export async function installPackSkill(
+  packId: string,
+): Promise<WriteResult<SeedInstallPackSkillSuccess>> {
+  const result = await sendJson<SeedInstallPackSkillSuccess>(
+    '/api/seed/install-pack-skill',
+    'POST',
+    { packId },
+  );
+  if (result.ok) emitSkillsChanged();
+  return result;
 }
 
 /**

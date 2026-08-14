@@ -139,6 +139,9 @@
     "0ySP5u": ["Los cambios se guardan automáticamente en este tema."],
     "0zAhu6": ["todos los documentos"],
     "10g8I_": ["Desactivar Solo archivos markdown"],
+    "110eEb": [
+      "Open Knowledge crea y mantiene un archivo de navegación llamado index.md en cada carpeta que contiene Markdown."
+    ],
     "11ukmX": ["Falló al renombrar: ", ["0"]],
     "12F9WL": ["(sin id)"],
     "151wvk": ["Mostrar la barra lateral"],
@@ -160,6 +163,9 @@
     "1GhYxC": ["de ", ["totalPages"]],
     "1HBhDS": ["Extrayendo archivos"],
     "1J0c0X": ["Sigue sin poder conectarse con ", ["displayName"], ". ¿Intentarlo una vez más?"],
+    "1JpLgH": [
+      "En un documento índice: las entradas se encuentran bajo un título de sección y cada una lleva un enlace. La prosa alrededor de las listas está bien."
+    ],
     "1LtA5r": ["Enlaza simbólicamente la habilidad a ", ["path"]],
     "1MGRQl": ["Sesiones de terminal"],
     "1NgrlY": ["Otras formas de instalarlo"],
@@ -173,6 +179,7 @@
     "1XSMhZ": [
       "Cambiar a <0>solo local</0> se rechazará hasta que dejen de seguirse con<1> git rm --cached</1>."
     ],
+    "1ZXkqM": ["Puedes desactivarlo en cualquier momento en Configuración."],
     "1ZpfyB": ["Abrir con la IA ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Siguiendo las ediciones del agente"],
     "1bDVu5": ["Paleta de comandos del espacio de trabajo"],
@@ -339,6 +346,8 @@
     "3o3tur": ["Contenido inicial"],
     "3oh0nQ": ["Error en el .okignore anidado de ", ["path"]],
     "3pU8e-": ["Fijar pestaña"],
+    "3qDsdf": ["Instalar habilidad"],
+    "3ri_4O": ["Mantiene tu base de conocimientos alineada con el Open Knowledge Format."],
     "3s-k7L": [
       [
         "0",
@@ -512,6 +521,9 @@
     ],
     "5tcmwY": ["Añadir valor"],
     "5vAI6Z": ["No encajaba en mi forma de trabajar"],
+    "5w38tn": [
+      "El mantenimiento del índice permaneció desactivado porque Open Knowledge no pudo comunicarse con el servidor del proyecto. Inténtalo de nuevo cuando el proyecto se vuelva a conectar."
+    ],
     "5wV2qQ": ["y más"],
     "5y_9lO": ["Esperando la autorización"],
     "6-wLTJ": [["behind"], " por detrás de origin"],
@@ -671,6 +683,7 @@
     "7d1a0d": ["Público"],
     "7dZnmw": ["Relevancia"],
     "7hctf2": ["Describe el proyecto que quieres crear"],
+    "7idx48": ["Habilidad de agente OKF instalada"],
     "7jIIFX": ["¡Ya está todo listo!"],
     "7kb4LU": ["Aprobado"],
     "7l15X4": ["falló"],
@@ -678,6 +691,13 @@
     "7m3Ade": ["instalaciones:"],
     "7qRHf0": ["Instalar para Claude Chat y Cowork"],
     "7uBlRT": ["Copia el elemento enfocado del árbol de archivos para que Pegar pueda duplicarlo."],
+    "7wogIQ": [
+      [
+        "0",
+        "plural",
+        { "one": ["Complemento"], "many": ["Complementos"], "other": ["Complementos"] }
+      ]
+    ],
     "80c4-P": ["Código copiado al portapapeles"],
     "81H_23": ["Añadir propiedades"],
     "851WA-": ["Esto se puede configurar en Ajustes > Herramientas de IA y CLI"],
@@ -743,6 +763,7 @@
     "8nWu1k": ["Diagrama vacío"],
     "8oWgty": ["Marcar todos los comentarios para enviar"],
     "8qgfac": ["Servidores MCP"],
+    "8rZ1pk": ["Habilitar ", ["id"]],
     "8ruqQi": ["Enlaces internos rotos"],
     "8sMErm": ["¿Activar Seguir?"],
     "8t9CRE": ["Iniciando ", ["agentName"], "…"],
@@ -955,6 +976,9 @@
     "BQKHuL": ["Reiniciar la terminal"],
     "BQu9Pg": ["Enlace simbólico"],
     "BUyQnq": ["No se pudo reiniciar el servidor. Prueba `ok start` en esta carpeta."],
+    "BVkqD9": [
+      "El mantenimiento del índice está en pausa porque otro atributo de Git controla index.md. Actualiza .gitattributes para que las rutas index.md de ese ámbito usen merge=union y vuelve a intentarlo."
+    ],
     "BY-g4_": ["Añadir patrón"],
     "Ba4D2x": ["Plantilla importada"],
     "Bdha5y": ["Publicando..."],
@@ -973,6 +997,9 @@
     "Bv5a9_": ["Estadísticas de la selección"],
     "Bx4EXG": ["Acciones de ", ["label"]],
     "By-7Pn": ["Activa o desactiva una lista con viñetas."],
+    "ByIOcK": [
+      "Los archivos de índice permanecen en su lugar. Open Knowledge elimina solo la regla Git que agregó."
+    ],
     "BymzO4": ["Esquema del documento"],
     "C-mmmK": [
       "El id del modelo que sirve tu endpoint. El tamaño de su vector se detecta automáticamente; vacía el campo para volver a ",
@@ -1022,6 +1049,9 @@
       "<0>~/.ok/bin</0> y <1>~/.ok/env.sh</1> se conservan en cualquier caso: la aplicación siempre los mantiene."
     ],
     "CXTwen": ["No se puede editar con seguridad la configuración de este proyecto"],
+    "CXcveY": [
+      "Open Knowledge mantiene un archivo de navegación llamado index.md en cada carpeta que contiene Markdown, cada uno de los cuales enumera los documentos de esa carpeta por tipo y vincula a sus subcarpetas. Reescribe estos archivos a medida que cambian sus documentos y todo lo que edite en ellos se reemplaza."
+    ],
     "CXj9C-": ["Nombre de la propiedad nueva"],
     "C_Lyvh": ["No se pudo guardar el ajuste de tema"],
     "C_WGy8": [
@@ -1049,6 +1079,9 @@
     "Cu6GXQ": ["La carpeta de origen en sí no se mueve."],
     "CvsD6Y": ["vía ", ["viaTags"]],
     "CwOXMT": ["Valor de ", ["keyName"]],
+    "CxCOFx": [
+      "En los proyectos Git, Open Knowledge añade una regla con alcance al archivo .gitattributes de la raíz del repositorio para combinar los cambios simultáneos del índice."
+    ],
     "CxVk-w": ["Comentar en ", ["address"]],
     "D-NlUC": ["Sistema"],
     "D-Oh1s": ["Cómo configurar ", ["0"], " (se abre en el navegador)"],
@@ -1117,6 +1150,9 @@
     "DhT_PK": ["OpenKnowledge importó una habilidad"],
     "DiFKSL": ["Contando archivos markdown"],
     "DiZ3pq": ["Selector de iconos"],
+    "DjNcDy": [
+      "Las formas de title, description, resource y tags cuando se usan. Ninguno es obligatorio; declararlos solo fija su tipo, por lo que se marca si tags se escribe como una cadena separada por comas."
+    ],
     "DmkTrb": ["No se pudo crear este tema. Inténtalo de nuevo."],
     "Dnn2XG": ["Automático"],
     "DpjYd6": ["Ir al texto anclado"],
@@ -1353,6 +1389,9 @@
     "GNkUvW": ["En cola: se enviará cuando termine esta ejecución"],
     "GQ3O42": ["Papelera"],
     "GQDSBN": ["Opciones de diseño"],
+    "GROUfG": [
+      "Cualquier archivo .mdx. El formato es solo .md, por lo que un lector que busca .md nunca lo abre y, si existe un .md con el mismo nombre, lo lee en su lugar."
+    ],
     "GSYWCm": ["Ocultar el panel del documento"],
     "GUYwCr": ["Descartar el aviso"],
     "GUZHkL": ["Faltan colores de la paleta"],
@@ -1553,6 +1592,7 @@
     "IxHMdF": ["No se pudo eliminar ese comentario."],
     "IxyZXD": ["Captura de pantalla"],
     "Izh19j": ["Leyendo desde ", ["tail"]],
+    "J0uRhj": ["Comprobando habilidad"],
     "J1XRO3": ["Colores del tema"],
     "J2Mv98": ["Nombre (p. ej. ", ["login"], ")"],
     "J2_JuX": ["nada (", ["0"], " no puede coincidir con un documento)"],
@@ -1577,6 +1617,7 @@
     "JHf6qZ": ["tu@empresa.com"],
     "JJcBCm": [["0"], " en total"],
     "JK-Ave": ["Ocultar las miniaturas"],
+    "JKXcOi": ["Ya está en el proyecto"],
     "JL3si7": ["Actualizando"],
     "JLUTgi": [
       "Todavía no hay etiquetas: escribe `#nombredeetiqueta` en cualquier documento para llenar el índice."
@@ -1678,6 +1719,9 @@
     "L-rMC9": ["Restablecer al valor por defecto"],
     "L1BQTH": [["0"], " todavía no está instalado: abriendo su página de descarga."],
     "L1ZE3M": ["Estadísticas del documento"],
+    "L3BcJ4": [
+      "Esta regla necesita ver tus archivos, no solo el documento abierto, por lo que aparece al ejecutar una auditoría del proyecto y no mientras escribes."
+    ],
     "L3CEC1": ["este elemento"],
     "L3w0_C": [
       "Presenta un documento como una presentación de diapositivas en su propia ventana. Añade <0>slides: true</0> al frontmatter de un documento y ábrelo con la acción de Slidev. El renderizado lo gestiona la CLI de Slidev, que OpenKnowledge no incluye."
@@ -2186,6 +2230,12 @@
     "R6ABfU": ["Trabajar directamente, sin paso de planificación"],
     "R9IDFz": ["Renombra la carpeta en el disco y el id con el que los agentes la invocan."],
     "R9dK63": ["Imagen de ejemplo"],
+    "RB_g_C": [
+      "En el índice raíz, okf_version se escribe como una cadena entrecomillada como \"0.2\". Sin comillas, YAML lo lee como un número y 0.10 silenciosamente se convierte en 0.1."
+    ],
+    "RD6H9q": [
+      "Open Knowledge reescribe estos archivos index.md a medida que cambian los documentos, por lo que se reemplazan las ediciones manuales."
+    ],
     "RDjuBN": ["Configuración"],
     "RDrXh4": ["Configura los ajustes de usuario, de proyecto y de integraciones."],
     "RG3yW6": ["Introduce un nombre para este tema."],
@@ -2255,6 +2305,9 @@
     "SF9qpO": ["Comparte tu correo para que podamos hacer seguimiento"],
     "SFEWV6": ["No se pudieron cargar las habilidades de OpenKnowledge. Inténtalo de nuevo."],
     "SFN6dN": ["Encabezado 3"],
+    "SIPelo": [
+      "El mantenimiento del índice está en pausa porque Open Knowledge no pudo confirmar la regla de combinación de Git necesaria. Comprueba Git y .gitattributes y vuelve a intentarlo."
+    ],
     "SInSnF": ["Referencia <0>", ["0"], "</0>"],
     "SItQRc": ["¿Qué te parece OpenKnowledge?"],
     "SOPwPh": ["Restaurar hasta esta edición"],
@@ -2641,6 +2694,7 @@
     "X7u0xR": [["0"], " plantillas disponibles"],
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
+    "XAnapw": ["Regla de combinación de Git"],
     "XAyxsa": ["Extraer rama remota"],
     "XBBZnv": ["El destino del enlace «", ["shown"], "» no corresponde a un documento existente."],
     "XBgr2S": ["Copiar aquí"],
@@ -2788,6 +2842,9 @@
     "Y_iImT": ["No se puede resolver el archivo ", ["identity"], ". Ir a la referencia."],
     "Y_kL7X": ["Personaliza el aspecto y el comportamiento del editor."],
     "Ya3PlJ": ["Se requiere permiso"],
+    "YaVU2F": [
+      "En proyectos Git, Open Knowledge también agrega una regla .gitattributes con alcance para que los cambios de índice simultáneos se combinen antes de la siguiente reconstrucción."
+    ],
     "YaeyFh": ["El pull puede sobrescribir ediciones sin confirmar en tus archivos locales."],
     "Yb82LN": ["ID: ", ["0"]],
     "Yea-K5": ["Restaurar hasta este punto"],
@@ -2931,6 +2988,7 @@
     "_Bix3-": ["Apariciones de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creando…"],
     "_FLBbi": [["sizeText"], " · secretos ocultos · volcado de fallo sin ocultar"],
+    "_G7A92": ["Mantener index.md"],
     "_GRWOJ": ["¿Cambiar el proveedor de embeddings?"],
     "_HgF9q": ["Ordenar por"],
     "_IGfXZ": ["La última vez OpenKnowledge se cerró de forma inesperada."],
@@ -3027,10 +3085,12 @@
       "No se pudo conectar con el servicio de agentes. Asegúrate de que el servidor de OpenKnowledge esté en marcha y actualizado (reinícialo si ya estaba en marcha) y vuelve a intentarlo."
     ],
     "aalx4E": ["Editando código MDX defectuoso: ", ["reason"]],
+    "aatPoi": ["Archivos generados"],
     "abiHje": ["Eliminar los elementos seleccionados"],
     "adsMWO": ["Resolviendo deltas"],
     "ah_ekO": ["\"", ["name"], "\" ya está al día"],
     "aiArms": ["No pudimos clonar este repositorio."],
+    "aiOceC": ["Habilitar índices"],
     "ajHi4O": [
       "La sincronización automática está en pausa: no tienes permiso para hacer push a este repositorio. Cambia a Seguir para seguir recibiendo actualizaciones."
     ],
@@ -3200,11 +3260,13 @@
     ],
     "cb-0G0": ["Quitar color"],
     "ccNps_": ["Solo los modificados"],
+    "cd3THN": ["Estructura del documento"],
     "cd5EXh": ["Informar de un error"],
     "cdm00A": ["Sin entrantes"],
     "cdmk8A": ["Cambios sin confirmar"],
     "cgl-gn": ["Conectado a GitHub"],
     "chL5IG": ["Comunidad"],
+    "ciozf1": ["La habilidad ya está en el proyecto"],
     "cjtjry": ["Retrocede por el historial de navegación de OpenKnowledge."],
     "cklVjM": ["Cronología"],
     "clJ3qM": ["Listo."],
@@ -3427,6 +3489,7 @@
     "fbdLmk": ["Activa o desactiva la negrita."],
     "fbsiBw": ["Algo salió mal al iniciar la terminal."],
     "fcgvCA": ["Claude"],
+    "fdKQAE": ["Al desactivarlo"],
     "fdeFfN": ["(archivo binario, sin vista previa)"],
     "fevEu0": ["Traer los últimos cambios"],
     "ffH3Rt": ["Añadir comentario (Intro)"],
@@ -3523,12 +3586,16 @@
     "gUx34c": [
       "El idioma en el que habla OpenKnowledge; Sistema sigue el de tu sistema operativo. Tus notas se quedan en el idioma en el que las escribiste."
     ],
+    "gVMkEr": [
+      "En un documento de registro, los encabezados de las entradas comienzan con una fecha ISO YYYY-MM-DD y se ordenan de más reciente a más antigua. Tú decides cuántos títulos usar y si las entradas llevan viñetas."
+    ],
     "gY7wnY": ["Iniciando sesión en ", ["agentName"], "…"],
     "gYz2ep": ["Caduca en ", ["timeLabel"]],
     "gZElfU": ["Arreglando ", ["0"], " de ", ["1"], " archivos"],
     "gZiT5e": ["¿Reemplazar estos enlaces simbólicos por copias independientes?"],
     "gayL_Q": ["Plan de lanzamiento"],
     "gbHcbI": ["No se pudo eliminar la propiedad"],
+    "gfYI3o": ["Deshabilitar ", ["id"]],
     "gfb-CM": ["No se pudo obtener la rama: inicia sesión en GitHub e inténtalo de nuevo."],
     "gfdqcY": ["No se pudo aplicar el cambio: ", ["0"]],
     "gfohmY": ["Conectar herramientas"],
@@ -3591,6 +3658,9 @@
     "hLKfZe": ["Usar un token en su lugar"],
     "hLod4_": ["Convertir en plantilla"],
     "hLy8b1": ["Actualizado a la versión ", ["version"]],
+    "hPQBsa": [
+      "Los archivos reservados se denominan index.md y log.md en minúsculas. En un sistema de archivos que distingue entre mayúsculas y minúsculas, Index.md se lee como un documento normal y pierde su significado."
+    ],
     "hQXiDc": ["Buscar ramas..."],
     "hQjvzi": ["Un archivo .zip o .skill."],
     "hS0wC4": ["OpenKnowledge restauró una versión anterior de ", ["subject"]],
@@ -3744,6 +3814,9 @@
     "iz1LdD": [
       "Se modificó fuera de OK desde la última vez que escribió aquí; el estado que se muestra es el que hay ahora en el disco"
     ],
+    "j-o6Z2": [
+      "El mantenimiento del índice permaneció desactivado porque no se pudo guardar la configuración del proyecto. Verifique los permisos del archivo del proyecto y vuelva a intentarlo."
+    ],
     "j15ZSH": ["Enviar los comentarios a"],
     "j2229h": ["Eliminando los archivos de OpenKnowledge…"],
     "j2kt1j": [
@@ -3831,6 +3904,7 @@
     "k4CuuV": [
       "Carpetas y plantillas ya hechas para empezar rápido. Selecciona un paquete para ver qué se crea y añádelo después a tu proyecto."
     ],
+    "k5rKNs": ["frontmatter"],
     "k7Hoig": ["No hay cambios de contenido en esta versión."],
     "k8xtrB": [
       "No hace falta para un endpoint de localhost como <0>",
@@ -3870,7 +3944,9 @@
     "kV2YZv": [
       "¿No ves <0>Habilidades</0>? Activa antes <1>Ajustes <2/> Capacidades <3/> Ejecución de código y creación de archivos</1>."
     ],
+    "kVS5tE": ["¿Mantener índices generados en cada carpeta?"],
     "kVgQUA": ["¿Eliminar este chat?"],
+    "kVzuTI": ["Habilidad de agente recomendada"],
     "kYL1lH": ["Actividad del agente"],
     "k_Dqw1": [
       [
@@ -3973,7 +4049,9 @@
     "lWNpNB": ["Añade cursores o selecciona coincidencias con CodeMirror."],
     "lXKZGw": ["Encabezado 1"],
     "lY27jj": ["hace ", ["0"], " años"],
+    "lY7Unt": ["Activando la generación de índices"],
     "lZAiSP": ["La respuesta de retroenlaces no tenía la forma esperada."],
+    "lZoQdy": ["Abrir habilidad"],
     "lZvQrY": ["Usar ", ["0"], " como tema oscuro"],
     "l_6JHD": ["Buscar iconos..."],
     "l_FAT6": ["Usa solo letras, dígitos, <0>-</0> o <1>_</1>."],
@@ -3993,6 +4071,13 @@
     "ljHjfg": ["Esa rama ya está abierta en otro worktree."],
     "lkYioO": ["Mostrar u ocultar el panel del documento"],
     "ll2yNl": ["Directorio de contenido"],
+    "llXHHh": [
+      [
+        "pluginCount",
+        "plural",
+        { "one": ["complemento"], "many": ["complementos"], "other": ["complementos"] }
+      ]
+    ],
     "lmBPt0": [
       "Solo los enlaces externos generan una solicitud. Los enlaces a otros documentos de este proyecto se previsualizan desde el índice local y nunca salen de tu equipo."
     ],
@@ -4078,6 +4163,9 @@
           ]
         }
       ]
+    ],
+    "mhnCt3": [
+      "Cada documento conceptual incluye un tipo no vacío. Este es todo el mínimo de conformidad de OKF: un documento que solo tiene un tipo cumple plenamente el formato."
     ],
     "mk2poV": ["p. ej. server.ts"],
     "mlvM8g": ["No se pudo volver a colocar ese comentario."],
@@ -4365,6 +4453,9 @@
     "qRZh7J": ["Permitir que el tabulador salga del editor de código en lugar de sangrar."],
     "qSKu2v": ["Navegación y selección en el código"],
     "qSxaOz": ["Aceptar su eliminación"],
+    "qTT48-": [
+      "Enlaces wiki como [[Page]]: una forma compatible de vincular aquí, pero un lector externo no resuelve nada y muestra los corchetes."
+    ],
     "qTcVwj": ["Busca o sube una habilidad para este proyecto."],
     "qTcZZu": [
       "No se pudieron cargar las etiquetas. Pulsa <0>Esc</0> y vuelve a abrirlo para reintentarlo."
@@ -4424,6 +4515,7 @@
     "r51jLC": ["Archivo guardado y aplicación Claude Desktop abierta"],
     "r6ncaO": ["Cerrar pestaña"],
     "r6y-jM": ["Advertencia"],
+    "r7IaYp": ["Guía de Open Knowledge Format"],
     "r871ed": [
       "Tu base de conocimiento ya está en GitHub, en <0>",
       ["ownerLogin"],
@@ -4453,6 +4545,9 @@
     "rZVMkf": ["Campo de reemplazo del editor visual enfocado"],
     "radOpL": ["Imagen ", ["identity"], ". Ir a la referencia."],
     "rageVb": ["HTML personalizado con panel de vista previa en vivo (iframe aislado)."],
+    "rarziH": [
+      "Ayuda a los agentes de programación a elegir tipos de documento OKF, preservar la procedencia y evitar inventar metadatos no compatibles."
+    ],
     "rbrHTd": ["Aprobado — ", ["optionName"]],
     "rcJmK8": ["Convertir las ubicaciones en copias"],
     "rdU729": ["Diseño"],
@@ -4509,6 +4604,7 @@
     "sER-bs": ["Archivos"],
     "sFhaTJ": ["Distingue entre plantillas de nombre parecido en el menú."],
     "sGZLfB": ["No se pudieron obtener los repositorios"],
+    "sHDllh": ["Dejar de mantener index.md"],
     "sICrVf": ["Se restauró la versión de ", ["0"]],
     "sIGbBZ": ["Convertir la selección en nota al pie"],
     "sIxSSP": ["Resuelve el conflicto en tu terminal"],
@@ -4522,6 +4618,7 @@
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
     "sR0I-f": ["Contraer todos los archivos"],
+    "sSRndh": ["Comience a mantener index.md"],
     "sW5OjU": ["obligatorio"],
     "sZ2IOu": [
       "Este ",
@@ -4536,6 +4633,9 @@
     "saIASg": ["Segundo elemento"],
     "saYiIO": ["La ruta no puede contener bytes nulos"],
     "scu3wk": ["Modelo"],
+    "scyoP9": [
+      "Los documentos de índice no llevan frontmatter, salvo el que está en la raíz de tu base de conocimiento. Los documentos de registro no están incluidos: OKF no limita su frontmatter."
+    ],
     "se-tU0": ["No se pudieron corregir ", ["0"], " de ", ["total"], " archivos."],
     "seeS6l": ["¿Configurar OpenKnowledge en esta carpeta?"],
     "sgmRY8": ["Se omitió la descarga de ", ["0"], "."],
@@ -4596,6 +4696,9 @@
     "tHKQ6j": ["Renombrando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escribió un documento"],
+    "tM5uzl": [
+      "Las familias de procedencia, confianza y ciclo de vida: sources, generated, verified, status y stale_after. Cada campo es opcional y la ausencia nunca es un error."
+    ],
     "tN5WTS": ["El proveedor rechazó la solicitud. Revisa la clave de API y el id del modelo."],
     "tP5DDk": ["Aplicar enlace"],
     "tUvUfp": ["Usa una carpeta que ya tengas."],
@@ -4665,6 +4768,9 @@
     "uGaIIS": ["Extraer worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
     "uJfwF8": ["Ya está instalado: no hay nada nuevo que importar."],
+    "uK2peg": [
+      "Comprueba tu proyecto con Open Knowledge Format. Puedes desactivarlo en cualquier momento en Configuración."
+    ],
     "uKRYiW": ["Estado de sincronización no disponible: error del servidor."],
     "uL_Wx8": ["La terminal se detuvo de forma inesperada."],
     "uM6jnS": ["Falló la restauración"],
@@ -4726,6 +4832,9 @@
     "uyOQ4e": ["Tema copiado como YAML base16"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "many": ["tokens"], "other": ["tokens"] }]],
     "v-h2hx": ["Eliminar ", ["targetGitPath"]],
+    "v15iQB": [
+      "El contrato de cálculo certificado. Solo se aplica a documentos de tipo Attested Computation, para los que OKF requiere un runtime; los conceptos normales no se ven afectados."
+    ],
     "v2ZW0K": ["Activar la terminal"],
     "v2a04T": ["Reglas de markdownlint"],
     "v41fCm": ["No se encontró el archivo"],

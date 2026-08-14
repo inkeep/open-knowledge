@@ -9,7 +9,7 @@
  * record independently without passing a context object through the boot
  * call graph.
  *
- * All fields are BOUNDED numbers — millisecond durations, a file count, and
+ * All fields are BOUNDED numbers — millisecond durations, boot counts, and
  * one ISO wall-clock string for cross-process alignment. No raw paths, doc
  * content, or free-form strings ever land here, so the object is safe to put
  * on the `/api/server-info` envelope and (downstream) on the desktop startup
@@ -28,10 +28,14 @@ export interface BootTimings {
   seedWalkMs?: number;
   /** Combined duration of the boot-time index phases (backlink + tag + basename). */
   indexesMs?: number;
+  /** Duration of the generated-index full sweep performed during boot. */
+  generatedIndexSweepMs?: number;
   /** Time from boot start until the `ready` promise resolved (end of initAsync). */
   readyMs?: number;
   /** Number of markdown files in the watcher's file index at ready time. */
   fileCount?: number;
+  /** Number of generated indexes selected by the boot-time full sweep. */
+  generatedIndexCount?: number;
 }
 
 let current: BootTimings | undefined;
@@ -61,12 +65,12 @@ export function bootElapsedMs(): number | undefined {
 
 /**
  * Record a single phase duration (ms). No-op if {@link startBootTimings} hasn't
- * run. The key excludes `fileCount` (a count, not a duration) so the
- * duration/count boundary is enforced at compile time — counts go through
+ * run. The key excludes count fields so the duration/count boundary is
+ * enforced at compile time — counts go through
  * {@link setBootField}.
  */
 export function recordBootPhase(
-  name: Exclude<keyof BootTimings, 'startedAt' | 'fileCount'>,
+  name: Exclude<keyof BootTimings, 'startedAt' | 'fileCount' | 'generatedIndexCount'>,
   ms: number,
 ): void {
   if (!current) return;
@@ -74,10 +78,10 @@ export function recordBootPhase(
 }
 
 /**
- * Set a non-duration bounded field (e.g. `fileCount`). Kept distinct from
+ * Set a non-duration bounded count. Kept distinct from
  * {@link recordBootPhase} so the duration-only fields stay typed as such.
  */
-export function setBootField(name: 'fileCount', value: number): void {
+export function setBootField(name: 'fileCount' | 'generatedIndexCount', value: number): void {
   if (!current) return;
   current[name] = value;
 }

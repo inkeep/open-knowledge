@@ -118,6 +118,7 @@ Write a markdown wrapper at `external-sources/<slug>.md`. **Declare the full tag
 ---
 title: Original title of the source (from <title>, Content-Disposition filename, or your best read)
 description: One-line summary from the source (their words, not yours)
+type: source
 source_url: https://example.com/path/to/file.pdf
 source_path: ./<slug>.<ext>    # relative to this wrapper
 media_type: application/pdf    # RFC 6838 type/subtype, from HEAD Content-Type
@@ -152,6 +153,7 @@ Frontmatter shape:
 ---
 title: Original title of the source
 description: One-line summary from the source (their words, not yours)
+type: source
 source_url: https://example.com/article
 media_type: text/html
 date_fetched: YYYY-MM-DD
@@ -191,7 +193,7 @@ For text wrappers:
 ## Step 4: Verify
 
 - File(s) exist under the sources folder (binary + wrapper, or wrapper alone for text).
-- Valid frontmatter (at minimum `title`, `description`, `source_url`, `preservation`, and the full `tags` list — plus `source_path` for binary wrappers).
+- Valid frontmatter (at minimum `title`, `description`, `type: source`, `source_url`, `preservation`, and the full `tags` list — plus `source_path` for binary wrappers).
 - For binary preservation: `sha256` and `bytes` recorded; `media_type` matches what the HEAD response returned.
 - `exec("ls -A <content-dir>/external-sources/")` lists the new file(s) with enrichment.
 

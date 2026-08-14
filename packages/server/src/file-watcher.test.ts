@@ -169,7 +169,20 @@ describe('isSelfWrite', () => {
     registerWrite(path, contentHash('hello'));
 
     expect(isSelfWrite(path, contentHash('world'))).toBe(false);
-    expect(writeTracker.has(path)).toBe(true);
+    expect(writeTracker.has(path)).toBe(false);
+  });
+
+  test('a later matching write consumes coalesced registrations before it', () => {
+    const path = '/content/test.md';
+    const first = contentHash('first');
+    const second = contentHash('second');
+    const third = contentHash('third');
+    registerWrite(path, first);
+    registerWrite(path, second);
+    registerWrite(path, third);
+
+    expect(isSelfWrite(path, second)).toBe(true);
+    expect(writeTracker.get(path)?.map((entry) => entry.hash)).toEqual([third]);
   });
 });
 
@@ -1174,6 +1187,54 @@ describe('file-watcher ContentFilter refcount hooks', () => {
 
     expect(folderIndex.has('notes')).toBe(false);
     expect(folderIndex.has('notes/nested')).toBe(false);
+    expect(collected).toContainEqual(
+      expect.objectContaining({ kind: 'folder-delete', relativePath: 'notes' }),
+    );
+  });
+
+  test('a collapsed folder delete synthesizes deletes for indexed descendants', async () => {
+    const folderIndex = new Map();
+    const fileIndex = new Map();
+    const collected: DiskEvent[] = [];
+    const notesDir = resolve(contentDir, 'notes');
+    const nestedDir = resolve(notesDir, 'nested');
+    const notePath = resolve(nestedDir, 'note.md');
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(notePath, '# Note\n');
+
+    await handleRawEvents(
+      [
+        { type: 'create', path: notesDir },
+        { type: 'create', path: nestedDir },
+        { type: 'create', path: notePath },
+      ],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (event) => {
+        collected.push(event);
+      },
+    );
+    expect(fileIndex.has('notes/nested/note')).toBe(true);
+
+    collected.length = 0;
+    await rm(notesDir, { recursive: true, force: true });
+    await handleRawEvents(
+      [{ type: 'delete', path: notesDir }],
+      contentDir,
+      undefined,
+      fileIndex,
+      folderIndex,
+      async (event) => {
+        collected.push(event);
+      },
+    );
+
+    expect(fileIndex.has('notes/nested/note')).toBe(false);
+    expect(collected).toContainEqual(
+      expect.objectContaining({ kind: 'delete', docName: 'notes/nested/note' }),
+    );
     expect(collected).toContainEqual(
       expect.objectContaining({ kind: 'folder-delete', relativePath: 'notes' }),
     );

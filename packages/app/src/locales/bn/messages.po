@@ -263,6 +263,11 @@ msgstr "{0, plural, one {এখন {2} টির মধ্যে {1} টি ন�
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr "{0, plural, one {# নথিতে কোনো সমস্যা নেই।} other {# নথিতে কোনো সমস্যা নেই।}}"
 
+#. placeholder {0}: pluginRows.length
+#: src/components/CreatedItemsList.tsx
+msgid "{0, plural, one {Plugin} other {Plugins}}"
+msgstr "{0, plural, one {প্লাগইন} other {প্লাগইন}}"
+
 #. placeholder {0}: editorList.hiddenCount
 #: src/components/McpConsentDialogBody.tsx
 msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
@@ -629,7 +634,9 @@ msgstr "{displayName} CLI, {hint}"
 msgid "{docName} is {0}. OpenKnowledge currently opens files up to {1}."
 msgstr "{docName} {0}। OpenKnowledge এখন {1} পর্যন্ত ফাইল খোলে।"
 
+#. placeholder {0}: OKF_RULE_IDS.length
 #. placeholder {0}: entries.length
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{enabledCount}/{0} on"
 msgstr "{0}টির মধ্যে {enabledCount}টি চালু"
@@ -791,6 +798,10 @@ msgstr "{percent}% ব্যবহৃত ({left}% বাকি)"
 #: src/lib/share/clone-controller.ts
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
+
+#: src/components/CreatedItemsList.tsx
+msgid "{pluginCount, plural, one {plugin} other {plugins}}"
+msgstr "{pluginCount, plural, one {প্লাগইন} other {প্লাগইন}}"
 
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
@@ -1543,6 +1554,10 @@ msgstr "নির্বাচিত মূল ফোল্ডারে আগে
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
 msgstr "আগে থেকেই একটি git রিপোজিটরি আছে? এই প্রকল্পের ফোল্ডারে <0>git remote add origin <url></0> দিয়ে সেটি যোগ করুন। রিমোট শনাক্ত হলেই এই পাতা নিজে থেকে হালনাগাদ হয়।"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Already in project"
+msgstr "ইতিমধ্যে প্রকল্পে"
+
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Already installed — nothing new to import."
 msgstr "আগে থেকেই ইনস্টল করা — আমদানি করার নতুন কিছু নেই।"
@@ -1587,6 +1602,10 @@ msgstr "আরেকটি সিঙ্ক কাজ চলছে। একট�
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
 msgstr "যেকোনো"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
+msgstr "যেকোনো .mdx ফাইল। বিন্যাসটি হল .md-শুধু, তাই .md-এর জন্য স্ক্যান করা পাঠক কখনই এটি খোলে না — এবং যদি একই নামের একটি .md বিদ্যমান থাকে, তাহলে সেটিকে পড়ে।"
 
 #. placeholder {0}: summary.name
 #: src/components/settings/LintingSection.tsx
@@ -2148,6 +2167,7 @@ msgstr "এই পাথ শেয়ার করা যাচ্ছে না�
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -2288,6 +2308,10 @@ msgstr "ফাইল চেক আউট করা হচ্ছে"
 msgid "Checking sign-in status"
 msgstr "সাইন-ইন অবস্থা পরীক্ষা করা হচ্ছে"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Checking skill"
+msgstr "দক্ষতা পরীক্ষা করা"
+
 #: src/components/ImportSkillForm.tsx
 msgid "Checking source"
 msgstr "উৎস পরীক্ষা করা হচ্ছে"
@@ -2303,6 +2327,10 @@ msgstr "পরীক্ষা করা হচ্ছে…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "চেকবক্সসহ চেকলিস্ট।"
+
+#: src/components/CreatedItemsList.tsx
+msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
+msgstr "Open Knowledge Format এর বিরুদ্ধে আপনার প্রকল্প পরীক্ষা করে। সেটিংস থেকে যেকোনো সময় এটি বন্ধ করুন।"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Choose a skill archive"
@@ -4300,6 +4328,10 @@ msgstr "{0} নিষ্ক্রিয় করুন"
 msgid "Disable {file}"
 msgstr "{file} নিষ্ক্রিয় করুন"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {id}"
+msgstr "নিষ্ক্রিয় করুন {id}"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr "বাইরের লিংকের প্রাকদর্শন নিষ্ক্রিয় করুন"
@@ -4401,6 +4433,10 @@ msgstr "নথি প্যানেল"
 #: src/components/EditorFooter.tsx
 msgid "Document statistics"
 msgstr "নথির পরিসংখ্যান"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Document structure"
+msgstr "নথি কাঠামো"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
@@ -4793,6 +4829,10 @@ msgstr "{displayName} CLI চালু করুন"
 msgid "Enable {file}"
 msgstr "{file} চালু করুন"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {id}"
+msgstr "{id} সক্ষম করুন"
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -4816,6 +4856,10 @@ msgstr "Follow চালু করবেন?"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
 msgstr "git স্বয়ংক্রিয় সিঙ্ক চালু করবেন?"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enable indexes"
+msgstr "সূচী সক্রিয় করুন"
 
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
@@ -4844,6 +4888,10 @@ msgstr "এই প্রকল্পের জন্য টার্মিনা
 #: src/components/settings/LintingSection.tsx
 msgid "Enable Themes"
 msgstr "থিম চালু করুন"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enabling index generation"
+msgstr "সূচক তৈরি সক্ষম করা হচ্ছে"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -4914,6 +4962,10 @@ msgstr "ত্রুটি:"
 #: src/components/CommandPalette.tsx
 msgid "Escape"
 msgstr "Escape"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
+msgstr "প্রতিটি ধারণা নথি একটি অ-খালি টাইপ বহন করে। এটি OKF এর কনফরমেন্স ফ্লোরের পুরোটাই — শুধুমাত্র একটি টাইপ সহ একটি নথি সম্পূর্ণরূপে সঙ্গতিপূর্ণ।"
 
 #: src/components/settings/LintingSection.tsx
 msgid "every doc"
@@ -5690,6 +5742,10 @@ msgstr "টেমপ্লেট থেকে"
 msgid "From the {0} plugin"
 msgstr "{0} প্লাগইন থেকে"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter"
+msgstr "frontmatter"
+
 #: src/components/TemplateForm.tsx
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr "এই টেমপ্লেট থেকে তৈরি প্রতিটি নথি যে frontmatter দিয়ে শুরু হয়। মানগুলো YAML — তালিকা হলো <0>[a, b]</0>; <1>{{date}}</1> তৈরির সময় বসে যায়।"
@@ -5732,6 +5788,10 @@ msgstr "খেলা শেষ · আবার খেলতে স্পেস �
 msgid "General"
 msgstr "সাধারণ"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Generated files"
+msgstr "জেনারেটেড ফাইল"
+
 #: src/components/TerminalCliMissingBanner.tsx
 msgid "Get {displayName}"
 msgstr "{displayName} নিন"
@@ -5764,6 +5824,10 @@ msgstr "git কনফিগারেশন পাওয়া যাচ্ছে
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Git পরিচয় নির্ধারিত নেই — কমিটগুলো একটি ডিফল্ট লেখক ব্যবহার করে। আপনারটি নির্ধারণ করুন যাতে সহকর্মীরা আপনার নাম দেখতে পান।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Git merge rule"
+msgstr "Git মার্জ নিয়ম"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
@@ -5919,7 +5983,7 @@ msgstr "heading-slug"
 msgid "Headings"
 msgstr "শিরোনাম"
 
-#: src/components/AutoSyncEnableWarning.tsx
+#: src/components/DisclosureWarning.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "খেয়াল রাখুন"
@@ -5940,6 +6004,10 @@ msgstr "ওহে, বিশ্ব!"
 #: src/lib/native-menu-catalog.ts
 msgid "Help"
 msgstr "সহায়তা"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
+msgstr "কোডিং এজেন্টদের OKF নথির ধরন বেছে নিতে, মূল স্থান সংরক্ষণ করতে এবং অসমর্থিত মেটাডেটা উদ্ভাবন এড়াতে সাহায্য করে।"
 
 #. Subtext for the open-knowledge-discovery skill row
 #. Subtext for the open-knowledge-discovery skill row
@@ -6273,9 +6341,17 @@ msgstr "\"{0}\" হিসেবে আমদানি করা হয়েছ�
 msgid "Importing"
 msgstr "আমদানি করা হচ্ছে"
 
+#: src/components/settings/LintingSection.tsx
+msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
+msgstr "একটি লগ নথিতে: এন্ট্রি শিরোনাম একটি ISO YYYY-MM-DD তারিখ সহ, নতুন প্রথম। আপনি কতগুলি title ব্যবহার করবেন এবং এন্ট্রিগুলি বুলেট কিনা তা আপনার উপর নির্ভর করে।"
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr "একটি উপ-ফোল্ডারে"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
+msgstr "একটি সূচক নথিতে: এন্ট্রিগুলি একটি বিভাগের শিরোনামের নীচে বসে এবং প্রতিটি একটি লিঙ্ক বহন করে। তালিকার চারপাশে গদ্য ঠিক আছে।"
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6294,6 +6370,14 @@ msgstr "অ্যাপে"
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app (beta)"
 msgstr "অ্যাপে (বিটা)"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
+msgstr "Git প্রকল্পে, Open Knowledge রিপোজিটরির রুটের .gitattributes ফাইলে একটি সীমিত নিয়ম যোগ করে, যাতে একই সময়ে হওয়া ইনডেক্স পরিবর্তনগুলো একত্রিত হয়।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent index changes combine before the next rebuild."
+msgstr "Git প্রকল্পে, Open Knowledge একটি স্কোপড .gitattributes নিয়ম যোগ করে যাতে পরবর্তী পুনর্নির্মাণের আগে সমবর্তী সূচক পরিবর্তনগুলি একত্রিত হয়।"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
@@ -6318,6 +6402,26 @@ msgstr "বর্তমান তালিকা আইটেমটি ভেত
 #: src/editor/slash-command/items.tsx
 msgid "Indented blockquote for citations."
 msgstr "উদ্ধৃতির জন্য ভেতরের দিকে সরানো ব্লককোট।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
+msgstr "ইনডেক্স ডকুমেন্টে frontmatter নেই, আপনার জ্ঞানের মূলে থাকা একটি ছাড়া। লগ ডকুমেন্ট কভার করা হয় না — OKF তাদের frontmatter সীমাবদ্ধ করে না।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
+msgstr "সূচী রক্ষণাবেক্ষণ বিরাম দেওয়া হয়েছে কারণ অন্য Git বৈশিষ্ট্য নিয়ন্ত্রণ করে index.md। .gitattributes আপডেট করুন যাতে স্কোপযুক্ত index.md পাথগুলি merge=union ব্যবহার করে, তারপর আবার চেষ্টা করুন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because Open Knowledge could not confirm the required Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "সূচী রক্ষণাবেক্ষণ বিরাম দেওয়া হয়েছে কারণ Open Knowledge প্রয়োজনীয় Git মার্জ নিয়ম নিশ্চিত করতে পারেনি। Git এবং .gitattributes চেক করুন, তারপর আবার চেষ্টা করুন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "সূচী রক্ষণাবেক্ষণ বন্ধ ছিল কারণ Open Knowledge প্রকল্প সার্ভারে পৌঁছাতে পারেনি। প্রজেক্ট পুনরায় সংযোগ করলে আবার চেষ্টা করুন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "সূচী রক্ষণাবেক্ষণ বন্ধ ছিল কারণ প্রকল্প সেটিং সংরক্ষণ করা যায়নি। প্রকল্প ফাইল অনুমতি পরীক্ষা করুন, তারপর আবার চেষ্টা করুন."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
@@ -6507,6 +6611,10 @@ msgstr "সব এজেন্টে ইনস্টল করুন"
 msgid "Install selected"
 msgstr "নির্বাচিতগুলো ইনস্টল করুন"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Install skill"
+msgstr "দক্ষতা ইনস্টল করুন"
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "Install skills"
 msgstr "স্কিল ইনস্টল করুন"
@@ -6516,6 +6624,7 @@ msgid "Install the gh CLI"
 msgstr "gh CLI ইনস্টল করুন"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Installed"
@@ -6728,6 +6837,10 @@ msgstr "এই প্রকল্পটি আপনার git রিমোট�
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "আপনি যাদের ও যে কোম্পানিগুলোর সঙ্গে কাজ করেন এবং তাদের সঙ্গে আপনার বৈঠকগুলোর হিসাব রাখুন। কেউ কে, আপনি তাকে কীভাবে চেনেন, এবং শেষবার কী নিয়ে কথা হয়েছিল তা মনে রাখার জন্য ভালো।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
+msgstr "আপনার জ্ঞানভান্ডারকে Open Knowledge Format-এর সঙ্গে সামঞ্জস্যপূর্ণ রাখে।"
 
 #. placeholder {0}: toName.trim()
 #: src/components/SkillForkDialog.tsx
@@ -7103,6 +7216,14 @@ msgstr "<0>{lookingForUrl}</0> খোঁজা হচ্ছে।"
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Lost connection to \"{docName}\"."
 msgstr "\"{docName}\"-এর সঙ্গে সংযোগ হারিয়েছে।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain generated indexes in every folder?"
+msgstr "প্রতি ফোল্ডারে generated সূচী বজায় রাখুন?"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain index.md"
+msgstr "index.md বজায় রাখুন"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "make source"
@@ -8248,6 +8369,10 @@ msgstr "OK Desktop"
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "OK শেষবার এই ফোল্ডারটি {0}-এ নির্ধারণ করেছিল — এরপর OK-এর বাইরের কিছু সেটি বদলে দিয়েছে। দেখানো অবস্থাটি এখন ডিস্কে যা আছে তাই; আপনার পরবর্তী Symlink/Unlink কার্যকর হবে।"
 
+#: src/components/settings/LintingSection.tsx
+msgid "OKF agent skill installed"
+msgstr "OKF এজেন্ট দক্ষতা ইনস্টল করা হয়েছে"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr "চালু — কোনো বাইরের লিংকের উপর মাউস নিলে প্রাকদর্শন আনতে তার URL গন্তব্য সাইটে পাঠানো হয়।"
@@ -8263,6 +8388,10 @@ msgstr "<0>{address}</0>-এ"
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "<0>{address}</0>-এ নির্বাচিত লেখার উপর"
+
+#: src/components/settings/LintingSection.tsx
+msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
+msgstr "রুট ইনডেক্সে, okf_version একটি উদ্ধৃত স্ট্রিং হিসাবে লেখা হয় যেমন \"0.2\"। উদ্ধৃতিহীন, YAML এটিকে একটি সংখ্যা হিসাবে পড়ে এবং 0.10 নিঃশব্দে 0.1 হয়ে যায়।"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8486,6 +8615,22 @@ msgstr "ওয়ার্কট্রিতে খুলুন"
 msgid "Open it there"
 msgstr "সেটি সেখানেই খুলুন"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+msgstr "Open Knowledge Markdown ধারণকারী প্রতিটি ফোল্ডারে index.md নামের একটি নেভিগেশন ফাইল তৈরি ও রক্ষণাবেক্ষণ করে।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge Format guidance"
+msgstr "Open Knowledge Format নির্দেশিকা"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
+msgstr "Open Knowledge Markdown ধারণকারী প্রতিটি ফোল্ডারে index.md নামের একটি নেভিগেশন ফাইল রক্ষণাবেক্ষণ করে, প্রতিটি ফোল্ডারের নথিগুলিকে টাইপ এবং তার সাবফোল্ডারের সাথে লিঙ্ক করে তালিকাভুক্ত করে। আপনার নথি পরিবর্তনের সাথে সাথে এটি এই ফাইলগুলিকে পুনরায় লিখবে, এবং আপনি নিজে এগুলিতে সম্পাদনা করা সমস্ত কিছু প্রতিস্থাপিত হবে৷"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+msgstr "Open Knowledge এই index.md ফাইলগুলিকে দস্তাবেজগুলি পরিবর্তন করার সাথে সাথে পুনঃলিখন করে, তাই তাদের ম্যানুয়াল সম্পাদনাগুলি প্রতিস্থাপিত হয়৷"
+
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
 #. placeholder {2}: item.version
@@ -8531,6 +8676,10 @@ msgstr "সেটিং খুলুন"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Open shared {targetNoun}"
 msgstr "ভাগ করা {targetNoun} খুলুন"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open skill"
+msgstr "খোলা দক্ষতা"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Open source doc: {mirrorSrc}"
@@ -9368,6 +9517,7 @@ msgid "project"
 msgstr "প্রকল্প"
 
 #: src/components/CommandPalette.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -9638,6 +9788,10 @@ msgstr "সাম্প্রতিক প্রকল্প"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "সম্প্রতি খোলা"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Recommended agent skill"
+msgstr "প্রস্তাবিত এজেন্ট দক্ষতা"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
@@ -10076,6 +10230,10 @@ msgstr "উড়তে না পারা পাখিদের বিলু�
 msgid "research-note"
 msgstr "research-note"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
+msgstr "সংরক্ষিত ফাইলের নাম index.md এবং log.md ছোট হাতের অক্ষরে। একটি কেস-সংবেদনশীল ফাইল সিস্টেমে, Index.md একটি সাধারণ নথি হিসাবে পড়া হয় এবং এর অর্থ হারায়।"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Reset"
 msgstr "রিসেট করুন"
@@ -10318,6 +10476,7 @@ msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "নিয়ম সম্পাদনা প্রকল্পের রুট markdownlint কনফিগের জন্য পাওয়া যায়"
 
 #: src/components/LintConfigEditor.tsx
+#: src/components/settings/LintingSection.tsx
 msgid "Rules"
 msgstr "নিয়ম"
 
@@ -11260,6 +11419,10 @@ msgstr "{conflictHosts}-এর জন্য “{conflictName}” স্কিল
 msgid "Skill \"{name}\" created"
 msgstr "স্কিল \"{name}\" তৈরি হয়েছে"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Skill already in project"
+msgstr "ইতিমধ্যে প্রকল্পে দক্ষতা"
+
 #: src/components/ExploreSkills.tsx
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "স্কিল খোঁজা <0>skills.sh</0> দ্বারা চালিত"
@@ -11519,6 +11682,10 @@ msgstr "এখান থেকে শুরু"
 msgid "Start here: what this is and how it's organized."
 msgstr "এখান থেকে শুরু করুন: এটি কী এবং কীভাবে সাজানো।"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Start maintaining index.md"
+msgstr "index.md বজায় রাখা শুরু করুন"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Start source completion"
 msgstr "সোর্স সম্পূর্ণকরণ শুরু করুন"
@@ -11613,6 +11780,10 @@ msgstr "ফাইল ঠিক করা থামান"
 #: src/components/ProblemsPanel.tsx
 msgid "Stop fixing. Files already fixed stay fixed."
 msgstr "ঠিক করা থামান। যেসব ফাইল আগেই ঠিক হয়েছে সেগুলো ঠিকই থাকে।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Stop maintaining index.md"
+msgstr "index.md বজায় রাখা বন্ধ করুন"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -12117,6 +12288,10 @@ msgstr "এজেন্ট থামছে না। ফোর্স স্ট�
 msgid "The agent's persona, values, and voice."
 msgstr "এজেন্টের ব্যক্তিত্ব, মূল্যবোধ ও স্বর।"
 
+#: src/components/settings/LintingSection.tsx
+msgid "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
+msgstr "প্রত্যয়িত-গণনা চুক্তি। শুধুমাত্র Attested Computation টাইপ করা নথিতে প্রযোজ্য, যেখানে OKF একটি runtime প্রয়োজন; সাধারণ ধারণাগুলি প্রভাবিত হয় না।"
+
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
 msgstr "নিরীক্ষা সম্পূর্ণ করা যায়নি। আবার চেষ্টা করুন।"
@@ -12175,6 +12350,10 @@ msgstr "সূত্র <0>c = √(a² + b²)</0> ইনলাইনে রে�
 msgid "the git exclude file isn't writable"
 msgstr "git exclude ফাইলটি লেখার যোগ্য নয়"
 
+#: src/components/settings/LintingSection.tsx
+msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
+msgstr "ইনডেক্স ফাইলগুলি জায়গায় থাকে। Open Knowledge শুধুমাত্র এটি যোগ করা Git নিয়মটিকে সরিয়ে দেয়।"
+
 #: src/lib/locale-load-failure-notice.ts
 msgid "The interface is still in the language you were reading. Check your connection, then reload to try again."
 msgstr "ইন্টারফেসটি এখনও সেই ভাষাতেই আছে যেটি আপনি পড়ছিলেন। আপনার সংযোগ দেখে নিন, তারপর আবার চেষ্টা করতে রিলোড করুন।"
@@ -12210,6 +12389,10 @@ msgstr "এই নথির উপরের প্রপার্টি ব্�
 #: src/components/PropertyDiffBlock.tsx
 msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
 msgstr "প্রপার্টি বদলেছে, কিন্তু তুলনা করা যায়নি — YAML পার্স হয়নি। দুটি সংস্করণই যেমন লেখা ছিল তেমনই দেখানো হচ্ছে।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
+msgstr "মূল, বিশ্বাস, এবং জীবনচক্র পরিবারগুলি: sources, generated, verified, status, এবং stale_after। প্রতিটি ক্ষেত্র ঐচ্ছিক, এবং অনুপস্থিতি কখনও একটি ত্রুটি নয়।"
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."
@@ -12247,6 +12430,10 @@ msgstr "স্কিমা ফাইলটি নেই বা লোড কর�
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "সার্ভার সাড়া দিয়েছে কিন্তু server.lock-এ এখনো কোনো পোর্ট নেই"
+
+#: src/components/settings/LintingSection.tsx
+msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
+msgstr "title, description, resource, এবং tags এর আকার আপনি যখন ব্যবহার করেন। কোনটির প্রয়োজন নেই; একটি ঘোষণা করলে শুধুমাত্র তার টাইপ পিন হয়, তাই tags একটি কমা-বিচ্ছিন্ন স্ট্রিং হিসাবে ফ্ল্যাগ করা হয়।"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
@@ -12560,6 +12747,10 @@ msgstr "এতে একটু সময় লাগতে পারে। আ�
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "This moves <0>{name}</0> from {0} to {1}, relocating its files on disk and re-installing it in your editors at the {2} level."
 msgstr "এটি <0>{name}</0>-কে {0} থেকে {1}-এ সরায়, ডিস্কে এর ফাইলগুলো অন্যত্র রাখে এবং আপনার সম্পাদকগুলোতে {2} স্তরে সেটি আবার ইনস্টল করে।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
+msgstr "এটির জন্য আপনার ফাইলগুলি দেখতে হবে, শুধু খোলা নথি নয়, তাই এটি প্রদর্শিত হয় যখন আপনি টাইপ করার পরিবর্তে একটি প্রকল্প অডিট চালান।"
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -12924,6 +13115,10 @@ msgstr "{0}-কে আবার একটি সত্যিকারের ড�
 msgid "Turn {display} back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
 msgstr "{display}-কে আবার একটি সত্যিকারের ডিরেক্টরি বানান যাতে এখন দেখা প্রতিটি স্কিলের জন্য আলাদা সিমলিংক থাকে — কিছুই কাজ করা বন্ধ করে না, আর তারপর প্রতিটি স্কিলের মেনু সেটি সামলায়।"
 
+#: src/components/CreatedItemsList.tsx
+msgid "Turn it off any time in Settings."
+msgstr "সেটিংস থেকে যেকোনো সময় এটি বন্ধ করুন।"
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"
 msgstr "কেবল markdown ফাইল বন্ধ করুন"
@@ -12948,6 +13143,10 @@ msgstr "অর্থভিত্তিক অনুসন্ধান চাল�
 #: src/components/SeedDialog.tsx
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr "আপনি যা পড়েন তা স্পষ্ট, নির্ভরযোগ্য নিবন্ধে রূপ দিন। একটি উৎস সংরক্ষণ করুন, তার অর্থ বুঝুন, তারপর চূড়ান্ত সংস্করণটি রেখে দিন যাতে পরে তার উপর ভরসা করতে পারেন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning it off"
+msgstr "এটা বন্ধ করা"
 
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
@@ -13638,6 +13837,10 @@ msgstr "উইকি লিংক"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Wiki link suggestions"
 msgstr "উইকি লিংকের পরামর্শ"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
+msgstr "উইকি-লিঙ্ক যেমন [[Page]] — এখানে লিঙ্ক করার একটি সমর্থিত উপায়, কিন্তু একজন বহিরাগত পাঠক কিছুই সমাধান করে না এবং বন্ধনী দেখায়।"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

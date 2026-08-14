@@ -1,7 +1,8 @@
 ---
 name: consolidate-notes
-description: "Promote existing research into a canonical article under `articles/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when a decision has actually been made and the team wants the source-of-truth written down, or when asked to consolidate, canonicalize, promote research, or supersede an older article. Carries the decision-confirmation gate, the `supersedes:` chain that keeps the evidence trail intact, and the canonical voice. Does not conduct new research — that is the sibling `research-with-sources` skill."
+description: "Promote existing research into a stable-status canonical article under `articles/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when a decision has actually been made and the team wants the source-of-truth written down, or when asked to consolidate, canonicalize, promote research, or supersede an older article. Carries the decision-confirmation gate, the `supersedes:` chain that keeps the evidence trail intact, and the canonical voice. Does not conduct new research — that is the sibling `research-with-sources` skill."
 compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack knowledge-base`."
+type: Document
 metadata:
   pack: "knowledge-base"
   author: "Inkeep"
@@ -14,6 +15,8 @@ metadata:
 Promote existing research on a topic into a canonical article under `articles/`. **Canonical, not provisional** — the output is the source of truth for future agents, not a snapshot of uncertainty.
 
 The content directory is the resolved `content.dir` — read it with `config({ key: 'content.dir' })` if you don't already know it. Paths below are relative to it.
+
+**Legacy reads:** Existing research and articles may use `status: provisional` / `canonical`, and existing `sources:` may contain string paths. Treat those as draft / stable and source resources. Do not mass-rewrite them; new writes use the OKF forms below.
 
 ## STOP gate: has a decision actually been made?
 
@@ -80,9 +83,12 @@ Frontmatter:
 ---
 title: Descriptive title
 description: One-line summary of what this article covers
-status: canonical
+type: article
+status: stable
 date: YYYY-MM-DD
 tags:
+  - article
+  - canonical
   - topic-tag
 supersedes:
   - <path-to-research-article>.md
@@ -141,15 +147,16 @@ Add a `supersedes:` list in the new article's frontmatter pointing at the resear
 Do NOT delete the research articles — they remain as historical context for how the decision was reached. Edit their frontmatter to add:
 
 ```yaml
+status: deprecated
 superseded_by: <path-to-new-canonical-article>.md
 ```
 
 ### 6. Verify
 
 - File exists at the chosen path under the content directory
-- Has `status: canonical` frontmatter
+- Has `type: article` and `status: stable` frontmatter
 - Lists the research articles it supersedes
-- Research articles updated with `superseded_by` pointer
+- Research articles updated with `status: deprecated` and a `superseded_by` pointer
 - `exec("ls -A <target-dir>")` shows the new file
 
 ## Non-goals

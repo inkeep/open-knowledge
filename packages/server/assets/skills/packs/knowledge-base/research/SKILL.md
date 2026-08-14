@@ -1,7 +1,8 @@
 ---
 name: research-with-sources
-description: "Investigate a topic against preserved sources and write a provisional research article under `research/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when asked to research a topic, compare options, synthesize sources, gather evidence, or extend an existing research doc. Carries the full procedure: scan existing coverage, agree a research rubric, capture every source verbatim before analyzing, write the article incrementally so a crash never loses work, cite every claim, and link it back into the graph. Does not promote findings to canonical knowledge — that is the sibling `consolidate-notes` skill, after a decision lands."
+description: "Investigate a topic against preserved sources and write a draft-status research article under `research/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when asked to research a topic, compare options, synthesize sources, gather evidence, or extend an existing research doc. Carries the full procedure: scan existing coverage, agree a research rubric, capture every source verbatim before analyzing, write the article incrementally so a crash never loses work, cite every claim, and link it back into the graph. Does not promote findings to canonical knowledge — that is the sibling `consolidate-notes` skill, after a decision lands."
 compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack knowledge-base`."
+type: Document
 metadata:
   pack: "knowledge-base"
   author: "Inkeep"
@@ -17,11 +18,13 @@ The content directory is the resolved `content.dir` — read it with `config({ k
 
 ## Three paths
 
-- **Path A — Research article (DEFAULT):** A persistent provisional article with an inline `sources:` frontmatter list pointing at raw sources captured via the ingest procedure. This is the default unless the user explicitly opts out.
+- **Path A — Research article (DEFAULT):** A persistent provisional article with `status: draft` and an inline `sources:` frontmatter list pointing at raw sources captured via the ingest procedure. This is the default unless the user explicitly opts out.
 - **Path B — Direct answer:** Findings delivered in conversation only. **Requires explicit user request** (e.g., "just tell me", "no doc needed", "quick answer").
 - **Path C — Update existing research:** Surgical additions/corrections to an existing research article. Triggered when the user references an existing research doc or says "update/refresh/extend."
 
 Path A is the default because provisional articles compound over time; spoken answers do not.
+
+**Legacy reads:** Existing articles may use `status: provisional` and string paths under `sources:`. Treat those as draft research and source resources. Do not mass-rewrite them; new writes use the OKF shapes below.
 
 ## Autonomy mode
 
@@ -240,14 +243,16 @@ Filename: descriptive, kebab-case (`crdt-alternatives-for-editor.md`, `llm-wikis
 ---
 title: Descriptive title
 description: One-line summary of the research question
-status: provisional
+type: research-note
+status: draft
 date: YYYY-MM-DD
 tags:
   - research
+  - provisional
   - <topic-tag>
 sources:
-  - <path-to-ingested-source-1>.md
-  - <path-to-ingested-source-2>.md
+  - resource: ../external-sources/<source-1>.md
+  - resource: ../external-sources/<source-2>.md
 ---
 ```
 
@@ -270,7 +275,7 @@ sources:
 
 - Pros — with evidence links
 - Cons — with evidence links
-- Evidence: [Source A](./external-sources/source-a.md), [Source B](./external-sources/source-b.md)
+- Evidence: [Source A](../external-sources/source-a.md), [Source B](../external-sources/source-b.md)
 
 ### Theme / Option 2
 
@@ -308,7 +313,7 @@ Research articles are discovery surfaces. Under-linked research becomes an islan
 ### Link discipline
 
 - Every noun-phrase that names another document is a link. Use standard markdown: `[text](./relative/path.md)`.
-- Link sources inline where you cite them, not just in the frontmatter `sources:` list: `According to [LLM Agents](./external-sources/llm-agents.md)...` is stronger than a bare `sources:` entry.
+- Link sources inline where you cite them, not just in the frontmatter `sources:` list: `According to [LLM Agents](../external-sources/llm-agents.md)...` is stronger than a bare `sources:` entry.
 - Cross-link sibling research: if an adjacent topic has its own research doc, link it under "Open questions" or inline. Readers following one thread should find the others.
 - After writing, update 1-2 closely-related existing pages to link back to this research (usually under "Further reading" or "See also"). This is how the research becomes discoverable via backlinks.
 - Never wrap links in backticks; never use HTML anchors — matches the platform skill's linking rules.
@@ -318,7 +323,7 @@ Research articles are discovery surfaces. Under-linked research becomes an islan
 If the user asked a specific question during the research session that produced a citable answer, capture it as its own short page alongside the research — not just as chat. Concrete questions with sourced answers are the highest-signal unit of knowledge you can produce.
 
 - Short filename: `what-does-X-mean.md`, `how-does-Y-work.md`
-- Include the same `sources:` frontmatter
+- Include the same object-shaped `sources:` frontmatter
 - Link the answer from this research doc under "Further reading"
 - Answers too small to justify a separate file stay in chat; don't fragment
 
@@ -329,7 +334,7 @@ If the user asked a specific question during the research session that produced 
 Run this checklist before marking complete:
 
 - File exists at the chosen path under the content directory
-- Frontmatter has `title`, `description`, `status: provisional`, `date`, and a `sources:` list
+- Frontmatter has `title`, `description`, `type: research-note`, `status: draft`, `date`, and an object-shaped `sources:` list
 - `exec("ls -A <dir>")` lists the new file with frontmatter enrichment
 - `links({ kind: 'dead', sourceDocNames: ['<path-without-ext>'] })` returns clean — zero dead links (fix or remove every one)
 - Every factual claim in Findings cites a source inline

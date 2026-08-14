@@ -382,6 +382,8 @@ export interface BootedServer {
   port: number;
   /** Resolves when async server init (shadow repo, file watcher subscription) completes. */
   ready: Promise<void>;
+  /** Settles after the post-readiness generated-index boot sweep. */
+  generatedIndexSweepReady: ServerInstance['generatedIndexSweepReady'];
   /** Subsystems that failed to initialize — read AFTER `ready` for a stable list. */
   degraded: readonly string[];
   /** `true` if `autoInitFn` scaffolded anything during this boot. */
@@ -1450,6 +1452,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     contentDir: opts.contentDir,
     port: realPort,
     ready,
+    generatedIndexSweepReady: serverInstance.generatedIndexSweepReady,
     degraded,
     didAutoInit,
     serverInstance,

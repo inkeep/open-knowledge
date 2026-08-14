@@ -13,6 +13,7 @@ import {
   resolvePackSkillSources,
 } from './install-pack-skill.ts';
 import { assertEntryPathInProject } from './path-safety.ts';
+import { isPluginEnabled } from './required-plugins.ts';
 import { DEFAULT_PACK_ID, resolvePack, STARTER_FOLDER_FRONTMATTER_FILENAME } from './starter.ts';
 import type { FileEntry, ScaffoldPlan, SeedOptions, SkipEntry } from './types.ts';
 import { SeedPrerequisiteError, SeedRootDirError } from './types.ts';
@@ -268,11 +269,21 @@ export async function planSeed(opts: SeedOptions = {}): Promise<ScaffoldPlan> {
     };
   });
 
+  // Plugins the pack requires. Reported whenever the pack declares one — not
+  // only when it is off — because the dialog discloses the dependency either
+  // way: a user who turned it off is owed "seeding turns this back on", and a
+  // user who has it on is owed "this pack depends on it".
+  const requiredPlugins = (pack.requiredPlugins ?? []).map((id) => ({
+    id,
+    pending: !isPluginEnabled(projectDir, id),
+  }));
+
   return {
     created,
     skipped,
     warnings,
     ...(packSkills.length > 0 ? { packSkills } : {}),
+    ...(requiredPlugins.length > 0 ? { requiredPlugins } : {}),
     ...(packSkills.length > 0 && homeRefusal !== undefined
       ? { packSkillHomeRefusal: homeRefusal }
       : {}),

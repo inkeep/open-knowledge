@@ -263,6 +263,11 @@ msgstr "{0, plural, other {Saat ini cocok dengan {3} dari {4} dokumen.}}"
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr "{0, plural, other {Tidak ada masalah di # dokumen.}}"
 
+#. placeholder {0}: pluginRows.length
+#: src/components/CreatedItemsList.tsx
+msgid "{0, plural, one {Plugin} other {Plugins}}"
+msgstr "{0, plural, other {Plugin}}"
+
 #. placeholder {0}: editorList.hiddenCount
 #: src/components/McpConsentDialogBody.tsx
 msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
@@ -629,7 +634,9 @@ msgstr "CLI {displayName}, {hint}"
 msgid "{docName} is {0}. OpenKnowledge currently opens files up to {1}."
 msgstr "{docName} berukuran {0}. Saat ini OpenKnowledge membuka berkas hingga {1}."
 
+#. placeholder {0}: OKF_RULE_IDS.length
 #. placeholder {0}: entries.length
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{enabledCount}/{0} on"
 msgstr "{enabledCount}/{0} aktif"
@@ -791,6 +798,10 @@ msgstr "{percent}% terpakai (sisa {left}%)"
 #: src/lib/share/clone-controller.ts
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
+
+#: src/components/CreatedItemsList.tsx
+msgid "{pluginCount, plural, one {plugin} other {plugins}}"
+msgstr "{pluginCount, plural, other {plugin}}"
 
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
@@ -1543,6 +1554,10 @@ msgstr "Sudah tercakup oleh folder induk yang dipilih"
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
 msgstr "Sudah punya repositori git? Tambahkan dengan <0>git remote add origin <url></0> di folder proyek ini. Halaman ini diperbarui otomatis begitu sebuah remote terdeteksi."
 
+#: src/components/settings/LintingSection.tsx
+msgid "Already in project"
+msgstr "Sudah dalam proyek"
+
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Already installed — nothing new to import."
 msgstr "Sudah terpasang — tidak ada yang baru untuk diimpor."
@@ -1587,6 +1602,10 @@ msgstr "Operasi sinkronisasi lain sedang berjalan. Coba lagi sebentar."
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
 msgstr "apa saja"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
+msgstr "File .mdx apa pun. Formatnya hanya .md saja, sehingga pembaca yang memindai .md tidak akan pernah membukanya — dan jika ada .md dengan nama yang sama, maka yang dibaca adalah yang tersebut."
 
 #. placeholder {0}: summary.name
 #: src/components/settings/LintingSection.tsx
@@ -2148,6 +2167,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -2288,6 +2308,10 @@ msgstr "Mengambil berkas"
 msgid "Checking sign-in status"
 msgstr "Memeriksa status masuk"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Checking skill"
+msgstr "Memeriksa keterampilan"
+
 #: src/components/ImportSkillForm.tsx
 msgid "Checking source"
 msgstr "Memeriksa sumber"
@@ -2303,6 +2327,10 @@ msgstr "Memeriksa..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Daftar periksa dengan kotak centang."
+
+#: src/components/CreatedItemsList.tsx
+msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
+msgstr "Periksa proyek Anda terhadap Open Knowledge Format. Matikan kapan saja di Pengaturan."
 
 #: src/components/ImportSkillForm.tsx
 msgid "Choose a skill archive"
@@ -4300,6 +4328,10 @@ msgstr "Nonaktifkan {0}"
 msgid "Disable {file}"
 msgstr "Nonaktifkan {file}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {id}"
+msgstr "Nonaktifkan {id}"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr "Nonaktifkan pratinjau tautan eksternal"
@@ -4401,6 +4433,10 @@ msgstr "Panel dokumen"
 #: src/components/EditorFooter.tsx
 msgid "Document statistics"
 msgstr "Statistik dokumen"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Document structure"
+msgstr "Struktur dokumen"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
@@ -4793,6 +4829,10 @@ msgstr "Aktifkan CLI {displayName}"
 msgid "Enable {file}"
 msgstr "Aktifkan {file}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {id}"
+msgstr "Aktifkan {id}"
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -4816,6 +4856,10 @@ msgstr "Aktifkan Ikuti?"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
 msgstr "Aktifkan sinkronisasi otomatis git?"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enable indexes"
+msgstr "Aktifkan indeks"
 
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
@@ -4844,6 +4888,10 @@ msgstr "Aktifkan terminal untuk proyek ini"
 #: src/components/settings/LintingSection.tsx
 msgid "Enable Themes"
 msgstr "Aktifkan Tema"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enabling index generation"
+msgstr "Mengaktifkan pembuatan indeks"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -4914,6 +4962,10 @@ msgstr "Galat:"
 #: src/components/CommandPalette.tsx
 msgid "Escape"
 msgstr "Escape"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
+msgstr "Setiap dokumen konsep memiliki tipe yang tidak kosong. Ini adalah keseluruhan batas kesesuaian OKF — dokumen yang hanya memiliki satu jenis sudah sepenuhnya sesuai."
 
 #: src/components/settings/LintingSection.tsx
 msgid "every doc"
@@ -5690,6 +5742,10 @@ msgstr "Dari templat"
 msgid "From the {0} plugin"
 msgstr "Dari plugin {0}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter"
+msgstr "frontmatter"
+
 #: src/components/TemplateForm.tsx
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr "Frontmatter yang mengawali setiap dokumen yang dibuat dari templat ini. Nilainya berupa YAML — daftar ditulis <0>[a, b]</0>; <1>{{date}}</1> terisi saat pembuatan."
@@ -5732,6 +5788,10 @@ msgstr "Permainan berakhir · tekan spasi untuk main lagi"
 msgid "General"
 msgstr "Umum"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Generated files"
+msgstr "File yang dihasilkan"
+
 #: src/components/TerminalCliMissingBanner.tsx
 msgid "Get {displayName}"
 msgstr "Dapatkan {displayName}"
@@ -5764,6 +5824,10 @@ msgstr "konfigurasi git tidak tersedia"
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Identitas git belum disetel — commit memakai penulis bawaan. Setel milik Anda agar rekan tim melihat nama Anda."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Git merge rule"
+msgstr "Git aturan penggabungan"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
@@ -5919,7 +5983,7 @@ msgstr "slug-judul"
 msgid "Headings"
 msgstr "Judul"
 
-#: src/components/AutoSyncEnableWarning.tsx
+#: src/components/DisclosureWarning.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "Perhatian"
@@ -5940,6 +6004,10 @@ msgstr "Halo, dunia!"
 #: src/lib/native-menu-catalog.ts
 msgid "Help"
 msgstr "Bantuan"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
+msgstr "Membantu agen pengkodean memilih jenis dokumen OKF, mempertahankan asal, dan menghindari penemuan metadata yang tidak didukung."
 
 #. Subtext for the open-knowledge-discovery skill row
 #. Subtext for the open-knowledge-discovery skill row
@@ -6273,9 +6341,17 @@ msgstr "Diimpor sebagai \"{0}\" — nama \"{1}\" sudah dipakai."
 msgid "Importing"
 msgstr "Mengimpor"
 
+#: src/components/settings/LintingSection.tsx
+msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
+msgstr "Dalam dokumen log: judul entri diawali dengan tanggal ISO YYYY-MM-DD, terbaru terlebih dahulu. Berapa banyak title yang Anda gunakan, dan apakah entri merupakan poin, terserah Anda."
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr "Di subfolder"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
+msgstr "Dalam dokumen indeks: entri berada di bawah judul bagian dan masing-masing membawa tautan. Prosa seputar daftar itu baik-baik saja."
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6294,6 +6370,14 @@ msgstr "Di aplikasi"
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app (beta)"
 msgstr "Di aplikasi (beta)"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
+msgstr "Dalam proyek Git, Open Knowledge menambahkan aturan tercakup ke file .gitattributes di root repositori agar perubahan indeks yang bersamaan dapat digabungkan."
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent index changes combine before the next rebuild."
+msgstr "Dalam proyek Git, Open Knowledge juga menambahkan aturan cakupan .gitattributes sehingga perubahan indeks secara bersamaan digabungkan sebelum pembangunan kembali berikutnya."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
@@ -6318,6 +6402,26 @@ msgstr "Menambah atau mengurangi indentasi item daftar saat ini."
 #: src/editor/slash-command/items.tsx
 msgid "Indented blockquote for citations."
 msgstr "Kutipan blok berindentasi untuk mengutip sumber."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
+msgstr "Dokumen indeks tidak membawa frontmatter, kecuali dokumen yang ada di akar basis pengetahuan Anda. Dokumen log tidak tercakup — OKF tidak membatasi frontmatter mereka."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
+msgstr "Pemeliharaan indeks dihentikan sementara karena atribut Git lainnya mengontrol index.md. Perbarui .gitattributes sehingga jalur index.md yang dicakup menggunakan merge=union, lalu coba lagi."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because Open Knowledge could not confirm the required Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "Pemeliharaan indeks dihentikan sementara karena Open Knowledge tidak dapat mengonfirmasi aturan penggabungan Git yang diperlukan. Centang Git dan .gitattributes, lalu coba lagi."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "Pemeliharaan indeks terhenti karena Open Knowledge tidak dapat menjangkau server proyek. Coba lagi saat proyek tersambung kembali."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "Pemeliharaan indeks tidak dilakukan karena pengaturan proyek tidak dapat disimpan. Periksa izin file proyek, lalu coba lagi."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
@@ -6507,6 +6611,10 @@ msgstr "Pasang di semua agen"
 msgid "Install selected"
 msgstr "Pasang yang dipilih"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Install skill"
+msgstr "Instal keterampilan"
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "Install skills"
 msgstr "Pasang keterampilan"
@@ -6516,6 +6624,7 @@ msgid "Install the gh CLI"
 msgstr "Pasang CLI gh"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Installed"
@@ -6728,6 +6837,10 @@ msgstr "Jaga proyek ini tetap selaras dengan remote git Anda. Ikuti mengambil pe
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "Catat orang dan perusahaan yang bekerja dengan Anda serta pertemuan yang Anda adakan dengan mereka. Cocok untuk mengingat siapa seseorang, dari mana Anda mengenalnya, dan apa yang terakhir Anda bicarakan."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
+msgstr "Menjaga basis pengetahuan Anda tetap selaras dengan Open Knowledge Format."
 
 #. placeholder {0}: toName.trim()
 #: src/components/SkillForkDialog.tsx
@@ -7103,6 +7216,14 @@ msgstr "Mencari <0>{lookingForUrl}</0>."
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Lost connection to \"{docName}\"."
 msgstr "Koneksi ke \"{docName}\" terputus."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain generated indexes in every folder?"
+msgstr "Pertahankan indeks generated di setiap folder?"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain index.md"
+msgstr "Pertahankan index.md"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "make source"
@@ -8248,6 +8369,10 @@ msgstr "OK Desktop"
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "Terakhir kali OK menyetel folder ini menjadi {0} — sesuatu di luar OK mengubahnya sejak itu. Keadaan yang ditampilkan adalah apa yang ada di disk sekarang; Symlink/Lepas tautan Anda berikutnya yang menang."
 
+#: src/components/settings/LintingSection.tsx
+msgid "OKF agent skill installed"
+msgstr "OKF keterampilan agen diinstal"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr "Aktif — mengarahkan kursor ke tautan eksternal mengirim URL-nya ke situs tujuan untuk mengambil pratinjau."
@@ -8263,6 +8388,10 @@ msgstr "Pada <0>{address}</0>"
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "Pada teks terpilih di <0>{address}</0>"
+
+#: src/components/settings/LintingSection.tsx
+msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
+msgstr "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8486,6 +8615,22 @@ msgstr "Buka di worktree"
 msgid "Open it there"
 msgstr "Buka di sana"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+msgstr "Open Knowledge membuat dan memelihara file navigasi bernama index.md di setiap folder yang berisi Markdown."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge Format guidance"
+msgstr "Open Knowledge Format bimbingan"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
+msgstr "Open Knowledge menyimpan file navigasi bernama index.md di setiap folder yang berisi Markdown, masing-masing mencantumkan dokumen folder tersebut berdasarkan jenis dan tautan ke subfoldernya. Itu menulis ulang file-file ini saat dokumen Anda berubah, dan apa pun yang Anda edit sendiri ke dalamnya akan diganti."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+msgstr "Open Knowledge menulis ulang file index.md ini seiring perubahan dokumen, sehingga pengeditan manual pada file tersebut diganti."
+
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
 #. placeholder {2}: item.version
@@ -8531,6 +8676,10 @@ msgstr "Buka pengaturan"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Open shared {targetNoun}"
 msgstr "Buka {targetNoun} yang dibagikan"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open skill"
+msgstr "Keterampilan terbuka"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Open source doc: {mirrorSrc}"
@@ -9368,6 +9517,7 @@ msgid "project"
 msgstr "proyek"
 
 #: src/components/CommandPalette.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -9638,6 +9788,10 @@ msgstr "Proyek terbaru"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "Baru saja dibuka"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Recommended agent skill"
+msgstr "Keterampilan agen yang direkomendasikan"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
@@ -10076,6 +10230,10 @@ msgstr "Teliti kepunahan burung yang tidak bisa terbang"
 msgid "research-note"
 msgstr "catatan-riset"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
+msgstr "File yang dicadangkan diberi nama index.md dan log.md dalam huruf kecil. Pada sistem file peka huruf besar-kecil, Index.md dibaca sebagai dokumen biasa dan kehilangan maknanya."
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Reset"
 msgstr "Setel ulang"
@@ -10318,6 +10476,7 @@ msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "Penyuntingan aturan tersedia untuk konfigurasi markdownlint di akar proyek"
 
 #: src/components/LintConfigEditor.tsx
+#: src/components/settings/LintingSection.tsx
 msgid "Rules"
 msgstr "Aturan"
 
@@ -11260,6 +11419,10 @@ msgstr "Skill “{conflictName}” tidak dipasang untuk {conflictHosts} — di s
 msgid "Skill \"{name}\" created"
 msgstr "Keterampilan \"{name}\" dibuat"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Skill already in project"
+msgstr "Keterampilan sudah ada dalam proyek"
+
 #: src/components/ExploreSkills.tsx
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "Penemuan keterampilan ditenagai <0>skills.sh</0>"
@@ -11519,6 +11682,10 @@ msgstr "Mulai dari"
 msgid "Start here: what this is and how it's organized."
 msgstr "Mulai di sini: apa ini dan bagaimana penataannya."
 
+#: src/components/settings/LintingSection.tsx
+msgid "Start maintaining index.md"
+msgstr "Mulai pertahankan index.md"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Start source completion"
 msgstr "Mulai pelengkapan sumber"
@@ -11613,6 +11780,10 @@ msgstr "Berhenti memperbaiki berkas"
 #: src/components/ProblemsPanel.tsx
 msgid "Stop fixing. Files already fixed stay fixed."
 msgstr "Berhenti memperbaiki. Berkas yang sudah diperbaiki tetap terperbaiki."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Stop maintaining index.md"
+msgstr "Berhenti mempertahankan index.md"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -12117,6 +12288,10 @@ msgstr "Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari 
 msgid "The agent's persona, values, and voice."
 msgstr "Kepribadian, nilai, dan gaya bicara agen."
 
+#: src/components/settings/LintingSection.tsx
+msgid "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
+msgstr "Kontrak perhitungan yang dibuktikan. Hanya berlaku untuk dokumen yang diketik Attested Computation, dimana OKF memerlukan runtime; konsep biasa tidak terpengaruh."
+
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
 msgstr "Audit tidak dapat diselesaikan. Coba lagi."
@@ -12175,6 +12350,10 @@ msgstr "Rumus <0>c = √(a² + b²)</0> dirender sebaris."
 msgid "the git exclude file isn't writable"
 msgstr "berkas exclude git tidak bisa ditulisi"
 
+#: src/components/settings/LintingSection.tsx
+msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
+msgstr "File indeks tetap di tempatnya. Open Knowledge hanya menghapus aturan Git yang ditambahkannya."
+
 #: src/lib/locale-load-failure-notice.ts
 msgid "The interface is still in the language you were reading. Check your connection, then reload to try again."
 msgstr "Antarmuka masih dalam bahasa yang tadi Anda baca. Periksa koneksi Anda, lalu muat ulang untuk mencoba lagi."
@@ -12210,6 +12389,10 @@ msgstr "Blok properti di bagian atas dokumen ini punya galat format. Beralihlah 
 #: src/components/PropertyDiffBlock.tsx
 msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
 msgstr "Properti berubah, tetapi tidak bisa dibandingkan — YAML gagal diurai. Kedua versi ditampilkan apa adanya."
+
+#: src/components/settings/LintingSection.tsx
+msgid "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
+msgstr "Keluarga asal, kepercayaan, dan siklus hidup: sources, generated, verified, status, dan stale_after. Setiap bidang bersifat opsional, dan ketidakhadiran tidak pernah merupakan kesalahan."
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."
@@ -12247,6 +12430,10 @@ msgstr "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidan
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "server merespons tetapi server.lock belum memiliki port"
+
+#: src/components/settings/LintingSection.tsx
+msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
+msgstr "Bentuk title, description, resource, dan tags saat Anda menggunakannya. Tidak ada yang diperlukan; mendeklarasikan satu hanya menyematkan tipenya, jadi tags yang ditulis sebagai string yang dipisahkan koma akan ditandai."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
@@ -12560,6 +12747,10 @@ msgstr "Ini mungkin makan waktu sebentar. Konten markdown Anda dipertahankan."
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "This moves <0>{name}</0> from {0} to {1}, relocating its files on disk and re-installing it in your editors at the {2} level."
 msgstr "Ini memindahkan <0>{name}</0> dari {0} ke {1}, memindahkan berkasnya di disk dan memasangnya ulang di penyunting Anda pada tingkat {2}."
+
+#: src/components/settings/LintingSection.tsx
+msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
+msgstr "Yang ini perlu melihat file Anda, bukan hanya dokumen yang terbuka, sehingga muncul saat Anda menjalankan audit proyek, bukan saat Anda mengetik."
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -12924,6 +13115,10 @@ msgstr "Mengubah {0} kembali menjadi direktori nyata yang memuat satu symlink pe
 msgid "Turn {display} back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
 msgstr "Mengubah {display} kembali menjadi direktori nyata yang memuat satu symlink per keterampilan untuk setiap keterampilan yang saat ini dilihatnya — tidak ada yang berhenti bekerja, dan sejak itu menu tiap keterampilan yang mengelolanya."
 
+#: src/components/CreatedItemsList.tsx
+msgid "Turn it off any time in Settings."
+msgstr "Matikan kapan saja di Pengaturan."
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"
 msgstr "Matikan Hanya berkas markdown"
@@ -12948,6 +13143,10 @@ msgstr "Nyalakan pencarian semantik?"
 #: src/components/SeedDialog.tsx
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr "Ubah apa yang Anda baca menjadi artikel yang jelas dan tepercaya. Simpan sebuah sumber, cari tahu maknanya, lalu simpan versi finalnya agar bisa Anda andalkan nanti."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning it off"
+msgstr "Mematikannya"
 
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
@@ -13638,6 +13837,10 @@ msgstr "Tautan wiki"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Wiki link suggestions"
 msgstr "Saran tautan wiki"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
+msgstr "Tautan wiki seperti [[Page]] — cara yang didukung untuk membuat tautan di sini, tetapi pembaca eksternal tidak menyelesaikan apa pun dan memperlihatkan tanda kurung."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

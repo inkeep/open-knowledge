@@ -1,5 +1,4 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
-
+import { planHasOutstandingWork } from '@inkeep/open-knowledge-core';
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowLeft } from 'lucide-react';
@@ -199,9 +198,7 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
           // predates skills-as-content) reports "already set up" while its skill
           // is missing. `applySeed` always (re)authors the skill, so reaching
           // apply with only the skill pending fixes it.
-          const hasWork =
-            result.plan.created.length > 0 ||
-            result.plan.packSkills?.some((s) => s.pending) === true;
+          const hasWork = planHasOutstandingWork(result.plan);
           setPhase(
             hasWork
               ? { kind: 'plan', plan: result.plan }
@@ -349,7 +346,7 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
 
         <DialogFooter>
           {step === 'configure' && !packLocked ? (
-            <Button className="mr-auto uppercase font-mono" variant="ghost" onClick={handleBack}>
+            <Button className="me-auto uppercase font-mono" variant="ghost" onClick={handleBack}>
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               <Trans>Back</Trans>
             </Button>
@@ -509,7 +506,7 @@ function SeedDialogBody({
 
   return (
     <div className="space-y-6 py-1 text-sm">
-      {phase.plan.created.length > 0 || phase.plan.packSkills?.some((s) => s.pending) ? (
+      {planHasOutstandingWork(phase.plan) ? (
         <CreatedItemsList plan={phase.plan} selectedPack={selectedPack} />
       ) : null}
       {phase.plan.warnings.length > 0 ? (

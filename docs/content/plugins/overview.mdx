@@ -1,7 +1,7 @@
 ---
 title: Overview
 icon: LuBookOpen
-description: Optional capabilities that ship with OpenKnowledge, most of them off until you turn them on. Linters, themes, and the Slidev presentation renderer.
+description: Optional capabilities that ship with OpenKnowledge, most of them off until you turn them on. Linters, OKF portability, themes, and presentations.
 ---
 
 A plugin is an optional capability that ships with OpenKnowledge. Most stay off until you turn them on (Themes is the exception: it ships enabled). Each one belongs to a scope, and the scope decides who else gets it:
@@ -26,7 +26,8 @@ Flip the switch. Open editors react live; there is no restart and no Save button
 | --- | --- | --- |
 | [markdownlint](/docs/advanced/content-rules/markdownlint) | Project | Flags markdown style problems as you write — hard tabs, heading increments, list markers, and the rest of the standard rule set. |
 | [Frontmatter schemas](/docs/advanced/content-rules/frontmatter) | Project | Validates document frontmatter against standard JSON Schema files. |
+| [OKF](/docs/plugins/okf) | Project | Checks portability to Open Knowledge Format v0.2, recommends agent guidance, and can maintain generated indexes. Beta. |
 | [Slidev](/docs/plugins/slidev) | User | Presents a document as a slide deck in its own window. Desktop only; needs the Slidev CLI installed separately. Beta. |
 | [Themes](/docs/plugins/themes) | User | A personal color-theme picker: one palette per light mode and one per dark, built-in or your own base16 schemes. |
 
-markdownlint and Frontmatter schemas are both **content rules**, a shared non-blocking linting layer. What they have in common — where problems appear, the Problems panel, `ok lint`, agent advisories — is on the [content rules overview](/docs/advanced/content-rules/overview).
+markdownlint, Frontmatter schemas, and OKF all use the **content rules** layer. What they have in common — where problems appear, the Problems panel, `ok lint`, agent advisories — is on the [content rules overview](/docs/advanced/content-rules/overview).

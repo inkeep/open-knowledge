@@ -1,52 +1,56 @@
 ---
 name: okf-knowledge-base
-description: "How to work in an OKF starter project (the `okf` starter pack): a knowledge base that is conformant with Google's Open Knowledge Format (OKF) from commit one — `concepts/`, `references/`, `notes/`, a reserved `index.md` navigation hub, and a reserved `log.md` change history. Read when the project has these folders plus reserved files, OR when asked whether a document is OKF-conformant, or to add a document to an OKF knowledge base. Carries the OKF conventions (non-empty `type` on every non-reserved doc; reserved files carry no frontmatter) as guidance, not enforcement. Complements the platform `open-knowledge` skill; does not replace it."
-compatibility: "Any agent host with the OpenKnowledge MCP server configured. Installed project-local by `ok seed --pack okf`."
-# `type` keeps this skill doc OKF-conformant: it installs as project-local
-# markdown under each detected agent's skills dir, which OK admits into the
-# content corpus — so without a non-empty `type` it would be a non-reserved
-# doc that violates the pack's own "every non-reserved doc has a `type`" contract.
+description: "Open Knowledge Format (OKF) v0.2 guidance. Use when creating, reading, reviewing, or maintaining an OKF bundle; responding to OpenKnowledge `okf` plugin warnings; or choosing types, provenance, links, indexes, or logs."
+compatibility: "Any agent host with the OpenKnowledge MCP server configured. The optional `okf` plugin provides continuous conformance feedback."
+# This skill may live inside an OKF bundle, so it carries the required type.
 type: Document
 metadata:
-  pack: "okf"
+  plugin: "okf"
   author: "Inkeep"
   repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
-# OKF starter pack — how to work here
+# Open Knowledge Format (OKF)
 
-This project was scaffolded to be conformant with **Google's Open Knowledge Format (OKF) v0.1** from the first commit — markdown + YAML frontmatter, a standard-markdown link graph, and two reserved files. Conformance here is pre-populated, **not enforced**: OpenKnowledge's native frontmatter schema stays open-shaped, nothing is linted, and you are free to author however you like. This skill explains the conventions so the kit stays OKF-portable as it grows.
+[OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) is a portable format for agent-readable knowledge: Markdown files, YAML frontmatter, and standard links. The `/open-knowledge` skill governs tool use; this skill covers OKF semantics.
 
-> This skill is pack guidance. The platform `/open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the OKF conventions on top.
+## Core rules
 
-## The one rule (keep the kit conformant)
+- A bundle is a directory tree of `.md` files. Each non-reserved file is one concept; its path without `.md` is its ID.
+- Every concept needs parseable frontmatter with a non-empty string `type`. No other field is always required.
+- Types are an open vocabulary. Consumers must accept unfamiliar types and metadata.
+- Use standard Markdown links for portable relationships. Broken links and a missing index are allowed.
+- `index.md` and `log.md` are reserved at every level. Use lowercase filenames.
+- An `index.md` normally has no frontmatter; only the root index may declare `okf_version: "0.2"`.
+- A `log.md` is newest-first; entry headings begin `## YYYY-MM-DD: Summary`.
+- OKF consumers read `.md`, not `.mdx`.
 
-OKF requires exactly one thing of every **non-reserved** document: a **non-empty `type`** in its frontmatter. That is the whole conformance contract for your content.
+## Authoring judgment
 
-- The value is **yours to choose** — `concept`, `reference`, `note`, `person`, `event`, anything that fits. There is no blessed taxonomy.
-- `Document` is a fine **generic fallback** when nothing more specific fits (it is just a non-empty value, not a special keyword).
-- The folder templates already set a sensible `type` per section — create docs with `write({ document: { path, template: "<name>" } })` and you inherit it.
+- Make each concept the smallest useful link or citation target. Choose a stable, descriptive type; `Document` is only a generic fallback.
+- Do not invent facts, relationships, resources, sources, verification, or history. Missing knowledge is better than false structure.
+- Use `title`, `description`, `resource`, and `tags` only when they add real information.
+- Record provenance in `sources`. Join claim-level citations with matching `sources[].id` and Markdown footnotes.
+- Keep authorship and verification separate: `generated` says who produced content; `verified` says who confirmed it. Use exact lowercase `human:` and `process:` prefixes when applicable.
+- Treat `status: deprecated` and expired `stale_after` values as trust signals, not validation errors.
+- For `type: Attested Computation`, follow the declared runtime and parameters. Do not rewrite the sanctioned computation.
 
-## Folders
+## Read and maintain a bundle
 
-- **`concepts/`** — durable ideas and definitions, one file per concept (`type: concept`).
-- **`references/`** — external sources and citations you rely on (`type: reference`).
-- **`notes/`** — working notes and observations (`type: note`).
+- Start with the nearest `index.md`, inspect frontmatter, then follow only relevant links.
+- Prefer current, verified sources, but tolerate unknown types and incomplete links.
+- If the bundle conflicts with an assumption, trust the bundle; if it is missing or inconsistent, say so.
+- Write durable discoveries back to the relevant concept and authored enumerations.
+- Add a truthful dated `log.md` entry after durable changes when the bundle uses a log.
+- Read legacy `timestamp` and body citations, but prefer v0.2 `generated.at` and `sources` when updating a concept. Never invent provenance while migrating.
 
-Link liberally with **standard markdown links** (`[text](./path.md)`) — the value is the graph that emerges from the links between typed docs, and standard links keep that graph portable to any OKF consumer. (OpenKnowledge also accepts `[[wiki-link]]` shorthand as a native superset and preserves it byte-for-byte — but seeded content uses standard links so the bundle is conformant as-is.)
+## OpenKnowledge's `okf` plugin
 
-## Reserved files (keep them frontmatter-free)
+The optional project plugin provides continuous portability feedback without blocking writes:
 
-OKF reserves two lowercase files at the project root. **Neither carries frontmatter** — adding any frontmatter to a reserved file breaks OKF conformance.
+- Write-time warnings and project audits check structure, frontmatter, reserved files, links, and `.mdx` use.
+- `.ok/okf/*.schema.json` contains the precise field contracts. Read these generated files instead of guessing; do not edit them.
+- Deterministic lint findings establish conformance. Agent judgment still establishes whether metadata is true and useful.
+- Optional index generation maintains `index.md` files. Generated indexes are machine-owned: never edit them, because OpenKnowledge replaces their contents.
+- `log.md` remains authored, not generated.
 
-- **`index.md`** (OKF §6) — the navigation hub: a link-list to the key docs and sections. Keep it current as you add important docs; it is how a reader (or a strict OKF consumer) finds their way in.
-- **`log.md`** (OKF §7) — the change history: newest-first dated entries shaped `## YYYY-MM-DD: <summary>`. Add an entry whenever you create, edit, or restructure content. The seed ships a prose instruction documenting this format — add your first dated entry on your first edit.
-
-The tool does not keep these live for you (that would be enforcement) — maintaining them is part of authoring here.
-
-## What stays OKF-portable
-
-- Every non-reserved doc has a non-empty `type`. ✅
-- `index.md` / `log.md` stay lowercase and frontmatter-free. ✅
-- Links use standard markdown / wiki-link syntax. ✅
-
-If you ever want to hand this knowledge base to a strict OKF consumer, those three habits are all it takes.
+The plugin is off by default and each rule can be disabled. Its value is early warning when OpenKnowledge-native content would be misread by another OKF consumer.

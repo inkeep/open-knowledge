@@ -38,6 +38,7 @@ import {
   iconFromClientName,
   isSurfacedCheckpointKind,
   ProblemDetailsSchema,
+  SYSTEM_WRITER_DISPLAY_NAMES,
   type TimelineEntry,
 } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
@@ -231,6 +232,29 @@ function displayAuthor(entry: TimelineEntry): string {
   return entry.author;
 }
 
+/**
+ * Which icon family a contributor's display name belongs to.
+ *
+ * Split out from rendering because the interesting property is a NEGATIVE one:
+ * no system writer may reach `person`. A writer that falls through shows a human
+ * icon beside content no human wrote, which is the confusion the classified
+ * writer ids exist to prevent — and it fails silently, since the fallback
+ * renders perfectly well.
+ *
+ * Names come from `SYSTEM_WRITER_DISPLAY_NAMES` — the same constants the server
+ * writes into commits — so adding a system writer cannot leave this matching on
+ * a string that no longer exists.
+ */
+export function contributorIconKind(
+  name: string,
+): 'file-system' | 'upstream' | 'generated' | 'person' {
+  const names = SYSTEM_WRITER_DISPLAY_NAMES;
+  if (name === names.fileSystem) return 'file-system';
+  if (name === names.service || name === names.gitUpstream) return 'upstream';
+  if (name === names.generator) return 'generated';
+  return 'person';
+}
+
 /** Icon for a timeline entry contributor. Brand icons for agents, lucide icons for system writers. */
 function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: boolean }) {
   const iconClass = 'size-3.5 shrink-0 text-muted-foreground';
@@ -254,14 +278,16 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
       );
     }
 
-    // Classified system writers
-    if (c.name === 'File System') return <HardDrive className={iconClass} />;
-    if (c.name === 'OpenKnowledge (service)' || c.name === 'Git (upstream)') {
-      return <ArrowDownToLine className={iconClass} />;
+    switch (contributorIconKind(c.name)) {
+      case 'file-system':
+        return <HardDrive className={iconClass} />;
+      case 'upstream':
+        return <ArrowDownToLine className={iconClass} />;
+      case 'generated':
+        return <Sparkles className={iconClass} />;
+      default:
+        return <User className={iconClass} />;
     }
-
-    // Human or unknown contributor
-    return <User className={iconClass} />;
   }
 
   // Pre-attribution fallback

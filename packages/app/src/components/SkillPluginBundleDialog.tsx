@@ -46,9 +46,42 @@ export interface SkillBundleDisclosure {
   plugin: string | null;
   /** Every skill the source carries, including the one being previewed. */
   names: readonly string[];
+  /** Optional descriptions for sources that are already known locally. */
+  descriptions?: Readonly<Record<string, string | null>>;
   /** Executable capabilities the plugin ships. Named only, never installed. */
   capabilities?: PluginBundleMetadata['capabilities'];
   repositoryUrl?: string;
+}
+
+/**
+ * Installation seam for app-owned skill bundles. Returning `null` keeps the
+ * dialog open (the installer has already surfaced the error); a map closes the
+ * dialog and follows the same installed-skill handoff as a remote import.
+ *
+ * The scope is fixed because app-owned installers own their placement policy.
+ * Remote skills continue through the existing scope + editor picker below.
+ */
+interface SkillBundleInstallOverride {
+  scope: SkillScope;
+  installSelected: (names: readonly string[]) => Promise<ReadonlyMap<string, string> | null>;
+}
+
+interface SkillPluginBundleDialogProps {
+  /** `null` keeps the dialog closed. */
+  bundle: SkillBundleDisclosure | null;
+  /** The import source the preview was opened with (repo, site, or skills.sh URL). */
+  source: string;
+  defaultScope: SkillScope;
+  /** App-owned bundles can reuse the picker while retaining their acquisition
+   * and collision policy. Omit for the normal skills.sh / plugin import path. */
+  installOverride?: SkillBundleInstallOverride;
+  /** Skills that landed, keyed BOTH by what was requested and by the on-disk
+   *  name (they differ on a collision rename). The preview tab that hosts this
+   *  banner uses it to stop showing a preview of a skill the user now owns. */
+  onInstalled?: (landed: ReadonlyMap<string, string>) => void;
+  onOpenChange: (open: boolean) => void;
+  /** Restore focus for controlled dialogs opened without a Radix trigger. */
+  returnFocus?: () => void;
 }
 
 /**
@@ -63,34 +96,35 @@ export interface SkillBundleDisclosure {
  * (`POST /api/skills/import-bulk`), which is the reason this exists rather than
  * the per-skill Install menu run N times.
  */
-export function SkillPluginBundleDialog({
+export function SkillPluginBundleDialog(props: SkillPluginBundleDialogProps) {
+  if (!props.bundle) return null;
+  return <OpenSkillPluginBundleDialog {...props} bundle={props.bundle} />;
+}
+
+/** The open dialog is a child so closing fully resets picker state on remount. */
+function OpenSkillPluginBundleDialog({
   bundle,
   source,
   defaultScope,
+  installOverride,
   onInstalled,
   onOpenChange,
-}: {
-  /** `null` keeps the dialog closed. */
-  bundle: SkillBundleDisclosure | null;
-  /** The import source the preview was opened with (repo, site, or skills.sh URL). */
-  source: string;
-  defaultScope: SkillScope;
-  /** Skills that landed, keyed BOTH by what was requested and by the on-disk
-   *  name (they differ on a collision rename). The preview tab that hosts this
-   *  banner uses it to stop showing a preview of a skill the user now owns. */
-  onInstalled?: (landed: ReadonlyMap<string, string>) => void;
-  onOpenChange: (open: boolean) => void;
-}) {
+  returnFocus,
+}: SkillPluginBundleDialogProps & { bundle: SkillBundleDisclosure }) {
   const { t } = useLingui();
   const scopeId = useId();
   const scopeLabels = useSkillScopeLabels();
-  const [scope, setScope] = useState<SkillScope>(defaultScope);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [scope, setScope] = useState<SkillScope>(installOverride?.scope ?? defaultScope);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() =>
+    installOverride ? new Set(bundle.names) : new Set(),
+  );
   const [busy, setBusy] = useState(false);
   // Descriptions come from the same enumeration the Import picker uses. The
   // manifest's `bundledSkills` is the fallback: names alone still install, and a
   // flaked discover shouldn't empty the list.
-  const [described, setDescribed] = useState<ReadonlyMap<string, string | null>>(new Map());
+  const [described, setDescribed] = useState<ReadonlyMap<string, string | null>>(
+    () => new Map(Object.entries(bundle.descriptions ?? {})),
+  );
   // Which agents the selection is projected into. Seeded from the project's
   // configured targets — the set the server would have auto-projected into —
   // so the common case is one click, and any other set is a deliberate change.
@@ -101,21 +135,17 @@ export function SkillPluginBundleDialog({
   const effectiveEditors: ReadonlySet<SkillTargetEditor> =
     editors ?? new Set(configuredTargets ?? []);
 
-  const open = bundle !== null;
+  const usesInstallOverride = installOverride !== undefined;
   useEffect(() => {
-    if (!open) return;
-    setSelected(new Set());
-    setEditors(null);
-    setScope(defaultScope);
+    if (usesInstallOverride) return;
     const ctrl = new AbortController();
     void discoverSkillsInSource(source, ctrl.signal).then((res) => {
       if (ctrl.signal.aborted || !res.ok) return;
       setDescribed(new Map(res.skills.map((s) => [s.name, s.description])));
     });
     return () => ctrl.abort();
-  }, [open, source, defaultScope]);
+  }, [source, usesInstallOverride]);
 
-  if (!bundle) return null;
   const { plugin, names } = bundle;
   const allSelected = selected.size === names.length && names.length > 0;
 
@@ -128,6 +158,14 @@ export function SkillPluginBundleDialog({
 
   async function install() {
     setBusy(true);
+    if (installOverride) {
+      const landed = await installOverride.installSelected([...selected]);
+      setBusy(false);
+      if (landed === null) return;
+      if (landed.size > 0) onInstalled?.(landed);
+      onOpenChange(false);
+      return;
+    }
     // Acquire with `install: false`, then project explicitly into the agents the
     // user ticked. Letting the server auto-project would silently install into
     // whatever it detects, which is the one thing a destination picker exists to
@@ -196,12 +234,19 @@ export function SkillPluginBundleDialog({
 
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={(next) => {
         if (!next && !busy) onOpenChange(false);
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className="sm:max-w-lg"
+        onCloseAutoFocus={(event) => {
+          if (!returnFocus) return;
+          event.preventDefault();
+          returnFocus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             {plugin ? <Trans>Install from {plugin}</Trans> : <Trans>Install from {source}</Trans>}
@@ -224,7 +269,11 @@ export function SkillPluginBundleDialog({
             <Label htmlFor={scopeId}>
               <Trans>Level</Trans>
             </Label>
-            <Select value={scope} onValueChange={(v) => setScope(v as SkillScope)}>
+            <Select
+              value={scope}
+              disabled={busy || usesInstallOverride}
+              onValueChange={(v) => setScope(v as SkillScope)}
+            >
               <SelectTrigger id={scopeId} className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -237,40 +286,44 @@ export function SkillPluginBundleDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label>
-              <Trans>Install into</Trans>
-            </Label>
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {INSTALL_EDITORS.map((editor) => (
-                <Label
-                  key={editor}
-                  className="flex cursor-pointer items-center gap-2 text-sm font-normal"
-                >
-                  <Checkbox
-                    checked={effectiveEditors.has(editor)}
-                    disabled={busy}
-                    onCheckedChange={(checked) => {
-                      const next = new Set(effectiveEditors);
-                      if (checked === true) next.add(editor);
-                      else next.delete(editor);
-                      setEditors(next);
-                    }}
-                  />
-                  {EDITOR_LABELS[editor] ?? editor}
-                </Label>
-              ))}
+          {usesInstallOverride ? null : (
+            <div className="flex flex-col gap-2">
+              <Label>
+                <Trans>Install into</Trans>
+              </Label>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {INSTALL_EDITORS.map((editor) => (
+                  <Label
+                    key={editor}
+                    className="flex cursor-pointer items-center gap-2 text-sm font-normal"
+                  >
+                    <Checkbox
+                      checked={effectiveEditors.has(editor)}
+                      disabled={busy}
+                      onCheckedChange={(checked) => {
+                        const next = new Set(effectiveEditors);
+                        if (checked === true) next.add(editor);
+                        else next.delete(editor);
+                        setEditors(next);
+                      }}
+                    />
+                    {EDITOR_LABELS[editor] ?? editor}
+                  </Label>
+                ))}
+              </div>
+              {effectiveEditors.size === 0 ? (
+                // Not an error: the skills still land as project skills you can
+                // install later. Say so, so an empty set doesn't read as a failure.
+                <p className="text-1sm text-muted-foreground">
+                  <Trans>
+                    No agents selected — the skills are saved but not installed anywhere.
+                  </Trans>
+                </p>
+              ) : null}
             </div>
-            {effectiveEditors.size === 0 ? (
-              // Not an error: the skills still land as project skills you can
-              // install later. Say so, so an empty set doesn't read as a failure.
-              <p className="text-1sm text-muted-foreground">
-                <Trans>No agents selected — the skills are saved but not installed anywhere.</Trans>
-              </p>
-            ) : null}
-          </div>
+          )}
           <div className="flex items-center justify-between">
-            <p className="font-medium text-xs font-mono text-muted-foreground/80 uppercase tracking-wider">
+            <p className="font-medium text-xs font-mono text-foreground/70 uppercase tracking-wider">
               <Trans>
                 {selected.size} of {names.length} selected
               </Trans>
@@ -323,6 +376,8 @@ export function SkillPluginBundleDialog({
             <Trans>Cancel</Trans>
           </Button>
           <Button
+            variant="secondary"
+            className="font-mono uppercase"
             data-testid="plugin-bundle-install"
             disabled={busy || selected.size === 0}
             onClick={() => void install()}

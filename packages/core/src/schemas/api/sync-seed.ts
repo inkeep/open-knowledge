@@ -353,6 +353,33 @@ export const SeedApplySuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type SeedApplySuccess = z.infer<typeof SeedApplySuccessSchema>;
 
+/** Request body for installing only the companion skills shipped by a pack. */
+export const SeedInstallPackSkillRequestSchema = z
+  .object({
+    packId: z.string().min(1),
+  })
+  .strict() satisfies StandardSchemaV1;
+export type SeedInstallPackSkillRequest = z.infer<typeof SeedInstallPackSkillRequestSchema>;
+
+/**
+ * Success body for the explicit pack-skill install action. `created: false`
+ * means a same-name project skill already existed and was preserved.
+ */
+export const SeedInstallPackSkillSuccessSchema = z
+  .object({
+    installedHosts: z.array(z.string()),
+    skills: z.array(
+      z
+        .object({
+          name: z.string().min(1),
+          created: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict() satisfies StandardSchemaV1;
+export type SeedInstallPackSkillSuccess = z.infer<typeof SeedInstallPackSkillSuccessSchema>;
+
 /**
  * Per-folder metadata inside a `SeedPackInfo.folders[]`. `summary` is a
  * UI-friendly first-sentence of the full folder description (the long

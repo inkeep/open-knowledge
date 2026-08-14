@@ -63,12 +63,13 @@ const PROJECT_SKILL_EDITOR_LABELS: Partial<Record<EditorId, string>> = {
 const PLATFORM_SKILL_NAME = BUNDLE_SKILL_NAME.project;
 
 /**
- * Every project-local skill a pack ships; empty when it ships none. Binds the
- * seed domain's `checkDesktop:true`, so a co-installed OK Desktop's (possibly
- * newer) bundle wins. Shared by the installer below and `planSeed`.
+ * Every project-local skill a pack ships; empty when it ships none. Pack seed
+ * and on-demand install run inside this server, so their assets must come from
+ * this server's bundle rather than a potentially different co-installed app.
+ * Shared by the installer below and `planSeed`.
  */
 export function resolvePackSkillSources(packId: string): PackSkillSource[] {
-  return listPackSkillSources(packId, { checkDesktop: true });
+  return listPackSkillSources(packId, { checkDesktop: false });
 }
 
 /**
@@ -387,4 +388,36 @@ export async function installPackSkill(
   }
 
   return { editors: [...installed], conflicts };
+}
+
+interface PackSkillOnDemandResult {
+  installedHosts: string[];
+  skills: Array<{ name: string; created: boolean }>;
+}
+
+/**
+ * Install only a pack's companion skills, without applying its scaffold or
+ * changing the plugins it enables. The before/after scan turns the seed-era
+ * primitive into a truthful user-action result: an existing same-name skill is
+ * preserved and reported as existing, while a newly-authored source is
+ * reported as created.
+ */
+export async function installPackSkillOnDemand(
+  projectDir: string,
+  packId: string,
+): Promise<PackSkillOnDemandResult> {
+  const sources = resolvePackSkillSources(packId);
+  const before = new Set(scanInPlaceSkills(projectDir).map((skill) => skill.name));
+  const installResult = await installPackSkill(projectDir, packId);
+  const after = new Set(scanInPlaceSkills(projectDir).map((skill) => skill.name));
+
+  const missing = sources.find(({ name }) => !after.has(name));
+  if (missing) {
+    throw new Error(`Pack skill "${missing.name}" could not be authored.`);
+  }
+
+  return {
+    installedHosts: installResult.editors,
+    skills: sources.map(({ name }) => ({ name, created: !before.has(name) })),
+  };
 }

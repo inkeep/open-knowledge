@@ -1,6 +1,8 @@
-import type { BrokenLinkReason } from '../../schemas/api/agent-write.ts';
 
-export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter'] as const;
+import type { BrokenLinkReason } from '../../schemas/api/agent-write.ts';
+import type { OkfRuleId } from './okf-rule-meta.ts';
+
+export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter', 'okf'] as const;
 export type LintPluginId = (typeof LINT_PLUGIN_IDS)[number];
 
 export type LintSeverity = 'error' | 'warning' | 'info' | 'hint';
@@ -97,6 +99,13 @@ export interface FrontmatterSlice {
   enabled: boolean;
   schemas: ResolvedFrontmatterSchemaEntry[];
 }
+
+export interface OkfSlice {
+  enabled: boolean;
+  rules?: Partial<Record<OkfRuleId, boolean>>;
+  generate?: { index?: boolean };
+}
+
 
 interface RuleOptionSpecBase {
   key: string;

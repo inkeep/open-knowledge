@@ -72,7 +72,8 @@
     "build": "tsdown && pnpm run build:skill-bundles",
     "build:skill-bundles": "tsx scripts/build-skill-bundles.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts"
   },
   "devDependencies": {
     "@types/mdast": "^4.0.4",

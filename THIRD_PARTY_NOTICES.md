@@ -5474,6 +5474,11 @@ Homepage: https://unifiedjs.com
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
 
+### `unified-lint-rule@3.0.1`
+Homepage: https://github.com/remarkjs/remark-lint/tree/main/packages/unified-lint-rule
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
 ### `unist-util-find-after@5.0.0`
 Homepage: https://github.com/syntax-tree/unist-util-find-after
 

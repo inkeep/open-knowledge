@@ -263,6 +263,11 @@ msgstr "{0, plural, other {目前符合 {4} 個文件中的 {3} 個。}}"
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr "{0, plural, other {# 份文件都沒有問題。}}"
 
+#. placeholder {0}: pluginRows.length
+#: src/components/CreatedItemsList.tsx
+msgid "{0, plural, one {Plugin} other {Plugins}}"
+msgstr "{0, plural, other {外掛程式}}"
+
 #. placeholder {0}: editorList.hiddenCount
 #: src/components/McpConsentDialogBody.tsx
 msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
@@ -629,7 +634,9 @@ msgstr "{displayName} CLI，{hint}"
 msgid "{docName} is {0}. OpenKnowledge currently opens files up to {1}."
 msgstr "{docName} 有 {0}。OpenKnowledge 目前最多可開啟 {1} 的檔案。"
 
+#. placeholder {0}: OKF_RULE_IDS.length
 #. placeholder {0}: entries.length
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{enabledCount}/{0} on"
 msgstr "已開啟 {enabledCount}/{0}"
@@ -791,6 +798,10 @@ msgstr "已使用 {percent}%（剩餘 {left}%）"
 #: src/lib/share/clone-controller.ts
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
+
+#: src/components/CreatedItemsList.tsx
+msgid "{pluginCount, plural, one {plugin} other {plugins}}"
+msgstr "{pluginCount, plural, other {外掛程式}}"
 
 #: src/components/PropertyDisclosure.tsx
 msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
@@ -1547,6 +1558,10 @@ msgstr "已由選取的上層資料夾涵蓋"
 msgid "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
 msgstr "已經有 git 儲存庫了？在這個專案的資料夾中用 <0>git remote add origin <url></0> 加上它。偵測到遠端後，這個頁面會自動更新。"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Already in project"
+msgstr "已經在專案中"
+
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Already installed — nothing new to import."
 msgstr "已經安裝了——沒有可匯入的新內容。"
@@ -1591,6 +1606,10 @@ msgstr "另一個同步作業正在進行中。請稍候再試。"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
 msgstr "任意"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
+msgstr "任何 .mdx 文件。此格式僅限 .md，因此掃描 .md 的閱讀器永遠不會開啟它 - 如果存在同名的 .md，則會讀取該檔案。"
 
 #. placeholder {0}: summary.name
 #: src/components/settings/LintingSection.tsx
@@ -2152,6 +2171,7 @@ msgstr "無法分享這個路徑。"
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -2292,6 +2312,10 @@ msgstr "正在簽出檔案"
 msgid "Checking sign-in status"
 msgstr "正在檢查登入狀態"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Checking skill"
+msgstr "檢查技能"
+
 #: src/components/ImportSkillForm.tsx
 msgid "Checking source"
 msgstr "正在檢查來源"
@@ -2307,6 +2331,10 @@ msgstr "正在檢查…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "帶核取方塊的清單。"
+
+#: src/components/CreatedItemsList.tsx
+msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
+msgstr "根據 Open Knowledge Format 檢查您的項目。隨時在“設定”中將其關閉。"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Choose a skill archive"
@@ -4304,6 +4332,10 @@ msgstr "停用 {0}"
 msgid "Disable {file}"
 msgstr "停用 {file}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {id}"
+msgstr "停用 {id}"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr "關閉外部連結預覽"
@@ -4405,6 +4437,10 @@ msgstr "文件面板"
 #: src/components/EditorFooter.tsx
 msgid "Document statistics"
 msgstr "文件統計"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Document structure"
+msgstr "文件結構"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
@@ -4797,6 +4833,10 @@ msgstr "啟用 {displayName} CLI"
 msgid "Enable {file}"
 msgstr "啟用 {file}"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {id}"
+msgstr "啟用 {id}"
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -4820,6 +4860,10 @@ msgstr "要啟用「跟隨」嗎？"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
 msgstr "要啟用 git 自動同步嗎？"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enable indexes"
+msgstr "啟用索引"
 
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
@@ -4848,6 +4892,10 @@ msgstr "為這個專案啟用終端機"
 #: src/components/settings/LintingSection.tsx
 msgid "Enable Themes"
 msgstr "啟用主題"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Enabling index generation"
+msgstr "啟用索引生成"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -4918,6 +4966,10 @@ msgstr "錯誤："
 #: src/components/CommandPalette.tsx
 msgid "Escape"
 msgstr "Esc"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
+msgstr "每個概念文檔都帶有一個非空類型。這是 OKF 的一致性底線的全部 - 只有類型的文檔是完全一致的。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "every doc"
@@ -5694,6 +5746,10 @@ msgstr "來自範本"
 msgid "From the {0} plugin"
 msgstr "來自 {0} 外掛"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter"
+msgstr "frontmatter"
+
 #: src/components/TemplateForm.tsx
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr "用這個範本建立的每份文件都會以這段 frontmatter 開頭。值使用 YAML——清單寫成 <0>[a, b]</0>；<1>{{date}}</1> 會在建立時填入。"
@@ -5736,6 +5792,10 @@ msgstr "遊戲結束 · 按空白鍵再玩一次"
 msgid "General"
 msgstr "一般"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Generated files"
+msgstr "產生的文件"
+
 #: src/components/TerminalCliMissingBanner.tsx
 msgid "Get {displayName}"
 msgstr "取得 {displayName}"
@@ -5768,6 +5828,10 @@ msgstr "無法使用 git 設定"
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "還沒設定 git 身分——提交會用預設作者。設定你自己的身分，隊友才看得到你的名字。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Git merge rule"
+msgstr "Git 合併規則"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
@@ -5923,7 +5987,7 @@ msgstr "heading-slug"
 msgid "Headings"
 msgstr "標題"
 
-#: src/components/AutoSyncEnableWarning.tsx
+#: src/components/DisclosureWarning.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Heads up"
 msgstr "提醒"
@@ -5944,6 +6008,10 @@ msgstr "你好，世界！"
 #: src/lib/native-menu-catalog.ts
 msgid "Help"
 msgstr "說明"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
+msgstr "幫助編碼代理選擇 OKF 文件類型、保留來源並避免發明不支援的元資料。"
 
 #. Subtext for the open-knowledge-discovery skill row
 #. Subtext for the open-knowledge-discovery skill row
@@ -6277,9 +6345,17 @@ msgstr "已用「{0}」這個名稱匯入——名稱「{1}」已被占用。"
 msgid "Importing"
 msgstr "正在匯入"
 
+#: src/components/settings/LintingSection.tsx
+msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
+msgstr "在日誌文件中：條目標題以 ISO YYYY-MM-DD 日期開頭，最新的在前。您使用多少個 title，以及條目是否為項目符號，都取決於您。"
+
 #: src/components/SeedDialog.tsx
 msgid "In a subfolder"
 msgstr "在子資料夾中"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
+msgstr "在索引文件中：條目位於節標題下，每個條目都帶有連結。圍繞列表的散文很好。"
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6298,6 +6374,14 @@ msgstr "在應用程式內"
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app (beta)"
 msgstr "在應用程式內（beta）"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
+msgstr "在 Git 專案中，Open Knowledge 會在儲存庫根目錄的 .gitattributes 檔案中新增一條限定範圍的規則，以便合併並行的索引變更。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "In Git projects, Open Knowledge also adds a scoped .gitattributes rule so concurrent index changes combine before the next rebuild."
+msgstr "在 Git 專案中，Open Knowledge 也新增了一個作用域 .gitattributes 規則，以便在下一次重建之前合併並發索引變更。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
@@ -6322,6 +6406,26 @@ msgstr "增加或減少目前清單項目的縮排。"
 #: src/editor/slash-command/items.tsx
 msgid "Indented blockquote for citations."
 msgstr "用來引用的縮排引言區塊。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
+msgstr "索引文件不包含 frontmatter，除了知識庫根目錄中的 frontmatter 。日誌文件不被覆蓋－OKF不限制它們的frontmatter。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
+msgstr "索引維護已暫停，因為另一個 Git 屬性控制 index.md。更新 .gitattributes 以便作用域 index.md 路徑使用 merge=union，然後重試。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance is paused because Open Knowledge could not confirm the required Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "索引維護已暫停，因為 Open Knowledge 無法確認所需的 Git 合併規則。檢查 Git 和 .gitattributes，然後再試一次。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "索引維護停止，因為 Open Knowledge 無法到達專案伺服器。當項目重新連接時重試。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Index maintenance stayed off because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "由於無法保存項目設置，索引維護已停止。檢查專案檔案權限，然後重試。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
@@ -6511,6 +6615,10 @@ msgstr "安裝到所有代理"
 msgid "Install selected"
 msgstr "安裝選取項"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Install skill"
+msgstr "安裝技巧"
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "Install skills"
 msgstr "安裝技能"
@@ -6520,6 +6628,7 @@ msgid "Install the gh CLI"
 msgstr "安裝 gh CLI"
 
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Installed"
@@ -6732,6 +6841,10 @@ msgstr "讓這個專案和你的 git 遠端保持同步。「跟隨」只取得�
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "記錄你往來的人和公司，以及你們之間的會面。適合用來記住某人是誰、你怎麼認識他們，還有上次聊了什麼。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
+msgstr "讓您的知識庫與 Open Knowledge Format 保持一致。"
 
 #. placeholder {0}: toName.trim()
 #: src/components/SkillForkDialog.tsx
@@ -7107,6 +7220,14 @@ msgstr "正在尋找 <0>{lookingForUrl}</0>。"
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Lost connection to \"{docName}\"."
 msgstr "與「{docName}」的連線已中斷。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain generated indexes in every folder?"
+msgstr "在每個資料夾中維護 generated 索引？"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Maintain index.md"
+msgstr "維護index.md"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "make source"
@@ -8252,6 +8373,10 @@ msgstr "OK 桌面版"
 msgid "OK last set this folder to {0} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
 msgstr "OK 上次把這個資料夾設為 {0}——之後 OK 以外的東西改動過它。顯示的是磁碟上現在的狀態；你下一次的「符號連結／取消連結」會覆蓋它。"
 
+#: src/components/settings/LintingSection.tsx
+msgid "OKF agent skill installed"
+msgstr "OKF 代理程式技能已安裝"
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr "開啟——把游標停在外部連結上時，會把它的 URL 送到目標網站以取得預覽。"
@@ -8267,6 +8392,10 @@ msgstr "在 <0>{address}</0> 上"
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "在 <0>{address}</0> 中選取的文字上"
+
+#: src/components/settings/LintingSection.tsx
+msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
+msgstr "在根索引上，okf_version 被寫為引號的字串，如 \"0.2\"。不加引號，YAML 將其讀為數字，0.10 默默地變成 0.1。"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8490,6 +8619,22 @@ msgstr "在 worktree 中開啟"
 msgid "Open it there"
 msgstr "在那裡開啟"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+msgstr "Open Knowledge 在包含 Markdown 的每個資料夾中建立並維護名為 index.md 的導覽檔案。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge Format guidance"
+msgstr "Open Knowledge Format 指導"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
+msgstr "Open Knowledge 在包含 Markdown 的每個資料夾中維護一個名為 index.md 的導航文件，每個資料夾按類型列出該資料夾的文件並連結到其子資料夾。當您的文件發生更改時，它會重寫這些文件，並且您自己編輯到其中的任何內容都會被替換。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+msgstr "當文件變更時，Open Knowledge 會重寫這些 index.md 文件，因此對它們的手動編輯將會被取代。"
+
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
 #. placeholder {2}: item.version
@@ -8535,6 +8680,10 @@ msgstr "開啟設定"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Open shared {targetNoun}"
 msgstr "開啟分享的{targetNoun}"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Open skill"
+msgstr "開放技能"
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Open source doc: {mirrorSrc}"
@@ -9372,6 +9521,7 @@ msgid "project"
 msgstr "專案"
 
 #: src/components/CommandPalette.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
@@ -9642,6 +9792,10 @@ msgstr "最近的專案"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "最近開啟"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Recommended agent skill"
+msgstr "推薦代理技能"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
@@ -10080,6 +10234,10 @@ msgstr "研究不會飛的鳥類的滅絕"
 msgid "research-note"
 msgstr "research-note"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
+msgstr "保留檔案以小寫形式命名為 index.md 和 log.md。在區分大小寫的檔案系統上，Index.md 被當作普通文件讀取並失去其意義。"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Reset"
 msgstr "重設"
@@ -10322,6 +10480,7 @@ msgid "Rule editing is available for the project's root markdownlint config"
 msgstr "只有專案根目錄的 markdownlint 設定才能編輯規則"
 
 #: src/components/LintConfigEditor.tsx
+#: src/components/settings/LintingSection.tsx
 msgid "Rules"
 msgstr "規則"
 
@@ -11264,6 +11423,10 @@ msgstr "未為 {conflictHosts} 安裝技能「{conflictName}」——你在那�
 msgid "Skill \"{name}\" created"
 msgstr "已建立技能「{name}」"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Skill already in project"
+msgstr "專案中已有的技能"
+
 #: src/components/ExploreSkills.tsx
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "技能探索由 <0>skills.sh</0> 提供"
@@ -11523,6 +11686,10 @@ msgstr "起點"
 msgid "Start here: what this is and how it's organized."
 msgstr "從這裡開始：這是什麼，以及它是怎麼安排的。"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Start maintaining index.md"
+msgstr "開始維護 index.md"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Start source completion"
 msgstr "啟動原始碼自動完成"
@@ -11617,6 +11784,10 @@ msgstr "停止修正檔案"
 #: src/components/ProblemsPanel.tsx
 msgid "Stop fixing. Files already fixed stay fixed."
 msgstr "停止修正。已經修正好的檔案會維持原狀。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Stop maintaining index.md"
+msgstr "停止維護 index.md"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -12121,6 +12292,10 @@ msgstr "智慧代理沒有停止。強制停止將關閉此對話並結束智慧
 msgid "The agent's persona, values, and voice."
 msgstr "代理的人設、價值觀和語氣。"
 
+#: src/components/settings/LintingSection.tsx
+msgid "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
+msgstr "經證明的計算合約。僅適用於類型為 Attested Computation 的文檔，其中 OKF 需要 runtime；普通概念不受影響。"
+
 #: src/components/ProblemsPanel.tsx
 msgid "The audit could not be completed. Try again."
 msgstr "稽核未能完成。請再試一次。"
@@ -12179,6 +12354,10 @@ msgstr "公式 <0>c = √(a² + b²)</0> 會以行內形式顯示。"
 msgid "the git exclude file isn't writable"
 msgstr "git 的 exclude 檔案無法寫入"
 
+#: src/components/settings/LintingSection.tsx
+msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
+msgstr "索引檔案保留在原處。 Open Knowledge 僅刪除它所新增的 Git 規則。"
+
 #: src/lib/locale-load-failure-notice.ts
 msgid "The interface is still in the language you were reading. Check your connection, then reload to try again."
 msgstr "介面仍是你先前閱讀的語言。請檢查網路連線，然後重新載入再試一次。"
@@ -12214,6 +12393,10 @@ msgstr "這份文件最上面的屬性區塊有格式錯誤。請切換到原始
 #: src/components/PropertyDiffBlock.tsx
 msgid "The properties changed, but could not be compared — the YAML did not parse. Both versions are shown as written."
 msgstr "屬性有變更，但無法比較——YAML 解析失敗。兩個版本均按原樣顯示。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
+msgstr "來源、信任與生命週期系列：sources、generated、verified、status 和 stale_after。每個欄位都是可選的，缺席絕不是一個錯誤。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider is rate-limiting this key. Try again in a moment."
@@ -12251,6 +12434,10 @@ msgstr "結構描述檔案不存在或載入失敗——新增欄位就會建立
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "伺服器有回應，但 server.lock 裡還沒有連接埠"
+
+#: src/components/settings/LintingSection.tsx
+msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
+msgstr "使用 title、description、resource 和 tags 時的形狀。不需要；聲明一個僅固定其類型，因此標記為以逗號分隔的字串形式編寫的 tags 。"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
@@ -12564,6 +12751,10 @@ msgstr "這可能要花一點時間。你的 markdown 內容會保留。"
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "This moves <0>{name}</0> from {0} to {1}, relocating its files on disk and re-installing it in your editors at the {2} level."
 msgstr "這會把 <0>{name}</0> 從 {0} 移到 {1}，在磁碟上重新安置它的檔案，並在你的編輯器中以 {2} 層級重新安裝它。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
+msgstr "這個需要查看您的文件，而不僅僅是打開的文檔，因此它會在您執行專案審核時出現，而不是在您鍵入時出現。"
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -12928,6 +13119,10 @@ msgstr "把 {0} 變回一個真正的目錄，裡面為它目前看得到的每�
 msgid "Turn {display} back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
 msgstr "把 {display} 變回一個真正的目錄，裡面為它目前看得到的每個技能各放一個符號連結——一切照常運作，之後由每個技能自己的選單來管理。"
 
+#: src/components/CreatedItemsList.tsx
+msgid "Turn it off any time in Settings."
+msgstr "隨時在“設定”中將其關閉。"
+
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"
 msgstr "關閉「只顯示 markdown 檔案」"
@@ -12952,6 +13147,10 @@ msgstr "要開啟語意搜尋嗎？"
 #: src/components/SeedDialog.tsx
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
 msgstr "把你讀過的東西變成清楚可信的文章。先存下來源，弄懂它的意思，再留下最終版本，之後就能放心引用。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning it off"
+msgstr "將其關閉"
 
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
@@ -13642,6 +13841,10 @@ msgstr "維基連結"
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "Wiki link suggestions"
 msgstr "維基連結建議"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
+msgstr "像 [[Page]] 這樣的 Wiki 連結 — 一種受支援的連結方式，但外部閱讀器無法解析任何內容並顯示括號。"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

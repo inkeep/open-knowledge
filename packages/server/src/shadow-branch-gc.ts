@@ -311,7 +311,8 @@ export async function gcShadowBranches(
         c.classification === 'classified-file-system' ||
         c.classification === 'classified-git-upstream' ||
         c.classification === 'classified-git-author' ||
-        c.classification === 'classified-openknowledge-service'
+        c.classification === 'classified-openknowledge-service' ||
+        c.classification === 'classified-ok-generator'
       ) {
         continue;
       }

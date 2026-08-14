@@ -58,6 +58,10 @@ export const PAIRED_INTAKE_DETECTION: Record<string, PairedIntakeDetectionEntry>
     mode: 'suppress',
     why: 'A read-only snapshot capture that makes no Y.Doc mutation, so no content can be lost.',
   },
+  'generated-index': {
+    mode: 'suppress',
+    why: 'A rebuild of a file OK authors: its content is derived from the other documents, and replacing a hand edit is the stated contract of generating it, not a loss.',
+  },
 };
 
 /**

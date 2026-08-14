@@ -245,6 +245,7 @@ describe('per-writer 30-day TTL GC on active branches (US-019, D54, FR-18)', () 
     await createRefWithDate(shadow, `refs/wip/${activeBranch}/file-system`, staleDate);
     await createRefWithDate(shadow, `refs/wip/${activeBranch}/git-upstream`, staleDate);
     await createRefWithDate(shadow, `refs/wip/${activeBranch}/openknowledge-service`, staleDate);
+    await createRefWithDate(shadow, `refs/wip/${activeBranch}/ok-generator`, staleDate);
 
     const result = await gcShadowBranches(shadow, resolve(projectRoot, '.git'));
 
@@ -264,6 +265,9 @@ describe('per-writer 30-day TTL GC on active branches (US-019, D54, FR-18)', () 
     expect(remaining).toContain(`refs/wip/${activeBranch}/file-system`);
     expect(remaining).toContain(`refs/wip/${activeBranch}/git-upstream`);
     expect(remaining).toContain(`refs/wip/${activeBranch}/openknowledge-service`);
+    // Generated-artifact history outlives any session: the index's authorship is
+    // as durable as the file it describes.
+    expect(remaining).toContain(`refs/wip/${activeBranch}/ok-generator`);
   });
 
   test('preserves fresh session refs (<30d) on active branches (US-019)', async () => {
