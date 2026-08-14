@@ -187,6 +187,7 @@ import { asDirectoryHandle, useSelectionMirror } from '@/components/use-selectio
 import { getEditorForDoc } from '@/editor/active-editor';
 import { type OpenTargetOptions, useDocumentContext } from '@/editor/DocumentContext';
 import { assetTabId, docTabId, folderTabId, remapPathForFolderRenames } from '@/editor/editor-tabs';
+import { previewOpenDisposition } from '@/editor/preview-open-disposition';
 import { requestPreviewTabPromotionForTab } from '@/editor/preview-tab-promotion';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
@@ -867,7 +868,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
   const previewTabsEnabled = merged?.editor?.previewTabs ?? true;
   const previewOpenOptions = {
-    disposition: previewTabsEnabled ? 'preview' : 'permanent',
+    disposition: previewOpenDisposition(previewTabsEnabled),
     consumeActiveNewTab: true,
   } satisfies OpenTargetOptions;
   const {

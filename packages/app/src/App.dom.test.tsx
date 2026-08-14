@@ -582,7 +582,14 @@ describe('App runtime wiring', () => {
     expect(forward).toHaveBeenCalledOnce();
   });
 
-  test('history traversal opens permanent canonical tabs', async () => {
+  test('history traversal reuses the preview slot instead of opening a permanent tab', async () => {
+    // A replay must not raise the disposition a target held when its history
+    // entry was recorded: a doc the sidebar opened as a provisional preview has
+    // to come back from Back as a preview, not as a durable tab. The option bag
+    // is read through `objectContaining` so a field added later does not break
+    // this, with both fields the handler promises today spelled out. What the
+    // disposition then does to the tab strip is pinned against the real reducer
+    // in App.history-traversal.dom.test.tsx.
     setHash('#/page-a');
     renderApp();
 
@@ -616,7 +623,7 @@ describe('App runtime wiring', () => {
           target: 'page-b',
           docName: 'page-b',
         },
-        { disposition: 'permanent', consumeActiveNewTab: true },
+        expect.objectContaining({ disposition: 'preview', consumeActiveNewTab: true }),
       );
     });
 
@@ -631,7 +638,7 @@ describe('App runtime wiring', () => {
           target: 'page-a',
           docName: 'page-a',
         },
-        { disposition: 'permanent', consumeActiveNewTab: true },
+        expect.objectContaining({ disposition: 'preview', consumeActiveNewTab: true }),
       );
     });
 
@@ -646,7 +653,7 @@ describe('App runtime wiring', () => {
           target: 'page-b',
           docName: 'page-b',
         },
-        { disposition: 'permanent', consumeActiveNewTab: true },
+        expect.objectContaining({ disposition: 'preview', consumeActiveNewTab: true }),
       );
     });
   });

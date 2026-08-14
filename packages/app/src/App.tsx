@@ -38,6 +38,7 @@ import {
 } from '@/editor/DocumentContext';
 import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
 import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs';
+import { previewOpenDisposition } from '@/editor/preview-open-disposition';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
 import { ConfigProvider, useConfigContext } from '@/lib/config-provider';
@@ -45,6 +46,7 @@ import {
   assetPathFromHash,
   docNameFromHash,
   isContentRootHash,
+  isManagedHashHistoryState,
   markCurrentHashHistoryEntry,
   replaceHashWithoutNavigation,
   skillFileFromHash,
@@ -111,6 +113,30 @@ function exactOpenMarkdownTabTarget(
   return null;
 }
 
+/**
+ * The bundle file a target selects, for the kinds that carry one. A
+ * skill-preview tab's identity is deliberately path-independent so one preview
+ * tab is reused as the selection moves across bundle files, which means two
+ * navigations that differ only in the selected file share both a tab id and a
+ * `target` string. Reading the selection separately is what lets a same-tab
+ * comparison still tell those two navigations apart.
+ */
+function selectedPathForNavigationTarget(target: ResolvedNavigationTarget): string | null {
+  switch (target.kind) {
+    case 'skill-file':
+    case 'skill-preview':
+      return target.path ?? null;
+    case 'doc':
+    case 'folder-index':
+    case 'folder':
+    case 'asset':
+    case 'skills':
+    case 'large-file':
+    case 'missing':
+      return null;
+  }
+}
+
 function knownTargetsSignature(
   pages: ReadonlySet<string>,
   folderPaths: ReadonlySet<string>,
@@ -156,7 +182,16 @@ function NavigationHandler() {
     pagesBySlug,
     pagesByBasename,
   } = usePageList();
+  const { merged } = useConfigContext();
+  const previewTabsEnabled = merged?.editor?.previewTabs ?? true;
   const lastSyncedTargetsSignatureRef = useRef<string | null>(null);
+  // Same-tab navigation records hashes with pushState, which stays silent
+  // until history traversal. Pair popstate with its following hashchange so a
+  // replay reuses the preview slot instead of taking the hash handler's append
+  // path. Keyed on the URL rather than a boolean because popstate is dispatched
+  // inside the traversal while hashchange is queued as a later task, so a flag
+  // set by one navigation could be read by another.
+  const historyTraversalUrlRef = useRef<string | null>(null);
   const targetsSignature = knownTargetsSignature(pages, folderPaths, assetPaths, filePaths);
 
   useEffect(
@@ -191,20 +226,59 @@ function NavigationHandler() {
 
   useEffect(() => {
     if (!tabSessionLoaded && window.okDesktop?.config.mode === 'editor') return;
-    onHashChange();
+    // Re-entry from a re-subscribe re-syncs the current URL rather than
+    // announcing a navigation, so it reads the marker and leaves it standing.
+    syncTargetFromHash(historyTraversalUrlRef.current);
+
+    function onPopState(event: PopStateEvent) {
+      // Only an entry we stamped can be a replay of one of our own opens. A
+      // direct `location.hash = …` also emits popstate in Chromium, but it
+      // creates a fresh entry whose state is null, so it stays classified as a
+      // fresh navigation and keeps the append path.
+      historyTraversalUrlRef.current = isManagedHashHistoryState(event.state)
+        ? window.location.href
+        : null;
+    }
 
     function onHashChange() {
+      // The hashchange that closes a traversal is the one event that retires
+      // the marker. This effect re-subscribes on every tab-state change and
+      // re-enters the sync below, and that re-entry can land in the gap between
+      // a traversal's popstate and its hashchange; retiring the marker there
+      // would leave this handler reading the same replay as a fresh navigation
+      // and promoting the tab the replay was meant to reuse.
+      const traversedUrl = historyTraversalUrlRef.current;
+      historyTraversalUrlRef.current = null;
+      syncTargetFromHash(traversedUrl);
+    }
+
+    function syncTargetFromHash(traversedUrl: string | null) {
+      const isHistoryTraversal = traversedUrl === window.location.href;
+      // Marking has to follow the classification, or it would stamp the very
+      // entry being classified.
       markCurrentHashHistoryEntry();
       const openHashTarget = (target: ResolvedNavigationTarget) => {
+        // Absorbs this effect's own re-entry on the hash a forward open just
+        // wrote. The test is "the same navigation", not "the same tab": a skill
+        // preview keeps one tab across its bundle files, so a hash that moved
+        // only the selection matches on both the tab id and the target string,
+        // and returning there would leave the pane rendering the file the user
+        // navigated away from.
         if (
           tabIdForNavigationTarget(target) === activeTabId &&
           activeTarget?.kind === target.kind &&
-          activeTarget.target === target.target
+          activeTarget.target === target.target &&
+          selectedPathForNavigationTarget(activeTarget) === selectedPathForNavigationTarget(target)
         ) {
           return;
         }
         openTargetTransition(target, {
-          disposition: 'permanent',
+          // A replay must not raise a target above the disposition it held
+          // when its entry was created, so it re-derives from the same rule
+          // the sidebar used to open it.
+          disposition: isHistoryTraversal
+            ? previewOpenDisposition(previewTabsEnabled)
+            : 'permanent',
           consumeActiveNewTab: true,
         });
       };
@@ -254,7 +328,7 @@ function NavigationHandler() {
       const skillPreview = skillPreviewFromHash(window.location.hash);
       if (skillPreview) {
         mark('ok/nav/hash-change', { docName: null, kind: 'skill-preview' });
-        openTargetTransition({
+        openHashTarget({
           kind: 'skill-preview',
           target: `${skillPreview.flavor}/${skillPreview.source}/${skillPreview.name}`,
           flavor: skillPreview.flavor,
@@ -303,8 +377,10 @@ function NavigationHandler() {
       mark('ok/nav/hash-change', { docName, kind: target.kind });
       openHashTarget(target);
     }
+    window.addEventListener('popstate', onPopState);
     window.addEventListener('hashchange', onHashChange);
     return () => {
+      window.removeEventListener('popstate', onPopState);
       window.removeEventListener('hashchange', onHashChange);
     };
   }, [
@@ -319,6 +395,7 @@ function NavigationHandler() {
     pages,
     pagesBySlug,
     pagesByBasename,
+    previewTabsEnabled,
     tabSessionLoaded,
   ]);
 
