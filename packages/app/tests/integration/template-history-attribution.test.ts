@@ -17,16 +17,47 @@ import {
  * An HTTP lifecycle write records its contributor under
  * `okArtifactKey('template', folder, name)`, which is byte-identical to that
  * content doc name — so the typed `template-create` folder event and the plain
- * `wip:` doc commits both resolve to the one content-doc identity.
+ * `wip:` doc commits both resolve to the one content-doc identity. Crucially,
+ * the persistence store's own commits are `wip:`: the typed `template-*` subject
+ * is stamped only by the HTTP route, never by the store as an editor CRDT edit
+ * flows through it.
  *
- * A PUT produces two writes: the route's typed folder event and the store's
- * debounced content commit. Whether they land as two git commits or one is a
- * timing question — inside the debounce window they coalesce into a single
- * commit that carries the typed subject and therefore shows up in the doc's own
- * history. Both shapes are correct, so every assertion below tolerates at most
- * one typed entry rather than assuming a separate `wip:` commit exists. What
- * must never happen is an EDITOR edit minting a typed subject, or adding a
- * second folder event.
+ * That store invariant is structural, not incidental. Each persistence debounce
+ * drains the pending-contributor map and commits once:
+ *
+ *   - map EMPTY (no attributed writer registered yet) → a single anonymous
+ *     `openknowledge-service` commit subjected `formatWipSubject([])`, i.e.
+ *     `wip: auto-save` with `docs: []`;
+ *   - map NON-EMPTY → one commit per writer, subjected
+ *     `entry.subjectOverride ?? formatWipSubject(docs)`.
+ *
+ * `formatWipSubject` only ever returns `wip: …`, so a typed subject reaches a
+ * commit only because a route handed it to `recordContributor` as that writer's
+ * `subjectOverride`. The store itself has no way to mint one.
+ *
+ * Which shape carries the template's content bytes is pure debounce timing
+ * against the PUT's attribution call:
+ *
+ *   - drain fires FIRST → the bytes ride the anonymous `wip: auto-save` commit,
+ *     and the route's later attributed commit is byte-identical for this doc, so
+ *     the doc timeline de-dupes it away (it remains on the folder timeline);
+ *   - attribution registers FIRST → the bytes ride the attributed
+ *     `template-create:` commit, which is then the doc's only row and therefore
+ *     shares the folder event's SHA.
+ *
+ * Both outcomes are correct, and the second is the better-attributed one. So the
+ * assertions below identify the route's commit by SHA rather than by subject
+ * text: a typed subject on any OTHER commit would mean the store minted one
+ * itself, which must never happen.
+ *
+ * Identity, not subject prefix, is the discriminator on purpose. Exempting rows
+ * whose subject merely starts with `template-` would absorb the exact regression
+ * this file exists to catch — a store that began minting typed subjects would be
+ * filtered out of the `wip:` check instead of failing it. Pinning the one SHA the
+ * folder timeline independently vouched for keeps every other row held to `wip:`.
+ *
+ * Two conditions that must always hold: no store-minted commit carries a typed
+ * subject, and no second entry appears on the folder timeline.
  */
 type HistoryEntry = {
   sha: string;
@@ -34,17 +65,6 @@ type HistoryEntry = {
   type: string;
   contributors: Array<{ docs: string[] }>;
 };
-
-/**
- * The HTTP route's typed folder event. Deliberately narrow: everything the
- * store itself mints still has to match `wip:` below, so a novel non-wip
- * subject leaking out of the store is not absorbed by this predicate.
- */
-const isTypedArtifact = (entry: HistoryEntry) => entry.message.startsWith('template-');
-
-/** Every entry the store itself minted — i.e. all but the route's typed event. */
-const storeCommitsAllWip = (entries: HistoryEntry[]) =>
-  entries.filter((e) => !isTypedArtifact(e)).every((e) => /^wip:/i.test(e.message));
 
 describe('template history — HTTP typed writes and editor wip edits unify under one key (FR6 / D11)', () => {
   let server: TestServer;
@@ -99,13 +119,29 @@ describe('template history — HTTP typed writes and editor wip edits unify unde
     expect(createEvent).toBeDefined();
     expect(createEvent?.contributors.some((c) => c.docs.includes(docName))).toBe(true);
 
-    // The store's OWN commit for the doc content is a plain wip: subject. The
-    // route's typed folder event may or may not have coalesced into it, so admit
-    // at most one typed entry and hold everything else to wip:.
+    // Rows the STORE minted are every row that is not the route's own lifecycle
+    // commit. Identity is by SHA, never by subject text — see the file header:
+    // when the route's `subjectOverride` lands in the same debounce window as the
+    // content bytes, the writer's single drain commit carries both, so this SHA
+    // legitimately shows up in the doc timeline as well as the folder timeline.
+    const storeMinted = (e: HistoryEntry) => e.sha !== createEvent?.sha;
+
+    // Every store-minted commit for the doc content carries a plain wip: subject.
     const putDoc = await docHistory(docName);
     expect(putDoc.length).toBeGreaterThanOrEqual(1);
-    expect(putDoc.filter(isTypedArtifact).length).toBeLessThanOrEqual(1);
-    expect(storeCommitsAllWip(putDoc)).toBe(true);
+    expect(putDoc.filter(storeMinted).every((e) => /^wip:/i.test(e.message))).toBe(true);
+
+    // When the coalesced shape occurs (attribution registered before the drain),
+    // the route's commit is the doc's only row. Constrain that shape rather than
+    // merely tolerating it: the DOC timeline's view of the commit must carry the
+    // same subject and attribution the FOLDER timeline reported for the same SHA,
+    // which is what makes this ordering the better-attributed one.
+    const coalescedRow = putDoc.find((e) => !storeMinted(e));
+    if (coalescedRow !== undefined) {
+      expect(coalescedRow.message).toBe(createEvent?.message);
+      expect(coalescedRow.contributors.some((c) => c.docs.includes(docName))).toBe(true);
+    }
+
     const putShas = new Set(putDoc.map((e) => e.sha));
 
     // An editor CRDT edit to the same doc lands as an ordinary content write.
@@ -125,10 +161,13 @@ describe('template history — HTTP typed writes and editor wip edits unify unde
           () => null,
         );
         editDoc = await docHistory(docName);
-        // Skip the typed folder event: when it did NOT coalesce into the PUT's
-        // commit it can land after the snapshot above and read as "new" here,
-        // which would end the poll before the editor's own commit exists.
-        editEntry = editDoc.find((e) => !putShas.has(e.sha) && !isTypedArtifact(e));
+        // Skip the route's lifecycle commit: when it did NOT coalesce into the
+        // PUT's commit it can land after the `putShas` snapshot and read as "new"
+        // here, ending the poll before the editor's own commit exists. Excluded
+        // by SHA rather than by subject prefix so that a store-minted typed row
+        // is still selected and then fails the `wip:` assertion below outright,
+        // instead of being skipped into a 20-second poll timeout.
+        editEntry = editDoc.find((e) => !putShas.has(e.sha) && storeMinted(e));
         return editEntry !== undefined;
       },
       20_000,
@@ -140,9 +179,10 @@ describe('template history — HTTP typed writes and editor wip edits unify unde
     // the content doc name) and the store minted a wip: subject for it — not a
     // typed template-* subject. A store that started stamping typed template-*
     // subjects on content edits would flip this message; that must never happen.
+    // `editEntry` is by construction a commit the PUT did not produce, so it is
+    // never the route's lifecycle commit and stays held to `wip:` unconditionally.
     expect(editEntry?.message).toMatch(/^wip:/i);
-    expect(editDoc.filter(isTypedArtifact).length).toBeLessThanOrEqual(1);
-    expect(storeCommitsAllWip(editDoc)).toBe(true);
+    expect(editDoc.filter(storeMinted).every((e) => /^wip:/i.test(e.message))).toBe(true);
 
     // The editor CRDT edit produced NO new folder event — the folder timeline
     // still carries exactly the one typed HTTP subject, and no wip: row leaks in.

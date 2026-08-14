@@ -1100,6 +1100,19 @@ export async function awaitBacklinkIndexed(
  * L2 timer. The budget is a generous ceiling, not the thing being raced.
  * Mirrors `rename-history.test.ts`'s `awaitWipCommit`; both close the same
  * flake class (the version-rollback case is #1596).
+ *
+ * CAUTION — "WIP" here means the shadow WIP-ref landmark class, NOT a `wip:`
+ * subject prefix. The barrier counts `entry.type === 'wip'`, and `classifyType`
+ * (`packages/server/src/timeline-query.ts`, the authoritative list — this
+ * enumeration is a copy and goes stale if a branch is added there) returns
+ * `'wip'` as its DEFAULT branch: only `checkpoint:` / `import:` /
+ * `upstream:` / `park:` classify otherwise. Typed lifecycle subjects
+ * (`template-*`, `rename:`, `reconcile:`, `rollback:`, …) therefore satisfy this
+ * barrier too. Callers that go on to assert `/^wip:/` on the resulting rows are
+ * pairing two DIFFERENT predicates and will flake whenever a route's
+ * `subjectOverride` rides the same drain commit as the content bytes. Await
+ * with this helper, then assert on commit identity (SHA) rather than on subject
+ * text.
  */
 export async function awaitWipCommits(
   server: TestServer,
