@@ -1,10 +1,10 @@
 /**
  * Where a frontmatter row is on screen.
  *
- * A property comment has no ProseMirror position, which is why the rail and the
- * popover cannot ask the editor to place it. They can ask the DOM: the
- * properties table sits in the SAME scroll container as the editor body (the
- * container also holds the cover), so a row's viewport rect is directly
+ * A property comment has no ProseMirror position, which is why the rail cannot
+ * ask the editor to place its marker. It can ask the DOM: the properties table
+ * sits in the SAME scroll container as the editor body (the container also
+ * holds the cover), so a row's viewport rect is directly
  * comparable to the `coordsAtPos` rects the body threads produce, and the two
  * kinds of marker can share one layout pass.
  *

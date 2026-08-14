@@ -35,7 +35,13 @@ function renderEdited(updatedAt: number) {
   // The card's hints are shadcn Tooltips, which Radix requires a provider for.
   return render(
     <TooltipProvider>
-      <ThreadCard thread={thread} cardRef={() => {}} focused={false} sending={false} />
+      <ThreadCard
+        thread={thread}
+        cardRef={() => {}}
+        focused={false}
+        active={false}
+        sending={false}
+      />
     </TooltipProvider>,
   );
 }

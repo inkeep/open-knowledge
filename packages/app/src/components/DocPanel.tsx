@@ -36,13 +36,12 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'graph', icon: Network },
   { id: 'timeline', icon: Clock },
   { id: 'problems', icon: AlertTriangle },
-];
-
-// A single Comments tab, carrying its own This-doc / Queue scope toggle.
-// Separate from TABS because single-file mode drops it.
-const COMMENT_TABS: { id: PanelTab; icon: typeof ListTree }[] = [
+  // One Comments tab, carrying its own This-doc / This-project scope toggle.
   { id: 'comments', icon: MessageSquare },
 ];
+
+/** What a `ok <file>` session keeps — see `tabs` below for why each one. */
+const SINGLE_FILE_TABS: readonly PanelTab[] = ['outline', 'problems', 'comments'];
 
 function countsOf(diagnostics: readonly { severity: string }[]): DocProblemCounts {
   let errorCount = 0;
@@ -182,25 +181,26 @@ export function DocPanel({
       },
     );
   };
-  // Single-file `ok <file>` keeps only the Outline + Problems tabs. Links/Graph
-  // need a multi-doc knowledge base, and Timeline is git history — all empty or
-  // inert for a lone git-off file; linting applies to any single file. Coerce a
-  // persisted now-hidden selection back to outline so the rail never renders a
+  // Single-file `ok <file>` drops Links, Graph and Timeline: the first two need
+  // a multi-doc knowledge base and the third is git history, all empty or inert
+  // for a lone git-off file. Linting applies to any single file, so Problems
+  // stays — and so does Comments: the queue spans documents, which is why that
+  // tab used to go too, but the panel is where a comment is READ, and a
+  // single-file session can carry comments like any other, so withholding it
+  // left them unreadable. What single-file drops there is the project SCOPE
+  // inside the tab, which `CommentsTab` handles. A persisted selection naming a
+  // dropped tab coerces back to Outline below, so the rail never renders a
   // hidden panel.
   const singleFile = useSingleFileMode();
-  const baseTabs = singleFile
-    ? TABS.filter((tab) => tab.id === 'outline' || tab.id === 'problems')
-    : TABS;
-  // Comments span docs (the queue is project-wide), so the tab is only offered
-  // when there is a project to span.
-  const tabs = singleFile ? baseTabs : [...baseTabs, ...COMMENT_TABS];
+  const tabs = singleFile ? TABS.filter((tab) => SINGLE_FILE_TABS.includes(tab.id)) : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
   // Published for surfaces that offer a route TO the queue — the selection
   // composer withholds its "View comments" button while the reader is already
   // looking at one. The effective tab rather than `activeTab`: a persisted
-  // 'comments' selection is coerced away in single-file mode, and the button
-  // must stay on offer when the tab it points at is not the one showing.
+  // selection can name a tab this mode does not offer (Links and Graph in
+  // single-file), and the button must stay on offer when the tab it points at
+  // is not the one showing.
   useEffect(() => {
     setCommentsPanelOnScreen(!isCollapsed && mode === 'doc' && effectiveTab === 'comments');
     return () => setCommentsPanelOnScreen(false);

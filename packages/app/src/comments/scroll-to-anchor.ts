@@ -12,7 +12,7 @@
  * ends up, which can be off-screen entirely.
  *
  * So: work from the passage's own coordinates, honour the inset the scrollport
- * declares, and keep room beneath it for the thread card that opens there.
+ * declares, and keep room beneath it.
  */
 
 import type { Editor } from '@tiptap/react';
@@ -23,11 +23,11 @@ import {
 import { getEditorView } from '@/editor/utils/get-editor-view';
 
 /**
- * Room left below the passage for the thread popover, which opens under it.
- * Generous on purpose — landing the passage on the last visible line puts its
- * card off-screen, which is the failure this whole module exists to prevent.
+ * Room left below the passage. Generous on purpose — a passage landing on the
+ * last visible line is technically on screen and useless: the reader arrives at
+ * a comment and cannot see a word of what follows the words it is about.
  */
-const CARD_ROOM_PX = 220;
+const BOTTOM_ROOM_PX = 220;
 
 /** Breathing room below the toolbar when we do move, so it isn't flush. */
 const LEAD_PX = 24;
@@ -90,7 +90,7 @@ export interface AnchorViewport {
  */
 export function scrollDeltaForAnchor(v: AnchorViewport): number {
   const restTop = v.viewTop + v.insetTop;
-  const restBottom = v.viewBottom - CARD_ROOM_PX;
+  const restBottom = v.viewBottom - BOTTOM_ROOM_PX;
   if (v.anchorTop >= restTop && v.anchorBottom <= restBottom) return 0;
   return v.anchorTop - (restTop + LEAD_PX);
 }
@@ -119,7 +119,7 @@ export function scrollportInsetTop(container: HTMLElement): number {
 }
 
 /**
- * Bring a comment's passage into a readable position, with room for its card.
+ * Bring a comment's passage into a readable position, with room beneath it.
  *
  * Returns whether the navigation RAN — see {@link applyJumpScroll} for what can
  * decline it and for the two scroll writers a jump has to out-rank. `docName` is

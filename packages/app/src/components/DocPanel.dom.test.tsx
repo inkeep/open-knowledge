@@ -128,12 +128,17 @@ describe('DocPanel — tab gating', () => {
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 
-  test('single-file mode keeps only Outline + Problems', () => {
+  test('single-file mode keeps Outline + Problems + Comments', () => {
     singleFileValue = true;
     // Persisted selection is 'graph' — it must coerce back to Outline rather
     // than render a now-hidden panel.
     renderPanel('graph');
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    // Links, Graph and Timeline need a knowledge base or a git history and go.
+    // Comments STAYS: a lone file can carry comments like any other, and this
+    // panel is the only place a comment is read — dropping the tab left them
+    // unreachable.
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: /comments/i })).toBeTruthy();
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 

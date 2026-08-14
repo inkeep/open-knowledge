@@ -36,7 +36,7 @@ function renderCard(t: CommentThread, sending = true) {
   // The app has one at its root; a standalone render has to bring its own.
   return render(
     <TooltipProvider>
-      <ThreadCard thread={t} cardRef={() => {}} focused={false} sending={sending} />
+      <ThreadCard thread={t} cardRef={() => {}} focused={false} active={false} sending={sending} />
     </TooltipProvider>,
   );
 }
@@ -125,7 +125,7 @@ describe('the active-thread tint', () => {
       </TooltipProvider>,
     );
     // The same statement the document already makes in the other direction —
-    // touching a card deepens its passage; an open popover tints its card.
+    // touching a card deepens its passage; the open thread tints its card.
     // A WASH, deliberately not a border: an outline reads as "this comment is
     // picked", and being read is not being selected — the tick owns that.
     const card = screen.getByRole('article');
@@ -136,7 +136,13 @@ describe('the active-thread tint', () => {
   test('an inactive card carries none', () => {
     render(
       <TooltipProvider>
-        <ThreadCard thread={thread()} cardRef={() => {}} focused={false} sending={false} />
+        <ThreadCard
+          thread={thread()}
+          cardRef={() => {}}
+          focused={false}
+          active={false}
+          sending={false}
+        />
       </TooltipProvider>,
     );
     expect(screen.getByRole('article').className).not.toContain('bg-amber-500/10');

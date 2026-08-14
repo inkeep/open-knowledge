@@ -93,7 +93,7 @@ vi.doMock('@/editor/active-editor', () => ({
 
 vi.doMock('./store', () => ({
   emitFocusThread: (id: string) => captured.focused.push(id),
-  emitOpenThreadPopover: (id: string) => captured.opened.push(id),
+  emitOpenThread: (id: string) => captured.opened.push(id),
 }));
 
 const toasted: string[] = [];

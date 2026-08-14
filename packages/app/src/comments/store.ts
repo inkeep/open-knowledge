@@ -5,7 +5,7 @@
  * (so writes carry attribution); this module holds the last-fetched view and
  * re-fetches when the server signals a change. It keeps the window-scoped
  * pub/sub idiom of `ask-ai-composer-events.ts` for the UI-only signals
- * (focus a thread, open a popover, start the composer).
+ * (focus a thread, open a thread, start the composer).
  *
  * useSyncExternalStore contract: `getThreads(docName)` returns a referentially
  * stable array between refreshes — the array identity changes only when data
@@ -152,6 +152,29 @@ export async function refresh(docName?: string): Promise<void> {
   // whatever reads them next, so a subscriber reading during this same tick
   // cannot see them disagree with `allThreads`.
   bump();
+  standDownIfGone(nextAll);
+}
+
+/**
+ * A thread that has been resolved or deleted cannot still be the open one.
+ *
+ * Every reader gesture that stands a thread down is a statement about the
+ * READER — clicking away, Escape, re-clicking a lit marker. This is the other
+ * half: the thread itself going away. Sending a batch resolves its comments,
+ * and a resolved thread drops its highlight and its margin marker, so the open
+ * thread would otherwise be a comment with nothing left on screen pointing at
+ * it — and nothing left to click to clear it either.
+ *
+ * Here rather than at each mutation because every one of them lands its data
+ * through {@link refresh}, including changes made in another window that arrive
+ * over CC1 with no local call to hang this off. Project-wide, not per doc: the
+ * open thread can belong to a document this refresh was not about, and a
+ * per-doc check would clear it for being absent from the wrong list.
+ */
+function standDownIfGone(threads: readonly CommentThread[]): void {
+  if (openThreadId === null) return;
+  if (threads.some((thread) => thread.id === openThreadId && thread.status === 'open')) return;
+  emitOpenThread(null);
 }
 
 /**
@@ -725,7 +748,7 @@ async function runDispatch(
 // ---------------------------------------------------------------------------
 
 const FOCUS_EVENT = 'open-knowledge:comment-focus-thread';
-const POPOVER_EVENT = 'open-knowledge:comment-open-popover';
+const OPEN_THREAD_EVENT = 'open-knowledge:comment-open-thread';
 const START_EVENT = 'open-knowledge:comment-start';
 const POSTED_EVENT = 'open-knowledge:comment-posted';
 
@@ -745,7 +768,7 @@ export function subscribeFocusThread(onFocus: (threadId: string) => void): () =>
 }
 
 /**
- * Which thread the reader is on right now — its popover is open, or the pointer
+ * Which thread the reader is on right now — it is the open one, or the pointer
  * is on its card or margin marker. `null` for none.
  *
  * This is what tells two comments sharing a passage apart. Every commented
@@ -754,14 +777,14 @@ export function subscribeFocusThread(onFocus: (threadId: string) => void): () =>
  * of {@link subscribe} deliberately — pointing at a comment must not re-render
  * every panel that reads the thread list.
  */
-let pinnedThreadId: string | null = null;
+let openThreadId: string | null = null;
 let pointedThreadId: string | null = null;
 let activeThreadId: string | null = null;
 const activeListeners = new Set<() => void>();
 
-/** Pointing at something wins over the open popover; it's the newer intent. */
+/** Pointing at something wins over the open thread; it's the newer intent. */
 function recomputeActive(): void {
-  const next = pointedThreadId ?? pinnedThreadId;
+  const next = pointedThreadId ?? openThreadId;
   if (next === activeThreadId) return;
   activeThreadId = next;
   for (const listener of activeListeners) listener();
@@ -781,7 +804,7 @@ export function setActiveThread(threadId: string | null): void {
  * Stand down only if this thread is still the pointed-at one — the pointer can
  * reach the next card before the last one's leave handler runs, and an
  * unconditional clear would blank the highlight that just lit up. An open
- * popover keeps its thread active underneath.
+ * thread stays active underneath.
  */
 export function clearActiveThread(threadId: string): void {
   if (pointedThreadId !== threadId) return;
@@ -797,55 +820,69 @@ export function subscribeActiveThread(listener: () => void): () => void {
 }
 
 /**
- * The thread whose in-doc popover is OPEN, for React — deliberately narrower
- * than the active thread, which also follows the pointer. The panel's card
- * wash keys on this: hover-driven washing meant every card lit itself up as
- * the pointer crossed it, noise with no information. A popover being open is
- * a fact worth mirroring; a pointer passing through is not.
+ * The OPEN thread, for React — deliberately narrower than the active thread,
+ * which also follows the pointer. The panel's card wash keys on this, and so
+ * does the scroll that brings the card into view: hover-driven washing meant
+ * every card lit itself up as the pointer crossed it, noise with no
+ * information. A thread being open is a fact worth mirroring; a pointer passing
+ * through is not.
  */
-export function usePinnedThread(): string | null {
-  return useSyncExternalStore(subscribePinnedThread, getPinnedThread, () => null);
+export function useOpenThread(): string | null {
+  return useSyncExternalStore(subscribeOpenThreadChanges, getOpenThread, () => null);
 }
 
 // Module-level, like every other binding here: `useSyncExternalStore` tears the
 // subscription down and rebuilds it whenever the subscribe function's identity
 // changes, so an inline lambda re-subscribes on every render of every panel
 // reading this.
-function subscribePinnedThread(listener: () => void): () => void {
-  return subscribeOpenThreadPopover(() => listener());
-}
-
-function getPinnedThread(): string | null {
-  return pinnedThreadId;
+function subscribeOpenThreadChanges(listener: () => void): () => void {
+  return subscribeOpenThread(() => listener());
 }
 
 /**
- * Which thread's in-doc popover is open — `null` for none.
+ * The open thread, read imperatively.
  *
- * One signal both ways, rather than "open" one-way. The popover used to close
- * itself privately (Escape, outside click, thread resolved), so the margin rail
- * never learned about it: the rail kept a marker lit for a popover that was gone,
- * and could not tell whether clicking a marker should open or close.
+ * For the handlers that have to know whether anything is open before they act —
+ * the click that lands beside a highlight rather than on one, and stands the
+ * open thread down. They run outside React (a ProseMirror plugin, a DOM
+ * listener), so the hook above is not available to them.
  */
-export function emitOpenThreadPopover(threadId: string | null): void {
-  pinnedThreadId = threadId;
-  recomputeActive();
-  // Opening a thread also opens the Comments tab beside it — the popover shows
-  // ONE comment, and the panel is where its neighbours, its checkbox column,
-  // and the send all live. Here rather than at each open site (highlight click,
-  // margin marker, jump) so no path can forget; a no-op when the tab is already
-  // showing, and closing (null) deliberately leaves the panel as it is — the
-  // reader opened it, dismissing a popover is not a statement about it.
-  if (threadId !== null) requestDocPanelTab('comments');
-  bus.dispatchEvent(new CustomEvent(POPOVER_EVENT, { detail: threadId }));
+export function getOpenThread(): string | null {
+  return openThreadId;
 }
 
-export function subscribeOpenThreadPopover(
-  onChange: (threadId: string | null) => void,
-): () => void {
+/**
+ * Which thread the reader has open — `null` for none.
+ *
+ * The comment itself is shown in ONE place, the Comments panel: this switches
+ * the doc panel to that tab, the panel scrolls to the card and rings it, and
+ * the passage deepens in the document underneath. It used to also float a card
+ * over the text at the passage, which covered the document at the moment the
+ * reader was trying to read it, and put the same comment on screen twice.
+ *
+ * One signal both ways, rather than "open" one-way. The open thread used to
+ * clear itself privately (Escape, outside click, thread resolved), so the
+ * margin rail never learned about it: the rail kept a marker lit for a card
+ * that was gone, and could not tell whether clicking a marker should open or
+ * close.
+ *
+ * The tab request lives here rather than at each open site (highlight click,
+ * margin marker, property value, panel jump) so no path can forget; it is a
+ * no-op when the tab is already showing, and closing (null) deliberately
+ * leaves the panel as it is — the reader opened it, and standing down from one
+ * comment is not a statement about the panel.
+ */
+export function emitOpenThread(threadId: string | null): void {
+  openThreadId = threadId;
+  recomputeActive();
+  if (threadId !== null) requestDocPanelTab('comments');
+  bus.dispatchEvent(new CustomEvent(OPEN_THREAD_EVENT, { detail: threadId }));
+}
+
+export function subscribeOpenThread(onChange: (threadId: string | null) => void): () => void {
   const handler = (event: Event): void => onChange((event as CustomEvent<string | null>).detail);
-  bus.addEventListener(POPOVER_EVENT, handler);
-  return () => bus.removeEventListener(POPOVER_EVENT, handler);
+  bus.addEventListener(OPEN_THREAD_EVENT, handler);
+  return () => bus.removeEventListener(OPEN_THREAD_EVENT, handler);
 }
 
 /**

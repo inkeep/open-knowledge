@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearActiveThread,
-  emitOpenThreadPopover,
+  emitOpenThread,
   getActiveThread,
   setActiveThread,
   subscribeActiveThread,
@@ -9,7 +9,7 @@ import {
 
 beforeEach(() => {
   setActiveThread(null);
-  emitOpenThreadPopover(null);
+  emitOpenThread(null);
 });
 
 describe('active thread', () => {
@@ -32,14 +32,14 @@ describe('active thread', () => {
     expect(getActiveThread()).toBe('b');
   });
 
-  it('keeps the open popover active underneath the pointer', () => {
-    emitOpenThreadPopover('p');
+  it('keeps the open thread active underneath the pointer', () => {
+    emitOpenThread('p');
     expect(getActiveThread()).toBe('p');
     setActiveThread('a');
     expect(getActiveThread()).toBe('a');
     clearActiveThread('a');
     expect(getActiveThread()).toBe('p');
-    emitOpenThreadPopover(null);
+    emitOpenThread(null);
     expect(getActiveThread()).toBeNull();
   });
 

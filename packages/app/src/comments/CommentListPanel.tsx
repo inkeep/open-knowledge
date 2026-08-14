@@ -37,9 +37,71 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { CommentSendFooter } from './CommentSendFooter';
 import { docBasename } from './comment-chips';
 import { groupByDoc } from './queue-grouping';
-import { setSendingAll, subscribeFocusThread, usePinnedThread, useQueueSelection } from './store';
+import {
+  getOpenThread,
+  setSendingAll,
+  subscribeFocusThread,
+  subscribeOpenThread,
+  useOpenThread,
+  useQueueSelection,
+} from './store';
 import { ThreadCard } from './ThreadCard';
 import type { CommentThread } from './types';
+
+/** ~a third of a second of frames — long enough for a cold panel, short enough to stop. */
+const SCROLL_FRAME_BUDGET = 20;
+
+/** How long the ring stays on the card it was put on. */
+const RING_MS = 1_600;
+
+interface FocusHandles {
+  cards: ReadonlyMap<string, HTMLElement>;
+  /** The pending scroll chase, so a second open calls off the first one's. */
+  frame: { current: number | null };
+  /** The ring's own timer, held so it can be cancelled rather than left to fire after unmount. */
+  ring: { current: number | null };
+  setFocusedId: (update: (current: string | null) => string | null) => void;
+}
+
+/**
+ * Bring a thread's card into view and ring it.
+ *
+ * The scroll is retried across a few frames rather than attempted once: opening
+ * a thread is what MOUNTS this panel in the common case (clicking a highlight
+ * switches the doc panel to the Comments tab), and on a cold open the threads
+ * are still arriving, so the card can be a frame or two behind the request to
+ * scroll to it. The ring is set immediately either way — it is state, not
+ * geometry, so it lands on the card whenever the card does.
+ */
+function focusCard(threadId: string, handles: FocusHandles): void {
+  const { cards, frame, ring, setFocusedId } = handles;
+  setFocusedId(() => threadId);
+  if (frame.current !== null) cancelAnimationFrame(frame.current);
+  let attempts = 0;
+  const attempt = (): void => {
+    frame.current = null;
+    const card = cards.get(threadId);
+    if (card) {
+      // Honours the reader's motion setting, like every other jump in this
+      // subsystem (`scrollAnchorIntoView` asks the same question before it
+      // scrolls the document to the passage this card is about — the two move
+      // together on one click, so only one of them respecting it would be worse
+      // than neither).
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      card.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+      return;
+    }
+    attempts += 1;
+    if (attempts >= SCROLL_FRAME_BUDGET) return;
+    frame.current = requestAnimationFrame(attempt);
+  };
+  attempt();
+  if (ring.current !== null) window.clearTimeout(ring.current);
+  ring.current = window.setTimeout(() => {
+    ring.current = null;
+    setFocusedId((current) => (current === threadId ? null : current));
+  }, RING_MS);
+}
 
 export function CommentListPanel({
   threads,
@@ -73,12 +135,12 @@ export function CommentListPanel({
   // rest instead of silently landing folded because it was not in an opened-set.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const sending = useQueueSelection();
-  // The thread whose popover is OPEN in the document — mirrored onto its card
-  // so the two sides of the screen point at each other. Popover-open only, not
-  // hover: washing a card because the pointer touched it (or its highlight)
-  // made every pass of the mouse a light show. One subscription for the whole
-  // panel, like `sending`.
-  const activeId = usePinnedThread();
+  // The thread the reader has OPEN — washed on its card, deepened on its
+  // passage in the document, so the two sides of the screen point at each
+  // other. Open only, not hover: washing a card because the pointer touched it
+  // (or its highlight) made every pass of the mouse a light show. One
+  // subscription for the whole panel, like `sending`.
+  const activeId = useOpenThread();
 
   function toggleFile(docName: string, open: boolean) {
     setCollapsed((prev) => {
@@ -89,25 +151,56 @@ export function CommentListPanel({
     });
   }
 
-  // Clicking an in-doc highlight scrolls the panel to its thread + rings it.
-  //
-  // The ring's timer is held so it can be cancelled. Left dangling it fired
-  // after unmount, and every focus event queued another — clicking through ten
-  // highlights left ten timers racing to clear a ring only one of them owns.
+  // The ring's timer and the scroll's frame are held so they can be cancelled.
+  // Left dangling the timer fired after unmount, and every focus queued another
+  // — clicking through ten highlights left ten timers racing to clear a ring
+  // only one of them owns.
   const ringTimer = useRef<number | null>(null);
+  const scrollFrame = useRef<number | null>(null);
+  // Every member is stable for the life of the component — two refs, the card
+  // map they are held beside, and a state setter — so this is rebuilt per call
+  // rather than memoized or carried in a ref of its own.
+  const focusHandles = (): FocusHandles => ({
+    cards: cardRefs.current,
+    frame: scrollFrame,
+    ring: ringTimer,
+    setFocusedId,
+  });
+
+  // Opening a thread — an in-doc highlight, a margin marker, a commented
+  // property value, a queue card — brings its card here. This is the whole of
+  // "show me that comment" now: the panel is where the comment is READ, so the
+  // signal has to land the card in front of the reader rather than merely wash
+  // it.
+  //
+  // BOTH halves are load-bearing, and each covers what the other cannot:
+  //
+  //   - the EVENT, because opening the thread that is already open is a real
+  //     gesture. Scroll the panel away, click the same highlight to get back to
+  //     the card: the id has not changed, so state-driven focus sees an
+  //     identical snapshot, React bails out of the render, and the click does
+  //     nothing at all.
+  //   - the mount READ, because the open that switches the doc panel to this
+  //     tab is the same open that MOUNTS this panel, and no subscription can
+  //     hear the event that brought it into being.
+  //
+  // Reveals that do not open a thread come in on their own signal: a comment
+  // whose passage is gone still has to light up when its document arrives.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focusHandles closes over refs and a state setter only, all stable for the component's life; keying the effect on it would re-subscribe on every render
   useEffect(() => {
-    const stop = subscribeFocusThread((threadId) => {
-      setFocusedId(threadId);
-      cardRefs.current.get(threadId)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      if (ringTimer.current !== null) window.clearTimeout(ringTimer.current);
-      ringTimer.current = window.setTimeout(() => {
-        ringTimer.current = null;
-        setFocusedId((cur) => (cur === threadId ? null : cur));
-      }, 1_600);
+    const focus = (threadId: string) => focusCard(threadId, focusHandles());
+    const pending = getOpenThread();
+    if (pending !== null) focus(pending);
+    const stopOpens = subscribeOpenThread((threadId) => {
+      // Standing a thread down is not a request to look at anything.
+      if (threadId !== null) focus(threadId);
     });
+    const stopReveals = subscribeFocusThread(focus);
     return () => {
-      stop();
+      stopOpens();
+      stopReveals();
       if (ringTimer.current !== null) window.clearTimeout(ringTimer.current);
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
     };
   }, []);
 

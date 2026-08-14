@@ -25,34 +25,10 @@
 
 import { type RefObject, useEffect } from 'react';
 import { locateInValue } from './property-row-rect';
-import { emitOpenThreadPopover, getThreads } from './store';
+import { emitOpenThread, getOpenThread, getThreads } from './store';
 import type { CommentThread } from './types';
 
 const ROW_SELECTOR = '[data-testid="property-row"]';
-
-/**
- * Marks a value control as belonging to a thread, so the popover's outside-click
- * dismisser lets the click through the way it already does for a body highlight
- * and a rail marker.
- *
- * Without it, clicking a commented value while its own popover is open closes it
- * on `mousedown` and this listener reopens it on `click` — one gesture, two
- * renders, a visible flash. The body never had that problem because its
- * decoration carries the same attribute.
- *
- * Stamped just-in-time on `mousedown` rather than kept in sync with the store:
- * the answer depends on the control's CURRENT value (a passage the reader has
- * since typed over is no longer there), and the only moment it has to be right
- * is the one between the click starting and the dismisser reading it. An
- * attribute maintained ahead of time would be a second copy of a fact that
- * changes on every keystroke.
- *
- * Set from here rather than rendered by `FrontmatterRow`: that row is shared by
- * templates, skills, and folder cards, none of which have threads, and it is
- * kept free of this subsystem for the same reason the comment BUTTON arrives as
- * a slot.
- */
-const THREAD_ATTR = 'data-comment-thread';
 
 /** The row's own key — its last path step, which is what the DOM carries. */
 function rowKeyOf(thread: CommentThread): string | null {
@@ -149,16 +125,6 @@ function caretOffset(control: HTMLTextAreaElement | HTMLInputElement): number | 
   }
 }
 
-/** Every thread with a range in this control's value, or `[]`. */
-function threadsOn(
-  control: HTMLTextAreaElement | HTMLInputElement,
-  docName: string,
-): PlacedRange[] {
-  const rowKey = rowKeyFor(control);
-  if (rowKey === null) return [];
-  return placeValueThreads(getThreads(docName), rowKey, control.value);
-}
-
 /**
  * Wire click-to-open for every commented value in one property panel.
  *
@@ -175,20 +141,9 @@ export function usePropertyAnchorClick(
     const container = containerRef.current;
     if (container === null) return;
 
-    // Capture phase, so this runs before the popover's own document-level
-    // `mousedown` dismisser — capture descends to the target before bubbling
-    // climbs back to `document`, and that ordering is the whole point.
-    const onMouseDownCapture = (event: MouseEvent) => {
-      const control = valueControl(event.target);
-      if (control === null) return;
-      const placed = threadsOn(control, docName);
-      if (placed.length === 0) control.removeAttribute(THREAD_ATTR);
-      else control.setAttribute(THREAD_ATTR, placed[0].threadId);
-    };
-
     // The click itself is NOT consumed — no `preventDefault`, no `focus` call.
-    // The caret lands where the reader aimed it and the popover opens beside
-    // it, which is the body's bargain too: a commented passage stays ordinary
+    // The caret lands where the reader aimed it and the comment comes up in the
+    // panel, which is the body's bargain too: a commented value stays ordinary
     // editable text rather than becoming a button.
     const onClick = (event: MouseEvent) => {
       const control = valueControl(event.target);
@@ -201,13 +156,19 @@ export function usePropertyAnchorClick(
       const offset = caretOffset(control);
       if (offset === null) return;
       const threadId = threadAtValueOffset(getThreads(docName), rowKey, control.value, offset);
-      if (threadId !== null) emitOpenThreadPopover(threadId);
+      if (threadId !== null) {
+        emitOpenThread(threadId);
+        return;
+      }
+      // Clicked into a value that carries no comment — the same "I have moved
+      // on" the body reads from a click beside a highlight, so the open thread
+      // stands down here too. Guarded, so an ordinary click in an ordinary
+      // field does not dispatch to every panel.
+      if (getOpenThread() !== null) emitOpenThread(null);
     };
 
-    container.addEventListener('mousedown', onMouseDownCapture, true);
     container.addEventListener('click', onClick);
     return () => {
-      container.removeEventListener('mousedown', onMouseDownCapture, true);
       container.removeEventListener('click', onClick);
     };
   }, [containerRef, docName]);

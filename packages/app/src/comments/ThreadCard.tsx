@@ -4,8 +4,8 @@
  * Thread lifecycle rendered from the store: the anchored quote, the comment
  * itself (editable in place), the tick that decides whether it goes out with
  * the next send, resolve, and the explicit orphaned-"re-place" state. Shared by
- * both comment scopes and by the in-document popover, so a comment looks and
- * behaves the same wherever it is met.
+ * both comment scopes, so a comment looks and behaves the same wherever it is
+ * met.
  *
  * A thread holds ONE comment rather than a discussion. Comments go to an agent,
  * not to teammates, so there is nobody to reply to yet — revising what you asked
@@ -36,7 +36,7 @@ import {
   clearActiveThread,
   deleteThread,
   editComment,
-  emitOpenThreadPopover,
+  emitOpenThread,
   reopenThread,
   replaceOrphan,
   setActiveThread,
@@ -84,32 +84,20 @@ export function ThreadCard({
   thread,
   cardRef,
   focused,
-  active = false,
+  active,
   sending,
-  showQuote = true,
 }: {
   thread: CommentThread;
   cardRef: (el: HTMLElement | null) => void;
   focused: boolean;
   /**
-   * This thread's in-doc popover is OPEN. The card answers with the same amber
-   * WASH the passage carries — background only, no border (a border reads as a
-   * statement about selection, which the tick owns). Popover-open specifically,
-   * not hover: hosts used to pass the pointer-following active thread, and every
-   * card lit itself as the mouse crossed it. Optional because the popover host
-   * renders exactly one card and pinning it as active would just tint the card
-   * the reader is already inside.
+   * The reader has this thread OPEN. The card answers with the same amber WASH
+   * the passage carries — background only, no border (a border reads as a
+   * statement about selection, which the tick owns). Open specifically, not
+   * hover: hosts used to pass the pointer-following active thread, and every
+   * card lit itself as the mouse crossed it.
    */
-  active?: boolean;
-  /**
-   * Render the quoted passage the comment is anchored to.
-   *
-   * On in the panels, which sit away from the text and have to say what each
-   * comment is on. Off in the in-document popover, which is already pinned to
-   * that passage with the passage itself highlighted underneath — quoting it
-   * there prints the same words twice, inches apart.
-   */
-  showQuote?: boolean;
+  active: boolean;
   /**
    * Ticked for the next send. Passed in rather than read here so one
    * subscription serves a whole panel of cards.
@@ -202,11 +190,12 @@ export function ThreadCard({
     deleteThread(thread.id);
   }
 
-  // Click-away SAVES, like Notion — not silently discards. The popover host
-  // closes on any outside click, unmounting this card mid-edit; before this,
-  // that threw the revision away with nothing saying so, which read as "my
-  // edit didn't reflect". Escape remains the explicit discard, and it settles
-  // the edit first so this cleanup stands down.
+  // Click-away SAVES, like Notion — not silently discards. A card can unmount
+  // mid-edit under the reader (the panel switches scope, the thread resolves,
+  // the document changes); before this, that threw the revision away with
+  // nothing saying so, which read as "my edit didn't reflect". Escape remains
+  // the explicit discard, and it settles the edit first so this cleanup stands
+  // down.
   //
   // The commit must fire exactly when the edit session ends, not when the
   // thread re-renders mid-edit.
@@ -239,7 +228,7 @@ export function ThreadCard({
         start: thread.anchor.start,
         end: thread.anchor.end,
       });
-      emitOpenThreadPopover(thread.id);
+      emitOpenThread(thread.id);
       return;
     }
     const editor = getVisibleEditorForDoc(thread.docName);
@@ -256,7 +245,7 @@ export function ThreadCard({
     // Our own scroll, not ProseMirror's: its minimal scroll lands the passage
     // under the floating toolbar.
     scrollAnchorIntoView(editor, range, thread.docName);
-    emitOpenThreadPopover(thread.id);
+    emitOpenThread(thread.id);
   }
 
   function rePlaceOnSelection() {
@@ -276,10 +265,8 @@ export function ThreadCard({
 
   // Clicking the card SELECTS ONLY this comment, or clears it when it is
   // already the only one; the checkbox stays additive, and the quote row keeps
-  // the jump. Panel cards only (`showQuote` is the proxy — the popover's card
-  // has no batch column beside it), never while editing, and a resolved card
-  // has no tick to narrow.
-  const cardSelects = showQuote && !editing && !isResolved;
+  // the jump. Never while editing, and a resolved card has no tick to narrow.
+  const cardSelects = !editing && !isResolved;
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only affordance — clicking the card's whitespace solos its tick; keyboard/AT users compose the same state from the real controls (the card's checkbox + the footer's master tick). See focus-composer-on-card-pointer.ts for the sibling pattern.
@@ -430,13 +417,12 @@ export function ThreadCard({
         </div>
       </div>
 
-      {/* Anchor quote. The orphaned block is the card's state rather than a
-          quote row — a thread that lost its passage has to say so wherever it is
-          rendered — so `showQuote` does not gate it. It still SHOWS the quote:
+      {/* Anchor quote — the card sits away from the text, so it has to say what
+          the comment is on. The orphaned block stands in for it: a thread that
+          lost its passage says so instead, and still SHOWS the quote, because
           orphaning mutates state alone, so the stored words survive as the last
           thing the comment was on, and they are what tells a reader which of
-          several comments this is. The popover has no passage underneath to
-          duplicate, that being the whole problem.
+          several comments this is.
 
           Same chrome as the live quote row it stands in for — a lost passage is
           still the passage this comment is on, so it reads as that row struck
@@ -460,7 +446,7 @@ export function ThreadCard({
             </Trans>
           </p>
         </div>
-      ) : showQuote ? (
+      ) : (
         <Tooltip>
           {/* `asChild` onto a DISABLED button would lose the hint — a disabled
               element fires no pointer events, so Radix never sees the hover.
@@ -500,7 +486,7 @@ export function ThreadCard({
             )}
           </TooltipContent>
         </Tooltip>
-      ) : null}
+      )}
 
       {/* The comment, or the field that revises it — one slot, never both. The
           field used to open BENEATH the text it was seeded from, so a card in

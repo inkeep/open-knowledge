@@ -3,10 +3,9 @@
  * `<textarea>` in a real property row.
  *
  * The matcher's own rules are pinned in `property-anchor-click.test.ts`. What
- * needs a DOM is everything the matcher cannot see — that the listener finds the
- * row, reads the caret the browser placed, leaves the click otherwise alone, and
- * stamps the attribute the popover's dismisser looks for BEFORE that dismisser
- * runs.
+ * needs a DOM is everything the matcher cannot see — that the listener finds
+ * the row, reads the caret the browser placed, and leaves the click otherwise
+ * alone.
  */
 
 import { cleanup, render } from '@testing-library/react';
@@ -19,9 +18,12 @@ const opened: (string | null)[] = [];
 let threads: CommentThread[] = [];
 
 vi.doMock('./store', () => ({
-  emitOpenThreadPopover: (id: string | null) => {
+  emitOpenThread: (id: string | null) => {
     opened.push(id);
   },
+  // The double IS the store's state here: the listener reads it to decide
+  // whether a click on an uncommented value has anything to stand down.
+  getOpenThread: () => (opened.length === 0 ? null : opened[opened.length - 1]),
   getThreads: () => threads,
 }));
 
@@ -92,6 +94,17 @@ describe('clicking a commented property value', () => {
     expect(opened).toEqual([]);
   });
 
+  test('a click into an uncommented value stands the open thread down', () => {
+    // Same gesture the body reads as "I have moved on": with a comment open,
+    // clicking text that carries none has to clear it, or the highlight stays
+    // lit for a passage the reader has left. The two tests above pin the other
+    // half — with nothing open, the same click says nothing at all.
+    const { getByLabelText } = render(<Panel />);
+    clickAt(getByLabelText('cuisine') as HTMLTextAreaElement, 8);
+    clickAt(getByLabelText('protein') as HTMLTextAreaElement, 3);
+    expect(opened).toEqual(['t1', null]);
+  });
+
   test('the click is not consumed — the caret the reader aimed at stands', () => {
     const { getByLabelText } = render(<Panel />);
     const field = getByLabelText('cuisine') as HTMLTextAreaElement;
@@ -101,67 +114,5 @@ describe('clicking a commented property value', () => {
     field.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
     expect(field.selectionStart).toBe(8);
-  });
-
-  test('mousedown stamps the attribute the popover dismisser exempts', () => {
-    const { getByLabelText } = render(<Panel />);
-    const field = getByLabelText('cuisine') as HTMLTextAreaElement;
-    field.setSelectionRange(8, 8);
-    // Read during the dismisser's own phase: it listens on `document` in the
-    // bubble phase, which is strictly after this hook's capture listener.
-    let seenDuringBubble: string | null = null;
-    const spy = (event: Event) => {
-      seenDuringBubble =
-        (event.target as HTMLElement)
-          .closest('[data-comment-thread]')
-          ?.getAttribute('data-comment-thread') ?? null;
-    };
-    document.addEventListener('mousedown', spy);
-    field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    document.removeEventListener('mousedown', spy);
-
-    expect(seenDuringBubble).toBe('t1');
-  });
-
-  test('clicking the same passage twice keeps the thread open', () => {
-    // The field report: the first click opened the thread and the second put it
-    // back. Reproduced against a stand-in for the real dismisser, because the
-    // second click is the FIRST one it is registered for — `CommentThreadPopover`
-    // only binds `mousedown` while a thread is showing, so click one never meets
-    // it and click two always does.
-    const { getByLabelText } = render(<Panel />);
-    const field = getByLabelText('cuisine') as HTMLTextAreaElement;
-    clickAt(field, 8);
-
-    const dismisser = (event: Event) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-comment-thread]')) return;
-      opened.push(null);
-    };
-    document.addEventListener('mousedown', dismisser);
-    clickAt(field, 8);
-    document.removeEventListener('mousedown', dismisser);
-
-    // No `null` in the middle: the dismisser has to see the attribute and stand
-    // down, or the popover closes and reopens on one gesture.
-    expect(opened).toEqual(['t1', 't1']);
-  });
-
-  test('an uncommented value carries no such attribute', () => {
-    const { getByLabelText } = render(<Panel />);
-    const field = getByLabelText('protein') as HTMLTextAreaElement;
-    field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    expect(field.hasAttribute('data-comment-thread')).toBe(false);
-  });
-
-  test('the attribute clears once the thread is gone', () => {
-    const { getByLabelText } = render(<Panel />);
-    const field = getByLabelText('cuisine') as HTMLTextAreaElement;
-    field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    expect(field.getAttribute('data-comment-thread')).toBe('t1');
-
-    threads = [];
-    field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    expect(field.hasAttribute('data-comment-thread')).toBe(false);
   });
 });

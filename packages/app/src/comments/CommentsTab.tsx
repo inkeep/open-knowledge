@@ -10,13 +10,20 @@
 
 import { useEffect, useState } from 'react';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
+import { useSingleFileMode } from '@/lib/single-file-mode';
 import { CommentProjectPanel } from './CommentProjectPanel';
 import { CommentsPanel } from './CommentsPanel';
 import { consumePendingCommentScope, subscribeCommentScopeRequests } from './reveal-queue';
 import { setVisibleCommentScope } from './visible-scope';
 
 export function CommentsTab({ docName }: { docName: string }) {
-  const [scope, setScope] = useState<PanelScope>('doc');
+  const [requestedScope, setRequestedScope] = useState<PanelScope>('doc');
+  // A `ok <file>` session has no project to widen to — the one document IS the
+  // whole of it. So the scope is pinned to "This doc" and the switch is not
+  // drawn, rather than offering a second view of the same list under a name
+  // that promises files the session cannot reach.
+  const singleFile = useSingleFileMode();
+  const scope: PanelScope = singleFile ? 'doc' : requestedScope;
   // Reveals set this tab's scope from outside — posting a comment lands on
   // "This doc" (the comment you just made, beside its passage), the composer
   // chip on "This project" (its batch spans documents). The scope lives here, so
@@ -25,8 +32,8 @@ export function CommentsTab({ docName }: { docName: string }) {
   // this component exists to hear it.
   useEffect(() => {
     const pending = consumePendingCommentScope();
-    if (pending !== null) setScope(pending);
-    return subscribeCommentScopeRequests(setScope);
+    if (pending !== null) setRequestedScope(pending);
+    return subscribeCommentScopeRequests(setRequestedScope);
   }, []);
   // Publish what is on screen so ⇧⌘Enter sends the batch the visible button
   // would. Cleared on unmount — this tab is conditionally rendered, so leaving a
@@ -47,14 +54,12 @@ export function CommentsTab({ docName }: { docName: string }) {
   // the title looked like a heading for the list alone.
   // No `projectLabel`: "This project" is the shared default now, so both
   // panels say it without either one restating it.
+  const scopeSwitch = singleFile ? undefined : (
+    <PanelScopeHeader scope={scope} onScopeChange={setRequestedScope} />
+  );
   return scope === 'doc' ? (
-    <CommentsPanel
-      docName={docName}
-      scopeSwitch={<PanelScopeHeader scope={scope} onScopeChange={setScope} />}
-    />
+    <CommentsPanel docName={docName} scopeSwitch={scopeSwitch} />
   ) : (
-    <CommentProjectPanel
-      scopeSwitch={<PanelScopeHeader scope={scope} onScopeChange={setScope} />}
-    />
+    <CommentProjectPanel scopeSwitch={scopeSwitch} />
   );
 }

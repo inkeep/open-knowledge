@@ -28,7 +28,7 @@ import { getVisibleEditorForDoc, subscribeEditorRegistry } from '@/editor/active
 import { hashFromDocName } from '@/lib/doc-hash';
 import { type AnchorContext, findQuoteRange } from './anchor-search';
 import { scrollAnchorIntoView } from './scroll-to-anchor';
-import { emitFocusThread, emitOpenThreadPopover } from './store';
+import { emitFocusThread, emitOpenThread } from './store';
 
 /** Give up on a document that never arrives (bad docName, failed load, dead sync). */
 const REVEAL_WAIT_MS = 10_000;
@@ -102,7 +102,7 @@ export function revealComment(input: {
     if (input.quote === '') {
       if (landedAt === null) {
         landedAt = Date.now();
-        emitOpenThreadPopover(input.threadId);
+        emitOpenThread(input.threadId);
       }
       return true;
     }
@@ -130,7 +130,7 @@ export function revealComment(input: {
     if (!scrollAnchorIntoView(editor, range, input.docName, { instant: true })) return false;
     if (landedAt === null) {
       landedAt = Date.now();
-      emitOpenThreadPopover(input.threadId);
+      emitOpenThread(input.threadId);
     }
     return true;
   };

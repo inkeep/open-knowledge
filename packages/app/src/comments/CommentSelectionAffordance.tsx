@@ -231,8 +231,9 @@ export function CommentSelectionAffordance({
   return createPortal(
     <div
       ref={floatingRef}
-      // Same borrowed `PopoverContent` chrome as the thread popover, and for the
-      // same reason — a virtual anchor Radix cannot take.
+      // Borrowed `PopoverContent` chrome rather than a real one: this follows a
+      // ProseMirror text range through a floating-ui virtual element, and
+      // Radix's anchor takes a DOM node.
       className="z-[60] flex w-80 flex-col gap-2 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
       style={{ position: 'fixed', top: 0, left: 0 }}
       data-testid="comment-composer"

@@ -3,8 +3,9 @@
  *
  * A thin right-edge rail of small comment ICONS — one per open thread — each
  * sitting BESIDE the line it is anchored to. Clicking one scrolls to the passage
- * and opens its thread (via the shared open-thread bus → the click-at-text
- * popover).
+ * and opens its thread — which is to say it brings that comment up in the
+ * Comments panel (via the shared open-thread bus), rather than floating a card
+ * over the words the reader came to read.
  *
  * Position comes from `view.coordsAtPos`, i.e. where the text actually is on
  * screen, so an icon lines up with its own sentence. It deliberately does NOT
@@ -44,10 +45,10 @@ import {
 import { findScrollContainer, scrollAnchorIntoView, scrollportInsetTop } from './scroll-to-anchor';
 import {
   clearActiveThread,
-  emitOpenThreadPopover,
+  emitOpenThread,
   setActiveThread,
-  subscribeOpenThreadPopover,
   useCommentThreads,
+  useOpenThread,
 } from './store';
 
 const RAIL_WIDTH = 34;
@@ -157,11 +158,15 @@ export function layoutMarkers(
 export function CommentMarginRail({ editor, docName }: { editor: Editor; docName: string }) {
   const { t } = useLingui();
   const threads = useCommentThreads(docName);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Read from the store rather than held locally and fed by a subscription.
+  // Local state starts at null and only learns from the NEXT event, so a rail
+  // that mounts while a thread is already open — the editor pool recycles this
+  // component on every visit to a document — drew its marker unlit and then got
+  // the toggle backwards: `jumpTo` compares against this value, so the first
+  // click on the lit marker re-opened the thread instead of closing it.
+  const activeId = useOpenThread();
   const [rail, setRail] = useState<RailBox | null>(null);
   const [positions, setPositions] = useState<MarkerPosition[]>([]);
-
-  useEffect(() => subscribeOpenThreadPopover((id) => setActiveId(id)), []);
 
   useEffect(() => {
     const view = getEditorView(editor);
@@ -246,11 +251,11 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
   }, [editor, threads]);
 
   function jumpTo(threadId: string) {
-    // Second click on the marker you are already reading closes it. The rail
-    // mirrors the popover's own state, so this stays right when the popover was
-    // dismissed some other way (Escape, a click in the document).
+    // Second click on the marker you are already reading stands the thread
+    // down. The rail mirrors the open-thread state rather than keeping its own,
+    // so this stays right when the thread was closed from somewhere else.
     if (activeId === threadId) {
-      emitOpenThreadPopover(null);
+      emitOpenThread(null);
       return;
     }
     const thread = threads.find((x) => x.id === threadId);
@@ -272,7 +277,7 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
       const range = findQuoteRange(editor.state.doc, thread.anchor.quote, thread.anchor);
       if (range) scrollAnchorIntoView(editor, range, thread.docName);
     }
-    emitOpenThreadPopover(threadId);
+    emitOpenThread(threadId);
   }
 
   if (rail === null || positions.length === 0) return null;
@@ -291,8 +296,12 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
             key={pos.id}
             type="button"
             variant="ghost"
+            // The label carries the state on its own. No `aria-expanded`: this
+            // marker no longer unfolds anything beside itself — it shows the
+            // comment in the Comments panel, a region it does not own — and a
+            // button claiming a collapsed disclosure that is not there sends a
+            // screen-reader user looking for one.
             aria-label={active ? t`Close comment` : t`Open comment`}
-            aria-expanded={active}
             className={cn(
               'pointer-events-auto absolute left-0 size-7 rounded-full border bg-background p-0 shadow-sm transition-colors hover:bg-muted',
               // Dimmed: it is parked at the edge, not pointing at the line beside it.

@@ -34,7 +34,7 @@ vi.doMock('./store', () => ({
     captured.deleted += 1;
   },
   editComment: () => {},
-  emitOpenThreadPopover: () => {},
+  emitOpenThread: () => {},
   reopenThread: () => {},
   replaceOrphan: () => {},
   setActiveThread: () => {},
@@ -60,15 +60,15 @@ function thread(overrides: Partial<CommentThread> = {}): CommentThread {
   };
 }
 
-function renderCard(overrides: Partial<CommentThread> = {}, showQuote = true) {
+function renderCard(overrides: Partial<CommentThread> = {}) {
   return render(
     <TooltipProvider>
       <ThreadCard
         thread={thread(overrides)}
         cardRef={() => {}}
         focused={false}
+        active={false}
         sending={false}
-        showQuote={showQuote}
       />
     </TooltipProvider>,
   );
@@ -127,12 +127,6 @@ describe('clicking a card', () => {
 
   test('a resolved card has no tick, so its body does nothing', () => {
     renderCard({ status: 'resolved' });
-    fireEvent.click(screen.getByRole('article'));
-    expect(captured.toggled).toEqual([]);
-  });
-
-  test('the popover card has no batch column beside it, so its body does nothing', () => {
-    renderCard({}, false);
     fireEvent.click(screen.getByRole('article'));
     expect(captured.toggled).toEqual([]);
   });

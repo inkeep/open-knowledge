@@ -19,8 +19,9 @@ import { useEffect } from 'react';
 import { buildAnchorSegments, type PlacedAnchor } from './anchor-layers';
 import { createAnchorResolver } from './anchor-search';
 import {
-  emitOpenThreadPopover,
+  emitOpenThread,
   getActiveThread,
+  getOpenThread,
   getThreads,
   refresh,
   subscribe,
@@ -57,7 +58,26 @@ export function setCommentDraftRange(editor: Editor, range: DraftRange | null): 
 }
 
 function openThread(threadId: string): void {
-  emitOpenThreadPopover(threadId);
+  emitOpenThread(threadId);
+}
+
+/**
+ * Stand the open thread down — the click landed in the document, away from
+ * every highlight, or Escape was pressed with the caret in the text.
+ *
+ * The floating card used to own this: it listened on `document` for a click
+ * outside itself and closed, which also cleared the deepened passage and the
+ * washed card in the panel. With the card gone, nothing else says "I am done
+ * with that comment", so a highlight you had opened stayed lit while you read
+ * on somewhere else in the file.
+ *
+ * Guarded on something actually being open so an ordinary click in an ordinary
+ * paragraph — the overwhelming majority of clicks in a document — does not
+ * dispatch an event that every panel then re-reads.
+ */
+function standDown(): void {
+  if (getOpenThread() === null) return;
+  emitOpenThread(null);
 }
 
 /**
@@ -186,16 +206,22 @@ function createCommentAnchorPlugin(docName: string): Plugin<AnchorPluginState> {
           if (pos < anchor.from || pos > anchor.to) continue;
           if (hit === null || anchor.to - anchor.from < hit.to - hit.from) hit = anchor;
         }
-        if (hit?.id == null) return false;
-        // One click, both meanings — the Google Docs gesture. The thread opens
-        // beside the passage AND the click falls through to ProseMirror as an
-        // ordinary caret placement, so a commented passage stays editable text
-        // rather than a button. The two never conflicted: a plain caret paints
-        // no selection and opens no bubble menu, and the popover takes no
+        // Clicked in the text but not on a comment: the reader has moved on to
+        // an unrelated passage, and the mark on the one they came from stops
+        // meaning anything. Still `false` — this decides nothing about where
+        // the caret goes.
+        if (hit?.id == null) {
+          standDown();
+          return false;
+        }
+        // One click, both meanings — the Google Docs gesture. The thread comes
+        // up in the Comments panel AND the click falls through to ProseMirror as
+        // an ordinary caret placement, so a commented passage stays editable
+        // text rather than a button. The two never conflicted: a plain caret
+        // paints no selection and opens no bubble menu, and the panel takes no
         // focus, so reading and typing coexist. (An earlier cut captured the
         // click and blurred the editor, which made editing inside a highlight
-        // impossible — the popover's dismisser ignores highlight clicks, so
-        // the card also stays up while you type.)
+        // impossible.)
         openThread(hit.id);
         return false;
       },
@@ -239,10 +265,31 @@ export function CommentAnchorLayer({ editor, docName }: { editor: Editor; docNam
     const unsubscribe = subscribe(redraw);
     const unsubscribeActive = subscribeActiveThread(redraw);
 
+    // Escape stands the open thread down, from wherever the reader is.
+    //
+    // On `document`, not on the editor: the ProseMirror `handleKeyDown` prop is
+    // bound to `view.dom`, and the Comments panel is a sibling rail rather than
+    // a descendant — so a keyboard user who had tabbed into a card to read it
+    // was the one person Escape could not reach, and the deepened passage stayed
+    // lit until they tabbed all the way back to the marker that opened it.
+    //
+    // Neither consumed nor stopped: Escape is a shared key — the bubble menu, a
+    // node selection, the suggestion popups all answer it — and a comment
+    // standing down is not a reason for any of them to stay up. Several editors
+    // are mounted at once (the pool), so several copies of this listener run per
+    // press; `standDown` is guarded on something being open, which makes every
+    // copy after the first a no-op rather than a second event.
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      standDown();
+    };
+    document.addEventListener('keydown', onEscape);
+
     return () => {
       disposed = true;
       unsubscribe();
       unsubscribeActive();
+      document.removeEventListener('keydown', onEscape);
       if (!editor.isDestroyed) editor.unregisterPlugin(commentAnchorKey);
     };
   }, [editor, docName]);

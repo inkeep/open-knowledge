@@ -16,7 +16,7 @@ import type { CommentThread } from './types';
 
 const QUOTE = 'add pepitas for crunch.';
 
-function renderCard(overrides: Partial<CommentThread> = {}, showQuote = true) {
+function renderCard(overrides: Partial<CommentThread> = {}) {
   const thread: CommentThread = {
     id: 't1',
     docName: 'recipes/vegetarian/bowls',
@@ -35,8 +35,8 @@ function renderCard(overrides: Partial<CommentThread> = {}, showQuote = true) {
         thread={thread}
         cardRef={() => {}}
         focused={false}
+        active={false}
         sending={false}
-        showQuote={showQuote}
       />
     </TooltipProvider>,
   );
@@ -55,14 +55,6 @@ describe('an orphaned card', () => {
     // a monochrome display both get the fact from the sentence.
     renderCard();
     expect(screen.getByText(/The original text was deleted/)).toBeTruthy();
-  });
-
-  test('shows the deleted text in the popover too, where showQuote is off', () => {
-    // The popover suppresses the quote row because the passage sits highlighted
-    // underneath it. For an orphan there is no passage underneath — that being
-    // the whole problem — so the words have nowhere else to come from.
-    renderCard({}, false);
-    expect(screen.getByText(`“${QUOTE}”`)).toBeTruthy();
   });
 
   test('still offers the one-click recovery', () => {

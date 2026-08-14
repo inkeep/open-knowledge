@@ -34,7 +34,9 @@ vi.doMock('./store', () => ({
   setSendingAll: (ids: readonly string[], sending: boolean) => {
     bulkCalls.push({ ids: [...ids], sending });
   },
-  usePinnedThread: () => null,
+  useOpenThread: () => null,
+  getOpenThread: () => null,
+  subscribeOpenThread: () => () => {},
   subscribeFocusThread: () => () => {},
   toggleSending: () => {},
   deleteThread: () => {},
