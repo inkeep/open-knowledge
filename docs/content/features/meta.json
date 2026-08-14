@@ -3,6 +3,7 @@
   "icon": "LuSparkles",
   "pages": [
     "editor",
+    "comments",
     "assets-and-embeds",
     "ignore-patterns",
     "timeline-and-recovery",

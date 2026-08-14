@@ -113,6 +113,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.ok/worktrees/<branch>/` | Git worktree checkout created when you open a branch in its own window (project switcher); the path is also added to `.git/info/exclude` | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs; always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
 
@@ -227,6 +228,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs (powers the timeline); always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
