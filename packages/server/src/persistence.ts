@@ -79,6 +79,7 @@ import {
   LOSS_EVENT_CHECKPOINT_WRITE,
   LOSS_EVENT_DETECTOR_TRIP,
   LOSS_EVENT_PERSISTENCE_HOLD,
+  LOSS_EVENT_REPAIR_REBUILD,
   type LossCaptureRing,
 } from './loss-capture.ts';
 import {
@@ -507,6 +508,27 @@ export function normalizedSourceForm(rawYText: string): string {
   const { frontmatter, body } = stripFrontmatter(rawYText);
   return normalizeBridge(prependFrontmatter(frontmatter, body));
 }
+/**
+ * Attached client count for a document, or 0 when the runtime does not expose
+ * one. Hocuspocus hands its hooks a `Document` that carries the count, but the
+ * bridge and persistence internals thread it as a bare `Y.Doc` — and the unit
+ * rigs pass a genuine `Y.Doc` that has no such method — so the probe is
+ * structural rather than a signature widening that would break those callers.
+ * Absence reports as 0 (indistinguishable from "nobody attached"), which keeps
+ * the field an attached-clients LOWER bound and never an overstatement.
+ */
+function connectionCount(document: Y.Doc): number {
+  const probe = (document as Y.Doc & { getConnectionsCount?: () => number }).getConnectionsCount;
+  if (typeof probe !== 'function') return 0;
+  try {
+    const n = probe.call(document);
+    return typeof n === 'number' && Number.isFinite(n) ? n : 0;
+  } catch {
+    /* diagnostic-only: a throwing probe must never break a repair path */
+    return 0;
+  }
+}
+
 /**
  * Extract a {@link StoreFailure} from a thrown value without touching it in a
  * way that can itself throw. Disk-write rejections are normally
@@ -1123,6 +1145,23 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
 
   function reconcileFragmentNow(document: Y.Doc, body: string, documentName: string): void {
+    // Breadcrumb the rebuild ITSELF, not just the anchor mint that sometimes
+    // precedes it. The mint is deduped per document against its last payload and
+    // is skipped outright when serialization produced no fragment view, so on a
+    // document that diverges at this boundary on every write-back the rebuild
+    // recurs indefinitely while the ring shows at most one record. That is the
+    // difference between "a repair ran once" and "this document is stuck in a
+    // permanent repair loop", and only the latter explains a fragment that keeps
+    // changing under a user. Recorded before the work so a throw inside the
+    // rebuild cannot swallow the evidence that it was attempted.
+    void options?.getLossRing?.()?.record({
+      event: LOSS_EVENT_REPAIR_REBUILD,
+      docName: documentName,
+      writerId: null,
+      direction: 'b',
+      site: PERSISTENCE_PREWRITE_SITE,
+      connections: connectionCount(document),
+    });
     try {
       const xmlFragment = document.getXmlFragment('default');
       const parseOpts = options?.resolveEmbed
@@ -1235,6 +1274,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         direction: 'b',
         site: PERSISTENCE_PREWRITE_SITE,
         lostLen,
+        witnessAvailable,
       });
       return;
     }
@@ -1257,6 +1297,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             direction: 'b',
             site: PERSISTENCE_PREWRITE_SITE,
             lostLen,
+            witnessAvailable,
             checkpointSha: sha,
           });
           console.warn(
@@ -1279,6 +1320,20 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             { documentName, err: e },
             '[persistence] reconcile-loss checkpoint write failed',
           );
+          // The anchor failed but the rebuild still went ahead — emit the
+          // sha-less breadcrumb (mirroring the no-shadow branch) so the trip is
+          // never absent from the ring. Without it a shadow-repo outage reads as
+          // "this boundary never fired" at exactly the moment the destroyed
+          // fragment view has no restore anchor.
+          void ring?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName: documentName,
+            writerId: null,
+            direction: 'b',
+            site: PERSISTENCE_PREWRITE_SITE,
+            lostLen,
+            witnessAvailable,
+          });
         });
     });
   }

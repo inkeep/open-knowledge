@@ -18,6 +18,7 @@
  */
 
 import { join } from 'node:path';
+import type { BridgeMergeContentLossWhich } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { getLogger } from './logger.ts';
 import { RotatingAppender } from './telemetry-file-sink.ts';
@@ -46,6 +47,15 @@ export const LOSS_EVENT_CHECKPOINT_WRITE = 'checkpoint-write';
 // so a bundle reader can tell "the hygiene layer tolerated a divergence" from
 // "a detector tripped", which are opposite outcomes at the same boundary.
 export const LOSS_EVENT_PERSISTENCE_HOLD = 'persistence-hold';
+// A destructive fragment rebuild actually ran. Distinct from
+// `checkpoint-write`, which reports that a restore ANCHOR was minted: the two
+// are not 1:1, because the anchor mint is deduped per document against its last
+// payload and is skipped entirely when serialization produced no fragment view.
+// A document whose fragment view diverges on every write-back therefore rebuilds
+// indefinitely while emitting at most one anchor, so without its own kind the
+// rebuild RATE — the thing that distinguishes a one-off repair from a document
+// stuck in a permanent repair loop — is absent from the ring.
+export const LOSS_EVENT_REPAIR_REBUILD = 'repair-rebuild';
 
 export const LOSS_EVENT_KINDS = [
   LOSS_EVENT_GUARD_DEFER,
@@ -53,6 +63,7 @@ export const LOSS_EVENT_KINDS = [
   LOSS_EVENT_BACKSTOP_TRIP,
   LOSS_EVENT_CHECKPOINT_WRITE,
   LOSS_EVENT_PERSISTENCE_HOLD,
+  LOSS_EVENT_REPAIR_REBUILD,
 ] as const;
 
 type LossEventKind = (typeof LOSS_EVENT_KINDS)[number];
@@ -87,6 +98,32 @@ export const LossCaptureEventSchema = z.object({
   digest: z.string().optional(),
   /** Git sha of the checkpoint that preserved the content, when one was written. */
   checkpointSha: z.string().optional(),
+  /**
+   * Which arm of a content-preservation post-condition failed — content went
+   * missing, content was reordered, or content was over-multiplied. Recovery is
+   * identical for all of them, so nothing else in-process tells them apart per
+   * occurrence, and the over-multiplication arm is the field signature of
+   * duplicated content: to a user that reads as content APPEARING rather than
+   * vanishing, the opposite complaint from the same event. Open string on read
+   * so a future verdict parses on an older reader.
+   */
+  which: z.string().optional(),
+  /**
+   * Whether a converged fragment witness was published when a tolerance
+   * decision was made. Separates "observers published no witness, so the
+   * tolerance could not be evaluated at all" from "the guard ran against a real
+   * witness and declined to protect the content" — two different defects with
+   * two different fixes, previously indistinguishable from the ring alone.
+   */
+  witnessAvailable: z.boolean().optional(),
+  /**
+   * Client connections attached to the document when the event fired. A
+   * destructive repair with nobody attached is invisible background hygiene;
+   * the same repair under an attached editor is the instant a user's view
+   * changes underneath them. Not a focus signal — the server cannot observe
+   * focus — so it bounds the blast radius rather than proving impact.
+   */
+  connections: z.number().optional(),
 });
 
 export type LossCaptureEvent = z.infer<typeof LossCaptureEventSchema>;
@@ -106,6 +143,14 @@ export interface LossCaptureEventInput {
   lostLen?: number;
   digest?: string;
   checkpointSha?: string;
+  /**
+   * Closed producer vocabulary bound to the merge post-condition's own verdict
+   * type, so a new arm there is a compile error here rather than a silently
+   * unrecorded one; the read schema keeps it an open string.
+   */
+  which?: BridgeMergeContentLossWhich;
+  witnessAvailable?: boolean;
+  connections?: number;
 }
 
 const LOSS_CAPTURE_SUBDIR = ['.ok', 'local', 'loss-capture'] as const;
@@ -200,6 +245,9 @@ export class LossCaptureRing {
       ...(input.lostLen !== undefined ? { lostLen: input.lostLen } : {}),
       ...(input.digest !== undefined ? { digest: input.digest } : {}),
       ...(input.checkpointSha !== undefined ? { checkpointSha: input.checkpointSha } : {}),
+      ...(input.which !== undefined ? { which: input.which } : {}),
+      ...(input.witnessAvailable !== undefined ? { witnessAvailable: input.witnessAvailable } : {}),
+      ...(input.connections !== undefined ? { connections: input.connections } : {}),
     };
     return this.#appender.append(`${JSON.stringify(event)}\n`).catch((err: unknown) => {
       log.warn({ event: input.event, err }, '[loss-capture] failed to write loss-class event');

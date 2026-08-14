@@ -1,0 +1,10 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Bug reports about a document whose editor view keeps changing underneath you now carry enough evidence to diagnose it. Some documents contain a construct whose visual-editor view cannot be expressed back as the exact markdown behind it, and the bridge rebuilds that view on every save for as long as the document exists. The repair was already recorded, but not in a way that answered the two questions a report actually raises — how often it is happening, and what construct is causing it. Nothing about the repair itself changed; this is diagnostics only, and every field added is a number or a fixed label, never document text.
+
+- Bridge divergence warnings now name the constructs that disagree — a bullet list against a paragraph, a table row against a heading, and what precedes them — instead of only a character offset. Previously the offending construct could not be identified without asking the reporter for their file, which is usually where the investigation stopped.
+- A repair that rebuilds the editor view is recorded every time it runs. Recovery snapshots are deduplicated so one stuck document cannot crowd out everyone else's, which meant a document repairing itself hundreds of times looked identical to one that repaired once. The rebuild rate is now readable directly from a bug bundle, including the case where a document fails to serialize at all and no snapshot is taken.
+- When the safety net at the merge boundary fires, its verdict is recorded: whether content went missing, was reordered, or was duplicated. Duplicated content reads to a user as text appearing rather than vanishing — the opposite complaint from the same underlying event — and that distinction previously survived only as an in-process counter that no bug report carried.
+- Repair records now say whether the guard that protects un-propagated typing was able to run at all, separating "the guard could not evaluate this" from "the guard evaluated it and declined" — two different faults with two different fixes.

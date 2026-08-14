@@ -10,6 +10,7 @@ import {
   LOSS_EVENT_GUARD_DEFER,
   LOSS_EVENT_KINDS,
   LOSS_EVENT_PERSISTENCE_HOLD,
+  LOSS_EVENT_REPAIR_REBUILD,
   type LossCaptureEvent,
   LossCaptureEventSchema,
   LossCaptureRing,
@@ -83,8 +84,9 @@ describe('LossCaptureRing.record', () => {
   it('produces one distinguishable kind per loss-class mechanism', async () => {
     // The kinds must never alias — a bundle reader distinguishes a deferred
     // re-derive from a tripped detector/backstop from a written checkpoint from
-    // a tolerated persistence hold by this field alone.
-    expect(new Set(LOSS_EVENT_KINDS).size).toBe(5);
+    // a tolerated persistence hold from an executed destructive rebuild by this
+    // field alone.
+    expect(new Set(LOSS_EVENT_KINDS).size).toBe(6);
 
     const ring = new LossCaptureRing({ projectDir, maxBytes: 1_000_000, now: () => 1 });
     for (const kind of LOSS_EVENT_KINDS) {
@@ -99,8 +101,9 @@ describe('LossCaptureRing.record', () => {
       LOSS_EVENT_BACKSTOP_TRIP,
       LOSS_EVENT_CHECKPOINT_WRITE,
       LOSS_EVENT_PERSISTENCE_HOLD,
+      LOSS_EVENT_REPAIR_REBUILD,
     ]);
-    expect(new Set(kinds).size).toBe(5);
+    expect(new Set(kinds).size).toBe(6);
   });
 
   it('keeps the newest events when the file rotates at its cap', async () => {
@@ -155,6 +158,7 @@ describe('LossCaptureEventSchema (content-free BY SCHEMA)', () => {
     const keys = Object.keys(LossCaptureEventSchema.shape).sort();
     expect(keys).toEqual([
       'checkpointSha',
+      'connections',
       'digest',
       'direction',
       'docName',
@@ -164,6 +168,8 @@ describe('LossCaptureEventSchema (content-free BY SCHEMA)', () => {
       'seq',
       'site',
       'ts',
+      'which',
+      'witnessAvailable',
       'writerId',
     ]);
     // Belt-and-suspenders: none of the fields is a content-bearing name. The
@@ -196,6 +202,9 @@ describe('LossCaptureEventSchema (content-free BY SCHEMA)', () => {
       lostLen: 88,
       digest: 'abc123',
       checkpointSha: 'f00dcafe',
+      which: 'growth',
+      witnessAvailable: false,
+      connections: 2,
     };
     const roundTripped = LossCaptureEventSchema.parse(JSON.parse(JSON.stringify(event)));
     expect(roundTripped).toEqual(event);

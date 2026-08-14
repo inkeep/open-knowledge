@@ -49,6 +49,7 @@ import {
   detectAppliedToleranceClasses,
   emitToleranceFire,
   isParseEquivalentBridge,
+  locateBridgeDivergence,
   normalizeBridge,
   PARSE_EQUIVALENCE_TOLERANCE,
   toBridgeInvariantLog,
@@ -484,14 +485,6 @@ export function createDocCanonicalizer(
 // Watchdog assertion
 // ─────────────────────────────────────────────────────────────
 
-/** Offset of the first differing character (== min length when one input is a prefix of the other). */
-function firstDivergenceIndex(a: string, b: string): number {
-  const max = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < max && a[i] === b[i]) i++;
-  return i;
-}
-
 interface AssertBridgeInvariantOpts {
   site: BridgeInvariantSite;
   /** Doc name for log attribution + rate-limiter scoping. */
@@ -670,9 +663,16 @@ export function assertBridgeInvariant(
     return false;
   }
   incrementBridgeInvariantViolations();
-  // Content-free divergence summary — lengths + first-divergence offset
-  // only. Snapshot bytes are user content and must not reach the file sink
-  // (the redaction posture the hash-only console event already takes).
+  // Content-free divergence summary — lengths, offset, and the BLOCK-CONSTRUCT
+  // kinds meeting at the divergence. Snapshot bytes are user content and must
+  // not reach the file sink (the redaction posture the hash-only console event
+  // already takes), but a construct kind is drawn from a closed vocabulary and
+  // discloses shape rather than words. An offset alone cannot name what broke:
+  // a document that trips here on every drain is otherwise undiagnosable
+  // without asking its owner for the file, which is where such an
+  // investigation usually stops. The line ordinal is in NORMALIZED comparison
+  // space, not the user's file — see `locateBridgeDivergence`.
+  const divergence = locateBridgeDivergence(ytextNorm, fragNorm);
   log.warn(
     {
       site: opts.site,
@@ -681,7 +681,12 @@ export function assertBridgeInvariant(
       fragmentBytes: fragmentMdSnapshot.length,
       normalizedYtextBytes: ytextNorm.length,
       normalizedFragmentBytes: fragNorm.length,
-      firstDivergenceIndex: firstDivergenceIndex(ytextNorm, fragNorm),
+      firstDivergenceIndex: divergence.index,
+      normalizedLine: divergence.normalizedLine,
+      normalizedColumn: divergence.normalizedColumn,
+      ytextLineKind: divergence.ytextLineKind,
+      fragmentLineKind: divergence.fragmentLineKind,
+      precedingLineKind: divergence.precedingLineKind,
     },
     `[bridge-watchdog] bridge invariant violation at ${opts.site}${
       opts.docName ? ` for '${opts.docName}'` : ''

@@ -279,6 +279,15 @@ const MAX_DERIVE_TIMING_DEFERS = 8;
  */
 const MAX_REDERIVE_ROUNDS = 8;
 
+/**
+ * Ring `site` for the Observer A Path B merge post-condition. Named apart from
+ * the apply-arm detector (`observer-a-apply`) because the two fail for opposite
+ * reasons at different boundaries: the apply arm drops content while writing
+ * bytes it already holds, whereas this one is the three-way merge itself
+ * failing to preserve both sides' edits.
+ */
+const MERGE_BOUNDARY_SITE = 'merge-boundary';
+
 function fragmentContainsDangerSpace(node: PmStructuralNode): boolean {
   if (node.type && PRODUCER_GUARD_DANGER_TYPES.has(node.type)) return true;
   if (node.content) {
@@ -818,8 +827,33 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     if (err.info.which === 'growth') incrementBridgeMergeContentGrowth();
     else incrementBridgeMergeContentLoss();
 
+    // The verdict has to reach a DURABLE artifact, not just a counter and a
+    // console line. Counters are process-scoped and a bundle carries them only
+    // as totals, so after the fact nobody can tell which document produced them
+    // or whether the boundary tripped once or forty times — and `growth` is the
+    // signature of duplicated content, which is what this failure looks like to
+    // a user. The ring is the only per-occurrence, per-document sink that
+    // survives into a bug report.
+    const which = err.info.which;
+    // On the over-multiplication arm `lostSubstrings` holds the DOUBLED line
+    // rather than a missing one, so this length is "bytes implicated in the
+    // verdict", not "bytes lost" — the ring's `lostLen` carries the same
+    // at-risk framing at its sibling sites.
+    const lostLen = err.info.lostSubstrings.reduce((n, s) => n + s.length, 0);
+
     const shadow = opts.shadow?.();
-    if (!shadow || !opts.docName) return;
+    if (!shadow || !opts.docName) {
+      void opts.lossRing?.record({
+        event: LOSS_EVENT_DETECTOR_TRIP,
+        docName: opts.docName ?? '',
+        writerId: null,
+        direction: 'a',
+        site: MERGE_BOUNDARY_SITE,
+        lostLen,
+        which,
+      });
+      return;
+    }
     const branch = opts.getBranch?.() ?? 'main';
     const contentRoot = opts.contentRoot ?? '';
     queueMicrotask(() => {
@@ -833,6 +867,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       })
         .then((sha) => {
           incrementBridgeMergeCheckpointCreated();
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_DETECTOR_TRIP,
+            docName: opts.docName as string,
+            writerId: null,
+            direction: 'a',
+            site: MERGE_BOUNDARY_SITE,
+            lostLen,
+            which,
+            checkpointSha: sha,
+          });
           console.warn(
             JSON.stringify({
               event: 'bridge-merge-checkpoint-created',
@@ -851,6 +895,19 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             { err, 'doc.name': opts.docName ?? null, branch, kind: 'bridge-merge-loss' },
             'checkpoint write failed',
           );
+          // The anchor failed but the boundary still tripped and the merge was
+          // still applied as-computed — emit the sha-less event (mirroring the
+          // no-shadow branch) so the trip is never absent from the ring. Without
+          // it a checkpoint-write outage reads as "the boundary never fired".
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_DETECTOR_TRIP,
+            docName: opts.docName as string,
+            writerId: null,
+            direction: 'a',
+            site: MERGE_BOUNDARY_SITE,
+            lostLen,
+            which,
+          });
         });
     });
   };

@@ -31,6 +31,13 @@ export {
 } from './compose.ts';
 export { type DiffChange, diffLinesFast } from './diff-lines.ts';
 export {
+  BRIDGE_LINE_KINDS,
+  type BridgeDivergenceLocation,
+  type BridgeLineKind,
+  classifyBridgeLine,
+  locateBridgeDivergence,
+} from './divergence-locate.ts';
+export {
   bodyEdgeEmpties,
   createMergeBoundarySpace,
   docEdgeRunsDiffer,

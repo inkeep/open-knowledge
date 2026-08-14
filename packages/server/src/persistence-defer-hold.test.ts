@@ -449,11 +449,24 @@ describe('persistence pre-write divergence arms', () => {
       expect(row?.checkpoint?.kind).toBe('persistence-reconcile-loss');
       expect(row?.checkpoint?.metadata).toEqual({ atRiskLines: 1, witnessAvailable: true });
 
-      const writes = (await h.readRing()).filter(
+      const ring = await h.readRing();
+      const writes = ring.filter(
         (e) => e.event === 'checkpoint-write' && e.site === 'persistence-prewrite',
       );
       expect(writes.some((e) => e.checkpointSha === sha)).toBe(true);
       expect(writes.every((e) => e.lostLen === STALE_FRAGMENT_ONLY_LINE.length)).toBe(true);
+      // The witness verdict reaches the RING, not only the checkpoint metadata:
+      // a bundle without the shadow repo still has to separate "no witness was
+      // published" from "the guard ran and declined".
+      expect(writes.every((e) => e.witnessAvailable === true)).toBe(true);
+
+      // The rebuild itself is breadcrumbed, distinctly from the anchor mint.
+      const rebuilds = ring.filter((e) => e.event === 'repair-rebuild');
+      expect(rebuilds).toHaveLength(1);
+      expect(rebuilds[0]?.site).toBe('persistence-prewrite');
+      expect(rebuilds[0]?.direction).toBe('b');
+      expect(typeof rebuilds[0]?.connections).toBe('number');
+      expect(JSON.stringify(rebuilds)).not.toContain(STALE_FRAGMENT_ONLY_LINE);
     } finally {
       await h.cleanup();
     }
@@ -482,6 +495,18 @@ describe('persistence pre-write divergence arms', () => {
       // Negative bound: give a second mint every chance to appear, then assert
       // the ref set never grew.
       expect(await awaitMints(h, 2)).toEqual([firstSha]);
+
+      // ...and the ring still shows BOTH rebuilds. This is the whole point of a
+      // per-rebuild breadcrumb: a document that diverges at this boundary on
+      // every write-back repairs forever while minting one anchor, so an
+      // anchor-shaped record alone reports a permanent repair loop as a single
+      // one-off repair. Only one `checkpoint-write` — the dedup suppressed the
+      // second mint, and the rebuild record is what carries the rate.
+      const ring = await h.readRing();
+      expect(ring.filter((e) => e.event === 'repair-rebuild')).toHaveLength(2);
+      expect(
+        ring.filter((e) => e.event === 'checkpoint-write' && e.site === 'persistence-prewrite'),
+      ).toHaveLength(1);
     } finally {
       await h.cleanup();
     }
@@ -506,6 +531,13 @@ describe('persistence pre-write divergence arms', () => {
       const hist = await getDocumentHistory(h.shadow, { docName: h.docName }, '');
       const row = hist.entries.find((e) => e.sha === sha);
       expect(row?.checkpoint?.metadata).toEqual({ atRiskLines: 1, witnessAvailable: false });
+      // The same verdict on the ring. Paired with the arm above, these two
+      // tests are what make the field discriminating rather than decorative.
+      const writes = (await h.readRing()).filter(
+        (e) => e.event === 'checkpoint-write' && e.site === 'persistence-prewrite',
+      );
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes.every((e) => e.witnessAvailable === false)).toBe(true);
     } finally {
       await h.cleanup();
     }
@@ -536,6 +568,13 @@ describe('persistence pre-write divergence arms', () => {
       // a branch where the tolerance is unknowable.
       expect(h.wired.serializeFragment()).not.toContain(WIRED_PENDING_LINE);
       expect(h.diskBytes()).toBe(h.wired.ytextString());
+      // This arm mints nothing and increments no reconcile counter, so before
+      // the per-rebuild breadcrumb a rebuild here reached no durable artifact at
+      // all — the one arm where the fragment is destroyed with the least
+      // evidence. It is now represented like every other rebuild.
+      const rebuilds = (await h.readRing()).filter((e) => e.event === 'repair-rebuild');
+      expect(rebuilds).toHaveLength(1);
+      expect(rebuilds[0]?.site).toBe('persistence-prewrite');
     } finally {
       await h.cleanup();
     }
