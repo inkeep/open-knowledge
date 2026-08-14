@@ -291,11 +291,11 @@ function isSkillContentAncestorDir(relativePath: string): boolean {
  * artifacts (`.ok/config.yml`, `.ok/.gitignore`, `.ok/schemas/*.json`, folder
  * `frontmatter.yml`). The watcher-ignore list is glob-derived from
  * `.gitignore` / `.okignore` / `.git/info/exclude` (e.g. clone appends
- * `.ok/`), and the @parcel/watcher backend consults THESE globs — not the
- * function predicates (`isDirExcluded` / `isExcluded`) that carry the
- * carve-outs and that the chokidar backend uses. So a blanket `.ok` ignore glob
- * makes parcel (the default backend on Linux) never deliver external edits to
- * project skills, templates, or the shareable artifacts. Dropping the
+ * `.ok/`), and it is consulted INSTEAD of the function predicates
+ * (`isDirExcluded` / `isExcluded`) that carry the carve-outs and that the
+ * chokidar backend uses. So a blanket `.ok` ignore glob would make a watcher
+ * reading this list never deliver external edits to project skills, templates,
+ * or the shareable artifacts. Dropping the
  * blanket-`.ok` globs lets the watcher reach them; `.ok` children still never
  * reach the file index — `handleRawEvents` consults the unscoped predicates,
  * which admit only the skill/template leaves and keep pruning `.ok/local`,
@@ -308,9 +308,15 @@ function isSkillContentAncestorDir(relativePath: string): boolean {
  * list — a surviving children-exclude would prune the re-included skills tree
  * (and the admitted template/config leaves) with nothing left to re-admit
  * them. Sanitization probes the managed roots directly. Ordinary user
- * exclusions remain watcher bounds; otherwise a large ignored tree can
- * exhaust the recursive backend's watch budget before downstream predicates
- * run.
+ * exclusions are retained on the list so a watcher backend that can safely
+ * apply them has them available.
+ *
+ * Today's only consumer, `toParcelIgnorePaths` in `file-watcher.ts`, applies
+ * just the `WATCHER_STRUCTURAL_IGNORE_DIRS` subset: @parcel/watcher matches a
+ * glob with a recursive `std::regex` that overruns its thread stack on a long
+ * path, so nothing pattern-shaped may be handed to it. The retention and
+ * sanitization here therefore constrain a list that is narrowed again before
+ * use — kept because it is what makes the list safe to widen from.
  */
 
 const WATCHER_CARVE_OUT_CAPABLE_DIRS = new Set<string>([OK_DIR, ...EDITOR_HOST_DIRS]);
@@ -318,24 +324,31 @@ const WATCHER_SAFE_BUILTIN_SKIP_DIRS = new Set(
   [...BUILTIN_SKIP_DIRS].filter((dir) => !WATCHER_CARVE_OUT_CAPABLE_DIRS.has(dir)),
 );
 
-const WATCHER_STRUCTURAL_IGNORE_GLOBS = [
+/**
+ * The directory roots whose ENTIRE subtree the content predicates reject with
+ * no carve-out reachable inside — `.ok`'s two always-skip children rather than
+ * `.ok` itself, which does admit skills, templates, and the shareable sync
+ * artifacts.
+ *
+ * That unconditional-rejection property is what lets a consumer treat one of
+ * these as a PREFIX (everything at or below it is ignorable), which is
+ * stronger than the per-path glob match below and is not true of the ordinary
+ * user exclusions the list is otherwise built from. `toParcelIgnorePaths` in
+ * `file-watcher.ts` depends on it.
+ */
+export const WATCHER_STRUCTURAL_IGNORE_DIRS = [
   '.git',
-  '.git/**',
-  '**/.git',
-  '**/.git/**',
   'node_modules',
-  'node_modules/**',
-  '**/node_modules',
-  '**/node_modules/**',
   '.ok/local',
-  '.ok/local/**',
-  '**/.ok/local',
-  '**/.ok/local/**',
   '.ok/worktrees',
-  '.ok/worktrees/**',
-  '**/.ok/worktrees',
-  '**/.ok/worktrees/**',
 ] as const;
+
+const WATCHER_STRUCTURAL_IGNORE_GLOBS = WATCHER_STRUCTURAL_IGNORE_DIRS.flatMap((dir) => [
+  dir,
+  `${dir}/**`,
+  `**/${dir}`,
+  `**/${dir}/**`,
+]);
 
 function watcherPatternIsConfinedToAlwaysSkippedTree(pattern: string): boolean {
   const segments = pattern.replace(/^\/+/, '').replace(/\/+$/, '').split('/');
@@ -1068,7 +1081,13 @@ export interface ContentFilter {
    * directory without a sibling `.md` file).
    */
   isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean;
-  /** Relative glob patterns for @parcel/watcher ignore option (best-effort). */
+  /**
+   * Relative patterns a file-watcher backend MAY pre-filter on (best-effort;
+   * the predicates above stay authoritative). Not passed to a backend as-is —
+   * `toParcelIgnorePaths` narrows this to the prefix-shaped subset, because
+   * @parcel/watcher matches a pattern with a recursive `std::regex` that
+   * overruns its thread stack on a long path.
+   */
   getWatcherIgnoreGlobs(): string[];
   /** Increment refcount for a directory containing an included .md file. */
   incrementMdDir(dir: string): void;

@@ -16,6 +16,7 @@ import {
   reconcileFileIndexAfterFilterRebuild,
   registerWrite,
   startWatcher,
+  toParcelIgnorePaths,
   updateFileIndex,
   updateLastKnownHash,
   writeTracker,
@@ -1870,5 +1871,196 @@ describe('startWatcher symlink handling', () => {
       expect(events[0].docName).toBe('fresh-target');
     }
     expect(aliasMap.get('alias')).toBe('fresh-target');
+  });
+});
+
+describe('toParcelIgnorePaths', () => {
+  let projectDir: string;
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(resolve(tmpdir(), 'ok-parcel-ignore-'));
+  });
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  test('keeps the structural roots a prefix match can stand in for', () => {
+    const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+    expect(toParcelIgnorePaths(filter.getWatcherIgnoreGlobs()).sort()).toEqual([
+      '.git',
+      '.ok/local',
+      '.ok/worktrees',
+      'node_modules',
+    ]);
+  });
+
+  test('drops the recursive and children forms of those same roots', () => {
+    // The bare root covers the `<dir>/**` form by prefix. The `**/` forms are
+    // dropped outright, since a prefix cannot express "at any depth" — the
+    // seed walk's discovered occurrences stand in for them (below).
+    expect(
+      toParcelIgnorePaths([
+        '.git',
+        '.git/**',
+        '**/.git',
+        '**/.git/**',
+        'node_modules',
+        'node_modules/**',
+        '**/node_modules',
+        '**/node_modules/**',
+      ]),
+    ).toEqual(['.git', 'node_modules']);
+  });
+
+  test('drops ordinary user exclusions, whose subtrees can still admit content', () => {
+    writeFileSync(resolve(projectDir, '.gitignore'), 'dist/\ntmp/\n');
+    writeFileSync(resolve(projectDir, '.okignore'), 'drafts/\n');
+
+    const filter = createContentFilter({ projectDir, contentDir: projectDir });
+    const ignorePaths = toParcelIgnorePaths(filter.getWatcherIgnoreGlobs());
+
+    // Pin that they reach the filter's list at all, so the assertions below
+    // cannot pass by the patterns having been stripped further upstream.
+    expect(filter.getWatcherIgnoreGlobs()).toEqual(
+      expect.arrayContaining(['dist/', 'tmp/', 'drafts/']),
+    );
+    expect(ignorePaths).not.toContain('dist/');
+    expect(ignorePaths).not.toContain('tmp/');
+    expect(ignorePaths).not.toContain('drafts/');
+  });
+
+  test('never hands @parcel/watcher an entry its native matcher reads as a glob', () => {
+    writeFileSync(
+      resolve(projectDir, '.gitignore'),
+      ['dist/', '*.log', 'build/**', 'coverage', '**/*.tmp', 'a[0-9]/', 'x{1,2}/'].join('\n'),
+    );
+
+    const filter = createContentFilter({ projectDir, contentDir: projectDir });
+    const ignorePaths = toParcelIgnorePaths(filter.getWatcherIgnoreGlobs());
+
+    // A glob-shaped entry compiles to a std::regex the backend evaluates per
+    // event path, and that match recurses deep enough on a long path to kill
+    // the process outright — so the list must stay prefix-only. Non-empty
+    // guards against a vacuous pass.
+    expect(ignorePaths.length).toBeGreaterThan(0);
+    for (const entry of ignorePaths) {
+      expect(entry).not.toMatch(/[*?[\]{}()!+@|\\]/);
+    }
+  });
+});
+
+describe('structural-ignore discovery feeds the parcel prefix list', () => {
+  let contentDir: string;
+
+  beforeEach(async () => {
+    contentDir = await mkdtemp(resolve(tmpdir(), 'ok-structural-discovery-'));
+  });
+
+  afterEach(async () => {
+    await rm(contentDir, { recursive: true, force: true });
+  });
+
+  test('merges discovered nested occurrences with the structural roots', () => {
+    const merged = toParcelIgnorePaths(
+      ['.git', 'node_modules', '.ok/local', '.ok/worktrees', '**/node_modules/**', 'dist/'],
+      ['packages/app/node_modules', 'vendor/lib/.git', 'sub/.ok/local'],
+    );
+
+    expect(merged).toEqual(
+      expect.arrayContaining([
+        '.git',
+        'node_modules',
+        'packages/app/node_modules',
+        'vendor/lib/.git',
+        'sub/.ok/local',
+      ]),
+    );
+    expect(merged).not.toContain('**/node_modules/**');
+    expect(merged).not.toContain('dist/');
+  });
+
+  test('drops a discovered directory whose real name contains a glob metacharacter', () => {
+    // Unlike the structural roots, these paths come off disk, so this guard is
+    // reachable: `is-glob` would route `a[0-9]/node_modules` to the crashing
+    // regex branch. Losing its prune is the safe trade.
+    const merged = toParcelIgnorePaths(
+      ['.git', 'node_modules'],
+      ['a[0-9]/node_modules', 'ok-dir/node_modules'],
+    );
+
+    expect(merged).toContain('ok-dir/node_modules');
+    expect(merged).not.toContain('a[0-9]/node_modules');
+  });
+
+  test('the seed walk records nested structural dirs it prunes', async () => {
+    mkdirSync(resolve(contentDir, 'packages/app/node_modules/pkg'), { recursive: true });
+    mkdirSync(resolve(contentDir, 'docs/lib/.git/objects'), { recursive: true });
+    mkdirSync(resolve(contentDir, 'notes'), { recursive: true });
+    writeFileSync(resolve(contentDir, 'notes/keep.md'), '# keep\n');
+    writeFileSync(resolve(contentDir, 'packages/app/node_modules/pkg/index.md'), 'dep\n');
+
+    const filter = createContentFilter({ projectDir: contentDir, contentDir });
+    const watcher = await startWatcher(contentDir, async () => {}, filter, {
+      forceBackend: 'chokidar',
+    });
+    try {
+      // The walk admits ordinary content and prunes the structural trees.
+      expect([...watcher.getFileIndex().keys()]).toContain('notes/keep');
+      expect([...watcher.getFileIndex().keys()]).not.toContain(
+        'packages/app/node_modules/pkg/index',
+      );
+      // …and records both pruned structural roots so the parcel backend can
+      // skip the same subtrees by prefix.
+      expect([...watcher.getStructuralIgnoreDirs()].sort()).toEqual([
+        'docs/lib/.git',
+        'packages/app/node_modules',
+      ]);
+    } finally {
+      await watcher.unsubscribe();
+    }
+  });
+
+  test('records a nested two-segment root, whose match is a suffix not a segment', async () => {
+    // `.ok/local` and `.ok/worktrees` are matched by whole-entry suffix rather
+    // than by last segment, so a nested one exercises a different branch than
+    // `node_modules` does. A bare nested `.ok` must NOT be recorded — it holds
+    // admitted skills and templates.
+    mkdirSync(resolve(contentDir, 'packages/sub/.ok/local/logs'), { recursive: true });
+    mkdirSync(resolve(contentDir, 'packages/sub/.ok/templates'), { recursive: true });
+    writeFileSync(resolve(contentDir, 'packages/sub/.ok/templates/note.md'), '# tmpl\n');
+
+    const filter = createContentFilter({ projectDir: contentDir, contentDir });
+    const watcher = await startWatcher(contentDir, async () => {}, filter, {
+      forceBackend: 'chokidar',
+    });
+    try {
+      const discovered = [...watcher.getStructuralIgnoreDirs()];
+      expect(discovered).toContain('packages/sub/.ok/local');
+      expect(discovered).not.toContain('packages/sub/.ok');
+    } finally {
+      await watcher.unsubscribe();
+    }
+  });
+
+  test('discovery stops at a non-structural excluded directory', async () => {
+    // `vendor` is a builtin skip dir, so the walk prunes there and never
+    // reaches the `node_modules` beneath it. That subtree is not handed to
+    // parcel as a prefix — `vendor` itself cannot be, since an in-place skill
+    // root may sit under it and `isDirExcluded` admits skill ancestors ahead
+    // of the builtin skip list.
+    mkdirSync(resolve(contentDir, 'vendor/lib/node_modules/pkg'), { recursive: true });
+    mkdirSync(resolve(contentDir, 'app/node_modules'), { recursive: true });
+
+    const filter = createContentFilter({ projectDir: contentDir, contentDir });
+    const watcher = await startWatcher(contentDir, async () => {}, filter, {
+      forceBackend: 'chokidar',
+    });
+    try {
+      expect([...watcher.getStructuralIgnoreDirs()]).toEqual(['app/node_modules']);
+    } finally {
+      await watcher.unsubscribe();
+    }
   });
 });

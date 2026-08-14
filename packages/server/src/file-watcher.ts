@@ -27,7 +27,7 @@ import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, join, relative } from 'node:path';
 import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
 import { isConfigDoc, isReservedForUserTree, isSystemDoc } from './cc1-broadcast.ts';
-import type { ContentFilter } from './content-filter.ts';
+import { type ContentFilter, WATCHER_STRUCTURAL_IGNORE_DIRS } from './content-filter.ts';
 import { isWithinContentDir } from './content-path.ts';
 import {
   forgetDocExtension,
@@ -275,6 +275,15 @@ export interface WatcherHandle {
   getAliasMap: () => ReadonlyMap<string, string>;
   /** Map from alias folder docName → canonical folder docName (directory symlinks). */
   getFolderAliasIndex: () => ReadonlyMap<string, string>;
+  /**
+   * The structural-ignore roots the startup seed walk found below the content
+   * root, contentDir-relative. These are what the parcel backend prunes by
+   * prefix in place of the `**\/node_modules/**`-style globs it cannot be
+   * given (`toParcelIgnorePaths`), so reading it is how you tell whether a
+   * nested `node_modules` is actually being kept out of the watch.
+   * Snapshot-at-startup: a directory created later is not added.
+   */
+  getStructuralIgnoreDirs: () => ReadonlySet<string>;
   /**
    * Apply a `DiskEvent` to the live file index synchronously. The typed
    * mutator API for handlers that need to keep `/api/documents` consistent
@@ -890,6 +899,9 @@ async function seedLastKnownHashes(
   aliasMap: Map<string, string>,
   folderAliasIndex: Map<string, string>,
   visitedInodes?: Set<number>,
+  /** Collects every structural-ignore-root occurrence the walk prunes, so the
+   *  parcel backend can prune the same subtrees without a glob. */
+  structuralIgnoreDirs?: Set<string>,
 ): Promise<void> {
   const visited = visitedInodes ?? new Set<number>();
   try {
@@ -979,6 +991,7 @@ async function seedLastKnownHashes(
               aliasMap,
               folderAliasIndex,
               visited,
+              structuralIgnoreDirs,
             );
           } else if (canonStat.isFile() && isSupportedDocFile(entry.name)) {
             if (contentFilter) {
@@ -1051,7 +1064,13 @@ async function seedLastKnownHashes(
       } else if (lst.isDirectory()) {
         const relPath = contentRelativePath(contentDir, fullPath);
         if (contentFilter) {
-          if (!relPath || contentFilter.isDirExcluded(relPath)) continue;
+          if (!relPath || contentFilter.isDirExcluded(relPath)) {
+            // This walk stops here, and so should the watcher's — record the
+            // ones it can prune by prefix before dropping the subtree.
+            const structural = relPath && structuralIgnoreOccurrence(relPath);
+            if (structural) structuralIgnoreDirs?.add(structural);
+            continue;
+          }
         }
         upsertFolderIndexEntry(folderIndex, contentDir, fullPath, lst);
         await seedLastKnownHashes(
@@ -1063,6 +1082,7 @@ async function seedLastKnownHashes(
           aliasMap,
           folderAliasIndex,
           visited,
+          structuralIgnoreDirs,
         );
       } else if (lst.isFile() && isSupportedDocFile(entry.name)) {
         if (visited.has(lst.ino)) continue;
@@ -1803,6 +1823,99 @@ function _fileWatcherDropsCounter() {
 
 // ─── Backend: @parcel/watcher ───────────────────────────────────────────────
 
+/** Any character `is-glob` could read as a pattern, which is what routes an
+ *  `ignore` entry to the native regex matcher instead of the prefix compare. */
+const GLOB_METACHARACTER_RE = /[*?[\]{}()!+@|\\]/;
+
+/**
+ * The contentDir-relative path of a directory that IS an occurrence of a
+ * structural ignore root, at any depth — `packages/app/node_modules`, a nested
+ * `.git`, `sub/.ok/local`. `null` for anything else.
+ *
+ * The seed walk uses this to enumerate what a plain prefix cannot express.
+ * `WATCHER_STRUCTURAL_IGNORE_DIRS` covers one- and two-segment roots, so the
+ * suffix test is against the whole entry rather than the last segment.
+ */
+function structuralIgnoreOccurrence(relativePath: string): string | null {
+  for (const dir of WATCHER_STRUCTURAL_IGNORE_DIRS) {
+    if (relativePath === dir || relativePath.endsWith(`/${dir}`)) return relativePath;
+  }
+  return null;
+}
+
+/**
+ * Build the `ignore` list for `@parcel/watcher` out of entries its native
+ * matcher can handle WITHOUT a regex.
+ *
+ * The native backend splits `ignore` in two: a glob-shaped entry is compiled to
+ * a `std::regex` and evaluated with `std::regex_match` against every path it
+ * walks or reports, while a plain path is resolved to one absolute prefix and
+ * compared with `std::string::compare`. Only the first form is dangerous —
+ * `std::regex_match` recurses proportionally to the subject's UTF-8 BYTE
+ * length and runs on the backend's own thread, so a long enough path overruns
+ * that thread's stack and takes the process down where no JS `catch` can
+ * see it (`STATUS_STACK_BUFFER_OVERRUN` / exit `0xC0000409` on Windows,
+ * `SIGSEGV` elsewhere). Bytes are what count, not characters, so a directory
+ * named in a non-Latin script trips the limit at roughly a third of the path
+ * length an ASCII one needs — which is why this surfaced as "non-ASCII project
+ * paths crash on startup" (parcel-bundler/watcher#250).
+ *
+ * The prefix form is therefore the only form handed over, and only for
+ * `WATCHER_STRUCTURAL_IGNORE_DIRS`: a prefix ignores an entire subtree, a
+ * strictly stronger claim than the per-path glob it replaces, and one that
+ * holds only because those roots have no carve-out inside them. An ordinary
+ * user exclusion does not qualify — a prefix-ignored `drafts/` hides the
+ * admitted `drafts/.ok/templates/*.md` — so those are left to the
+ * ContentFilter, which `handleRawEvents` consults on every surviving event
+ * anyway.
+ *
+ * Leaving them there is a pre-filter decision, not a correctness one, with one
+ * asymmetry worth knowing: `onRawBatch` runs ahead of `handleRawEvents` and is
+ * gated on its own skills-path pattern rather than on the ContentFilter. An
+ * event matching that pattern but no structural prefix therefore reaches the
+ * debounced in-place-skill re-scan even where the ContentFilter would drop it.
+ * The re-scan broadcasts nothing unless the canonical skill set changed, so
+ * the cost is a wasted scan, not a wrong result.
+ *
+ * A prefix cannot express "at any depth", so `discoveredStructuralDirs`
+ * carries the nested occurrences the seed walk found, keeping the pruning the
+ * dropped `**\/node_modules/**` globs used to do. That pruning is load-bearing
+ * rather than cosmetic: parcel's Unix walk skips an ignored directory outright
+ * (`FTS_SKIP`) and records every surviving entry in an in-memory tree, one
+ * inotify watch each on Linux.
+ *
+ * Those paths come off disk, so unlike the structural roots they can genuinely
+ * contain a glob metacharacter — a directory really named `a[0-9]`. Such an
+ * entry is dropped rather than handed over, since `is-glob` would route it
+ * straight back to the crashing branch.
+ *
+ * Two bounds on the discovered set, both from it riding the seed walk. It is a
+ * startup snapshot, so a `node_modules` created later is not pruned until the
+ * next start. And the walk stops at every excluded directory, not just the
+ * structural ones, so a structural root below (say) `vendor/` is never
+ * reached; `vendor` itself cannot stand in for it, because an in-place skill
+ * root can sit anywhere and `isDirExcluded` admits its ancestors ahead of the
+ * builtin skip list.
+ *
+ * That same ordering is what keeps the set free of admitted content: an entry
+ * is recorded only where the walk itself refused to descend, so a directory
+ * holding anything the ContentFilter admits is never a candidate.
+ *
+ * Nothing is recorded for a structural root reachable only through a symlink,
+ * and nothing needs to be: parcel walks with `FTS_PHYSICAL` and never descends
+ * one. A canonical target inside `contentDir` is reached by its own route and
+ * recorded there; one outside is refused as a symlink escape.
+ */
+export function toParcelIgnorePaths(
+  watcherIgnoreGlobs: readonly string[],
+  discoveredStructuralDirs: Iterable<string> = [],
+): string[] {
+  const prefixIgnorable = new Set<string>(WATCHER_STRUCTURAL_IGNORE_DIRS);
+  const entries = new Set(watcherIgnoreGlobs.filter((entry) => prefixIgnorable.has(entry)));
+  for (const dir of discoveredStructuralDirs) entries.add(dir);
+  return [...entries].filter((entry) => !GLOB_METACHARACTER_RE.test(entry));
+}
+
 async function startParcelWatcher(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -1812,6 +1925,7 @@ async function startParcelWatcher(
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
   onRawBatch?: (absPaths: readonly string[]) => void,
+  discoveredStructuralDirs?: ReadonlySet<string>,
 ): Promise<AsyncSubscription | null> {
   let parcel: typeof import('@parcel/watcher');
   try {
@@ -1830,7 +1944,12 @@ async function startParcelWatcher(
 
   try {
     const subscribeOpts = contentFilter
-      ? { ignore: contentFilter.getWatcherIgnoreGlobs() }
+      ? {
+          ignore: toParcelIgnorePaths(
+            contentFilter.getWatcherIgnoreGlobs(),
+            discoveredStructuralDirs ?? [],
+          ),
+        }
       : undefined;
 
     const subscription = await parcel.subscribe(
@@ -2043,7 +2162,8 @@ async function startChokidarWatcher(
  * When a ContentFilter is provided:
  * - Excluded files are skipped during the initial scan
  * - Excluded events are dropped in classifyEvents
- * - Best-effort ignore globs are passed to @parcel/watcher
+ * - The prefix-ignorable subset of the ignore list is passed to
+ *   @parcel/watcher as a best-effort pre-filter (see `toParcelIgnorePaths`)
  *
  * Returns a WatcherHandle with unsubscribe() and getFileIndex().
  */
@@ -2088,6 +2208,11 @@ export async function startWatcher(
     fileIndexGeneration++;
   };
 
+  // Filled by the seed walk below, read by `startParcelWatcher` after it — the
+  // ordering is what lets the parcel backend prune nested structural dirs by
+  // prefix instead of by the glob that crashes its matcher.
+  const structuralIgnoreDirs = new Set<string>();
+
   await seedLastKnownHashes(
     contentDir,
     contentDir,
@@ -2096,6 +2221,8 @@ export async function startWatcher(
     folderIndex,
     aliasMap,
     folderAliasIndex,
+    undefined,
+    structuralIgnoreDirs,
   );
   bumpFileIndexGeneration();
 
@@ -2126,6 +2253,7 @@ export async function startWatcher(
             aliasMap,
             bumpFileIndexGeneration,
             onRawBatch,
+            structuralIgnoreDirs,
           );
     if (parcelSub) {
       subscription = parcelSub;
@@ -2201,6 +2329,9 @@ export async function startWatcher(
     },
     getFolderAliasIndex() {
       return folderAliasIndex;
+    },
+    getStructuralIgnoreDirs() {
+      return structuralIgnoreDirs;
     },
     mutateFileIndex(event) {
       updateFileIndex(event, fileIndex);
