@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, Database, type LucideIcon, NotebookPen } from 'lucide-react';
+import { ArrowRight, Bot, FileText, type LucideIcon, NotebookPen } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 /**
@@ -24,28 +24,23 @@ const LAYERS: Layer[] = [
   {
     k: 'LAYER 01',
     Icon: NotebookPen,
-    title: 'Editor',
-    role: 'What you touch',
-    desc: (
-      <>
-        A beautiful "what you see is what you get" editor for your markdown files. Supports
-        interactive HTML and JS, Mermaid diagrams, LaTeX, Videos, PDFs, and more.
-      </>
-    ),
+    title: 'WYSIWYG Editor',
+    role: 'Your Interface',
+    desc: 'A beautiful "what you see is what you get" editor for your markdown files. Supports interactive HTML and JS, Mermaid diagrams, LaTeX, Videos, PDFs, and more.',
   },
   {
     k: 'LAYER 02',
     Icon: Bot,
-    title: 'Agent tools',
-    role: 'Knowledge graph',
-    desc: 'MCP and skills that improve agent search and discovery, and help agents ingest, organize, and maintain knowledge.',
+    title: 'MCP and Skills',
+    role: 'Agent toolkit',
+    desc: 'Tools for agents to help search, edit, expand, organize, and maintain your knowledge base.',
   },
   {
     k: 'LAYER 03',
-    Icon: Database,
-    title: 'Content',
-    role: 'Your source of truth',
-    desc: 'Plain markdown or mdx files in your project, version-controlled in git.',
+    Icon: FileText,
+    title: 'Markdown Content',
+    role: 'Source of truth',
+    desc: 'Your knowledge base stays as plain markdown or mdx files in your project, version-controlled in git.',
   },
 ];
 
