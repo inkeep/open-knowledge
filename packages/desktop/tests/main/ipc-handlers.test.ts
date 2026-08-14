@@ -53,6 +53,88 @@ describe('detectProtocol', () => {
     expect(result).toEqual({ installed: true, displayName: 'Codex' });
   });
 
+  test('Windows fallback: Electron rejects (MSIX app), registry probe returns true → installed:true', async () => {
+    let probedScheme: string | null = null;
+    const result = await detectProtocol(
+      {
+        platform: 'win32',
+        getApplicationInfoForProtocol: async () => {
+          // Electron's AssocQueryString path finds no executable for
+          // MSIX-registered schemes (empty shell\open\command) and rejects.
+          throw new Error('Unable to retrieve installation path to app');
+        },
+        runWindowsProbe: async (s) => {
+          probedScheme = s;
+          return true;
+        },
+      },
+      'claude',
+    );
+    expect(probedScheme).toBe('claude');
+    expect(result).toEqual({ installed: true });
+  });
+
+  test('Windows fallback: Electron returns empty info, registry probe returns true → installed:true', async () => {
+    const result = await detectProtocol(
+      {
+        platform: 'win32',
+        getApplicationInfoForProtocol: async () => ({ name: '', path: '' }),
+        runWindowsProbe: async () => true,
+      },
+      'codex',
+    );
+    expect(result).toEqual({ installed: true });
+  });
+
+  test('Windows fallback: Electron rejects AND registry probe false → installed:false', async () => {
+    const result = await detectProtocol(
+      {
+        platform: 'win32',
+        getApplicationInfoForProtocol: async () => {
+          throw new Error('no handler');
+        },
+        runWindowsProbe: async () => false,
+      },
+      'cursor',
+    );
+    expect(result).toEqual({ installed: false });
+  });
+
+  test('Windows fallback: registry probe throwing is the same outcome as false', async () => {
+    const result = await detectProtocol(
+      {
+        platform: 'win32',
+        getApplicationInfoForProtocol: async () => {
+          throw new Error('no handler');
+        },
+        runWindowsProbe: async () => {
+          throw new Error('reg.exe timeout');
+        },
+      },
+      'claude',
+    );
+    expect(result).toEqual({ installed: false });
+  });
+
+  test('Windows fallback: unknown scheme never consults the registry probe', async () => {
+    let called = false;
+    const result = await detectProtocol(
+      {
+        platform: 'win32',
+        getApplicationInfoForProtocol: async () => {
+          throw new Error('no handler');
+        },
+        runWindowsProbe: async () => {
+          called = true;
+          return true;
+        },
+      },
+      'someotherscheme',
+    );
+    expect(called).toBe(false);
+    expect(result).toEqual({ installed: false });
+  });
+
   test('returns installed:false when Electron rejects AND macOS osascript fallback returns false', async () => {
     const result = await detectProtocol(
       {

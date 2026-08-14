@@ -266,31 +266,25 @@ describe('createOsProbe', () => {
     const { exec, calls } = makeExecFake({ osascript: { err } });
     const probe = createOsProbe('darwin', exec);
     expect(await probe('codex')).toBe(false);
-    // Codex has two candidates; both must be probed before we conclude not-installed.
-    expect(calls.length).toBeGreaterThanOrEqual(2);
+    // Every configured candidate must be probed before we conclude not-installed.
+    expect(calls.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('macOS codex scheme tries "Codex" first, falls back to "OpenAI Codex"', async () => {
-    // Sequential probe: first candidate fails with exit 1, second returns a bundle id.
+  test('macOS codex scheme probes only "Codex" — resolved via the app\'s alternate name', async () => {
+    // "Codex" resolves against the ChatGPT-branded app through its
+    // CFBundleAlternateNames; a candidate that fails leaves the probe false
+    // (no further candidates — 'OpenAI Codex' never resolved and 'ChatGPT'
+    // would false-positive on ChatGPT Classic).
     const calls: Array<{ cmd: string; args: readonly string[] }> = [];
-    let callIndex = 0;
     const exec: ExecFileLike = (file, args, _opts, cb) => {
       calls.push({ cmd: file, args });
-      const index = callIndex++;
       queueMicrotask(() => {
-        if (index === 0) {
-          // First candidate ("Codex") not found on this machine.
-          cb(Object.assign(new Error('exit 1'), { code: 1 }), '', '');
-        } else {
-          // Second candidate ("OpenAI Codex") returns a bundle id.
-          cb(null, 'com.openai.codex\n', '');
-        }
+        cb(Object.assign(new Error('exit 1'), { code: 1 }), '', '');
       });
     };
     const probe = createOsProbe('darwin', exec);
-    expect(await probe('codex')).toBe(true);
-    expect(calls[0]?.args).toEqual(['-e', 'id of app "Codex"']);
-    expect(calls[1]?.args).toEqual(['-e', 'id of app "OpenAI Codex"']);
+    expect(await probe('codex')).toBe(false);
+    expect(calls.map((c) => c.args)).toEqual([['-e', 'id of app "Codex"']]);
   });
 
   test('macOS codex scheme resolves on first candidate when "Codex" matches', async () => {

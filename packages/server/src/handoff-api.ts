@@ -44,7 +44,14 @@ const INSTALLED_AGENTS_PROBE_TIMEOUT_MS = 2000;
  */
 const MACOS_APP_NAMES: Record<InstalledAgentScheme, ReadonlyArray<string>> = {
   claude: ['Claude'],
-  codex: ['Codex', 'OpenAI Codex'],
+  // The Codex app is branded "ChatGPT" since OpenAI's July-2026 merge, but
+  // 'Codex' still resolves: the app ships CFBundleAlternateNames=["Codex"],
+  // which LaunchServices honors on fresh installs. If a future build drops
+  // that alias this candidate dies silently — the scheme probe upstream still
+  // covers detection. Do NOT add 'ChatGPT' here: on a machine with only the
+  // legacy ChatGPT app (com.openai.chat, renamed "ChatGPT Classic", no codex
+  // handler) a name match would report an app that can't take the handoff.
+  codex: ['Codex'],
   cursor: ['Cursor'],
 };
 

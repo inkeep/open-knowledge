@@ -61,6 +61,18 @@ interface DetectProtocolDeps {
    */
   runMacOsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
   /**
+   * Windows fallback: `reg query HKCR\<scheme> /ve` — the same probe the
+   * web-host `/api/installed-agents` endpoint uses. Required because
+   * Electron's `getApplicationInfoForProtocol` rejects for MSIX-packaged
+   * apps: MSIX registers the scheme declaratively at install time but leaves
+   * `shell\open\command` empty, so `AssocQueryString(ASSOCSTR_EXECUTABLE)`
+   * finds no executable — permanently, even after the app has run (MSIX
+   * registry writes are virtualized). Claude's current Windows distribution
+   * and the ChatGPT/Codex Store app both hit this. Default implementation
+   * routes through `createOsProbe` so detection logic stays in one place.
+   */
+  runWindowsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
+  /**
    * Linux fallback: `xdg-mime query default x-scheme-handler/<scheme>`.
    * Non-empty stdout → installed. Default implementation uses `execFile`
    * with a hard timeout; overridable for tests.
@@ -73,6 +85,12 @@ interface DetectProtocolDeps {
 /** Default macOS osascript probe — shared with the server-side install detector. */
 const macOsProbeReal: (scheme: InstalledAgentScheme) => Promise<boolean> = createOsProbe(
   'darwin',
+  execFile as ExecFileLike,
+);
+
+/** Default Windows registry probe — shared with the server-side install detector. */
+const windowsProbeReal: (scheme: InstalledAgentScheme) => Promise<boolean> = createOsProbe(
+  'win32',
   execFile as ExecFileLike,
 );
 
@@ -130,15 +148,20 @@ export async function detectProtocol(
       if (info.name && info.path) {
         return { installed: true, displayName: info.name };
       }
-      // Empty `name` / `path` (Windows behavior) OR no LaunchServices default
-      // handler set (macOS behavior — happens for apps that claim a scheme via
-      // `Info.plist` but the user has never confirmed a default). Fall through
-      // to the macOS osascript probe before declaring not-installed.
+      // Empty `name` / `path` OR no default handler resolvable. Fall through
+      // to the per-OS fallback probe before declaring not-installed: osascript
+      // name lookup on macOS (scheme claimed via `Info.plist` but no
+      // LaunchServices default confirmed), registry `URL Protocol` marker on
+      // Windows (MSIX apps register the scheme but expose no executable to
+      // `AssocQueryString`, so the Electron API rejects for them).
     } catch {
       // Promise rejected — same fall-through as the empty-info case below.
     }
-    if (deps.platform === 'darwin' && isInstalledAgentScheme(scheme)) {
-      const probe = deps.runMacOsProbe ?? macOsProbeReal;
+    if (isInstalledAgentScheme(scheme)) {
+      const probe =
+        deps.platform === 'darwin'
+          ? (deps.runMacOsProbe ?? macOsProbeReal)
+          : (deps.runWindowsProbe ?? windowsProbeReal);
       try {
         if (await probe(scheme)) return { installed: true };
       } catch {
