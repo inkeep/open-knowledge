@@ -1559,6 +1559,10 @@ msgstr "Déjà ouvert"
 msgid "Already set up — ok is available in your terminal"
 msgstr "Déjà configuré — ok est disponible dans votre terminal"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "Déjà connecté ?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Toujours inclus"
@@ -2588,6 +2592,10 @@ msgstr "Langage du bloc de code : {currentLabel}. Cliquez pour changer."
 msgid "Code block settings"
 msgstr "Paramètres du bloc de code"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "Code copié"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "Code copié dans le presse-papiers"
@@ -3134,6 +3142,10 @@ msgstr "Copier le lien de partage"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "Copier la source"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "Copier le code {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11218,6 +11230,14 @@ msgstr "Échec de la connexion : {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "Le flux de connexion s'est terminé sans confirmation — veuillez réessayer"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "Connexion à {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "Connexion à {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "Page unique"
@@ -12394,10 +12414,6 @@ msgstr "Cet agent ne propose pas de commandes slash — votre message sera envoy
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "Cet agent n'a pas encore annoncé ses commandes"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "Cet agent nécessite que vous vous connectiez d'abord — voyez l'avis ci-dessous."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

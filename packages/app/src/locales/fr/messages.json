@@ -2164,7 +2164,6 @@
     "QQbwzK": ["Aucun agent disponible."],
     "QQghPu": ["Installer dans Claude Desktop"],
     "QR5SP1": ["modèle créé"],
-    "QTsvh1": ["Cet agent nécessite que vous vous connectiez d'abord — voyez l'avis ci-dessous."],
     "QUhYEG": ["Espace pour sauter · flèche bas pour s'accroupir"],
     "QWdKwH": ["Déplacer"],
     "QYTOaN": ["Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."],
@@ -2633,6 +2632,7 @@
       ["targetCount"],
       " éléments sélectionnés ? Les dossiers et tous les fichiers qu'ils contiennent seront supprimés. Cette action est irréversible."
     ],
+    "WMsoIm": ["Déjà connecté ?"],
     "WPwDin": ["Ouvrir le dossier sur le disque"],
     "WR0y2O": ["Partager le dossier"],
     "WRNXKp": ["Recherche en cours"],
@@ -2718,6 +2718,7 @@
     "XgqUOy": [
       "Aucune compétence trouvée à cette source. L'importation en indiquera la raison si vous continuez."
     ],
+    "XgsZ2F": ["Copier le code ", ["code"]],
     "Xhm7gG": ["Suggestions de ressources"],
     "Xisk4u": ["Modifié ", ["editedAgo"]],
     "XjqA8x": ["Active ou désactive le motif ", ["0"], "/**"],
@@ -2856,6 +2857,7 @@
     ],
     "Yy90sM": ["Compétence « ", ["name"], " » créée"],
     "YyXtnN": ["Souligné"],
+    "Yz8urJ": ["Connexion à ", ["agentName"]],
     "Yzs3QX": ["Plus d'actions sur la compétence"],
     "Z0W6SO": [
       "Ce dossier est un clone de ",
@@ -3344,6 +3346,7 @@
     "dw_3cv": ["Renommer la compétence"],
     "dw_dUJ": ["Échec de la duplication du chemin"],
     "dx-TwN": ["Audit du projet en cours"],
+    "dyfMJN": ["Code copié"],
     "e0NrBM": ["Projet"],
     "e1Rn_k": ["Ouvrir le dossier contenant"],
     "e1hptq": ["Intègre une vidéo avec les contrôles natifs du lecteur."],
@@ -3553,6 +3556,7 @@
     "gUx34c": [
       "La langue que parle OpenKnowledge ; Système suit celle de votre système d’exploitation. Vos notes restent dans la langue dans laquelle vous les avez écrites."
     ],
+    "gY7wnY": ["Connexion à ", ["agentName"], "…"],
     "gYz2ep": ["Expire dans ", ["timeLabel"]],
     "gZElfU": ["Correction du fichier ", ["0"], " sur ", ["1"]],
     "gZiT5e": ["Remplacer ces liens symboliques par des copies indépendantes ?"],

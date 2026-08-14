@@ -2111,7 +2111,6 @@
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
-    "QTsvh1": ["Este agente precisa que você entre primeiro — veja o aviso abaixo."],
     "QUhYEG": ["Espaço para pular · seta para baixo para agachar"],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
@@ -2560,6 +2559,7 @@
       ["targetCount"],
       " itens selecionados? As pastas e todos os arquivos dentro delas serão excluídos. Esta ação não pode ser desfeita."
     ],
+    "WMsoIm": ["Já fez login?"],
     "WPwDin": ["Abrir a pasta no disco"],
     "WR0y2O": ["Compartilhar a pasta"],
     "WRNXKp": ["Buscando"],
@@ -2643,6 +2643,7 @@
     "XgqUOy": [
       "Nenhuma habilidade encontrada nessa fonte. Se você continuar, a importação vai dizer por quê."
     ],
+    "XgsZ2F": ["Copiar o código ", ["code"]],
     "Xhm7gG": ["Sugestões de recursos"],
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "XjqA8x": ["Alterna o padrão ", ["0"], "/**"],
@@ -2769,6 +2770,7 @@
     ],
     "Yy90sM": ["Habilidade \"", ["name"], "\" criada"],
     "YyXtnN": ["Sublinhado"],
+    "Yz8urJ": ["Fazendo login em ", ["agentName"]],
     "Yzs3QX": ["Mais ações de habilidade"],
     "Z0W6SO": [
       "Esta pasta é um clone de ",
@@ -3243,6 +3245,7 @@
     "dw_3cv": ["Renomear a habilidade"],
     "dw_dUJ": ["Falha ao duplicar o caminho"],
     "dx-TwN": ["Rodando a auditoria do projeto"],
+    "dyfMJN": ["Código copiado"],
     "e0NrBM": ["Projeto"],
     "e1Rn_k": ["Abrir a pasta que o contém"],
     "e1hptq": ["Incorpora um vídeo com os controles nativos do player."],
@@ -3450,6 +3453,7 @@
     "gUx34c": [
       "O idioma que o OpenKnowledge fala; Sistema acompanha o do seu sistema operacional. Suas anotações continuam no idioma em que você as escreveu."
     ],
+    "gY7wnY": ["Fazendo login em ", ["agentName"], "…"],
     "gYz2ep": ["Expira em ", ["timeLabel"]],
     "gZElfU": ["Corrigindo ", ["0"], " de ", ["1"], " arquivos"],
     "gZiT5e": ["Substituir estes links simbólicos por cópias independentes?"],

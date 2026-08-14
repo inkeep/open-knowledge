@@ -1559,6 +1559,10 @@ msgstr "已经打开"
 msgid "Already set up — ok is available in your terminal"
 msgstr "已配置完成——ok 现在可以在你的终端中使用"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "已经登录了？"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "始终包含"
@@ -2588,6 +2592,10 @@ msgstr "代码块语言：{currentLabel}。点击可更改。"
 msgid "Code block settings"
 msgstr "代码块设置"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "代码已复制"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "代码已复制到剪贴板"
@@ -3134,6 +3142,10 @@ msgstr "复制共享链接"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "复制源码"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "复制代码 {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11218,6 +11230,14 @@ msgstr "登录失败：{0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "登录流程未确认就结束了——请重试"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "正在登录 {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "正在登录 {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "单页"
@@ -12394,10 +12414,6 @@ msgstr "此智能体不提供斜杠命令 — 你的消息将作为纯文本发�
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "此智能体尚未公布其命令"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "这个智能体需要你先登录——请看下方的提示。"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

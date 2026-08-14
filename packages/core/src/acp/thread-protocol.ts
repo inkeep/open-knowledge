@@ -34,12 +34,18 @@ import type {
  * strip can show "blocked on you" instead of a generic spinner. Terminal
  * failures always win over it — a dead turn's stale prompt must never read
  * as still inviting approval.
+ *
+ * `authenticating` is the `authenticate` round trip: the user picked a method
+ * and the agent is running the sign-in, which can take minutes when it detours
+ * through a browser. It is NOT `installing` — a client that conflates them
+ * tells the user the agent is starting while it is in fact waiting on them.
  */
 export type ThreadStatus =
   | 'installing'
   | 'spawning'
   | 'ready'
   | 'auth_required'
+  | 'authenticating'
   | 'running'
   | 'awaiting_permission'
   | 'exited'
@@ -253,6 +259,16 @@ export interface ThreadInfo {
    * never persisted.
    */
   steer?: SteerMessage;
+  /**
+   * What the agent said while an `authenticate` was in flight — its own
+   * stderr, verbatim and untranslated. A device-code flow prints the code and
+   * the URL to confirm it against here, and that is the only channel it has:
+   * the sign-in happens before any session exists, so no `session/update` can
+   * carry it. Present only while the status is `authenticating`; the client
+   * shows it so the browser's "confirm this code" step has something to check
+   * against. Live-thread-only and never persisted.
+   */
+  signInOutput?: string[];
 }
 
 /** One entry in a thread's event log. */

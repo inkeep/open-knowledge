@@ -2135,7 +2135,6 @@
     "QQbwzK": ["No hay agentes disponibles."],
     "QQghPu": ["Instalar en Claude Desktop"],
     "QR5SP1": ["plantilla creada"],
-    "QTsvh1": ["Este agente necesita que inicies sesión primero; mira el aviso de abajo."],
     "QUhYEG": ["Espacio para saltar · flecha abajo para agacharse"],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Puedes cambiarlo más adelante en <0>Ajustes → Sincronización</0>."],
@@ -2594,6 +2593,7 @@
       ["targetCount"],
       " elementos seleccionados? Se eliminarán las carpetas y todos los archivos que contienen. Esta acción no se puede deshacer."
     ],
+    "WMsoIm": ["¿Ya iniciaste sesión?"],
     "WPwDin": ["Abrir la carpeta en el disco"],
     "WR0y2O": ["Compartir la carpeta"],
     "WRNXKp": ["Buscando"],
@@ -2679,6 +2679,7 @@
     "XgqUOy": [
       "No se encontró ninguna habilidad en ese origen. Si continúas, la importación te dirá por qué."
     ],
+    "XgsZ2F": ["Copiar el código ", ["code"]],
     "Xhm7gG": ["Sugerencias de recursos"],
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "XjqA8x": ["Alterna el patrón ", ["0"], "/**"],
@@ -2818,6 +2819,7 @@
     ],
     "Yy90sM": ["Se creó la habilidad \"", ["name"], "\""],
     "YyXtnN": ["Subrayado"],
+    "Yz8urJ": ["Iniciando sesión en ", ["agentName"]],
     "Yzs3QX": ["Más acciones de habilidad"],
     "Z0W6SO": [
       "Esta carpeta es un clon de ",
@@ -3307,6 +3309,7 @@
     "dw_3cv": ["Renombrar la habilidad"],
     "dw_dUJ": ["No se pudo duplicar la ruta"],
     "dx-TwN": ["Ejecutando la auditoría del proyecto"],
+    "dyfMJN": ["Código copiado"],
     "e0NrBM": ["Proyecto"],
     "e1Rn_k": ["Abrir la carpeta contenedora"],
     "e1hptq": ["Incrusta un vídeo con los controles nativos del reproductor."],
@@ -3520,6 +3523,7 @@
     "gUx34c": [
       "El idioma en el que habla OpenKnowledge; Sistema sigue el de tu sistema operativo. Tus notas se quedan en el idioma en el que las escribiste."
     ],
+    "gY7wnY": ["Iniciando sesión en ", ["agentName"], "…"],
     "gYz2ep": ["Caduca en ", ["timeLabel"]],
     "gZElfU": ["Arreglando ", ["0"], " de ", ["1"], " archivos"],
     "gZiT5e": ["¿Reemplazar estos enlaces simbólicos por copias independientes?"],

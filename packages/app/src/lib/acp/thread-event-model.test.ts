@@ -555,3 +555,44 @@ describe('resolvePermissionOutcome', () => {
     });
   });
 });
+
+describe('startup failures a later ready retires', () => {
+  const statusEvent = (
+    status: 'auth_required' | 'ready' | 'error',
+    reason?: 'auth-required' | 'connect' | 'prompt',
+  ) => ({
+    kind: 'status' as const,
+    status,
+    ts: 1,
+    ...(reason === undefined ? {} : { failure: { reason, agentMessage: 'x' } }),
+  });
+
+  // A thread that eventually started should not open on a stack of amber
+  // cards about the sign-in the user already completed.
+  test('a launch that eventually worked retires the failures it took to get there', () => {
+    const model = buildThreadRenderModel([
+      statusEvent('auth_required', 'auth-required'),
+      statusEvent('auth_required', 'auth-required'),
+      statusEvent('ready'),
+    ]);
+
+    expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(0);
+    // Marked, not dropped: positions are load-bearing for the fold's indexes.
+    expect(model.items).toHaveLength(2);
+  });
+
+  // A prompt failure happened inside a live session, so a later `ready` says
+  // nothing about it — the user still needs to see it.
+  test('a prompt failure survives a later ready', () => {
+    const model = buildThreadRenderModel([statusEvent('error', 'prompt'), statusEvent('ready')]);
+
+    expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(1);
+  });
+
+  // Still parked: nothing has been answered yet, so nothing is retired.
+  test('failures stand while the thread has not started', () => {
+    const model = buildThreadRenderModel([statusEvent('auth_required', 'auth-required')]);
+
+    expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(1);
+  });
+});

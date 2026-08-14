@@ -87,6 +87,13 @@ interface RenderedNotice {
    * transcripts, and any failure site that hasn't been classified yet).
    */
   failure: ThreadFailureDetail | null;
+  /**
+   * A later `ready` answered this failure — the launch it complained about
+   * eventually worked, so the card no longer describes anything the user can
+   * act on. Kept in the log (positions are load-bearing) and skipped by the
+   * view.
+   */
+  superseded?: boolean;
 }
 
 /**
@@ -170,6 +177,20 @@ function textFromContent(content: unknown): string | null {
   if (typeof content !== 'object' || content === null) return null;
   const c = content as { type?: string; text?: string };
   return c.type === 'text' && typeof c.text === 'string' ? c.text : null;
+}
+
+/**
+ * Failures a successful launch retires. The startup reasons only: a `prompt`
+ * failure happened inside a live session, so a later `ready` says nothing
+ * about it and the user still needs to see it.
+ */
+function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
+  return (
+    failure !== null &&
+    (failure.reason === 'connect' ||
+      failure.reason === 'session-setup' ||
+      failure.reason === 'auth-required')
+  );
 }
 
 export class ThreadRenderModelBuilder {
@@ -287,6 +308,25 @@ export class ThreadRenderModelBuilder {
               this.items[this.lastConsentIndex] = { ...c, install: 'done' };
             } else if (event.status === 'error' || event.status === 'exited') {
               this.items[this.lastConsentIndex] = { ...c, install: 'failed' };
+            }
+          }
+        }
+        if (event.status === 'ready') {
+          // A launch that eventually worked answers every failure it took to
+          // get there: those notices were the ways in, and one of them landed.
+          // Left standing they pile up at the top of a healthy thread — amber
+          // cards about a sign-in the user already completed.
+          //
+          // Marked, never removed: six index maps hold positions into `items`,
+          // so dropping an element would silently retarget every one of them.
+          for (let index = 0; index < this.items.length; index += 1) {
+            const item = this.items[index];
+            if (
+              item?.kind === 'notice' &&
+              item.superseded !== true &&
+              isSupersededByReady(item.failure)
+            ) {
+              this.items[index] = { ...item, superseded: true };
             }
           }
         }

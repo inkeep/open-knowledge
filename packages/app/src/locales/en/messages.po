@@ -1559,6 +1559,10 @@ msgstr "Already open"
 msgid "Already set up — ok is available in your terminal"
 msgstr "Already set up — ok is available in your terminal"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "Already signed in?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Always included"
@@ -2588,6 +2592,10 @@ msgstr "Code block language: {currentLabel}. Click to change."
 msgid "Code block settings"
 msgstr "Code block settings"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "Code copied"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "Code copied to clipboard"
@@ -3134,6 +3142,10 @@ msgstr "Copy share link"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "Copy source"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "Copy the code {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11218,6 +11230,14 @@ msgstr "Sign-in failed: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "Sign-in stream ended without confirmation — please try again"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "Signing in to {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "Signing in to {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "Single page"
@@ -12394,10 +12414,6 @@ msgstr "This agent doesn't offer slash commands — your message will be sent as
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "This agent hasn't announced its commands yet"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "This agent needs you to sign in first — see the notice below."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

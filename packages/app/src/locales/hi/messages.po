@@ -1555,6 +1555,10 @@ msgstr "पहले से खुला है"
 msgid "Already set up — ok is available in your terminal"
 msgstr "पहले से सेट अप है — ok आपके टर्मिनल में उपलब्ध है"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "पहले से साइन इन हैं?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "हमेशा शामिल"
@@ -2584,6 +2588,10 @@ msgstr "कोड ब्लॉक भाषा: {currentLabel}. बदलने 
 msgid "Code block settings"
 msgstr "कोड ब्लॉक सेटिंग"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "कोड कॉपी हो गया"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "कोड क्लिपबोर्ड पर कॉपी किया गया"
@@ -3130,6 +3138,10 @@ msgstr "साझा लिंक कॉपी करें"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "स्रोत कॉपी करें"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "कोड {code} कॉपी करें"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11214,6 +11226,14 @@ msgstr "साइन इन विफल: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "साइन-इन स्ट्रीम बिना पुष्टि के समाप्त हुई — कृपया फिर कोशिश करें"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "{agentName} में साइन इन किया जा रहा है"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "{agentName} में साइन इन किया जा रहा है…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "एक पेज"
@@ -12390,10 +12410,6 @@ msgstr "यह एजेंट स्लैश कमांड नहीं द�
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "इस एजेंट ने अभी तक अपने कमांड घोषित नहीं किए हैं"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "इस एजेंट के लिए पहले आपका साइन इन करना ज़रूरी है — नीचे दी सूचना देखें।"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

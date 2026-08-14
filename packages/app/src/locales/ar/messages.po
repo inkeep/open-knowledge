@@ -1559,6 +1559,10 @@ msgstr "مفتوح بالفعل"
 msgid "Already set up — ok is available in your terminal"
 msgstr "مُعدّ بالفعل — الأمر ok متاح في طرفيتك"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "هل سجّلت الدخول بالفعل؟"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "مُدرج دائمًا"
@@ -2588,6 +2592,10 @@ msgstr "لغة كتلة الكود: {currentLabel}. انقر للتغيير."
 msgid "Code block settings"
 msgstr "إعدادات كتلة الكود"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "تم نسخ الرمز"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "تم نسخ الكود إلى الحافظة"
@@ -3134,6 +3142,10 @@ msgstr "نسخ رابط المشاركة"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "نسخ المصدر"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "نسخ الرمز {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11218,6 +11230,14 @@ msgstr "فشل تسجيل الدخول: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "انتهى بث تسجيل الدخول دون تأكيد — يرجى المحاولة مرة أخرى"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "جارٍ تسجيل الدخول إلى {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "جارٍ تسجيل الدخول إلى {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "صفحة واحدة"
@@ -12394,10 +12414,6 @@ msgstr "هذا الوكيل لا يقدم أوامر الشرطة المائلة
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "لم يعلن هذا الوكيل عن أوامره بعد"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "يحتاج هذا الوكيل إلى تسجيل دخولك أولًا — انظر الإشعار أدناه."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

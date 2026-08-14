@@ -1555,6 +1555,10 @@ msgstr "Sudah terbuka"
 msgid "Already set up — ok is available in your terminal"
 msgstr "Sudah disiapkan — ok tersedia di terminal Anda"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "Sudah masuk?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Selalu disertakan"
@@ -2584,6 +2588,10 @@ msgstr "Bahasa blok kode: {currentLabel}. Klik untuk mengubah."
 msgid "Code block settings"
 msgstr "Pengaturan blok kode"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "Kode disalin"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "Kode disalin ke papan klip"
@@ -3130,6 +3138,10 @@ msgstr "Salin tautan berbagi"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "Salin sumber"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "Salin kode {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11214,6 +11226,14 @@ msgstr "Gagal masuk: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "Aliran proses masuk berakhir tanpa konfirmasi — silakan coba lagi"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "Sedang masuk ke {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "Sedang masuk ke {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "Satu halaman"
@@ -12390,10 +12410,6 @@ msgstr "Agen ini tidak menawarkan perintah garis miring — pesan Anda akan diki
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "Agen ini belum mengumumkan perintahnya"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "Agen ini memerlukan Anda masuk dulu — lihat pemberitahuan di bawah."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

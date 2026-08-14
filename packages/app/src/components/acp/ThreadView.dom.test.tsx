@@ -1876,6 +1876,272 @@ describe('ThreadView retry', () => {
     expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
   });
 
+  // Several ways in are still one decision: the agent's first method leads and
+  // the alternatives stay quiet, so the pane never reads as competing demands.
+  test('only the first sign-in method carries the primary weight', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [
+              { id: 'ioa', name: 'IoA' },
+              { id: 'google', name: 'Google' },
+              { id: 'sso', name: 'Enterprise domain' },
+            ],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    // The rule is "exactly one primary, and it's the first" — which quiet
+    // variant the alternatives wear is a styling call, free to be retuned.
+    const variants = screen
+      .getAllByTestId('agent-thread-auth-method')
+      .map((b) => b.getAttribute('data-variant'));
+    expect(variants).toHaveLength(3);
+    expect(variants[0]).toBe('default');
+    expect(variants.slice(1).every((v) => v !== 'default')).toBe(true);
+  });
+
+  // Alone under the stack, Retry is a lone muted word with nothing to explain
+  // it; beside a details toggle it has company, and the framing would only make
+  // the pair wordy.
+  test('Retry is framed as a question only when it stands alone', () => {
+    const authFailure = (machineDetail?: string): Extract<RenderedItem, { kind: 'notice' }> => ({
+      kind: 'notice',
+      text: '',
+      tone: 'info',
+      failure: {
+        reason: 'auth-required',
+        authMethods: [{ id: 'test_login', name: 'Test Login' }],
+        ...(machineDetail === undefined ? {} : { machineDetail }),
+      },
+    });
+
+    model = makeModel({ turnActive: false, items: [authFailure()] });
+    const alone = render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+    expect(screen.getByTestId('agent-thread-notice').textContent).toContain('Already signed in?');
+    alone.unmount();
+
+    model = makeModel({ turnActive: false, items: [authFailure('{"detail":"x"}')] });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+    expect(screen.getByTestId('agent-thread-notice-details-toggle')).toBeDefined();
+    expect(screen.getByTestId('agent-thread-notice').textContent).not.toContain(
+      'Already signed in?',
+    );
+  });
+
+  // Clicking a method used to drop the prompt and say "Starting the agent…" —
+  // a claim the user could see was false, since they had not signed in yet.
+  test('a sign-in in flight reads as a wait, not as the agent starting', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'authenticating' })} />);
+
+    const card = screen.getByTestId('agent-thread-notice');
+    expect(card.textContent).toContain('Signing in to Claude');
+    // The offer is over: the methods stop inviting a second click, and nothing
+    // claims the agent is on its way.
+    expect(screen.queryByTestId('agent-thread-auth-method')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-starting')).toBeNull();
+    expect(card.textContent).not.toContain('Already signed in?');
+    // Abandoning the sign-in in a browser tab parks the thread until it times
+    // out, so the way back stays on screen throughout.
+    expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
+  });
+
+  // The browser asks the user to confirm a device code against what their
+  // device shows. If OK shows nothing, they confirm blind and the check is
+  // theatre — so the agent's own words go on screen while the wait is live.
+  test('a sign-in in flight shows what the agent printed', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'authenticating',
+          signInOutput: [
+            '[acp/auth] Starting OAuth login for cline…',
+            '[acp/auth] Enter this code in your browser: CRQT-NXNT',
+            '[acp/auth] https://authkit.cline.bot/device?user_code=CRQT-NXNT',
+          ],
+        })}
+      />,
+    );
+
+    // The code is the focus, one tap to copy, with the page to confirm it at
+    // underneath — not a wall of log lines to squint through.
+    expect(screen.getByTestId('agent-thread-sign-in-code').textContent).toContain('CRQT-NXNT');
+    expect(screen.getByTestId('agent-thread-sign-in-url').textContent).toBe(
+      'authkit.cline.bot/device',
+    );
+  });
+
+  // The headline swap is silent to anyone not looking at it: the shimmer reads
+  // as progress visually and as nothing to a screen reader.
+  test('the sign-in transition is announced to assistive tech', () => {
+    const authNotice: Extract<RenderedItem, { kind: 'notice' }> = {
+      kind: 'notice',
+      text: '',
+      tone: 'info',
+      failure: { reason: 'auth-required', authMethods: [{ id: 'test_login', name: 'Test Login' }] },
+    };
+
+    model = makeModel({ turnActive: false, items: [authNotice] });
+    const parked = render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+    const regions = () => screen.getAllByRole('status').map((n) => n.textContent);
+    // Mounted before the transition, and empty — a region that appears and
+    // fills in one cycle is missed on VoiceOver.
+    expect(regions()).toContain('');
+    parked.unmount();
+
+    model = makeModel({ turnActive: false, items: [authNotice] });
+    render(<ThreadView info={makeInfo({ status: 'authenticating' })} />);
+    expect(regions().join(' ')).toContain('Signing in to Claude');
+  });
+
+  // Copy feedback is an icon swap, which is no feedback at all without this.
+  test('copying the code is announced to assistive tech', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'authenticating',
+          signInOutput: ['[acp/auth] Enter this code in your browser: CRQT-NXNT'],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('agent-thread-sign-in-code'));
+
+    expect(writeText).toHaveBeenCalledWith('CRQT-NXNT');
+    await vi.waitFor(() =>
+      expect(screen.getAllByRole('status').map((n) => n.textContent)).toContain('Code copied'),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  // A flow shaped differently must still reach the user: this stderr is the
+  // only channel a sign-in has before a session exists.
+  test('a sign-in that prints something unrecognized shows it verbatim', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(
+      <ThreadView
+        info={makeInfo({ status: 'authenticating', signInOutput: ['[auth] check your email'] })}
+      />,
+    );
+
+    expect(screen.queryByTestId('agent-thread-sign-in-code')).toBeNull();
+    expect(screen.getByTestId('agent-thread-sign-in-output').textContent).toContain(
+      'check your email',
+    );
+  });
+
+  // Nothing to say yet: an empty channel must not leave an empty box behind.
+  test('a sign-in with nothing printed shows no output block', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'authenticating' })} />);
+
+    expect(screen.queryByTestId('agent-thread-sign-in-output')).toBeNull();
+  });
+
+  // Nothing has been said in this thread yet, so the sign-in is the whole
+  // screen — not an alert stacked on top of the startup failures it replaces.
+  test('a sign-in on an unstarted thread replaces the startup notices', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        failureNotice('connect'),
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    const notices = screen.getAllByTestId('agent-thread-notice');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.contains(screen.getByTestId('agent-thread-auth-method'))).toBe(true);
+    expect(notices[0]?.textContent).not.toContain("couldn't start");
+  });
+
   test('a refused sign-in surfaces the reason and leaves the button usable', async () => {
     authenticateResult = Promise.reject(new Error('wrong account'));
     model = makeModel({
@@ -1952,7 +2218,7 @@ describe('ThreadView retry', () => {
   // draft was written in must not go read-only underneath it.
   test('the composer stays typable once the sign-in is under way', () => {
     model = makeModel({ turnActive: false, items: [] });
-    render(<ThreadView info={makeInfo({ status: 'installing' })} />);
+    render(<ThreadView info={makeInfo({ status: 'authenticating' })} />);
 
     const composer = screen.getByTestId('agent-thread-composer');
     expect(composer.hasAttribute('disabled')).toBe(false);

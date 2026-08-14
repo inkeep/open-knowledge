@@ -169,6 +169,12 @@ const DEFAULT_STEER_STALL_MS = 10_000;
 const DEFAULT_AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000;
 const STDERR_TAIL_LINES = 40;
 /**
+ * How much of an agent's sign-in chatter the prompt will show. A device-code
+ * flow spends two lines (the code, the URL); the cap is what keeps a chatty
+ * agent from turning the prompt into a log view.
+ */
+const SIGN_IN_OUTPUT_LINES = 6;
+/**
  * `session/load` replays history BEFORE its response resolves per protocol,
  * but at least one adapter (Gemini) fires the replay as a floating promise
  * that can straggle past the response. Before opening the first post-resume
@@ -309,6 +315,13 @@ interface ThreadRecord {
     }
   >;
   stderrTail: string[];
+  /**
+   * Stderr written while an `authenticate` is in flight, or null outside one.
+   * The sign-in prose an agent emits here (a device code, the URL to confirm it
+   * against) is the only place that information exists — ACP has no session yet,
+   * so the agent has no channel but its own stderr.
+   */
+  authStderr: string[] | null;
   /** ACP terminals this thread's agent asked OK to run; per-spawn, killed with the thread. */
   terminals: AcpTerminalSet | null;
   turnActive: boolean;
@@ -704,6 +717,7 @@ export class AcpThreadManager {
       pendingPermissions: new Map(),
       pendingRuntimeConsent: new Map(),
       stderrTail: [],
+      authStderr: null,
       terminals: null,
       turnActive: false,
       cancelRequested: false,
@@ -832,6 +846,14 @@ export class AcpThreadManager {
         if (line.trim() === '') continue;
         record.stderrTail.push(line.slice(0, 500));
         if (record.stderrTail.length > STDERR_TAIL_LINES) record.stderrTail.shift();
+        if (record.authStderr !== null) {
+          record.authStderr.push(line.slice(0, 500));
+          if (record.authStderr.length > SIGN_IN_OUTPUT_LINES) record.authStderr.shift();
+          // Live, not batched with the next status: a device code is only
+          // useful while the browser is still asking the user to confirm it.
+          record.info.signInOutput = [...record.authStderr];
+          this.broadcastInfo(record);
+        }
       }
     });
     child.on('error', (err) => {
@@ -1476,7 +1498,7 @@ export class AcpThreadManager {
     if (handshake === null) return;
     const { conn, init, launch } = handshake;
 
-    if (!(await this.openSession(record, conn, init, params.settings))) return;
+    if ((await this.openSession(record, conn, init, params.settings)) !== true) return;
     // Startup latency is a known UX sore point (npx resolution + node boot +
     // handshake, serialized) — keep it measurable per launch kind.
     this.opts.log.info(
@@ -1511,13 +1533,18 @@ export class AcpThreadManager {
    * Outcomes are reported as status events rather than thrown; the boolean
    * says only whether the thread reached `ready` (false also covers a thread
    * closed mid-flight).
+   *
+   * `onAuthRequired: 'report'` hands the auth-required case back to the caller
+   * without parking the thread on it, so a caller that has a better answer than
+   * "ask the user again" can take it before the user ever sees a prompt.
    */
   private async openSession(
     record: ThreadRecord,
     conn: ClientConnection,
     init: InitializeResponse,
     settings?: { config?: Record<string, string | boolean>; modeId?: string },
-  ): Promise<boolean> {
+    onAuthRequired: 'park' | 'report' = 'park',
+  ): Promise<boolean | 'auth-required'> {
     // A fresh session invalidates whatever a previous one advertised (retry
     // and post-authenticate reopen reach here with a dead session's list) —
     // back to "not yet known" until this session's update arrives.
@@ -1541,12 +1568,12 @@ export class AcpThreadManager {
         this.emitInfo(record);
       }
     } catch (err) {
-      const machineDetail = joinMachineDetail(agentErrorData(err), stderrTailDetail(record));
       if (isAuthRequiredError(err)) {
+        if (onAuthRequired === 'report') return 'auth-required';
         this.emitStatus(record, 'auth_required', `sign in required: ${agentErrorMessage(err)}`, {
           reason: 'auth-required',
           agentMessage: agentErrorMessage(err),
-          machineDetail,
+          machineDetail: authMachineDetail(err, record),
           authMethods: threadAuthMethods(init.authMethods),
         });
         // The child stays alive on purpose: the connection is initialized and
@@ -1555,7 +1582,7 @@ export class AcpThreadManager {
         this.emitStatus(record, 'error', `session setup failed: ${agentErrorMessage(err)}`, {
           reason: 'session-setup',
           agentMessage: agentErrorMessage(err),
-          machineDetail,
+          machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(record)),
         });
         // A session that never opened leaves nothing for the process to do —
         // without this it idles until the reaper, holding a live-thread slot.
@@ -1764,8 +1791,9 @@ export class AcpThreadManager {
       throw new ThreadOpError('not-ready', 'the thread is archived — resume it instead');
     }
     // `authInFlight` is a retryable state of its own: a sign-in the user
-    // abandoned in a browser tab shows as `installing`, and retry is the only
-    // way out of it. Breaking that latch is safe — closing the connection
+    // abandoned in a browser tab sits in `authenticating` until it times out,
+    // and retry is the only way out of it. Breaking that latch is safe —
+    // closing the connection
     // rejects the parked request, and `authenticateThread` stands down when it
     // sees the connection it captured is no longer the record's.
     if (t.info.status !== 'error' && t.info.status !== 'auth_required' && !t.authInFlight) {
@@ -1852,10 +1880,13 @@ export class AcpThreadManager {
       throw new ThreadOpError('not-ready', 'a sign-in is already in progress');
     }
     t.authInFlight = true;
+    // Opened before the request so nothing the agent prints about the sign-in
+    // is missed, and held open across the session re-open below: that call can
+    // fail for auth reasons too, and its prompt wants the same lines.
+    t.authStderr = [];
+    t.info.signInOutput = undefined;
     try {
-      // There is no sign-in status of its own; `installing` is the progress
-      // signal every client already renders as "the agent is on its way".
-      this.emitStatus(t, 'installing');
+      this.emitStatus(t, 'authenticating');
       try {
         await this.requestAuthenticate(conn, methodId);
       } catch (err) {
@@ -1873,7 +1904,7 @@ export class AcpThreadManager {
         this.emitStatus(t, 'auth_required', `sign-in failed: ${message}`, {
           reason: 'auth-required',
           agentMessage: message,
-          machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(t)),
+          machineDetail: authMachineDetail(err, t),
           authMethods: threadAuthMethods(init.authMethods),
         });
         throw new ThreadOpError('not-ready', message);
@@ -1881,11 +1912,46 @@ export class AcpThreadManager {
       if (t.closed) throw new ThreadOpError('not-ready', 'thread closed during sign-in');
       if (t.conn !== conn) throw threadRestartedDuringSignIn();
       // Same session-open sequence the launch runs, on the same connection —
-      // including the failure classification, so a still-unauthenticated agent
-      // parks on sign-in again and any other failure tears the process down.
+      // any failure but auth tears the process down here, exactly as at launch.
       // The create-time settings ride along so a session recovered through a
       // sign-in opens on the same model/mode a first launch would have.
-      if (!(await this.openSession(t, conn, init, t.launchSettings))) {
+      const opened = await this.openSession(t, conn, init, t.launchSettings, 'report');
+      if (opened === 'auth-required') {
+        // The sign-in succeeded and the agent STILL won't open a session: it
+        // read its credentials at startup and this process predates them. A
+        // fresh one picks them up, which is why Retry has always fixed this —
+        // so take that step instead of handing the user back a prompt they
+        // already answered.
+        this.opts.log.info(
+          { threadId, agentId: t.info.agent.id, methodId },
+          '[acp-threads] signed in but session still refused — relaunching the agent',
+        );
+        this.closeSignInCapture(t);
+        try {
+          return await this.retryThread(threadId);
+        } catch (err) {
+          // `retryThread` can reject BEFORE it emits any status of its own —
+          // `resolveAgentInfo` rejects on an unknown agent or an unreachable
+          // registry, both ahead of its first `emitStatus`. Leaving
+          // `authenticating` standing there wedges the thread for good: the
+          // retry guard admits only `error` / `auth_required`, so every later
+          // Retry would be refused and the pane would sit on the sign-in
+          // spinner. Park it back where the user can act.
+          // Read back through `getInfo`: this function's entry guard narrowed
+          // `t.info.status` to `auth_required`, and TS cannot see that
+          // `emitStatus` has moved it since.
+          if (this.getInfo(threadId)?.status === 'authenticating') {
+            this.emitStatus(t, 'auth_required', `sign in required: ${agentErrorMessage(err)}`, {
+              reason: 'auth-required',
+              agentMessage: agentErrorMessage(err),
+              machineDetail: authMachineDetail(err, t),
+              authMethods: threadAuthMethods(init.authMethods),
+            });
+          }
+          throw err;
+        }
+      }
+      if (opened !== true) {
         throw new ThreadOpError(
           'not-ready',
           lastFailureMessage(t) ?? `${t.info.agent.name} still couldn't start a conversation`,
@@ -1898,6 +1964,7 @@ export class AcpThreadManager {
       return { ...t.info };
     } finally {
       t.authInFlight = false;
+      this.closeSignInCapture(t);
     }
   }
 
@@ -3058,6 +3125,16 @@ export class AcpThreadManager {
     // Info changes (status, title, modes, config) are the meta snapshot's
     // refresh signal — bounded per turn, unlike per-event activity.
     this.persistence.queueMetaWrite(t.info.threadId, this.buildMeta(t));
+    this.broadcastInfo(t);
+  }
+
+  /**
+   * Push an info snapshot to subscribers WITHOUT queueing a meta write. For
+   * fields that are transient by contract and arrive at a cadence the meta
+   * file must not follow — sign-in output lands per stderr line, where
+   * `emitInfo` would mean a write-and-rename each time.
+   */
+  private broadcastInfo(t: ThreadRecord): void {
     for (const sink of t.subscribers) {
       try {
         sink({ op: 'info', info: { ...t.info } });
@@ -3067,11 +3144,26 @@ export class AcpThreadManager {
     }
   }
 
+  /**
+   * End the sign-in's stderr capture and take its output off the screen. Also
+   * called before a relaunch: what a fresh process prints is its own startup,
+   * and letting it land in this buffer would carry a spent device code and the
+   * new child's boot noise into the next prompt's disclosure.
+   */
+  private closeSignInCapture(t: ThreadRecord): void {
+    t.authStderr = null;
+    if (t.info.signInOutput !== undefined) {
+      t.info.signInOutput = undefined;
+      this.broadcastInfo(t);
+    }
+  }
+
   private buildMeta(t: ThreadRecord): PersistedThreadMeta {
-    // The queue and the parked steer are ephemeral by contract — persisting
-    // either would resurrect ghost prompts into an archived thread after a
-    // mid-turn crash.
-    const { queue: _queue, steer: _steer, ...info } = t.info;
+    // The queue, the parked steer, and the sign-in output are ephemeral by
+    // contract — persisting the first two would resurrect ghost prompts into
+    // an archived thread after a mid-turn crash, and the third would restore a
+    // dead device code onto a thread whose sign-in is long over.
+    const { queue: _queue, steer: _steer, signInOutput: _signInOutput, ...info } = t.info;
     return {
       version: 1,
       info,
@@ -3239,9 +3331,17 @@ export async function confineToContentDir(
 function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
   const status = meta.info.status === 'error' ? 'error' : 'exited';
   return {
-    // `queue`/`steer: undefined` belt-and-suspenders: buildMeta never persists
-    // either, but a meta written by a different build must not resurrect them.
-    info: { ...meta.info, status, archived: true, queue: undefined, steer: undefined },
+    // `queue`/`steer`/`signInOutput: undefined` belt-and-suspenders: buildMeta
+    // never persists any of them, but a meta written by a different build must
+    // not resurrect them.
+    info: {
+      ...meta.info,
+      status,
+      archived: true,
+      queue: undefined,
+      steer: undefined,
+      signInOutput: undefined,
+    },
     docName: meta.docName,
     agentRef: meta.agentRef,
     cwd: meta.cwd,
@@ -3263,6 +3363,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     pendingPermissions: new Map(),
     pendingRuntimeConsent: new Map(),
     stderrTail: [],
+    authStderr: null,
     terminals: null,
     turnActive: false,
     cancelRequested: false,
@@ -3359,6 +3460,21 @@ function stderrTailDetail(t: ThreadRecord): string | undefined {
 function joinMachineDetail(...parts: Array<string | undefined>): string | undefined {
   const joined = parts.filter((p): p is string => p !== undefined && p !== '').join('\n');
   return joined === '' ? undefined : joined;
+}
+
+/**
+ * A sign-in prompt carries the agent's own words about the error plus whatever
+ * it wrote to stderr DURING the sign-in — and never the whole tail. Nothing has
+ * gone wrong on a thread waiting to authenticate, so the tail is only the
+ * startup noise the agent happened to write (npm warnings, boot banners), and
+ * attaching it buries the lines that can help. Those lines are worth keeping:
+ * a device-code flow prints its code and confirmation URL to stderr, which is
+ * the only channel it has before a session exists. Genuine failures keep the
+ * whole tail; there it is usually the only evidence.
+ */
+function authMachineDetail(err: unknown, t: ThreadRecord): string | undefined {
+  const duringSignIn = t.authStderr === null ? undefined : t.authStderr.join('\n');
+  return joinMachineDetail(agentErrorData(err), duringSignIn);
 }
 
 /** Trim the SDK's `AuthMethod[]` to the wire shape the client renders. */

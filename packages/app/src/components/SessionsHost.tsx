@@ -192,6 +192,7 @@ function threadStatusDotClass(status: ThreadStatus): string {
       return 'bg-amber-500 animate-pulse';
     case 'installing':
     case 'spawning':
+    case 'authenticating':
       return 'bg-sky-500 animate-pulse';
     case 'auth_required':
     case 'awaiting_permission':

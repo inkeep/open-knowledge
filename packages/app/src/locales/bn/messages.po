@@ -1555,6 +1555,10 @@ msgstr "আগে থেকেই খোলা"
 msgid "Already set up — ok is available in your terminal"
 msgstr "আগে থেকেই সেট আপ করা — ok আপনার টার্মিনালে আছে"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "আগে থেকেই সাইন ইন করা আছে?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "সবসময় অন্তর্ভুক্ত"
@@ -2584,6 +2588,10 @@ msgstr "কোড ব্লকের ভাষা: {currentLabel}। বদল�
 msgid "Code block settings"
 msgstr "কোড ব্লক সেটিং"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "কোড কপি হয়েছে"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "কোড ক্লিপবোর্ডে কপি হয়েছে"
@@ -3130,6 +3138,10 @@ msgstr "শেয়ার লিংক কপি করুন"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "সোর্স কপি করুন"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "{code} কোডটি কপি করুন"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11214,6 +11226,14 @@ msgstr "সাইন ইন ব্যর্থ: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "সাইন-ইন স্ট্রিম নিশ্চিতকরণ ছাড়াই শেষ হয়েছে — অনুগ্রহ করে আবার চেষ্টা করুন"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "{agentName}-এ সাইন ইন করা হচ্ছে"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "{agentName}-এ সাইন ইন করা হচ্ছে…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "একটি পাতা"
@@ -12390,10 +12410,6 @@ msgstr "এই এজেন্ট স্ল্যাশ কমান্ড দ�
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "এই এজেন্ট এখনও তার কমান্ড ঘোষণা করেনি"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "এই এজেন্টের জন্য আপনাকে আগে সাইন ইন করতে হবে — নিচের বিজ্ঞপ্তিটি দেখুন।"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

@@ -1559,6 +1559,10 @@ msgstr "已經開啟"
 msgid "Already set up — ok is available in your terminal"
 msgstr "已經設定好了——ok 現在可以在你的終端機中使用"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "已經登入了？"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "一律包含"
@@ -2588,6 +2592,10 @@ msgstr "程式碼區塊語言：{currentLabel}。點一下可變更。"
 msgid "Code block settings"
 msgstr "程式碼區塊設定"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "代碼已複製"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "程式碼已複製到剪貼簿"
@@ -3134,6 +3142,10 @@ msgstr "複製分享連結"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "複製原始碼"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "複製代碼 {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11218,6 +11230,14 @@ msgstr "登入失敗：{0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "登入流程還沒確認就結束了——請再試一次"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "正在登入 {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "正在登入 {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "單頁"
@@ -12394,10 +12414,6 @@ msgstr "此智慧代理不提供斜線指令 — 你的訊息將以純文字傳�
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "此智慧代理尚未公布其指令"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "這個代理需要你先登入——請看下面的提示。"
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

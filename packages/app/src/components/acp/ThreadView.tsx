@@ -127,6 +127,7 @@ import {
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
+import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
 import {
   getAgentThreadClient,
@@ -145,6 +146,7 @@ import {
 } from '@/lib/acp/thread-event-model';
 import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
+import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
@@ -414,7 +416,14 @@ export function ThreadView({
   const canPrompt = archived ? !resumePending : status === 'ready' && !turnActive;
   // A live thread sitting in a failure status never opened a session, so the
   // launch can simply be run again — see the server's `retryThread` guards.
-  const canRetry = !archived && (status === 'error' || status === 'auth_required');
+  // The sign-in prompt owns both halves of the wait: the offer, and the round
+  // trip the user is off completing. Dropping it the moment `authenticate` is
+  // called is what made a click look like it had done nothing.
+  const signingIn = status === 'authenticating';
+  const awaitingSignIn = status === 'auth_required' || signingIn;
+  // A sign-in abandoned in a browser tab holds the thread until it times out —
+  // the server treats an in-flight one as retryable for exactly that reason.
+  const canRetry = !archived && (status === 'error' || awaitingSignIn);
   const [retryPending, setRetryPending] = useState(false);
   // Mid-turn sends don't reject anymore — the server queues them behind the
   // active turn and drains FIFO (`ThreadInfo.queue`).
@@ -820,12 +829,35 @@ export function ThreadView({
   // failure, once. An allowlist rather than "not a prompt failure": a reason
   // added later is only retryable once someone decides it is, and a prompt
   // failure never is (that session is live, and re-sending IS the retry).
+  // Failures a later `ready` retired stay in the log but leave the screen —
+  // see `superseded` in the fold. One list so the Retry index and the render
+  // cannot disagree about which row is which.
+  const visibleItems =
+    model === null
+      ? []
+      : model.items.filter((item) => item.kind !== 'notice' || item.superseded !== true);
   let retryNoticeIndex = -1;
-  if (canRetry && model !== null) {
-    for (let index = model.items.length - 1; index >= 0; index -= 1) {
-      const item = model.items[index];
+  if (canRetry) {
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const item = visibleItems[index];
       if (item?.kind === 'notice' && item.failure !== null && isRetryableFailure(item.failure)) {
         retryNoticeIndex = index;
+        break;
+      }
+    }
+  }
+
+  // A thread waiting on sign-in has nothing else to show: it never opened a
+  // session, so its transcript is startup diagnostics the sign-in supersedes.
+  // The prompt takes the whole pane rather than sitting under a stack of alert
+  // cards repeating the same sentence, one per failed attempt.
+  const items = visibleItems;
+  let authPrompt: ThreadFailureDetail | null = null;
+  if (awaitingSignIn && !archived) {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
+        authPrompt = item.failure;
         break;
       }
     }
@@ -873,7 +905,7 @@ export function ThreadView({
       >
         <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
         {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
-        {model === null || model.items.length === 0 ? (
+        {authPrompt !== null || model === null || visibleItems.length === 0 ? (
           // No messages yet: the empty state centers itself via `h-full`, which needs
           // a plain definite-height block host. The scroller's managed flex layout
           // won't provide one, so only real transcripts go through the scroller.
@@ -881,7 +913,23 @@ export function ThreadView({
             className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
             data-testid="agent-thread-transcript"
           >
-            <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
+            {authPrompt !== null ? (
+              <div className="flex min-h-full items-center justify-center">
+                <ThreadAuthPrompt
+                  failure={authPrompt}
+                  agent={info.agent}
+                  agentName={agentDisplayName(info.agent.name)}
+                  signingIn={signingIn}
+                  signInOutput={info.signInOutput}
+                  showRetry={canRetry}
+                  retryPending={retryPending}
+                  onRetry={retryThread}
+                  onAuthenticate={authenticateThread}
+                />
+              </div>
+            ) : (
+              <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
+            )}
           </div>
         ) : (
           // autoScroll = stick-to-bottom that yields to reader intent; last-anchor
@@ -898,7 +946,7 @@ export function ThreadView({
                 data-testid="agent-thread-transcript"
               >
                 <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                  {model.items.map((item, index) => {
+                  {visibleItems.map((item, index) => {
                     const id = transcriptItemId(item, index);
                     return (
                       <MessageScrollerItem
@@ -922,16 +970,12 @@ export function ThreadView({
                           // the prompt settles (and some agents ask outside a turn) —
                           // only a dead thread makes answering impossible.
                           actionable={!archived && status !== 'exited' && status !== 'error'}
-                          streaming={turnActive && index === model.items.length - 1}
+                          streaming={turnActive && index === visibleItems.length - 1}
                           terminals={model.terminals}
                           permissionsByToolCall={model.permissionsByToolCall}
                           showRetry={index === retryNoticeIndex}
                           retryPending={retryPending}
                           onRetry={retryThread}
-                          // Sign-in belongs to the same notice Retry does, and
-                          // only while the thread is still waiting on it.
-                          showAuth={index === retryNoticeIndex && status === 'auth_required'}
-                          onAuthenticate={authenticateThread}
                         />
                       </MessageScrollerItem>
                     );
@@ -1628,12 +1672,18 @@ function ThreadEmptyState({
     );
   }
 
-  // Auth is an action prompt, not a wait — keep a plain line pointing at the
-  // sign-in notice rendered below the transcript.
+  // Waiting on sign-in with nothing to sign in WITH: the agent reported the
+  // status but named no method, so this is only the state, in the same shape
+  // the sign-in prompt uses when it does have methods to offer.
   if (status === 'auth_required') {
     return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-muted-foreground text-sm">
-        {t`This agent needs you to sign in first — see the notice below.`}
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <RegisteredAgentIcon
+          agentId={agent.id}
+          iconUrl={agent.iconUrl}
+          className="size-12 opacity-25 grayscale"
+        />
+        <p className="text-muted-foreground text-sm">{t`Sign in to ${agentName} to continue.`}</p>
       </div>
     );
   }
@@ -1648,7 +1698,9 @@ function ThreadEmptyState({
       ? t`Installing ${agentName}…`
       : status === 'spawning'
         ? t`Starting ${agentName}…`
-        : t`Connecting to ${agentName}…`;
+        : status === 'authenticating'
+          ? t`Signing in to ${agentName}…`
+          : t`Connecting to ${agentName}…`;
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
       <RegisteredAgentIcon
@@ -1732,8 +1784,6 @@ function ThreadItem({
   showRetry,
   retryPending,
   onRetry,
-  showAuth,
-  onAuthenticate,
 }: {
   item: RenderedItem;
   threadId: string;
@@ -1748,9 +1798,6 @@ function ThreadItem({
   showRetry: boolean;
   retryPending: boolean;
   onRetry: () => void;
-  /** …and the one that offers sign-in, while the thread still needs it. */
-  showAuth: boolean;
-  onAuthenticate: (methodId: string) => Promise<void>;
 }): ReactNode {
   switch (item.kind) {
     case 'message':
@@ -1780,8 +1827,6 @@ function ThreadItem({
           showRetry={showRetry}
           retryPending={retryPending}
           onRetry={onRetry}
-          showAuth={showAuth}
-          onAuthenticate={onAuthenticate}
         />
       );
   }
@@ -1848,6 +1893,262 @@ function ThoughtBlock({
 }
 
 /**
+ * What the agent printed while signing in. A device-code flow gets the code as
+ * the focus (large, monospaced, one tap to copy — the user has to match it
+ * against their browser character for character) with the confirmation URL
+ * beneath it. Anything unrecognized falls through verbatim, because this stderr
+ * is the only channel a sign-in has before a session exists.
+ */
+function SignInOutput({ output }: { output?: string[] }): ReactNode {
+  const { t } = useLingui();
+  const [copied, setCopied] = useState(false);
+  // Timer owned by an effect, not the click handler: the panel unmounts the
+  // moment the sign-in resolves, which can land inside this window.
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COMPLETION_CHECK_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const parsed = output === undefined || output.length === 0 ? null : parseSignInOutput(output);
+  const empty =
+    parsed === null ||
+    (parsed.code === undefined && parsed.url === undefined && parsed.lines.length === 0);
+
+  const copyCode = (value: string): void => {
+    void navigator.clipboard
+      ?.writeText(value)
+      .then(() => setCopied(true))
+      .catch(() => {
+        // No clipboard (insecure context, denied permission) — the code is on
+        // screen and selectable, so there is nothing to recover from.
+      });
+  };
+
+  // Mounted unconditionally and starting empty: a live region added and filled
+  // in the same render is missed on VoiceOver/Safari. Copying gives sighted
+  // users an icon swap, which is nothing at all without the announcement.
+  const liveRegion = (
+    <div className="sr-only" role="status" aria-live="polite">
+      {copied ? t`Code copied` : ''}
+    </div>
+  );
+  if (empty) return liveRegion;
+  const { code, url, lines } = parsed;
+
+  return (
+    <div
+      className="mt-1 flex flex-col items-center gap-1.5"
+      data-testid="agent-thread-sign-in-output"
+    >
+      {liveRegion}
+      {code !== undefined ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto w-full select-text py-1.5 font-mono text-base tracking-[0.2em]"
+          onClick={() => copyCode(code)}
+          aria-label={t`Copy the code ${code}`}
+          data-testid="agent-thread-sign-in-code"
+        >
+          {copied ? <Check className="size-3.5" aria-hidden="true" /> : null}
+          {code}
+        </Button>
+      ) : null}
+      {url !== undefined ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground"
+          onClick={(e) => dispatchExternalLinkClick(e, url)}
+          onAuxClick={(e) => dispatchExternalLinkClick(e, url)}
+          data-testid="agent-thread-sign-in-url"
+        >
+          {shortenUrl(url)}
+        </a>
+      ) : null}
+      {lines.length > 0 ? (
+        <p className="select-text text-muted-foreground text-xs">{lines.join(' ')}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Sign-in, rendered as the thread's own front door rather than an alert: the
+ * agent's mark, its name, and the ways in. Untinted on purpose — needing an
+ * account is a step in starting an agent, not a fault to warn about — and only
+ * the first method carries the primary weight, so several ways in still read
+ * as one decision instead of a row of equal demands.
+ */
+function ThreadAuthPrompt({
+  failure,
+  agent,
+  agentName,
+  signingIn,
+  signInOutput,
+  showRetry,
+  retryPending,
+  onRetry,
+  onAuthenticate,
+}: {
+  failure: ThreadFailureDetail;
+  agent: ThreadInfo['agent'];
+  agentName: string;
+  /** The server has an `authenticate` in flight for this thread. */
+  signingIn: boolean;
+  /** What the agent printed during the sign-in — a device code, a URL. */
+  signInOutput?: string[];
+  showRetry: boolean;
+  retryPending: boolean;
+  onRetry: () => void;
+  onAuthenticate: (methodId: string) => Promise<void>;
+}): ReactNode {
+  const { t } = useLingui();
+  const [showDetail, setShowDetail] = useState(false);
+  const [authPending, setAuthPending] = useState<string | null>(null);
+  const authMethods = failure.authMethods ?? [];
+  // `env_var` / `terminal` methods are completed in the user's own shell or
+  // environment — OK can name them, but the protocol gives it no way to carry
+  // out the sign-in, so they get no button. Retry below is how the user says
+  // they did it. Everything else (including the default agent-driven kind) is
+  // an `authenticate` call OK can make itself.
+  const signInMethods = authMethods.filter((m) => m.kind !== 'terminal' && m.kind !== 'env_var');
+  const manualMethods = authMethods.filter((m) => m.kind === 'terminal' || m.kind === 'env_var');
+  const agentMessage = failure.agentMessage ?? '';
+  const machineDetail = failure.machineDetail ?? '';
+  const framedRetry = showRetry && machineDetail === '' && !signingIn;
+  const signIn = (methodId: string): void => {
+    setAuthPending(methodId);
+    void onAuthenticate(methodId)
+      .catch((err: unknown) => {
+        toast.error(t`Sign-in failed: ${errorText(err)}`);
+      })
+      .finally(() => setAuthPending(null));
+  };
+  return (
+    <div
+      className="mx-auto flex w-full max-w-72 flex-col items-center gap-4 px-2 py-6 text-center"
+      data-testid="agent-thread-notice"
+    >
+      <RegisteredAgentIcon
+        agentId={agent.id}
+        iconUrl={agent.iconUrl}
+        className="size-12 opacity-25 grayscale"
+      />
+      {/* The panel swaps its whole headline when the sign-in starts, and a
+          swapped paragraph is a silent change: the shimmer reads as progress
+          to anyone who can see it and as nothing at all to anyone who cannot.
+          Mounted empty from the first render so the announcement is not lost
+          to a region that appears and fills in the same cycle. WCAG 4.1.3. */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {signingIn ? t`Signing in to ${agentName}` : ''}
+      </div>
+      <div className="flex flex-col gap-1">
+        {signingIn ? (
+          <>
+            <p className="shimmer font-medium text-sm">{t`Signing in to ${agentName}…`}</p>
+            <SignInOutput output={signInOutput} />
+          </>
+        ) : (
+          <>
+            <p className="font-medium text-foreground text-sm">{t`Sign in to ${agentName} to continue.`}</p>
+            {agentMessage !== '' ? (
+              <p className="text-muted-foreground text-1sm">{agentMessage}</p>
+            ) : null}
+          </>
+        )}
+      </div>
+      {!signingIn && signInMethods.length > 0 ? (
+        <div className="flex w-full flex-col gap-1.5">
+          {signInMethods.map((method, index) => (
+            <Button
+              key={method.id}
+              type="button"
+              size="sm"
+              // The agent lists its methods best-first, so the first one leads
+              // and the rest stay available without competing with it.
+              variant={index === 0 ? 'default' : 'outline-mono'}
+              className="w-full"
+              disabled={authPending !== null}
+              onClick={() => signIn(method.id)}
+              data-testid="agent-thread-auth-method"
+              data-auth-method-id={method.id}
+            >
+              {authPending === method.id ? (
+                <Spinner className="size-3.5" aria-hidden="true" />
+              ) : null}
+              {/* One method is the whole choice, so the button says what it
+                  does; several are a menu, and the names are the choice. */}
+              {signInMethods.length === 1 ? t`Sign in with ${method.name}` : method.name}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      {!signingIn && manualMethods.length > 0 ? (
+        <ul className="flex flex-col gap-1 text-muted-foreground text-xs">
+          {manualMethods.map((method) => (
+            <li key={method.id} data-testid="agent-thread-auth-manual">
+              {method.description !== undefined && method.description !== ''
+                ? `${method.name} — ${method.description}`
+                : method.name}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {showRetry || machineDetail !== '' ? (
+        <div className={cn('flex items-center', framedRetry ? 'gap-1.5' : 'gap-3')}>
+          {framedRetry ? (
+            <span className="text-muted-foreground text-xs">{t`Already signed in?`}</span>
+          ) : null}
+          {showRetry ? (
+            <Button
+              type="button"
+              variant="link-muted"
+              size="xs"
+              className="h-auto p-0"
+              disabled={retryPending}
+              onClick={onRetry}
+              data-testid="agent-thread-retry"
+            >
+              {retryPending ? (
+                <>
+                  <Spinner className="size-3" aria-hidden="true" />
+                  {t`Retrying…`}
+                </>
+              ) : (
+                t`Retry`
+              )}
+            </Button>
+          ) : null}
+          {machineDetail !== '' ? (
+            <Button
+              type="button"
+              variant="link-muted"
+              size="xs"
+              className="h-auto p-0"
+              onClick={() => setShowDetail((open) => !open)}
+              aria-expanded={showDetail}
+              data-testid="agent-thread-notice-details-toggle"
+            >
+              {showDetail ? t`Hide details` : t`Show details`}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {showDetail && machineDetail !== '' ? (
+        <pre
+          className="w-full overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 text-left font-mono text-[10px] text-muted-foreground"
+          data-testid="agent-thread-notice-details"
+        >
+          {machineDetail}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * A failure the user has to read: what broke, in OK's own words, with the
  * agent's message quoted underneath and the wire payload behind a disclosure
  * so a JSON blob never becomes the headline.
@@ -1858,40 +2159,16 @@ function ThreadNotice({
   showRetry,
   retryPending,
   onRetry,
-  showAuth,
-  onAuthenticate,
 }: {
   item: Extract<RenderedItem, { kind: 'notice' }>;
   agentName: string;
   showRetry: boolean;
   retryPending: boolean;
   onRetry: () => void;
-  showAuth: boolean;
-  onAuthenticate: (methodId: string) => Promise<void>;
 }): ReactNode {
   const { t } = useLingui();
   const [showDetail, setShowDetail] = useState(false);
-  const [authPending, setAuthPending] = useState<string | null>(null);
   const failure = item.failure;
-  const authMethods =
-    showAuth && failure !== null && failure.reason === 'auth-required'
-      ? (failure.authMethods ?? [])
-      : [];
-  // `env_var` / `terminal` methods are completed in the user's own shell or
-  // environment — OK can name them, but the protocol gives it no way to carry
-  // out the sign-in, so they get no button. Retry below is how the user says
-  // they did it. Everything else (including the default agent-driven kind) is
-  // an `authenticate` call OK can make itself.
-  const signInMethods = authMethods.filter((m) => m.kind !== 'terminal' && m.kind !== 'env_var');
-  const manualMethods = authMethods.filter((m) => m.kind === 'terminal' || m.kind === 'env_var');
-  const signIn = (methodId: string): void => {
-    setAuthPending(methodId);
-    void onAuthenticate(methodId)
-      .catch((err: unknown) => {
-        toast.error(t`Sign-in failed: ${errorText(err)}`);
-      })
-      .finally(() => setAuthPending(null));
-  };
   // Exhaustive by construction: a new `reason` on the wire fails the build
   // here instead of silently rendering the prompt-failure copy.
   const failureHeadline = (reason: ThreadFailureDetail['reason']): string => {
@@ -1951,40 +2228,6 @@ function ThreadNotice({
                 </pre>
               ) : null}
             </>
-          ) : null}
-          {manualMethods.length > 0 ? (
-            <ul className="mt-1.5 flex flex-col gap-0.5 opacity-80">
-              {manualMethods.map((method) => (
-                <li key={method.id} data-testid="agent-thread-auth-manual">
-                  {method.description !== undefined && method.description !== ''
-                    ? `${method.name} — ${method.description}`
-                    : method.name}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {signInMethods.length > 0 ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {signInMethods.map((method) => (
-                <Button
-                  key={method.id}
-                  type="button"
-                  size="sm"
-                  className="h-6 text-xs"
-                  disabled={authPending !== null}
-                  onClick={() => signIn(method.id)}
-                  data-testid="agent-thread-auth-method"
-                  data-auth-method-id={method.id}
-                >
-                  {authPending === method.id ? (
-                    <Spinner className="size-3" aria-hidden="true" />
-                  ) : null}
-                  {/* One method is the whole choice, so the button says what it
-                      does; several are a menu, and the names are the choice. */}
-                  {signInMethods.length === 1 ? t`Sign in with ${method.name}` : method.name}
-                </Button>
-              ))}
-            </div>
           ) : null}
           {showRetry ? (
             <div className="mt-1.5">
@@ -3282,7 +3525,9 @@ function ThreadComposer({
                 : t`Pick up where you left off`
               : status === 'auth_required'
                 ? t`Sign in to ${agentName} first`
-                : t`Message ${agentName}`
+                : status === 'authenticating'
+                  ? t`Signing in to ${agentName}`
+                  : t`Message ${agentName}`
           }
           disabled={composerDisabled}
           // The advertised slash-command corpus: null until the agent's

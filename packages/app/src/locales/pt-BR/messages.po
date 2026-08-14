@@ -1555,6 +1555,10 @@ msgstr "Já está aberto"
 msgid "Already set up — ok is available in your terminal"
 msgstr "Já configurado — ok está disponível no seu terminal"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "Já fez login?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Sempre incluído"
@@ -2584,6 +2588,10 @@ msgstr "Linguagem do bloco de código: {currentLabel}. Clique para alterar."
 msgid "Code block settings"
 msgstr "Configurações do bloco de código"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "Código copiado"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "Código copiado para a área de transferência"
@@ -3130,6 +3138,10 @@ msgstr "Copiar link de compartilhamento"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "Copiar o código fonte"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "Copiar o código {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11214,6 +11226,14 @@ msgstr "Falha no login: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "O fluxo de login terminou sem confirmação — tente de novo"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "Fazendo login em {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "Fazendo login em {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "Página única"
@@ -12390,10 +12410,6 @@ msgstr "Este agente não oferece comandos de barra — sua mensagem será enviad
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "Este agente ainda não anunciou seus comandos"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "Este agente precisa que você entre primeiro — veja o aviso abaixo."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

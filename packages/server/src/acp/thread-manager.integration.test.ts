@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type {
   ThreadEvent,
+  ThreadInfo,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -2696,11 +2697,15 @@ function writeSessionFailingAgentEntry(
   localDir: string,
   id: string,
   error: { code: number; message: string; data: unknown },
+  /** Startup chatter on stderr — the boot banners and package-manager warnings
+   *  a real agent writes before it says anything about the failure. */
+  stderrNoise?: string,
 ): void {
   const agentPath = join(localDir, `${id}.mjs`);
   writeFileSync(
     agentPath,
     `
+${stderrNoise === undefined ? '' : `process.stderr.write(${JSON.stringify(`${stderrNoise}\n`)});`}
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
 const ERROR = ${JSON.stringify(error)};
 const AUTH_METHODS = [{ id: 'test_login', name: 'Test Login', description: 'Sign in via test' }];
@@ -2810,13 +2815,20 @@ process.stdin.on('data', (chunk) => {
  * `markerPath` exists, so a retry (which respawns) can still reach ready and
  * the recovery paths around an unanswered sign-in are drivable end to end.
  */
-function writeSilentAuthAgentEntry(localDir: string, id: string, markerPath: string): void {
+/**
+ * An agent that reads its credentials once at startup, the way a real CLI does:
+ * `authenticate` succeeds and writes the marker, but THIS process still refuses
+ * `session/new` because it decided at boot that it was signed out. Only a fresh
+ * process sees the credential.
+ */
+function writeStartupCredentialAgentEntry(localDir: string, id: string, markerPath: string): void {
   const agentPath = join(localDir, `${id}.mjs`);
   writeFileSync(
     agentPath,
     `
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 const MARKER = ${JSON.stringify(markerPath)};
+const AUTHED_AT_START = existsSync(MARKER);
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
 const AUTH_METHODS = [{ id: 'test_login', name: 'Test Login' }];
 let buffer = '';
@@ -2837,6 +2849,70 @@ process.stdin.on('data', (chunk) => {
         result: { protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS },
       });
     } else if (msg.method === 'authenticate') {
+      writeFileSync(MARKER, '');
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    } else if (msg.method === 'session/new') {
+      if (AUTHED_AT_START) {
+        write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'startup-cred-session' } });
+      } else {
+        write({
+          jsonrpc: '2.0',
+          id: msg.id,
+          error: { code: -32000, message: 'Authentication required' },
+        });
+      }
+    } else if (msg.method === 'session/prompt') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+function writeSilentAuthAgentEntry(
+  localDir: string,
+  id: string,
+  markerPath: string,
+  /** Emit a device-code flow's stderr prose: boot noise, then a code once
+   *  `authenticate` arrives — the shape a real OAuth-device agent has. */
+  deviceCodeProse = false,
+): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+import { existsSync } from 'node:fs';
+const MARKER = ${JSON.stringify(markerPath)};
+const PROSE = ${JSON.stringify(deviceCodeProse)};
+if (PROSE) process.stderr.write('npm warn Unknown env config "_jsr-registry".\\n');
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const AUTH_METHODS = [{ id: 'test_login', name: 'Test Login' }];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS },
+      });
+    } else if (msg.method === 'authenticate') {
+      if (PROSE) process.stderr.write('[auth] Enter this code in your browser: CRQT-NXNT\\n');
       // No reply, ever: the sign-in went to a browser nobody came back from.
     } else if (msg.method === 'session/new') {
       if (existsSync(MARKER)) {
@@ -2912,14 +2988,50 @@ describe('AcpThreadManager auth classification', () => {
     await manager.closeThread(info.threadId);
   }, 30_000);
 
+  // Nothing has gone wrong on a thread waiting to authenticate — the process is
+  // healthy — so its stderr is only startup chatter, and burying the agent's own
+  // "where to sign in" line under it helps nobody.
+  test('a sign-in prompt keeps the stderr tail out of the disclosure', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeSessionFailingAgentEntry(
+      localDir,
+      'noisy-auth-agent',
+      { code: -32000, message: 'Authentication required', data: { detail: 'run /login first' } },
+      'npm warn Unknown env config "_jsr-registry".',
+    );
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'noisy-auth-agent' },
+    });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(
+      () => withStatus(statuses, 'auth_required') !== undefined,
+      15_000,
+      `auth_required; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+
+    const detail = withStatus(statuses, 'auth_required')?.failure?.machineDetail ?? '';
+    expect(detail).toContain('run /login first');
+    expect(detail).not.toContain('npm warn');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
   test('a non-auth session/new failure is an error, not a sign-in prompt, and kills the agent', async () => {
     const contentDir = tmp();
     const localDir = tmp();
-    writeSessionFailingAgentEntry(localDir, 'broken-agent', {
-      code: -32603,
-      message: 'Failed to initialize session services',
-      data: { cause: 'services' },
-    });
+    writeSessionFailingAgentEntry(
+      localDir,
+      'broken-agent',
+      {
+        code: -32603,
+        message: 'Failed to initialize session services',
+        data: { cause: 'services' },
+      },
+      'boot: loading services',
+    );
     const manager = makeManager(contentDir, localDir);
     const statuses: StatusEvent[] = [];
     const info = await manager.createThread({ agent: { source: 'custom', id: 'broken-agent' } });
@@ -2939,6 +3051,9 @@ describe('AcpThreadManager auth classification', () => {
     expect(event?.failure?.reason).toBe('session-setup');
     expect(event?.failure?.agentMessage).toBe('Failed to initialize session services');
     expect(event?.failure?.machineDetail).toContain('"cause":"services"');
+    // A real failure is the case the disclosure exists for: stderr is often the
+    // only evidence of why the agent died, so the tail stays attached here.
+    expect(event?.failure?.machineDetail).toContain('boot: loading services');
 
     // A session that never opened leaves the process nothing to do.
     await waitUntil(
@@ -3055,6 +3170,220 @@ describe('AcpThreadManager auth classification', () => {
     await manager.closeThread(info.threadId);
   }, 30_000);
 
+  // A device-code flow prints its code to stderr, because before a session
+  // exists ACP gives the agent no other channel — and the browser asks the user
+  // to confirm that code against what their device shows. Dropping it leaves
+  // them nothing to compare, so the confirmation step checks nothing.
+  test('a sign-in prompt keeps what the agent printed during the sign-in', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'signed-in-elsewhere');
+    writeSilentAuthAgentEntry(localDir, 'coded-auth', marker, true);
+    // Long enough that the child's stderr reaches the parent before the sign-in
+    // gives up — the assertion is about what the prompt carries, not timing.
+    const manager = makeManager(contentDir, localDir, { authenticateTimeoutMs: 1_500 });
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'coded-auth' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+
+    // Before any sign-in: startup noise only, and none of it is worth showing.
+    expect(withStatus(statuses, 'auth_required')?.failure?.machineDetail ?? '').not.toContain(
+      'npm warn',
+    );
+
+    await expect(manager.authenticateThread(info.threadId, 'test_login')).rejects.toThrow(
+      /didn't complete in time/,
+    );
+
+    // The broadcast coalesces, so the re-prompt lands a tick after the rejection.
+    await waitUntil(
+      () => statuses.filter((e) => e.status === 'auth_required').length >= 2,
+      10_000,
+      'the sign-in failure to re-prompt',
+    );
+    const detail = statuses.filter((e) => e.status === 'auth_required').at(-1)
+      ?.failure?.machineDetail;
+    expect(detail).toContain('CRQT-NXNT');
+    expect(detail).not.toContain('npm warn');
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('a sign-in in flight publishes the agent output live, then clears it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'signed-in-elsewhere');
+    writeSilentAuthAgentEntry(localDir, 'live-code-auth', marker, true);
+    const manager = makeManager(contentDir, localDir, { authenticateTimeoutMs: 1_500 });
+    const statuses: StatusEvent[] = [];
+    const infos: ThreadInfo[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'live-code-auth' } });
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      collectStatuses(statuses)(frame);
+      if (frame.op === 'info') infos.push(frame.info);
+    });
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+
+    const signIn = manager
+      .authenticateThread(info.threadId, 'test_login')
+      .then(() => null)
+      .catch((err: unknown) => err);
+
+    // Live: the code has to reach the user while the browser still wants it,
+    // not batched behind the next status change.
+    await waitUntil(
+      () => infos.some((i) => (i.signInOutput ?? []).some((l) => l.includes('CRQT-NXNT'))),
+      10_000,
+      `the code to publish; got ${JSON.stringify(infos.map((i) => i.signInOutput))}`,
+    );
+    // Startup noise stays out — it was written before the sign-in began.
+    const published = infos.flatMap((i) => i.signInOutput ?? []);
+    expect(published.join('\n')).not.toContain('npm warn');
+
+    expect(String(await signIn)).toMatch(/didn't complete in time/);
+    // The wait is over, so the transient output goes with it.
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.signInOutput === undefined,
+      10_000,
+      'the sign-in output to clear',
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  // A CLI that reads its credentials at startup cannot see a sign-in that
+  // happened after it booted, so `session/new` refuses even though the sign-in
+  // worked. Handing the user back the prompt they just answered is the wrong
+  // answer when relaunching demonstrably fixes it.
+  test('a sign-in the running agent cannot see relaunches instead of re-prompting', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'credential-written-by-authenticate');
+    writeStartupCredentialAgentEntry(localDir, 'startup-cred', marker);
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'startup-cred' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+    const promptsBeforeSignIn = statuses.filter((e) => e.status === 'auth_required').length;
+
+    const signedIn = await manager.authenticateThread(info.threadId, 'test_login');
+
+    // The sign-in resolves as a sign-in: ready, not parked on a second prompt.
+    expect(signedIn.status).toBe('ready');
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+    expect(statuses.filter((e) => e.status === 'auth_required').length).toBe(promptsBeforeSignIn);
+
+    // …and the thread genuinely works, on the relaunched process.
+    const events: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      if (frame.op === 'events') events.push(...frame.events);
+    });
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(() => events.some((e) => e.kind === 'turn_ended'), 15_000, 'a completed turn');
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  // The relaunch can fail before it reports anything: `resolveAgentInfo`
+  // rejects on an unknown agent ahead of the first `emitStatus`. Leaving
+  // `authenticating` standing would wedge the thread, because the retry guard
+  // admits only `error` / `auth_required`.
+  test('a relaunch that fails before reporting parks the sign-in back where the user can act', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'credential-written-by-authenticate');
+    writeStartupCredentialAgentEntry(localDir, 'vanishing-agent', marker);
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'vanishing-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => withStatus(statuses, 'auth_required') !== undefined, 15_000, 'auth');
+
+    // The agent disappears from the registry mid-sign-in, so the relaunch
+    // rejects in `resolveAgentInfo` — before it can emit a status of its own.
+    writeFileSync(join(localDir, 'acp-agents.json'), JSON.stringify([]));
+
+    await expect(manager.authenticateThread(info.threadId, 'test_login')).rejects.toThrow();
+
+    const settled = manager.getInfo(info.threadId)?.status;
+    expect(settled).not.toBe('authenticating');
+    expect(settled).toBe('auth_required');
+    // Still actionable: the retry guard admits `auth_required`, so the user's
+    // Retry reaches the launch instead of being refused.
+    await expect(manager.retryThread(info.threadId)).rejects.toThrow(/no custom agent/);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  // The sign-in buffer belongs to the sign-in. A relaunch spawns a different
+  // process, and its boot chatter must not reach the next prompt as if it were
+  // this sign-in's device code.
+  test('a relaunch does not inherit the finished sign-in output', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'credential-written-by-authenticate');
+    writeStartupCredentialAgentEntry(localDir, 'buffer-scope', marker);
+    const manager = makeManager(contentDir, localDir);
+    const infos: ThreadInfo[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'buffer-scope' } });
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'info') infos.push(frame.info);
+    });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'auth',
+    );
+
+    const signedIn = await manager.authenticateThread(info.threadId, 'test_login');
+    expect(signedIn.status).toBe('ready');
+
+    // Nothing is left publishing into the sign-in channel once it is over.
+    expect(manager.getInfo(info.threadId)?.signInOutput).toBeUndefined();
+    expect(infos.at(-1)?.signInOutput).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  // The field documents itself as never persisted; `buildMeta` has to agree,
+  // or a spent device code rides back out of the meta file on rehydrate.
+  // The field documents itself as never persisted; `buildMeta` has to agree,
+  // or a spent device code rides back out of the meta file on rehydrate.
+  test('sign-in output never reaches the persisted meta', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'credential-written-by-authenticate');
+    writeStartupCredentialAgentEntry(localDir, 'meta-scope', marker);
+    const manager = makeManager(contentDir, localDir);
+    // Persistence only opens its `threads/` dir once the manager boots.
+    await manager.init();
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'meta-scope' } });
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      if (frame.op === 'events') events.push(...frame.events);
+    });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'auth',
+    );
+    await manager.authenticateThread(info.threadId, 'test_login');
+
+    // A thread with no user message is discarded on close rather than
+    // archived, and discarding takes the meta with it — so give it a turn.
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(() => events.some((e) => e.kind === 'turn_ended'), 15_000, 'a completed turn');
+    await manager.closeThread(info.threadId);
+
+    const metaPath = join(localDir, 'threads', `${info.threadId}.meta.json`);
+    await waitUntil(() => existsSync(metaPath), 10_000, `the archived meta at ${metaPath}`);
+    expect(readFileSync(metaPath, 'utf8')).not.toContain('signInOutput');
+  }, 40_000);
+
   test('an unanswered sign-in gives up on its own and leaves the thread usable', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -3110,7 +3439,9 @@ describe('AcpThreadManager auth classification', () => {
       .authenticateThread(info.threadId, 'test_login')
       .then(() => null)
       .catch((err: unknown) => err);
-    expect(manager.getInfo(info.threadId)?.status).toBe('installing');
+    // A sign-in in flight has a status of its own: reporting `installing` here
+    // told the user the agent was starting when it was waiting on them.
+    expect(manager.getInfo(info.threadId)?.status).toBe('authenticating');
 
     writeFileSync(marker, '');
     const retried = await manager.retryThread(info.threadId);

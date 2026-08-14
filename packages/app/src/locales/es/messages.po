@@ -1559,6 +1559,10 @@ msgstr "Ya está abierto"
 msgid "Already set up — ok is available in your terminal"
 msgstr "Ya está configurado: ok está disponible en tu terminal"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Already signed in?"
+msgstr "¿Ya iniciaste sesión?"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Siempre incluido"
@@ -2588,6 +2592,10 @@ msgstr "Lenguaje del bloque de código: {currentLabel}. Haz clic para cambiarlo.
 msgid "Code block settings"
 msgstr "Ajustes del bloque de código"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Code copied"
+msgstr "Código copiado"
+
 #: src/components/AuthModal.tsx
 msgid "Code copied to clipboard"
 msgstr "Código copiado al portapapeles"
@@ -3134,6 +3142,10 @@ msgstr "Copiar enlace para compartir"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Copy source"
 msgstr "Copiar el código fuente"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Copy the code {code}"
+msgstr "Copiar el código {code}"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Copy the focused file-tree item so Paste can duplicate it."
@@ -11218,6 +11230,14 @@ msgstr "Error al iniciar sesión: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "El flujo de inicio de sesión terminó sin confirmación; inténtalo de nuevo"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}"
+msgstr "Iniciando sesión en {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Signing in to {agentName}…"
+msgstr "Iniciando sesión en {agentName}…"
+
 #: src/editor/components/Pdf.tsx
 msgid "Single page"
 msgstr "Página única"
@@ -12394,10 +12414,6 @@ msgstr "Este agente no ofrece comandos de barra — tu mensaje se enviará como 
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "Este agente aún no ha anunciado sus comandos"
-
-#: src/components/acp/ThreadView.tsx
-msgid "This agent needs you to sign in first — see the notice below."
-msgstr "Este agente necesita que inicies sesión primero; mira el aviso de abajo."
 
 #. placeholder {0}: item.provides
 #. placeholder {1}: item.displayName

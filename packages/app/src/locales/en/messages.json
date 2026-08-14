@@ -1851,7 +1851,6 @@
     "QQbwzK": ["No agents available."],
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
-    "QTsvh1": ["This agent needs you to sign in first — see the notice below."],
     "QUhYEG": ["Space to jump · down arrow to duck"],
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
@@ -2231,6 +2230,7 @@
       ["targetCount"],
       " selected items? Folders and all files inside them will be deleted. This action cannot be undone."
     ],
+    "WMsoIm": ["Already signed in?"],
     "WPwDin": ["Open folder on disk"],
     "WR0y2O": ["Share folder"],
     "WRNXKp": ["Searching"],
@@ -2312,6 +2312,7 @@
     "XfzqjK": ["template \"", ["name"], "\""],
     "Xg-Ntj": ["The token needs the repo and read:user scopes."],
     "XgqUOy": ["No skill found at that source. Import will report why if you continue."],
+    "XgsZ2F": ["Copy the code ", ["code"]],
     "Xhm7gG": ["Asset suggestions"],
     "Xisk4u": ["Edited ", ["editedAgo"]],
     "XjqA8x": ["Toggles the pattern ", ["0"], "/**"],
@@ -2419,6 +2420,7 @@
     ],
     "Yy90sM": ["Skill \"", ["name"], "\" created"],
     "YyXtnN": ["Underline"],
+    "Yz8urJ": ["Signing in to ", ["agentName"]],
     "Yzs3QX": ["More skill actions"],
     "Z0W6SO": [
       "This folder is a clone of ",
@@ -2835,6 +2837,7 @@
     "dw_3cv": ["Rename skill"],
     "dw_dUJ": ["Failed to duplicate path"],
     "dx-TwN": ["Running project audit"],
+    "dyfMJN": ["Code copied"],
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
     "e1hptq": ["Embed a video with native player controls."],
@@ -3009,6 +3012,7 @@
     "gUx34c": [
       "The language OpenKnowledge speaks; System follows your operating system. Your own notes stay in the language you wrote them in."
     ],
+    "gY7wnY": ["Signing in to ", ["agentName"], "…"],
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gZiT5e": ["Replace these symlinks with independent copies?"],

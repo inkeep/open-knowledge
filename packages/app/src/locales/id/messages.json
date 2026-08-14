@@ -1863,7 +1863,6 @@
     "QQbwzK": ["Tidak ada agen yang tersedia."],
     "QQghPu": ["Pasang di Claude Desktop"],
     "QR5SP1": ["templat dibuat"],
-    "QTsvh1": ["Agen ini memerlukan Anda masuk dulu — lihat pemberitahuan di bawah."],
     "QUhYEG": ["Spasi untuk melompat · panah bawah untuk menunduk"],
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
@@ -2248,6 +2247,7 @@
       ["targetCount"],
       " item terpilih? Folder dan semua berkas di dalamnya akan dihapus. Tindakan ini tidak bisa dibatalkan."
     ],
+    "WMsoIm": ["Sudah masuk?"],
     "WPwDin": ["Buka folder di disk"],
     "WR0y2O": ["Bagikan folder"],
     "WRNXKp": ["Mencari"],
@@ -2331,6 +2331,7 @@
     "XgqUOy": [
       "Tidak ada keterampilan yang ditemukan di sumber itu. Jika Anda melanjutkan, impor akan melaporkan alasannya."
     ],
+    "XgsZ2F": ["Salin kode ", ["code"]],
     "Xhm7gG": ["Saran aset"],
     "Xisk4u": ["Disunting ", ["editedAgo"]],
     "XjqA8x": ["Mengaktifkan atau menonaktifkan pola ", ["0"], "/**"],
@@ -2431,6 +2432,7 @@
     ],
     "Yy90sM": ["Keterampilan \"", ["name"], "\" dibuat"],
     "YyXtnN": ["Garis bawah"],
+    "Yz8urJ": ["Sedang masuk ke ", ["agentName"]],
     "Yzs3QX": ["Tindakan keterampilan lainnya"],
     "Z0W6SO": [
       "Folder ini adalah klona dari ",
@@ -2854,6 +2856,7 @@
     "dw_3cv": ["Ganti nama keterampilan"],
     "dw_dUJ": ["Gagal menggandakan jalur"],
     "dx-TwN": ["Menjalankan audit proyek"],
+    "dyfMJN": ["Kode disalin"],
     "e0NrBM": ["Proyek"],
     "e1Rn_k": ["Buka folder induknya"],
     "e1hptq": ["Menyematkan video dengan kendali pemutar bawaan."],
@@ -3023,6 +3026,7 @@
     "gUx34c": [
       "Bahasa yang digunakan OpenKnowledge; Sistem mengikuti sistem operasi Anda. Catatan Anda sendiri tetap dalam bahasa saat Anda menulisnya."
     ],
+    "gY7wnY": ["Sedang masuk ke ", ["agentName"], "…"],
     "gYz2ep": ["Kedaluwarsa dalam ", ["timeLabel"]],
     "gZElfU": ["Memperbaiki ", ["0"], " dari ", ["1"], " berkas"],
     "gZiT5e": ["Ganti symlink-symlink ini dengan salinan mandiri?"],
