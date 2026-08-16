@@ -35,6 +35,7 @@ const STATIC_DIRECTIONS: Record<SupportedLocale, TextDirection> = {
   'pt-BR': 'ltr',
   id: 'ltr',
   ur: 'rtl',
+  ko: 'ltr',
 };
 
 /**

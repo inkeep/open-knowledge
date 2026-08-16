@@ -38,6 +38,7 @@ describe('locale enumeration', () => {
       'pt-BR',
       'id',
       'ur',
+      'ko',
     ]);
   });
 

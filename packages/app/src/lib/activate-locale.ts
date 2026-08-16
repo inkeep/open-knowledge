@@ -4,7 +4,7 @@
  *
  * Every catalog compiles to roughly the size of the whole `en` one, so shipping
  * them eagerly would put several times the main bundle's entire budget in front
- * of first paint for the ten a given user will never read. Splitting them moves
+ * of first paint for the eleven a given user will never read. Splitting them moves
  * that weight into the combined-chunk budget and costs one fetch per language
  * actually chosen.
  *
@@ -42,6 +42,7 @@ const CATALOG_LOADERS: Record<SupportedLocale, CatalogLoader> = {
   'pt-BR': () => import('@/locales/pt-BR/messages.json'),
   id: () => import('@/locales/id/messages.json'),
   ur: () => import('@/locales/ur/messages.json'),
+  ko: () => import('@/locales/ko/messages.json'),
 };
 
 // The bootstrap catalog is already in memory — `i18n.ts` loads it statically at

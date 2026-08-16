@@ -24,7 +24,7 @@ These carry through every locale byte-for-byte:
 - **Markdown**, **Git**, **GitHub**, **MCP**, **YAML**, **JSON**, **PATH** — proper nouns and
   format names.
 - **frontmatter** — names a Markdown construct, the way `<head>` names an HTML one. There is no
-  settled translation in any of the eleven locales, so eleven inventions is the likely outcome
+  settled translation in any of the twelve locales, so twelve inventions is the likely outcome
   of translating it. Gloss it on first use if a sentence needs the help; do not replace it.
 - **ICU placeholders** — `{name}`, `{count}`, `#` inside a plural. Renaming one silently breaks
   the substitution; the string compiles and renders the literal brace text.
@@ -66,6 +66,17 @@ These carry through every locale byte-for-byte:
 | checkpoint | نقطة تحقق | چیک پوائنٹ |
 | branch | فرع | برانچ |
 
+| Term | `ko` |
+| --- | --- |
+| document | 문서 |
+| folder | 폴더 |
+| workspace | 워크스페이스 |
+| knowledge base | 지식 베이스 |
+| wiki-link | 위키 링크 |
+| agent | 에이전트 |
+| checkpoint | 체크포인트 |
+| branch | 브랜치 |
+
 ## Why these forms
 
 - **document / folder** follow each locale's own file-manager vocabulary rather than a
@@ -81,6 +92,8 @@ These carry through every locale byte-for-byte:
 - **knowledge base** is the user's own collection of notes. Where a native compound exists and
   reads naturally it wins over a transliteration; `ur` keeps the transliteration because the
   native compound is not in common software use.
+- **Follow** is the pull-only sync mode. Korean uses 팔로우 consistently rather than mixing the
+  English label with 따라오기.
 
 ## Changing an entry
 

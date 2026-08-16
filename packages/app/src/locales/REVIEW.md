@@ -1,17 +1,17 @@
 # Locale review and promotion
 
-OpenKnowledge enumerates eleven interface locales and offers nine of them in the language
+OpenKnowledge enumerates twelve interface locales and offers ten of them in the language
 picker. The two it withholds are withheld for a layout reason, not a translation one. This file
-records which of the nine a reader of the language has actually read, which is a different
+records which of the ten a reader of the language has actually read, which is a different
 question from which ones are offered, and it is the file to update when that changes.
 
 Completeness is not the bar and never was. Every catalog in `src/locales/` is full, because the
-agent that writes a string writes its ten translations in the same change. What most of them
+agent that writes a string writes its eleven translations in the same change. What most of them
 have not had is a reader — someone who reads the language telling us the words are right.
 
 **Being unread does not hold a language back from the picker.** It used to, and the effect was
 backwards: the people who could tell us a translation was wrong were the same people who could
-never encounter it, because it was not offered to them. So the nine ship, they ship labelled as
+never encounter it, because it was not offered to them. So the ten ship, they ship labelled as
 machine-translated where that is what they are, and corrections come back through
 [the translation page](https://openknowledge.ai/docs/contribute/translations) as ordinary pull
 requests.
@@ -34,11 +34,12 @@ claim, and most rows say `unreviewed` for as long as that is true.
 | `pt-BR` | português (Brasil) | unreviewed | — | — | — |
 | `id` | Indonesia | unreviewed | — | — | — |
 | `ur` | اردو | unreviewed | — | — | right-to-left layout |
+| `ko` | 한국어 | unreviewed | — | — | — |
 
 `source` is the catalog whose `msgstr` is the English text itself; there is nothing to review.
 
-`unreviewed` is a complete, machine-checked catalog no native reader has seen. Eight of eleven,
-and six of those eight are offered in the picker anyway. That pairing is the honest state of
+`unreviewed` is a complete, machine-checked catalog no native reader has seen. Nine of twelve,
+and seven of those nine are offered in the picker anyway. That pairing is the honest state of
 this project's interface translations and the reason this file exists.
 
 `reviewed` is the bar this file describes: someone who reads the language read it and said so
@@ -116,7 +117,7 @@ everything is worth less than a real review of the part that matters. The script
 the rule; so does the packet, so the reviewer knows what they are being handed.
 
 A contributor who *can* run the app should also run it in their language — the picker offers
-nine of them directly, and `OK_LANG=ar ok start` activates the other two. That is a better
+ten of them directly, and `OK_LANG=ar ok start` activates the other two. That is a better
 review than the packet. The packet exists so that not being able to do it is not a blocker.
 
 ### 2. Send it out
@@ -170,6 +171,6 @@ not usable as it stands is the one answer worth acting on that way, and worth wr
 
 ## Adding a locale nobody asked for
 
-Don't. Every enumerated locale costs a translation on every new string, forever. Eleven is
-already more than the review capacity this project has; adding a twelfth makes the ratio worse,
+Don't. Every enumerated locale costs a translation on every new string, forever. Twelve is
+already more than the review capacity this project has; adding a thirteenth makes the ratio worse,
 not better. The signal worth acting on is a person who wants the language and will read it.

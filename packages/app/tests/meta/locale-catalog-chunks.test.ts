@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 
 /**
  * Proves the catalogs are actually code-split in a real build, which no
- * source-level check can: the module reads as eleven dynamic imports either
+ * source-level check can: the module reads as twelve dynamic imports either
  * way, and whether the bundler honours that is the only thing standing between
  * a working build and every catalog landing in front of first paint.
  *

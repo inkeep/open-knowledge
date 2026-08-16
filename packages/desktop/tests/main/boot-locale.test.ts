@@ -146,7 +146,7 @@ describe('resolveDesktopLocale', () => {
     expect(
       resolveDesktopLocale({
         homedir: home,
-        preferredSystemLanguages: () => ['ja-JP', 'ko-KR'],
+        preferredSystemLanguages: () => ['ja-JP'],
         env: {},
       }),
     ).toBe('en');

@@ -31,13 +31,13 @@ const ISOLATED_HOME = mkdtempSync(join(tmpdir(), 'ok-language-home-'));
 test.use({ workerServerEnv: { HOME: ISOLATED_HOME } });
 
 // The row's own label is translated, so the control this test drives renames
-// itself as a side effect of the thing under test. Matching all three keeps the
+// itself as a side effect of the thing under test. Matching all four keeps the
 // locator valid whichever language the previous test left behind.
-const TRIGGER_NAME = /Language|Idioma|语言/;
+const TRIGGER_NAME = /Language|Idioma|语言|언어/;
 
 // The language names are endonyms and read the same in every locale; the
 // sentinel is ordinary copy and does not.
-const SYSTEM_OPTION = /^(System|Sistema|跟随系统)$/;
+const SYSTEM_OPTION = /^(System|Sistema|跟随系统|시스템)$/;
 
 async function openLanguagePicker(page: Page) {
   await page.goto('/#settings');
@@ -75,6 +75,27 @@ test.describe('language picker', () => {
     // A reload proves the preference reached disk rather than living in the tab.
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', 'es', { timeout: 10_000 });
+  });
+
+  test('picking Korean activates it and persists the choice', async ({ page }) => {
+    // Normalize through English first: the picker label is translated, so this
+    // keeps the endonym selection independent of the preference left by a prior
+    // test or retry.
+    await openLanguagePicker(page);
+    await page.getByRole('option', { name: 'English' }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en', { timeout: 10_000 });
+
+    const trigger = await openLanguagePicker(page);
+    await page.getByRole('option', { name: '한국어' }).click();
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ko', { timeout: 10_000 });
+    await expect(trigger).toHaveText('한국어');
+    await expect(page.getByRole('button', { name: '환경설정' })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ko', { timeout: 10_000 });
   });
 
   test('picking System hands the language back to the browser', async ({ page }) => {
@@ -115,6 +136,7 @@ test.describe('language picker', () => {
       'বাংলা',
       'português (Brasil)',
       'Indonesia',
+      '한국어',
     ]);
   });
 });

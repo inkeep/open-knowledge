@@ -40,6 +40,7 @@ export default defineConfig({
     'pt-BR',
     'id',
     'ur',
+    'ko',
     'pseudo',
   ],
   pseudoLocale: 'pseudo',

@@ -34,6 +34,7 @@ export const SUPPORTED_LOCALES = [
   'pt-BR',
   'id',
   'ur',
+  'ko',
 ] as const satisfies readonly string[];
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
@@ -69,6 +70,7 @@ export const PICKER_LOCALES = [
   'bn',
   'pt-BR',
   'id',
+  'ko',
 ] as const satisfies readonly SupportedLocale[];
 
 /**
