@@ -3,14 +3,14 @@
   "icon": "LuPlug",
   "pages": [
     "claude-code",
-    "cursor",
     "codex",
-    "github-copilot-cli",
+    "cursor",
     "opencode",
     "pi",
     "openclaw",
+    "hermes",
     "antigravity",
-    "lm-studio",
-    "hermes"
+    "github-copilot-cli",
+    "lm-studio"
   ]
 }

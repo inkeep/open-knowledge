@@ -7,3 +7,4 @@
 .env.docker
 .env.production
 .env.staging
+next-env.d.ts
