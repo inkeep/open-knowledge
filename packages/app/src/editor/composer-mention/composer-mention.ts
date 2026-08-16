@@ -309,7 +309,12 @@ export interface MentionCorpusSnapshot {
  * rather than locking the corpus empty for the whole session. `reset()` (called
  * on menu exit) clears everything so a freshly-created doc shows up next time.
  */
-export function createMentionCorpus(fetch: () => Promise<PageItem[]> = fetchPages) {
+export function createMentionCorpus(
+  // Folders are opt-in on fetchPages (the wiki-link pickers must never see
+  // them); the composer is the one consumer that wants them, as attachable
+  // chips.
+  fetch: () => Promise<PageItem[]> = () => fetchPages({ includeFolders: true }),
+) {
   let cachedPages: PageItem[] = [];
   let pagesLoaded = false;
   let pagesPromise: Promise<PageItem[]> | null = null;

@@ -174,6 +174,20 @@ describe('end-to-end target matching', () => {
     expect(targetSet.has(extractWikilinkTarget('reports/q1'))).toBe(true);
   });
 
+  test('folder rows keep seeding the known-target set: full path AND basename', () => {
+    // The plugin fetches its page list WITH folders solely for this set (the
+    // completion source strips them): a folder holding no markdown children
+    // arrives only as a kind:'folder' row, and a bare-basename wikilink to a
+    // folder resolves only through the row's title. Losing either form
+    // redlines links in source mode that the WYSIWYG chip resolves.
+    const targetSet = buildKnownWikilinkTargetSet([
+      { kind: 'folder', docName: 'specs/foo', title: 'foo' },
+    ]);
+
+    expect(targetSet.has(extractWikilinkTarget('specs/foo'))).toBe(true);
+    expect(targetSet.has(extractWikilinkTarget('foo'))).toBe(true);
+  });
+
   test('empty target (bare #anchor in wikilink) matches nothing', () => {
     // The plugin's check `target && !pageSet.has(target)` treats empty target
     // as a no-op (never emits broken-mark); verified here by the truthy check.

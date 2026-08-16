@@ -87,7 +87,12 @@ async function getWikiLinkContext(docName: string | null): Promise<WikiLinkConte
 async function getPages(): Promise<PageItem[]> {
   const now = Date.now();
   if (pagesCache && now - pagesCacheTime < PAGES_CACHE_TTL_MS) return pagesCache;
-  pagesCache = await fetchPages();
+  // Folders are requested here even though the completion source strips them:
+  // `buildKnownWikilinkTargetSet` seeds the broken-link decoration with each
+  // folder's path AND basename (via `buildPageNameSet`), so an existing
+  // `[[some/folder]]` must not redline in source mode while the WYSIWYG chip
+  // resolves it. `buildSourceWikiLinkLookup` skips folder rows itself.
+  pagesCache = await fetchPages({ includeFolders: true });
   pagesCacheTime = now;
   knownTargetSet = buildKnownWikilinkTargetSet(pagesCache);
   wikiLinkLookup = buildSourceWikiLinkLookup(pagesCache);
@@ -418,7 +423,16 @@ async function wikiLinkCompletionSource(
     }),
     getWikiLinkContext(currentDocName),
   ]);
-  const filtered = filterPages(pages, query, linkContext);
+  // Folders stay out of the picker (they are decoration/click inputs only,
+  // fetched above): strip BEFORE ranking so they never occupy top-N slots,
+  // and so this corpus fingerprints identically to the WYSIWYG picker's
+  // folder-free corpus — one shared search-index cache entry, no rebuild
+  // when switching surfaces.
+  const filtered = filterPages(
+    pages.filter((p) => p.kind !== 'folder'),
+    query,
+    linkContext,
+  );
 
   return {
     from: triggerPos,

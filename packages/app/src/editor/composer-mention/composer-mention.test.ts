@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { __resetDocumentListInflightForTests } from '@/lib/documents-fetch';
 import type { PageItem } from '../extensions/wiki-link-suggestion';
 import { createMentionCorpus, pageItemToPath } from './composer-mention';
 
@@ -26,6 +27,49 @@ describe('pageItemToPath', () => {
   test('a top-level folder serializes to its bare name', () => {
     const item: PageItem = { kind: 'folder', docName: 'specs', title: 'specs' };
     expect(pageItemToPath(item)).toBe('specs');
+  });
+});
+
+describe('createMentionCorpus — default corpus', () => {
+  const realFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    __resetDocumentListInflightForTests();
+  });
+
+  test('the default fetch opts into folders — the composer is the one folder consumer', async () => {
+    // Pins createMentionCorpus's default argument, not an injected stub:
+    // fetchPages excludes folders unless asked, and the composer must keep
+    // asking so folders stay attachable as chips.
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const body = url.startsWith('/api/pages')
+        ? {
+            pages: [
+              {
+                docName: 'notes',
+                title: 'Notes',
+                docExt: '.md',
+                size: 1,
+                modified: '2026-06-24T00:00:00.000Z',
+              },
+            ],
+          }
+        : {
+            documents: [
+              { kind: 'folder', path: 'specs/foo', size: 0, modified: '2026-06-24T00:00:00.000Z' },
+            ],
+          };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof globalThis.fetch;
+
+    const corpus = createMentionCorpus();
+    const items = await corpus.getItems('');
+    expect(items.map((item) => item.path)).toEqual(['notes.md', 'specs/foo']);
   });
 });
 

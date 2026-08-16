@@ -84,6 +84,23 @@ describe('buildSuggestionItems', () => {
     ]);
   });
 
+  test('never emits a folder row, typed or empty query', () => {
+    // Belt against a folder-bearing corpus (fetchPages excludes folders by
+    // default, but composer-shared callers can hand them in): the non-asset
+    // mapping arm would dress a folder as a page and the inserted wiki link
+    // would open the folder path as a document.
+    const withFolders: PageItem[] = [
+      ...pages,
+      { kind: 'folder', docName: '.claude', title: '.claude' },
+      { kind: 'folder', docName: 'specs/foo', title: 'foo' },
+    ];
+    expect(buildSuggestionItems(withFolders, '')).toEqual(buildSuggestionItems(pages, ''));
+    // A query that matches ONLY folders falls through to the create-new row
+    // rather than surfacing the folder.
+    const folderOnly = buildSuggestionItems(withFolders, 'specs/foo');
+    expect(folderOnly.every((item) => item.kind === 'create')).toBe(true);
+  });
+
   test('matches by docName when title differs', () => {
     expect(buildSuggestionItems(pages, 'qa-source')).toEqual([
       {
@@ -341,9 +358,25 @@ describe('fetchPages', () => {
       },
     );
 
-    const result = await fetchPages();
+    const result = await fetchPages({ includeFolders: true });
     const folder = result.find((item) => item.kind === 'folder');
     expect(folder).toEqual({ kind: 'folder', docName: 'specs/foo', title: 'foo' });
+  });
+
+  test('folders are excluded by default — the wiki-link pickers must never see them', async () => {
+    stubFetch(
+      { pages: [pageEntry('notes', 'Notes')] },
+      {
+        documents: [
+          { kind: 'folder', path: 'specs/foo', size: 0, modified: '2026-06-24T00:00:00.000Z' },
+          { kind: 'folder', path: '.claude', size: 0, modified: '2026-06-24T00:00:00.000Z' },
+        ],
+      },
+    );
+
+    const result = await fetchPages();
+    expect(result.some((item) => item.kind === 'folder')).toBe(false);
+    expect(result.map((item) => item.docName)).toEqual(['notes']);
   });
 
   test('a top-level folder titles from its bare path', async () => {
@@ -352,7 +385,7 @@ describe('fetchPages', () => {
       { documents: [{ kind: 'folder', path: 'specs', modified: '2026-06-24T00:00:00.000Z' }] },
     );
 
-    const result = await fetchPages();
+    const result = await fetchPages({ includeFolders: true });
     expect(result).toContainEqual({ kind: 'folder', docName: 'specs', title: 'specs' });
   });
 
@@ -368,7 +401,7 @@ describe('fetchPages', () => {
       },
     );
 
-    const result = await fetchPages();
+    const result = await fetchPages({ includeFolders: true });
     // Assert docName order, not kind: referenced assets and unreferenced files
     // both project to `kind:'asset'`, so a kind-only check wouldn't catch a
     // spread-order swap between them. Order is pages, assets, files, folders.

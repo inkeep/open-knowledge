@@ -143,7 +143,15 @@ interface SuggestionSearchCorpus<T> {
   corpus: WorkspaceSearchCorpus;
 }
 
-let cachedPageSearchCorpus: SuggestionSearchCorpus<PageItem> | null = null;
+/**
+ * Fingerprint-keyed corpus cache with room for TWO corpora: the pickers'
+ * folder-free corpus (WYSIWYG `[[` + source mode share one fingerprint) and
+ * the composer's folder-bearing corpus. A single slot made every `@` ⇄ `[[`
+ * switch rebuild the search index on the first non-empty keystroke; two slots
+ * keep both warm. Insertion-ordered Map, oldest entry evicted beyond the cap.
+ */
+const PAGE_SEARCH_CORPUS_CACHE_SLOTS = 2;
+const cachedPageSearchCorpora = new Map<string, SuggestionSearchCorpus<PageItem>>();
 let cachedHeadingSearchCorpus: SuggestionSearchCorpus<HeadingEntry> | null = null;
 
 /** Split `query` on the first `#` with a non-empty left side. */
@@ -220,8 +228,14 @@ function getCachedPageSearchCorpus(pages: readonly PageItem[]): SuggestionSearch
   const fingerprint = pages
     .map((page) => `${page.kind ?? 'page'}\u0000${page.docName}\u0000${page.title}`)
     .join('\u0001');
-  if (cachedPageSearchCorpus?.fingerprint === fingerprint) return cachedPageSearchCorpus;
-  cachedPageSearchCorpus = {
+  const cached = cachedPageSearchCorpora.get(fingerprint);
+  if (cached) {
+    // Refresh recency so the evicted entry is the least recently used one.
+    cachedPageSearchCorpora.delete(fingerprint);
+    cachedPageSearchCorpora.set(fingerprint, cached);
+    return cached;
+  }
+  const built: SuggestionSearchCorpus<PageItem> = {
     fingerprint,
     byId: new Map(pages.map((page) => [`${pageSearchKind(page)}:${page.docName}`, page])),
     corpus: createWorkspaceSearchCorpus(
@@ -234,7 +248,13 @@ function getCachedPageSearchCorpus(pages: readonly PageItem[]): SuggestionSearch
       ),
     ),
   };
-  return cachedPageSearchCorpus;
+  cachedPageSearchCorpora.set(fingerprint, built);
+  while (cachedPageSearchCorpora.size > PAGE_SEARCH_CORPUS_CACHE_SLOTS) {
+    const oldest = cachedPageSearchCorpora.keys().next().value;
+    if (oldest === undefined) break;
+    cachedPageSearchCorpora.delete(oldest);
+  }
+  return built;
 }
 
 function getCachedHeadingSearchCorpus(
@@ -276,7 +296,13 @@ export function buildSuggestionItems(
   query: string,
   context: WikiLinkContext = EMPTY_WIKI_LINK_CONTEXT,
 ): WikiLinkSuggestionItem[] {
-  const filtered = filterPages(pages, query, context);
+  // Hard guard, independent of the fetch-side default: a folder PageItem must
+  // never surface as a wiki-link row — the non-asset arm below would dress it
+  // as a page and the inserted link would open the folder path as a document.
+  // Filtering after ranking can undershoot MAX_ITEMS, which is
+  // fine for a belt that only engages when a caller hands in a folder-bearing
+  // corpus.
+  const filtered = filterPages(pages, query, context).filter((item) => item.kind !== 'folder');
   if (filtered.length > 0) {
     return filtered.map((item) =>
       item.kind === 'asset'
@@ -358,7 +384,20 @@ export function wikiLinkMatcher(config: {
   };
 }
 
-export async function fetchPages(): Promise<PageItem[]> {
+export interface FetchPagesOptions {
+  /**
+   * Append `kind:'folder'` entries to the returned corpus. Folder targets are
+   * only meaningful to the ACP composer's `@` picker, where selecting one
+   * attaches the folder as a chip (serialized to its bare path). The `[[`
+   * wiki-link pickers must never see them: a wiki link serializes to a doc
+   * target, so a picked folder inserts a link that opens the folder path as a
+   * document. First-class folder links are a separate planned feature;
+   * until that lands, folders stay out of every default consumer.
+   */
+  includeFolders?: boolean;
+}
+
+export async function fetchPages(options: FetchPagesOptions = {}): Promise<PageItem[]> {
   const r = await fetch('/api/pages');
   let body: unknown;
   try {
@@ -434,8 +473,11 @@ export async function fetchPages(): Promise<PageItem[]> {
       return { kind: 'asset', docName: `/${file.path}`, title };
     });
 
+  if (!options.includeFolders) return [...pages, ...assets, ...files];
+
   // Folders (`kind:'folder'`) carry no `.md` suffix — their `path` is the
-  // workspace-relative folder path the chip serializes to verbatim.
+  // workspace-relative folder path the chip serializes to verbatim. Opt-in
+  // (see FetchPagesOptions): only the composer's `@` picker wants them.
   const folders = docData.documents
     .filter((entry): entry is { kind: 'folder'; path: string } => {
       return entry.kind === 'folder' && typeof entry.path === 'string' && entry.path.length > 0;
