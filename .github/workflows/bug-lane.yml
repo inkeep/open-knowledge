@@ -61,6 +61,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  TURBO_TELEMETRY_DISABLED: 1
+
   # THE ARMING SWITCH. Armed 2026-08-03 after the log-only window demonstrated
   # every behavior class: correct qualification, correct conflict refusal, and
   # self-draining once a stable shipped the fixes. While "true" a verified

@@ -57,6 +57,9 @@ defaults:
   run:
     shell: bash
 
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
 jobs:
   prepare:
     runs-on: ubuntu-latest

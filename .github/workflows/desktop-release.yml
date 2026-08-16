@@ -127,6 +127,9 @@ concurrency:
   group: desktop-release-${{ github.event.client_payload.release_tag || inputs.release_tag }}
   cancel-in-progress: false
 
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
 jobs:
   # Resolves the channel/version from the tag and builds the platform-neutral
   # workspace ONCE for the Windows/Linux packagers. The CLI build chain uses
