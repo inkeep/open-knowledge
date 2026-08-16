@@ -4,6 +4,7 @@ import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
 import { Step, Steps } from 'fumadocs-ui/components/steps';
 import { TypeTable } from 'fumadocs-ui/components/type-table';
 import defaultMdxComponents from 'fumadocs-ui/mdx';
+import { icons } from 'lucide-react';
 import type { MDXComponents } from 'mdx/types';
 import { AgentIcons } from '@/components/agent-icons';
 import { ComponentPreview } from '@/components/component-preview';
@@ -30,6 +31,17 @@ import { TabPreview, TabsPreview } from '@/components/previews/tabs-preview';
 import { Tab, Tabs } from '@/components/tabs';
 import { VerifyExec } from '@/components/verify-exec';
 
+function InlineIcon({ name, label }: { name: keyof typeof icons; label?: string }) {
+  const Icon = icons[name];
+  return (
+    <Icon
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      className="-mt-0.5 inline size-4 align-middle text-amber-500"
+    />
+  );
+}
+
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
     ...defaultMdxComponents,
@@ -50,6 +62,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     HtmlPreview,
     Image: ImageZoom,
     ImgPreview,
+    InlineIcon,
     LayerStack,
     MathPreview,
     McpInstall,

@@ -1,60 +1,51 @@
 ---
 title: Comments
 icon: LuMessageSquare
-description: Mark up a document with review notes, then hand the batch to an agent to act on.
+description: Annotate your knowledge base with comments and resolve them with your agent
 ---
 
-Comments let you leave a note on any part of a document, then hand the batch of all your notes to an agent in one turn. The agent then addresses each comment.
-
-For comments you want to keep *inside* the file — `<!-- … -->` or `%%…%%` — see [markdown comments](/docs/features/editor#markdown-comments).
+<Callout type="info">
+For comments you want to keep *inside* a markdown file using `<!-- … -->` or `%%…%%`, see [markdown comments](/docs/features/editor#markdown-comments).
+</Callout>
 
 ## Write a comment
 
-Select text, a code block, or a diagram in the visual editor, then press `Cmd+Shift+M` or choose **Comment** — in the selection toolbar. Type your note and press Enter. The new comment is checked and added to the batch automatically.
+Select text, a code block, or a diagram, then press `Cmd+Shift+M` or click **Comment** in the selection toolbar.
 
-Nothing is sent yet, so you can read through a whole project and leave all your notes instead of going back and forth with your agent one fix at a time.
+![Writing a comment on selected text in the OpenKnowledge editor](/screenshots/write-comment.gif)
 
-## Review what is waiting
+## Review and send
 
-Commented passages are highlighted in the document, with a marker in the right-hand margin; click either one to open the thread.
+Comments are highlighted in the document, and each open comment gets a <InlineIcon name="MessageSquare" /> marker in the right-hand margin. Click either one to open the comment in the document panel (`Cmd+Option+B`).
 
-The **Comments** tab in the document panel (`Cmd+Option+B`) lists them, with a **This doc** / **This project** switch. Each comment carries a checkbox saying whether it goes out in the next batch.
+![Comments panel](/screenshots/comments.png)
 
-![The Comments panel listing two comments on the open document, each showing the passage it quotes and a checkbox for the next batch, beside the highlighted passage and its margin marker in the editor](/screenshots/comments.png)
-
-## Send comments to an agent
-
-Checked comments attach themselves to whatever you send next. A chip appears on the bottom **Ask AI** composer and on the composer in the right-side agent panel, so your next message carries the batch with it — and whatever you type becomes the instruction for it. The chip's ✕ takes the batch off that message without unchecking anything.
-
-To send the batch on its own, press **Send to chat** in the Comments tab, or `Cmd+Shift+Enter` while that tab is open. On **This doc** that sends the open document's checked comments; on **This project**, all of them.
-
-## Resolve, reopen, edit, delete
-
-Sending a comment resolves it. If you are unhappy with the way the agent made edits or just want to reopen the comment, **Reopen** puts the comment back in the list and adds it to the next batch.
-
-**Edit** revises the note — a comment can be rewritten, but a thread holds one comment rather than a back-and-forth, so an edit replaces what was there. **Delete** is the way out of a comment you decided against.
-
-## When the commented text changes
-
-A comment remembers the *words* it was left on rather than a position in the file, so it stays with its passage as the document is edited around it — including edits an agent makes while working through your batch.
-
-If the passage is deleted outright, the comment is marked orphaned: its card strikes through the old quote and offers **Re-place on selected text**, which re-attaches it wherever you select next.
-
-An orphaned comment still sends. The instruction tells the agent that the original text is gone and not to apply the note to some other occurrence — a comment the agent asks you about is better than one it silently applies in the wrong place.
-
-## How agents see comments
-
-Two ways, and you only drive one of them:
-
-- **You send them.** The batch above.
-- **They read them.** An agent working through the [MCP server](/docs/reference/mcp) sees unresolved comments on a document: a count when it lists files, and the notes themselves — with their quoted passages — when it reads one. An agent picking up a document can act on outstanding review notes without you sending anything.
-
-## Where comments are stored
-
-Comments live in `.ok/local/comments/`, one JSON file each, alongside the rest of your machine-local runtime state. See [what OpenKnowledge writes](/docs/reference/what-open-knowledge-writes).
+You can control which comments are sent to your agent by checking or unchecking them. Then click the send button or use `Cmd+Shift+Enter` while the Comments tab is open.
 
 <Callout type="info">
-That directory is gitignored, so comments stay on the machine that wrote them. They are not committed and not pushed, and a teammate who clones the project sees none of them. Comments are notes to your own agent, not a review thread you share.
+If the text a comment points to is deleted or rewritten enough that OpenKnowledge can no longer find it, the comment becomes orphaned. The comment is still there, but it is no longer attached to live text in the document. If you send it to your agent, it includes the original quote for context. To reattach it, select the new text in your document and click **Re-place on selected text**.
+</Callout>
+
+## Resolve and reopen
+
+After comments are sent to an agent, they are marked as resolved. To see resolved comments again, use the **Show resolved** control in the Comments tab.
+
+![Show resolved comments control in the Comments tab](/screenshots/show-resolved-comments.png)
+
+If you are unhappy with the way the agent made edits, or just want to reopen a comment, **Reopen** puts it back in the unresolved state so you can send it to an agent again.
+
+## Agent access to comments
+
+Agents can view unresolved comments when they read a file via MCP. Each comment includes the note along with the passage it refers to.
+
+When an agent lists files, it can also see how many unresolved comments each file has.
+
+## Comments are local
+
+Comments stay local to the machine that created them. They are not committed and not pushed, so they are not visible to your team members.
+
+<Callout type="info">
+Comments are stored in `.ok/local/comments/`. Read more on [what OpenKnowledge writes to your system](/docs/reference/what-open-knowledge-writes).
 </Callout>
 
 ## See also
