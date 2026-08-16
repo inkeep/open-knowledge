@@ -51,17 +51,39 @@ async function openOkfSettings(page: Page): Promise<void> {
 
 async function expectDisclosureContrast(page: Page, theme: 'light' | 'dark'): Promise<void> {
   await page.evaluate((nextTheme) => {
+    const transitionBlocker = document.createElement('style');
+    transitionBlocker.id = 'ok-test-disable-disclosure-transitions';
+    transitionBlocker.textContent = `
+      [data-testid="settings-okf-generate-index-confirm"],
+      [data-testid="settings-okf-generate-index-confirm"]::before,
+      [data-testid="settings-okf-generate-index-confirm"]::after,
+      [data-testid="settings-okf-generate-index-confirm"] *,
+      [data-testid="settings-okf-generate-index-confirm"] *::before,
+      [data-testid="settings-okf-generate-index-confirm"] *::after {
+        transition: none !important;
+      }
+    `;
+    document.head.append(transitionBlocker);
+    void document.body.offsetHeight;
+
     document.documentElement.removeAttribute('data-color-theme');
     document.getElementById('ok-custom-theme')?.remove();
     document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+    void document.body.offsetHeight;
   }, theme);
 
-  const results = await new AxeBuilder({ page })
-    .include('[data-testid="settings-okf-generate-index-confirm"]')
-    .withRules(['color-contrast'])
-    .analyze();
+  try {
+    const results = await new AxeBuilder({ page })
+      .include('[data-testid="settings-okf-generate-index-confirm"]')
+      .withRules(['color-contrast'])
+      .analyze();
 
-  expect(results.violations).toEqual([]);
+    expect(results.violations).toEqual([]);
+  } finally {
+    await page.evaluate(() => {
+      document.getElementById('ok-test-disable-disclosure-transitions')?.remove();
+    });
+  }
 }
 
 test('Escape decline restores focus, confirmation creates indexes, and disabling preserves them', async ({
