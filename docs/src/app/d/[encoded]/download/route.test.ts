@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import fixture from '../../../../../../test-support/fixtures/share-url-v1-v2.json';
 
 const SPLASH_URL =
   'https://github.com/inkeep/open-knowledge/releases/latest/download/OpenKnowledge-arm64.dmg';
@@ -21,14 +22,27 @@ vi.doMock('../../../../lib/track.ts', () => ({
 
 // Flip the decoded-share outcome per test.
 let _viewKind: 'ok' | 'invalid' | 'unsupported-version' = 'ok';
-vi.doMock('../../../../lib/share-splash.ts', () => ({
-  buildSplashViewModel: () => ({ kind: _viewKind }),
-  SPLASH_DOWNLOAD_URL: SPLASH_URL,
-}));
+let _useRealShareContract = false;
+vi.doMock('../../../../lib/share-splash.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../lib/share-splash.ts')>();
+  return {
+    ...actual,
+    buildSplashViewModel: (encoded: string) =>
+      _useRealShareContract ? actual.buildSplashViewModel(encoded) : { kind: _viewKind },
+    SPLASH_DOWNLOAD_URL: SPLASH_URL,
+  };
+});
 
-vi.doMock('../../../../lib/deferred-share.ts', () => ({
-  buildPendingShareCookie: (encoded: string) => ({ name: 'ok-pending-share', value: encoded }),
-}));
+vi.doMock('../../../../lib/deferred-share.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../lib/deferred-share.ts')>();
+  return {
+    ...actual,
+    buildPendingShareCookie: (encoded: string) =>
+      _useRealShareContract
+        ? actual.buildPendingShareCookie(encoded)
+        : { name: 'ok-pending-share', value: encoded },
+  };
+});
 
 const { GET } = await import('./route.ts');
 
@@ -39,6 +53,30 @@ function call(encoded: string, query = ''): Promise<Response> {
 }
 
 describe('GET /d/[encoded]/download', () => {
+  test('maximum canonical v2 share crosses the real decoder and cookie builder', async () => {
+    const canonicalV2 = fixture.bounds.maxCase;
+    expect(canonicalV2.token).toHaveLength(3984);
+
+    _useRealShareContract = true;
+    _lastCapture = null;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-13T00:00:00.000Z'));
+    try {
+      const res = await call(canonicalV2.token);
+      const cookie = res.headers.get('set-cookie');
+
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toBe(SPLASH_URL);
+      expect(cookie).toBe(
+        `ok_pending_share=${canonicalV2.token}; Path=/; Expires=Thu, 20 Aug 2026 00:00:00 GMT; Max-Age=604800; Secure; HttpOnly; SameSite=lax`,
+      );
+      expect(_lastCapture?.event).toBe('dmg_downloaded');
+    } finally {
+      _useRealShareContract = false;
+      vi.useRealTimers();
+    }
+  });
+
   test('picker request carries a valid share to the architecture picker', async () => {
     _viewKind = 'ok';
     _lastCapture = null;

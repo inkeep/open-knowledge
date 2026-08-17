@@ -44,7 +44,8 @@ const REDEEM_PATH = '/redeem';
  * a few hundred base64url chars; anything larger is hostile or corrupt and is
  * dropped before it reaches the redirect builder.
  */
-const MAX_TOKEN_LENGTH = 4096;
+const MAX_LEGACY_TOKEN_LENGTH = 4096;
+const MAX_V2_TOKEN_LENGTH = 3984;
 
 /** Loopback ephemeral port range (OS-assigned). */
 const MIN_PORT = 1;
@@ -79,7 +80,18 @@ export function buildPendingShareCookie(token: string): PendingShareCookieInit {
 }
 
 function isValidToken(token: string): boolean {
-  return token.length > 0 && token.length <= MAX_TOKEN_LENGTH && BASE64URL_RE.test(token);
+  if (token.length === 0) return false;
+  const maxLength = peekShareVersion(token) === 2 ? MAX_V2_TOKEN_LENGTH : MAX_LEGACY_TOKEN_LENGTH;
+  return token.length <= maxLength && BASE64URL_RE.test(token);
+}
+
+function peekShareVersion(token: string): number | null {
+  if (token.length < 2) return null;
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const first = alphabet.indexOf(token[0]);
+  const second = alphabet.indexOf(token[1]);
+  if (first < 0 || second < 0) return null;
+  return (first << 2) | (second >>> 4);
 }
 
 function isValidPort(port: string | null): port is string {

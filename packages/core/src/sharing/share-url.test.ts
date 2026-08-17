@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  decodeShareUrl,
-  encodeShareUrl,
-  InvalidShareUrlError,
-  UnsupportedShareVersionError,
-} from './share-url.ts';
+import { decodeShareUrl, encodeShareUrl, InvalidShareUrlError } from './share-url.ts';
 
 describe('encodeShareUrl', () => {
   test('returns a base64url string with no padding for a simple blob URL', () => {
@@ -43,22 +38,15 @@ describe('decodeShareUrl', () => {
     expect(decodeShareUrl(encodeShareUrl(sharedUrl))).toEqual({ version: 1, sharedUrl });
   });
 
-  test('throws UnsupportedShareVersionError when the version byte is not 0x01', () => {
-    // Build a v2-shaped payload directly: [0x02] + utf-8 bytes of a URL.
+  test('throws InvalidShareUrlError for a recognized v2 payload with malformed framing', () => {
+    // Build a malformed v2 payload without its required depth header.
     const blobBytes = new TextEncoder().encode('https://example.com/foo');
     const bytes = new Uint8Array(1 + blobBytes.length);
     bytes[0] = 0x02;
     bytes.set(blobBytes, 1);
     const encoded = uint8ArrayToBase64UrlForTest(bytes);
 
-    let caught: unknown;
-    try {
-      decodeShareUrl(encoded);
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(UnsupportedShareVersionError);
-    expect((caught as UnsupportedShareVersionError).version).toBe(2);
+    expect(() => decodeShareUrl(encoded)).toThrow(InvalidShareUrlError);
   });
 
   test('throws InvalidShareUrlError on undecodable base64url input', () => {

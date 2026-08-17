@@ -87,7 +87,7 @@ interface ParsedOpenKnowledgeUrl {
  */
 const SHARE_UNIVERSAL_LINK_HOSTS = new Set(['openknowledge.ai', 'www.openknowledge.ai']);
 
-/** Universal-link path prefix that carries the v1 base64url-encoded payload. */
+/** Universal-link path prefix that carries a versioned base64url payload. */
 const SHARE_UNIVERSAL_LINK_PATH_PREFIX = '/d/';
 
 /**
@@ -128,13 +128,47 @@ export type ShareUrlSource = 'universal-link' | 'custom-scheme';
  * legacy `open` action.
  */
 export type ShareParseResult =
-  | { readonly kind: 'ok'; readonly source: ShareUrlSource; readonly payload: ShareUrlPayload }
+  | {
+      readonly kind: 'ok';
+      readonly source: ShareUrlSource;
+      readonly payload: ShareUrlPayload;
+      /** Version-aware semantic identity for near-simultaneous delivery dedup. */
+      readonly dedupKey: string;
+    }
   | {
       readonly kind: 'unsupported-version';
       readonly source: ShareUrlSource;
       readonly version: number;
     }
   | { readonly kind: 'invalid'; readonly source: ShareUrlSource };
+
+function classifyShareUrlSource(url: URL): ShareUrlSource | null {
+  if (url.protocol === 'openknowledge:' && url.hostname === 'share') return 'custom-scheme';
+  if (
+    (url.protocol === 'https:' || url.protocol === 'http:') &&
+    SHARE_UNIVERSAL_LINK_HOSTS.has(url.hostname) &&
+    url.pathname.startsWith(SHARE_UNIVERSAL_LINK_PATH_PREFIX)
+  ) {
+    return 'universal-link';
+  }
+  return null;
+}
+
+/**
+ * Recognize a share route before WHATWG parsing when a malformed authority
+ * makes `new URL()` throw. Keep this deliberately narrower than a general URL
+ * parser: the known host must be exact, an optional malformed port cannot
+ * contain userinfo, and universal links must still claim the `/d/` route.
+ */
+function classifyRawShareUrlSource(input: string): ShareUrlSource | null {
+  if (/^openknowledge:\/\/share(?::[^/?#@]*)?(?:[/?#]|$)/i.test(input)) {
+    return 'custom-scheme';
+  }
+  if (/^https?:\/\/(?:www\.)?openknowledge\.ai(?::[^/?#@]*)?\/d\//i.test(input)) {
+    return 'universal-link';
+  }
+  return null;
+}
 
 /**
  * Common share fields carried on every `ShareDeepLinkPayload` variant that
@@ -179,13 +213,10 @@ export type ShareNavigatorPayload = Extract<
 
 /**
  * Parse + validate a share URL. Handles both shapes:
- *   - Universal link: `https://openknowledge.ai/d/<base64url([0x01]||blob-url)>`
- *     (and `www.openknowledge.ai`) — base64url-decode, version-byte dispatch,
- *     blob-URL shape check. Tolerates unknown query params and fragments for
- *     forward-compatible payload extensibility.
- *   - Custom scheme: `openknowledge://share?url=<urlencoded(<blob-url>)>` —
- *     URL-decode the `url` param directly (no version byte; the custom-scheme
- *     path is the immediate-handoff path, never persisted to marketing copy).
+ *   - Universal link: `https://openknowledge.ai/d/<versioned-token>` (and the
+ *     `www` host), with permanent tolerant v1 and strict canonical v2 decode.
+ *   - Custom scheme: v2 uses `token=<canonical-v2-token>`; v1 keeps the
+ *     historical `url=<urlencoded-github-url>` form.
  *
  * Returns `null` if the input is neither shape — caller falls through to
  * `parseOpenKnowledgeUrl` for the legacy `open` action.
@@ -194,26 +225,25 @@ export type ShareNavigatorPayload = Extract<
  */
 export function parseShareUrl(input: string): ShareParseResult | null {
   if (typeof input !== 'string' || input.length === 0) return null;
-  // Null-byte defense mirrors `parseOpenKnowledgeUrl`. Reject before `new URL`
-  // because `decodeURIComponent('%00')` produces `'\x00'`, which can truncate
-  // paths in downstream C libraries.
-  if (input.includes('\x00') || /%00/i.test(input)) return null;
+  const rawSource = classifyRawShareUrlSource(input);
+  // Never forward a null byte to path consumers. A share-shaped input remains
+  // a terminal share failure so the generic URL fallback cannot log it raw.
+  if (input.includes('\x00') || /%00/i.test(input)) {
+    return rawSource === null ? null : { kind: 'invalid', source: rawSource };
+  }
 
   let url: URL;
   try {
     url = new URL(input);
   } catch {
-    return null;
+    return rawSource === null ? null : { kind: 'invalid', source: rawSource };
   }
 
-  if (url.protocol === 'openknowledge:' && url.hostname === 'share') {
+  const source = classifyShareUrlSource(url);
+  if (source === 'custom-scheme') {
     return parseShareCustomScheme(url);
   }
-  if (
-    (url.protocol === 'https:' || url.protocol === 'http:') &&
-    SHARE_UNIVERSAL_LINK_HOSTS.has(url.hostname) &&
-    url.pathname.startsWith(SHARE_UNIVERSAL_LINK_PATH_PREFIX)
-  ) {
+  if (source === 'universal-link') {
     return parseShareUniversalLink(url);
   }
   return null;
@@ -233,7 +263,7 @@ function parseShareUniversalLink(url: URL): ShareParseResult {
   if (encoded === undefined || encoded.length === 0) {
     return { kind: 'invalid', source: 'universal-link' };
   }
-  let decoded: { sharedUrl: string };
+  let decoded: ReturnType<typeof decodeShareUrl>;
   try {
     decoded = decodeShareUrl(encoded);
   } catch (err) {
@@ -251,20 +281,37 @@ function parseShareUniversalLink(url: URL): ShareParseResult {
     // escape to the routing layer.
     return { kind: 'invalid', source: 'universal-link' };
   }
-  return finalizeShareResult(decoded.sharedUrl, 'universal-link');
+  return finalizeDecodedShare(decoded, 'universal-link');
 }
 
 function parseShareCustomScheme(url: URL): ShareParseResult {
-  // The custom-scheme path carries the URL directly without the
-  // version byte. The custom scheme is the immediate-handoff path (splash
-  // page → OK) and never appears in marketing copy, so version-dispatch
-  // would only add complexity for no benefit.
-  const rawSharedUrl = url.searchParams.get('url');
-  if (!rawSharedUrl) {
+  const tokens = url.searchParams.getAll('token');
+  const legacyUrls = url.searchParams.getAll('url');
+
+  // Presence is authoritative: malformed token forms never fall through to
+  // the legacy URL parameter, because doing so would let an ambiguous handoff
+  // silently change wire-version semantics.
+  if (tokens.length > 0) {
+    if (tokens.length !== 1 || tokens[0] === '' || legacyUrls.length !== 0) {
+      return { kind: 'invalid', source: 'custom-scheme' };
+    }
+    try {
+      const decoded = decodeShareUrl(tokens[0]);
+      if (decoded.version !== 2) return { kind: 'invalid', source: 'custom-scheme' };
+      return finalizeDecodedShare(decoded, 'custom-scheme');
+    } catch (err) {
+      if (err instanceof UnsupportedShareVersionError) {
+        return { kind: 'unsupported-version', source: 'custom-scheme', version: err.version };
+      }
+      return { kind: 'invalid', source: 'custom-scheme' };
+    }
+  }
+
+  if (legacyUrls.length !== 1 || legacyUrls[0] === '') {
     return { kind: 'invalid', source: 'custom-scheme' };
   }
   // URLSearchParams.get already URL-decodes; no further decode needed.
-  return finalizeShareResult(rawSharedUrl, 'custom-scheme');
+  return finalizeV1ShareResult(legacyUrls[0], 'custom-scheme');
 }
 
 /**
@@ -274,7 +321,35 @@ function parseShareCustomScheme(url: URL): ShareParseResult {
  */
 const MAX_SHARED_URL_LENGTH = 4096;
 
-function finalizeShareResult(sharedUrl: string, source: ShareUrlSource): ShareParseResult {
+function finalizeDecodedShare(
+  decoded: ReturnType<typeof decodeShareUrl>,
+  source: ShareUrlSource,
+): ShareParseResult {
+  if (decoded.version === 1) return finalizeV1ShareResult(decoded.sharedUrl, source);
+
+  const repositoryPath = decoded.source.targetSegments.join('/');
+  const repositoryTarget: ShareTarget =
+    decoded.source.kind === 'doc'
+      ? { kind: 'doc', docPath: repositoryPath }
+      : { kind: 'folder', folderPath: repositoryPath };
+  return {
+    kind: 'ok',
+    source,
+    dedupKey: `2:${decoded.contentRootDepth}:${decoded.sharedUrl}`,
+    payload: {
+      contentRootDepth: decoded.contentRootDepth,
+      host: decoded.source.host,
+      owner: decoded.source.owner,
+      repo: decoded.source.repo,
+      branch: decoded.source.branch,
+      repositoryTarget,
+      sharedUrl: decoded.sharedUrl,
+      target: decoded.target,
+    },
+  };
+}
+
+function finalizeV1ShareResult(sharedUrl: string, source: ShareUrlSource): ShareParseResult {
   if (typeof sharedUrl !== 'string' || sharedUrl.length === 0) {
     return { kind: 'invalid', source };
   }
@@ -299,11 +374,14 @@ function finalizeShareResult(sharedUrl: string, source: ShareUrlSource): SharePa
   return {
     kind: 'ok',
     source,
+    dedupKey: `1:${sharedUrl}`,
     payload: {
+      contentRootDepth: null,
       host: parsed.host,
       owner: parsed.owner,
       repo: parsed.repo,
       branch: parsed.branch,
+      repositoryTarget: target,
       sharedUrl,
       target,
     },
@@ -555,7 +633,12 @@ interface ProtocolHandlerDeps {
   openProject(
     projectPath: string,
     opts?: {
-      pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string };
+      pendingDeepLinkTarget?: {
+        kind: 'doc' | 'folder';
+        path: string;
+        repositoryPath?: string;
+        contentRootDepth?: number;
+      };
       pendingBranch?: string | null;
       /**
        * Multi-candidate hint forwarded into `ok:deep-link` so the
@@ -599,6 +682,8 @@ interface ProtocolHandlerDeps {
       branch?: string | null;
       multiCandidate?: boolean;
       targetMissing?: boolean;
+      repositoryPath?: string;
+      contentRootDepth?: number;
     },
   ): void;
   /**
@@ -781,8 +866,8 @@ interface ProtocolHandlerControl {
 }
 
 /**
- * Window within which the same share target (keyed on its canonical
- * `sharedUrl`) routes at most once. Defeats the double-delivery race where a
+ * Window within which the same semantic versioned share routes at most once.
+ * Defeats the double-delivery race where a
  * first-run loopback redemption and a simultaneous splash "Open in Open
  * Knowledge" re-click both deliver the same share.
  */
@@ -924,17 +1009,16 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
    * renderer surfaces these as sonner toasts, no resolution required.
    */
   const broadcastShareToast = (
-    url: string,
     payload: { readonly kind: 'unsupported-version' } | { readonly kind: 'invalid' },
   ): void => {
     const sendShare = deps.sendShareDeepLink;
     if (!sendShare) {
-      deps.log?.warn({ url }, '[receive] sendShareDeepLink dep missing — share dropped');
+      deps.log?.warn({}, '[receive] sendShareDeepLink dep missing — share dropped');
       return;
     }
     const target = deps.getFocusedWindow?.() ?? deps.getAnyReadyWindow();
     if (!target) {
-      deps.log?.warn({ url }, '[receive] no target window — share dropped');
+      deps.log?.warn({}, '[receive] no target window — share dropped');
       return;
     }
     sendShare(target, payload);
@@ -957,12 +1041,8 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
    * directly. Otherwise spawn the editor with `pendingShareBranchSwitch`
    * threaded so window-manager's dom-ready hook delivers after mount.
    */
-  const dispatchResolvedShare = (
-    url: string,
-    share: ShareUrlPayload,
-    selection: CandidateSelection,
-  ): void => {
-    deps.log?.info?.({ url, selection: selection.kind }, '[receive] action=routed');
+  const dispatchResolvedShare = (share: ShareUrlPayload, selection: CandidateSelection): void => {
+    deps.log?.info?.({ selection: selection.kind }, '[receive] action=routed');
     // Degrade-to-Navigator for the openProject null/reject paths below. Mirrors
     // the explicit dep-check the direct-dispatch cases use (branch-match-non-ok
     // / miss): when `routeShareToNavigator` is unwired the degrade is logged,
@@ -989,6 +1069,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         // window with an early return BEFORE its pendingDeepLinkTarget gate, so
         // relying on openProject alone drops the nav on the warm case.) No panel.
         const targetPath = shareTargetPath(share.target);
+        const repositoryPath = shareTargetPath(share.repositoryTarget);
         // Kind-aware target-existence gate: confirm the share's target exists
         // on the candidate's checked-out branch before dispatch. A stale branch
         // (target added on the remote but not yet fetched) would otherwise open
@@ -1001,11 +1082,14 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         const isContentRoot = share.target.kind === 'folder' && targetPath === '';
         const targetMissing =
           !isContentRoot &&
-          deps.checkShareTargetExists?.(selection.candidate.path, share.target.kind, targetPath) ===
-            'missing';
+          deps.checkShareTargetExists?.(
+            selection.candidate.path,
+            share.repositoryTarget.kind,
+            repositoryPath,
+          ) === 'missing';
         if (targetMissing) {
           deps.log?.warn(
-            { url, project: selection.candidate.path },
+            { targetKind: share.repositoryTarget.kind },
             '[receive] target_check=missing — share target not on checked-out branch; dispatching with in-context toast',
           );
         }
@@ -1016,6 +1100,10 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
             kind: share.target.kind,
             branch: share.branch,
             multiCandidate: selection.multiCandidate,
+            repositoryPath,
+            ...(share.contentRootDepth === null
+              ? {}
+              : { contentRootDepth: share.contentRootDepth }),
             // Only carry the flag when set — keeps the common (present) case's
             // payload identical to the pre-gate shape.
             ...(targetMissing ? { targetMissing: true } : {}),
@@ -1024,7 +1112,14 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         }
         void deps
           .openProject(selection.candidate.path, {
-            pendingDeepLinkTarget: { kind: share.target.kind, path: targetPath },
+            pendingDeepLinkTarget: {
+              kind: share.target.kind,
+              path: targetPath,
+              repositoryPath,
+              ...(share.contentRootDepth === null
+                ? {}
+                : { contentRootDepth: share.contentRootDepth }),
+            },
             pendingBranch: share.branch,
             pendingMultiCandidate: selection.multiCandidate,
             ...(targetMissing ? { pendingTargetMissing: true } : {}),
@@ -1036,7 +1131,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
             // gets clone/locate options rather than a contextless launcher.
             if (win === null) {
               degradeToLauncherMiss(
-                { url, project: selection.candidate.path },
+                {},
                 '[receive] openProject(branch-match-ok) returned null — degrading to launcher-miss',
               );
             }
@@ -1044,9 +1139,8 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
           .catch((err) => {
             degradeToLauncherMiss(
               {
-                url,
-                err: err instanceof Error ? err.message : String(err),
-                project: selection.candidate.path,
+                errorKind: err instanceof Error ? err.name : typeof err,
+                errorCode: err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined,
               },
               '[receive] openProject(branch-match-ok) failed — degrading to launcher-miss',
             );
@@ -1076,7 +1170,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
           // matching the explicit dep-checks in branch-match-non-ok / miss,
           // then fall through so the window is at least focused.
           deps.log?.warn(
-            { url, project: selection.anchor.path },
+            {},
             '[receive] sendShareDeepLink dep missing — branch-switch payload not delivered to open window',
           );
         }
@@ -1085,7 +1179,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
           .then((win) => {
             if (win === null) {
               degradeToLauncherMiss(
-                { url, project: selection.anchor.path },
+                {},
                 '[receive] openProject(branch-switch) returned null — degrading to launcher-miss',
               );
             }
@@ -1093,9 +1187,8 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
           .catch((err) => {
             degradeToLauncherMiss(
               {
-                url,
-                err: err instanceof Error ? err.message : String(err),
-                project: selection.anchor.path,
+                errorKind: err instanceof Error ? err.name : typeof err,
+                errorCode: err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined,
               },
               '[receive] openProject(branch-switch) failed — degrading to launcher-miss',
             );
@@ -1106,7 +1199,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         const routeToNav = deps.routeShareToNavigator;
         if (!routeToNav) {
           deps.log?.warn(
-            { url },
+            {},
             '[receive] routeShareToNavigator dep missing — launcher-consent dropped',
           );
           return;
@@ -1122,10 +1215,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       case 'miss': {
         const routeToNav = deps.routeShareToNavigator;
         if (!routeToNav) {
-          deps.log?.warn(
-            { url },
-            '[receive] routeShareToNavigator dep missing — launcher-miss dropped',
-          );
+          deps.log?.warn({}, '[receive] routeShareToNavigator dep missing — launcher-miss dropped');
           return;
         }
         routeToNav({ kind: 'launcher-miss', share });
@@ -1136,49 +1226,70 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         // core without a matching routing case would land here at runtime.
         const _exhaustive: never = selection;
         deps.log?.warn(
-          { url, selection: (_exhaustive as { kind: string }).kind },
+          { selection: (_exhaustive as { kind: string }).kind },
           '[receive] unknown CandidateSelection kind — share dropped',
         );
       }
     }
   };
 
-  const routeShare = (url: string, result: ShareParseResult): void => {
-    // Diagnostic log first — fires for every share URL the handler sees,
-    // including the silent-drop-no-window edge case below. Bracket-prefix
-    // namespace per parent spec §6 non-functional / logging conventions.
-    if (result.kind === 'unsupported-version') {
-      deps.log?.warn(
-        { source: result.source, result: result.kind, version: result.version },
-        '[receive] action=url-parse',
-      );
+  const routeShare = (result: ShareParseResult): void => {
+    // Diagnostic log first so even silent-drop and no-window outcomes remain
+    // observable without recording the raw share URL.
+    const diagnostic =
+      result.kind === 'ok'
+        ? {
+            source: result.source,
+            result: result.kind,
+            codecVersion:
+              result.payload.contentRootDepth !== null ? ('v2' as const) : ('v1' as const),
+            targetKind: result.payload.target.kind,
+            rootScope:
+              result.payload.contentRootDepth !== null ? ('nested' as const) : ('unknown' as const),
+          }
+        : {
+            source: result.source,
+            result: result.kind,
+            codecVersion:
+              result.kind === 'unsupported-version'
+                ? ('unsupported' as const)
+                : ('unknown' as const),
+            targetKind: 'unknown' as const,
+            rootScope: 'unknown' as const,
+          };
+    if (result.kind === 'ok') {
+      // A successful parse is routine — keep it off the warn channel operators
+      // alert on, matching the info? entry diagnostics used elsewhere here.
+      deps.log?.info?.(diagnostic, '[receive] action=url-parse');
+    } else if (result.kind === 'unsupported-version') {
+      deps.log?.warn({ ...diagnostic, version: result.version }, '[receive] action=url-parse');
     } else {
-      deps.log?.warn({ source: result.source, result: result.kind }, '[receive] action=url-parse');
+      deps.log?.warn(diagnostic, '[receive] action=url-parse');
     }
     if (result.kind !== 'ok') {
       // Toast-only variants — send to any window via the legacy broadcast
       // path. No resolution required.
-      broadcastShareToast(url, { kind: result.kind });
+      broadcastShareToast({ kind: result.kind });
       return;
     }
     // Near-simultaneous-duplicate suppression. A redeemed deferred share and a
     // manual splash re-click for the same target arrive as two `ok` shares with
     // the same `sharedUrl`; route the first, drop the second within the window.
     const now = deps.now ? deps.now() : Date.now();
-    const last = shareDedup.get(result.payload.sharedUrl);
+    const last = shareDedup.get(result.dedupKey);
     if (last !== undefined && now - last < SHARE_DEDUP_WINDOW_MS) {
       deps.log?.warn({ source: result.source, result: result.kind }, '[receive] action=deduped');
       return;
     }
-    shareDedup.set(result.payload.sharedUrl, now);
-    for (const [url, ts] of shareDedup) {
-      if (now - ts >= SHARE_DEDUP_WINDOW_MS) shareDedup.delete(url);
+    shareDedup.set(result.dedupKey, now);
+    for (const [key, ts] of shareDedup) {
+      if (now - ts >= SHARE_DEDUP_WINDOW_MS) shareDedup.delete(key);
     }
     const resolver = deps.resolveShareTarget;
     if (!resolver) {
       // Resolution is the decision authority for an `ok` share — without it
       // there is no target to route to. Production main always wires it.
-      deps.log?.warn({ url }, '[receive] resolveShareTarget dep missing — share dropped');
+      deps.log?.warn({}, '[receive] resolveShareTarget dep missing — share dropped');
       return;
     }
     // Non-github.com shares must clear the foreign-host trust gate before
@@ -1188,7 +1299,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       if (!gate) {
         // Fail-closed: no gate wired ⇒ drop the foreign-host share.
         deps.log?.warn(
-          { url, host: result.payload.host },
+          { host: result.payload.host },
           '[receive] foreign-host share with no gate — dropped',
         );
         return;
@@ -1197,24 +1308,27 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         (decision) => {
           if (decision === 'proceed') {
             void resolver(result.payload).then(
-              (selection) => dispatchResolvedShare(url, result.payload, selection),
-              () => dispatchResolvedShare(url, result.payload, { kind: 'miss' }),
+              (selection) => dispatchResolvedShare(result.payload, selection),
+              () => dispatchResolvedShare(result.payload, { kind: 'miss' }),
             );
           } else {
             deps.log?.info?.(
-              { url, host: result.payload.host, decision },
+              { host: result.payload.host, decision },
               '[receive] foreign-host share not proceeded',
             );
           }
         },
         (err) => {
-          deps.log?.warn({ err, url }, '[receive] foreign-host gate rejected — share dropped');
+          deps.log?.warn(
+            { errorKind: err instanceof Error ? err.name : typeof err },
+            '[receive] foreign-host gate rejected — share dropped',
+          );
         },
       );
       return;
     }
     void resolver(result.payload).then(
-      (selection) => dispatchResolvedShare(url, result.payload, selection),
+      (selection) => dispatchResolvedShare(result.payload, selection),
       (err) => {
         // `selectCandidate` degrades to `miss` internally on I/O failure, so a
         // reject here is a near-unreachable defense-in-depth path. Degrade it
@@ -1222,10 +1336,10 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         // gets a forward path (clone / locate manually) rather than a silent
         // drop, uniform with how resolution itself handles failure.
         deps.log?.warn(
-          { err, url },
+          { errorKind: err instanceof Error ? err.name : typeof err },
           '[receive] resolveShareTarget rejected — degrading to Navigator (miss)',
         );
-        dispatchResolvedShare(url, result.payload, { kind: 'miss' });
+        dispatchResolvedShare(result.payload, { kind: 'miss' });
       },
     );
   };
@@ -1254,7 +1368,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   const routeUrl = (url: string): void => {
     const share = parseShareUrl(url);
     if (share !== null) {
-      routeShare(url, share);
+      routeShare(share);
       return;
     }
     const screen = parseScreenUrl(url);
@@ -1283,7 +1397,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     const parsed = parseOpenKnowledgeUrl(url);
     if (!parsed) {
       // Silent-drop → single warn log line. No error dialog.
-      deps.log?.warn({ url }, '[url-scheme] dropped malformed URL');
+      deps.log?.warn({}, '[url-scheme] dropped malformed URL');
       return;
     }
     const existing = deps.focusWindowForProject(parsed.project);

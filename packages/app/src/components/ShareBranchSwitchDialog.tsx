@@ -80,6 +80,29 @@ type ProjectBranchSwitchPayload = Extract<
   { kind: 'project-branch-switch' }
 >;
 
+function shareRepositoryPath(share: ProjectBranchSwitchPayload['share']): string {
+  return shareTargetPath(share.repositoryTarget);
+}
+
+function pendingTarget(
+  share: ProjectBranchSwitchPayload['share'],
+  path = shareTargetPath(share.target),
+) {
+  const repositoryPath =
+    share.contentRootDepth === null
+      ? path
+      : [
+          ...shareRepositoryPath(share).split('/').slice(0, share.contentRootDepth),
+          ...(path === '' ? [] : path.split('/')),
+        ].join('/');
+  return {
+    kind: share.target.kind,
+    path,
+    repositoryPath,
+    ...(share.contentRootDepth === null ? {} : { contentRootDepth: share.contentRootDepth }),
+  };
+}
+
 function isBranchSwitchPayload(
   payload: OkShareReceivedPayload | null,
 ): payload is ProjectBranchSwitchPayload {
@@ -140,8 +163,8 @@ export function ShareBranchSwitchDialog({
       .fetchBranchInfo({
         projectPath: active.projectPath,
         branch: active.share.branch,
-        kind: active.share.target.kind,
-        path: shareTargetPath(active.share.target),
+        kind: active.share.repositoryTarget.kind,
+        path: shareRepositoryPath(active.share),
       })
       .then((info) => {
         if (cancelled) return;
@@ -183,7 +206,10 @@ export function ShareBranchSwitchDialog({
         projectPath: active.projectPath,
         branch: active.share.branch,
         kind: active.share.target.kind,
-        path: shareTargetPath(active.share.target),
+        path: shareRepositoryPath(active.share),
+        ...(active.share.contentRootDepth === null
+          ? {}
+          : { contentRootDepth: active.share.contentRootDepth }),
       })
       .then((status) => {
         if (verdictPayloadRef.current !== fetchedFor) return;
@@ -215,6 +241,10 @@ export function ShareBranchSwitchDialog({
     missDialogStore.arm({
       kind: active.share.target.kind,
       path: shareTargetPath(active.share.target),
+      repositoryPath: shareRepositoryPath(active.share),
+      ...(active.share.contentRootDepth === null
+        ? {}
+        : { contentRootDepth: active.share.contentRootDepth }),
       branch: active.share.branch,
     });
     store.dismiss();
@@ -270,10 +300,7 @@ export function ShareBranchSwitchDialog({
               path: active.projectPath,
               target: 'new-window',
               entryPoint: 'share-receive',
-              pendingDeepLinkTarget: {
-                kind: active.share.target.kind,
-                path: pendingNavPath,
-              },
+              pendingDeepLinkTarget: pendingTarget(active.share, pendingNavPath),
               pendingBranch: shareBranch,
             })
             .catch((err) => {
@@ -419,7 +446,7 @@ export function ShareBranchSwitchDialog({
         path: projectPath,
         target: 'new-window',
         entryPoint: 'share-receive',
-        pendingDeepLinkTarget: { kind: share.target.kind, path: shareTargetPath(share.target) },
+        pendingDeepLinkTarget: pendingTarget(share),
       })
       .catch((err) => {
         console.warn(
@@ -549,10 +576,7 @@ export function ShareBranchSwitchDialog({
           path: target,
           target: 'new-window',
           entryPoint: 'worktree',
-          pendingDeepLinkTarget: {
-            kind: share.target.kind,
-            path: shareTargetPath(share.target),
-          },
+          pendingDeepLinkTarget: pendingTarget(share),
           pendingBranch: shareBranch,
         })
         .catch((err) => {
@@ -607,7 +631,7 @@ export function ShareBranchSwitchDialog({
         path: target,
         target: 'new-window',
         entryPoint: 'share-receive',
-        pendingDeepLinkTarget: { kind: share.target.kind, path: shareTargetPath(share.target) },
+        pendingDeepLinkTarget: pendingTarget(share),
         pendingBranch: shareBranch,
       })
       .catch((err) => {

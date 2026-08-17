@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["test-support/fixtures/share-url-v1-v2.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -35,7 +36,8 @@
     },
     "@inkeep/open-knowledge-docs#build": {
       "dependsOn": ["^build", "typecheck"],
-      "outputs": ["dist/**", ".next/**"]
+      "outputs": ["dist/**", ".next/**"],
+      "env": ["VERCEL_GIT_COMMIT_SHA", "GITHUB_SHA"]
     },
     "test": {
       "dependsOn": ["^build"],

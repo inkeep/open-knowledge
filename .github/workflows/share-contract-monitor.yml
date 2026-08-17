@@ -1,0 +1,107 @@
+name: Share contract production monitor
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: share-contract-production-monitor
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Probe production reader contract
+        id: probe
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          node .github/scripts/probe-share-contract.mjs \
+            --origin https://openknowledge.ai \
+            --corpus test-support/fixtures/share-url-v1-v2.json \
+            --evidence "$RUNNER_TEMP/share-contract-evidence.json"
+
+      - name: Upload reader-contract evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: share-contract-evidence
+          path: ${{ runner.temp }}/share-contract-evidence.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Resolve last compatible deployment
+        id: last-compatible
+        if: always() && steps.probe.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          last_run=$(gh run list \
+            --workflow=share-contract-monitor.yml \
+            --status=success \
+            --limit=1 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty')
+          deployment=unavailable
+          if [[ -n "$last_run" ]]; then
+            mkdir -p "$RUNNER_TEMP/last-compatible"
+            if gh run download "$last_run" \
+              --name share-contract-evidence \
+              --dir "$RUNNER_TEMP/last-compatible"; then
+              candidate=$(jq -r '.deploymentSha // empty' \
+                "$RUNNER_TEMP/last-compatible/share-contract-evidence.json")
+              if [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+                deployment="$candidate"
+              fi
+            fi
+          fi
+          echo "deployment_sha=$deployment" >> "$GITHUB_OUTPUT"
+
+      - name: Alert on reader-contract regression
+        if: always() && steps.probe.outcome == 'failure'
+        env:
+          LAST_COMPATIBLE_SHA: ${{ steps.last-compatible.outputs.deployment_sha }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -uo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT="Open Knowledge share-contract v2 production probe failed. Last compatible deployment: ${LAST_COMPATIBLE_SHA:-unavailable}. Repair forward or select that compatible deployment; do not roll back below epoch 2. ${RUN_URL}"
+          echo "## Share-contract v2 regression" >> "$GITHUB_STEP_SUMMARY"
+          echo "Last compatible deployment: \`${LAST_COMPATIBLE_SHA:-unavailable}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run: ${RUN_URL}" >> "$GITHUB_STEP_SUMMARY"
+
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::warning::No Slack webhook secret is configured; the workflow failure remains the alert."
+            exit 0
+          fi
+          payload=$(jq -nc --arg text "$TEXT" '{text: $text}')
+          if ! curl -sS --fail --connect-timeout 10 --max-time 30 -X POST \
+            -H 'Content-type: application/json' \
+            --data "$payload" \
+            "$WEBHOOK_URL"; then
+            echo "::warning::Share-contract regression alert failed to POST."
+          fi
+
+      - name: Fail the incompatible production probe
+        if: always() && steps.probe.outcome == 'failure'
+        run: exit 1

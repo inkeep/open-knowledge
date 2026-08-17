@@ -6,6 +6,7 @@ import {
   matchesShareReceiveMiss,
   type PendingReceiveNav,
   type PendingReceiveNavStore,
+  pendingReceiveNavForContentPath,
 } from './pending-receive-nav-store';
 
 const DOC_NAV: PendingReceiveNav = { kind: 'doc', path: 'notes/plan', branch: 'feature' };
@@ -46,6 +47,23 @@ describe('matchesShareReceiveMiss', () => {
 
   test('a null active target is not a miss', () => {
     expect(matchesShareReceiveMiss(null, DOC_NAV)).toBeNull();
+  });
+});
+
+describe('pendingReceiveNavForContentPath', () => {
+  test('keeps a v2 content-root folder repository path canonical', () => {
+    expect(
+      pendingReceiveNavForContentPath(
+        {
+          kind: 'folder',
+          path: 'guides',
+          repositoryPath: 'wiki/guides',
+          contentRootDepth: 1,
+          branch: 'main',
+        },
+        '',
+      ),
+    ).toMatchObject({ path: '', repositoryPath: 'wiki' });
   });
 });
 

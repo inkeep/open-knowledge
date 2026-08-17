@@ -1,4 +1,6 @@
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { describe, expect, test } from 'vitest';
+import fixture from '../../../../test-support/fixtures/share-url-v1-v2.json';
 import {
   buildContinueUrl,
   classifyRedeemRequest,
@@ -13,6 +15,13 @@ import {
   resolveContinueBase,
   startFirstRunHandshake,
 } from './share-handoff.ts';
+import {
+  parseShareUrl,
+  registerProtocolHandler,
+  type ShareNavigatorPayload,
+  type ShareParseResult,
+  type ShareUrlPayload,
+} from './url-scheme.ts';
 
 const NONCE = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const TOKEN = 'AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvdGVjaC1pcG9z';
@@ -33,6 +42,49 @@ describe('nonce', () => {
 });
 
 describe('classifyRedeemRequest', () => {
+  test('preserves a maximum canonical v2 token opaquely and rejects its over-limit sibling', () => {
+    expect(
+      classifyRedeemRequest({
+        pathname: '/redeem',
+        token: fixture.bounds.maxCase.token,
+        nonce: NONCE,
+        expectedNonce: NONCE,
+      }),
+    ).toMatchObject({
+      kind: 'redeem',
+      shareUrl: `https://openknowledge.ai/d/${fixture.bounds.maxCase.token}`,
+    });
+    expect(
+      classifyRedeemRequest({
+        pathname: '/redeem',
+        token: fixture.bounds.overLimitToken,
+        nonce: NONCE,
+        expectedNonce: NONCE,
+      }),
+    ).toEqual({ kind: 'invalid' });
+  });
+
+  test('retains the historical v1 handoff ceiling', () => {
+    const atLimit = `AQ${'A'.repeat(4094)}`;
+    const overLimit = `${atLimit}A`;
+    expect(
+      classifyRedeemRequest({
+        pathname: '/redeem',
+        token: atLimit,
+        nonce: NONCE,
+        expectedNonce: NONCE,
+      }).kind,
+    ).toBe('redeem');
+    expect(
+      classifyRedeemRequest({
+        pathname: '/redeem',
+        token: overLimit,
+        nonce: NONCE,
+        expectedNonce: NONCE,
+      }),
+    ).toEqual({ kind: 'invalid' });
+  });
+
   test('non-redeem path is ignored (does not burn the nonce)', () => {
     expect(
       classifyRedeemRequest({
@@ -219,6 +271,122 @@ function harness(over: Partial<FirstRunHandshakeDeps> = {}) {
 }
 
 describe('startFirstRunHandshake', () => {
+  test('the real loopback listener routes the exact maximum canonical v2 token unchanged', async () => {
+    const token = fixture.bounds.maxCase.token;
+    expect(token).toHaveLength(3984);
+
+    let server: HttpServer | undefined;
+    let resolveContinueUrl: ((url: string) => void) | undefined;
+    let resolveRoutedUrl: ((url: string) => void) | undefined;
+    const continueUrl = new Promise<string>((resolve) => {
+      resolveContinueUrl = resolve;
+    });
+    const routedUrl = new Promise<string>((resolve) => {
+      resolveRoutedUrl = resolve;
+    });
+    const outcomes: HandoffOutcome[] = [];
+    const normalizedShares: ShareUrlPayload[] = [];
+    const parsedResults: Array<ShareParseResult | null> = [];
+    let resolveRoutedResult!: (result: ShareNavigatorPayload) => void;
+    const routedResult = new Promise<ShareNavigatorPayload>((resolve) => {
+      resolveRoutedResult = resolve;
+    });
+    const protocolControl = registerProtocolHandler({
+      app: {
+        on: () => {},
+        whenReady: () => Promise.resolve(),
+        isPackaged: true,
+        setAsDefaultProtocolClient: () => true,
+        removeAsDefaultProtocolClient: () => true,
+      },
+      focusWindowForProject: () => null,
+      openProject: () => Promise.resolve(null),
+      sendDeepLink: () => {},
+      getAnyReadyWindow: () => null,
+      getInitialArgv: () => [],
+      platform: 'linux',
+      resolveShareTarget: (share) => {
+        normalizedShares.push(share);
+        return Promise.resolve({ kind: 'miss' });
+      },
+      routeShareToNavigator: (result) => resolveRoutedResult(result),
+    });
+
+    startFirstRunHandshake({
+      isFirstRun: () => true,
+      createServer: (handler) => {
+        server = createHttpServer(handler);
+        return server;
+      },
+      openExternal: (url) => resolveContinueUrl?.(url),
+      routeShareUrl: (url) => {
+        resolveRoutedUrl?.(url);
+        parsedResults.push(parseShareUrl(url));
+        protocolControl.routeUrl(url);
+      },
+      recordOutcome: (outcome) => outcomes.push(outcome),
+      generateNonce: () => NONCE,
+      listenerLifetimeMs: 2_000,
+    });
+
+    try {
+      const opened = new URL(await continueUrl);
+      const response = await fetch(
+        `http://127.0.0.1:${opened.searchParams.get('port')}/redeem?${new URLSearchParams({
+          token,
+          nonce: NONCE,
+        })}`,
+        { redirect: 'manual' },
+      );
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('https://openknowledge.ai/continue/done');
+      expect(await routedUrl).toBe(`https://openknowledge.ai/d/${token}`);
+      expect(parsedResults).toEqual([
+        {
+          kind: 'ok',
+          source: 'universal-link',
+          dedupKey: `2:1:${fixture.bounds.maxCase.sharedUrl}`,
+          payload: {
+            contentRootDepth: 1,
+            host: 'github.com',
+            owner: 'o',
+            repo: 'r',
+            branch: 'main',
+            repositoryTarget: {
+              kind: 'doc',
+              docPath: `wiki/${fixture.bounds.maxCase.target.docPath}`,
+            },
+            sharedUrl: fixture.bounds.maxCase.sharedUrl,
+            target: fixture.bounds.maxCase.target,
+          },
+        },
+      ]);
+      expect(normalizedShares).toEqual([
+        {
+          contentRootDepth: 1,
+          host: 'github.com',
+          owner: 'o',
+          repo: 'r',
+          branch: 'main',
+          repositoryTarget: {
+            kind: 'doc',
+            docPath: `wiki/${fixture.bounds.maxCase.target.docPath}`,
+          },
+          sharedUrl: fixture.bounds.maxCase.sharedUrl,
+          target: fixture.bounds.maxCase.target,
+        },
+      ]);
+      expect(await routedResult).toEqual({
+        kind: 'launcher-miss',
+        share: normalizedShares[0],
+      });
+      expect(outcomes).toEqual(['redeemed']);
+    } finally {
+      server?.close();
+    }
+  });
+
   test('not a first run → records skipped, opens nothing', () => {
     const h = harness({ isFirstRun: () => false });
     expect(h.outcomes).toEqual(['skipped']);
@@ -319,13 +487,22 @@ describe('startFirstRunHandshake', () => {
   });
 
   test('routeShareUrl throwing after response does not propagate — records redeemed', () => {
+    const logs: Array<{ obj: object; msg: string }> = [];
+    const secretPath = '/private/project/wiki/secret.md';
     const h = harness({
       routeShareUrl: () => {
-        throw new Error('downstream error');
+        throw new Error(`downstream error for ${secretPath} token=${TOKEN}`);
       },
+      log: { warn: (obj, msg) => logs.push({ obj, msg }) },
     });
     const res = h.getServer().request(`/redeem?token=${TOKEN}&nonce=${NONCE}`);
     expect(res.statusCode).toBe(302);
     expect(h.outcomes).toEqual(['redeemed']);
+    expect(JSON.stringify(logs)).not.toContain(secretPath);
+    expect(JSON.stringify(logs)).not.toContain(TOKEN);
+    expect(logs).toContainEqual({
+      obj: { errorKind: 'Error' },
+      msg: '[receive] source=deferred routeShareUrl threw',
+    });
   });
 });

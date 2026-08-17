@@ -7,6 +7,8 @@ import {
   checkProjectDirExists,
   checkTargetExists,
   computeShareTargetMissing,
+  resolveShareProbeRoot,
+  resolveTargetProbeCoordinate,
 } from './check-target-exists.ts';
 
 describe('checkTargetExists', () => {
@@ -387,6 +389,58 @@ describe('computeShareTargetMissing', () => {
         path: 'README.md',
       }),
     ).toBe(false);
+  });
+});
+
+describe('resolveShareProbeRoot', () => {
+  test('maps a nested content.dir to the local content coordinate', () => {
+    expect(resolveShareProbeRoot('/project', () => 'wiki')).toBe('/project/wiki');
+  });
+
+  test('keeps the project root for dot, load failures, and escaping values', () => {
+    expect(resolveShareProbeRoot('/project', () => '.')).toBe('/project');
+    expect(
+      resolveShareProbeRoot('/project', () => {
+        throw new Error('invalid config');
+      }),
+    ).toBe('/project');
+    expect(resolveShareProbeRoot('/project', () => '../outside')).toBe('/project');
+  });
+
+  test('emits a bounded errorKind diagnostic when config resolution throws', () => {
+    const warnings: Array<{ obj: object; msg: string }> = [];
+    const root = resolveShareProbeRoot(
+      '/project',
+      () => {
+        throw new TypeError('config parse failed');
+      },
+      { warn: (obj, msg) => warnings.push({ obj, msg }) },
+    );
+    expect(root).toBe('/project');
+    expect(warnings).toEqual([
+      {
+        obj: { errorKind: 'TypeError' },
+        msg: '[receive] content.dir resolution failed — probing the project root',
+      },
+    ]);
+  });
+});
+
+describe('resolveTargetProbeCoordinate', () => {
+  test('keeps ordinary deep links content-relative under a nested content root', () => {
+    expect(
+      resolveTargetProbeCoordinate('/project', { kind: 'folder', path: 'wiki' }, () => 'wiki'),
+    ).toEqual({ root: '/project/wiki', target: { kind: 'folder', path: 'wiki' } });
+  });
+
+  test('uses the explicit repository coordinate without reapplying content.dir', () => {
+    expect(
+      resolveTargetProbeCoordinate(
+        '/project',
+        { kind: 'folder', path: '', repositoryPath: 'wiki' },
+        () => 'wiki',
+      ),
+    ).toEqual({ root: '/project', target: { kind: 'folder', path: 'wiki' } });
   });
 });
 

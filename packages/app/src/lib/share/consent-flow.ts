@@ -35,6 +35,8 @@ export interface ConsentFlowSeed {
   readonly branch: string;
   /** Share's target path (doc or folder) — threaded to bridge.open as pendingDeepLinkTarget.path. */
   readonly targetPath: string;
+  readonly repositoryPath?: string;
+  readonly contentRootDepth?: number;
   /** Share's target kind — threaded to bridge.open as pendingDeepLinkTarget.kind. */
   readonly targetKind: 'doc' | 'folder';
   /**

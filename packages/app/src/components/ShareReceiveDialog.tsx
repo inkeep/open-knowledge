@@ -98,6 +98,15 @@ export interface ShareReceiveDialogProps {
 type LauncherConsentPayload = Extract<OkShareReceivedPayload, { kind: 'launcher-consent' }>;
 type LauncherMissPayload = Extract<OkShareReceivedPayload, { kind: 'launcher-miss' }>;
 
+function pendingTarget(share: LauncherMissPayload['share'] | LauncherConsentPayload['share']) {
+  return {
+    kind: share.target.kind,
+    path: shareTargetPath(share.target),
+    repositoryPath: shareTargetPath(share.repositoryTarget),
+    ...(share.contentRootDepth === null ? {} : { contentRootDepth: share.contentRootDepth }),
+  };
+}
+
 function isLauncherConsentPayload(
   payload: OkShareReceivedPayload | null,
 ): payload is LauncherConsentPayload {
@@ -219,6 +228,10 @@ function ShareReceiveDialogInner({
         branch: payload.share.branch,
         targetPath: shareTargetPath(payload.share.target),
         targetKind: payload.share.target.kind,
+        repositoryPath: shareTargetPath(payload.share.repositoryTarget),
+        ...(payload.share.contentRootDepth === null
+          ? {}
+          : { contentRootDepth: payload.share.contentRootDepth }),
         parentProjectName: payload.parentProjectName,
       }),
     );
@@ -310,10 +323,7 @@ function ShareReceiveDialogInner({
           path: result.dir,
           target: 'new-window',
           entryPoint: 'share-receive',
-          pendingDeepLinkTarget: {
-            kind: launcherMiss.share.target.kind,
-            path: shareTargetPath(launcherMiss.share.target),
-          },
+          pendingDeepLinkTarget: pendingTarget(launcherMiss.share),
         });
         // Dismiss only on a successful open — mirrors handleLocalCtaClick. If
         // the open fails the clone already succeeded, so keep the dialog mounted
@@ -408,10 +418,7 @@ function ShareReceiveDialogInner({
                     },
                   }
                 : {
-                    pendingDeepLinkTarget: {
-                      kind: launcherMiss.share.target.kind,
-                      path: shareTargetPath(launcherMiss.share.target),
-                    },
+                    pendingDeepLinkTarget: pendingTarget(launcherMiss.share),
                   }),
             });
             store.dismiss();
@@ -456,7 +463,14 @@ function ShareReceiveDialogInner({
               path: outcome.projectPath,
               target: 'new-window',
               entryPoint: 'share-receive',
-              pendingDeepLinkTarget: { kind: seed.targetKind, path: seed.targetPath },
+              pendingDeepLinkTarget: {
+                kind: seed.targetKind,
+                path: seed.targetPath,
+                repositoryPath: seed.repositoryPath ?? seed.targetPath,
+                ...(seed.contentRootDepth === undefined
+                  ? {}
+                  : { contentRootDepth: seed.contentRootDepth }),
+              },
               pendingBranch: seed.branch,
             });
             setConsentState((prev) =>

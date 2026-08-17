@@ -79,8 +79,9 @@ export function useShareTargetVerdict(nav: PendingReceiveNav): {
       .fetchTargetStatus({
         projectPath: bridge.config.projectPath,
         branch,
-        path: nav.path,
+        path: nav.repositoryPath ?? nav.path,
         kind: nav.kind,
+        ...(nav.contentRootDepth === undefined ? {} : { contentRootDepth: nav.contentRootDepth }),
       })
       .then((response) => {
         // `null` is a transport failure; the proxy already coerces a skewed 200
@@ -102,7 +103,7 @@ export function useShareTargetVerdict(nav: PendingReceiveNav): {
     return () => {
       cancelled = true;
     };
-  }, [branch, nav.kind, nav.path, epoch]);
+  }, [branch, nav.kind, nav.path, nav.repositoryPath, nav.contentRootDepth, epoch]);
   return {
     state,
     refetch: () => {

@@ -103,6 +103,41 @@ describe('POST /api/share/target-status (fetch through the endpoint)', () => {
     expect(await res.json()).toEqual({ verdict: 'renamed', renamedTo: 'new.md' });
   });
 
+  test('a v2 rename under a nested content root returns a content-relative destination', async () => {
+    const t = newTriangle();
+    t.seedAndPush('wiki/old.md', '# stable content that survives the move intact\n');
+    const receiver = t.cloneReceiver();
+    t.renameOnOrigin('wiki/old.md', 'wiki/new.md');
+
+    rig = await bootEndpointServer({ projectDir: receiver, contentDir: `${receiver}/wiki` });
+    const res = await postTargetStatus(rig.port, {
+      branch: t.branch,
+      path: 'wiki/old.md',
+      kind: 'doc',
+      contentRootDepth: 1,
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ verdict: 'renamed', renamedTo: 'new.md' });
+  });
+
+  test('a nested-root v1 rename stays repository-relative without wiki/wiki', async () => {
+    const t = newTriangle();
+    t.seedAndPush('wiki/old.md', '# stable content that survives the move intact\n');
+    const receiver = t.cloneReceiver();
+    t.renameOnOrigin('wiki/old.md', 'wiki/new.md');
+
+    rig = await bootEndpointServer({ projectDir: receiver, contentDir: `${receiver}/wiki` });
+    const res = await postTargetStatus(rig.port, {
+      branch: t.branch,
+      path: 'wiki/old.md',
+      kind: 'doc',
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ verdict: 'renamed', renamedTo: 'wiki/new.md' });
+  });
+
   test('an unreachable origin degrades to unknown (fail-open through the endpoint)', async () => {
     const t = newTriangle();
     t.seedAndPush('doc.md', 'one\n');

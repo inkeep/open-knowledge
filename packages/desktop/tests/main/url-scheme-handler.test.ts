@@ -2,6 +2,7 @@ import type { Candidate, CandidateSelection } from '@inkeep/open-knowledge-core'
 import { encodeShareUrl } from '@inkeep/open-knowledge-core';
 import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import shareFixture from '../../../../test-support/fixtures/share-url-v1-v2.json';
 import type {
   ForeignHostDecision,
   ScreenTarget,
@@ -376,6 +377,38 @@ describe('registerProtocolHandler — deferred-share routeUrl + dedup', () => {
     await flushPromises();
     await flushPromises();
     expect(resolveShareTarget).toHaveBeenCalledTimes(2);
+  });
+
+  test('does not dedup v1 and v2 when the source URL text is identical', async () => {
+    env.readyWindow = { id: 'pre-existing' };
+    const resolveShareTarget = vi.fn(async (): Promise<CandidateSelection> => ({ kind: 'miss' }));
+    const control = registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      resolveShareTarget,
+      routeShareToNavigator: vi.fn(() => {}),
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      now: () => 1_000_000,
+    });
+    env.app.resolveReady();
+    await flushPromises();
+
+    const sharedUrl = 'https://github.com/o/r/blob/main/wiki/x.md';
+    control.routeUrl(`https://openknowledge.ai/d/${encodeShareUrl(sharedUrl)}`);
+    control.routeUrl(`https://openknowledge.ai/d/${encodeShareUrl(sharedUrl, 1)}`);
+    await flushPromises();
+    await flushPromises();
+
+    expect(resolveShareTarget).toHaveBeenCalledTimes(2);
+    expect(resolveShareTarget.mock.calls[0]?.[0]).toMatchObject({
+      target: { kind: 'doc', docPath: 'wiki/x.md' },
+    });
+    expect(resolveShareTarget.mock.calls[1]?.[0]).toMatchObject({
+      target: { kind: 'doc', docPath: 'x.md' },
+    });
   });
 });
 
@@ -997,10 +1030,12 @@ describe('registerProtocolHandler — share-flow routing', () => {
     // The custom-scheme URL is parsed and reaches main-side resolution.
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith({
+      contentRootDepth: null,
       host: 'github.com',
       owner: 'inkeep',
       repo: 'playbooks',
       branch: 'main',
+      repositoryTarget: { kind: 'doc', docPath: 'x.md' },
       sharedUrl: blobUrl,
       target: { kind: 'doc', docPath: 'x.md' },
     });
@@ -1029,26 +1064,21 @@ describe('registerProtocolHandler — share-flow routing', () => {
     env.app.resolveReady();
     await flushPromises();
 
-    // Hand-build v2 payload (0x02 leading byte) — older clients MUST surface
-    // an "update" toast, not a silent mis-decode.
-    const blobBytes = new TextEncoder().encode('https://github.com/o/r/blob/main/x.md');
-    const v2 = new Uint8Array(blobBytes.length + 1);
-    v2[0] = 0x02;
-    v2.set(blobBytes, 1);
-    let raw = '';
-    for (const b of v2) raw += String.fromCharCode(b);
-    const encoded = btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    env.app.fireOpenUrl(`https://openknowledge.ai/d/${encoded}`);
+    env.app.fireOpenUrl('https://openknowledge.ai/d/AwABAg');
     await flushPromises();
 
     expect(sendShareDeepLink).toHaveBeenCalledWith(focusedWin, { kind: 'unsupported-version' });
-    expect(
-      warnLog.some(
-        (entry) =>
-          entry.msg.includes('[receive] action=url-parse') &&
-          (entry.obj as { result?: string }).result === 'unsupported-version',
-      ),
-    ).toBe(true);
+    expect(warnLog).toContainEqual({
+      obj: {
+        source: 'universal-link',
+        result: 'unsupported-version',
+        codecVersion: 'unsupported',
+        targetKind: 'unknown',
+        rootScope: 'unknown',
+        version: 3,
+      },
+      msg: '[receive] action=url-parse',
+    });
   });
 
   test('dispatches invalid payload + logs [receive] for corrupt base64', async () => {
@@ -1076,13 +1106,128 @@ describe('registerProtocolHandler — share-flow routing', () => {
     await flushPromises();
 
     expect(sendShareDeepLink).toHaveBeenCalledWith(focusedWin, { kind: 'invalid' });
-    expect(
-      warnLog.some(
-        (entry) =>
-          entry.msg.includes('[receive] action=url-parse') &&
-          (entry.obj as { result?: string }).result === 'invalid',
-      ),
-    ).toBe(true);
+    expect(warnLog).toContainEqual({
+      obj: {
+        source: 'universal-link',
+        result: 'invalid',
+        codecVersion: 'unknown',
+        targetKind: 'unknown',
+        rootScope: 'unknown',
+      },
+      msg: '[receive] action=url-parse',
+    });
+    expect(JSON.stringify(warnLog)).not.toContain('!!!not-base64!!!');
+  });
+
+  test('malformed share-shaped and lookalike authority inputs keep logs scrubbed', async () => {
+    const env = makeEnv();
+    const focusedWin: FakeWindowHandle = { id: 'focused' };
+    env.readyWindow = focusedWin;
+    const warnLog: Array<{ obj: object; msg: string }> = [];
+    const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
+    const secret = 'SECRET-MALFORMED-SHARE';
+
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      sendShareDeepLink,
+      getFocusedWindow: () => focusedWin,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+    });
+    env.app.resolveReady();
+    await flushPromises();
+
+    env.app.fireOpenUrl(`https://openknowledge.ai/d/${secret}%00PATH`);
+    env.app.fireOpenUrl(`openknowledge://share?token=${secret}%00`);
+    env.app.fireOpenUrl(`https://openknowledge.ai:bad/d/${secret}`);
+    env.app.fireOpenUrl(`https://www.openknowledge.ai:99999/d/${secret}`);
+    env.app.fireOpenUrl(`openknowledge://share:bad?token=${secret}`);
+    env.app.fireOpenUrl(`https://openknowledge.ai%00/d/${secret}`);
+    env.app.fireOpenUrl(`https://openknowledge.ai./d/${secret}`);
+    await flushPromises();
+
+    expect(sendShareDeepLink).toHaveBeenCalledTimes(5);
+    expect(sendShareDeepLink).toHaveBeenNthCalledWith(1, focusedWin, { kind: 'invalid' });
+    expect(sendShareDeepLink).toHaveBeenNthCalledWith(2, focusedWin, { kind: 'invalid' });
+    expect(sendShareDeepLink).toHaveBeenNthCalledWith(3, focusedWin, { kind: 'invalid' });
+    expect(sendShareDeepLink).toHaveBeenNthCalledWith(4, focusedWin, { kind: 'invalid' });
+    expect(sendShareDeepLink).toHaveBeenNthCalledWith(5, focusedWin, { kind: 'invalid' });
+    expect(JSON.stringify(warnLog)).not.toContain(secret);
+    expect(warnLog.filter(({ msg }) => msg === '[url-scheme] dropped malformed URL')).toEqual([
+      { obj: {}, msg: '[url-scheme] dropped malformed URL' },
+      { obj: {}, msg: '[url-scheme] dropped malformed URL' },
+    ]);
+    expect(warnLog).toContainEqual({
+      obj: {
+        source: 'universal-link',
+        result: 'invalid',
+        codecVersion: 'unknown',
+        targetKind: 'unknown',
+        rootScope: 'unknown',
+      },
+      msg: '[receive] action=url-parse',
+    });
+    expect(warnLog).toContainEqual({
+      obj: {
+        source: 'custom-scheme',
+        result: 'invalid',
+        codecVersion: 'unknown',
+        targetKind: 'unknown',
+        rootScope: 'unknown',
+      },
+      msg: '[receive] action=url-parse',
+    });
+  });
+
+  test('logs a bounded v2 success classification without token, URL, or target path', async () => {
+    const env = makeEnv();
+    env.readyWindow = { id: 'ready' };
+    const warnLog: Array<{ obj: object; msg: string }> = [];
+    const infoLog: Array<{ obj: object; msg: string }> = [];
+    const fixtureEntry = shareFixture.validShares.find(
+      (entry) => entry.id === 'v2-one-segment-document',
+    );
+    if (!fixtureEntry || fixtureEntry.version !== 2) throw new Error('missing v2 fixture');
+
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      resolveShareTarget: async () => ({ kind: 'miss' }),
+      routeShareToNavigator: () => {},
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      log: {
+        warn: (obj, msg) => warnLog.push({ obj, msg }),
+        info: (obj, msg) => infoLog.push({ obj, msg }),
+      },
+    });
+    env.app.resolveReady();
+    await flushPromises();
+
+    env.app.fireOpenUrl(`https://openknowledge.ai/d/${fixtureEntry.token}`);
+    await flushPromises();
+
+    // A successful parse logs at info, off the warn channel operators alert on.
+    expect(infoLog).toContainEqual({
+      obj: {
+        source: 'universal-link',
+        result: 'ok',
+        codecVersion: 'v2',
+        targetKind: 'doc',
+        rootScope: 'nested',
+      },
+      msg: '[receive] action=url-parse',
+    });
+    const serialized = JSON.stringify([...warnLog, ...infoLog]);
+    expect(serialized).not.toContain(fixtureEntry.token);
+    expect(serialized).not.toContain(fixtureEntry.sharedUrl);
+    expect(serialized).not.toContain(fixtureEntry.target.docPath);
   });
 
   test('ok share with no resolveShareTarget dep surfaces warn + no dispatch', async () => {
@@ -1173,11 +1318,13 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
 
   function expectedSharePayload(): ShareUrlPayload {
     return {
+      contentRootDepth: null,
       host: 'github.com',
       owner: 'inkeep',
       repo: 'playbooks',
       branch: 'main',
       sharedUrl: 'https://github.com/inkeep/playbooks/blob/main/docs/getting-started.md',
+      repositoryTarget: { kind: 'doc', docPath: 'docs/getting-started.md' },
       target: { kind: 'doc', docPath: 'docs/getting-started.md' },
     };
   }
@@ -1240,13 +1387,63 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith(expectedSharePayload());
     expect(env.openProject).toHaveBeenCalledWith('/Users/me/playbooks', {
-      pendingDeepLinkTarget: { kind: 'doc', path: 'docs/getting-started.md' },
+      pendingDeepLinkTarget: {
+        kind: 'doc',
+        path: 'docs/getting-started.md',
+        repositoryPath: 'docs/getting-started.md',
+      },
       pendingBranch: 'main',
       pendingMultiCandidate: true,
     });
     // Branch-match-ok path does NOT emit ok:share:received — the doc is
     // delivered via ok:deep-link by window-manager's existing gate.
     expect(sendShareDeepLink).not.toHaveBeenCalled();
+  });
+
+  test('v2 probes the repository coordinate but navigates the content coordinate', async () => {
+    const env = makeEnv();
+    env.readyWindow = { id: 'pre-existing' };
+    const resolveShareTarget = vi.fn(
+      async (): Promise<CandidateSelection> => ({
+        kind: 'branch-match-ok',
+        candidate: makeCandidate({ path: '/Users/me/playbooks', currentBranch: 'main' }),
+        multiCandidate: false,
+      }),
+    );
+    const checkShareTargetExists = vi.fn(() => 'exists' as const);
+    const sharedUrl = 'https://github.com/inkeep/playbooks/blob/main/wiki/docs/getting-started.md';
+
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      resolveShareTarget,
+      checkShareTargetExists,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+    });
+    env.app.resolveReady();
+    await flushPromises();
+    env.app.fireOpenUrl(`https://openknowledge.ai/d/${encodeShareUrl(sharedUrl, 1)}`);
+    await flushPromises();
+    await flushPromises();
+
+    expect(checkShareTargetExists).toHaveBeenCalledWith(
+      '/Users/me/playbooks',
+      'doc',
+      'wiki/docs/getting-started.md',
+    );
+    expect(env.openProject).toHaveBeenCalledWith('/Users/me/playbooks', {
+      pendingDeepLinkTarget: {
+        kind: 'doc',
+        path: 'docs/getting-started.md',
+        repositoryPath: 'wiki/docs/getting-started.md',
+        contentRootDepth: 1,
+      },
+      pendingBranch: 'main',
+      pendingMultiCandidate: false,
+    });
   });
 
   test('branch-match-ok with multiCandidate=false omits the toast hint', async () => {
@@ -1278,7 +1475,11 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
 
     expect(env.openProject).toHaveBeenCalledWith('/Users/me/solo-clone', {
-      pendingDeepLinkTarget: { kind: 'doc', path: 'docs/getting-started.md' },
+      pendingDeepLinkTarget: {
+        kind: 'doc',
+        path: 'docs/getting-started.md',
+        repositoryPath: 'docs/getting-started.md',
+      },
       pendingBranch: 'main',
       pendingMultiCandidate: false,
     });
@@ -1323,6 +1524,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       kind: 'doc',
       branch: 'main',
       multiCandidate: true,
+      repositoryPath: 'docs/getting-started.md',
     });
     // Must NOT re-spawn through openProject on the warm path.
     expect(env.openProject).not.toHaveBeenCalled();
@@ -1933,11 +2135,15 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     // Each dispatched to its own project + its own doc — no stale overwrite.
     expect(env.openProject).toHaveBeenCalledWith(
       '/p/repo-b',
-      expect.objectContaining({ pendingDeepLinkTarget: { kind: 'doc', path: 'b.md' } }),
+      expect.objectContaining({
+        pendingDeepLinkTarget: { kind: 'doc', path: 'b.md', repositoryPath: 'b.md' },
+      }),
     );
     expect(env.openProject).toHaveBeenCalledWith(
       '/p/repo-a',
-      expect.objectContaining({ pendingDeepLinkTarget: { kind: 'doc', path: 'a.md' } }),
+      expect.objectContaining({
+        pendingDeepLinkTarget: { kind: 'doc', path: 'a.md', repositoryPath: 'a.md' },
+      }),
     );
   });
 });
@@ -2138,10 +2344,12 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     // The Handoff Universal Link is parsed and reaches main-side resolution.
     expect(resolveShareTarget).toHaveBeenCalledTimes(1);
     expect(resolveShareTarget).toHaveBeenCalledWith({
+      contentRootDepth: null,
       host: 'github.com',
       owner: 'inkeep',
       repo: 'playbooks',
       branch: 'main',
+      repositoryTarget: { kind: 'doc', docPath: 'x.md' },
       sharedUrl: 'https://github.com/inkeep/playbooks/blob/main/x.md',
       target: { kind: 'doc', docPath: 'x.md' },
     });

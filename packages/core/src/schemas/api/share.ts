@@ -747,15 +747,17 @@ export type ShareTargetStatusVerdict = z.infer<typeof ShareTargetStatusVerdictSc
 /**
  * Request body for `POST /api/share/target-status`. `branch` is the share
  * link's target branch (validated via the shared seven-rule predicate);
- * `path` is the content-relative target path (empty string = content-root
- * folder share); `kind` disambiguates doc vs folder for the removal-commit
- * lookup.
+ * `path` is the URL-derived repository-relative target path. V2 additionally
+ * carries its positive `contentRootDepth` so a verified rename destination can
+ * be projected back to the renderer's content-relative coordinate. V1 omits
+ * the depth and keeps repository-relative rename results unchanged.
  */
 export const ShareTargetStatusRequestSchema = z
   .object({
     branch: refineBranchName(z.string().min(1)),
     path: z.string(),
     kind: z.enum(['doc', 'folder']),
+    contentRootDepth: z.number().int().min(1).max(0xffff).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type ShareTargetStatusRequest = z.infer<typeof ShareTargetStatusRequestSchema>;

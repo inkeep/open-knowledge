@@ -116,7 +116,13 @@ export function installDeepLinkListener(
     const kind = evt.kind ?? 'doc';
     // Keep the share target's file extension: the verdict fetch needs the real
     // repo path, and both stores normalize for matching.
-    const nav = { kind, path: evt.doc, branch: evt.branch ?? null };
+    const nav = {
+      kind,
+      path: evt.doc,
+      repositoryPath: evt.repositoryPath ?? evt.doc,
+      ...(evt.contentRootDepth === undefined ? {} : { contentRootDepth: evt.contentRootDepth }),
+      branch: evt.branch ?? null,
+    };
     // Main's pre-nav stat probe already found the target absent on the
     // receiver's checked-out branch (deleted / renamed / not yet fetched). Show
     // the honest verdict as a modal WITHOUT navigating to the dead path — no

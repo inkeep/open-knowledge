@@ -7,6 +7,7 @@ import {
 import { hashFromDocName, hashFromFolderPath } from '@/lib/doc-hash';
 import {
   type PendingReceiveNav,
+  pendingReceiveNavForContentPath,
   pendingReceiveNavStore,
 } from '@/lib/share/pending-receive-nav-store';
 
@@ -22,7 +23,6 @@ import {
 export function ShareReceiveMissPanel({ nav }: { nav: PendingReceiveNav }) {
   const { state, refetch } = useShareTargetVerdict(nav);
   const containerRef = useRef<HTMLDivElement>(null);
-  const branch = nav.branch;
 
   // Focus the primary action (the first button — the rename redirect where
   // present, else Browse folder) once a verdict resolves, so keyboard users land
@@ -39,7 +39,7 @@ export function ShareReceiveMissPanel({ nav }: { nav: PendingReceiveNav }) {
     // Re-arm for the redirect target so, if the rename destination is also
     // missing locally (the receiver's ref is behind), the miss surface renders
     // for it too instead of the create-mode editor.
-    pendingReceiveNavStore.arm({ kind: nav.kind, path: renamedTo, branch });
+    pendingReceiveNavStore.arm(pendingReceiveNavForContentPath(nav, renamedTo));
     window.location.hash =
       nav.kind === 'folder' ? hashFromFolderPath(renamedTo) : hashFromDocName(renamedTo);
   }

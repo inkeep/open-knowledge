@@ -346,6 +346,7 @@ describe('ShareReceiveMissDialog', () => {
     expect(pendingReceiveNavStore.getSnapshot()).toEqual({
       kind: 'doc',
       path: 'knowledge/new-plan.md',
+      repositoryPath: 'knowledge/new-plan.md',
       branch: 'feature',
     });
     await waitFor(() => {
@@ -465,6 +466,7 @@ describe('ShareReceiveMissDialog pull recovery', () => {
     expect(pendingReceiveNavStore.getSnapshot()).toEqual({
       kind: 'doc',
       path: 'notes/plan.md',
+      repositoryPath: 'notes/plan.md',
       branch: 'feature',
     });
   });
@@ -484,6 +486,7 @@ describe('ShareReceiveMissDialog pull recovery', () => {
     expect(pendingReceiveNavStore.getSnapshot()).toEqual({
       kind: 'folder',
       path: 'docs/guides',
+      repositoryPath: 'docs/guides',
       branch: 'feature',
     });
   });

@@ -33,6 +33,10 @@ export interface PendingReceiveNav {
    * extension-stripped `activeTarget.target`.
    */
   readonly path: string;
+  /** Repository-relative coordinate used only for filesystem and git probes. */
+  readonly repositoryPath?: string;
+  /** Number of repository-path segments hidden from v2 renderer navigation. */
+  readonly contentRootDepth?: number;
   /** Share branch the target-status verdict fetch keys off; null on legacy branch-less shares. */
   readonly branch: string | null;
 }
@@ -128,6 +132,22 @@ export function createPendingReceiveNavStore(): PendingReceiveNavStore {
 
 /** Module-level singleton — the deep-link listener arms it, EditorArea reads it. */
 export const pendingReceiveNavStore: PendingReceiveNavStore = createPendingReceiveNavStore();
+
+export function pendingReceiveNavForContentPath(
+  nav: PendingReceiveNav,
+  path: string,
+): PendingReceiveNav {
+  if (nav.contentRootDepth === undefined) {
+    return { ...nav, path, repositoryPath: path };
+  }
+  const repositoryPath = nav.repositoryPath ?? nav.path;
+  const prefix = repositoryPath.split('/').slice(0, nav.contentRootDepth);
+  return {
+    ...nav,
+    path,
+    repositoryPath: [...prefix, ...(path === '' ? [] : path.split('/'))].join('/'),
+  };
+}
 
 /**
  * The pending share-receive nav the editor should render as an honest miss

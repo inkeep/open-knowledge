@@ -2,9 +2,8 @@
  * Splash-local mirrors of the pure functions that live in the OK workspace:
  *
  *   - `decodeShareUrl` mirrors `packages/core/src/sharing/share-url.ts`
- *     (v1 payload = `[0x01] || utf-8(<github-url>)`, base64url-encoded,
- *     with tolerance for trailing `?query` and `#fragment`; decoded field is
- *     `sharedUrl` — a blob URL for a doc share, a tree URL for a folder share)
+ *     (permanent v1 payload = `[0x01] || utf-8(<github-url>)`; canonical v2 =
+ *     `[0x02] || uint16be(contentRootDepth) || utf-8(<github-url>)`)
  *   - `parseGitHubShareUrl` / `parseGitHubBlobUrl` / `parseGitHubTreeUrl`
  *     mirror `packages/cli/src/github/url.ts` — the dispatcher returns a
  *     kind-discriminated `{kind:'doc'|'folder', owner, repo, branch, path}`
@@ -16,8 +15,8 @@
  * build does NOT pull in the CRDT/markdown/Tiptap/CLI dependency tree. The
  * duplication is bounded and pinned by `share-splash.test.ts`. Any wire change
  * to the source modules (codec field names, URL-parser shapes) must be
- * mirrored here in lock-step — today that covers the `sharedUrl` field and
- * tree (folder) URL parsing.
+ * mirrored here in lock-step, including strict v2 canonical parsing and its
+ * token/payload/URL bounds.
  *
  * `buildSplashViewModel(encoded)` is the splash's single entry point — it
  * folds the decoder + dispatcher into a discriminated `SplashView` the route
@@ -35,11 +34,31 @@ import {
 import { SITE_NAME } from './site';
 
 const SHARE_URL_VERSION_V1 = 0x01;
+const SHARE_URL_VERSION_V2 = 0x02;
+const V2_HEADER_BYTES = 3;
+const MAX_V2_SHARE_TOKEN_CHARS = 3984;
+const MAX_V2_SHARE_PAYLOAD_BYTES = 2988;
+const MAX_V2_SHARED_URL_UTF8_BYTES = 2985;
+const IPV4_AUTHORITY_PATTERN = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
-interface DecodedShare {
-  version: number;
-  sharedUrl: string;
+interface CanonicalGitHubShareSource {
+  host: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  kind: 'doc' | 'folder';
+  targetSegments: string[];
 }
+
+type DecodedShare =
+  | { version: 1; sharedUrl: string }
+  | {
+      version: 2;
+      sharedUrl: string;
+      contentRootDepth: number;
+      source: CanonicalGitHubShareSource;
+      targetPath: string;
+    };
 
 class UnsupportedShareVersionError extends Error {
   readonly version: number;
@@ -58,7 +77,18 @@ class InvalidShareUrlError extends Error {
 }
 
 function decodeShareUrl(encoded: string): DecodedShare {
-  const cleaned = encoded.split(/[?#]/)[0];
+  const peekedVersion = peekBase64UrlVersion(encoded);
+  if (peekedVersion === SHARE_URL_VERSION_V2 && encoded.length > MAX_V2_SHARE_TOKEN_CHARS) {
+    throw new InvalidShareUrlError('Invalid v2 share token');
+  }
+
+  const suffixIndex = encoded.search(/[?#]/);
+  if (peekedVersion === SHARE_URL_VERSION_V2) {
+    if (suffixIndex !== -1) throw new InvalidShareUrlError('Invalid v2 share token');
+    return decodeV2ShareUrl(encoded);
+  }
+
+  const cleaned = suffixIndex === -1 ? encoded : encoded.slice(0, suffixIndex);
   if (cleaned.length === 0) {
     throw new InvalidShareUrlError('Share payload is empty');
   }
@@ -87,7 +117,156 @@ function decodeShareUrl(encoded: string): DecodedShare {
     throw new InvalidShareUrlError('Share payload body is not valid UTF-8');
   }
 
-  return { version, sharedUrl };
+  return { version: 1, sharedUrl };
+}
+
+function decodeV2ShareUrl(encoded: string): DecodedShare {
+  let bytes: Uint8Array;
+  try {
+    bytes = base64UrlToUint8Array(encoded);
+  } catch {
+    throw new InvalidShareUrlError('Share payload is not valid base64url');
+  }
+  if (
+    bytes.length <= V2_HEADER_BYTES ||
+    bytes.length > MAX_V2_SHARE_PAYLOAD_BYTES ||
+    uint8ArrayToBase64Url(bytes) !== encoded
+  ) {
+    throw new InvalidShareUrlError('Invalid v2 share framing');
+  }
+  const contentRootDepth = (bytes[1] << 8) | bytes[2];
+  if (contentRootDepth < 1) throw new InvalidShareUrlError('Invalid content root depth');
+  const urlBytes = bytes.subarray(V2_HEADER_BYTES);
+  if (urlBytes.length > MAX_V2_SHARED_URL_UTF8_BYTES) {
+    throw new InvalidShareUrlError('Share URL exceeds the v2 limit');
+  }
+  let sharedUrl: string;
+  try {
+    sharedUrl = new TextDecoder('utf-8', { fatal: true }).decode(urlBytes);
+  } catch {
+    throw new InvalidShareUrlError('Share payload body is not valid UTF-8');
+  }
+  const source = parseCanonicalGitHubShareUrl(sharedUrl);
+  if (contentRootDepth > source.targetSegments.length) {
+    throw new InvalidShareUrlError('Content root depth exceeds the target');
+  }
+  const targetPath = source.targetSegments.slice(contentRootDepth).join('/');
+  if (source.kind === 'doc' && targetPath === '') {
+    throw new InvalidShareUrlError('Document target cannot be the content root');
+  }
+  return { version: 2, sharedUrl, contentRootDepth, source, targetPath };
+}
+
+function parseCanonicalGitHubShareUrl(sharedUrl: string): CanonicalGitHubShareSource {
+  if (!sharedUrl.startsWith('https://') || sharedUrl.includes('?') || sharedUrl.includes('#')) {
+    throw new InvalidShareUrlError('Share URL is not canonical HTTPS');
+  }
+  const authorityAndPath = sharedUrl.slice('https://'.length);
+  const pathStart = authorityAndPath.indexOf('/');
+  if (pathStart <= 0) throw new InvalidShareUrlError('Share URL is missing a repository path');
+  const host = authorityAndPath.slice(0, pathStart);
+  const hostLabels = host.split('.');
+  if (
+    host.length > 253 ||
+    host !== host.toLowerCase() ||
+    host.endsWith('.') ||
+    host.includes(':') ||
+    IPV4_AUTHORITY_PATTERN.test(host) ||
+    hostLabels.some(
+      (label) =>
+        label.length === 0 || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+    ) ||
+    classifyGitHubShareHost(host) !== host
+  ) {
+    throw new InvalidShareUrlError('Share URL host is not canonical');
+  }
+  const rawSegments = authorityAndPath.slice(pathStart + 1).split('/');
+  if (rawSegments.length < 4 || rawSegments.some((segment) => segment === '')) {
+    throw new InvalidShareUrlError('Share URL path is invalid');
+  }
+  const [rawOwner, rawRepo, rawKind, rawBranch, ...rawTarget] = rawSegments;
+  if (rawKind !== 'blob' && rawKind !== 'tree') {
+    throw new InvalidShareUrlError('Share URL kind is invalid');
+  }
+  const owner = decodeCanonicalComponent(rawOwner);
+  const repo = decodeCanonicalComponent(rawRepo);
+  const branch = decodeCanonicalComponent(rawBranch);
+  const targetSegments = rawTarget.map(decodeCanonicalComponent);
+  if (!isShareSegmentSafe(owner, repo, branch)) {
+    throw new InvalidShareUrlError('Share URL repository identity is invalid');
+  }
+  for (const component of [owner, repo, ...targetSegments]) assertCanonicalPathComponent(component);
+  const kind = rawKind === 'blob' ? 'doc' : 'folder';
+  if (kind === 'doc' && targetSegments.length === 0) {
+    throw new InvalidShareUrlError('Document URL is missing its target');
+  }
+  const source = {
+    host,
+    owner,
+    repo,
+    branch,
+    kind,
+    targetSegments,
+  } satisfies CanonicalGitHubShareSource;
+  if (serializeCanonicalGitHubShareUrl(source) !== sharedUrl) {
+    throw new InvalidShareUrlError('Share URL is not canonically serialized');
+  }
+  return source;
+}
+
+function decodeCanonicalComponent(raw: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new InvalidShareUrlError('Malformed percent encoding');
+  }
+  if (encodeURIComponent(decoded) !== raw) {
+    throw new InvalidShareUrlError('Non-canonical percent encoding');
+  }
+  return decoded;
+}
+
+function assertCanonicalPathComponent(component: string): void {
+  if (
+    component === '' ||
+    component === '.' ||
+    component === '..' ||
+    component.toLowerCase() === '.git' ||
+    component.includes('/') ||
+    component.includes('\\') ||
+    [...component].some((char) => char.charCodeAt(0) <= 0x1f || char.charCodeAt(0) === 0x7f)
+  ) {
+    throw new InvalidShareUrlError('Invalid path component');
+  }
+}
+
+function serializeCanonicalGitHubShareUrl(source: CanonicalGitHubShareSource): string {
+  const kind = source.kind === 'doc' ? 'blob' : 'tree';
+  return `https://${source.host}/${[
+    source.owner,
+    source.repo,
+    kind,
+    source.branch,
+    ...source.targetSegments,
+  ]
+    .map(encodeURIComponent)
+    .join('/')}`;
+}
+
+function peekBase64UrlVersion(input: string): number | null {
+  if (input.length < 2) return null;
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const first = alphabet.indexOf(input[0]);
+  const second = alphabet.indexOf(input[1]);
+  if (first < 0 || second < 0) return null;
+  return (first << 2) | (second >>> 4);
+}
+
+function uint8ArrayToBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function base64UrlToUint8Array(input: string): Uint8Array {
@@ -315,13 +494,13 @@ export { DOWNLOAD_URL as SPLASH_DOWNLOAD_URL } from './site';
 
 /**
  * Build the custom-scheme handoff URL the splash's "Open in OpenKnowledge"
- * button fires. Custom-scheme path carries the shared URL (a blob URL for a
- * doc, a tree URL for a folder) directly without the version byte — that path
- * is the immediate-handoff channel, not the marketing-safe persisted-link
- * channel.
+ * button fires. V1 keeps its historical direct `url` parameter; v2 carries
+ * the canonical token unchanged so content-root depth survives the handoff.
  */
-export function buildCustomSchemeUrl(sharedUrl: string): string {
-  return `openknowledge://share?url=${encodeURIComponent(sharedUrl)}`;
+export function buildCustomSchemeUrl(sharedUrl: string, token?: string): string {
+  return token === undefined
+    ? `openknowledge://share?url=${encodeURIComponent(sharedUrl)}`
+    : `openknowledge://share?token=${token}`;
 }
 
 /**
@@ -470,10 +649,33 @@ export function buildSplashViewModel(encoded: string): SplashView {
     if (err instanceof UnsupportedShareVersionError) {
       return { kind: 'unsupported-version', version: err.version };
     }
+    if (!(err instanceof InvalidShareUrlError)) {
+      // An unexpected throw (not the expected malformed-token rejection) means
+      // this copy-local decoder diverged from the core codec it mirrors, or hit
+      // an injected-dep bug. Surface it (server-side → Vercel logs) so a
+      // regression is diagnosable instead of collapsing into the generic
+      // "invalid link" every recipient sees. Expected InvalidShareUrlError stays
+      // quiet so bots hitting /d/<garbage> don't flood the logs.
+      console.warn(
+        `[share-splash] unexpected share-decode error (errorKind: ${
+          err instanceof Error ? err.name : typeof err
+        })`,
+      );
+    }
     return { kind: 'invalid' };
   }
 
-  const parsed = parseGitHubShareUrl(decoded.sharedUrl);
+  const parsed =
+    decoded.version === 2
+      ? {
+          kind: decoded.source.kind,
+          host: decoded.source.host,
+          owner: decoded.source.owner,
+          repo: decoded.source.repo,
+          branch: decoded.source.branch,
+          path: decoded.targetPath,
+        }
+      : parseGitHubShareUrl(decoded.sharedUrl);
   if (!parsed) {
     return { kind: 'invalid' };
   }
@@ -497,7 +699,10 @@ export function buildSplashViewModel(encoded: string): SplashView {
     branch,
     isDefaultBranch: isCommonDefaultBranch(branch),
     sharedUrl: decoded.sharedUrl,
-    customSchemeUrl: buildCustomSchemeUrl(decoded.sharedUrl),
+    customSchemeUrl: buildCustomSchemeUrl(
+      decoded.sharedUrl,
+      decoded.version === 2 ? encoded : undefined,
+    ),
     githubUrl: decoded.sharedUrl,
   };
 }

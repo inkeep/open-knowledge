@@ -291,7 +291,15 @@ export interface OkProjectOpenRequest {
    * `sendDeepLink` for the warm-focus path. Mirrors the existing
    * `openknowledge://open?project=&doc=` flow.
    */
-  pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string };
+  pendingDeepLinkTarget?: {
+    kind: 'doc' | 'folder';
+    /** Content-relative renderer navigation path. */
+    path: string;
+    /** Repository-relative path used only by receive-side Git/filesystem probes. */
+    repositoryPath?: string;
+    /** Present only for v2; strips the repository prefix from rename results. */
+    contentRootDepth?: number;
+  };
   /**
    * Optional share branch riding alongside `pendingDeepLinkTarget`. See
    * canonical bridge contract below.
@@ -416,6 +424,10 @@ export interface OkSharePayloadFields {
   readonly repo: string;
   readonly branch: string;
   readonly sharedUrl: string;
+  /** URL-derived repository coordinate. Never inferred from receiver config. */
+  readonly repositoryTarget: ShareTarget;
+  /** `null` for historical v1; positive decoded prefix depth for v2. */
+  readonly contentRootDepth: number | null;
   readonly target: ShareTarget;
 }
 
@@ -1310,6 +1322,8 @@ export interface OkDesktopBridge {
       branch?: string | null;
       multiCandidate?: boolean;
       targetMissing?: boolean;
+      repositoryPath?: string;
+      contentRootDepth?: number;
     }) => void,
   ): OkUnsubscribe;
   /**
@@ -1610,6 +1624,7 @@ export interface OkDesktopBridge {
       projectPath: string;
       branch: string;
       kind: 'doc' | 'folder';
+      /** URL-derived repository-relative target path. */
       path: string;
     }): Promise<BranchInfoResponse | null>;
     /**
@@ -1630,8 +1645,11 @@ export interface OkDesktopBridge {
     fetchTargetStatus(request: {
       projectPath: string;
       branch: string;
+      /** URL-derived repository-relative target path. */
       path: string;
       kind: 'doc' | 'folder';
+      /** Present only for v2 so rename destinations can be content-relative. */
+      contentRootDepth?: number;
     }): Promise<ShareTargetStatusResponse | null>;
     /**
      * Gate dialog dismissal on the `branch-switched` broadcast landing

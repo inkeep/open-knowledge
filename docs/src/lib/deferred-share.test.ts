@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import fixture from '../../../test-support/fixtures/share-url-v1-v2.json';
 import {
   buildPendingShareCookie,
   decideContinue,
@@ -24,6 +25,40 @@ describe('buildPendingShareCookie', () => {
 });
 
 describe('decideContinue — redeem branch', () => {
+  test('carries the maximum canonical v2 token opaquely and rejects one byte over its bound', () => {
+    const accepted = decideContinue({
+      cookieToken: fixture.bounds.maxCase.token,
+      port: '52431',
+      nonce: VALID_NONCE,
+    });
+    expect(accepted.kind).toBe('redeem');
+    if (accepted.kind === 'redeem') {
+      expect(new URL(accepted.location).searchParams.get('token')).toBe(
+        fixture.bounds.maxCase.token,
+      );
+    }
+
+    expect(
+      decideContinue({
+        cookieToken: fixture.bounds.overLimitToken,
+        port: '52431',
+        nonce: VALID_NONCE,
+      }),
+    ).toEqual({ kind: 'welcome', clearCookie: true });
+  });
+
+  test('retains the historical v1 handoff ceiling', () => {
+    const atLimit = `AQ${'A'.repeat(4094)}`;
+    const overLimit = `${atLimit}A`;
+    expect(decideContinue({ cookieToken: atLimit, port: '52431', nonce: VALID_NONCE }).kind).toBe(
+      'redeem',
+    );
+    expect(decideContinue({ cookieToken: overLimit, port: '52431', nonce: VALID_NONCE })).toEqual({
+      kind: 'welcome',
+      clearCookie: true,
+    });
+  });
+
   test('redirects the pending token to the loopback listener when all inputs are valid', () => {
     const decision = decideContinue({
       cookieToken: VALID_TOKEN,

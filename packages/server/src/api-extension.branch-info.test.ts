@@ -37,11 +37,11 @@ function initRepo(cwd: string): void {
 
 async function bootRig(
   initProject: ((projectDir: string) => void) | null,
-  options: { withoutProjectDir?: boolean } = {},
+  options: { withoutProjectDir?: boolean; contentDirRelative?: string } = {},
 ): Promise<TestRig> {
   const tmpRoot = mkdtempSync(join(tmpdir(), 'branch-info-'));
   const projectDir = join(tmpRoot, 'project');
-  const contentDir = join(projectDir, 'content');
+  const contentDir = join(projectDir, options.contentDirRelative ?? '.');
   mkdirSync(contentDir, { recursive: true });
   initProject?.(projectDir);
 
@@ -110,6 +110,36 @@ afterEach(async () => {
 });
 
 describe('GET /api/git/branch-info', () => {
+  test('probes an explicit v2 repository path without reapplying the receiver content root', async () => {
+    rig = await bootRig(
+      (projectDir) => {
+        initRepo(projectDir);
+        write(projectDir, 'content/docs/guide.md', '# guide\n');
+        commitAll(projectDir, 'init');
+      },
+      { contentDirRelative: 'content' },
+    );
+
+    const res = await getBranchInfo(rig.port, 'main', 'content/docs/guide.md');
+    expect(res.status).toBe(200);
+    expect((await res.json()).shareTargetExists).toBe(true);
+  });
+
+  test('keeps a nested-root v1 folder path repository-relative without wiki/wiki', async () => {
+    rig = await bootRig(
+      (projectDir) => {
+        initRepo(projectDir);
+        write(projectDir, 'wiki/guide.md', '# guide\n');
+        commitAll(projectDir, 'init');
+      },
+      { contentDirRelative: 'wiki' },
+    );
+
+    const res = await getBranchInfo(rig.port, 'main', 'wiki', 'folder');
+    expect(res.status).toBe(200);
+    expect((await res.json()).shareTargetExists).toBe(true);
+  });
+
   test('clean tree with file present on share branch and current branch matches', async () => {
     rig = await bootRig((projectDir) => {
       initRepo(projectDir);

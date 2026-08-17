@@ -142,6 +142,10 @@ export interface EventChannels {
        * opening a blank editor. Absent / `false` → normal navigation.
        */
       targetMissing?: boolean;
+      /** URL-derived repository path for version-correct follow-up probes. */
+      repositoryPath?: string;
+      /** Present only for v2 rename-result deprojection. */
+      contentRootDepth?: number;
     };
   };
   /**

@@ -264,7 +264,12 @@ interface ProjectOpenRequest {
    * `pendingDeepLinkTarget` (cold spawn) and `sendDeepLink` (warm-focus).
    * Mirrors the `openknowledge://open?project=&doc=` plumbing.
    */
-  pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string };
+  pendingDeepLinkTarget?: {
+    kind: 'doc' | 'folder';
+    path: string;
+    repositoryPath?: string;
+    contentRootDepth?: number;
+  };
   /**
    * Optional share branch riding alongside `pendingDeepLinkTarget` so the
    * renderer can detect branch mismatches on the share-receive Path 2.

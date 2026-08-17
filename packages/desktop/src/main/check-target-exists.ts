@@ -234,3 +234,51 @@ export function computeShareTargetMissing(
   if (target.kind === 'folder' && target.path === '') return false;
   return probe(projectPath, target.kind, target.path) === 'missing';
 }
+
+/** Optional structured logger for the pre-server probe's graceful-fail paths. */
+type ShareProbeLogger = { warn(obj: object, msg: string): void };
+
+/**
+ * Resolve the filesystem root for a content-relative share target before the
+ * local pre-server probe. Config loading is deliberately injected so the helper
+ * stays deterministic; any read/parse failure falls back to the historical
+ * project root rather than blocking the receive flow. The fallback emits a
+ * bounded `errorKind` diagnostic (when a logger is wired) so a silent probe of
+ * the wrong root — which can render a false "not on this branch yet" panel —
+ * stays observable instead of vanishing.
+ */
+export function resolveShareProbeRoot(
+  projectPath: string,
+  readContentDir: (projectPath: string) => string,
+  log?: ShareProbeLogger,
+): string {
+  if (!isSafeProjectPath(projectPath)) return projectPath;
+  try {
+    const candidate = resolve(projectPath, readContentDir(projectPath));
+    const projectWithSep = projectPath.endsWith(sep) ? projectPath : projectPath + sep;
+    return candidate === projectPath || candidate.startsWith(projectWithSep)
+      ? candidate
+      : projectPath;
+  } catch (err) {
+    log?.warn(
+      { errorKind: err instanceof Error ? err.name : typeof err },
+      '[receive] content.dir resolution failed — probing the project root',
+    );
+    return projectPath;
+  }
+}
+
+export function resolveTargetProbeCoordinate(
+  projectPath: string,
+  target: { kind: 'doc' | 'folder'; path: string; repositoryPath?: string },
+  readContentDir: (projectPath: string) => string,
+  log?: ShareProbeLogger,
+): { root: string; target: { kind: 'doc' | 'folder'; path: string } } {
+  if (target.repositoryPath !== undefined) {
+    return { root: projectPath, target: { kind: target.kind, path: target.repositoryPath } };
+  }
+  return {
+    root: resolveShareProbeRoot(projectPath, readContentDir, log),
+    target: { kind: target.kind, path: target.path },
+  };
+}

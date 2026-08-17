@@ -168,10 +168,12 @@ function projectBranchSwitchPayload(): Extract<
   return {
     kind: 'project-branch-switch',
     share: {
+      contentRootDepth: null,
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'feat/branch-x',
       sharedUrl: 'https://github.com/inkeep/open-knowledge/blob/feat/branch-x/docs/notes.md',
+      repositoryTarget: { kind: 'doc', docPath: 'docs/notes.md' },
       target: { kind: 'doc', docPath: 'docs/notes.md' },
     },
     projectPath: '/Users/alice/projects/open-knowledge',
@@ -200,10 +202,12 @@ describe('ShareBranchSwitchDialog — payload gating', () => {
         cb({
           kind: 'launcher-miss',
           share: {
+            contentRootDepth: null,
             owner: 'inkeep',
             repo: 'open-knowledge',
             branch: 'main',
             sharedUrl: 'https://github.com/inkeep/open-knowledge/blob/main/docs/x.md',
+            repositoryTarget: { kind: 'doc', docPath: 'docs/x.md' },
             target: { kind: 'doc', docPath: 'docs/x.md' },
           },
         });
@@ -308,7 +312,11 @@ describe('ShareBranchSwitchDialog — Open-in-current dispatch', () => {
     const firstArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(firstArg).toBeDefined();
     expect(firstArg.path).toBe(payload.projectPath);
-    expect(firstArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/notes.md' });
+    expect(firstArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/notes.md',
+      repositoryPath: 'docs/notes.md',
+    });
     // Stay-on-current: no share-branch threading.
     expect(firstArg.pendingBranch).toBeUndefined();
     // Store dismissed after dispatch.
@@ -435,7 +443,11 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
     });
     const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(openArg).toBeDefined();
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/notes.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/notes.md',
+      repositoryPath: 'docs/notes.md',
+    });
     expect(openArg.pendingBranch).toBe(payload.share.branch);
   });
 
@@ -674,7 +686,11 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
       expect(calls.open).toHaveBeenCalledTimes(1);
     });
     const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/notes.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/notes.md',
+      repositoryPath: 'docs/notes.md',
+    });
     expect(openArg.pendingBranch).toBe(payload.share.branch);
   });
 
@@ -705,7 +721,11 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     });
     const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
     // Navigation lands on the renamed path, NOT the original share path.
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'guides/notes.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'guides/notes.md',
+      repositoryPath: 'guides/notes.md',
+    });
   });
 
   test('deleted verdict hands off to the miss dialog (no switch, dismisses this shell)', async () => {
@@ -721,6 +741,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
       expect(missDialogStore.getSnapshot()).toEqual({
         kind: 'doc',
         path: 'docs/notes.md',
+        repositoryPath: 'docs/notes.md',
         branch: 'feat/branch-x',
       });
     });
@@ -1021,7 +1042,11 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const base = projectBranchSwitchPayload();
     const payload = {
       ...base,
-      share: { ...base.share, target: { kind: 'folder' as const, folderPath: 'docs' } },
+      share: {
+        ...base.share,
+        repositoryTarget: { kind: 'folder' as const, folderPath: 'docs' },
+        target: { kind: 'folder' as const, folderPath: 'docs' },
+      },
     };
     const { bridge, calls } = makeBridge();
     renderDialog(bridge, store, payload);
@@ -1036,7 +1061,11 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
       expect(calls.open).toHaveBeenCalledTimes(1);
     });
     const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'folder', path: 'docs' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'folder',
+      path: 'docs',
+      repositoryPath: 'docs',
+    });
     expect(openArg.pendingBranch).toBe(payload.share.branch);
   });
 
@@ -1079,7 +1108,11 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
       path: worktreePath,
       target: 'new-window',
       entryPoint: 'worktree',
-      pendingDeepLinkTarget: { kind: 'doc', path: 'docs/notes.md' },
+      pendingDeepLinkTarget: {
+        kind: 'doc',
+        path: 'docs/notes.md',
+        repositoryPath: 'docs/notes.md',
+      },
       pendingBranch: payload.share.branch,
     });
 

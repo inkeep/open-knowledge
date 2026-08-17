@@ -340,7 +340,13 @@ export async function proxyRunCheckout(
  * would abort the request before the server's fail-open answer arrives.
  */
 export async function proxyShareTargetStatus(
-  request: { projectPath: string; branch: string; path: string; kind: 'doc' | 'folder' },
+  request: {
+    projectPath: string;
+    branch: string;
+    path: string;
+    kind: 'doc' | 'folder';
+    contentRootDepth?: number;
+  },
   deps: BranchInfoProxyDeps,
   signal?: AbortSignal,
 ): Promise<ShareTargetStatusResponse | null> {
@@ -358,6 +364,9 @@ export async function proxyShareTargetStatus(
         branch: request.branch,
         path: request.path,
         kind: request.kind,
+        ...(request.contentRootDepth === undefined
+          ? {}
+          : { contentRootDepth: request.contentRootDepth }),
       }),
       signal: composeFetchSignal(timeoutMs, signal),
     });

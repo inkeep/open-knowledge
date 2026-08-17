@@ -1,6 +1,37 @@
 import { encodeShareUrl } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
+import fixture from '../../../../test-support/fixtures/share-url-v1-v2.json';
+import {
+  frozenV1CustomSchemeOutcome,
+  frozenV1DecodeShareToken,
+} from '../../../../test-support/share/frozen-v1-share-reader.test-helper.ts';
 import { parseOpenKnowledgeUrl, parseScreenUrl, parseShareUrl } from './url-scheme.ts';
+
+/**
+ * The old-app claim is asserted through the SHARED frozen reader, never a
+ * local restatement of it. A second oracle spelled out here would model the
+ * same shipped binary at a different fidelity, and the two would agree only
+ * for whichever inputs the corpus happens to carry.
+ */
+describe('frozen pre-v2 reader compatibility oracle', () => {
+  test.each(fixture.customSchemeCases)('$id keeps its documented old-app outcome', (entry) => {
+    expect(frozenV1CustomSchemeOutcome(entry.uri)).toBe(entry.baseline);
+  });
+
+  test.each(
+    fixture.validShares.filter((entry) => entry.version === 2),
+  )('$id remains unsupported in universal and deferred old-app delivery', (entry) => {
+    expect(frozenV1DecodeShareToken(entry.token)).toEqual({
+      kind: 'unsupported-version',
+      version: 2,
+    });
+    expect(
+      frozenV1DecodeShareToken(
+        new URL(`https://openknowledge.ai/d/${entry.token}`).pathname.slice(3),
+      ),
+    ).toEqual({ kind: 'unsupported-version', version: 2 });
+  });
+});
 
 /**
  * Pure function — no
@@ -264,17 +295,40 @@ describe('parseOpenKnowledgeUrl — MCP producer/consumer round-trip', () => {
  * `parseOpenKnowledgeUrl`).
  */
 describe('parseShareUrl — universal-link happy path', () => {
+  test.each(
+    fixture.validShares.filter((entry) => entry.version === 2),
+  )('projects canonical $id to its content-relative target', (entry) => {
+    expect(parseShareUrl(`https://openknowledge.ai/d/${entry.token}`)).toMatchObject({
+      kind: 'ok',
+      source: 'universal-link',
+      payload: {
+        sharedUrl: entry.sharedUrl,
+        target: entry.target,
+      },
+    });
+  });
+
+  test.each(fixture.legacyAliases)('preserves tolerated v1 alias $id', (entry) => {
+    expect(parseShareUrl(`https://openknowledge.ai/d/${entry.token}`)).toMatchObject({
+      kind: 'ok',
+      payload: { sharedUrl: entry.sharedUrl },
+    });
+  });
+
   test('parses universal-link URL with main branch', () => {
     const encoded = encodeShareUrl('https://github.com/inkeep/playbooks/blob/main/marketing.md');
     const result = parseShareUrl(`https://openknowledge.ai/d/${encoded}`);
     expect(result).toEqual({
       kind: 'ok',
       source: 'universal-link',
+      dedupKey: '1:https://github.com/inkeep/playbooks/blob/main/marketing.md',
       payload: {
+        contentRootDepth: null,
         host: 'github.com',
         owner: 'inkeep',
         repo: 'playbooks',
         branch: 'main',
+        repositoryTarget: { kind: 'doc', docPath: 'marketing.md' },
         sharedUrl: 'https://github.com/inkeep/playbooks/blob/main/marketing.md',
         target: { kind: 'doc', docPath: 'marketing.md' },
       },
@@ -338,21 +392,20 @@ describe('parseShareUrl — universal-link extensibility (D30 Axis 1+2)', () => 
 });
 
 describe('parseShareUrl — universal-link error states', () => {
-  test('reports unsupported-version for v2 payload (0x02 byte)', () => {
-    // Hand-build a v2 payload: [0x02] + utf-8 bytes of a valid blob URL.
-    // Old desktops MUST surface "update" toast, not silent-mis-decode.
-    const blobBytes = new TextEncoder().encode('https://github.com/o/r/blob/main/x.md');
-    const payload = new Uint8Array(blobBytes.length + 1);
-    payload[0] = 0x02;
-    payload.set(blobBytes, 1);
-    let b64 = '';
-    for (const byte of payload) b64 += String.fromCharCode(byte);
-    const encoded = btoa(b64).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    const result = parseShareUrl(`https://openknowledge.ai/d/${encoded}`);
+  test.each(fixture.invalidTokens)('rejects canonical fixture case $id', (entry) => {
+    expect(parseShareUrl(`https://openknowledge.ai/d/${entry.token}`)).toEqual({
+      kind: 'invalid',
+      source: 'universal-link',
+    });
+  });
+
+  test('reports unsupported-version for a future payload', () => {
+    const future = fixture.unsupportedTokens[0];
+    const result = parseShareUrl(`https://openknowledge.ai/d/${future.token}`);
     expect(result).toEqual({
       kind: 'unsupported-version',
       source: 'universal-link',
-      version: 2,
+      version: future.version,
     });
   });
 
@@ -402,17 +455,30 @@ describe('parseShareUrl — universal-link error states', () => {
 });
 
 describe('parseShareUrl — custom-scheme happy path', () => {
+  test('parses the canonical token-only v2 handoff without a second decode', () => {
+    const entry = fixture.validShares.find((item) => item.id === 'v2-one-segment-document');
+    if (!entry) throw new Error('fixture missing v2-one-segment-document');
+    expect(parseShareUrl(`openknowledge://share?token=${entry.token}`)).toMatchObject({
+      kind: 'ok',
+      source: 'custom-scheme',
+      payload: { sharedUrl: entry.sharedUrl, target: entry.target },
+    });
+  });
+
   test('parses openknowledge://share?url=<blob-url>', () => {
     const sharedUrl = 'https://github.com/inkeep/playbooks/blob/main/marketing.md';
     const result = parseShareUrl(`openknowledge://share?url=${encodeURIComponent(sharedUrl)}`);
     expect(result).toEqual({
       kind: 'ok',
       source: 'custom-scheme',
+      dedupKey: `1:${sharedUrl}`,
       payload: {
+        contentRootDepth: null,
         host: 'github.com',
         owner: 'inkeep',
         repo: 'playbooks',
         branch: 'main',
+        repositoryTarget: { kind: 'doc', docPath: 'marketing.md' },
         sharedUrl,
         target: { kind: 'doc', docPath: 'marketing.md' },
       },
@@ -440,6 +506,24 @@ describe('parseShareUrl — custom-scheme happy path', () => {
 });
 
 describe('parseShareUrl — custom-scheme error states', () => {
+  test.each(
+    fixture.customSchemeCases.filter((entry) =>
+      ['v2-token-plus-url', 'v2-duplicate-token', 'v2-empty-token'].includes(entry.id),
+    ),
+  )('rejects authoritative malformed token form $id', (entry) => {
+    expect(parseShareUrl(entry.uri)).toEqual({ kind: 'invalid', source: 'custom-scheme' });
+  });
+
+  test('reports unsupported-version for a future payload token', () => {
+    const future = fixture.unsupportedTokens[0];
+    const result = parseShareUrl(`openknowledge://share?token=${future.token}`);
+    expect(result).toEqual({
+      kind: 'unsupported-version',
+      source: 'custom-scheme',
+      version: future.version,
+    });
+  });
+
   test('reports invalid when url param is missing', () => {
     const result = parseShareUrl('openknowledge://share');
     expect(result).toEqual({ kind: 'invalid', source: 'custom-scheme' });
@@ -527,9 +611,37 @@ describe('parseShareUrl — not-a-share-url (returns null, caller falls through)
     expect(parseShareUrl('not a url')).toBeNull();
   });
 
-  test('returns null for null-byte smuggle attempts', () => {
-    expect(parseShareUrl('https://openknowledge.ai/d/abc\x00')).toBeNull();
-    expect(parseShareUrl('https://openknowledge.ai/d/abc%00def')).toBeNull();
+  test('classifies malformed share authorities as terminal invalid without claiming lookalikes', () => {
+    for (const input of [
+      'https://openknowledge.ai:bad/d/secret-token',
+      'https://www.openknowledge.ai:99999/d/secret-token',
+    ]) {
+      expect(parseShareUrl(input)).toEqual({ kind: 'invalid', source: 'universal-link' });
+    }
+    expect(parseShareUrl('openknowledge://share:bad?token=secret-token')).toEqual({
+      kind: 'invalid',
+      source: 'custom-scheme',
+    });
+
+    expect(parseShareUrl('https://example.com:bad/d/secret-token')).toBeNull();
+    expect(parseShareUrl('https://openknowledge.ai@evil.example:bad/d/secret-token')).toBeNull();
+    expect(parseShareUrl('openknowledge://shareholder:bad?token=secret-token')).toBeNull();
+  });
+
+  test('classifies share-shaped null-byte smuggle attempts as terminal invalid', () => {
+    expect(parseShareUrl('https://openknowledge.ai/d/abc\x00')).toEqual({
+      kind: 'invalid',
+      source: 'universal-link',
+    });
+    expect(parseShareUrl('https://openknowledge.ai/d/abc%00def')).toEqual({
+      kind: 'invalid',
+      source: 'universal-link',
+    });
+    expect(parseShareUrl('openknowledge://share?token=abc%00def')).toEqual({
+      kind: 'invalid',
+      source: 'custom-scheme',
+    });
+    expect(parseShareUrl('openknowledge://open?project=/tmp%00secret')).toBeNull();
   });
 });
 

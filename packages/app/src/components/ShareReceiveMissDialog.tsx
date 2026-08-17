@@ -28,6 +28,7 @@ import { hashFromDocName, hashFromFolderPath } from '@/lib/doc-hash';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import {
   type PendingReceiveNav,
+  pendingReceiveNavForContentPath,
   pendingReceiveNavStore,
 } from '@/lib/share/pending-receive-nav-store';
 
@@ -68,7 +69,7 @@ function ShareReceiveMissDialogInner({ nav }: { nav: PendingReceiveNav }) {
    * instead of the create-mode editor.
    */
   function navigateWithBackstop(path: string): void {
-    pendingReceiveNavStore.arm({ kind: nav.kind, path, branch: nav.branch });
+    pendingReceiveNavStore.arm(pendingReceiveNavForContentPath(nav, path));
     window.location.hash = nav.kind === 'folder' ? hashFromFolderPath(path) : hashFromDocName(path);
     dismiss();
   }

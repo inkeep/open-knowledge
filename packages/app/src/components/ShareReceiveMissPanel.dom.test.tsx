@@ -154,6 +154,7 @@ describe('ShareReceiveMissPanel verdict surfaces', () => {
     expect(pendingReceiveNavStore.getSnapshot()).toEqual({
       kind: 'doc',
       path: 'knowledge/new-plan',
+      repositoryPath: 'knowledge/new-plan',
       branch: 'feature',
     });
   });

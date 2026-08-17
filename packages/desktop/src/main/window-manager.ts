@@ -414,7 +414,12 @@ interface CreateProjectWindowOpts {
    * the bridge contract's `pendingDeepLinkTarget` so the index.ts seam
    * passes it straight through without decomposing into separate fields.
    */
-  pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string };
+  pendingDeepLinkTarget?: {
+    kind: 'doc' | 'folder';
+    path: string;
+    repositoryPath?: string;
+    contentRootDepth?: number;
+  };
   /**
    * Optional share branch carried alongside `pendingDeepLinkTarget`. Threaded
    * into the same `dom-ready` deep-link IPC so the renderer's deep-link
@@ -2092,6 +2097,12 @@ export class WindowManager {
         kind,
         branch,
         multiCandidate,
+        ...(opts.pendingDeepLinkTarget.repositoryPath === undefined
+          ? {}
+          : { repositoryPath: opts.pendingDeepLinkTarget.repositoryPath }),
+        ...(opts.pendingDeepLinkTarget.contentRootDepth === undefined
+          ? {}
+          : { contentRootDepth: opts.pendingDeepLinkTarget.contentRootDepth }),
         // Only carry the flag when set — keeps the common (present) case's
         // payload identical to the pre-gate shape.
         ...(opts.pendingTargetMissing === true ? { targetMissing: true } : {}),
@@ -2760,7 +2771,12 @@ export class WindowManager {
     canonicalKey: string;
     projectName: string;
     lock: ServerLockMetadataLike;
-    pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string };
+    pendingDeepLinkTarget?: {
+      kind: 'doc' | 'folder';
+      path: string;
+      repositoryPath?: string;
+      contentRootDepth?: number;
+    };
     pendingBranch?: string | null;
     pendingMultiCandidate?: boolean;
     pendingTargetMissing?: boolean;
@@ -2845,6 +2861,12 @@ export class WindowManager {
         kind,
         branch,
         multiCandidate,
+        ...(pendingDeepLinkTarget.repositoryPath === undefined
+          ? {}
+          : { repositoryPath: pendingDeepLinkTarget.repositoryPath }),
+        ...(pendingDeepLinkTarget.contentRootDepth === undefined
+          ? {}
+          : { contentRootDepth: pendingDeepLinkTarget.contentRootDepth }),
         ...(pendingTargetMissing === true ? { targetMissing: true } : {}),
       });
     }

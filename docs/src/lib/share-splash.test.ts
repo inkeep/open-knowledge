@@ -1,5 +1,6 @@
 import { encodeShareUrl, KNOWN_NON_GITHUB_GIT_HOSTS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
+import fixture from '../../../test-support/fixtures/share-url-v1-v2.json';
 import { STABLE_DMG_URL } from './download-links.ts';
 import { resolveTargetFromParams } from './download-targets.ts';
 import {
@@ -33,20 +34,59 @@ function encodeV1(sharedUrl: string): string {
 }
 
 /**
- * Hand-rolled base64url for the NEGATIVE-path tests below — needed only
- * for forging v2-shaped payloads or other malformed bytes that the
- * production encoder can't be coaxed into emitting. Never used on the
- * happy path.
+ * The content-relative basename the splash renders for a v2 fixture: the last
+ * segment of the doc/folder path, or the repo name when a folder share targets
+ * the content root (empty path). Derived independently from the fixture's own
+ * `target`/`sharedUrl` so a byte-order swap or off-by-one in the v2 depth decode
+ * — a distinct code path from the v1 URL parse — surfaces as a filename mismatch.
  */
-function uint8ArrayToBase64Url(bytes: Uint8Array): string {
-  let binaryString = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binaryString += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binaryString).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+function expectedContentFilename(entry: (typeof fixture.validShares)[number]): string {
+  const target: { docPath?: string; folderPath?: string } = entry.target;
+  const contentPath = target.docPath ?? target.folderPath ?? '';
+  const segments = contentPath.split('/').filter((segment) => segment.length > 0);
+  const basename = segments[segments.length - 1];
+  if (basename !== undefined) return basename;
+  const [, repo] = new URL(entry.sharedUrl).pathname.split('/').filter(Boolean);
+  return repo ?? '';
 }
 
 describe('buildSplashViewModel', () => {
+  test.each(
+    fixture.validShares.filter((entry) => entry.version === 2),
+  )('decodes canonical $id and hands the unchanged token to the desktop', (entry) => {
+    const view = buildSplashViewModel(entry.token);
+    expect(view).toMatchObject({
+      kind: 'ok',
+      sharedUrl: entry.sharedUrl,
+      githubUrl: entry.sharedUrl,
+      customSchemeUrl: `openknowledge://share?token=${entry.token}`,
+      target: entry.target.kind,
+      filename: expectedContentFilename(entry),
+    });
+  });
+
+  test.each(fixture.invalidTokens)('rejects canonical fixture case $id', (entry) => {
+    expect(buildSplashViewModel(entry.token)).toEqual({ kind: 'invalid' });
+  });
+
+  test.each(fixture.legacyAliases)('preserves tolerated v1 alias $id', (entry) => {
+    expect(buildSplashViewModel(entry.token)).toMatchObject({
+      kind: 'ok',
+      sharedUrl: entry.sharedUrl,
+    });
+  });
+
+  test('rejects an oversized v2 token as invalid before decoding', () => {
+    expect(buildSplashViewModel(fixture.bounds.overLimitToken)).toEqual({ kind: 'invalid' });
+  });
+
+  test('retains historical v1 decoding beyond the v2 token ceiling', () => {
+    const sharedUrl = `https://github.com/o/r/blob/main/${'a'.repeat(4000)}.md`;
+    const token = encodeV1(sharedUrl);
+    expect(token.length).toBeGreaterThan(fixture.bounds.maxV2TokenChars);
+    expect(buildSplashViewModel(token)).toMatchObject({ kind: 'ok', sharedUrl });
+  });
+
   test('decodes a happy-path encoded blob URL into the ok view', () => {
     const blobUrl = 'https://github.com/inkeep/playbooks/blob/main/marketing-playbook.md';
     const encoded = encodeV1(blobUrl);
@@ -219,12 +259,12 @@ describe('buildSplashViewModel', () => {
     }
   });
 
-  test('returns `unsupported-version` for a v2-shaped payload', () => {
-    const blobBytes = new TextEncoder().encode('https://github.com/o/r/blob/main/file.md');
-    const v2 = new Uint8Array([0x02, ...blobBytes]);
-    const encoded = uint8ArrayToBase64Url(v2);
-    const view = buildSplashViewModel(encoded);
-    expect(view).toEqual({ kind: 'unsupported-version', version: 2 });
+  test('returns `unsupported-version` for a future payload', () => {
+    const future = fixture.unsupportedTokens[0];
+    expect(buildSplashViewModel(future.token)).toEqual({
+      kind: 'unsupported-version',
+      version: future.version,
+    });
   });
 
   test('returns `invalid` for undecodable base64url input', () => {

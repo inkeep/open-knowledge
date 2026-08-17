@@ -55,6 +55,7 @@ import {
   getOkArtifactPaths,
   isEntryUpToDate,
   isOwnManagedEntry,
+  loadConfig,
   type McpInstallOptions,
   okBugReportsDir,
   type ProjectAiIntegrationsResult,
@@ -207,6 +208,7 @@ import {
   checkProjectDirExists,
   checkTargetExists as checkTargetExistsImpl,
   computeShareTargetMissing,
+  resolveTargetProbeCoordinate,
 } from './check-target-exists.ts';
 import {
   cliProbeArgs,
@@ -2171,7 +2173,12 @@ const BOOT_BUDGET_FILE_CAP = 10_000;
 async function openProject(
   projectPath: string,
   entryPoint: EntryPoint,
-  pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string },
+  pendingDeepLinkTarget?: {
+    kind: 'doc' | 'folder';
+    path: string;
+    repositoryPath?: string;
+    contentRootDepth?: number;
+  },
   pendingBranch?: string | null,
   pendingMultiCandidate?: boolean,
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
@@ -2671,7 +2678,12 @@ function pruneRecentIfMissing(projectPath: string): { removed: boolean; name: st
 async function openProjectOrFallbackToNavigator(
   projectPath: string,
   entryPoint: EntryPoint,
-  pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string },
+  pendingDeepLinkTarget?: {
+    kind: 'doc' | 'folder';
+    path: string;
+    repositoryPath?: string;
+    contentRootDepth?: number;
+  },
   pendingBranch?: string | null,
   pendingMultiCandidate?: boolean,
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
@@ -6089,9 +6101,21 @@ function registerIpcHandlers() {
     // moved/deleted target flags `targetMissing` and the editor renders the
     // honest verdict panel instead of the create-mode editor. Synchronous native
     // probe — no new IPC — computed once for both the warm and cold branches.
-    const targetMissing =
-      request.pendingDeepLinkTarget !== undefined &&
-      computeShareTargetMissing(checkTargetExistsImpl, request.path, request.pendingDeepLinkTarget);
+    const targetMissing = (() => {
+      const target = request.pendingDeepLinkTarget;
+      if (target === undefined) return false;
+      const probeCoordinate = resolveTargetProbeCoordinate(
+        request.path,
+        target,
+        (projectPath) => loadConfig(projectPath).config.content.dir,
+        getLogger('share-receive'),
+      );
+      return computeShareTargetMissing(
+        checkTargetExistsImpl,
+        probeCoordinate.root,
+        probeCoordinate.target,
+      );
+    })();
     // Warm-focus path for share-receive: when an existing window holds the
     // requested project, focus it and dispatch the deep-link directly. Mirrors
     // the URL-scheme warm path in url-scheme.ts so the IPC and the deep-link
@@ -6106,6 +6130,12 @@ function registerIpcHandlers() {
           kind: request.pendingDeepLinkTarget.kind,
           branch: request.pendingBranch ?? null,
           multiCandidate: request.pendingMultiCandidate === true,
+          ...(request.pendingDeepLinkTarget.repositoryPath === undefined
+            ? {}
+            : { repositoryPath: request.pendingDeepLinkTarget.repositoryPath }),
+          ...(request.pendingDeepLinkTarget.contentRootDepth === undefined
+            ? {}
+            : { contentRootDepth: request.pendingDeepLinkTarget.contentRootDepth }),
           // Only carry the flag when set — keeps the common (present) case's
           // payload identical to the pre-gate shape.
           ...(targetMissing ? { targetMissing: true } : {}),
@@ -8109,6 +8139,7 @@ function bootPrimaryInstance(): void {
       // arrived somewhere, so opening a `/continue` browser tab would be noise.
       // Every failure mode degrades to the splash re-click recovery.
       if (isTrueFirstRun && decision.action === 'navigator') {
+        const shareReceiveLogger = getLogger('share-receive');
         startFirstRunHandshake({
           isFirstRun: () => true,
           createServer: (handler) => {
@@ -8128,16 +8159,17 @@ function bootPrimaryInstance(): void {
           },
           openExternal: (url) => {
             void shell.openExternal(url).catch((err) => {
-              console.warn('[main] deferred-share openExternal failed', {
-                err: err instanceof Error ? err.message : String(err),
-              });
+              shareReceiveLogger.warn(
+                { errorKind: err instanceof Error ? err.name : typeof err },
+                'deferred-share openExternal failed',
+              );
             });
           },
           routeShareUrl: (url) => protocolControl.routeUrl(url),
           recordOutcome: (outcome) => recordFirstRunShareHandoff(outcome),
           log: {
-            warn: (obj, msg) => console.warn(msg, obj),
-            info: (obj, msg) => console.info(msg, obj),
+            warn: (obj, msg) => shareReceiveLogger.warn({ ...obj }, msg),
+            info: (obj, msg) => shareReceiveLogger.info({ ...obj }, msg),
           },
         });
       }

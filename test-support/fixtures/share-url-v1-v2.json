@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 1,
+  "bounds": {
+    "maxV2TokenChars": 3984,
+    "maxV2PayloadBytes": 2988,
+    "maxV2SharedUrlUtf8Bytes": 2985,
+    "maxV2CustomUriChars": 4012,
+    "maxDeferredCookieBytes": 4096,
+    "maxCase": {
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.md",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhLm1k",
+      "target": {
+        "kind": "doc",
+        "docPath": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.md"
+      }
+    },
+    "overLimitToken": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhLm1kA"
+  },
+  "validShares": [
+    {
+      "id": "v1-document",
+      "version": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md",
+      "target": {
+        "kind": "doc",
+        "docPath": "docs/guide.md"
+      },
+      "token": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWQ"
+    },
+    {
+      "id": "v1-folder",
+      "version": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/tree/main/docs/guides",
+      "target": {
+        "kind": "folder",
+        "folderPath": "docs/guides"
+      },
+      "token": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvdHJlZS9tYWluL2RvY3MvZ3VpZGVz"
+    },
+    {
+      "id": "v1-repository-root",
+      "version": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/tree/main",
+      "target": {
+        "kind": "folder",
+        "folderPath": ""
+      },
+      "token": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvdHJlZS9tYWlu"
+    },
+    {
+      "id": "v2-one-segment-document",
+      "version": 2,
+      "contentRootDepth": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/wiki/modules/backend-libraries.md",
+      "target": {
+        "kind": "doc",
+        "docPath": "modules/backend-libraries.md"
+      },
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL21haW4vd2lraS9tb2R1bGVzL2JhY2tlbmQtbGlicmFyaWVzLm1k"
+    },
+    {
+      "id": "v2-one-segment-folder",
+      "version": 2,
+      "contentRootDepth": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/tree/main/wiki/modules",
+      "target": {
+        "kind": "folder",
+        "folderPath": "modules"
+      },
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS90cmVlL21haW4vd2lraS9tb2R1bGVz"
+    },
+    {
+      "id": "v2-one-segment-content-root",
+      "version": 2,
+      "contentRootDepth": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/tree/main/wiki",
+      "target": {
+        "kind": "folder",
+        "folderPath": ""
+      },
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS90cmVlL21haW4vd2lraQ"
+    },
+    {
+      "id": "v2-two-segment-document",
+      "version": 2,
+      "contentRootDepth": 2,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/docs/wiki/guide.md",
+      "target": {
+        "kind": "doc",
+        "docPath": "guide.md"
+      },
+      "token": "AgACaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL21haW4vZG9jcy93aWtpL2d1aWRlLm1k"
+    },
+    {
+      "id": "v2-unicode-root",
+      "version": 2,
+      "contentRootDepth": 2,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/%E7%9F%A5%E8%AD%98/%E8%B3%87%E6%96%99/%E6%A1%88%E5%85%A7.md",
+      "target": {
+        "kind": "doc",
+        "docPath": "案內.md"
+      },
+      "token": "AgACaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL21haW4vJUU3JTlGJUE1JUU4JUFEJTk4LyVFOCVCMyU4NyVFNiU5NiU5OS8lRTYlQTElODglRTUlODUlQTcubWQ"
+    },
+    {
+      "id": "v2-slashed-branch",
+      "version": 2,
+      "contentRootDepth": 1,
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/feat%2Fshare-v2/wiki/a.md",
+      "target": {
+        "kind": "doc",
+        "docPath": "a.md"
+      },
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL2ZlYXQlMkZzaGFyZS12Mi93aWtpL2EubWQ"
+    },
+    {
+      "id": "v2-ghes-root-path",
+      "version": 2,
+      "contentRootDepth": 1,
+      "sharedUrl": "https://ghes.acme.test/team/notes/blob/main/wiki/a.md",
+      "target": {
+        "kind": "doc",
+        "docPath": "a.md"
+      },
+      "token": "AgABaHR0cHM6Ly9naGVzLmFjbWUudGVzdC90ZWFtL25vdGVzL2Jsb2IvbWFpbi93aWtpL2EubWQ"
+    }
+  ],
+  "legacyAliases": [
+    {
+      "id": "v1-noncanonical-pad-bits",
+      "token": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWR",
+      "canonicalToken": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWQ",
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md"
+    },
+    {
+      "id": "v1-query-suffix",
+      "token": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWQ?utm_source=slack",
+      "canonicalToken": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWQ",
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md"
+    },
+    {
+      "id": "v1-fragment-suffix",
+      "token": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWQ#section",
+      "canonicalToken": "AWh0dHBzOi8vZ2l0aHViLmNvbS9pbmtlZXAvb3Blbi1rbm93bGVkZ2UvYmxvYi9tYWluL2RvY3MvZ3VpZGUubWQ",
+      "sharedUrl": "https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md"
+    }
+  ],
+  "invalidTokens": [
+    {
+      "id": "empty",
+      "token": "",
+      "reason": "empty"
+    },
+    {
+      "id": "invalid-base64",
+      "token": "not!valid!base64",
+      "reason": "base64"
+    },
+    {
+      "id": "v2-truncated-version",
+      "token": "Ag",
+      "reason": "framing"
+    },
+    {
+      "id": "v2-truncated-depth",
+      "token": "AgA",
+      "reason": "framing"
+    },
+    {
+      "id": "v2-missing-url",
+      "token": "AgAB",
+      "reason": "framing"
+    },
+    {
+      "id": "v2-invalid-utf8",
+      "token": "AgABwyg",
+      "reason": "utf8"
+    },
+    {
+      "id": "v2-zero-depth",
+      "token": "AgAAaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hLm1k",
+      "reason": "depth"
+    },
+    {
+      "id": "v2-excess-depth",
+      "token": "AgADaHR0cHM6Ly9naXRodWIuY29tL28vci90cmVlL21haW4vd2lraS9h",
+      "reason": "depth",
+      "sharedUrl": "https://github.com/o/r/tree/main/wiki/a",
+      "contentRootDepth": 3
+    },
+    {
+      "id": "v2-uppercase-host",
+      "token": "AgABaHR0cHM6Ly9HaXRIdWIuY29tL28vci9ibG9iL21haW4vd2lraS9hLm1k",
+      "reason": "canonical-host",
+      "sharedUrl": "https://GitHub.com/o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-trailing-host-dot",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tLi9vL3IvYmxvYi9tYWluL3dpa2kvYS5tZA",
+      "reason": "canonical-host",
+      "sharedUrl": "https://github.com./o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-explicit-port",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tOjQ0My9vL3IvYmxvYi9tYWluL3dpa2kvYS5tZA",
+      "reason": "authority",
+      "sharedUrl": "https://github.com:443/o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-userinfo",
+      "token": "AgABaHR0cHM6Ly94QGdpdGh1Yi5jb20vby9yL2Jsb2IvbWFpbi93aWtpL2EubWQ",
+      "reason": "authority",
+      "sharedUrl": "https://x@github.com/o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-query",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hLm1kP3E9MQ",
+      "reason": "query",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a.md?q=1",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-fragment",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hLm1kI3g",
+      "reason": "fragment",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a.md#x",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-http",
+      "token": "AgABaHR0cDovL2dpdGh1Yi5jb20vby9yL2Jsb2IvbWFpbi93aWtpL2EubWQ",
+      "reason": "scheme",
+      "sharedUrl": "http://github.com/o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-ghes-path-prefix",
+      "token": "AgABaHR0cHM6Ly9naGVzLmFjbWUudGVzdC9naXQvdGVhbS9ub3Rlcy9ibG9iL21haW4vd2lraS9hLm1k",
+      "reason": "ghes-path-prefix",
+      "sharedUrl": "https://ghes.acme.test/git/team/notes/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-owner-decoded-slash",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28lMkZvL3IvYmxvYi9tYWluL3dpa2kvYS5tZA",
+      "reason": "owner",
+      "sharedUrl": "https://github.com/o%2Fo/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-owner-encoded-space",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL2ElMjBiL3IvYmxvYi9tYWluL3dpa2kvYS5tZA",
+      "reason": "owner",
+      "sharedUrl": "https://github.com/a%20b/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-repo-encoded-space",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vciUyMHgvYmxvYi9tYWluL3dpa2kvYS5tZA",
+      "reason": "repo",
+      "sharedUrl": "https://github.com/o/r%20x/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-ip-authority",
+      "token": "AgABaHR0cHM6Ly8xMjcuMC4wLjEvby9yL2Jsb2IvbWFpbi93aWtpL2EubWQ",
+      "reason": "authority",
+      "sharedUrl": "https://127.0.0.1/o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-overlong-dns-authority",
+      "token": "AgABaHR0cHM6Ly9hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEuYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiLmNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYy5kZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkLmNvbS9vL3IvYmxvYi9tYWluL3dpa2kvYS5tZA",
+      "reason": "authority",
+      "sharedUrl": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.com/o/r/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-repo-dotgit",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vLmdpdC9ibG9iL21haW4vd2lraS9hLm1k",
+      "reason": "repo",
+      "sharedUrl": "https://github.com/o/.git/blob/main/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-invalid-branch",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL2JhZCUzQXJlZi93aWtpL2EubWQ",
+      "reason": "branch",
+      "sharedUrl": "https://github.com/o/r/blob/bad%3Aref/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-lowercase-percent",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL2ZlYXQlMmZzaGFyZS93aWtpL2EubWQ",
+      "reason": "canonical-percent",
+      "sharedUrl": "https://github.com/o/r/blob/feat%2fshare/wiki/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-decoded-slash",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hJTJGYi5tZA",
+      "reason": "target",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a%2Fb.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-backslash",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hJTVDYi5tZA",
+      "reason": "target",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a%5Cb.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-raw-dot",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS8uL2EubWQ",
+      "reason": "pre-normalization",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/./a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-encoded-dotdot",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS8lMkUlMkUvYS5tZA",
+      "reason": "pre-normalization",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/%2E%2E/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-dotgit",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS8uZ2l0L2EubWQ",
+      "reason": "target",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/.git/a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-nul",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hJTAwYi5tZA",
+      "reason": "target",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a%00b.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-target-del",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hJTdGYi5tZA",
+      "reason": "target",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a%7Fb.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-malformed-percent",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS9hJVpaLm1k",
+      "reason": "percent",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki/a%ZZ.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-empty-segment",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraS8vYS5tZA",
+      "reason": "target",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki//a.md",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-tree-trailing-slash",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci90cmVlL21haW4vd2lraS8",
+      "reason": "tree-root",
+      "sharedUrl": "https://github.com/o/r/tree/main/wiki/",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-blob-empty-after-projection",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL28vci9ibG9iL21haW4vd2lraQ",
+      "reason": "target-kind",
+      "sharedUrl": "https://github.com/o/r/blob/main/wiki",
+      "contentRootDepth": 1
+    },
+    {
+      "id": "v2-noncanonical-base64-alias",
+      "token": "AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS90cmVlL21haW4vd2lraR",
+      "reason": "canonical-base64"
+    }
+  ],
+  "unsupportedTokens": [
+    {
+      "id": "future-v3",
+      "token": "AwABAg",
+      "version": 3
+    }
+  ],
+  "customSchemeCases": [
+    {
+      "id": "v2-token-only",
+      "uri": "openknowledge://share?token=AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL21haW4vd2lraS9tb2R1bGVzL2JhY2tlbmQtbGlicmFyaWVzLm1k",
+      "baseline": "invalid",
+      "updated": "ok"
+    },
+    {
+      "id": "v2-token-plus-url",
+      "uri": "openknowledge://share?token=AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL21haW4vd2lraS9tb2R1bGVzL2JhY2tlbmQtbGlicmFyaWVzLm1k&url=https%3A%2F%2Fgithub.com%2Finkeep%2Fopen-knowledge%2Fblob%2Fmain%2Fwiki%2Fmodules%2Fbackend-libraries.md",
+      "baseline": "ok-v1-url",
+      "updated": "invalid"
+    },
+    {
+      "id": "v2-duplicate-token",
+      "uri": "openknowledge://share?token=AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS9ibG9iL21haW4vd2lraS9tb2R1bGVzL2JhY2tlbmQtbGlicmFyaWVzLm1k&token=AgABaHR0cHM6Ly9naXRodWIuY29tL2lua2VlcC9vcGVuLWtub3dsZWRnZS90cmVlL21haW4vd2lraS9tb2R1bGVz",
+      "baseline": "invalid",
+      "updated": "invalid"
+    },
+    {
+      "id": "v2-empty-token",
+      "uri": "openknowledge://share?token=",
+      "baseline": "invalid",
+      "updated": "invalid"
+    },
+    {
+      "id": "future-token-only",
+      "uri": "openknowledge://share?token=AwABAg",
+      "baseline": "invalid",
+      "updated": "unsupported-version"
+    },
+    {
+      "id": "historical-v1-url",
+      "uri": "openknowledge://share?url=https%3A%2F%2Fgithub.com%2Finkeep%2Fopen-knowledge%2Fblob%2Fmain%2Fdocs%2Fguide.md",
+      "baseline": "ok-v1-url",
+      "updated": "ok-v1-url"
+    }
+  ]
+}

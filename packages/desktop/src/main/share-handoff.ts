@@ -71,7 +71,8 @@ function isLoopbackHttpUrl(value: string): boolean {
 }
 
 /** Upper bound on the redeemed token — matches the web `MAX_TOKEN_LENGTH`. */
-const MAX_TOKEN_LENGTH = 4096;
+const MAX_LEGACY_TOKEN_LENGTH = 4096;
+const MAX_V2_TOKEN_LENGTH = 3984;
 /** base64url alphabet — the token is `encodeShareUrl` output. */
 const TOKEN_RE = /^[A-Za-z0-9_-]+$/;
 
@@ -95,9 +96,18 @@ export function nonceMatches(expected: string, candidate: string | null): boolea
 }
 
 function isValidToken(token: string | null): token is string {
-  return (
-    token !== null && token.length > 0 && token.length <= MAX_TOKEN_LENGTH && TOKEN_RE.test(token)
-  );
+  if (token === null || token.length === 0) return false;
+  const maxLength = peekShareVersion(token) === 2 ? MAX_V2_TOKEN_LENGTH : MAX_LEGACY_TOKEN_LENGTH;
+  return token.length <= maxLength && TOKEN_RE.test(token);
+}
+
+function peekShareVersion(token: string): number | null {
+  if (token.length < 2) return null;
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const first = alphabet.indexOf(token[0]);
+  const second = alphabet.indexOf(token[1]);
+  if (first < 0 || second < 0) return null;
+  return (first << 2) | (second >>> 4);
 }
 
 /** The URL the app opens in the default browser to start the handshake. */
@@ -236,7 +246,14 @@ export function startFirstRunHandshake(deps: FirstRunHandshakeDeps): void {
     try {
       const parsed = parseRedeemRequestUrl(req.url ?? '/', 'http://127.0.0.1');
       decision = classifyRedeemRequest({ ...parsed, expectedNonce: nonce, continueBase });
-    } catch {
+    } catch (err) {
+      // Surface the parse-failure kind (bounded) so a malformed redeem request is
+      // diagnosable, matching the errorKind logging on the rest of the receive
+      // path; the outcome is still recorded below as `invalid`.
+      deps.log?.warn(
+        { errorKind: err instanceof Error ? err.name : typeof err },
+        '[receive] source=deferred redeem request parse threw',
+      );
       decision = { kind: 'invalid' };
     }
 
@@ -261,7 +278,10 @@ export function startFirstRunHandshake(deps: FirstRunHandshakeDeps): void {
       try {
         deps.routeShareUrl(decision.shareUrl);
       } catch (err) {
-        deps.log?.warn({ err }, '[receive] source=deferred routeShareUrl threw');
+        deps.log?.warn(
+          { errorKind: err instanceof Error ? err.name : typeof err },
+          '[receive] source=deferred routeShareUrl threw',
+        );
       }
     } else {
       res.statusCode = 400;

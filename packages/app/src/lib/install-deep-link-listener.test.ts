@@ -234,6 +234,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
     expect(pendingReceiveNavStore.getSnapshot()).toEqual({
       kind: 'doc',
       path: normalizeTargetPath('notes/plan').normalizedTarget,
+      repositoryPath: 'notes/plan',
       branch: 'feature',
     });
   });
@@ -267,6 +268,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
     expect(missDialogStore.getSnapshot()).toEqual({
       kind: 'doc',
       path: 'notes/plan',
+      repositoryPath: 'notes/plan',
       branch: 'feature',
     });
     expect(pendingReceiveNavStore.getSnapshot()).toBeNull();
@@ -281,6 +283,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
     expect(missDialogStore.getSnapshot()).toEqual({
       kind: 'folder',
       path: 'docs/sub',
+      repositoryPath: 'docs/sub',
       branch: null,
     });
     expect(pendingReceiveNavStore.getSnapshot()).toBeNull();

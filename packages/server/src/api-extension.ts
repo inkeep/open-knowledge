@@ -19956,14 +19956,14 @@ export function createApiExtension(
         if (contentRel === null) {
           throw new Error('content dir is not contained within the project dir');
         }
-        // Known limitation: when `content.dir !== '.'`, a NON-root doc/folder
-        // share URL omits the content.dir prefix, so the raw github.com link
-        // points one level too shallow. A correct fix needs receiver-side
-        // content.dir resolution — the in-app receive nav is content-relative
-        // and lands correctly, so prefixing the URL here would double-count
-        // against it. Until that lands, warn so the mis-point is discoverable
-        // in ops rather than silent. The dominant `content.dir === '.'` case
-        // (contentRel === '') is fully correct.
+        // A non-root content.dir link keeps its historical shallow source URL:
+        // the content-relative target is NOT prefixed with content.dir. Older
+        // installed apps treat a received URL as the content-relative path
+        // directly, and in-app receive navigation is already content-relative and
+        // lands correctly — so prefixing content.dir into the source here would
+        // double-count against the receiver. The tradeoff is that the raw
+        // github.com link may point one level too shallow; warn so that mis-point
+        // is observable in ops rather than silent.
         const sharingNonRootTarget =
           body.kind === 'doc' ? body.docPath !== '' : body.folderPath !== '';
         if (contentRel !== '' && sharingNonRootTarget) {
@@ -20085,6 +20085,9 @@ export function createApiExtension(
           );
           return;
         }
+        // The desktop sends the URL-derived repository coordinate explicitly.
+        // V1 has no mount metadata and must never be re-rooted from receiver
+        // config; v2 already projected its separate content target at decode.
         const info = await computeBranchInfo(projectDir, branch, path, kind);
         successResponse(res, 200, BranchInfoResponseSchema, info, {
           handler: BRANCH_INFO_HANDLER_TAG,
@@ -20117,6 +20120,22 @@ export function createApiExtension(
    * Updates only remote-tracking refs, no CRDT mutation — so the
    * attribution-sweep meta-test exempts it (see EXEMPT_HANDLERS).
    */
+  function projectRenamedShareTarget(
+    repositoryPath: string,
+    renamedRepositoryPath: string,
+    contentRootDepth: number,
+  ): { verdict: 'renamed'; renamedTo: string } | { verdict: 'unknown' } {
+    const originalSegments = repositoryPath.split('/');
+    const renamedSegments = renamedRepositoryPath.split('/');
+    if (contentRootDepth >= originalSegments.length || contentRootDepth >= renamedSegments.length) {
+      return { verdict: 'unknown' };
+    }
+    for (let index = 0; index < contentRootDepth; index += 1) {
+      if (originalSegments[index] !== renamedSegments[index]) return { verdict: 'unknown' };
+    }
+    return { verdict: 'renamed', renamedTo: renamedSegments.slice(contentRootDepth).join('/') };
+  }
+
   const handleShareTargetStatus = withValidation(
     ShareTargetStatusRequestSchema,
     async (_req, res, body) => {
@@ -20144,21 +20163,17 @@ export function createApiExtension(
           });
           return;
         }
-        // The target lives under content.dir; map the content-relative request
-        // path to the repo-relative path git reads (same join as construct-url;
-        // '' for the dominant content.dir === '.' case).
-        const contentRel = toGitRelativePath(projectDir, contentDir);
-        if (contentRel === null) {
-          throw new Error('content dir is not contained within the project dir');
-        }
-        const gitPath =
-          contentRel === ''
-            ? body.path
-            : body.path === ''
-              ? contentRel
-              : `${contentRel}/${body.path}`;
-        const status = await computeShareTargetStatus(projectDir, body.branch, gitPath, body.kind);
-        successResponse(res, 200, ShareTargetStatusResponseSchema, status, {
+        const status = await computeShareTargetStatus(
+          projectDir,
+          body.branch,
+          body.path,
+          body.kind,
+        );
+        const contentStatus =
+          status.verdict !== 'renamed' || body.contentRootDepth === undefined
+            ? status
+            : projectRenamedShareTarget(body.path, status.renamedTo, body.contentRootDepth);
+        successResponse(res, 200, ShareTargetStatusResponseSchema, contentStatus, {
           handler: SHARE_TARGET_STATUS_HANDLER_TAG,
         });
       } catch (err) {

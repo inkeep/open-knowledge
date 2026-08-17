@@ -33,11 +33,13 @@ function okPayload(
   return {
     kind: 'launcher-miss',
     share: {
+      contentRootDepth: null,
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
       branch: 'main',
       sharedUrl: 'https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md',
+      repositoryTarget: { kind: 'doc', docPath: 'docs/guide.md' },
       target: { kind: 'doc', docPath: 'docs/guide.md' },
       ...overrides,
     },
@@ -433,7 +435,11 @@ describe('ShareReceiveDialog runtime behavior', () => {
       expect(bridge.project.open).toHaveBeenCalledWith({
         entryPoint: 'share-receive',
         path: '/cloned/open-knowledge',
-        pendingDeepLinkTarget: { kind: 'doc', path: 'docs/guide.md' },
+        pendingDeepLinkTarget: {
+          kind: 'doc',
+          path: 'docs/guide.md',
+          repositoryPath: 'docs/guide.md',
+        },
         target: 'new-window',
       }),
     );
@@ -539,7 +545,11 @@ describe('ShareReceiveDialog runtime behavior', () => {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/guide.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/guide.md',
+      repositoryPath: 'docs/guide.md',
+    });
     expect(openArg.pendingShareBranchSwitch).toBeUndefined();
     // Guard the success path: a dropped store.dismiss() would leave a ghost
     // dialog over the newly opened project window.
@@ -606,7 +616,11 @@ describe('ShareReceiveDialog runtime behavior', () => {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/guide.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/guide.md',
+      repositoryPath: 'docs/guide.md',
+    });
     expect(openArg.pendingShareBranchSwitch).toBeUndefined();
     expect(store.dismiss).toHaveBeenCalled();
   });
@@ -631,7 +645,11 @@ describe('ShareReceiveDialog runtime behavior', () => {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/guide.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/guide.md',
+      repositoryPath: 'docs/guide.md',
+    });
     expect(openArg.pendingShareBranchSwitch).toBeUndefined();
     expect(store.dismiss).toHaveBeenCalled();
   });
@@ -659,7 +677,11 @@ describe('ShareReceiveDialog runtime behavior', () => {
       pendingDeepLinkTarget?: unknown;
       pendingShareBranchSwitch?: unknown;
     };
-    expect(openArg.pendingDeepLinkTarget).toEqual({ kind: 'doc', path: 'docs/guide.md' });
+    expect(openArg.pendingDeepLinkTarget).toEqual({
+      kind: 'doc',
+      path: 'docs/guide.md',
+      repositoryPath: 'docs/guide.md',
+    });
     expect(openArg.pendingShareBranchSwitch).toBeUndefined();
     expect(store.dismiss).toHaveBeenCalled();
   });

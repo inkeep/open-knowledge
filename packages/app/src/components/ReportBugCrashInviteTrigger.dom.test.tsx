@@ -93,6 +93,13 @@ function makeCrashBridge(): CrashBridgeStub {
   };
 }
 
+function installCrashBridge(stub: CrashBridgeStub): (() => void) | undefined {
+  // Test setup can install the module singleton before this file runs. Detach
+  // its bridge first so the first test gets the same isolation as later tests.
+  crashInviteStore.install({ bridge: stub.bridge })?.();
+  return crashInviteStore.install({ bridge: stub.bridge });
+}
+
 describe('ReportBugCrashInviteTrigger', () => {
   let uninstall: (() => void) | undefined;
 
@@ -106,7 +113,7 @@ describe('ReportBugCrashInviteTrigger', () => {
 
   test('a crash-detected push opens the crash-invite dialog', async () => {
     const stub = makeCrashBridge();
-    uninstall = crashInviteStore.install({ bridge: stub.bridge });
+    uninstall = installCrashBridge(stub);
     render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -123,7 +130,7 @@ describe('ReportBugCrashInviteTrigger', () => {
 
   test('an invitation delivered before the component mounts is buffered, not dropped', async () => {
     const stub = makeCrashBridge();
-    uninstall = crashInviteStore.install({ bridge: stub.bridge });
+    uninstall = installCrashBridge(stub);
     stub.fire(INVITE);
 
     render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
@@ -142,7 +149,7 @@ describe('ReportBugCrashInviteTrigger', () => {
     // place would carry the first crash's mount-time state onto the second and
     // ship one crash's account stamped with the other's id.
     const stub = makeCrashBridge();
-    uninstall = crashInviteStore.install({ bridge: stub.bridge });
+    uninstall = installCrashBridge(stub);
     render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
 
     stub.fire(INVITE);
@@ -182,7 +189,7 @@ describe('ReportBugCrashInviteTrigger', () => {
 
   test('Not now acks the crash event and closes the invitation', async () => {
     const stub = makeCrashBridge();
-    uninstall = crashInviteStore.install({ bridge: stub.bridge });
+    uninstall = installCrashBridge(stub);
     render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
     stub.fire(INVITE);
     await waitFor(
@@ -205,7 +212,7 @@ describe('ReportBugCrashInviteTrigger', () => {
 
   test('dismissing via Escape also counts as the answer and acks', async () => {
     const stub = makeCrashBridge();
-    uninstall = crashInviteStore.install({ bridge: stub.bridge });
+    uninstall = installCrashBridge(stub);
     render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
     stub.fire(INVITE);
     await waitFor(
