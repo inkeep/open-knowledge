@@ -910,6 +910,7 @@
     "ANFxWn": ["No se pudo eliminar este tema. Actualiza e inténtalo de nuevo."],
     "APNlbk": ["salida ", ["0"]],
     "AQ-Lfg": ["No se pudieron cargar las plantillas"],
+    "AR4s_6": ["El espacio de trabajo se abrió sin él para que la aplicación pudiera iniciarse."],
     "ASqqsQ": ["Máximo ", ["MAX_ATTACHMENTS"], " adjuntos"],
     "AT0e50": ["Conservar ambos"],
     "ATGYL1": ["Dirección de correo"],
@@ -1509,6 +1510,7 @@
       ["display"],
       " por una copia independiente de la habilidad? No se mueve nada más."
     ],
+    "HdS4Ft": ["No se pudo restaurar tu último documento abierto."],
     "HdkSiO": ["Archivo nuevo"],
     "HepFJQ": [
       "Tu informe está guardado en este equipo, así que no se perdió nada. Puedes enviárnoslo por correo."

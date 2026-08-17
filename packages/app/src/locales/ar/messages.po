@@ -12649,6 +12649,10 @@ msgstr "توقفت الطرفية على نحو غير متوقع."
 msgid "The token needs the repo and read:user scopes."
 msgstr "يحتاج الرمز إلى نطاقي repo وread:user."
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "فُتحت مساحة العمل بدونه حتى يتمكن التطبيق من البدء."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "السمة"
@@ -14272,6 +14276,10 @@ msgstr "ينقص رمز GitHub لديك نطاقات مطلوبة. حاول تس
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "أصبحت قاعدة معرفتك على GitHub في <0>{ownerLogin}/{repoName}</0>."
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "تعذّر استعادة آخر مستند مفتوح لديك."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

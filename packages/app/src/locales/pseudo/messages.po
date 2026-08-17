@@ -12645,6 +12645,10 @@ msgstr ""
 msgid "The token needs the repo and read:user scopes."
 msgstr ""
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr ""
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr ""
@@ -14267,6 +14271,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
+msgstr ""
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx

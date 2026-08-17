@@ -12645,6 +12645,10 @@ msgstr "Terminal berhenti tak terduga."
 msgid "The token needs the repo and read:user scopes."
 msgstr "Token itu memerlukan cakupan repo dan read:user."
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "Ruang kerja terbuka tanpanya agar aplikasi dapat dimulai."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Tema"
@@ -14268,6 +14272,10 @@ msgstr "Token GitHub Anda kehilangan cakupan yang wajib. Coba masuk lagi."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "Basis pengetahuan Anda kini ada di GitHub di <0>{ownerLogin}/{repoName}</0>."
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "Dokumen terakhir yang Anda buka tidak dapat dipulihkan."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

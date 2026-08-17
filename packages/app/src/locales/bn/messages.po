@@ -12645,6 +12645,10 @@ msgstr "টার্মিনাল অপ্রত্যাশিতভাব�
 msgid "The token needs the repo and read:user scopes."
 msgstr "টোকেনটির repo ও read:user স্কোপ দরকার।"
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "অ্যাপটি যাতে চালু হতে পারে তাই ওয়ার্কস্পেসটি এটি ছাড়াই খোলা হয়েছে।"
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "থিম"
@@ -14268,6 +14272,10 @@ msgstr "আপনার GitHub টোকেনে আবশ্যক স্ক�
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "আপনার জ্ঞানভাণ্ডার এখন GitHub-এ <0>{ownerLogin}/{repoName}</0>-এ আছে।"
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "আপনার সর্বশেষ খোলা নথি পুনরুদ্ধার করা যায়নি।"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

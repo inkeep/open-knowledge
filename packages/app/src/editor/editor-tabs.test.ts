@@ -748,9 +748,18 @@ describe('preview-tab integration', () => {
   });
 
   test('session persistence waits after a failed empty restore but resumes after a tab opens', () => {
-    expect(shouldPersistTabSession(false, 0)).toBe(false);
-    expect(shouldPersistTabSession(false, 1)).toBe(true);
-    expect(shouldPersistTabSession(true, 0)).toBe(true);
+    expect(shouldPersistTabSession('unread', 0)).toBe(false);
+    expect(shouldPersistTabSession('unread', 1)).toBe(true);
+    expect(shouldPersistTabSession('applied', 0)).toBe(true);
+  });
+
+  test('a suppressed restore never persists, however many tabs the user opens', () => {
+    // The count-based escape hatch above exists for a session we could not
+    // read. A suppressed one IS readable and intact, so opening tabs in the
+    // recovered workspace must never earn the right to replace it.
+    expect(shouldPersistTabSession('suppressed', 0)).toBe(false);
+    expect(shouldPersistTabSession('suppressed', 1)).toBe(false);
+    expect(shouldPersistTabSession('suppressed', 12)).toBe(false);
   });
 
   test('workspace sessions preserve the active tab for each surface', () => {

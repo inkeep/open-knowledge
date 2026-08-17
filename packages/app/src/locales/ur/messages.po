@@ -12649,6 +12649,10 @@ msgstr "ٹرمینل غیر متوقع طور پر رک گیا۔"
 msgid "The token needs the repo and read:user scopes."
 msgstr "ٹوکن کو repo اور read:user دائرہ کار درکار ہیں۔"
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "ایپ شروع ہو سکے اس لیے ورک اسپیس اس کے بغیر کھلی۔"
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "تھیم"
@@ -14272,6 +14276,10 @@ msgstr "آپ کے GitHub ٹوکن میں مطلوبہ دائرہ کار غائب
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "آپ کا نالج بیس اب GitHub پر <0>{ownerLogin}/{repoName}</0> پر ہے۔"
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "آپ کا آخری کھلا دستاویز بحال نہیں کیا جا سکا۔"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

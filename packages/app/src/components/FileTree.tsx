@@ -444,9 +444,35 @@ interface PendingCreate {
   disposeCommitListener: () => void;
 }
 
+// How a pending create is torn down. 'discard' deletes the just-created path
+// from disk — the user cancelled the inline rename, or the create failed.
+// 'detach' only releases the in-memory bookkeeping and leaves the file on
+// disk: a FileTree unmount, including the error-boundary teardown that fires
+// after an app-shell crash, is not a retraction of the create, so it must
+// never delete.
+type PendingCreateCleanupIntent = 'discard' | 'detach';
+
 interface PendingCreateCleanupOptions {
-  updateUi?: boolean;
-  restoreLocation?: boolean;
+  intent: PendingCreateCleanupIntent;
+}
+
+function assertNeverCleanupIntent(intent: never): never {
+  throw new Error(`Unhandled pending-create cleanup intent: ${String(intent)}`);
+}
+
+// Observable, non-UI failure channel for a pending-create cleanup. A detach
+// (FileTree unmount / error-boundary teardown) has no surviving UI to show a
+// failed cleanup, and a discard's toast can die with a crashing tree, so every
+// cleanup failure also reports here at console.error — captured in the crash
+// bundle, distinct from ordinary console.warn — with the kind and path needed
+// to find a file that may still be on disk. Reporting is never gated on
+// caller intent, so suppressing UI can never again suppress failure reporting.
+function reportPendingCreateCleanupFailure(
+  kind: PendingCreate['kind'],
+  path: string,
+  cause: unknown,
+): void {
+  console.error('[FileTree] pending-create cleanup failed', { kind, path, cause });
 }
 
 interface FileTreeDeleteRequest {
@@ -1057,7 +1083,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
   const activeAncestorTreePathsRef = useRef<string[]>([]);
   const pendingCreateRef = useRef<PendingCreate | null>(null);
   const cleanupPendingCreateRef = useRef<
-    (pending: PendingCreate, options?: PendingCreateCleanupOptions) => Promise<void>
+    (pending: PendingCreate, options: PendingCreateCleanupOptions) => Promise<void>
   >(async () => {});
   const skipNextResetSignatureRef = useRef<string | null>(null);
   const hoveredPrewarmDocRef = useRef<string | null>(null);
@@ -1529,13 +1555,26 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
 
   async function cleanupPendingCreate(
     pending: PendingCreate,
-    options: PendingCreateCleanupOptions = {},
+    { intent }: PendingCreateCleanupOptions,
   ) {
-    const updateUi = options.updateUi ?? true;
-    const restoreLocation = options.restoreLocation ?? updateUi;
-
     clearPendingCreate(pending);
-    if (updateUi) setBusyPath(pending.renamePath);
+
+    // A 'detach' releases the pending-create bookkeeping and leaves the file on
+    // disk. It is what a FileTree unmount wants — including the error-boundary
+    // teardown after an app-shell crash — where deleting the file the user just
+    // asked for would be data loss. Only an explicit 'discard' deletes. A new
+    // intent must choose its disk behavior here rather than defaulting into the
+    // delete path below.
+    switch (intent) {
+      case 'detach':
+        return;
+      case 'discard':
+        break;
+      default:
+        return assertNeverCleanupIntent(intent);
+    }
+
+    setBusyPath(pending.renamePath);
 
     try {
       const res = await fetch('/api/delete-path', {
@@ -1555,67 +1594,48 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         // and short-circuit the unreachable arm without ceremony.
         if (parsed.ok) return;
         const detail = parsed.title;
-        const message = t`${detail} - ${kind} "${createdPath}" still exists on disk`;
-        if (updateUi) {
-          toast.error(message);
-        } else {
-          console.warn(`[FileTree] cleanup pending create failed: ${message}`);
-        }
-        if (updateUi) {
-          setBusyPath(null);
-          resetModelToDocuments();
-        }
+        reportPendingCreateCleanupFailure(kind, createdPath, { status: res.status, detail });
+        toast.error(t`${detail} - ${kind} "${createdPath}" still exists on disk`);
+        setBusyPath(null);
+        resetModelToDocuments();
         return;
       }
     } catch (err) {
-      console.warn('[FileTree] cleanup pending create failed:', err);
-      if (updateUi) {
-        const kind = pending.kind;
-        const createdPath = pending.createdPath;
-        toast.error(t`Network error - ${kind} "${createdPath}" still exists on disk`);
-      }
-      if (updateUi) {
-        setBusyPath(null);
-        resetModelToDocuments();
-      }
+      const kind = pending.kind;
+      const createdPath = pending.createdPath;
+      reportPendingCreateCleanupFailure(kind, createdPath, err);
+      toast.error(t`Network error - ${kind} "${createdPath}" still exists on disk`);
+      setBusyPath(null);
+      resetModelToDocuments();
       return;
     }
 
-    if (updateUi) {
-      if (pending.kind === 'file') {
-        closeDocument(pending.createdPath);
-      } else {
-        closeTabs([folderTabId(pending.createdPath)], { force: true });
-      }
+    if (pending.kind === 'file') {
+      closeDocument(pending.createdPath);
+    } else {
+      closeTabs([folderTabId(pending.createdPath)], { force: true });
     }
-    if (updateUi) {
-      setDocuments((current) => {
-        const next = applyDeleteToDocuments(
-          current,
-          pending.kind === 'file' ? [pending.createdPath] : [],
-          pending.kind === 'folder' ? pending.createdPath : undefined,
-        );
-        markNextDocumentsAsApplied(next);
-        return next;
-      });
-    }
+    setDocuments((current) => {
+      const next = applyDeleteToDocuments(
+        current,
+        pending.kind === 'file' ? [pending.createdPath] : [],
+        pending.kind === 'folder' ? pending.createdPath : undefined,
+      );
+      markNextDocumentsAsApplied(next);
+      return next;
+    });
     emitDocumentsChanged(['files', 'backlinks', 'graph']);
-    if (restoreLocation) window.location.hash = pending.previousHash;
-    if (updateUi) setBusyPath(null);
+    window.location.hash = pending.previousHash;
+    setBusyPath(null);
   }
 
   useEffect(() => {
     return () => {
       const pending = pendingCreateRef.current;
       if (pending) {
-        void cleanupPendingCreateRef
-          .current(pending, {
-            restoreLocation: false,
-            updateUi: false,
-          })
-          .catch((err) => {
-            console.warn('[FileTree] unmount cleanup failed:', err);
-          });
+        void cleanupPendingCreateRef.current(pending, { intent: 'detach' }).catch((err) => {
+          reportPendingCreateCleanupFailure(pending.kind, pending.createdPath, err);
+        });
       }
     };
   }, []);
@@ -1723,7 +1743,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     return model.onMutation('remove', (event) => {
       const pending = pendingCreateRef.current;
       if (!pending || event.path !== pending.renamePath) return;
-      void cleanupPendingCreateRef.current(pending);
+      void cleanupPendingCreateRef.current(pending, { intent: 'discard' });
     });
   }, [model]);
 
@@ -1901,7 +1921,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         resetModelToDocuments();
         const pending = pendingCreateRef.current;
         if (pending && pending.renamePath === sourceTreePath) {
-          await cleanupPendingCreate(pending);
+          await cleanupPendingCreate(pending, { intent: 'discard' });
         } else {
           clearPendingCreate();
         }
@@ -1961,7 +1981,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       resetModelToDocuments();
       const pending = pendingCreateRef.current;
       if (pending && pending.renamePath === sourceTreePath) {
-        await cleanupPendingCreate(pending);
+        await cleanupPendingCreate(pending, { intent: 'discard' });
       } else {
         clearPendingCreate();
       }
@@ -2349,7 +2369,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       toast.error(t`Could not start creating a new item`);
       const pending = pendingCreateRef.current;
       if (pending) {
-        await cleanupPendingCreate(pending);
+        await cleanupPendingCreate(pending, { intent: 'discard' });
       } else {
         clearPendingCreate();
       }

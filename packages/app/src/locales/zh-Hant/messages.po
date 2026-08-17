@@ -12649,6 +12649,10 @@ msgstr "終端機非預期地停止了。"
 msgid "The token needs the repo and read:user scopes."
 msgstr "這個權杖需要 repo 和 read:user 權限範圍。"
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "工作區在不載入它的情況下開啟，讓應用程式能夠啟動。"
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "主題"
@@ -14272,6 +14276,10 @@ msgstr "你的 GitHub 權杖缺少必要的權限範圍。請試著重新登入�
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "你的知識庫現在已經在 GitHub 上，位置是 <0>{ownerLogin}/{repoName}</0>。"
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "無法還原你上次開啟的文件。"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

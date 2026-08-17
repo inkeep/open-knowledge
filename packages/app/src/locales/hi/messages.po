@@ -12645,6 +12645,10 @@ msgstr "टर्मिनल अप्रत्याशित रूप से
 msgid "The token needs the repo and read:user scopes."
 msgstr "टोकन को repo और read:user स्कोप चाहिए।"
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "ऐप शुरू हो सके इसलिए कार्यक्षेत्र उसके बिना खुला।"
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "थीम"
@@ -14268,6 +14272,10 @@ msgstr "आपके GitHub टोकन में आवश्यक स्क�
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "आपका ज्ञान आधार अब GitHub पर <0>{ownerLogin}/{repoName}</0> पर है।"
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "आपका पिछला खुला दस्तावेज़ पुनर्स्थापित नहीं किया जा सका।"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

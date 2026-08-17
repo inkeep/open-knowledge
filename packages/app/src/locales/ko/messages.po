@@ -12649,6 +12649,10 @@ msgstr "터미널 예기치 않게 중지됨."
 msgid "The token needs the repo and read:user scopes."
 msgstr "토큰에 repo 및 read:user 범위가 필요합니다."
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "앱을 시작할 수 있도록 해당 문서 없이 워크스페이스를 열었습니다."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "테마"
@@ -14272,6 +14276,10 @@ msgstr "GitHub 토큰에 필요한 범위가 없습니다. 다시 로그인하�
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "지식 베이스가 이제 GitHub의 <0>{ownerLogin}/{repoName}</0>에 있습니다."
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "마지막으로 열려 있던 문서를 복원할 수 없습니다."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

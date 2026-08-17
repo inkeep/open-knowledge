@@ -12649,6 +12649,10 @@ msgstr "The terminal stopped unexpectedly."
 msgid "The token needs the repo and read:user scopes."
 msgstr "The token needs the repo and read:user scopes."
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "The workspace opened without it so the app could start."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Theme"
@@ -14272,6 +14276,10 @@ msgstr "Your GitHub token is missing required scopes. Try signing in again."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "Your last open document couldn't be restored."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

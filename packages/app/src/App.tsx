@@ -61,6 +61,7 @@ import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
+import { consumeHashNavigationSuppression } from '@/lib/tab-session-restore-suppression';
 import { useServerKeepalive } from '@/lib/use-server-keepalive';
 import {
   isSettingsHashOpen,
@@ -227,6 +228,25 @@ function NavigationHandler() {
     tabSessionLoaded,
     targetsSignature,
   ]);
+
+  // A repeat app-shell crash armed recovery suppression. The session-restore
+  // paths skip their reads, but the crashed tab is also mirrored into the URL
+  // hash, and the hash effect below re-resolves it on mount and on every dep
+  // change — reopening the very document the recovery just dropped. Drop the
+  // stale hash once instead (no history entry, no hashchange event, storage
+  // untouched); the user's next navigation writes a fresh hash and proceeds
+  // normally. Declared before the hash effect so it runs first at mount.
+  // Overlay-dialog hashes stay: they portal over the editor and cannot reopen
+  // a document.
+  useEffect(() => {
+    if (
+      consumeHashNavigationSuppression() &&
+      window.location.hash !== '' &&
+      !isAuxiliaryDialogHash(window.location.hash)
+    ) {
+      replaceHashWithoutNavigation('');
+    }
+  }, []);
 
   useEffect(() => {
     if (!tabSessionLoaded && window.okDesktop?.config.mode === 'editor') return;

@@ -12649,6 +12649,10 @@ msgstr "Le terminal s'est arrêté de façon inattendue."
 msgid "The token needs the repo and read:user scopes."
 msgstr "Le jeton doit avoir les portées repo et read:user."
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "L'espace de travail s'est ouvert sans lui pour que l'application puisse démarrer."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Thème"
@@ -14272,6 +14276,10 @@ msgstr "Il manque des portées obligatoires à votre jeton GitHub. Essayez de vo
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "Votre base de connaissances est désormais sur GitHub, à l'adresse <0>{ownerLogin}/{repoName}</0>."
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "Impossible de restaurer votre dernier document ouvert."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

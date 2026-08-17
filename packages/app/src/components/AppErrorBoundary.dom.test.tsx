@@ -9,6 +9,11 @@ import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  consumeHashNavigationSuppression,
+  resetTabSessionRestoreSuppression,
+  shouldSuppressTabSessionRestore,
+} from '@/lib/tab-session-restore-suppression';
 import { AppErrorBoundary, CrashReportingBoundary } from './AppErrorBoundary';
 import { DocumentErrorBoundary } from './DocumentErrorBoundary';
 
@@ -96,6 +101,7 @@ describe('AppErrorBoundary', () => {
 
   beforeEach(() => {
     shouldThrow = false;
+    resetTabSessionRestoreSuppression();
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
@@ -103,6 +109,11 @@ describe('AppErrorBoundary', () => {
   afterEach(() => {
     cleanup();
     clearBugReportBridge();
+    resetTabSessionRestoreSuppression();
+    // The restore reset deliberately leaves the hash-navigation latch armed, so
+    // a repeat-crash test would otherwise leak it into the next test in this
+    // file (module scope is shared; isolate is per-file).
+    consumeHashNavigationSuppression();
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
   });
@@ -157,6 +168,44 @@ describe('AppErrorBoundary', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(screen.getByTestId('payload').textContent).toBe('shell');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('a repeat crash on the same error stops Try again from replaying the persisted tab session', async () => {
+    // Stands in for the document workspace: on each mount it consults the real
+    // restore-suppression signal and, unless suppressed, "restores" the persisted
+    // tab — which reopens the crashing document and re-throws, creating the crash
+    // loop that makes Try again non-functional. Rendered state (alert vs recovered) is
+    // the signal, not render count: React re-renders a throwing child several
+    // times per trip, but onError (which records the trip) fires once.
+    function RestoringWorkspace() {
+      if (shouldSuppressTabSessionRestore()) {
+        return <span data-testid="recovered-empty">recovered without the last document</span>;
+      }
+      throw new Error('restored-document boom');
+    }
+
+    render(
+      <AppErrorBoundary>
+        <RestoringWorkspace />
+      </AppErrorBoundary>,
+    );
+    const user = userEvent.setup();
+
+    // First trip: restoring the persisted tab crashed the shell.
+    expect(screen.getByRole('alert')).not.toBeNull();
+    expect(screen.queryByTestId('recovered-empty')).toBeNull();
+
+    // Second trip: the first Try again restored again and the same crash fired
+    // again — proof the first trip did NOT suppress (a single crash still restores).
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByRole('alert')).not.toBeNull();
+    expect(screen.queryByTestId('recovered-empty')).toBeNull();
+
+    // The repeat has now armed suppression, so the next Try again recovers WITHOUT
+    // replaying the persisted tab: the crashing document is not reopened.
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByTestId('recovered-empty')).not.toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 

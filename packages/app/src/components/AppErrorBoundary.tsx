@@ -20,6 +20,7 @@ import { OkBlobRunnerEasterEgg } from '@/components/OkBlobRunnerEasterEgg';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { Button } from '@/components/ui/button';
 import { recallComponentStack, rememberComponentStack } from '@/lib/component-stack-registry';
+import { recordAppShellCrashTrip } from '@/lib/tab-session-restore-suppression';
 
 function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const { t } = useLingui();
@@ -92,6 +93,10 @@ export function AppErrorBoundary({ children }: { children: React.ReactNode }) {
       FallbackComponent={AppErrorFallback}
       onError={(error, info) => {
         rememberComponentStack(error, info.componentStack);
+        // A second trip on the same error is the crash loop "Try again" cannot
+        // escape on its own: the remount re-restores the crashing tab. Recording
+        // the trip lets the next reset skip that restore.
+        recordAppShellCrashTrip(error);
         // The component stack is logged alongside the error because a packaged
         // build's minified message + mangled JS stack name nothing on their own.
         console.error(

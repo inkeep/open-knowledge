@@ -27,6 +27,11 @@ import { markNoteWindowDocDeleted } from '@/lib/note-window-deleted-store';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { mark } from '@/lib/perf';
 import { refreshServerInfo } from '@/lib/server-info-refresh';
+import { showTabSessionRestoreRecoveryNotice } from '@/lib/tab-session-restore-recovery-notice';
+import {
+  resetTabSessionRestoreSuppression,
+  shouldSuppressTabSessionRestore,
+} from '@/lib/tab-session-restore-suppression';
 import { useCollabUrl } from '@/lib/use-collab-url';
 import { getEditorForDoc } from './active-editor';
 import { handleBranchSwitched } from './branch-invalidation';
@@ -77,6 +82,7 @@ import {
   shouldPersistTabSession,
   skillFileTabId,
   skillPreviewTabId,
+  type TabSessionRestoreOutcome,
   tabIdForNavigationTarget,
   writeLocalTabSessionState,
 } from './editor-tabs';
@@ -646,7 +652,12 @@ function workspaceWithResolvedTargets(workspace: EditorWorkspaceState): EditorWo
 }
 
 function readInitialEditorWorkspace(): EditorWorkspaceState {
-  const session = readInitialLocalTabSession();
+  // Only PEEKS the suppression latch — the async restore effect is the single
+  // owner that resets it, so this initializer (which renders first) and that
+  // effect both observe the same armed value on a suppressed mount.
+  const session = shouldSuppressTabSessionRestore()
+    ? parseEditorTabSessionState(null)
+    : readInitialLocalTabSession();
   return workspaceWithResolvedTargets(
     hydrateEditorWorkspace({ panes: session.panes, focusedPaneId: session.focusedPaneId }),
   );
@@ -848,10 +859,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   // ref — the restore merge is additive, so an opened-during-restore tab
   // coexists with the restored set without collision.
   const tabSessionUserClosedRef = useRef(false);
-  // Only true once a session read RESOLVES this mount. Guards the persist
-  // effect below so a failed restore never overwrites the stored session with
-  // our empty in-memory state (a rejected read leaves it false → no write).
-  const restoreSucceededRef = useRef(false);
+  // How this mount's restore ended. Guards the persist effect below so an
+  // in-memory workspace that is not a continuation of the stored session never
+  // overwrites it. Starts at 'unread': a rejected read leaves it there, and
+  // only a resolved read promotes it to 'applied'.
+  const restoreOutcomeRef = useRef<TabSessionRestoreOutcome>('unread');
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [systemProvider, setSystemProvider] = useState<HocuspocusProvider | null>(null);
   const [docPanelMode, setDocPanelModeState] = useState<'doc' | 'agent'>('doc');
@@ -999,6 +1011,23 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: workspace mutations read the live ref; collaboration readiness and load state are the restore triggers.
   useEffect(() => {
     if (collabUrl === null || tabSessionLoaded) return;
+    // A repeat app-shell crash armed restore suppression. Skip the read that
+    // would reopen the crashing document (bridge or localStorage alike, since
+    // this precedes that choice), then reset so the next mount or a reload
+    // restores normally — suppression covers exactly one recovery, not the
+    // session. The stored session is left untouched here, and recording the
+    // outcome keeps it that way for the whole recovery mount: what the user
+    // builds from the empty workspace is not a continuation of the session we
+    // declined to open, so it must not be written over it. A notice tells the
+    // user the last document could not be restored, so the recovered empty
+    // workspace does not read as a forgotten tab.
+    if (shouldSuppressTabSessionRestore()) {
+      resetTabSessionRestoreSuppression();
+      showTabSessionRestoreRecoveryNotice();
+      restoreOutcomeRef.current = 'suppressed';
+      setTabSessionLoaded(true);
+      return;
+    }
     let cancelled = false;
     const bridge = getDesktopBridge();
     const localKey = getLocalTabSessionKey();
@@ -1011,7 +1040,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
     loaded
       .then((raw) => {
-        restoreSucceededRef.current = true;
+        restoreOutcomeRef.current = 'applied';
         if (cancelled) return;
         const state = parseEditorTabSessionState(raw);
         if (tabSessionUserClosedRef.current) return;
@@ -1123,7 +1152,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!tabSessionLoaded) return;
-    if (!shouldPersistTabSession(restoreSucceededRef.current, openTabs.length)) return;
+    if (!shouldPersistTabSession(restoreOutcomeRef.current, openTabs.length)) return;
     const state = createEditorTabSessionState(workspace, activeTabByModeRef.current);
     const bridge = getDesktopBridge();
     if (bridge) {

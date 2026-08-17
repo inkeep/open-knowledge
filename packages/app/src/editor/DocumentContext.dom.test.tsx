@@ -1,10 +1,17 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode, useLayoutEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { Toaster } from '@/components/ui/sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
+import {
+  consumeHashNavigationSuppression,
+  recordAppShellCrashTrip,
+  resetTabSessionRestoreSuppression,
+} from '@/lib/tab-session-restore-suppression';
 import { assetTabId, docTabId, localTabSessionStorageKey, skillFileTabId } from './editor-tabs';
 import {
   requestPreviewTabPromotion,
@@ -1245,6 +1252,85 @@ describe('DocumentContext syncOpenTabsWithKnownTargets — cold-start hash prese
   });
 });
 
+describe('DocumentContext repeat-crash recovery notice', () => {
+  const RECOVERY_NOTICE = /last open document couldn't be restored/i;
+
+  afterEach(() => {
+    cleanup();
+    // The notice lives until dismissed; clear it so it cannot bleed across tests.
+    toast.dismiss();
+    delete window.okDesktop;
+    mockCollabUrl = null;
+    globalThis.fetch = originalFetch;
+    window.localStorage.clear();
+    window.location.hash = '';
+    resetTabSessionRestoreSuppression();
+    // The restore reset deliberately leaves the hash-navigation latch armed, so
+    // a repeat-crash test would otherwise leak it into the next test in this
+    // file (module scope is shared; isolate is per-file).
+    consumeHashNavigationSuppression();
+  });
+
+  function renderWithToaster() {
+    render(
+      <>
+        <PaneWorkspaceHarness />
+        <Toaster closeButton />
+      </>,
+      { wrapper: ProviderHarness },
+    );
+  }
+
+  test('tells the user the last document could not be restored when a repeat crash suppresses the bridge session', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    // The same OTHER_TAB_ID session the normal-restore test below reopens over
+    // the bridge — here a repeat crash armed suppression, so it must not reopen.
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-07-28T00:00:00.000Z').toISOString(),
+      ),
+    );
+    window.okDesktop = stub.bridge;
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    renderWithToaster();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    // The crashing document stayed closed AND the empty workspace is explained.
+    expect(screen.getByTestId('active-pane-tab').textContent).toBe('');
+    await screen.findByText(RECOVERY_NOTICE);
+  });
+
+  test('shows no notice when the bridge session restores normally', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-07-28T00:00:00.000Z').toISOString(),
+      ),
+    );
+    window.okDesktop = stub.bridge;
+
+    renderWithToaster();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+      expect(screen.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
+    });
+    expect(screen.queryByText(RECOVERY_NOTICE)).toBeNull();
+  });
+});
+
 describe('DocumentContext tab restore', () => {
   afterEach(() => {
     cleanup();
@@ -1253,6 +1339,135 @@ describe('DocumentContext tab restore', () => {
     globalThis.fetch = originalFetch;
     window.localStorage.clear();
     window.location.hash = '';
+    resetTabSessionRestoreSuppression();
+    // The restore reset deliberately leaves the hash-navigation latch armed, so
+    // a repeat-crash test would otherwise leak it into the next test in this
+    // file (module scope is shared; isolate is per-file).
+    consumeHashNavigationSuppression();
+  });
+
+  test('suppresses the synchronous web session restore after a repeat app-shell crash', () => {
+    // Web mode, so no okDesktop bridge. Leaving collabUrl null keeps the async
+    // restore effect early-returning, which isolates the synchronous initializer
+    // as the only thing that can decide the first painted workspace. Sibling
+    // tests seed the same session and see OTHER_TAB_ID active on first render.
+    seedActiveOtherTabSession();
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+
+    expect(screen.getByTestId('active-tab').textContent).toBe('');
+    expect(screen.getByTestId('open-tabs').textContent).toBe('');
+  });
+
+  test('restores the web session on a first crash trip', () => {
+    // One trip is not a repeat, so the session still restores. The suppression
+    // case records two same-key trips; without this counterpart, a latch that
+    // armed on every crash would satisfy that case while breaking ordinary
+    // single-crash recovery.
+    seedActiveOtherTabSession();
+    recordAppShellCrashTrip(new Error('first crash'));
+
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+
+    expect(screen.getByTestId('active-tab').textContent).toBe(OTHER_TAB_ID);
+  });
+
+  test('a suppressed recovery leaves the stored session intact while the workspace is empty', async () => {
+    // The suppressed branch marks the session loaded, which arms the persist
+    // effect. This pins the quiet half: nothing is written before the user
+    // touches anything. The bridge and web open-a-tab cases cover the half that
+    // actually bites, where the recovered one-tab workspace would otherwise
+    // replace the whole stored session.
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    const setSessionState = vi.fn(async () => undefined);
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-07-28T00:00:00.000Z').toISOString(),
+      ),
+    );
+    stub.bridge.project.setSessionState = setSessionState as never;
+    window.okDesktop = stub.bridge;
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    expect(setSessionState).not.toHaveBeenCalled();
+  });
+
+  test('opening a tab after a suppressed bridge recovery does not overwrite the stored session', async () => {
+    // The recovered workspace is deliberately NOT what the user left behind, so
+    // it is never a faithful continuation of the stored session. Persisting it
+    // over the readable session we chose not to apply would drop every other
+    // tab, pin and pane the user still has stored.
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    const setSessionState = vi.fn(async () => undefined);
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [PINNED_TAB_ID, OTHER_TAB_ID],
+        [PINNED_TAB_ID],
+        OTHER_TAB_ID,
+        new Date('2026-07-28T00:00:00.000Z').toISOString(),
+      ),
+    );
+    stub.bridge.project.setSessionState = setSessionState as never;
+    window.okDesktop = stub.bridge;
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open existing third' }));
+
+    // The open itself must land — otherwise the assertion below would hold for
+    // the wrong reason.
+    await waitFor(() => {
+      expect(screen.getByTestId('pane-tabs').textContent).toContain(THIRD_TAB_ID);
+    });
+    expect(setSessionState).not.toHaveBeenCalled();
+  });
+
+  test('opening a tab after a suppressed web recovery does not overwrite the stored session', async () => {
+    // Same invariant on the localStorage host, where the write replaces the
+    // stored value outright rather than going through the bridge.
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    seedTabSession();
+    const storageKey = localTabSessionStorageKey(window.location.origin);
+    const storedBefore = window.localStorage.getItem(storageKey);
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open existing third' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pane-tabs').textContent).toContain(THIRD_TAB_ID);
+    });
+    const storedAfter = window.localStorage.getItem(storageKey);
+    expect(storedAfter).toBe(storedBefore);
+    const parsed = JSON.parse(storedAfter ?? '{}');
+    expect(parsed.panes[0].openTabs).toEqual([PINNED_TAB_ID, OTHER_TAB_ID]);
+    expect(parsed.panes[0].pinnedTabIds).toEqual([PINNED_TAB_ID]);
   });
 
   test('restores the desktop session before collaboration identity resolves', async () => {
@@ -1278,6 +1493,66 @@ describe('DocumentContext tab restore', () => {
     await waitFor(() => {
       expect(screen.getByTestId('session-loaded').textContent).toBe('true');
       expect(screen.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
+    });
+  });
+
+  test('suppresses the desktop bridge session restore after a repeat app-shell crash', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    // The same OTHER_TAB_ID session the normal-restore case reopens over the
+    // bridge — here it must NOT reopen, because a repeat crash armed suppression.
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-07-28T00:00:00.000Z').toISOString(),
+      ),
+    );
+    window.okDesktop = stub.bridge;
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    expect(screen.getByTestId('active-pane-tab').textContent).toBe('');
+  });
+
+  test('a later mount with no new crash trips restores the session the recovery suppressed', async () => {
+    // Pins that the recovery mount RESETS the latch, not merely reads it. A
+    // repeat crash suppresses exactly one restore; the very next mount — with
+    // no new trips — must restore normally. Without the effect's reset,
+    // suppression would outlive its single recovery and strand the tab for the
+    // rest of the session.
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-07-28T00:00:00.000Z').toISOString(),
+      ),
+    );
+    window.okDesktop = stub.bridge;
+    recordAppShellCrashTrip(new Error('same crash'));
+    recordAppShellCrashTrip(new Error('same crash'));
+
+    const first = render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+    await waitFor(() => {
+      expect(first.getByTestId('session-loaded').textContent).toBe('true');
+    });
+    expect(first.getByTestId('active-pane-tab').textContent).toBe('');
+    first.unmount();
+
+    // A fresh mount with the latch already consumed: the crashing tab returns.
+    const second = render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+    await waitFor(() => {
+      expect(second.getByTestId('session-loaded').textContent).toBe('true');
+      expect(second.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
     });
   });
 

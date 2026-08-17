@@ -9,10 +9,11 @@
  * Mocks `PageListContext.usePageList` to intercept `addPage`.
  */
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MouseEventHandler, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { folderTabId } from '@/editor/editor-tabs';
 import type { FileEntry } from './file-tree-utils';
 
 type MenuItemProps = {
@@ -51,6 +52,10 @@ function MenuSeparator() {
 const toastSuccessMock = vi.fn(() => {});
 const toastErrorMock = vi.fn(() => {});
 const addPageMock = vi.fn(() => {});
+// usePageList always returns these alongside addPage; the create flow reads
+// pageMeta.get / pages.has while opening the new doc, so stub both.
+const pageMetaMock = new Map<string, { size: number }>();
+const pagesMock = new Set<string>();
 const openTargetMock = vi.fn(() => {});
 const notifySidebarFileSelectedMock = vi.fn(() => {});
 const closeTabsMock = vi.fn(() => {});
@@ -157,12 +162,21 @@ class StubModel {
     }
   }
 
+  removeListeners: Array<(event: { path: string }) => void> = [];
+
   subscribe() {
     return () => {};
   }
 
-  onMutation() {
+  onMutation(type: string, listener: (event: { path: string }) => void) {
+    if (type === 'remove') this.removeListeners.push(listener);
     return () => {};
+  }
+
+  // Pierre fires a 'remove' mutation when a user cancels a removeIfCanceled
+  // inline rename; the component treats that as the user-cancel signal.
+  emitRemove(path: string) {
+    for (const listener of this.removeListeners) listener({ path });
   }
 
   isSearchOpen() {
@@ -184,6 +198,12 @@ let createResponse: unknown;
 let createStatus = 200;
 let createGate: Promise<void> | null = null;
 let createFetchError: Error | null = null;
+let deletePathStatus = 200;
+let deletePathResponse: unknown = { ok: true };
+// When set, the delete-path fetch rejects instead of resolving, driving the
+// discard cleanup's catch (network-failure) branch — distinct from a non-2xx
+// HTTP response, which the deletePathStatus toggle covers.
+let deletePathFetchError: Error | null = null;
 let fetchCalls: FetchCall[] = [];
 // Drives the folder context-menu's "New from template" smart-hide. The menu
 // gates the submenu on the resolved cascade being non-empty, so a folder with
@@ -214,6 +234,10 @@ function createPageCalls() {
   return fetchCalls.filter((call) => call.url === '/api/create-page');
 }
 
+function deletePathCalls() {
+  return fetchCalls.filter((call) => call.url === '/api/delete-path');
+}
+
 function makeFetchMock() {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -234,11 +258,15 @@ function makeFetchMock() {
     if (url === '/api/create-folder') {
       return jsonResponse(createResponse, createStatus);
     }
-    // Test teardown unmounts the FileTree mid-pending-create. The placeholder
-    // cleanup posts /api/delete-path; resolve as 200 so the cleanup logs no
-    // unexpected-fetch warning. We don't assert on the call here — the unit
-    // test exercises the addPage symmetry, not the placeholder rollback path.
-    if (url === '/api/delete-path') return jsonResponse({ ok: true }, 200);
+    // A placeholder discard (user cancel or create failure) posts
+    // /api/delete-path. Default 200 completes the discard; a test can force a
+    // server error (deletePathStatus) or a rejected fetch (deletePathFetchError)
+    // to exercise the two distinct cleanup-failure branches. An unmount teardown
+    // detaches without deleting, so it never reaches this branch.
+    if (url === '/api/delete-path') {
+      if (deletePathFetchError) throw deletePathFetchError;
+      return jsonResponse(deletePathResponse, deletePathStatus);
+    }
     if (url === '/api/rename-path') return jsonResponse({ renamed: [] }, 200);
     throw new Error(`unexpected fetch: ${url}`);
   });
@@ -266,11 +294,12 @@ vi.doMock('@/editor/DocumentContext', () => ({
     prewarm: () => {},
     reconcileLocalRemoval: reconcileLocalRemovalMock,
     reconcileLocalRename: reconcileLocalRenameMock,
+    setSkillsSidebar: () => {},
   }),
 }));
 
 vi.doMock('@/components/PageListContext', () => ({
-  usePageList: () => ({ addPage: addPageMock }),
+  usePageList: () => ({ addPage: addPageMock, pageMeta: pageMetaMock, pages: pagesMock }),
 }));
 
 vi.doMock('./ui/sidebar', () => ({
@@ -410,6 +439,7 @@ function renderFileTree() {
 
 describe('FileTree startCreating addPage symmetry', () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     model = new StubModel();
@@ -422,6 +452,9 @@ describe('FileTree startCreating addPage symmetry', () => {
     createStatus = 200;
     createGate = null;
     createFetchError = null;
+    deletePathStatus = 200;
+    deletePathResponse = { ok: true };
+    deletePathFetchError = null;
     folderTemplates = [];
     folderConfigStatus = 'ready';
     lastFolderConfigPath = null;
@@ -433,11 +466,13 @@ describe('FileTree startCreating addPage symmetry', () => {
     openTargetMock.mockClear();
     notifySidebarFileSelectedMock.mockClear();
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     cleanup();
     consoleWarnSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   test('folder context-menu New File registers the created docName via addPage exactly once', async () => {
@@ -516,5 +551,168 @@ describe('FileTree startCreating addPage symmetry', () => {
     renderFileTree();
 
     expect(await screen.findByRole('menuitem', { name: /new from template/i })).toBeTruthy();
+  });
+
+  describe('pending-create cleanup intent', () => {
+    async function startPendingFileCreate(user: ReturnType<typeof userEvent.setup>) {
+      const newFile = await screen.findByRole('menuitem', { name: /new file/i });
+      fetchCalls = [];
+      await user.click(newFile);
+      await waitFor(() => expect(createPageCalls()).toHaveLength(1));
+      await waitFor(() => expect(model.startRenaming).toHaveBeenCalled());
+      return model.startRenaming.mock.calls.at(-1)?.[0] as string;
+    }
+
+    async function startPendingFolderCreate(user: ReturnType<typeof userEvent.setup>) {
+      const newFolder = await screen.findByRole('menuitem', { name: /new folder/i });
+      fetchCalls = [];
+      await user.click(newFolder);
+      await waitFor(() =>
+        expect(fetchCalls.some((call) => call.url === '/api/create-folder')).toBe(true),
+      );
+      await waitFor(() => expect(model.startRenaming).toHaveBeenCalled());
+      return model.startRenaming.mock.calls.at(-1)?.[0] as string;
+    }
+
+    test('an unmount with a pending create does not hard-delete the created file', async () => {
+      const user = userEvent.setup();
+      const view = renderFileTree();
+      await startPendingFileCreate(user);
+
+      view.unmount();
+
+      // The crash/unmount path detaches its bookkeeping and leaves the file on
+      // disk: no /api/delete-path request is issued.
+      expect(deletePathCalls()).toHaveLength(0);
+    });
+
+    test('cancelling the inline rename still hard-deletes the placeholder', async () => {
+      const user = userEvent.setup();
+      renderFileTree();
+      const renamePath = await startPendingFileCreate(user);
+
+      act(() => model.emitRemove(renamePath));
+
+      await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+      const [call] = deletePathCalls();
+      expect(call?.init?.method).toBe('POST');
+      expect(JSON.parse(String(call?.init?.body))).toEqual({
+        kind: 'file',
+        path: 'notes/Untitled',
+      });
+    });
+
+    test('cancelling the inline rename closes the placeholder tab and returns to the previous location', async () => {
+      // The delete is only part of what a cancel owes the user. Splitting the
+      // cleanup into two intents left these two behaviors reachable only on the
+      // discard branch, so they are pinned separately from the delete call.
+      const user = userEvent.setup();
+      window.location.hash = '#/notes/somewhere-else';
+      renderFileTree();
+      const renamePath = await startPendingFileCreate(user);
+      closeDocumentMock.mockClear();
+
+      act(() => model.emitRemove(renamePath));
+
+      await waitFor(() => expect(closeDocumentMock).toHaveBeenCalledWith('notes/Untitled'));
+      await waitFor(() => expect(window.location.hash).toBe('#/notes/somewhere-else'));
+    });
+
+    test('a failed discard cleanup reports through console.error and still toasts', async () => {
+      // A cleanup failure surfaces two decoupled signals: the toast a mounted
+      // user sees, and a structured console.error carried in the crash bundle
+      // with the kind and path of the file left on disk. Reporting is
+      // independent of the UI-update posture. The detach path shares this
+      // reporter but has no surviving UI, and its only throw source is a
+      // removeEventListener disposer that cannot fail, so it is not separately
+      // drivable here without mocking internals.
+      const user = userEvent.setup();
+      renderFileTree();
+      const renamePath = await startPendingFileCreate(user);
+
+      deletePathStatus = 500;
+      deletePathResponse = { title: 'disk is full' };
+
+      act(() => model.emitRemove(renamePath));
+
+      await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+      await waitFor(() =>
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ kind: 'file', path: 'notes/Untitled' }),
+        ),
+      );
+      expect(toastErrorMock).toHaveBeenCalled();
+    });
+
+    test('cancelling a folder create closes the folder tab, not a document tab', async () => {
+      // The discard cleanup forks on kind: a folder releases its tab through
+      // closeTabs([folderTabId(...)]), never closeDocument (which addresses a
+      // doc by name). Pinned so an "always closeDocument" simplification cannot
+      // silently break folder-cancel tab cleanup.
+      createResponse = { kind: 'folder', path: 'notes/SubDir' };
+      const user = userEvent.setup();
+      renderFileTree();
+      const renamePath = await startPendingFolderCreate(user);
+      closeTabsMock.mockClear();
+      closeDocumentMock.mockClear();
+
+      act(() => model.emitRemove(renamePath));
+
+      await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+      expect(JSON.parse(String(deletePathCalls()[0]?.init?.body))).toEqual({
+        kind: 'folder',
+        path: 'notes/SubDir',
+      });
+      expect(closeTabsMock).toHaveBeenCalledWith([folderTabId('notes/SubDir')], { force: true });
+      expect(closeDocumentMock).not.toHaveBeenCalled();
+    });
+
+    test('a discard whose delete request throws reports the network error and still toasts', async () => {
+      // The catch (network-failure) branch: the delete fetch rejects rather
+      // than returning a non-2xx. It reports the same structured console.error
+      // as the HTTP-error branch — carrying the file left on disk, with the raw
+      // error as `cause` rather than a {status, detail} shape — and surfaces a
+      // toast. Pinned so dropping either the reporter or the toast turns a
+      // network failure into a silent orphaned file.
+      const user = userEvent.setup();
+      renderFileTree();
+      const renamePath = await startPendingFileCreate(user);
+
+      deletePathFetchError = new Error('network down');
+
+      act(() => model.emitRemove(renamePath));
+
+      await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
+      await waitFor(() =>
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            kind: 'file',
+            path: 'notes/Untitled',
+            cause: expect.objectContaining({ message: 'network down' }),
+          }),
+        ),
+      );
+      expect(toastErrorMock).toHaveBeenCalled();
+    });
+
+    test('remounting after a crash-path unmount keeps the file and starts no new rename', async () => {
+      const user = userEvent.setup();
+      const view = renderFileTree();
+      await startPendingFileCreate(user);
+      const renameCallsAfterCreate = model.startRenaming.mock.calls.length;
+
+      view.unmount();
+      const remounted = renderFileTree();
+
+      // The surviving file loads as an ordinary entry, so the fresh tree mounts
+      // without resurrecting the placeholder's inline rename or re-issuing the
+      // delete.
+      expect(await remounted.findByTestId('fake-pierre-tree')).toBeTruthy();
+      expect(model.startRenaming.mock.calls.length).toBe(renameCallsAfterCreate);
+      expect(deletePathCalls()).toHaveLength(0);
+      expect(toastErrorMock).not.toHaveBeenCalled();
+    });
   });
 });

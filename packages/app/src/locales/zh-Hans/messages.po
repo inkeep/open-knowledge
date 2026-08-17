@@ -12649,6 +12649,10 @@ msgstr "终端意外停止了。"
 msgid "The token needs the repo and read:user scopes."
 msgstr "这个令牌需要 repo 和 read:user 权限范围。"
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "工作区在不加载它的情况下打开，以便应用能够启动。"
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "主题"
@@ -14272,6 +14276,10 @@ msgstr "你的 GitHub 令牌缺少必需的权限范围。请尝试重新登录�
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "你的知识库现在已经在 GitHub 上，地址是 <0>{ownerLogin}/{repoName}</0>。"
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "无法恢复你上次打开的文档。"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

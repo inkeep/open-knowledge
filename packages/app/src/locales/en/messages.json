@@ -773,6 +773,7 @@
     "ANFxWn": ["Couldn’t delete this theme. Refresh and try again."],
     "APNlbk": ["exit ", ["0"]],
     "AQ-Lfg": ["Couldn't load templates"],
+    "AR4s_6": ["The workspace opened without it so the app could start."],
     "ASqqsQ": ["Maximum ", ["MAX_ATTACHMENTS"], " attachments"],
     "AT0e50": ["Keep both"],
     "ATGYL1": ["Email address"],
@@ -1296,6 +1297,7 @@
       ["display"],
       " with an independent copy of the skill? Nothing else moves."
     ],
+    "HdS4Ft": ["Your last open document couldn't be restored."],
     "HdkSiO": ["New file"],
     "HepFJQ": [
       "Your report is saved on this computer, so nothing was lost. You can email it to us instead."

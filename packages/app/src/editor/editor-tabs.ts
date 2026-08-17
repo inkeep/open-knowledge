@@ -343,25 +343,49 @@ export function docNameForTabId(tabId: string): string | null {
 }
 
 /**
+ * How this mount's attempt to restore the persisted tab session ended.
+ *
+ * Three outcomes, not two, because "we did not apply the stored session" covers
+ * two cases that need OPPOSITE persistence decisions. `unread` means the read
+ * never resolved, so we can never learn what is stored. `suppressed` means the
+ * read was deliberately skipped, so the stored session is intact and known
+ * good. A single boolean collapses them and hands the `unread` escape hatch
+ * below to a case where it destroys data.
+ */
+export type TabSessionRestoreOutcome = 'applied' | 'unread' | 'suppressed';
+
+/**
+ * Whether a tab session may be written back to storage.
+ *
+ * Not simply "did the restore succeed". A failed restore must not clobber a
+ * session we could not READ, but gating on that alone meant one transient
+ * failure disabled persistence for the whole session, silently dropping every
+ * tab opened afterwards. Once the user actually has tabs open, that state is
+ * worth more than the one we failed to read.
+ *
+ * A SUPPRESSED restore gets no such escape hatch. Crash recovery starts the
+ * user from an empty workspace on purpose, so what they build there is never a
+ * continuation of the session it declined to open. Letting the first opened tab
+ * arm the count-based hatch would replace every stored tab, pin and pane with a
+ * one-tab workspace, which is a larger loss than the crash this recovery
+ * exists to escape. Suppression covers a single recovery mount, so the next
+ * mount restores and persists normally.
+ */
+export function shouldPersistTabSession(
+  restoreOutcome: TabSessionRestoreOutcome,
+  openTabCount: number,
+): boolean {
+  if (restoreOutcome === 'suppressed') return false;
+  return restoreOutcome === 'applied' || openTabCount > 0;
+}
+
+/**
  * True when a plain `doc` name belongs to a skill surface — a project skill's
  * SKILL.md / bundle file (under the skill content root) or a global `__skill__/`
  * managed artifact. Single source shared with `isSkillFocusedTarget`
  * (navigation-targets) so the tab-strip mode filter and the sidebar mode never
  * disagree on what counts as a skill.
  */
-/**
- * Whether a tab session may be written back to storage.
- *
- * Not simply "did the restore succeed". A failed restore must not clobber a
- * session we could not READ — but gating on success alone meant one transient
- * failure disabled persistence for the whole session, silently dropping every
- * tab opened afterwards. Once the user actually has tabs open, that state is
- * worth more than the one we failed to read.
- */
-export function shouldPersistTabSession(restoreSucceeded: boolean, openTabCount: number): boolean {
-  return restoreSucceeded || openTabCount > 0;
-}
-
 export function isSkillDocName(docName: string): boolean {
   return (
     parseProjectSkillBundleDoc(docName) != null ||

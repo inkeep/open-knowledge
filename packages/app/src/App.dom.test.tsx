@@ -7,6 +7,11 @@ import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
+import {
+  consumeHashNavigationSuppression,
+  recordAppShellCrashTrip,
+  resetTabSessionRestoreSuppression,
+} from '@/lib/tab-session-restore-suppression';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 type NavigationTarget =
@@ -815,5 +820,132 @@ describe('App runtime wiring', () => {
 
     expect(screen.queryByTestId('editor-window-chrome-drag-strip')).toBeNull();
     expect(screen.queryByTestId('share-receive-dialog')).toBeNull();
+  });
+
+  // A repeat app-shell crash arms the tab-session restore suppression latch.
+  // The suppressed recovery mount must not renavigate into the crashing
+  // document through the URL hash either: the active tab is mirrored into the
+  // hash, so an unguarded mount-time hash resolution reopens the very document
+  // the recovery just dropped and re-enters the crash loop. Ordinary hash
+  // navigation must resume immediately after that one mount.
+  describe('repeat-crash recovery hash suppression', () => {
+    afterEach(() => {
+      resetTabSessionRestoreSuppression();
+      // A failed assertion can leave the navigation latch armed (a mounted App
+      // normally consumes it); drain it so a failure doesn't cascade.
+      consumeHashNavigationSuppression();
+    });
+
+    test('a mount after a repeat app-shell crash does not reopen the document named in the hash', async () => {
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      setHash('#/poison-doc');
+
+      renderApp();
+
+      await Promise.resolve();
+      expect(openTargetTransitionMock).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('');
+    });
+
+    test('desktop mode: the suppressed mount drops the hash before the session gate lifts', async () => {
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      tabSessionLoaded = false;
+      setHash('#/poison-doc');
+
+      const view = renderApp({ bridge: createBridge() });
+
+      await Promise.resolve();
+      expect(window.location.hash).toBe('');
+
+      tabSessionLoaded = true;
+      view.rerender(<App />);
+
+      await Promise.resolve();
+      expect(openTargetTransitionMock).not.toHaveBeenCalled();
+    });
+
+    test('hash navigation resumes immediately after the suppressed mount', async () => {
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      setHash('#/poison-doc');
+      renderApp();
+      await Promise.resolve();
+      openTargetTransitionMock.mockClear();
+
+      window.history.pushState(null, '', `${window.location.pathname}#/other-doc`);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+      await waitFor(() => {
+        expect(openTargetTransitionMock).toHaveBeenCalledWith(
+          { kind: 'doc', target: 'other-doc', docName: 'other-doc' },
+          { disposition: 'permanent', consumeActiveNewTab: true },
+        );
+      });
+    });
+
+    test('a single crash trip leaves mount-time hash navigation intact', async () => {
+      recordAppShellCrashTrip(new Error('one-off crash'));
+      setHash('#/kept-doc');
+
+      renderApp();
+
+      await waitFor(() => {
+        expect(openTargetTransitionMock).toHaveBeenCalledWith(
+          { kind: 'doc', target: 'kept-doc', docName: 'kept-doc' },
+          { disposition: 'permanent', consumeActiveNewTab: true },
+        );
+      });
+      expect(window.location.hash).toBe('#/kept-doc');
+    });
+
+    test('an overlay-dialog hash survives the suppressed mount and still consumes the latch', async () => {
+      // The suppression deliberately exempts overlay-dialog hashes: they portal
+      // over the editor and cannot reopen a document, so clearing one would
+      // dismiss a dialog the user has open. Every other test here uses a
+      // document hash, which leaves that exemption asserted only in prose.
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      setHash('#settings');
+
+      renderApp();
+
+      await Promise.resolve();
+      expect(window.location.hash).toBe('#settings');
+
+      // The latch is one-shot regardless of which branch ran, so the next mount
+      // must navigate normally rather than inheriting an unconsumed suppression.
+      cleanup();
+      setHash('#/kept-doc');
+      renderApp();
+
+      await waitFor(() => {
+        expect(openTargetTransitionMock).toHaveBeenCalledWith(
+          { kind: 'doc', target: 'kept-doc', docName: 'kept-doc' },
+          { disposition: 'permanent', consumeActiveNewTab: true },
+        );
+      });
+      expect(window.location.hash).toBe('#/kept-doc');
+    });
+
+    test('suppression is one-mount-scoped: a fresh mount navigates the hash normally', async () => {
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      recordAppShellCrashTrip(new Error('same shell crash'));
+      setHash('#/poison-doc');
+      renderApp();
+      await Promise.resolve();
+      cleanup();
+
+      setHash('#/poison-doc');
+      renderApp();
+
+      await waitFor(() => {
+        expect(openTargetTransitionMock).toHaveBeenCalledWith(
+          { kind: 'doc', target: 'poison-doc', docName: 'poison-doc' },
+          { disposition: 'permanent', consumeActiveNewTab: true },
+        );
+      });
+    });
   });
 });

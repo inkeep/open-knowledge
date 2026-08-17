@@ -12645,6 +12645,10 @@ msgstr "O terminal parou de forma inesperada."
 msgid "The token needs the repo and read:user scopes."
 msgstr "O token precisa dos escopos repo e read:user."
 
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "The workspace opened without it so the app could start."
+msgstr "O espaço de trabalho abriu sem ele para que o aplicativo pudesse iniciar."
+
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Tema"
@@ -14268,6 +14272,10 @@ msgstr "Faltam escopos obrigatórios no seu token do GitHub. Tente entrar de nov
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "Sua base de conhecimento já está no GitHub, em <0>{ownerLogin}/{repoName}</0>."
+
+#: src/lib/tab-session-restore-recovery-notice.ts
+msgid "Your last open document couldn't be restored."
+msgstr "Não foi possível restaurar seu último documento aberto."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind."

@@ -934,6 +934,7 @@
     "ANFxWn": ["Impossible de supprimer ce thème. Actualisez la page et réessayez."],
     "APNlbk": ["quitter ", ["0"]],
     "AQ-Lfg": ["Impossible de charger les modèles"],
+    "AR4s_6": ["L'espace de travail s'est ouvert sans lui pour que l'application puisse démarrer."],
     "ASqqsQ": [["MAX_ATTACHMENTS"], " pièces jointes maximum"],
     "AT0e50": ["Conserver les deux"],
     "ATGYL1": ["Adresse e-mail"],
@@ -1536,6 +1537,7 @@
       ["display"],
       " par une copie indépendante de la compétence ? Rien d'autre ne bouge."
     ],
+    "HdS4Ft": ["Impossible de restaurer votre dernier document ouvert."],
     "HdkSiO": ["Nouveau fichier"],
     "HepFJQ": [
       "Votre rapport est enregistré sur cet ordinateur, rien n'a donc été perdu. Vous pouvez nous l'envoyer par e-mail à la place."
