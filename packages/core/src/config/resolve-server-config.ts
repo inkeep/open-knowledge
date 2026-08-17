@@ -50,7 +50,7 @@ export interface ServerRuntimeConfig {
    * Load-bearing distinction: a `remote.url` left in config does NOT arm
    * anything by itself (`ok start --remote` is the explicit opt-in), so
    * consumers that treat a declared external origin as an exposure signal —
-   * the consent interlock, issued-URL preference — must key off `'server'`
+   * the consent interlock, Host/Origin admission — must key off `'server'`
    * only and leave the alias to the legacy remote flow.
    */
   externalUrlSource: 'server' | 'remote-alias' | undefined;

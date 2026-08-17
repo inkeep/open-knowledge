@@ -348,8 +348,8 @@ export function parseExternalUrlFlag(value: string): string {
  * precedence bookkeeping, not conflict resolution). Extracted so a test pins
  * that the deprecated flag keeps setting `server.externalUrl` through its
  * removal window: dropping the fallback would silently strand `--public-url`
- * operators on `externalUrl: undefined` (no CORS/Host admission, no issued
- * URLs) with no parse error to signal it.
+ * operators on `externalUrl: undefined` (no CORS/Host admission) with no parse
+ * error to signal it.
  */
 export function resolveFlagExternalUrl(
   opts: Pick<StartCommandOptions, 'externalUrl' | 'publicUrl'>,
@@ -567,7 +567,7 @@ interface BootStartServerOptions {
   idleThresholdMs?: number | null;
   /**
    * The fully-layered `server.*` resolution (flags > env > project-local >
-   * project > user), threaded to `bootServer` so issued URLs and the
+   * project > user), threaded to `bootServer` so Host/Origin admission and the
    * exposure interlock consume the same values the CLI resolved. Omitted by
    * legacy callers — `bootServer` then resolves files-only from its config.
    */
@@ -1733,7 +1733,7 @@ export function startCommand(getConfig: () => Config): Command {
     )
     .option(
       '--external-url <url>',
-      'Canonical external origin clients dial (sets server.externalUrl for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (OK_ALLOW_EXTERNAL=1 or server.allowExternal).',
+      'Canonical external origin clients dial (sets server.externalUrl for this run) — its host joins the Host/Origin allowlists (CORS + external-Host admission). External exposure additionally requires consent (OK_ALLOW_EXTERNAL=1 or server.allowExternal).',
       parseExternalUrlFlag,
     )
     .option(

@@ -736,6 +736,117 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
   });
 });
 
+describeEvenOnCI('bootServer — MCP internal RPC stays loopback under a public externalUrl', () => {
+  // Regression: behind an authenticating reverse proxy, `ok start
+  // --external-url https://<public>` set the MCP tools' `serverUrl` to the
+  // public origin, so the document-write self-call (`POST /api/agent-write-md`)
+  // hairpinned out through the edge and hit the auth gate — HTTP 401 with an
+  // HTML login body. `getServerUrl` must stay loopback regardless of
+  // `externalUrl`; the write must land against the local listener.
+  //
+  // We can't stand up a real proxy in-process, so we point `externalUrl` at an
+  // unreachable `.invalid` host (RFC 6761 — guaranteed non-resolvable). With
+  // the old wiring the self-call dials that host and fails ("Server
+  // unreachable"); with the fix it dials loopback and succeeds. Same fault, one
+  // hop earlier — a deterministic proxy-free proxy.
+  const MCP_PROTOCOL_VERSION = '2025-06-18';
+  const UNREACHABLE_EXTERNAL_URL = 'https://prd-8062-unreachable.invalid';
+
+  async function mcpFetch(port: number, headers: Record<string, string>, body: unknown) {
+    return fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test('MCP write succeeds when externalUrl is a public, non-loopback origin', async () => {
+    const projectDir = mkdtempSync(resolve(tmpDir, 'mcp-loopback-'));
+    seedOkScaffold(projectDir);
+
+    const config = ConfigSchema.parse({
+      server: { externalUrl: UNREACHABLE_EXTERNAL_URL, allowExternal: true },
+    });
+    // Sanity-pin the setup: the runtime really does carry the public origin, so
+    // a passing write proves the self-call ignored it (not that it was absent).
+    expect(resolveServerRuntimeConfig(config).externalUrl).toBe(UNREACHABLE_EXTERNAL_URL);
+
+    const booted = await bootServer({
+      host: '127.0.0.1',
+      config,
+      projectDir,
+      contentDir: projectDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: null,
+    });
+    try {
+      await booted.ready;
+      const port = booted.port;
+
+      // Handshake over loopback (always ingress-admitted).
+      const init = await mcpFetch(
+        port,
+        {},
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: MCP_PROTOCOL_VERSION,
+            capabilities: {},
+            clientInfo: { name: 'prd-8062-test', version: '0.0.0' },
+          },
+        },
+      );
+      expect(init.status).toBe(200);
+      const sessionId = init.headers.get('mcp-session-id');
+      expect(sessionId).toBeTruthy();
+      const sessionHeaders = {
+        'mcp-session-id': sessionId as string,
+        'mcp-protocol-version': MCP_PROTOCOL_VERSION,
+      };
+
+      const initialized = await mcpFetch(port, sessionHeaders, {
+        jsonrpc: '2.0',
+        method: 'notifications/initialized',
+      });
+      expect(initialized.status).toBe(202);
+
+      const write = await mcpFetch(port, sessionHeaders, {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'write',
+          arguments: {
+            document: { path: 'prd-8062-note', content: '# PRD-8062\n\nLoopback write.\n' },
+            cwd: projectDir,
+          },
+        },
+      });
+      expect(write.status).toBe(200);
+      const body = (await write.json()) as {
+        result?: { isError?: boolean; content?: Array<{ text?: string }> };
+        error?: unknown;
+      };
+      expect(body.error).toBeUndefined();
+      // The load-bearing assertion: the write self-call landed on loopback, not
+      // the public externalUrl. A regressed wiring surfaces here as isError with
+      // a "Server unreachable" / 401 body.
+      const text = body.result?.content?.map((c) => c.text ?? '').join('') ?? '';
+      expect(body.result?.isError ?? false, `write returned an error: ${text}`).toBe(false);
+    } finally {
+      await booted.destroy();
+    }
+  });
+});
+
 describe('bootServer — ok.boot OTel span attributes', () => {
   let exporter: InMemorySpanExporter | null = null;
   let provider: BasicTracerProvider | null = null;

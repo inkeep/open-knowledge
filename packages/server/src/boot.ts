@@ -249,7 +249,7 @@ export interface BootServerOptions
    * defaults). The CLI passes the fully-layered resolution (flags > env >
    * project-local > project > user); callers that omit it get a files-only
    * resolution from `opts.config`. One resolution feeds every consumer —
-   * issued URLs, and the exposure interlock — so the CLI and a direct
+   * Host/Origin admission, and the exposure interlock — so the CLI and a direct
    * embedder can never disagree about what the server thinks its shape is.
    */
   serverRuntime?: ServerRuntimeConfig;
@@ -831,17 +831,28 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
   })();
   let boundPort = opts.port ?? 0;
-  // Issued URLs (MCP serverUrl → preview_url, ACP thread bootstrap) name the
-  // declared public origin when one is configured via the successor key —
-  // that is the name clients actually type, and a loopback URL handed to a
-  // remote agent is unreachable. The remote-alias source (a dormant
-  // `remote.url` left in config with no `--remote` flag) never rewrites
-  // issued URLs, and the server.lock URL stays loopback below: the lock is
-  // same-machine discovery by contract.
-  const issuedBaseUrl = (): string =>
-    serverRuntime.externalUrlSource === 'server' && serverRuntime.externalUrl !== undefined
-      ? serverRuntime.externalUrl.replace(/\/+$/, '')
-      : `http://${mcpHost}:${boundPort}`;
+  // Internal service-to-self base URL — the `serverUrl` the MCP tools and the
+  // ACP hosted-agent connect-back dial. Both consumers run on THIS machine:
+  // the MCP tools' enrichment reads and the document write/persist self-call
+  // (`content/enrichment.ts`, `mcp/tools/write.ts` → `POST /api/agent-write-md`),
+  // and the ACP-spawned agent subprocess dialing `${url}/mcp`. So the base MUST
+  // target this server's OWN bound listener (`mcpHost` is whatever address the
+  // server bound — loopback in the default bind). Behind an authenticating reverse proxy with a public
+  // `server.externalUrl`, routing these self-calls at the external origin
+  // hairpins them out through the edge and hits the auth gate, which answers
+  // `HTTP 401` with an HTML login body — the exact failure that broke MCP
+  // write/edit/move/delete (reads survive only because their enrichment
+  // self-calls are `.catch(() => null)`).
+  //
+  // This is NOT where user-facing "issued" links come from, so keeping it
+  // loopback does not regress preview/share URLs: `preview_url` and the
+  // per-response `previewUrl` route resolve their browser base from
+  // `server.lock` / `ui.lock` (this same listener origin by the one-URL
+  // contract below, never from this value), and `share_link` builds its public
+  // `https://openknowledge.ai/d/...` URL from the git remote. `externalUrl`
+  // still governs ingress admission (CORS/Host) via `ingressPolicy`; it just
+  // must never feed an internal self-call.
+  const internalBaseUrl = (): string => `http://${mcpHost}:${boundPort}`;
   // No-project ephemeral single-file mode mounts NO MCP endpoint:
   // there are no agent capabilities. `mountMcpAndApi` leaves `/mcp`
   // unmounted when `mcpHttpHandler` is undefined, so an undefined handler is
@@ -852,7 +863,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         contentDir: opts.contentDir,
         projectDir: opts.projectDir ?? opts.contentDir,
         config: opts.config,
-        getServerUrl: () => issuedBaseUrl(),
+        getServerUrl: () => internalBaseUrl(),
         localApi: serverInstance.localApi,
         log,
       });
@@ -1005,7 +1016,12 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         isIgnoredPath: (rel) => serverInstance.contentFilter.isPathIgnored(rel),
         getLoadedDocText: (docName) =>
           hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
-        getServerUrl: () => issuedBaseUrl(),
+        // MUST be `internalBaseUrl()` (same contract as the MCP-tools site above):
+        // the ACP agent is a subprocess on THIS machine dialing `${url}/mcp`, so a
+        // public `externalUrl` here would hairpin it through the auth proxy. Unlike
+        // the MCP-tools 401, that failure is SILENT (the agent just loses OK tools),
+        // so do not repoint this at `externalUrl`.
+        getServerUrl: () => internalBaseUrl(),
         getMcpStdioCommand: () => buildOkMcpStdioCommand(opts.localOpCliArgs, boundPort),
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
         log,
@@ -1215,9 +1231,11 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const addr = httpServer.address();
   const realPort = typeof addr === 'object' && addr !== null ? addr.port : (opts.port ?? 0);
   boundPort = realPort;
-  // One-URL contract: the advertised origin is the same one `getServerUrl`
-  // hands MCP/ACP consumers — every surface of this listener lives there.
-  const boundBaseUrl = `http://${mcpHost}:${realPort}`;
+  // One-URL contract: the advertised origin is the same base `getServerUrl`
+  // hands MCP/ACP consumers. `boundPort` is now `realPort`, so `internalBaseUrl()`
+  // yields exactly this listener's origin — reusing it keeps the lock URL and
+  // the self-call base structurally identical rather than two literals in sync.
+  const boundBaseUrl = internalBaseUrl();
   updateServerLockPort(lockDir, realPort, boundBaseUrl);
   if (ownsUiLock) {
     // Flip the sentinel port=0 to the bound port so preview-URL consumers see

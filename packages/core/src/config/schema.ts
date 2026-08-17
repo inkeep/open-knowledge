@@ -1377,7 +1377,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project',
           description:
-            'Canonical external origin the server is reached at, e.g. https://kb.example.com — drives issued URLs and CORS. Unset by default: a loopback server derives http://localhost:<port>. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Supersedes server.publicUrl (its former name) and remote.url — both still read while this key is absent. Read at server start; changing it requires a restart.',
+            'Canonical external origin the server is reached at, e.g. https://kb.example.com — its host joins the Host/Origin allowlists (external-Host + CORS admission). Unset by default: the server admits only loopback Hosts. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Supersedes server.publicUrl (its former name) and remote.url — both still read while this key is absent. Read at server start; changing it requires a restart.',
         })
         .optional(),
       // The former name of `server.externalUrl`, shipped in stable 0.51.x —
