@@ -326,6 +326,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
     await screen.findByText(/Claude Code \(claude\) isn't installed/);
+    // Genuine absence is the verified state — the unverified presentation
+    // must not appear alongside (the two verdicts stay distinguishable).
+    expect(screen.queryByTestId('terminal-cli-unverified-banner')).toBeNull();
   });
 
   test('bakes a BARE claude command (no pre-approval) when claude is present but OK tools need a rewire', async () => {
@@ -362,10 +365,13 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(terminal.claudePreflight).toHaveBeenCalled();
   });
 
-  test('a claude launch-preflight REJECTION spawns a plain shell + surfaces the banner (no command-not-found)', async () => {
-    // If the launch-time preflight IPC throws, presence is unconfirmed — suppress
+  test('a claude launch-preflight REJECTION spawns a plain shell + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
+    // If the launch-time preflight IPC throws, presence is UNCONFIRMED — suppress
     // the bake so the terminal can't show a raw `command not found`, and surface
-    // the readiness banner so the user gets feedback rather than a silent no-op.
+    // feedback. But an unverified verdict must not be presented as positive
+    // absence (the probe's contract in claude-readiness.ts: the caller must not
+    // render a "not installed" message off an UNKNOWN) — the unverified state
+    // gets its own distinguishable presentation.
     const { bridge, terminal } = makeBridge();
     terminal.claudePreflight = vi.fn(async () => {
       throw new Error('ipc boom');
@@ -375,14 +381,18 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
-    await screen.findByText(/Claude Code \(claude\) isn't installed/);
+    expect(screen.queryByText(/isn't installed/)).toBeNull();
+    const banner = await screen.findByTestId('terminal-cli-unverified-banner');
+    expect(banner.getAttribute('role')).toBe('status');
   });
 
-  test('claude launch-time verdict UNKNOWN spawns a plain shell + surfaces the banner (unknown→not-found for display)', async () => {
-    // resolveLaunchCommand maps an `unknown` preflight to a not-found-for-display
-    // banner and suppresses the bake (no raw command-not-found, never a silent
-    // no-op). Guards the `fresh.claude === 'not-found' ? fresh : {...}` mapping —
-    // an inverted/widened ternary would either show no banner or a false one.
+  test('claude launch-time verdict UNKNOWN spawns a plain shell + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
+    // An `unknown` preflight verdict (probe timed out / failed while claude may
+    // well be installed) must suppress the bake AND surface feedback — but as an
+    // unverified state distinguishable from a genuine not-found. Collapsing it
+    // into the "isn't installed" banner presents a false positive-absence claim
+    // off a flaky probe (the exact conflation the probe's producer contract in
+    // claude-readiness.ts forbids).
     const { bridge, terminal } = makeBridge({
       claude: 'unknown',
       mcp: 'needs-rewire',
@@ -393,7 +403,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
-    await screen.findByText(/Claude Code \(claude\) isn't installed/);
+    expect(screen.queryByText(/isn't installed/)).toBeNull();
+    const banner = await screen.findByTestId('terminal-cli-unverified-banner');
+    expect(banner.getAttribute('role')).toBe('status');
   });
 
   test('codex launch probes cliPreflight and bakes the codex command', async () => {
@@ -475,10 +487,12 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     await screen.findByText(/Codex \(codex\) isn't installed/);
+    // Verified absence renders the missing-CLI banner, not the unverified one.
+    expect(screen.queryByTestId('terminal-cli-unverified-banner')).toBeNull();
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 
-  test('cursor probe UNKNOWN re-probes once; still-unknown spawns plain + shows the banner', async () => {
+  test('cursor probe UNKNOWN re-probes once; still-unknown spawns plain + shows the UNVERIFIED banner (never "isn\'t installed")', async () => {
     const { bridge, terminal } = makeBridge(WIRED, { onPath: 'unknown' });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'cursor', nonce: 1 }} />);
 
@@ -486,7 +500,13 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     // Probed twice (initial + one re-probe) before deciding to suppress.
     expect(terminal.cliPreflight).toHaveBeenCalledTimes(2);
     expect(bakedLaunch(terminal.create)).toBeUndefined();
-    await screen.findByText(/Cursor \(cursor-agent\) isn't installed/);
+    // A still-unknown verdict is an UNVERIFIED state, not a verified absence:
+    // the binary may be present while the probe flaked. Feedback must appear,
+    // but the positive "isn't installed" claim is reserved for a genuine
+    // not-found (the probe's producer contract in claude-readiness.ts).
+    expect(screen.queryByText(/isn't installed/)).toBeNull();
+    const banner = await screen.findByTestId('terminal-cli-unverified-banner');
+    expect(banner.getAttribute('role')).toBe('status');
   });
 
   test('cursor probe UNKNOWN then PRESENT on re-probe: bakes the preserved prompt', async () => {
@@ -503,7 +523,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(bakedLaunch(terminal.create)).toBe("cursor-agent 'hi'");
   });
 
-  test('cliPreflight IPC rejection spawns plain + surfaces the banner (no raw command-not-found)', async () => {
+  test('cliPreflight IPC rejection spawns plain + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
+    // An IPC failure means presence was never verified — same unverified state
+    // as a still-unknown probe, never the positive-absence banner.
     const { bridge, terminal } = makeBridge(WIRED);
     terminal.cliPreflight = vi.fn(async () => {
       throw new Error('ipc channel closed');
@@ -512,7 +534,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBeUndefined();
-    await screen.findByText(/Codex \(codex\) isn't installed/);
+    expect(screen.queryByText(/isn't installed/)).toBeNull();
+    const banner = await screen.findByTestId('terminal-cli-unverified-banner');
+    expect(banner.getAttribute('role')).toBe('status');
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 

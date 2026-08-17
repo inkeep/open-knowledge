@@ -3868,6 +3868,10 @@ msgstr "تعذّر تحديث مشاركة المهارات"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "تعذّر تحديث مشاركة المهارات — {detail}."
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "تعذر التحقق من توفر {displayName} ({bin})، لذا هذه جلسة shell عادية. لا يزال بإمكانك تشغيل {bin} بنفسك."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "احتساب تثبيتات المهارة علنًا"
@@ -4426,6 +4430,7 @@ msgstr "يجري قطع الاتصال"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "تجاهل"
 

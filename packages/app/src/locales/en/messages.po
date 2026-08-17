@@ -3868,6 +3868,10 @@ msgstr "Couldn't update skills sharing"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "Couldn't update skills sharing — {detail}."
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "Count skill installs publicly"
@@ -4426,6 +4430,7 @@ msgstr "Disconnecting"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "Dismiss"
 

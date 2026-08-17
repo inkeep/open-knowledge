@@ -1,13 +1,34 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   ACP_AGENT_HARNESS_CLIS,
   type AcpHarnessCli,
   createAcpHarnessAvailabilityProbe,
   type HarnessAvailability,
 } from './harness-availability.ts';
+import { AgentLaunchError } from './launch.ts';
+
+/** Spy logger shared by every `getLogger(name)` call inside the availability
+ *  module — the observation seam for the verdict-observability contract (a
+ *  degraded verdict must leave an operator-visible trace). */
+const acpLog = vi.hoisted(() => {
+  const logger = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: () => logger,
+  };
+  return logger;
+});
+vi.mock('../logger.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../logger.ts')>()),
+  getLogger: () => acpLog,
+}));
 
 let shims: string[] = [];
 afterEach(() => {
@@ -107,5 +128,56 @@ describe('ACP harness availability', () => {
     });
 
     expect((await probe()).codex).toBe('unknown');
+  });
+});
+
+describe('unverified verdicts (a probe failure is not absence, and must leave a trace)', () => {
+  // Hermetic via the injected preflight seam: every first chance misses
+  // deterministically regardless of what is installed on the host, so the
+  // capture-failure branch is exercised on dev machines and CI alike.
+  const firstChanceAlwaysMisses = async () => {
+    throw new AgentLaunchError('command-not-found', 'injected: first chance misses');
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('a failed login-shell PATH capture reports unknown, never not-found', async () => {
+    // The second-chance login-shell PATH could not be captured, so absence was
+    // never verified for any CLI that missed the base PATH. Reporting the
+    // positive `not-found` off a capture failure is the same conflation the
+    // probe layer forbids: capture failure ≠ absence.
+    const probe = createAcpHarnessAvailabilityProbe({
+      preflight: firstChanceAlwaysMisses,
+      resolveLoginShellPath: async () => null,
+    });
+    const result = await probe();
+    for (const [cli, verdict] of Object.entries(result)) {
+      expect({ cli, verdict }).toEqual({ cli, verdict: 'unknown' });
+    }
+    // Guard against a vacuous pass: every mapped harness got a verdict.
+    expect(Object.keys(result)).toHaveLength(6);
+  });
+
+  test('a degraded (unverified) verdict leaves an operator-visible log trace naming the cause', async () => {
+    // A defaulting signal that silently degrades makes a field report
+    // undiagnosable — the capture-failure path must log at info or warn, and
+    // must carry the capture failure's cause when the provider rejected.
+    const captureFailure = new Error('login shell exited before printing PATH');
+    const probe = createAcpHarnessAvailabilityProbe({
+      preflight: firstChanceAlwaysMisses,
+      resolveLoginShellPath: async () => {
+        throw captureFailure;
+      },
+    });
+    const result = await probe();
+    for (const verdict of Object.values(result)) expect(verdict).toBe('unknown');
+    const records = [...acpLog.warn.mock.calls, ...acpLog.info.mock.calls];
+    expect(records.length).toBeGreaterThan(0);
+    expect(
+      records.some((call) =>
+        call.some((arg) => (arg as { err?: unknown })?.err === captureFailure),
+      ),
+    ).toBe(true);
   });
 });

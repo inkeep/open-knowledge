@@ -3868,6 +3868,10 @@ msgstr "Impossible de mettre à jour le partage des compétences"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "Impossible de mettre à jour le partage des compétences — {detail}."
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "Impossible de vérifier que {displayName} ({bin}) est disponible, ceci est donc un shell ordinaire. Vous pouvez toujours lancer {bin} vous-même."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "Compter publiquement les installations de compétences"
@@ -4426,6 +4430,7 @@ msgstr "Déconnexion"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "Ignorer"
 

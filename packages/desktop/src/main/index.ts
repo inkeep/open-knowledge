@@ -4734,18 +4734,20 @@ function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
  * just-installed CLI shows up within a minute.
  */
 const CLI_INSTALLED_MAP_TTL_MS = 60_000;
-let cliInstalledMapCache: { at: number; value: Promise<Record<TerminalCli, boolean>> } | null =
-  null;
+let cliInstalledMapCache: {
+  at: number;
+  value: Promise<Partial<Record<TerminalCli, boolean>>>;
+} | null = null;
 
 /**
- * Batched on-PATH readiness for all four CLIs, cached ~60s. Caches the in-flight
- * Promise (not the resolved value) so concurrent New-chat clicks share one probe
- * batch. `resolveCliInstalledMap` never rejects today (each entry degrades to
- * not-installed); the defensive `.catch` below evicts the cache if a future
- * change ever lets one through, so a transient failure becomes an immediate
- * retry rather than a 60s-cached rejection.
+ * Batched on-PATH readiness for all registry CLIs, cached ~60s. Caches the
+ * in-flight Promise (not the resolved value) so concurrent New-chat clicks share
+ * one probe batch. `resolveCliInstalledMap` never rejects today (each entry
+ * degrades to an omitted unverified key); the defensive `.catch` below evicts
+ * the cache if a future change ever lets one through, so a transient failure
+ * becomes an immediate retry rather than a 60s-cached rejection.
  */
-function resolveTerminalCliInstalledMap(): Promise<Record<TerminalCli, boolean>> {
+function resolveTerminalCliInstalledMap(): Promise<Partial<Record<TerminalCli, boolean>>> {
   const now = Date.now();
   if (cliInstalledMapCache && now - cliInstalledMapCache.at < CLI_INSTALLED_MAP_TTL_MS) {
     return cliInstalledMapCache.value;
@@ -5096,9 +5098,12 @@ function registerIpcHandlers() {
     return resolveTerminalCliOnPath(req.cli);
   });
 
-  handle('ok:terminal:cli-installed-map', async (): Promise<Record<TerminalCli, boolean>> => {
-    return resolveTerminalCliInstalledMap();
-  });
+  handle(
+    'ok:terminal:cli-installed-map',
+    async (): Promise<Partial<Record<TerminalCli, boolean>>> => {
+      return resolveTerminalCliInstalledMap();
+    },
+  );
 
   handle('ok:terminal:dock-state', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);

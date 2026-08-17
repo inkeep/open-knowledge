@@ -3868,6 +3868,10 @@ msgstr "无法更新技能共享设置"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "无法更新技能共享设置——{detail}。"
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "无法确认 {displayName}（{bin}）是否可用，因此这是一个普通 shell。你仍然可以自行运行 {bin}。"
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "公开统计技能安装量"
@@ -4426,6 +4430,7 @@ msgstr "正在断开连接"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "忽略"
 

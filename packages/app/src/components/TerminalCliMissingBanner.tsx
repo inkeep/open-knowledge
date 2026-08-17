@@ -35,6 +35,7 @@ export function TerminalCliMissingBanner({
   return (
     <div
       role="status"
+      data-testid="terminal-cli-missing-banner"
       className="flex shrink-0 items-center gap-3 border-border border-b bg-muted px-3 py-2 text-foreground text-xs"
     >
       <p className="min-w-0 flex-1">

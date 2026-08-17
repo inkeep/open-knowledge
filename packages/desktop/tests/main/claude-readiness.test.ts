@@ -1,5 +1,5 @@
 import { TERMINAL_CLI_IDS, type TerminalCli } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   CLAUDE_PROBE_ARGS,
   cliProbeArgs,
@@ -12,6 +12,33 @@ import {
   resolveCliOnPath,
   runLoginShellProbe,
 } from '../../src/main/claude-readiness.ts';
+
+/** Spy logger shared by every `getLogger(name)` call inside claude-readiness —
+ *  the observation seam for the verdict-observability contract (a probe that
+ *  degrades to UNKNOWN must leave an operator-visible trace). */
+const probeLog = vi.hoisted(() => {
+  const logger = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: () => logger,
+  };
+  return logger;
+});
+vi.mock('../../src/main/desktop-logger.ts', () => ({ getLogger: () => probeLog }));
+
+/** Log records an operator would see at default level (info and above). */
+function operatorVisibleRecords(): unknown[][] {
+  return [
+    ...probeLog.fatal.mock.calls,
+    ...probeLog.error.mock.calls,
+    ...probeLog.warn.mock.calls,
+    ...probeLog.info.mock.calls,
+  ];
+}
 
 function makeFakeChild() {
   let exitCb: ((code: number | null) => void) | null = null;
@@ -183,6 +210,61 @@ describe('runLoginShellProbe', () => {
   });
 });
 
+describe('probe verdict observability (an UNKNOWN must leave a trace)', () => {
+  // The launch gate and the row-hiding installed map both key off this probe's
+  // verdict. Standing contract: every probe-failure resolution must emit an
+  // operator-visible log record (info and above) naming the failure class —
+  // without it, genuine PATH loss and a probe flake leave identical artifacts
+  // and a field report of "isn't installed" is undiagnosable.
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('a probe timeout emits an operator-visible log record naming the failure class', async () => {
+    const { child } = makeFakeChild();
+    const { timers, fireTimeout } = makeFakeTimers();
+    const p = runLoginShellProbe(() => child, 'zsh', timers, 5000);
+    fireTimeout();
+    expect(await p).toBe(null);
+    const records = operatorVisibleRecords();
+    expect(records.length).toBeGreaterThan(0);
+    const messages = records.map((call) => call.map(String).join(' '));
+    expect(messages.some((m) => /timed?\s*out/i.test(m))).toBe(true);
+  });
+
+  test("an async spawn 'error' emits an operator-visible log record carrying the cause", async () => {
+    const { child, emitError } = makeFakeChild();
+    const { timers } = makeFakeTimers();
+    const p = runLoginShellProbe(() => child, 'zsh', timers);
+    const spawnFailure = new Error('spawn zsh ENOENT');
+    emitError(spawnFailure);
+    expect(await p).toBe(null);
+    const records = operatorVisibleRecords();
+    expect(records.length).toBeGreaterThan(0);
+    expect(
+      records.some((call) => call.some((arg) => (arg as { err?: unknown })?.err === spawnFailure)),
+    ).toBe(true);
+  });
+
+  test('a synchronous spawn throw emits an operator-visible log record carrying the cause', async () => {
+    const { timers } = makeFakeTimers();
+    const spawnFailure = new Error('spawn EMFILE');
+    const p = runLoginShellProbe(
+      () => {
+        throw spawnFailure;
+      },
+      'zsh',
+      timers,
+    );
+    expect(await p).toBe(null);
+    const records = operatorVisibleRecords();
+    expect(records.length).toBeGreaterThan(0);
+    expect(
+      records.some((call) => call.some((arg) => (arg as { err?: unknown })?.err === spawnFailure)),
+    ).toBe(true);
+  });
+});
+
 describe('resolveClaudeReadiness', () => {
   test("claude present + mcp wired + project entry is OK's own → pre-approvable", async () => {
     const r = await resolveClaudeReadiness({
@@ -302,13 +384,12 @@ describe('resolveCliOnPath', () => {
 });
 
 describe('resolveCliInstalledMap', () => {
-  test('maps each CLI probe exit code to installed=true iff the probe exited 0', async () => {
-    // A distinct verdict per CLI: on-PATH (0), absent (127), flaky/unknown (null).
-    const codes: Record<TerminalCli, number | null> = {
+  test('maps definitive probe exit codes: 0 → installed, non-zero → not installed', async () => {
+    const codes: Record<TerminalCli, number> = {
       claude: 0,
       codex: 127,
       copilot: 0,
-      opencode: null,
+      opencode: 127,
       cursor: 0,
       pi: 127,
       antigravity: 0,
@@ -328,24 +409,37 @@ describe('resolveCliInstalledMap', () => {
     });
   });
 
-  test('a rejected probe for one CLI degrades that entry to not-installed, never crashes', async () => {
+  test('a probe-null (UNKNOWN) entry is not collapsed into positive absence', async () => {
+    // The row-gating consumer (`isTerminalCliEnabled`) hides a launch row only
+    // on the positive-absence value `false` and documents fail-open for an
+    // unresolved probe — a contract this map defeats when it collapses `unknown`
+    // to `false`: one flaky probe then hides an installed CLI's rows for the
+    // whole cache TTL. Unknown must stay distinguishable from a genuine
+    // not-found all the way to that consumer.
+    const map = await resolveCliInstalledMap({
+      probe: (cli) => Promise.resolve(cli === 'pi' ? null : cli === 'codex' ? 127 : 0),
+    });
+    expect(map.claude).toBe(true);
+    expect(map.codex).toBe(false);
+    // Unknown is encoded as key ABSENCE, not an explicit `undefined` value —
+    // `Object.keys`/`in` consumers must not see an unverified entry.
+    expect('pi' in map).toBe(false);
+  });
+
+  test('a rejected probe entry degrades to UNKNOWN — never positive absence — and never crashes', async () => {
     const map = await resolveCliInstalledMap({
       probe: (cli) => (cli === 'codex' ? Promise.reject(new Error('boom')) : Promise.resolve(0)),
     });
-    expect(map).toEqual({
-      claude: true,
-      codex: false,
-      copilot: true,
-      opencode: true,
-      cursor: true,
-      pi: true,
-      antigravity: true,
-      openclaw: true,
-      hermes: true,
-    });
+    expect(map.claude).toBe(true);
+    expect('codex' in map).toBe(false);
   });
 
-  test('returns exactly one entry per CLI in TERMINAL_CLI_IDS', async () => {
+  test('all probes failing yields an empty map, not a map of explicit undefineds', async () => {
+    const map = await resolveCliInstalledMap({ probe: () => Promise.resolve(null) });
+    expect(Object.keys(map)).toHaveLength(0);
+  });
+
+  test('all-definitive probes yield one entry per CLI in TERMINAL_CLI_IDS', async () => {
     const map = await resolveCliInstalledMap({ probe: () => Promise.resolve(127) });
     expect(Object.keys(map).sort()).toEqual([...TERMINAL_CLI_IDS].sort());
   });

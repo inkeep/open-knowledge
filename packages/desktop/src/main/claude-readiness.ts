@@ -74,6 +74,11 @@ export interface ProbeTimers {
  * `command -v` ran and `claude` is genuinely absent, whereas `null` means the
  * probe itself failed and claude's presence is UNKNOWN — the caller must not
  * render a "not installed" message off an UNKNOWN.
+ *
+ * Every `null` resolution logs at warn: this probe gates launch baking and the
+ * installed-map row gating, and a silent degradation makes a field report of
+ * "isn't installed" undiagnosable (genuine PATH loss and a probe flake would
+ * otherwise leave identical artifacts).
  */
 export function runLoginShellProbe(
   spawn: ProbeSpawn,
@@ -86,14 +91,22 @@ export function runLoginShellProbe(
     let child: ProbeChild;
     try {
       child = spawn(shell, args);
-    } catch {
+    } catch (err) {
       // partial-failure boundary: spawn can throw synchronously on resource
       // exhaustion. Claude presence is UNKNOWN, not absent.
+      getLogger('login-shell-probe').warn(
+        { shell, args, err },
+        'login-shell PATH probe spawn threw; presence unknown',
+      );
       resolve(null);
       return;
     }
     let settled = false;
     const timer = timers.setTimer(() => {
+      getLogger('login-shell-probe').warn(
+        { shell, args, timeoutMs },
+        'login-shell PATH probe timed out; presence unknown',
+      );
       child.kill();
       finish(null);
     }, timeoutMs);
@@ -103,7 +116,15 @@ export function runLoginShellProbe(
       timers.clearTimer(timer);
       resolve(code);
     }
-    child.onError(() => finish(null));
+    child.onError((err) => {
+      if (!settled) {
+        getLogger('login-shell-probe').warn(
+          { shell, args, err },
+          'login-shell PATH probe failed to run; presence unknown',
+        );
+      }
+      finish(null);
+    });
     child.onExit((code) => finish(code));
   });
 }
@@ -222,29 +243,34 @@ export async function resolveCliOnPath(deps: ResolveCliOnPathDeps): Promise<CliR
 
 export interface ResolveCliInstalledMapDeps {
   /** Login-shell PATH probe for a CLI's registry binary; resolves the exit code
-   *  or `null` (probe failed → UNKNOWN, treated here as not-installed). */
+   *  or `null` (probe failed → UNKNOWN, that entry is omitted from the map). */
   probe(cli: TerminalCli): Promise<number | null>;
 }
 
 /**
- * Batched on-PATH readiness for every launchable CLI, collapsed to a plain
- * installed map (`present` ⇒ true; `not-found` and `unknown` ⇒ false). This is
- * the "which CLIs can I launch?" answer the New-chat default-CLI auto-pick needs
- * — one query instead of four separate {@link resolveCliOnPath} preflights.
- * Collapsing `unknown` to false is deliberate: defaulting must resolve to a
- * concrete CLI, and an undetectable CLI is not a safe auto-pick (the resolver's
- * final fallback is claude). Each entry still routes through
- * {@link resolveCliOnPath}, so a flaky or rejected probe degrades that one entry
- * without crashing the batch.
+ * Batched on-PATH readiness for every launchable CLI as an installed map:
+ * `present` ⇒ `true`, `not-found` ⇒ `false`, and `unknown` ⇒ the entry is
+ * OMITTED — an absent key means the probe could not verify either way, and
+ * consumers must not read it as absence (row gating fails open on `undefined`;
+ * auto-pick requires `=== true`, so an unverifiable CLI is still never a safe
+ * auto-pick and the resolver's final fallback stays claude). This is the "which
+ * CLIs can I launch?" answer the New-chat default-CLI auto-pick needs — one
+ * query instead of a per-CLI {@link resolveCliOnPath} preflight fan-out. Each
+ * entry still routes through {@link resolveCliOnPath}, so a flaky or rejected
+ * probe degrades that one entry without crashing the batch.
  */
 export async function resolveCliInstalledMap(
   deps: ResolveCliInstalledMapDeps,
-): Promise<Record<TerminalCli, boolean>> {
+): Promise<Partial<Record<TerminalCli, boolean>>> {
   const entries = await Promise.all(
     TERMINAL_CLI_IDS.map(async (cli) => {
       const { onPath } = await resolveCliOnPath({ probe: () => deps.probe(cli) });
-      return [cli, onPath === 'present'] as const;
+      return [cli, onPath] as const;
     }),
   );
-  return Object.fromEntries(entries) as Record<TerminalCli, boolean>;
+  const map: Partial<Record<TerminalCli, boolean>> = {};
+  for (const [cli, onPath] of entries) {
+    if (onPath !== 'unknown') map[cli] = onPath === 'present';
+  }
+  return map;
 }

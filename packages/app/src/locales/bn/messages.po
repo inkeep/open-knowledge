@@ -3864,6 +3864,10 @@ msgstr "স্কিল ভাগাভাগি হালনাগাদ কর
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "স্কিল ভাগাভাগি হালনাগাদ করা যায়নি — {detail}।"
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "{displayName} ({bin}) উপলব্ধ কি না তা যাচাই করা যায়নি, তাই এটি একটি সাধারণ শেল। আপনি এখনও নিজে {bin} চালাতে পারেন।"
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "স্কিল ইনস্টলের সংখ্যা প্রকাশ্যে গণনা করুন"
@@ -4422,6 +4426,7 @@ msgstr "সংযোগ বিচ্ছিন্ন করা হচ্ছে"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "সরিয়ে দিন"
 

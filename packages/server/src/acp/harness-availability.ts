@@ -51,6 +51,7 @@ const DEFAULT_TTL_MS = 60_000;
 async function detectHarness(
   cli: AcpHarnessCli,
   resolveLoginShellPath: () => Promise<string | null>,
+  preflight: typeof preflightLaunch = preflightLaunch,
 ): Promise<HarnessAvailability> {
   const launch = {
     cmd: HARNESS_BINS[cli],
@@ -60,21 +61,52 @@ async function detectHarness(
     pathFromOverlay: false,
   };
   try {
-    await preflightLaunch(launch);
+    await preflight(launch);
     return 'present';
   } catch (err) {
-    if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') return 'unknown';
+    if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') {
+      // Presence was never verified either way — a silent degradation here
+      // makes a wrong default undiagnosable in the field, so leave a trace.
+      getLogger('acp-harness').warn(
+        { cli, err },
+        'harness preflight failed before absence could be verified; availability unknown',
+      );
+      return 'unknown';
+    }
     // Same second chance the launch chain takes, and deliberately the same
     // shared provider: reporting `not-found` for a harness that
     // `ensureLaunchable` would go on to start is worse than no signal at all,
     // because it steers defaulting away from an agent that works.
-    const loginShellPath = await resolveLoginShellPath().catch(() => null);
-    if (loginShellPath === null) return 'not-found';
+    let loginShellPath: string | null = null;
+    let captureErr: unknown;
     try {
-      await preflightLaunch(withLoginShellPath(launch, loginShellPath));
+      loginShellPath = await resolveLoginShellPath();
+    } catch (resolveErr) {
+      captureErr = resolveErr;
+    }
+    if (loginShellPath === null) {
+      // Capture failure ≠ absence: without the login-shell PATH the second
+      // chance never ran, so a `not-found` here would be a positive absence
+      // claim off an unverified state. Carry the capture failure's cause —
+      // this is a degradation path and must name why it degraded.
+      getLogger('acp-harness').warn(
+        { cli, err: captureErr },
+        'login-shell PATH capture failed; harness absence unverified — availability unknown',
+      );
+      return 'unknown';
+    }
+    try {
+      await preflight(withLoginShellPath(launch, loginShellPath));
       return 'present';
-    } catch {
-      return 'not-found';
+    } catch (secondErr) {
+      if (secondErr instanceof AgentLaunchError && secondErr.code === 'command-not-found') {
+        return 'not-found';
+      }
+      getLogger('acp-harness').warn(
+        { cli, err: secondErr },
+        'harness preflight on the login-shell PATH failed before absence could be verified; availability unknown',
+      );
+      return 'unknown';
     }
   }
 }
@@ -86,11 +118,15 @@ export function createAcpHarnessAvailabilityProbe(
     ttlMs?: number;
     /** Defaults to the process-shared probe the launch chain uses. */
     resolveLoginShellPath?: () => Promise<string | null>;
+    /** Test seam: the launch preflight is otherwise environment-dependent. */
+    preflight?: typeof preflightLaunch;
   } = {},
 ): () => Promise<AcpHarnessAvailability> {
   const resolveLoginShellPath =
     opts.resolveLoginShellPath ?? getSharedLoginShellPathProvider(getLogger('acp-harness'));
-  const probe = opts.probe ?? ((cli: AcpHarnessCli) => detectHarness(cli, resolveLoginShellPath));
+  const preflight = opts.preflight ?? preflightLaunch;
+  const probe =
+    opts.probe ?? ((cli: AcpHarnessCli) => detectHarness(cli, resolveLoginShellPath, preflight));
   const now = opts.now ?? Date.now;
   const ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
   const harnesses = [...new Set(Object.values(ACP_AGENT_HARNESS_CLIS))].filter(
@@ -105,7 +141,11 @@ export function createAcpHarnessAvailabilityProbe(
       harnesses.map(async (cli) => {
         try {
           return [cli, await probe(cli)] as const;
-        } catch {
+        } catch (err) {
+          getLogger('acp-harness').warn(
+            { cli, err },
+            'harness availability probe rejected; availability unknown',
+          );
           return [cli, 'unknown'] as const;
         }
       }),

@@ -3864,6 +3864,10 @@ msgstr "स्किल साझाकरण अपडेट नहीं क�
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "स्किल साझाकरण अपडेट नहीं किया जा सका — {detail}."
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "यह सत्यापित नहीं हो सका कि {displayName} ({bin}) उपलब्ध है, इसलिए यह एक सादा शेल है। आप फिर भी {bin} स्वयं चला सकते हैं।"
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "स्किल इंस्टॉल की गिनती सार्वजनिक रूप से करें"
@@ -4422,6 +4426,7 @@ msgstr "कनेक्शन तोड़ा जा रहा है"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "ख़ारिज करें"
 

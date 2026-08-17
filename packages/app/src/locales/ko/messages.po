@@ -3868,6 +3868,10 @@ msgstr "스킬 공유를 업데이트하지 못했습니다"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "스킬 공유를 업데이트하지 못했습니다: {detail}."
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "{displayName}({bin})이(가) 사용 가능한지 확인할 수 없어 일반 셸이 열렸습니다. 직접 {bin}을(를) 실행할 수 있습니다."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "스킬 설치 횟수를 공개적으로 집계"
@@ -4426,6 +4430,7 @@ msgstr "연결 해제 중"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "닫기"
 

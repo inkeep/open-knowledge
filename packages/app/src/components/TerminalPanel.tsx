@@ -25,6 +25,7 @@ import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
 import { type TerminalCommandId, terminalCommandFor } from './handoff/terminal-command-events';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
+import { TerminalCliUnverifiedBanner } from './TerminalCliUnverifiedBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
 import { createTerminalFileLinkProvider } from './terminal-link-provider';
@@ -219,9 +220,19 @@ function TerminalSession({
   const [exitInfo, setExitInfo] = useState<TerminalExitInfo | null>(null);
   // Live PTY id, mirrored out of the mount effect for the keyboard handlers.
   const ptyIdRef = useRef<string | null>(null);
-  // Set when a codex/cursor/opencode launch probed `not-found` on PATH — drives
-  // the missing-CLI banner. Claude uses its own readiness banner instead.
-  const [missingCli, setMissingCli] = useState<TerminalCli | null>(null);
+  // Set when a launch suppressed its bake off a non-`present` verdict — drives
+  // the per-CLI banner strip. `not-found` is the VERIFIED absence (the probe
+  // ran and the binary is genuinely off the PATH); `unverified` covers a
+  // still-unknown probe and a rejected preflight IPC, where the binary may
+  // well be installed — the probe contract forbids presenting that as
+  // "isn't installed". A genuine claude not-found routes through the richer
+  // readiness banner instead (`setReadiness`), so `not-found` here is
+  // non-claude only.
+  const [cliNotice, setCliNotice] = useState<
+    | { cli: TerminalCli; kind: 'unverified' }
+    | { cli: Exclude<TerminalCli, 'claude'>; kind: 'not-found' }
+    | null
+  >(null);
 
   // Auto-approve OK's own tools for the baked launch (user-scope preference,
   // default on). Read the config context nullably (`use`, not `useConfigContext`)
@@ -672,14 +683,17 @@ function TerminalSession({
     // the tab back to a fresh interactive shell after the agent exits.
     //
     // The bake is gated on a CLI confirmed present on PATH — exactly today's
-    // guarantee that the terminal never shows a raw `command not found`. A not-
-    // present / unknown / IPC-failure verdict returns undefined (spawn a plain
-    // shell) and surfaces a banner: this function is the ONLY producer of the
-    // claude readiness verdict (launch-less sessions carry no claude intent and
-    // never probe — see attachSession), and sets the missing-CLI banner for
-    // codex/cursor/opencode. The claude probe here doubles as the launch-time MCP
-    // pre-approval check — as fresh as the on-disk `.mcp.json` gets, since it runs
-    // immediately before the spawn.
+    // guarantee that the terminal never shows a raw `command not found`. Any
+    // other verdict returns undefined (spawn a plain shell) and surfaces a
+    // banner keyed to what the probe actually established: verified `not-found`
+    // gets the actionable not-installed banner, while a still-`unknown` probe or
+    // a rejected preflight IPC gets the distinct unverified strip (presenting an
+    // unverified verdict as absence is the conflation the probe's producer
+    // contract forbids). This function is the ONLY producer of the claude
+    // readiness verdict (launch-less sessions carry no claude intent and never
+    // probe — see attachSession). The claude probe here doubles as the
+    // launch-time MCP pre-approval check — as fresh as the on-disk `.mcp.json`
+    // gets, since it runs immediately before the spawn.
     const resolveLaunchCommand = async (
       intent: TerminalLaunchIntent,
     ): Promise<string | undefined> => {
@@ -700,25 +714,25 @@ function TerminalSession({
               autoApproveOkTools: autoApproveOkToolsRef.current && fresh.mcpPreApprovable === true,
             });
           }
-          // Not confirmed present (not-found OR unknown) — suppress the bake and
-          // surface the readiness banner so the user always gets feedback. The
-          // banner hides for `unknown` by design (a flaky probe must never show a
-          // false "not installed"), so map a lingering `unknown` to not-found FOR
-          // DISPLAY only — by here the launch-time verdict is treated as unconfirmed.
+          // Not confirmed present — suppress the bake and surface feedback. A
+          // verified `not-found` gets the readiness banner's actionable
+          // not-installed message; a lingering `unknown` is an UNVERIFIED
+          // verdict, and the probe's producer contract forbids rendering a
+          // "not installed" claim off it — it gets the distinct unverified
+          // strip instead.
           if (!cancelled) {
-            setReadiness(
-              fresh.claude === 'not-found'
-                ? fresh
-                : { claude: 'not-found', mcp: fresh.mcp, mcpPreApprovable: false },
-            );
+            if (fresh.claude === 'not-found') {
+              setReadiness(fresh);
+            } else {
+              setCliNotice({ cli: 'claude', kind: 'unverified' });
+            }
           }
         } catch (err) {
           console.warn('[terminal] claude launch preflight failed', err);
-          // Unconfirmed (IPC failure) → still surface the banner rather than a
-          // silent no-op (there is no "couldn't verify" state).
-          if (!cancelled) {
-            setReadiness({ claude: 'not-found', mcp: 'needs-rewire', mcpPreApprovable: false });
-          }
+          // The preflight IPC itself failed, so presence was never verified —
+          // same unverified state as a still-unknown probe, never a fabricated
+          // not-found.
+          if (!cancelled) setCliNotice({ cli: 'claude', kind: 'unverified' });
         }
         return undefined;
       }
@@ -742,10 +756,20 @@ function TerminalSession({
               autoApproveOkToolsRef.current,
           });
         }
+        // A verified `not-found` gets the actionable missing-CLI banner; a
+        // still-unknown probe stays UNVERIFIED and must not be presented as
+        // absence (the probe's producer contract) — distinct strip instead.
+        if (!cancelled) {
+          setCliNotice({
+            cli: intent.cli,
+            kind: res.onPath === 'not-found' ? 'not-found' : 'unverified',
+          });
+        }
       } catch (err) {
         console.warn('[terminal] cliPreflight failed', { cli: intent.cli, err });
+        // IPC failure: presence was never verified — same unverified state.
+        if (!cancelled) setCliNotice({ cli: intent.cli, kind: 'unverified' });
       }
-      if (!cancelled) setMissingCli(intent.cli);
       return undefined;
     };
 
@@ -1042,12 +1066,16 @@ function TerminalSession({
           onDismiss={() => setReadiness(null)}
         />
       ) : null}
-      {status === 'running' && missingCli ? (
-        <TerminalCliMissingBanner
-          cli={missingCli}
-          bridge={bridge}
-          onDismiss={() => setMissingCli(null)}
-        />
+      {status === 'running' && cliNotice ? (
+        cliNotice.kind === 'not-found' ? (
+          <TerminalCliMissingBanner
+            cli={cliNotice.cli}
+            bridge={bridge}
+            onDismiss={() => setCliNotice(null)}
+          />
+        ) : (
+          <TerminalCliUnverifiedBanner cli={cliNotice.cli} onDismiss={() => setCliNotice(null)} />
+        )
       ) : null}
       <div ref={containerRef} data-terminal-status={status} className="min-h-0 flex-1 px-1.5" />
       {status === 'exited' && exitInfo ? (

@@ -3127,6 +3127,15 @@
     ],
     "aM23Wr": ["nombre-de-pagina"],
     "aNb3JH": ["Copiar como YAML"],
+    "aQ37oZ": [
+      "No se pudo verificar que ",
+      ["displayName"],
+      " (",
+      ["bin"],
+      ") esté disponible, así que este es un shell normal. Aún puedes ejecutar ",
+      ["bin"],
+      " tú mismo."
+    ],
     "aQD_86": ["No se pudo actualizar el proveedor de embeddings — ", ["detail"]],
     "aQyGJc": ["Otra cosa"],
     "aR4DgO": [

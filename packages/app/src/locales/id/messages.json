@@ -2709,6 +2709,15 @@
     ],
     "aM23Wr": ["nama-halaman"],
     "aNb3JH": ["Salin sebagai YAML"],
+    "aQ37oZ": [
+      "Tidak dapat memverifikasi bahwa ",
+      ["displayName"],
+      " (",
+      ["bin"],
+      ") tersedia, jadi ini adalah shell biasa. Anda tetap dapat menjalankan ",
+      ["bin"],
+      " sendiri."
+    ],
     "aQD_86": ["Gagal memperbarui penyedia embedding — ", ["detail"]],
     "aQyGJc": ["Hal lain"],
     "aR4DgO": [

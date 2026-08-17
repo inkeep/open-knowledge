@@ -2697,6 +2697,15 @@
     ],
     "aM23Wr": ["page-name"],
     "aNb3JH": ["Copy as YAML"],
+    "aQ37oZ": [
+      "Couldn't verify that ",
+      ["displayName"],
+      " (",
+      ["bin"],
+      ") is available, so this is a plain shell. You can still run ",
+      ["bin"],
+      " yourself."
+    ],
     "aQD_86": ["Failed to update the embeddings provider — ", ["detail"]],
     "aQyGJc": ["Something else"],
     "aR4DgO": [

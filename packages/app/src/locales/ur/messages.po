@@ -3868,6 +3868,10 @@ msgstr "مہارتوں کا اشتراک تازہ نہیں ہو سکا"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "مہارتوں کا اشتراک تازہ نہیں ہو سکا — {detail}۔"
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "تصدیق نہیں ہو سکی کہ {displayName} ({bin}) دستیاب ہے، اس لیے یہ ایک سادہ شیل ہے۔ آپ پھر بھی خود {bin} چلا سکتے ہیں۔"
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "مہارت کی تنصیبات عوامی طور پر شمار کریں"
@@ -4426,6 +4430,7 @@ msgstr "منقطع کیا جا رہا ہے"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "برخاست کریں"
 

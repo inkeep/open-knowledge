@@ -3868,6 +3868,10 @@ msgstr "No se pudo actualizar la compartición de habilidades"
 msgid "Couldn't update skills sharing — {detail}."
 msgstr "No se pudo actualizar la compartición de habilidades: {detail}."
 
+#: src/components/TerminalCliUnverifiedBanner.tsx
+msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
+msgstr "No se pudo verificar que {displayName} ({bin}) esté disponible, así que este es un shell normal. Aún puedes ejecutar {bin} tú mismo."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "Contar públicamente las instalaciones de habilidades"
@@ -4426,6 +4430,7 @@ msgstr "Desconectando"
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/components/TerminalCliMissingBanner.tsx
+#: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Dismiss"
 msgstr "Descartar"
 

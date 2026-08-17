@@ -1795,15 +1795,16 @@ export interface RequestChannels {
     result: CliReadiness;
   };
   /**
-   * Batched docked-terminal on-PATH readiness for all launchable CLIs → a plain
-   * installed map (`true` ⇒ the CLI's registry binary resolves on the login-shell
-   * PATH). Drives the New-chat default-CLI auto-pick. NOT an exec channel: no
-   * renderer input; main runs a fixed `command -v <bin>` per registry binary and
-   * caches the batch (~60s).
+   * Batched docked-terminal on-PATH readiness for all launchable CLIs → an
+   * installed map (`true` ⇒ the CLI's registry binary resolves on the
+   * login-shell PATH, `false` ⇒ verified absent, absent key ⇒ the probe could
+   * not verify — consumers must not read it as absence). Drives the New-chat
+   * default-CLI auto-pick. NOT an exec channel: no renderer input; main runs a
+   * fixed `command -v <bin>` per registry binary and caches the batch (~60s).
    */
   'ok:terminal:cli-installed-map': {
     args: [];
-    result: Record<TerminalCli, boolean>;
+    result: Partial<Record<TerminalCli, boolean>>;
   };
   /** Per-window state for the independent terminal and agents panels. */
   'ok:terminal:dock-state': {

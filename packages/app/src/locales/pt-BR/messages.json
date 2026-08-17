@@ -3064,6 +3064,15 @@
     ],
     "aM23Wr": ["nome-da-pagina"],
     "aNb3JH": ["Copiar como YAML"],
+    "aQ37oZ": [
+      "Não foi possível verificar se ",
+      ["displayName"],
+      " (",
+      ["bin"],
+      ") está disponível, então este é um shell comum. Você ainda pode executar ",
+      ["bin"],
+      " por conta própria."
+    ],
     "aQD_86": ["Falha ao atualizar o provedor de embeddings — ", ["detail"]],
     "aQyGJc": ["Outra coisa"],
     "aR4DgO": [

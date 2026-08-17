@@ -2067,7 +2067,12 @@ export interface OkDesktopBridge {
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;
     cliPreflight(cli: TerminalCli): Promise<CliReadiness>;
-    cliInstalledMap(): Promise<Record<TerminalCli, boolean>>;
+    /**
+     * Batched on-PATH readiness. An absent key means the probe could not verify
+     * that CLI either way (NOT absence) — consumers must fail open on
+     * `undefined` and reserve gating-off for the positive `false`.
+     */
+    cliInstalledMap(): Promise<Partial<Record<TerminalCli, boolean>>>;
     rewireClaudeMcp(): Promise<ClaudeReadiness>;
   };
 
