@@ -1,10 +1,16 @@
-import type { SkillSearchResult, SkillsListEntry } from '@inkeep/open-knowledge-core';
+import type {
+  SkillCostTiers,
+  SkillSearchResult,
+  SkillsListEntry,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check, Package } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { formatSkillTokens } from '@/components/SkillCostValue';
 import { SkillDirectoryCard } from '@/components/SkillDirectoryCard';
 import { Badge } from '@/components/ui/badge';
 import { formatInstalls } from '@/lib/format-installs';
+import { peekSkillCardCost, resolveSkillCardCost } from '@/lib/skill-card-cost';
 
 // The `publisher` is a GitHub owner login, so `github.com/<login>.png` yields its
 // avatar with no API call. Rendered as the card's leading logo; decorative
@@ -53,11 +59,37 @@ export function SkillDirectoryResult({
   readonly onOpen: () => void;
 }) {
   const { i18n } = useLingui();
+  // Seeded from the session memo so a card already resolved elsewhere in the
+  // grid (or on a previous render of this query) shows its figure immediately
+  // instead of blanking and re-fetching.
+  const [cost, setCost] = useState<SkillCostTiers | null>(
+    () => peekSkillCardCost(result.source, result.name) ?? null,
+  );
+  // Guards a setState after unmount when the grid re-renders under a new query
+  // while a hover fetch is still in flight.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // Plain function on purpose: the React Compiler memoises where it matters, and
+  // this repo bans manual useCallback.
+  const onHover = () => {
+    if (peekSkillCardCost(result.source, result.name) !== undefined) return;
+    void resolveSkillCardCost(result.source, result.name).then((tiers) => {
+      if (mounted.current) setCost(tiers);
+    });
+  };
+
   return (
     <SkillDirectoryCard
       name={result.name}
       description={result.description}
       onOpen={onOpen}
+      onHover={onHover}
       leading={<PublisherAvatar login={result.publisher} />}
       action={
         imported ? (
@@ -88,6 +120,25 @@ export function SkillDirectoryResult({
                   <Trans>installs:</Trans>{' '}
                 </span>
                 {formatInstalls(result.installs, i18n.locale)}
+              </span>
+            </>
+          ) : null}
+          {/* Hover-resolved and deliberately last: the always-on tier is the only
+              cost paid on every turn, so it is the one figure worth pricing a
+              card by. Appended rather than positioned, because the segments
+              before it are all conditional (publisher falls back to source, the
+              first-party badge is optional, installs may be null) — this must
+              not assume the line's current shape. Absent until hover resolves,
+              and absent for good when the fetch fails, so the card renders
+              exactly as it does today. */}
+          {cost ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="shrink-0 whitespace-nowrap" data-testid="skill-card-always-on">
+                {formatSkillTokens(cost.alwaysOn)}{' '}
+                <Trans comment="Suffix on a skill directory card's context-cost figure">
+                  always-on tokens
+                </Trans>
               </span>
             </>
           ) : null}

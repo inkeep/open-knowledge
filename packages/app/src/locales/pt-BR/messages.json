@@ -82,6 +82,7 @@
     "09Tv5j": ["Reconectando…"],
     "0BB9ID": ["Ainda não há títulos."],
     "0BfhAj": ["Redefinir a visualização"],
+    "0CvV_9": ["Instala em"],
     "0E9DR6": ["Digite para encontrar um documento"],
     "0Er6-M": ["Reiniciando"],
     "0Gd0NU": ["Compartilhado"],
@@ -119,9 +120,6 @@
     ],
     "0eHrMb": ["Não foi possível concluir a exclusão"],
     "0g7rCZ": ["Duplicado em \"", ["0"], "\""],
-    "0inVGS": [
-      "Ajuda seu agente de programação a reconhecer projetos do OpenKnowledge e a rotear leituras e escritas por ele."
-    ],
     "0jD-Gn": ["Uma base de conhecimento de equipe, uma wiki pessoal, documentação de projeto..."],
     "0kTAXe": ["Abrir a fonte: ", ["mirrorSrc"]],
     "0pZmTP": ["Não é possível compartilhar este caminho."],
@@ -984,6 +982,7 @@
     ],
     "BlLxpG": ["Buscar habilidades"],
     "BowKyI": ["Mostrar detalhes"],
+    "BuMD5w": ["Remove de"],
     "Bv5a9_": ["Estatísticas da seleção"],
     "BwKH4d": ["Aplicativos externos"],
     "Bx4EXG": ["Ações de ", ["label"]],
@@ -1081,6 +1080,7 @@
     "D8JJwQ": ["Não dá para enviar comentários agora. Tente mais tarde."],
     "D8OV7J": ["Somente colaboradores"],
     "DAVInK": ["Adicionar ao dicionário"],
+    "DBqxw2": ["sempre ativo"],
     "DCSSZt": ["O agente está trabalhando"],
     "DDTdLl": ["Configurações do bloco de código"],
     "DELNQk": ["Os colaboradores veem suas edições em andamento assim que elas sincronizam."],
@@ -1295,7 +1295,6 @@
       ")."
     ],
     "FWSjnp": ["Painel de edição de código e campos de propriedade do tipo código"],
-    "FXk_zY": ["Adiciona um fluxo guiado para criar novas Habilidades de agente."],
     "FZtBeR": ["Ativar ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1631,6 +1630,9 @@
     ],
     "K0N7zS": ["Falha ao ler o estado do compartilhamento de configuração"],
     "K1ckLX": ["Falha ao criar a pasta"],
+    "K1nRu2": [
+      "Esta habilidade fica na pasta do projeto, então ela é instalada para todos que abrirem este projeto, não apenas para você."
+    ],
     "K2v7QF": ["Não deu para compartilhar as habilidades"],
     "K4G55s": ["Verificando a fonte"],
     "K6MQQk": ["A sincronização está falhando. Veja o status de sincronização para os detalhes."],
@@ -1862,6 +1864,7 @@
     "Md709y": ["Carregando ", ["fileName"]],
     "MdpSC1": ["Nova habilidade"],
     "Mh_4hd": ["Aba anterior"],
+    "MiMTvb": ["tokens sempre ativos"],
     "Mj8R8K": ["Não deu para instalar a habilidade: ", ["0"]],
     "MmDDWK": ["Abertos recentemente"],
     "Mnavhe": ["Propriedades de ", ["propPanelDescriptorLabel"]],
@@ -1912,6 +1915,7 @@
     "NOHyEE": ["Tentar o push de novo"],
     "NORKZU": ["Avisos do padrão: ", ["summary"]],
     "NQ8llq": ["Adicionar item"],
+    "NQVepz": ["Instalar ", ["name"]],
     "NQXwDy": ["Editar no arquivo de configuração"],
     "NRSLBe": ["há ", ["diffMin"], " min"],
     "NSnIUP": ["Duas páginas (pares)"],
@@ -2151,6 +2155,7 @@
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
+    "QcScEc": ["Desinstalar ", ["name"]],
     "QcpeeE": ["Ir para ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2167,6 +2172,7 @@
     "QlAG4m": ["Conte mais (opcional)"],
     "QlkiD5": ["Reposicionar no texto selecionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
+    "QnnKlV": ["sob demanda"],
     "QohqVL": ["Este agente não oferece comandos de barra"],
     "QpSqAP": [
       "O shell real está desativado para este projeto. Ativá-lo faz os comandos rodarem com todo o acesso da sua conta de usuário."
@@ -2605,6 +2611,7 @@
       " itens selecionados? As pastas e todos os arquivos dentro delas serão excluídos. Esta ação não pode ser desfeita."
     ],
     "WMsoIm": ["Já fez login?"],
+    "WOr-hW": ["tokens"],
     "WPwDin": ["Abrir a pasta no disco"],
     "WR0y2O": ["Compartilhar a pasta"],
     "WRNXKp": ["Buscando"],
@@ -2737,6 +2744,7 @@
     "XuQzrk": [
       "Não deu para reiniciar o servidor — outro processo está com ele. Feche as outras janelas do OpenKnowledge deste projeto e tente de novo."
     ],
+    "XuVQrE": ["Configurar ", ["0"]],
     "Xv_ijG": ["https://github.com/dono/repo ou dono/repo"],
     "Xwump4": ["não há repositório git aqui"],
     "XyOUTJ": ["Sair da mesclagem"],
@@ -3021,6 +3029,7 @@
     "aalx4E": ["Editando código MDX quebrado: ", ["reason"]],
     "aatPoi": ["Arquivos gerados"],
     "abiHje": ["Excluir os itens selecionados"],
+    "ac8G0O": ["ao acionar"],
     "adsMWO": ["Resolvendo deltas"],
     "ah_ekO": ["\"", ["name"], "\" já está atualizado"],
     "aiArms": ["Não foi possível clonar este repositório."],
@@ -3426,6 +3435,7 @@
     "fnlBN4": [
       "As configurações de aprovação automática ainda não carregaram — tente de novo em instantes"
     ],
+    "fo0VXg": ["Desinstalar"],
     "fo6CCk": ["painel ", ["0"]],
     "fqSfXY": ["Substituir"],
     "ft-BOm": ["Relatar um erro…"],
@@ -3777,6 +3787,7 @@
     "jerqF0": ["Carregando o estado dos ramos"],
     "jhtG3I": [" Sua seleção foi restaurada."],
     "jjtmV_": ["Nome do primeiro arquivo"],
+    "jkt28V": ["Custo de contexto"],
     "jnCROW": [
       "Um instantâneo de memória da falha, e o artefato que mais nos ajuda. Ele pode conter conteúdo de documentos e não pode ser ocultado, então desmarque se preferir não compartilhá-lo."
     ],
@@ -4145,6 +4156,7 @@
     ],
     "ndwmea": ["indisponível nesta plataforma"],
     "neRy3o": ["Dividir o item de lista"],
+    "nem6R7": ["acima do orçamento de tokens de ", ["budgetLabel"]],
     "nf0wk0": ["vinculado por uma pasta acima"],
     "nfPccR": [
       [
@@ -4766,6 +4778,9 @@
     ],
     "vGeNNQ": ["Copie um prompt e cole no seu agente para configurar seu projeto."],
     "vHlhDc": ["Clique duas vezes para editar"],
+    "vIR6Hp": [
+      "As habilidades são instaladas em todas as ferramentas de IA detectadas nesta máquina, independentemente das conexões MCP que você escolheu acima."
+    ],
     "vIxrEk": ["Ajustar à largura"],
     "vLyv1R": ["Ocultar"],
     "vO2v-0": ["Ocultar os outros"],
@@ -4989,6 +5004,7 @@
       "O link simbólico é um diretório acima — desvincule aquela pasta para retomar esta."
     ],
     "yMgL_E": ["Navegação do campo de busca"],
+    "yOjRUV": ["Nenhuma ferramenta de IA detectada. Instale uma para usar esta habilidade."],
     "yQE2r9": ["Carregando"],
     "yQyglE": ["Nenhum documento corresponde"],
     "yR5LHI": ["Digite um valor hexadecimal de 6 dígitos, como #1A2B3C"],
@@ -5096,6 +5112,7 @@
     "zbymaY": ["há ", ["0"], " min"],
     "zcmYx4": ["a configuração do git não está disponível"],
     "zd00pH": ["Copiar caminho"],
+    "zewp9w": ["Os destinos mudaram. Revise a lista e confirme."],
     "zgSFyG": ["Link externo"],
     "zkz0Fg": ["Configurar a sincronização"],
     "zlErBl": ["A resposta de erro dos títulos da página não seguiu a RFC 9457"],

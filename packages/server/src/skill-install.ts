@@ -22,6 +22,7 @@ import { getLogger } from './logger.ts';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 import { recordSkillInstallEvent, type SkillInstallEventOutcome } from './skill-install-events.ts';
 import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
+import { readKnownSkillPlacementRoots } from './skill-placements-store.ts';
 import {
   readBundleDecision,
   readServerPackageVersion,
@@ -133,6 +134,42 @@ export interface DetectedSkillHost {
  */
 export function detectUserSkillHosts(home: string): DetectedSkillHost[] {
   return USER_SKILL_HOSTS.filter((host) => existsSync(join(home, host.hostDir)));
+}
+
+/**
+ * A resolved user-global built-in-skill install target: a static agent host, or
+ * a custom root the user declared in the placements ledger.
+ */
+export interface ResolvedSkillHost {
+  /** editorId for a static agent host; the home-relative root path for a
+   *  declared custom root, which has no agent name — the path is its id. */
+  readonly editor: string;
+  /** Home-relative skills root, e.g. `.claude/skills`, `.pi/agent/skills`,
+   *  `.tim/skills`. */
+  readonly skillsRoot: string;
+  /** True when this came from the declared-roots ledger, not the static host list. */
+  readonly custom: boolean;
+}
+
+/**
+ * Every place a user-global built-in skill would land under `home`: the static
+ * agent hosts present on disk (see {@link detectUserSkillHosts}) plus the custom
+ * roots the user declared in the placements ledger and that still exist. No
+ * directory scanning — a root is a target only because a static host root exists
+ * or the user nominated it. A declared root no longer on disk is skipped; one
+ * that coincides with a static host root is not repeated.
+ */
+export function resolveBuiltinSkillHosts(home: string): ResolvedSkillHost[] {
+  const staticHosts: ResolvedSkillHost[] = detectUserSkillHosts(home).map((host) => ({
+    editor: host.editorId,
+    skillsRoot: host.skillsRoot,
+    custom: false,
+  }));
+  const seen = new Set(staticHosts.map((host) => host.skillsRoot));
+  const customHosts: ResolvedSkillHost[] = readKnownSkillPlacementRoots(home)
+    .filter((root) => !seen.has(root) && existsSync(join(home, root)))
+    .map((root) => ({ editor: root, skillsRoot: root, custom: true }));
+  return [...staticHosts, ...customHosts];
 }
 
 /**

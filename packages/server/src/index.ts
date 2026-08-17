@@ -541,6 +541,8 @@ export {
   type InstallUserSkillOptions,
   type InstallUserSkillResult,
   installUserSkill,
+  type ResolvedSkillHost,
+  resolveBuiltinSkillHosts,
   type SkillInstallLogger,
   type SpawnLike,
 } from './skill-install.ts';

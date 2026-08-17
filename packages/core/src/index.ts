@@ -1829,6 +1829,18 @@ export {
   isDetectedSkillInProject,
   isSkillOutsideOpenProject,
 } from './skills-catalog/scope.ts';
+// Three-tier context-cost estimator — pure, browser-safe; shared by the client
+// preview payload and the server skills-list walk so a skill's cost reads the
+// same on every surface.
+export {
+  ALWAYS_ON_TOKEN_BUDGET,
+  estimateSkillCost,
+  ON_TRIGGER_TOKEN_BUDGET,
+  READABLE_SKILL_EXTENSIONS,
+  type SkillCostInput,
+  type SkillCostTiers,
+  SkillCostTiersSchema,
+} from './skills-catalog/skill-cost.ts';
 export {
   parseSkillsShCatalogSource,
   type SkillsShCatalogSource,

@@ -45,6 +45,7 @@ import type {
   ProjectIntegrationsSetRequest,
   ProjectIntegrationsSetResult,
   ProjectIntegrationsStatus,
+  SkillCostTiers,
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { classifyEditorState } from './integrations-settings.ts';
@@ -76,6 +77,15 @@ export interface ProjectIntegrationsCliSurface {
   /** Absolute project skill `SKILL.md` path, or null when the editor exposes
    *  no project-scope skill surface. */
   projectSkillPath(id: McpWiringEditorId, projectDir: string): string | null;
+  /** The bundled project skill as shipped: its on-disk source, its own
+   *  frontmatter description and its three-tier cost. Injected rather than
+   *  resolved here so this module stays Electron-free and unit-testable.
+   *  Returns null when the bundle cannot be read. */
+  projectSkillBundle(): {
+    sourceDir: string;
+    description: string;
+    size?: SkillCostTiers;
+  } | null;
   /** Technical locator of OK's entry inside the config — disclosure only. */
   entryLocator(id: McpWiringEditorId): string;
   classifyExistingProjectMcpConfig(
@@ -219,7 +229,12 @@ export function registerProjectIntegrationsSettings(
       });
       editors = [];
     }
-    const skillPaths = editorsWithProjectSkill(projectDir)
+    // Reach and paths come from the SAME editor set, walked once, so the
+    // cluster can never name an editor the paths omit (or the reverse).
+    const skillHosts = editorsWithProjectSkill(projectDir).filter(
+      (id) => cli.projectSkillPath(id, projectDir) !== null,
+    );
+    const skillPaths = skillHosts
       .map((id) => cli.projectSkillPath(id, projectDir))
       .filter((p): p is string => p !== null)
       .map((p) => relative(projectDir, p));
@@ -234,7 +249,22 @@ export function registerProjectIntegrationsSettings(
           err,
         });
       }
-      skill = { installed, paths: skillPaths };
+      // Best-effort: an unreadable bundle costs the row its cost line and
+      // preview affordance, never the row itself.
+      let bundle: ReturnType<ProjectIntegrationsCliSurface['projectSkillBundle']> = null;
+      try {
+        bundle = cli.projectSkillBundle();
+      } catch (err) {
+        logger.warn('project skill bundle read failed', { err });
+      }
+      skill = {
+        installed,
+        paths: skillPaths,
+        hosts: skillHosts,
+        description: bundle?.description ?? '',
+        ...(bundle?.size ? { size: bundle.size } : {}),
+        ...(bundle?.sourceDir ? { sourceDir: bundle.sourceDir } : {}),
+      };
     }
     return { available, hasProject: true, projectDir: tildify(projectDir), editors, skill };
   }

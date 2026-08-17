@@ -167,6 +167,26 @@ describe('skill-targets folders are gated on activation (PRD-7985)', () => {
   });
 });
 
+describe('three-tier size on the skills list (PRD-7978)', () => {
+  test('an in-place skill entry carries its server-computed three-tier cost', async () => {
+    const name = 'sized-skill';
+    expect((await putSkill('project', name)).status).toBe(200);
+
+    const res = await fetch(`${base()}/api/skills`);
+    const parsed = SkillsListSuccessSchema.safeParse(await res.json());
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    // The list carries the cost so the editor prices a skill without re-reading
+    // it: name+description drive always-on, the body drives on-trigger, and a
+    // bundle with no readable references reports zero on-demand (not NaN/absent).
+    const entry = parsed.data.skills.find((s) => s.name === name);
+    expect(entry?.size?.alwaysOn).toBeGreaterThan(0);
+    expect(entry?.size?.onTrigger).toBeGreaterThan(0);
+    expect(entry?.size?.onDemand).toBe(0);
+  });
+});
+
 describe('default global install targets stay in the install-target vocabulary', () => {
   /**
    * Detection (`~/.gemini` → antigravity) is WIDER than the install-target

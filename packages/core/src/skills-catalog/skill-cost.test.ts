@@ -1,0 +1,111 @@
+import { describe, expect, test } from 'vitest';
+import {
+  ALWAYS_ON_TOKEN_BUDGET,
+  estimateSkillCost,
+  ON_TRIGGER_TOKEN_BUDGET,
+  READABLE_SKILL_EXTENSIONS,
+  type SkillCostInput,
+} from './skill-cost.ts';
+
+/** A well-formed SKILL.md with a body of `bodyLen` `b` characters after its frontmatter. */
+function skillMd(bodyLen: number): string {
+  return `---\nname: x\n---\n${'b'.repeat(bodyLen)}`;
+}
+
+const emptyInput: SkillCostInput = { name: '', description: '', skillMd: '', files: [] };
+
+describe('estimateSkillCost', () => {
+  test('reports each tier as chars/4 and never a summed total', () => {
+    const cost = estimateSkillCost({
+      name: 'x'.repeat(8),
+      description: 'y'.repeat(8),
+      skillMd: skillMd(20),
+      files: [{ relPath: 'references/a.md', content: 'c'.repeat(12) }],
+    });
+    expect(cost).toEqual({ alwaysOn: 4, onTrigger: 5, onDemand: 3 });
+    // No summed/total field leaks onto the output — three tiers, exactly.
+    expect(Object.keys(cost).sort()).toEqual(['alwaysOn', 'onDemand', 'onTrigger']);
+  });
+
+  test('always-on counts name plus description, rounded to nearest token', () => {
+    expect(estimateSkillCost({ ...emptyInput, name: 'a'.repeat(9) }).alwaysOn).toBe(2);
+    expect(estimateSkillCost({ ...emptyInput, name: 'a'.repeat(11) }).alwaysOn).toBe(3);
+    expect(estimateSkillCost({ ...emptyInput, name: 'ab', description: 'cd' }).alwaysOn).toBe(1);
+  });
+
+  test('on-trigger counts only the body after frontmatter, not the frontmatter', () => {
+    // Long frontmatter, short body: on-trigger reflects the body alone.
+    const md = `---\nname: n\ndescription: ${'d'.repeat(400)}\n---\nshort body`;
+    expect(estimateSkillCost({ ...emptyInput, skillMd: md }).onTrigger).toBe(
+      Math.round('short body'.length / 4),
+    );
+  });
+
+  test('on-demand counts .md/.mdx/.txt anywhere in the bundle', () => {
+    const cost = estimateSkillCost({
+      ...emptyInput,
+      files: [
+        { relPath: 'references/a.md', content: 'a'.repeat(4) },
+        { relPath: 'deep/nested/b.mdx', content: 'b'.repeat(4) },
+        { relPath: 'notes.txt', content: 'c'.repeat(4) },
+      ],
+    });
+    expect(cost.onDemand).toBe(3); // (4+4+4)/4
+  });
+
+  test('excludes scripts, overlay.yaml and evals JSON from on-demand', () => {
+    // Mirrors the real bundle shape (turbopack/shadcn/deep-investigate): only the
+    // readable-extension files count; extension-blind counting would overstate.
+    const cost = estimateSkillCost({
+      ...emptyInput,
+      files: [
+        { relPath: 'references/keep.md', content: 'k'.repeat(8) },
+        { relPath: 'assets/keep.template.md', content: 'k'.repeat(8) },
+        { relPath: 'scripts/run.sh', content: 'x'.repeat(1000) },
+        { relPath: 'overlay.yaml', content: 'x'.repeat(1000) },
+        { relPath: 'evals/evals.json', content: 'x'.repeat(1000) },
+        { relPath: 'assets/data.template.json', content: 'x'.repeat(1000) },
+      ],
+    });
+    expect(cost.onDemand).toBe(4); // (8+8)/4, config/scripts excluded
+  });
+
+  test('excludes SKILL.md itself from on-demand even when passed among the files', () => {
+    const cost = estimateSkillCost({
+      ...emptyInput,
+      files: [
+        { relPath: 'SKILL.md', content: 'x'.repeat(1000) },
+        { relPath: 'references/a.md', content: 'a'.repeat(8) },
+      ],
+    });
+    expect(cost.onDemand).toBe(2);
+  });
+
+  test('skips a binary/unreadable file and still counts the readable remainder', () => {
+    const cost = estimateSkillCost({
+      ...emptyInput,
+      files: [
+        { relPath: 'references/binary.md', content: null },
+        { relPath: 'references/text.md', content: 'a'.repeat(12) },
+      ],
+    });
+    expect(cost.onDemand).toBe(3);
+  });
+
+  test('degrades missing frontmatter/description/body/files to zeroes, never NaN', () => {
+    const cost = estimateSkillCost(emptyInput);
+    expect(cost).toEqual({ alwaysOn: 0, onTrigger: 0, onDemand: 0 });
+
+    const nullish = estimateSkillCost({ name: null, description: null, skillMd: '', files: [] });
+    expect(nullish).toEqual({ alwaysOn: 0, onTrigger: 0, onDemand: 0 });
+
+    // Description absent, name present — count what is there.
+    expect(estimateSkillCost({ ...emptyInput, name: 'abcd' }).alwaysOn).toBe(1);
+  });
+
+  test('exports the readable-extension set and the published budget constants', () => {
+    expect(READABLE_SKILL_EXTENSIONS).toEqual(['.md', '.mdx', '.txt']);
+    expect(ALWAYS_ON_TOKEN_BUDGET).toBe(100);
+    expect(ON_TRIGGER_TOKEN_BUDGET).toBe(5000);
+  });
+});

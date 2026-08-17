@@ -1,10 +1,11 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { SKILL_NAME_REGEX, type SkillScope } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Type } from 'lucide-react';
+import { Gauge, Type } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';
 import { PropertyPanel } from '@/components/PropertyPanel';
+import { SkillCostValue } from '@/components/SkillCostValue';
 import { Input } from '@/components/ui/input';
 import { useSkills } from '@/hooks/use-skills';
 import { SKILL_RESERVED_KEYS } from '@/lib/reserved-property-keys';
@@ -149,10 +150,29 @@ export function SkillProperties({
     </PropertyDisplayRow>
   );
 
+  // The skill's estimated context cost from its list entry, read-only. Absent
+  // when the server hasn't sized this skill (older build, or a store/built-in
+  // row that doesn't ride the sized walk) — then the row is dropped, never shown
+  // as zeroes, so a missing figure can't read as a free skill.
+  const tokensRow = entry?.size ? (
+    <PropertyDisplayRow icon={<Gauge className="size-3.5" />} label={t`tokens`}>
+      <SkillCostValue size={entry.size} />
+    </PropertyDisplayRow>
+  ) : null;
+
   // Frontmatter (description, nested objects, tags, add/rename/reorder) is the
   // exact document property panel — the `name` identity row is rendered at the
   // top via `identitySlot` and reserved out of the frontmatter rows below.
   return (
-    <PropertyPanel provider={provider} reservedKeys={SKILL_RESERVED_KEYS} identitySlot={nameRow} />
+    <PropertyPanel
+      provider={provider}
+      reservedKeys={SKILL_RESERVED_KEYS}
+      identitySlot={
+        <>
+          {nameRow}
+          {tokensRow}
+        </>
+      }
+    />
   );
 }

@@ -48,6 +48,7 @@ import { successResponse } from './http/success-response.ts';
 import { isAllowedGitUrl } from './local-op-security.ts';
 import type { PinoLogger } from './logger.ts';
 import { rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
+import { fetchCachedSource } from './skill-source-cache.ts';
 import { getPopularSkills, getPublisherSkills } from './skills-leaderboard.ts';
 import { readSkillsLockFile } from './skills-lock-store.ts';
 
@@ -303,8 +304,8 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
   // `GET /api/skills/preview?source=&name=` fetches one un-imported bundle so
   // Explore can render the exact files before installation. Repository and
   // website sources converge on the same temporary-directory parser here.
-  // ponytail: remote sources are fetched per preview open; add a short-lived
-  // cache keyed on source+ref if click-through churn becomes a problem.
+  // Sibling skills share a source, so the shallow clone is cached by source
+  // (fetchCachedSource): previewing several skills from one repo clones it once.
   const handleSkillsPreview = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -339,10 +340,8 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
         return;
       }
       if (rejectDisallowedGitSpec(res, spec, 'skills-preview')) return;
-      let cleanup: (() => void) | undefined;
       try {
-        const fetched = await fetchSource(spec);
-        cleanup = fetched.cleanup;
+        const fetched = await fetchCachedSource(spec);
         const dirs = discoverSkillDirs(fetched.dir);
         if (dirs.length === 0) {
           errorResponse(res, 404, 'urn:ok:error:not-found', 'No SKILL.md found in source.', {
@@ -420,8 +419,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           handler: 'skills-preview',
           cause: e,
         });
-      } finally {
-        cleanup?.();
       }
     },
     { handler: 'skills-preview', method: 'GET', skipBodyParse: true },
@@ -429,8 +426,8 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
 
   // `GET /api/skills/discover?source=` enumerates a repository/local tree or a
   // website's well-known index so the Import modal can offer an exact picker.
-  // ponytail: remote indexes/repos are fetched per call; cache by source+ref if
-  // debounced typing churn becomes a problem.
+  // The clone is cached by source (fetchCachedSource), so discovering then
+  // previewing the same source, or re-discovering it, reuses one clone.
   const handleSkillsDiscover = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -474,10 +471,8 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
         return;
       }
       if (rejectDisallowedGitSpec(res, spec, 'skills-discover')) return;
-      let cleanup: (() => void) | undefined;
       try {
-        const fetched = await fetchSource(spec);
-        cleanup = fetched.cleanup;
+        const fetched = await fetchCachedSource(spec);
         const dirs = discoverSkillDirs(fetched.dir);
         // Prefer the SKILL.md frontmatter name (what the import path matches and
         // what a user recognizes); fall back to the dir basename.
@@ -501,8 +496,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           handler: 'skills-discover',
           cause: e,
         });
-      } finally {
-        cleanup?.();
       }
     },
     { handler: 'skills-discover', method: 'GET', skipBodyParse: true },

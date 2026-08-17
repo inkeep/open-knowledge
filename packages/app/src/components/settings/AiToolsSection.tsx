@@ -2,11 +2,13 @@
  * Settings → User → AI tools & CLI — the persistent, stateful sibling of the
  * first-launch "Connect your AI tools to OpenKnowledge" consent dialog
  * (`McpConsentDialogBody.tsx`). Same three component groups (shell-PATH shim,
- * per-editor MCP entries, user-global Agent Skills), but checkboxes reflect
- * LIVE installed state and each click applies immediately: check = install,
- * uncheck = uninstall. One component mutates at a time (main serializes;
- * the UI disables the group while a toggle is in flight). Each row carries an
- * info tooltip disclosing the exact file + entry (or folders) it touches.
+ * per-editor MCP entries, user-global Agent Skills). The PATH and MCP rows are
+ * checkboxes that reflect LIVE installed state and apply on click (check =
+ * install, uncheck = uninstall), each with an info tooltip disclosing the file +
+ * entry it touches. Agent Skills instead use an explicit Install/Uninstall button
+ * behind a confirm modal — a single click never writes — with the skill's reach
+ * and context cost disclosed on the row itself. One component mutates at a time
+ * (main serializes; the UI disables the group while a toggle is in flight).
  *
  * Desktop-only — the sidebar item is gated on the Electron preload bridge, and
  * this component renders a fallback if mounted without it.
@@ -19,6 +21,8 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Info } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { SkillConsentRow } from '@/components/SkillConsentRow';
+import { SkillInstallConfirmDialog } from '@/components/SkillInstallConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -26,6 +30,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OkIntegrationsSetRequest, OkIntegrationsStatus } from '@/lib/desktop-bridge-types';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
+import { mark } from '@/lib/perf';
 
 type ComponentRef = OkIntegrationsSetRequest['component'];
 
@@ -71,6 +77,10 @@ export function AiToolsSection() {
   const [status, setStatus] = useState<OkIntegrationsStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    skillId: string;
+    mode: 'install' | 'uninstall';
+  } | null>(null);
   const [showAllEditors, setShowAllEditors] = useState(false);
 
   useEffect(() => {
@@ -105,6 +115,25 @@ export function AiToolsSection() {
       );
     }
     setPending(null);
+  }
+
+  // Settings install/uninstall runs behind the confirm modal — never a single
+  // click. The modal fires this only once the user has acknowledged the
+  // destination set it currently shows; mark the attempt with its surface +
+  // reach, close the modal, then route through the same bridge path the editor
+  // and path rows use (setComponent → reclaim), never the skills HTTP API.
+  async function onConfirmSkill(): Promise<void> {
+    if (!confirm) return;
+    const target = status?.skills.find((s) => s.id === confirm.skillId);
+    mark('ok/skill/install', {
+      surface: 'settings',
+      mode: confirm.mode,
+      skill: confirm.skillId,
+      hostCount: target?.resolvedHosts.length ?? 0,
+    });
+    const { skillId, mode } = confirm;
+    setConfirm(null);
+    await applyToggle({ kind: 'skill', id: skillId }, mode === 'install');
   }
 
   // Yours first, the rest folded. A row is primary when OK has WIRED it
@@ -176,6 +205,12 @@ export function AiToolsSection() {
 
   const busy = pending !== null || !status.available;
   const showPathRow = status.path.shellDetected || status.path.installed;
+  // Re-resolved from live status each render, so the modal always discloses the
+  // destinations currently on the status snapshot — it re-confirms on its own if
+  // they drift while it is open.
+  const confirmSkill = confirm
+    ? (status.skills.find((s) => s.id === confirm.skillId) ?? null)
+    : null;
 
   return (
     <section aria-labelledby="settings-ai-tools-title" className="space-y-4">
@@ -374,58 +409,87 @@ export function AiToolsSection() {
               Agent Skills
             </Trans>
           </span>
+          <p className="text-xs text-muted-foreground" data-testid="ai-tools-skill-fanout-note">
+            <Trans comment="Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above">
+              Skills install to every AI tool detected on this machine, independent of the MCP
+              connections you chose above.
+            </Trans>
+          </p>
           <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
-            {status.skills.map((skill) => (
-              <li key={skill.id} className="flex items-start hover:bg-accent">
-                <Label
-                  htmlFor={`ai-tools-skill-${skill.id}`}
-                  className="flex flex-1 cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal"
-                >
-                  <Checkbox
-                    id={`ai-tools-skill-${skill.id}`}
-                    checked={skill.installed}
-                    disabled={busy}
-                    onCheckedChange={() =>
-                      void applyToggle({ kind: 'skill', id: skill.id }, !skill.installed)
+            {status.skills.map((skill) => {
+              const hosts = skill.resolvedHosts.map((h) => h.editor);
+              const canInstall = hosts.length > 0;
+              // Bound as `name` so the accessible names reuse the catalog's
+              // existing `Install {name}` / `Uninstall {name}` msgids rather
+              // than minting `Install {0}` variants needing fresh translation
+              // in all eleven locales.
+              const name = skill.name;
+              return (
+                <li key={skill.id} className="hover:bg-accent">
+                  <SkillConsentRow
+                    name={skill.name}
+                    description={skill.description}
+                    hosts={hosts}
+                    size={skill.size}
+                    onActivate={
+                      skill.sourceDir
+                        ? () => {
+                            mark('ok/skill/preview-open', { surface: 'settings', skill: skill.id });
+                            openSkillPreviewTab({
+                              flavor: 'builtin',
+                              source: skill.sourceDir,
+                              name: skill.name,
+                              subtitle: '',
+                              level: 'global',
+                            });
+                          }
+                        : undefined
                     }
-                    className="mt-0.5"
-                    data-testid={`ai-tools-skill-checkbox-${skill.id}`}
-                  />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">
-                      <code>{skill.name}</code>
-                    </span>
-                    <span
-                      className="text-xs text-muted-foreground"
-                      data-testid={`ai-tools-skill-status-${skill.id}`}
-                    >
-                      {skill.id === 'discovery' ? (
-                        <Trans comment="Subtext for the open-knowledge-discovery skill row">
-                          Helps your coding agent recognize OpenKnowledge projects and route reads
-                          and writes through it.
-                        </Trans>
+                    control={
+                      skill.installed ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setConfirm({ skillId: skill.id, mode: 'uninstall' })}
+                          aria-label={t`Uninstall ${name}`}
+                          data-testid={`ai-tools-skill-uninstall-${skill.id}`}
+                        >
+                          <Trans>Uninstall</Trans>
+                        </Button>
                       ) : (
-                        <Trans comment="Subtext for the open-knowledge-write-skill skill row">
-                          Adds a guided workflow for authoring new Agent Skills.
-                        </Trans>
-                      )}
-                    </span>
-                  </span>
-                </Label>
-                <RowInfoTooltip testId={`ai-tools-skill-info-${skill.id}`}>
-                  <p className="opacity-70">
-                    <Trans>Folders</Trans>
-                  </p>
-                  {skill.paths.map((path) => (
-                    <p key={path}>
-                      <code className="break-all">{path}</code>
-                    </p>
-                  ))}
-                </RowInfoTooltip>
-              </li>
-            ))}
+                        <Button
+                          size="sm"
+                          disabled={busy || !canInstall}
+                          onClick={() => setConfirm({ skillId: skill.id, mode: 'install' })}
+                          aria-label={t`Install ${name}`}
+                          data-testid={`ai-tools-skill-install-${skill.id}`}
+                        >
+                          <Trans>Install</Trans>
+                        </Button>
+                      )
+                    }
+                  />
+                </li>
+              );
+            })}
           </ul>
         </div>
+      )}
+
+      {confirmSkill && confirm && (
+        <SkillInstallConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setConfirm(null);
+          }}
+          mode={confirm.mode}
+          name={confirmSkill.name}
+          description={confirmSkill.description}
+          paths={confirmSkill.paths}
+          size={confirmSkill.size}
+          onConfirm={() => void onConfirmSkill()}
+        />
       )}
     </section>
   );

@@ -24,7 +24,9 @@ import {
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
+  estimateSkillCost,
   LEGACY_SKILL_STORE_ROOT,
+  type SkillCostTiers,
   type SkillScope,
   skillRootActivationPath,
 } from '@inkeep/open-knowledge-core';
@@ -86,10 +88,15 @@ export interface InPlaceSkill {
   readonly copyDirs: readonly string[];
   /** `parseSkillDir` bundle hash of the canonical — the dedup/Modified identity. */
   readonly contentHash: string;
+  /** Three-tier context cost of the canonical bundle (always-on / on-trigger /
+   *  on-demand), estimated in the same parse the hash rides so no second walk
+   *  reads the bytes. */
+  readonly size: SkillCostTiers;
 }
 
 interface ScanOccurrence extends LocatedSkillOccurrence {
   readonly description: string;
+  readonly size: SkillCostTiers;
   readonly viaLink: boolean;
   /** The occurrence lives under an ALIASED root (the folder or a parent is a
    *  symlink) — a VIEW of another location. Never electable as canonical
@@ -358,16 +365,30 @@ function bundleStamp(absDir: string): string | null {
  *  `~/.claude/skills` at global tier) — the reported UI slowness. Unchanged
  *  bundles (stamp match) skip the content read entirely. Bounded in practice
  *  by the number of skill dirs on the machine. */
-const parseCache = new Map<string, { stamp: string; contentHash: string; description: string }>();
+const parseCache = new Map<
+  string,
+  { stamp: string; contentHash: string; description: string; size: SkillCostTiers }
+>();
 
-function parseSkillDirCached(absDir: string): { contentHash: string; description: string } | null {
+function parseSkillDirCached(
+  absDir: string,
+): { contentHash: string; description: string; size: SkillCostTiers } | null {
   const stamp = bundleStamp(absDir);
   if (stamp === null) return null;
   const hit = parseCache.get(absDir);
   if (hit !== undefined && hit.stamp === stamp) return hit;
   const parsed = parseSkillDir(absDir);
   if (!parsed) return null;
-  const entry = { stamp, contentHash: parsed.contentHash, description: parsed.description };
+  // `parsed` already holds every bundle byte the hash was computed over, so the
+  // cost estimate is a pure pass over it — the size rides the parse, never a
+  // second read of the tree. Cached under the same stamp, so a byte change on
+  // disk invalidates the size alongside the hash.
+  const entry = {
+    stamp,
+    contentHash: parsed.contentHash,
+    description: parsed.description,
+    size: estimateSkillCost(parsed),
+  };
   parseCache.set(absDir, entry);
   return entry;
 }
@@ -414,6 +435,7 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
           contentHash: parsed.contentHash,
           dir: `${root}/${entry}`,
           description: parsed.description,
+          size: parsed.size,
           viaLink: rootAliased || lstatSync(absDir).isSymbolicLink(),
           ...(rootAliased ? { aliasRooted: true } : {}),
           ...(sourcePrefs[entry] === editor ? { preferredSource: true } : {}),
@@ -485,6 +507,7 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
           conflictHosts,
           copyDirs: realCopies.filter((c) => !c.viaLink).map((c) => c.dir),
           contentHash: g.contentHash,
+          size: g.canonical.size,
         };
       })
   );

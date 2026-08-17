@@ -1393,13 +1393,6 @@ msgstr "把你的评论写在这条消息里"
 msgid "Added"
 msgstr "已添加"
 
-#. Subtext for the open-knowledge-write-skill skill row
-#. Subtext for the open-knowledge-write-skill skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a guided workflow for authoring new Agent Skills."
-msgstr "新增一套用于编写新的智能体技能的引导流程。"
-
 #: src/components/settings/AiToolsSection.tsx
 msgid "Adds a managed block to"
 msgstr "添加一个受管理的块到"
@@ -1582,6 +1575,15 @@ msgstr "已经登录了？"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "始终包含"
+
+#: src/components/SkillCostValue.tsx
+msgid "always-on"
+msgstr "常驻"
+
+#. Suffix on a skill directory card's context-cost figure
+#: src/components/SkillDirectoryResult.tsx
+msgid "always-on tokens"
+msgstr "常驻 token"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -2189,6 +2191,7 @@ msgstr "无法共享此路径。"
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -3022,6 +3025,11 @@ msgstr "内容规则"
 #: src/components/settings/LintingSection.tsx
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "内容规则尚未加载——请稍后再试"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Context cost"
+msgstr "上下文开销"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
@@ -5657,8 +5665,6 @@ msgstr "已复制文件夹共享链接。"
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "目标文件夹：{linkTitle}。点击可打开总览。"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Folders"
 msgstr "文件夹"
@@ -6025,13 +6031,6 @@ msgstr "帮助"
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "帮助编码代理选择 OKF 文档类型、保留来源并避免发明不受支持的元数据。"
-
-#. Subtext for the open-knowledge-discovery skill row
-#. Subtext for the open-knowledge-discovery skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
-msgstr "帮助你的编程智能体识别 OpenKnowledge 项目，并把读写都经由它进行。"
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -6558,8 +6557,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "通过 CodeMirror 的默认按键映射，在源码编辑器中插入、删除、移动、复制和缩进行。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/skill-actions.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6573,6 +6575,11 @@ msgstr "安装 {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "安装 {brand} →"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Install {name}"
+msgstr "安装 {name}"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6703,6 +6710,11 @@ msgstr "正在安装"
 #: src/components/acp/ThreadView.tsx
 msgid "Installing {agentName}…"
 msgstr "正在安装 {agentName}…"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Installs to"
+msgstr "安装到"
 
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
@@ -7933,6 +7945,10 @@ msgstr "未选择任何智能体——技能已保存，但没有安装到任何
 msgid "No AI agents installed"
 msgstr "未安装任何 AI 智能体"
 
+#: src/components/SkillConsentRow.tsx
+msgid "No AI tools detected. Install one to use this skill."
+msgstr "未检测到 AI 工具。请先安装一个再使用此技能。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "这个端点还没有设置 API 密钥。请在上方添加一个。"
@@ -8406,6 +8422,10 @@ msgstr "开启——你的搜索查询和匹配页面的文本会发送到你的
 msgid "On <0>{address}</0>"
 msgstr "在 <0>{address}</0> 上"
 
+#: src/components/SkillCostValue.tsx
+msgid "on demand"
+msgstr "按需"
+
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "在 <0>{address}</0> 中选中的文本上"
@@ -8413,6 +8433,10 @@ msgstr "在 <0>{address}</0> 中选中的文本上"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "在根索引上，okf_version 被写为带引号的字符串，如 \"0.2\"。不加引号，YAML 将其读取为数字，0.10 默默地变成 0.1。"
+
+#: src/components/SkillCostValue.tsx
+msgid "on trigger"
+msgstr "触发时"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -9095,6 +9119,10 @@ msgstr "出链"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "大纲"
+
+#: src/components/SkillCostValue.tsx
+msgid "over the {budgetLabel} token budget"
+msgstr "超出 {budgetLabel} token 预算"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -10045,6 +10073,10 @@ msgstr "已把“{0}”从其他所有位置移除——它的来源文件夹仍
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "已把“{projectName}”从最近的项目中移除。它的文件夹已不存在。"
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Removes from"
+msgstr "从以下位置移除"
 
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx
@@ -11072,6 +11104,11 @@ msgstr "在「插件」下它自己的页面中进行设置。"
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "为首次打开这个项目的用户设置同步默认值。这项设置会提交到你的仓库。"
 
+#. placeholder {0}: skill.name
+#: src/components/McpConsentDialogBody.tsx
+msgid "Set up {0}"
+msgstr "设置 {0}"
+
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "设置 OpenKnowledge 集成"
@@ -11478,6 +11515,13 @@ msgstr "技能"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "技能现在已共享。提交 .ok/skills 即可分享给你的团队。"
+
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AiToolsSection.tsx
+msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
+msgstr "技能会安装到本机检测到的每个 AI 工具，与上面选择的 MCP 连接无关。"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -12117,7 +12161,6 @@ msgstr "任务清单"
 msgid "Task List"
 msgstr "任务清单"
 
-#. Subtext for the project runtime-skill row
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
 msgstr "教会这个项目中的编程智能体通过 OpenKnowledge 读写内容。"
@@ -12338,6 +12381,10 @@ msgstr "默认的技能文件夹（保存后会显示确切路径）"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "桌面应用没有响应。请刷新后重试。"
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "The destinations changed. Review the list, then confirm."
+msgstr "安装位置已变化。请检查列表后确认。"
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12918,6 +12965,11 @@ msgstr "这项设置按电脑生效，不会与协作者共享。"
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "这项设置按电脑生效，不会与协作者共享。除非你的端点是不需要密钥的本地服务器，否则需要一个 API 密钥（在下方设置）。"
 
+#. Tells the user the project skill is committed to the repo, unlike the user-global skills
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
+msgstr "此技能位于项目文件夹中，因此会为每个打开该项目的人安装，而不只是你。"
+
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
 msgstr "这个来源包含多个技能——请先选择一个，然后导入。"
@@ -13082,6 +13134,11 @@ msgstr "切换下划线格式。"
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "切换模式 {0}/**"
+
+#: src/components/SkillBundlePreview.tsx
+#: src/components/SkillProperties.tsx
+msgid "tokens"
+msgstr "token"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
@@ -13273,6 +13330,17 @@ msgstr "要撤销到这次编辑吗？"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "在「编辑源码」面板或代码类属性字段中撤销、重做，或逐步回溯选区变化。"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall"
+msgstr "卸载"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall {name}"
+msgstr "卸载 {name}"
 
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx

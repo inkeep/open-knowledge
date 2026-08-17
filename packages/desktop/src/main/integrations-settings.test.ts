@@ -144,14 +144,20 @@ function makeSkills(
       {
         id: 'discovery',
         name: 'open-knowledge-discovery',
+        description: 'Recognize OpenKnowledge projects.',
         installed: installed.has('discovery'),
         paths: ['~/.agents/skills/open-knowledge-discovery'],
+        sourceDir: '/bundles/open-knowledge-discovery',
+        resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
       },
       {
         id: 'write-skill',
         name: 'open-knowledge-write-skill',
+        description: 'Author new Agent Skills.',
         installed: installed.has('write-skill'),
         paths: ['~/.agents/skills/open-knowledge-write-skill'],
+        sourceDir: '/bundles/open-knowledge-write-skill',
+        resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
       },
     ],
     setEnabled: async (bundleId, enabled) => {
@@ -289,14 +295,20 @@ describe('ok:integrations:dispatch — status', () => {
       {
         id: 'discovery',
         name: 'open-knowledge-discovery',
+        description: 'Recognize OpenKnowledge projects.',
         installed: true,
         paths: ['~/.agents/skills/open-knowledge-discovery'],
+        sourceDir: '/bundles/open-knowledge-discovery',
+        resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
       },
       {
         id: 'write-skill',
         name: 'open-knowledge-write-skill',
+        description: 'Author new Agent Skills.',
         installed: false,
         paths: ['~/.agents/skills/open-knowledge-write-skill'],
+        sourceDir: '/bundles/open-knowledge-write-skill',
+        resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
       },
     ]);
   });

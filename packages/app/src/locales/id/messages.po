@@ -1389,13 +1389,6 @@ msgstr "Tambahkan komentar Anda ke pesan ini"
 msgid "Added"
 msgstr "Ditambahkan"
 
-#. Subtext for the open-knowledge-write-skill skill row
-#. Subtext for the open-knowledge-write-skill skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a guided workflow for authoring new Agent Skills."
-msgstr "Menambahkan alur terpandu untuk menulis Keterampilan Agen baru."
-
 #: src/components/settings/AiToolsSection.tsx
 msgid "Adds a managed block to"
 msgstr "Menambahkan blok terkelola ke"
@@ -1578,6 +1571,15 @@ msgstr "Sudah masuk?"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Selalu disertakan"
+
+#: src/components/SkillCostValue.tsx
+msgid "always-on"
+msgstr "selalu aktif"
+
+#. Suffix on a skill directory card's context-cost figure
+#: src/components/SkillDirectoryResult.tsx
+msgid "always-on tokens"
+msgstr "token selalu aktif"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -2185,6 +2187,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -3018,6 +3021,11 @@ msgstr "Aturan konten"
 #: src/components/settings/LintingSection.tsx
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Aturan konten belum dimuat — coba lagi sebentar"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Context cost"
+msgstr "Biaya konteks"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
@@ -5653,8 +5661,6 @@ msgstr "Tautan berbagi folder disalin."
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Folder tujuan: {linkTitle}. Klik untuk membuka ikhtisarnya."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Folders"
 msgstr "Folder"
@@ -6021,13 +6027,6 @@ msgstr "Bantuan"
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "Membantu agen pengkodean memilih jenis dokumen OKF, mempertahankan asal, dan menghindari penemuan metadata yang tidak didukung."
-
-#. Subtext for the open-knowledge-discovery skill row
-#. Subtext for the open-knowledge-discovery skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
-msgstr "Membantu agen pemrograman Anda mengenali proyek OpenKnowledge dan mengarahkan baca-tulis melaluinya."
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -6554,8 +6553,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Menyisipkan, menghapus, memindahkan, menyalin, dan mengindentasi baris penyunting sumber lewat peta tombol bawaan CodeMirror."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/skill-actions.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6569,6 +6571,11 @@ msgstr "Pasang {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "Pasang {brand} →"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Install {name}"
+msgstr "Pasang {name}"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6699,6 +6706,11 @@ msgstr "Memasang"
 #: src/components/acp/ThreadView.tsx
 msgid "Installing {agentName}…"
 msgstr "Memasang {agentName}…"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Installs to"
+msgstr "Dipasang di"
 
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
@@ -7929,6 +7941,10 @@ msgstr "Tidak ada agen yang dipilih — keterampilannya tersimpan tetapi tidak d
 msgid "No AI agents installed"
 msgstr "Tidak ada agen AI yang terpasang"
 
+#: src/components/SkillConsentRow.tsx
+msgid "No AI tools detected. Install one to use this skill."
+msgstr "Tidak ada alat AI yang terdeteksi. Pasang satu untuk memakai keterampilan ini."
+
 #: src/components/settings/SearchSection.tsx
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "Tidak ada kunci API yang disetel untuk endpoint ini. Tambahkan satu di atas."
@@ -8402,6 +8418,10 @@ msgstr "Aktif — kueri pencarian Anda dan teks halaman yang cocok dikirim ke pe
 msgid "On <0>{address}</0>"
 msgstr "Pada <0>{address}</0>"
 
+#: src/components/SkillCostValue.tsx
+msgid "on demand"
+msgstr "sesuai permintaan"
+
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "Pada teks terpilih di <0>{address}</0>"
@@ -8409,6 +8429,10 @@ msgstr "Pada teks terpilih di <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
+
+#: src/components/SkillCostValue.tsx
+msgid "on trigger"
+msgstr "saat dipicu"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -9091,6 +9115,10 @@ msgstr "Keluar"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "Kerangka"
+
+#: src/components/SkillCostValue.tsx
+msgid "over the {budgetLabel} token budget"
+msgstr "melebihi anggaran token {budgetLabel}"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -10041,6 +10069,10 @@ msgstr "\"{0}\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\" dihapus dari proyek terbaru. Foldernya sudah tidak ada."
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Removes from"
+msgstr "Dihapus dari"
 
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx
@@ -11068,6 +11100,11 @@ msgstr "Siapkan di halamannya sendiri di bawah Plugin."
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "Setel sinkronisasi bawaan untuk pengguna yang membuka proyek ini pertama kali. Pengaturan ini disimpan di repositori Anda."
 
+#. placeholder {0}: skill.name
+#: src/components/McpConsentDialogBody.tsx
+msgid "Set up {0}"
+msgstr "Siapkan {0}"
+
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Siapkan integrasi OpenKnowledge"
@@ -11474,6 +11511,13 @@ msgstr "Keterampilan"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membagikannya dengan tim Anda."
+
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AiToolsSection.tsx
+msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
+msgstr "Keterampilan dipasang ke setiap alat AI yang terdeteksi di mesin ini, terlepas dari koneksi MCP yang Anda pilih di atas."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -12113,7 +12157,6 @@ msgstr "Daftar tugas"
 msgid "Task List"
 msgstr "Daftar Tugas"
 
-#. Subtext for the project runtime-skill row
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
 msgstr "Mengajari agen pemrograman di proyek ini untuk membaca dan menulis lewat OpenKnowledge."
@@ -12334,6 +12377,10 @@ msgstr "folder keterampilan bawaan (jalur persisnya muncul setelah disimpan)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "Aplikasi desktopnya tidak merespons. Segarkan lalu coba lagi."
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "The destinations changed. Review the list, then confirm."
+msgstr "Tujuannya berubah. Periksa daftarnya, lalu konfirmasi."
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12914,6 +12961,11 @@ msgstr "Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborat
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborator. Ia memerlukan kunci API (setel di bawah) kecuali endpoint Anda adalah server lokal yang tidak memerlukannya."
 
+#. Tells the user the project skill is committed to the repo, unlike the user-global skills
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
+msgstr "Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek ini, bukan hanya Anda."
+
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
 msgstr "Sumber ini memuat beberapa keterampilan — pilih satu, lalu Impor."
@@ -13078,6 +13130,11 @@ msgstr "Menyalakan atau mematikan format garis bawah."
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "Mengaktifkan atau menonaktifkan pola {0}/**"
+
+#: src/components/SkillBundlePreview.tsx
+#: src/components/SkillProperties.tsx
+msgid "tokens"
+msgstr "token"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
@@ -13269,6 +13326,17 @@ msgstr "Batalkan hingga suntingan ini?"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Membatalkan, mengulangi, atau menelusuri perubahan pilihan di panel Sunting sumber atau bidang properti berbentuk kode."
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall"
+msgstr "Copot"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall {name}"
+msgstr "Copot {name}"
 
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx

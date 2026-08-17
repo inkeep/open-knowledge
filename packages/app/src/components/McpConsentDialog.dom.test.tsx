@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -97,13 +97,34 @@ const skillsPayload: OkMcpWiringShowPayload = {
       id: 'discovery',
       name: 'open-knowledge-discovery',
       alreadyInstalled: false,
+      description: 'Recognize OpenKnowledge projects and route reads and writes through it.',
+      size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
+      hosts: ['claude', 'cursor'],
+      paths: [
+        '~/.agents/skills/open-knowledge-discovery',
+        '~/.claude/skills/open-knowledge-discovery',
+      ],
     },
     {
       id: 'write-skill',
       name: 'open-knowledge-write-skill',
       alreadyInstalled: true,
+      description: 'A guided workflow for authoring new Agent Skills.',
+      size: { alwaysOn: 156, onTrigger: 3218, onDemand: 916 },
+      hosts: ['claude', 'cursor'],
+      paths: [
+        '~/.agents/skills/open-knowledge-write-skill',
+        '~/.claude/skills/open-knowledge-write-skill',
+      ],
     },
   ],
+};
+
+/** Same two bundles, zero resolved hosts — exercises the disabled/unchecked
+ *  state and the row's no-hosts copy (nothing can land). */
+const skillsNoHostsPayload: OkMcpWiringShowPayload = {
+  ...skillsPayload,
+  globalSkills: skillsPayload.globalSkills.map((s) => ({ ...s, hosts: [], paths: [] })),
 };
 
 function makeHarness({
@@ -551,6 +572,78 @@ describe('McpConsentDialog skills section', () => {
     await userEvent.click(add);
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([{ editorIds: [], pathInstall: undefined, skills: [] }]);
+    });
+  });
+
+  test("renders each skill's own frontmatter description, not hand-written subtext", async () => {
+    await renderDialog(makeHarness({ snapshot: skillsPayload }));
+    expect(screen.getByText('A guided workflow for authoring new Agent Skills.')).toBeTruthy();
+  });
+
+  test('states skill reach is independent of the MCP editor selection', async () => {
+    await renderDialog(makeHarness({ snapshot: skillsPayload }));
+    expect(screen.getByTestId('mcp-consent-skill-fanout-note').textContent).toContain(
+      'independent of the MCP',
+    );
+  });
+
+  test('clicking a row expands it in place with the full cost and destination list', async () => {
+    await renderDialog(makeHarness({ snapshot: skillsPayload }));
+    // Collapsed: no expansion mounted.
+    expect(screen.queryByTestId('mcp-consent-skill-expansion-write-skill')).toBeNull();
+
+    // The row body is the expand affordance (first launch expands; it never
+    // navigates away). Clicking the skill name bubbles to its row button.
+    await userEvent.click(screen.getByText('open-knowledge-write-skill'));
+
+    const expansion = screen.getByTestId('mcp-consent-skill-expansion-write-skill');
+    // Full three-tier cost — the on-demand tier appears only here, never on the
+    // compact row above it.
+    expect(expansion.textContent).toContain('on demand');
+    // Every destination path is disclosed, including the ~/.agents hub — the
+    // same list the Settings confirm modal carries.
+    const paths = within(expansion).getByTestId('skill-destination-list');
+    expect(paths.textContent).toContain('~/.agents/skills/open-knowledge-write-skill');
+    expect(paths.textContent).toContain('~/.claude/skills/open-knowledge-write-skill');
+    // The dialog is never left.
+    expect(
+      screen.getByRole('dialog', { name: 'Connect your AI tools to OpenKnowledge' }),
+    ).toBeTruthy();
+  });
+
+  test('checking a skill stages it — nothing is written until Connect', async () => {
+    const harness = await renderDialog(makeHarness({ snapshot: skillsPayload }));
+    // Toggle discovery off then on — the checkbox itself never confirms.
+    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-discovery'));
+    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-discovery'));
+    expect(harness.confirmCalls).toEqual([]);
+    // Only Connect commits the staged set.
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await waitFor(() => {
+      expect(harness.confirmCalls).toHaveLength(1);
+    });
+  });
+
+  test('zero resolved hosts unchecks and disables the skill checkboxes with a reason', async () => {
+    await renderDialog(makeHarness({ snapshot: skillsNoHostsPayload }));
+    for (const id of ['discovery', 'write-skill']) {
+      const box = screen.getByTestId(`mcp-consent-skill-checkbox-${id}`);
+      expect(box.getAttribute('aria-checked')).toBe('false');
+      expect(box.hasAttribute('disabled')).toBe(true);
+    }
+    // Each row states what would make it installable — the shared no-hosts copy.
+    expect(screen.getAllByTestId('skill-consent-row-no-hosts')).toHaveLength(2);
+  });
+
+  test('a staged skill with zero hosts is never sent on Connect', async () => {
+    const harness = await renderDialog(makeHarness({ snapshot: skillsNoHostsPayload }));
+    // Skills were offered, so Add stays enabled; confirming sends an empty set
+    // (nothing can land nowhere) rather than the pre-checked default.
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await waitFor(() => {
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: ['claude'], pathInstall: undefined, skills: [] },
+      ]);
     });
   });
 });

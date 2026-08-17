@@ -1393,13 +1393,6 @@ msgstr "Ajoutez vos commentaires à ce message"
 msgid "Added"
 msgstr "Ajouté"
 
-#. Subtext for the open-knowledge-write-skill skill row
-#. Subtext for the open-knowledge-write-skill skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a guided workflow for authoring new Agent Skills."
-msgstr "Ajoute un flux de travail guidé pour rédiger de nouvelles compétences d'agent."
-
 #: src/components/settings/AiToolsSection.tsx
 msgid "Adds a managed block to"
 msgstr "Ajoute un bloc géré à"
@@ -1582,6 +1575,15 @@ msgstr "Déjà connecté ?"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Toujours inclus"
+
+#: src/components/SkillCostValue.tsx
+msgid "always-on"
+msgstr "toujours actif"
+
+#. Suffix on a skill directory card's context-cost figure
+#: src/components/SkillDirectoryResult.tsx
+msgid "always-on tokens"
+msgstr "tokens toujours actifs"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -2189,6 +2191,7 @@ msgstr "Impossible de partager ce chemin."
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -3022,6 +3025,11 @@ msgstr "Règles de contenu"
 #: src/components/settings/LintingSection.tsx
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Context cost"
+msgstr "Coût de contexte"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
@@ -5657,8 +5665,6 @@ msgstr "Lien de partage du dossier copié."
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Dossier cible : {linkTitle}. Cliquez pour ouvrir la synthèse."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Folders"
 msgstr "Dossiers"
@@ -6025,13 +6031,6 @@ msgstr "Aide"
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "Aide les agents de codage à choisir les types de documents OKF, à préserver la provenance et à éviter d'inventer des métadonnées non prises en charge."
-
-#. Subtext for the open-knowledge-discovery skill row
-#. Subtext for the open-knowledge-discovery skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
-msgstr "Aide votre agent de code à reconnaître les projets OpenKnowledge et à y faire transiter les lectures et les écritures."
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -6558,8 +6557,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Insérez, supprimez, déplacez, copiez et mettez en retrait les lignes de l'éditeur de source via le mappage clavier par défaut de CodeMirror."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/skill-actions.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6573,6 +6575,11 @@ msgstr "Installer {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "Installer {brand} →"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Install {name}"
+msgstr "Installer {name}"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6703,6 +6710,11 @@ msgstr "Installation"
 #: src/components/acp/ThreadView.tsx
 msgid "Installing {agentName}…"
 msgstr "Installation de {agentName}…"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Installs to"
+msgstr "S'installe dans"
 
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
@@ -7933,6 +7945,10 @@ msgstr "Aucun agent sélectionné — les compétences sont enregistrées mais i
 msgid "No AI agents installed"
 msgstr "Aucun agent IA installé"
 
+#: src/components/SkillConsentRow.tsx
+msgid "No AI tools detected. Install one to use this skill."
+msgstr "Aucun outil IA détecté. Installez-en un pour utiliser cette compétence."
+
 #: src/components/settings/SearchSection.tsx
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "Aucune clé API n'est définie pour ce point de terminaison. Ajoutez-en une ci-dessus."
@@ -8406,6 +8422,10 @@ msgstr "Activé — vos requêtes de recherche et le texte des pages corresponda
 msgid "On <0>{address}</0>"
 msgstr "Sur <0>{address}</0>"
 
+#: src/components/SkillCostValue.tsx
+msgid "on demand"
+msgstr "à la demande"
+
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "Sur le texte sélectionné dans <0>{address}</0>"
@@ -8413,6 +8433,10 @@ msgstr "Sur le texte sélectionné dans <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "Sur l'index racine, okf_version est écrit sous forme de chaîne entre guillemets comme \"0.2\". Non cité, YAML le lit comme un nombre et 0.10 devient silencieusement 0.1."
+
+#: src/components/SkillCostValue.tsx
+msgid "on trigger"
+msgstr "au déclenchement"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -9095,6 +9119,10 @@ msgstr "Sortants"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "Plan"
+
+#: src/components/SkillCostValue.tsx
+msgid "over the {budgetLabel} token budget"
+msgstr "dépasse le budget de tokens {budgetLabel}"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -10045,6 +10073,10 @@ msgstr "« {0} » retiré de tous les autres emplacements — son dossier source
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "« {projectName} » retiré des projets récents. Son dossier n'existe plus."
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Removes from"
+msgstr "Supprime de"
 
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx
@@ -11072,6 +11104,11 @@ msgstr "Configurez-le sur sa propre page sous Plugins."
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "Définissez la synchronisation par défaut pour les utilisateurs qui ouvrent ce projet pour la première fois. Ce réglage est validé dans votre dépôt."
 
+#. placeholder {0}: skill.name
+#: src/components/McpConsentDialogBody.tsx
+msgid "Set up {0}"
+msgstr "Configurer {0}"
+
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Configurer les intégrations OpenKnowledge"
@@ -11478,6 +11515,13 @@ msgstr "Compétences"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Les compétences sont maintenant partagées. Validez .ok/skills pour les partager avec votre équipe."
+
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AiToolsSection.tsx
+msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
+msgstr "Les compétences s'installent dans tous les outils IA détectés sur cette machine, indépendamment des connexions MCP choisies ci-dessus."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -12117,7 +12161,6 @@ msgstr "Liste de tâches"
 msgid "Task List"
 msgstr "Liste de tâches"
 
-#. Subtext for the project runtime-skill row
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
 msgstr "Apprend aux agents de code de ce projet à lire et écrire via OpenKnowledge."
@@ -12338,6 +12381,10 @@ msgstr "le dossier de compétences par défaut (le chemin exact apparaît une fo
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "L'application de bureau ne répond pas. Actualisez et réessayez."
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "The destinations changed. Review the list, then confirm."
+msgstr "Les destinations ont changé. Vérifiez la liste, puis confirmez."
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12918,6 +12965,11 @@ msgstr "Ce réglage est propre à chaque machine et n'est pas partagé avec les 
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "Ce réglage est propre à chaque machine et n'est pas partagé avec les collaborateurs. Il nécessite une clé API (définie ci-dessous), sauf si votre point de terminaison est un serveur local qui n'en demande pas."
 
+#. Tells the user the project skill is committed to the repo, unlike the user-global skills
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
+msgstr "Cette compétence réside dans le dossier du projet : elle s'installe donc pour toutes les personnes qui ouvrent ce projet, pas seulement pour vous."
+
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
 msgstr "Cette source regroupe plusieurs compétences — choisissez-en une, puis importez."
@@ -13082,6 +13134,11 @@ msgstr "Bascule la mise en forme soulignée."
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "Active ou désactive le motif {0}/**"
+
+#: src/components/SkillBundlePreview.tsx
+#: src/components/SkillProperties.tsx
+msgid "tokens"
+msgstr "tokens"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
@@ -13273,6 +13330,17 @@ msgstr "Annuler jusqu'à cette modification ?"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Annulez, rétablissez, ou parcourez les changements de sélection dans le volet Modifier la source ou dans un champ de propriété de type code."
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall"
+msgstr "Désinstaller"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall {name}"
+msgstr "Désinstaller {name}"
 
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx

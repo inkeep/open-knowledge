@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
@@ -221,6 +230,46 @@ describe('scanInPlaceSkills (list projection)', () => {
     expect(a?.conflictHosts).toEqual(['codex']);
   });
 
+  test('size reports the three tiers from the on-disk bundle, excluding non-readable files', () => {
+    writeSkill(contentDir, '.claude/skills/foo', '# Foo body content');
+    // A readable reference contributes to on-demand; a script never does — the
+    // producer feeds the estimator the real tree, which filters by extension.
+    mkdirSync(join(contentDir, '.claude/skills/foo/references'), { recursive: true });
+    writeFileSync(join(contentDir, '.claude/skills/foo/references/ref.md'), 'x'.repeat(400));
+    mkdirSync(join(contentDir, '.claude/skills/foo/scripts'), { recursive: true });
+    writeFileSync(join(contentDir, '.claude/skills/foo/scripts/run.sh'), 'y'.repeat(400));
+
+    const foo = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+    // name ("foo"=3) + description ("d"=1) = 4 chars / 4.
+    expect(foo?.size.alwaysOn).toBe(1);
+    expect(foo?.size.onTrigger).toBeGreaterThan(0);
+    // 400-char readable .md → 100 tokens; the equal-length .sh contributes zero.
+    expect(foo?.size.onDemand).toBe(100);
+  });
+
+  test('a bundle with no references reports zero on-demand', () => {
+    writeSkill(contentDir, '.claude/skills/bare', '# just a body');
+    const bare = scanInPlaceSkills(contentDir).find((s) => s.name === 'bare');
+    expect(bare?.size.onDemand).toBe(0);
+  });
+
+  test('a symlinked bundle dir is followed for size (corpus is symlinks into a shared dir)', () => {
+    const shared = join(contentDir, 'shared-store', 'foo');
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(
+      join(shared, 'SKILL.md'),
+      `---\nname: foo\ndescription: d\n---\n\n${'z'.repeat(80)}\n`,
+    );
+    mkdirSync(join(contentDir, '.claude/skills'), { recursive: true });
+    symlinkSync(shared, join(contentDir, '.claude/skills/foo'), 'dir');
+
+    const foo = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+    expect(foo?.dir).toBe('.claude/skills/foo');
+    // The body lives only behind the symlink; a non-zero on-trigger proves the
+    // walk read through it.
+    expect(foo?.size.onTrigger).toBeGreaterThan(0);
+  });
+
   test('.agents/skills is a first-class host and wins precedence among same-hash copies (R14)', () => {
     writeSkill(contentDir, '.agents/skills/foo', '# Same');
     writeSkill(contentDir, '.claude/skills/foo', '# Same');
@@ -234,6 +283,68 @@ describe('scanInPlaceSkills (list projection)', () => {
     expect(solo?.dir).toBe('.agents/skills/solo');
     // Observable facts only: no vendor-capability hosts (table deleted).
     expect(solo?.hosts).toEqual(['agents']);
+  });
+});
+
+describe('parse cache (bundle stamp invalidation)', () => {
+  let contentDir: string;
+  // A pinned mtime so the stamp is controlled explicitly rather than left to
+  // depend on filesystem clock resolution between successive writes.
+  const PINNED = new Date(1_700_000_000_000);
+  beforeEach(() => {
+    contentDir = mkdtempSync(join(tmpdir(), 'ok-parse-cache-'));
+  });
+  afterEach(() => {
+    rmSync(contentDir, { recursive: true, force: true });
+  });
+
+  const skillMdOf = (name: string) => join(contentDir, `.claude/skills/${name}/SKILL.md`);
+
+  test('serves an unchanged bundle from cache: a stamp-preserving edit is not re-read', () => {
+    writeSkill(contentDir, '.claude/skills/foo', '# body one');
+    utimesSync(skillMdOf('foo'), PINNED, PINNED);
+    const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+
+    // Swap the body for different bytes of the SAME length and restore the pinned
+    // mtime: relpath+size+mtime are unchanged, so the stamp matches. A re-parse
+    // would surface the new hash; the cache returns the old one.
+    const swapped = readFileSync(skillMdOf('foo'), 'utf8').replace('# body one', '# body two');
+    writeFileSync(skillMdOf('foo'), swapped);
+    utimesSync(skillMdOf('foo'), PINNED, PINNED);
+
+    const second = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+    expect(second?.contentHash).toBe(first?.contentHash);
+  });
+
+  test('a file-size change invalidates the cache and moves the reported size', () => {
+    writeSkill(contentDir, '.claude/skills/foo', '# short');
+    const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+
+    // A real on-disk edit that grows the body must surface on the next list, not a
+    // permanently cached figure.
+    writeFileSync(
+      skillMdOf('foo'),
+      `---\nname: foo\ndescription: d\n---\n\n${'word '.repeat(200)}\n`,
+    );
+    const second = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+    expect(second?.contentHash).not.toBe(first?.contentHash);
+    expect(second?.size.onTrigger).toBeGreaterThan(first?.size.onTrigger ?? 0);
+  });
+
+  test('an mtime-only change (identical size) invalidates the cache', () => {
+    writeSkill(contentDir, '.claude/skills/foo', '# one');
+    utimesSync(skillMdOf('foo'), PINNED, PINNED);
+    const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+
+    // Same-length body swap (size identical) with a bumped mtime: mtime is the ONLY
+    // changed stamp field, so a re-parse here proves mtime alone invalidates.
+    const swapped = readFileSync(skillMdOf('foo'), 'utf8').replace('# one', '# two');
+    writeFileSync(skillMdOf('foo'), swapped);
+    const later = new Date(PINNED.getTime() + 5000);
+    utimesSync(skillMdOf('foo'), later, later);
+
+    const second = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+    expect(second?.contentHash).not.toBe(first?.contentHash);
   });
 });
 

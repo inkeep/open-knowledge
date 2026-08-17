@@ -39,6 +39,7 @@ import type {
   ShareTargetStatusResponse,
 } from './schemas/api/share.ts';
 import type { RecentProjectEntry } from './sharing/index.ts';
+import type { SkillCostTiers } from './skills-catalog/skill-cost.ts';
 import type { TerminalPlacement } from './terminal-layout.ts';
 
 export type { OkFolderState } from './constants/folder-state.ts';
@@ -536,11 +537,23 @@ export interface OkMcpWiringShowPayload {
   };
   /** Per-bundle opt-in rows for the two user-global skills. Empty ⇒ no skill
    *  decision solicited. `alreadyInstalled: true` renders the row pre-checked
-   *  as an existing install the user can uncheck to remove. */
+   *  as an existing install the user can uncheck to remove. The disclosure
+   *  fields (description, size, hosts, paths) let the row show what the skill
+   *  is, costs, and where it would land — the same information Settings shows,
+   *  so first-launch consent is as informed. `hosts` empty ⇒ nowhere to land,
+   *  and the row disables its checkbox. */
   readonly globalSkills: readonly {
     readonly id: string;
     readonly name: string;
     readonly alreadyInstalled: boolean;
+    /** The skill's own frontmatter description. */
+    readonly description: string;
+    /** Three-tier context cost; absent when the packaged bundle is unreadable. */
+    readonly size?: SkillCostTiers;
+    /** Resolved reach: static editor ids plus declared custom-root paths. */
+    readonly hosts: readonly string[];
+    /** Destination paths a confirmed install writes (or an uninstall removes). */
+    readonly paths: readonly string[];
   }[];
 }
 
@@ -597,8 +610,23 @@ export interface OkIntegrationsStatus {
   readonly skills: readonly {
     readonly id: string;
     readonly name: string;
+    /** The skill's own frontmatter description; empty when the bundle is
+     *  unreadable. Replaces the hand-written per-id subtext on the row. */
+    readonly description: string;
     readonly installed: boolean;
     readonly paths: readonly string[];
+    /** Three-tier context cost from the shared estimator. Absent when the
+     *  bundle could not be parsed (broken build) — the row hides the cost. */
+    readonly size?: SkillCostTiers;
+    /** On-disk source directory of the built-in bundle (its SKILL.md + files). */
+    readonly sourceDir: string;
+    /** Every place this skill would install: static agent hosts present on disk
+     *  plus declared custom roots. For a custom root `editor === skillsRoot`. */
+    readonly resolvedHosts: readonly {
+      readonly editor: string;
+      readonly skillsRoot: string;
+      readonly custom: boolean;
+    }[];
   }[];
   /**
    * Every editor whose host root already exists on this machine — a SUPERSET
@@ -655,6 +683,18 @@ export interface OkProjectIntegrationsStatus {
   readonly skill: {
     readonly installed: boolean;
     readonly paths: readonly string[];
+    /** The skill's own frontmatter description, so the row states what the
+     *  bundle says rather than a hand-written subtext that can drift from it. */
+    readonly description: string;
+    /** Editor ids this project's skill fans out to — the reach cluster's input.
+     *  Project-scoped, so these are the editors with a project skill root here,
+     *  not the user-global host set. */
+    readonly hosts: readonly string[];
+    /** Three-tier context cost of the bundled project skill. Absent when the
+     *  bundle cannot be read. */
+    readonly size?: SkillCostTiers;
+    /** On-disk source of the bundled skill, so the row can open its preview. */
+    readonly sourceDir?: string;
   } | null;
 }
 

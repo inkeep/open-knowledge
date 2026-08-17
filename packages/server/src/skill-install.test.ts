@@ -26,6 +26,7 @@ import {
   buildAndOpenSkill,
   detectUserSkillHosts,
   installUserSkill,
+  resolveBuiltinSkillHosts,
   type SkillInstallLogger,
   type SpawnLike,
 } from './skill-install.ts';
@@ -321,6 +322,61 @@ describe('installUserSkill — scope discipline', () => {
     expect(detectUserSkillHosts(home)).toEqual([]);
     installHost(home, '.codex');
     expect(detectUserSkillHosts(home).map((h) => h.hostDir)).toEqual(['.codex']);
+  });
+});
+
+/** Declare custom roots in the placements ledger `resolveBuiltinSkillHosts` reads. */
+function seedDeclaredRoots(home: string, roots: string[]): void {
+  const dir = join(home, '.ok', 'local');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'skill-placements.json'), JSON.stringify({ roots }));
+}
+
+describe('resolveBuiltinSkillHosts', () => {
+  test('with no declared roots, resolves only the static hosts present on disk', () => {
+    const home = freshHome();
+    expect(resolveBuiltinSkillHosts(home)).toEqual([]);
+    installHost(home, '.codex');
+    expect(resolveBuiltinSkillHosts(home)).toEqual([
+      { editor: 'codex', skillsRoot: '.codex/skills', custom: false },
+    ]);
+  });
+
+  test('includes a declared custom root that exists on disk', () => {
+    const home = freshHome();
+    seedDeclaredRoots(home, ['.tim/skills']);
+    installHost(home, '.tim/skills');
+    expect(resolveBuiltinSkillHosts(home)).toContainEqual({
+      editor: '.tim/skills',
+      skillsRoot: '.tim/skills',
+      custom: true,
+    });
+  });
+
+  test('skips a declared custom root that no longer exists on disk', () => {
+    const home = freshHome();
+    seedDeclaredRoots(home, ['.tim/skills']);
+    expect(resolveBuiltinSkillHosts(home).some((host) => host.custom)).toBe(false);
+  });
+
+  test('a declared root duplicating a static host appears once', () => {
+    const home = freshHome();
+    installHost(home, '.codex');
+    seedDeclaredRoots(home, ['.codex/skills']);
+    installHost(home, '.codex/skills');
+    expect(
+      resolveBuiltinSkillHosts(home).filter((host) => host.skillsRoot === '.codex/skills'),
+    ).toEqual([{ editor: 'codex', skillsRoot: '.codex/skills', custom: false }]);
+  });
+
+  test('an unreadable placements ledger degrades to the static hosts only', () => {
+    const home = freshHome();
+    installHost(home, '.codex');
+    mkdirSync(join(home, '.ok', 'local'), { recursive: true });
+    writeFileSync(join(home, '.ok', 'local', 'skill-placements.json'), '{ not json');
+    expect(resolveBuiltinSkillHosts(home)).toEqual([
+      { editor: 'codex', skillsRoot: '.codex/skills', custom: false },
+    ]);
   });
 });
 

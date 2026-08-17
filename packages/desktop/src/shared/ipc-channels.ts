@@ -109,6 +109,7 @@ import type {
   OkBugReportSendResult,
   OkFolderState,
   ShareTargetStatusResponse,
+  SkillCostTiers,
   TerminalCli,
   UninstallDispatchRequest,
   UninstallDispatchResult,
@@ -162,6 +163,7 @@ import type { EntryPoint } from './entry-point.ts';
 
 export type EditorActiveTargetSnapshot = OkEditorActiveTargetSnapshot;
 export type EditorViewMenuStateSnapshot = OkEditorViewMenuStateSnapshot;
+export type { SkillCostTiers };
 export type MenuDispatchRole = OkMenuDispatchRole;
 export type MenuDispatchCommand = OkMenuDispatchCommand;
 export type MenuDispatchRequest = OkMenuDispatchRequest;
@@ -506,11 +508,21 @@ export interface McpWiringConfirmRequest {
 /** One user-global skill row in the first-launch consent dialog. Computed
  *  read-only at arming time from `USER_GLOBAL_BUNDLE_IDS` + disk/marker state.
  *  `alreadyInstalled: true` renders the row pre-checked as an existing install
- *  the user can uncheck to remove. */
+ *  the user can uncheck to remove. The disclosure fields mirror the Settings
+ *  skill status so both consent surfaces show the same what/cost/where; `hosts`
+ *  empty ⇒ nowhere to land and the row disables its checkbox. */
 export interface McpWiringGlobalSkillDescriptor {
   readonly id: string;
   readonly name: string;
   readonly alreadyInstalled: boolean;
+  /** The skill's own frontmatter description. */
+  readonly description: string;
+  /** Three-tier context cost; absent when the packaged bundle is unreadable. */
+  readonly size?: SkillCostTiers;
+  /** Resolved reach: static editor ids plus declared custom-root paths. */
+  readonly hosts: readonly string[];
+  /** Destination paths a confirmed install writes (or an uninstall removes). */
+  readonly paths: readonly string[];
 }
 
 /** Confirm / skip response shape. `ok:false` surfaces when (a)
@@ -556,13 +568,34 @@ export interface IntegrationsPathStatus {
   readonly installed: boolean;
 }
 
+/** One resolved install target for a built-in skill: a static agent host, or a
+ *  custom root the user declared. For a custom root `editor === skillsRoot` (the
+ *  path is its id — there is no agent name). Resolved in main; the renderer
+ *  never re-derives reach from it. */
+export interface IntegrationsResolvedSkillHost {
+  readonly editor: string;
+  readonly skillsRoot: string;
+  readonly custom: boolean;
+}
+
 export interface IntegrationsSkillStatus {
   readonly id: string;
   readonly name: string;
+  /** The skill's own frontmatter description; empty when the bundle is
+   *  unreadable. Replaces the hand-written per-id subtext on the row. */
+  readonly description: string;
   readonly installed: boolean;
   /** Tildified directories a toggle touches: the central `~/.agents/skills`
    *  copy plus each per-host copy whose host root exists on this machine. */
   readonly paths: readonly string[];
+  /** Three-tier context cost from the shared estimator. Absent when the bundle
+   *  could not be parsed (broken build) — the row hides the cost. */
+  readonly size?: SkillCostTiers;
+  /** On-disk source directory of the built-in bundle (its SKILL.md + files). */
+  readonly sourceDir: string;
+  /** Every place this skill would install: static agent hosts present on disk
+   *  plus declared custom roots. */
+  readonly resolvedHosts: readonly IntegrationsResolvedSkillHost[];
 }
 
 /** Full component inventory for Settings → AI tools. `available: false`
@@ -640,6 +673,18 @@ export interface ProjectIntegrationsEditorStatus {
 export interface ProjectIntegrationsSkillStatus {
   readonly installed: boolean;
   readonly paths: readonly string[];
+  /** The bundle's own frontmatter description, so the row states what the skill
+   *  says rather than a hand-written subtext that can drift from it. */
+  readonly description: string;
+  /** Editor ids the project skill fans out to — the reach cluster's input.
+   *  Project-scoped: the editors with a project skill root HERE, not the
+   *  user-global host set. */
+  readonly hosts: readonly string[];
+  /** Three-tier context cost of the bundled project skill. Absent when the
+   *  bundle cannot be read. */
+  readonly size?: SkillCostTiers;
+  /** On-disk source of the bundled skill, so the row can open its preview. */
+  readonly sourceDir?: string;
 }
 
 /** Component inventory for Settings → This project → AI tools. `hasProject:

@@ -86,6 +86,7 @@
     "09Tv5j": ["Reconnexion…"],
     "0BB9ID": ["Pas encore de titres."],
     "0BfhAj": ["Réinitialiser la vue"],
+    "0CvV_9": ["S'installe dans"],
     "0E9DR6": ["Saisissez pour trouver un document"],
     "0Er6-M": ["Redémarrage"],
     "0Gd0NU": ["Partagé"],
@@ -123,9 +124,6 @@
     ],
     "0eHrMb": ["Impossible de terminer la suppression"],
     "0g7rCZ": ["Dupliqué sous « ", ["0"], " »"],
-    "0inVGS": [
-      "Aide votre agent de code à reconnaître les projets OpenKnowledge et à y faire transiter les lectures et les écritures."
-    ],
     "0jD-Gn": [
       "Une base de connaissances d'équipe, un wiki personnel, la documentation d'un projet…"
     ],
@@ -1022,6 +1020,7 @@
     ],
     "BlLxpG": ["Rechercher des compétences"],
     "BowKyI": ["Afficher les détails"],
+    "BuMD5w": ["Supprime de"],
     "Bv5a9_": ["Statistiques de la sélection"],
     "BwKH4d": ["Applications externes"],
     "Bx4EXG": ["Actions pour ", ["label"]],
@@ -1125,6 +1124,7 @@
     ],
     "D8OV7J": ["Collaborateurs uniquement"],
     "DAVInK": ["Ajouter au dictionnaire"],
+    "DBqxw2": ["toujours actif"],
     "DCSSZt": ["L'agent travaille"],
     "DDTdLl": ["Paramètres du bloc de code"],
     "DELNQk": [
@@ -1340,7 +1340,6 @@
       ")."
     ],
     "FWSjnp": ["Volet Modifier la source et champs de propriétés de type code"],
-    "FXk_zY": ["Ajoute un flux de travail guidé pour rédiger de nouvelles compétences d'agent."],
     "FZtBeR": ["Activer ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1678,6 +1677,9 @@
     ],
     "K0N7zS": ["Échec de la lecture de l'état du partage de configuration"],
     "K1ckLX": ["Échec de la création du dossier"],
+    "K1nRu2": [
+      "Cette compétence réside dans le dossier du projet : elle s'installe donc pour toutes les personnes qui ouvrent ce projet, pas seulement pour vous."
+    ],
     "K2v7QF": ["Impossible de partager les compétences"],
     "K4G55s": ["Vérification de la source"],
     "K6MQQk": [
@@ -1915,6 +1917,7 @@
     "Md709y": ["Chargement de ", ["fileName"]],
     "MdpSC1": ["Nouvelle compétence"],
     "Mh_4hd": ["Onglet précédent"],
+    "MiMTvb": ["tokens toujours actifs"],
     "Mj8R8K": ["Impossible d'installer la compétence : ", ["0"]],
     "MmDDWK": ["Ouverts récemment"],
     "Mnavhe": ["Propriétés de ", ["propPanelDescriptorLabel"]],
@@ -1965,6 +1968,7 @@
     "NOHyEE": ["Réessayer le push"],
     "NORKZU": ["Avertissements sur les motifs : ", ["summary"]],
     "NQ8llq": ["Ajouter un élément"],
+    "NQVepz": ["Installer ", ["name"]],
     "NQXwDy": ["Modifier dans le fichier de configuration"],
     "NRSLBe": ["il y a ", ["diffMin"], " min"],
     "NSnIUP": ["Deux pages (paires)"],
@@ -2206,6 +2210,7 @@
     "QWdKwH": ["Déplacer"],
     "QYTOaN": ["Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "QcScEc": ["Désinstaller ", ["name"]],
     "QcpeeE": ["Aller à ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2222,6 +2227,7 @@
     "QlAG4m": ["Dites-nous en plus (facultatif)"],
     "QlkiD5": ["Replacer sur le texte sélectionné"],
     "QlxHAH": ["Résultats pour « ", ["semanticResultsLabel"], " »"],
+    "QnnKlV": ["à la demande"],
     "QohqVL": ["Cet agent ne propose pas de commandes slash"],
     "QpSqAP": [
       "Le vrai shell est désactivé pour ce projet. L'activer exécute les commandes avec tous les droits de votre compte utilisateur."
@@ -2680,6 +2686,7 @@
       " éléments sélectionnés ? Les dossiers et tous les fichiers qu'ils contiennent seront supprimés. Cette action est irréversible."
     ],
     "WMsoIm": ["Déjà connecté ?"],
+    "WOr-hW": ["tokens"],
     "WPwDin": ["Ouvrir le dossier sur le disque"],
     "WR0y2O": ["Partager le dossier"],
     "WRNXKp": ["Recherche en cours"],
@@ -2811,6 +2818,7 @@
     "XuQzrk": [
       "Impossible de redémarrer le serveur — un autre processus le détient. Quittez les autres fenêtres OpenKnowledge de ce projet, puis réessayez."
     ],
+    "XuVQrE": ["Configurer ", ["0"]],
     "Xv_ijG": ["https://github.com/owner/repo ou owner/repo"],
     "Xwump4": ["aucun dépôt git ici"],
     "XyOUTJ": ["Quitter la fusion"],
@@ -3114,6 +3122,7 @@
     "aalx4E": ["Modification d'une source MDX cassée : ", ["reason"]],
     "aatPoi": ["Fichiers générés"],
     "abiHje": ["Supprimer les éléments sélectionnés"],
+    "ac8G0O": ["au déclenchement"],
     "adsMWO": ["Résolution des deltas"],
     "ah_ekO": ["« ", ["name"], " » est déjà à jour"],
     "aiArms": ["Nous n'avons pas pu cloner ce dépôt."],
@@ -3529,6 +3538,7 @@
     "fnlBN4": [
       "Les paramètres d'approbation automatique ne sont pas encore chargés — réessayez dans un instant"
     ],
+    "fo0VXg": ["Désinstaller"],
     "fo6CCk": ["volet ", ["0"]],
     "fqSfXY": ["Remplacer"],
     "ft-BOm": ["Signaler un bug…"],
@@ -3886,6 +3896,7 @@
     "jerqF0": ["Chargement de l'état des branches"],
     "jhtG3I": [" Votre sélection a été restaurée."],
     "jjtmV_": ["Nom du premier fichier"],
+    "jkt28V": ["Coût de contexte"],
     "jnCROW": [
       "Un instantané de la mémoire au moment du plantage, et l'élément qui nous aide le plus. Il peut contenir du contenu de document et ne peut pas être masqué, alors décochez-le si vous préférez ne pas le partager."
     ],
@@ -4264,6 +4275,7 @@
     ],
     "ndwmea": ["indisponible sur cette plateforme"],
     "neRy3o": ["Scinder l'élément de liste"],
+    "nem6R7": ["dépasse le budget de tokens ", ["budgetLabel"]],
     "nf0wk0": ["lié via le parent"],
     "nfPccR": [
       [
@@ -4911,6 +4923,9 @@
     ],
     "vGeNNQ": ["Copiez une invite et collez-la dans votre agent pour configurer votre projet."],
     "vHlhDc": ["Double-cliquez pour modifier"],
+    "vIR6Hp": [
+      "Les compétences s'installent dans tous les outils IA détectés sur cette machine, indépendamment des connexions MCP choisies ci-dessus."
+    ],
     "vIxrEk": ["Ajuster à la largeur"],
     "vLyv1R": ["Masquer"],
     "vO2v-0": ["Masquer les autres"],
@@ -5157,6 +5172,7 @@
       "C'est un répertoire parent qui est le lien symbolique — dissociez ce dossier-là pour récupérer celui-ci."
     ],
     "yMgL_E": ["Navigation dans le champ de recherche"],
+    "yOjRUV": ["Aucun outil IA détecté. Installez-en un pour utiliser cette compétence."],
     "yQE2r9": ["Chargement"],
     "yQyglE": ["Aucun document correspondant"],
     "yR5LHI": ["Saisissez une valeur hexadécimale à 6 chiffres, par ex. #1A2B3C"],
@@ -5276,6 +5292,7 @@
     "zbymaY": ["il y a ", ["0"], " min"],
     "zcmYx4": ["la configuration git est indisponible"],
     "zd00pH": ["Copier le chemin"],
+    "zewp9w": ["Les destinations ont changé. Vérifiez la liste, puis confirmez."],
     "zgSFyG": ["Lien externe"],
     "zkz0Fg": ["Configurer la synchronisation"],
     "zlErBl": ["La réponse d'erreur des titres de page ne respecte pas la RFC 9457"],

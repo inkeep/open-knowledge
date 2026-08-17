@@ -3,6 +3,7 @@ import type { OkMcpWiringEditorId, OkMcpWiringShowPayload } from '@/lib/desktop-
 import { McpConsentDialog } from './McpConsentDialog';
 import {
   computeInitialSelection,
+  computeInitialSkillSelection,
   isPathRowActionable,
   partitionEditorsForDisplay,
   selectedIdsOrdered,
@@ -11,6 +12,14 @@ import {
 } from './McpConsentDialogBody';
 
 type EditorDetection = OkMcpWiringShowPayload['detectedEditors'][number];
+type GlobalSkill = OkMcpWiringShowPayload['globalSkills'][number];
+
+/** Skill-descriptor factory — fills the disclosure fields the initial-selection
+ *  helper doesn't read (name/description/paths/size), so each case stays focused
+ *  on id + hosts. */
+function gs(o: Pick<GlobalSkill, 'id' | 'hosts'>): GlobalSkill {
+  return { name: o.id, alreadyInstalled: false, description: '', paths: [], ...o };
+}
 
 /** Detection-literal factory — fills the location-disclosure fields
  *  (configPath/entryLocator) the pure selection/ordering helpers under test
@@ -53,6 +62,34 @@ describe('computeInitialSelection', () => {
     const sel = computeInitialSelection([
       ed({ id: 'claude', label: 'Claude', detected: false, willReplace: false }),
       ed({ id: 'cursor', label: 'Cursor', detected: false, willReplace: false }),
+    ]);
+    expect(sel.size).toBe(0);
+  });
+});
+
+describe('computeInitialSkillSelection', () => {
+  test('pre-checks bundles with a resolved host; excludes a zero-host bundle', () => {
+    const sel = computeInitialSkillSelection([
+      gs({ id: 'discovery', hosts: ['claude'] }),
+      gs({ id: 'write-skill', hosts: [] }),
+    ]);
+    expect(sel.has('discovery')).toBe(true);
+    expect(sel.has('write-skill')).toBe(false);
+    expect(sel.size).toBe(1);
+  });
+
+  test('all reach resolved: every bundle pre-checked (opt-out default)', () => {
+    const sel = computeInitialSkillSelection([
+      gs({ id: 'discovery', hosts: ['claude'] }),
+      gs({ id: 'write-skill', hosts: ['cursor'] }),
+    ]);
+    expect(sel.size).toBe(2);
+  });
+
+  test('zero hosts everywhere: nothing pre-checked (never stage an install that cannot land)', () => {
+    const sel = computeInitialSkillSelection([
+      gs({ id: 'discovery', hosts: [] }),
+      gs({ id: 'write-skill', hosts: [] }),
     ]);
     expect(sel.size).toBe(0);
   });

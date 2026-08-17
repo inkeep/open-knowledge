@@ -27,6 +27,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { MANAGED_ARTIFACT_SCOPES } from '../../constants/cc1.ts';
 import { SkillTargetEditorSchema } from '../../skill-targets/schema.ts';
+import { SkillCostTiersSchema } from '../../skills-catalog/skill-cost.ts';
 import { agentIdentityFields, summaryField } from './_shared.ts';
 
 /**
@@ -560,6 +561,11 @@ export const SkillsListEntrySchema = z
     // anywhere said why. Every surface that offers to OPEN a skill reads this
     // first and offers `POST /api/skill/track-in-git` instead.
     ignored: z.boolean().optional(),
+    // Three-tier context cost (always-on / on-trigger / on-demand estimated
+    // tokens) from the server's stamped bundle walk, so the editor prices a
+    // skill without re-reading it. Optional: an older server omits it and the
+    // row hides rather than rendering zeroes.
+    size: SkillCostTiersSchema.optional(),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillsListEntry = z.infer<typeof SkillsListEntrySchema>;

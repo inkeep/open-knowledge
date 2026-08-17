@@ -68,6 +68,7 @@
     "09Tv5j": ["Reconnecting…"],
     "0BB9ID": ["No headings yet."],
     "0BfhAj": ["Reset view"],
+    "0CvV_9": ["Installs to"],
     "0E9DR6": ["Type to find a doc"],
     "0Er6-M": ["Restarting"],
     "0Gd0NU": ["Shared"],
@@ -105,9 +106,6 @@
     ],
     "0eHrMb": ["Could not complete delete"],
     "0g7rCZ": ["Duplicated to \"", ["0"], "\""],
-    "0inVGS": [
-      "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
-    ],
     "0jD-Gn": ["A team knowledge base, a personal wiki, project docs..."],
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
     "0pZmTP": ["Can't share this path."],
@@ -851,6 +849,7 @@
     ],
     "BlLxpG": ["Search skills"],
     "BowKyI": ["Show details"],
+    "BuMD5w": ["Removes from"],
     "Bv5a9_": ["Selection statistics"],
     "BwKH4d": ["External apps"],
     "Bx4EXG": ["Actions for ", ["label"]],
@@ -938,6 +937,7 @@
     "D8JJwQ": ["Feedback isn't available right now. Please try again later."],
     "D8OV7J": ["Only collaborators"],
     "DAVInK": ["Add to Dictionary"],
+    "DBqxw2": ["always-on"],
     "DCSSZt": ["The agent is working"],
     "DDTdLl": ["Code block settings"],
     "DELNQk": ["Collaborators see your in-progress edits as soon as they sync."],
@@ -1134,7 +1134,6 @@
       ")."
     ],
     "FWSjnp": ["Edit source pane and code property fields"],
-    "FXk_zY": ["Adds a guided workflow for authoring new Agent Skills."],
     "FZtBeR": ["Enable ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1410,6 +1409,9 @@
     ],
     "K0N7zS": ["Config sharing status read failed"],
     "K1ckLX": ["Failed to create folder"],
+    "K1nRu2": [
+      "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
+    ],
     "K2v7QF": ["Couldn't share skills"],
     "K4G55s": ["Checking source"],
     "K6MQQk": ["Sync is failing. See the sync status for details."],
@@ -1620,6 +1622,7 @@
     "Md709y": ["Loading ", ["fileName"]],
     "MdpSC1": ["New skill"],
     "Mh_4hd": ["Previous tab"],
+    "MiMTvb": ["always-on tokens"],
     "Mj8R8K": ["Couldn't install skill: ", ["0"]],
     "MmDDWK": ["Recently opened"],
     "Mnavhe": [["propPanelDescriptorLabel"], " Properties"],
@@ -1668,6 +1671,7 @@
     "NOHyEE": ["Retry push"],
     "NORKZU": ["Pattern warnings: ", ["summary"]],
     "NQ8llq": ["Add item"],
+    "NQVepz": ["Install ", ["name"]],
     "NQXwDy": ["Edit in config file"],
     "NRSLBe": [["diffMin"], "m ago"],
     "NSnIUP": ["Two-page (even)"],
@@ -1893,6 +1897,7 @@
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
+    "QcScEc": ["Uninstall ", ["name"]],
     "QcpeeE": ["Navigate to ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -1905,6 +1910,7 @@
     "QlAG4m": ["Tell us more (optional)"],
     "QlkiD5": ["Re-place on selected text"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
+    "QnnKlV": ["on demand"],
     "QohqVL": ["This agent doesn't offer slash commands"],
     "QpSqAP": [
       "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
@@ -2278,6 +2284,7 @@
       " selected items? Folders and all files inside them will be deleted. This action cannot be undone."
     ],
     "WMsoIm": ["Already signed in?"],
+    "WOr-hW": ["tokens"],
     "WPwDin": ["Open folder on disk"],
     "WR0y2O": ["Share folder"],
     "WRNXKp": ["Searching"],
@@ -2399,6 +2406,7 @@
     "XuQzrk": [
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
+    "XuVQrE": ["Set up ", ["0"]],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
     "Xwump4": ["no git repository here"],
     "XyOUTJ": ["Exit merge"],
@@ -2662,6 +2670,7 @@
     "aalx4E": ["Editing broken MDX source: ", ["reason"]],
     "aatPoi": ["Generated files"],
     "abiHje": ["Delete selected items"],
+    "ac8G0O": ["on trigger"],
     "adsMWO": ["Resolving deltas"],
     "ah_ekO": ["\"", ["name"], "\" is already up to date"],
     "aiArms": ["We couldn't clone this repository."],
@@ -2994,6 +3003,7 @@
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
+    "fo0VXg": ["Uninstall"],
     "fo6CCk": ["pane ", ["0"]],
     "fqSfXY": ["Replace"],
     "ft-BOm": ["Report a bug…"],
@@ -3316,6 +3326,7 @@
     "jerqF0": ["Loading branch state"],
     "jhtG3I": [" Your selection has been restored."],
     "jjtmV_": ["First file name"],
+    "jkt28V": ["Context cost"],
     "jnCROW": [
       "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
     ],
@@ -3650,6 +3661,7 @@
     ],
     "ndwmea": ["unavailable on this platform"],
     "neRy3o": ["Split list item"],
+    "nem6R7": ["over the ", ["budgetLabel"], " token budget"],
     "nf0wk0": ["symlinked via parent"],
     "nfPccR": [
       [
@@ -4213,6 +4225,9 @@
     "vGQxBT": ["Updates from the source apply automatically (unless edited locally)"],
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],
     "vHlhDc": ["Double-click to edit"],
+    "vIR6Hp": [
+      "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
+    ],
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
     "vO2v-0": ["Hide Others"],
@@ -4426,6 +4441,7 @@
       "A parent directory is the symlink — unlink that folder itself to take this one back."
     ],
     "yMgL_E": ["Find field navigation"],
+    "yOjRUV": ["No AI tools detected. Install one to use this skill."],
     "yQE2r9": ["Loading"],
     "yQyglE": ["No matching docs"],
     "yR5LHI": ["Enter a 6-digit hex like #1A2B3C"],
@@ -4516,6 +4532,7 @@
     "zbymaY": [["0"], "m ago"],
     "zcmYx4": ["git configuration is unavailable"],
     "zd00pH": ["Copy Path"],
+    "zewp9w": ["The destinations changed. Review the list, then confirm."],
     "zgSFyG": ["External link"],
     "zkz0Fg": ["Set up syncing"],
     "zlErBl": ["Page headings error response did not match RFC 9457"],

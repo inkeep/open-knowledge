@@ -1,5 +1,6 @@
 import type { SkillPreview as SkillPreviewData, SkillScope } from '@inkeep/open-knowledge-core';
 import {
+  estimateSkillCost,
   extractFrontmatterTags,
   skillFileLiveDocName,
   skillLiveDocName,
@@ -7,10 +8,11 @@ import {
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { AlignLeft, Eye, Tag, Type } from 'lucide-react';
+import { AlignLeft, Eye, Gauge, Tag, Type } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';
 import { ProseFindBar } from '@/components/ProseFindBar';
+import { SkillCostValue } from '@/components/SkillCostValue';
 import { SkillMarkdownViewer } from '@/components/SkillMarkdownViewer';
 import { SkillModeBanner } from '@/components/SkillModeBanner';
 import { useFindInViewer } from '@/hooks/use-find-in-viewer';
@@ -146,6 +148,10 @@ export function SkillBundlePreview({
 
   const desc = preview?.description;
   const tags = preview ? parseSkillTags(preview.skillMd) : [];
+  // Priced client-side from the payload already fetched — `SkillPreview`
+  // satisfies the estimator's input, so no adapter, no extra fetch. Null until
+  // the preview loads, which keeps the row absent on a failed fetch.
+  const cost = preview ? estimateSkillCost(preview) : null;
   const selected: SelectedFile | null =
     selectedPath === SKILL_MD
       ? preview
@@ -226,6 +232,11 @@ export function SkillBundlePreview({
                     </span>
                   )}
                 </PropertyDisplayRow>
+                {cost ? (
+                  <PropertyDisplayRow icon={<Gauge className="size-3.5" />} label={t`tokens`}>
+                    <SkillCostValue size={cost} />
+                  </PropertyDisplayRow>
+                ) : null}
               </div>
             </div>
           ) : null}

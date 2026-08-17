@@ -68,6 +68,7 @@
     "09Tv5j": ["Menyambung ulang…"],
     "0BB9ID": ["Belum ada judul."],
     "0BfhAj": ["Setel ulang tampilan"],
+    "0CvV_9": ["Dipasang di"],
     "0E9DR6": ["Ketik untuk menemukan sebuah dokumen"],
     "0Er6-M": ["Memulai ulang"],
     "0Gd0NU": ["Dibagikan"],
@@ -105,9 +106,6 @@
     ],
     "0eHrMb": ["Penghapusan tidak dapat diselesaikan"],
     "0g7rCZ": ["Digandakan menjadi \"", ["0"], "\""],
-    "0inVGS": [
-      "Membantu agen pemrograman Anda mengenali proyek OpenKnowledge dan mengarahkan baca-tulis melaluinya."
-    ],
     "0jD-Gn": ["Basis pengetahuan tim, wiki pribadi, dokumentasi proyek..."],
     "0kTAXe": ["Buka sumber: ", ["mirrorSrc"]],
     "0pZmTP": ["Tidak dapat membagikan jalur ini."],
@@ -830,6 +828,7 @@
     ],
     "BlLxpG": ["Cari keterampilan"],
     "BowKyI": ["Tampilkan detail"],
+    "BuMD5w": ["Dihapus dari"],
     "Bv5a9_": ["Statistik pilihan"],
     "BwKH4d": ["Aplikasi eksternal"],
     "Bx4EXG": ["Tindakan untuk ", ["label"]],
@@ -919,6 +918,7 @@
     "D8JJwQ": ["Masukan tidak tersedia saat ini. Silakan coba lagi nanti."],
     "D8OV7J": ["Hanya kolaborator"],
     "DAVInK": ["Tambahkan ke kamus"],
+    "DBqxw2": ["selalu aktif"],
     "DCSSZt": ["Agennya sedang bekerja"],
     "DDTdLl": ["Pengaturan blok kode"],
     "DELNQk": ["Kolaborator melihat suntingan Anda yang sedang berjalan begitu tersinkronkan."],
@@ -1122,7 +1122,6 @@
       ")."
     ],
     "FWSjnp": ["Panel sunting sumber dan bidang properti berbentuk kode"],
-    "FXk_zY": ["Menambahkan alur terpandu untuk menulis Keterampilan Agen baru."],
     "FZtBeR": ["Aktifkan ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1417,6 +1416,9 @@
     ],
     "K0N7zS": ["Gagal membaca status berbagi konfigurasi"],
     "K1ckLX": ["Gagal membuat folder"],
+    "K1nRu2": [
+      "Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek ini, bukan hanya Anda."
+    ],
     "K2v7QF": ["Keterampilan tidak bisa dibagikan"],
     "K4G55s": ["Memeriksa sumber"],
     "K6MQQk": ["Sinkronisasi sedang gagal. Lihat status sinkronisasi untuk detailnya."],
@@ -1622,6 +1624,7 @@
     "Md709y": ["Memuat ", ["fileName"]],
     "MdpSC1": ["Keterampilan baru"],
     "Mh_4hd": ["Tab sebelumnya"],
+    "MiMTvb": ["token selalu aktif"],
     "Mj8R8K": ["Keterampilan tidak bisa dipasang: ", ["0"]],
     "MmDDWK": ["Baru saja dibuka"],
     "Mnavhe": ["Properti ", ["propPanelDescriptorLabel"]],
@@ -1672,6 +1675,7 @@
     "NOHyEE": ["Coba push lagi"],
     "NORKZU": ["Peringatan pola: ", ["summary"]],
     "NQ8llq": ["Tambahkan item"],
+    "NQVepz": ["Pasang ", ["name"]],
     "NQXwDy": ["Sunting di berkas konfigurasi"],
     "NRSLBe": [["diffMin"], " mnt lalu"],
     "NSnIUP": ["Dua halaman (genap)"],
@@ -1907,6 +1911,7 @@
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "QcScEc": ["Copot ", ["name"]],
     "QcpeeE": ["Pergi ke ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -1919,6 +1924,7 @@
     "QlAG4m": ["Ceritakan lebih banyak (opsional)"],
     "QlkiD5": ["Tempatkan ulang pada teks terpilih"],
     "QlxHAH": ["Menampilkan hasil untuk \"", ["semanticResultsLabel"], "\""],
+    "QnnKlV": ["sesuai permintaan"],
     "QohqVL": ["Agen ini tidak menawarkan perintah garis miring"],
     "QpSqAP": [
       "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
@@ -2297,6 +2303,7 @@
       " item terpilih? Folder dan semua berkas di dalamnya akan dihapus. Tindakan ini tidak bisa dibatalkan."
     ],
     "WMsoIm": ["Sudah masuk?"],
+    "WOr-hW": ["token"],
     "WPwDin": ["Buka folder di disk"],
     "WR0y2O": ["Bagikan folder"],
     "WRNXKp": ["Mencari"],
@@ -2414,6 +2421,7 @@
     "XuQzrk": [
       "Server tidak bisa dimulai ulang — proses lain menguasainya. Tutup jendela OpenKnowledge lain untuk proyek ini, lalu coba lagi."
     ],
+    "XuVQrE": ["Siapkan ", ["0"]],
     "Xv_ijG": ["https://github.com/pemilik/repo atau pemilik/repo"],
     "Xwump4": ["tidak ada repositori git di sini"],
     "XyOUTJ": ["Keluar dari penggabungan"],
@@ -2672,6 +2680,7 @@
     "aalx4E": ["Menyunting sumber MDX yang rusak: ", ["reason"]],
     "aatPoi": ["File yang dihasilkan"],
     "abiHje": ["Hapus item terpilih"],
+    "ac8G0O": ["saat dipicu"],
     "adsMWO": ["Menyelesaikan delta"],
     "ah_ekO": ["\"", ["name"], "\" sudah yang terbaru"],
     "aiArms": ["Kami tidak bisa mengkloning repositori ini."],
@@ -3019,6 +3028,7 @@
     "fiMNLl": ["Pengaturan sinkronisasi belum dimuat — coba lagi sebentar"],
     "fj5YiP": ["Mengunduh salinan baru dari GitHub."],
     "fnlBN4": ["Pengaturan persetujuan otomatis belum dimuat — coba lagi sebentar"],
+    "fo0VXg": ["Copot"],
     "fo6CCk": ["panel ", ["0"]],
     "fqSfXY": ["Ganti"],
     "ft-BOm": ["Laporkan bug…"],
@@ -3351,6 +3361,7 @@
     "jerqF0": ["Memuat keadaan cabang"],
     "jhtG3I": [" Pilihan Anda telah dipulihkan."],
     "jjtmV_": ["Nama berkas pertama"],
+    "jkt28V": ["Biaya konteks"],
     "jnCROW": [
       "Cuplikan memori dari kegagalan itu, dan artefak yang paling membantu kami. Isinya bisa memuat isi dokumen dan tidak bisa disunting, jadi hapus centangnya jika Anda tidak ingin membagikannya."
     ],
@@ -3688,6 +3699,7 @@
     ],
     "ndwmea": ["tidak tersedia di platform ini"],
     "neRy3o": ["Pisahkan item daftar"],
+    "nem6R7": ["melebihi anggaran token ", ["budgetLabel"]],
     "nf0wk0": ["ditautkan lewat folder induk"],
     "nfPccR": [
       ["laterEdits", "plural", { "other": ["Mengembalikan ", "#", " suntingan berikutnya."] }]
@@ -4224,6 +4236,9 @@
     "vGQxBT": ["Pembaruan dari sumbernya berlaku otomatis (kecuali sudah disunting secara lokal)"],
     "vGeNNQ": ["Salin sebuah prompt dan tempelkan ke agen Anda untuk menyiapkan proyek Anda."],
     "vHlhDc": ["Klik dua kali untuk menyunting"],
+    "vIR6Hp": [
+      "Keterampilan dipasang ke setiap alat AI yang terdeteksi di mesin ini, terlepas dari koneksi MCP yang Anda pilih di atas."
+    ],
     "vIxrEk": ["Sesuaikan lebar"],
     "vLyv1R": ["Sembunyikan"],
     "vO2v-0": ["Sembunyikan lainnya"],
@@ -4440,6 +4455,7 @@
       "Direktori di atasnya yang merupakan symlink — lepaskan tautan folder itu untuk mengambil kembali yang ini."
     ],
     "yMgL_E": ["Navigasi bidang pencarian"],
+    "yOjRUV": ["Tidak ada alat AI yang terdeteksi. Pasang satu untuk memakai keterampilan ini."],
     "yQE2r9": ["Memuat"],
     "yQyglE": ["Tidak ada dokumen yang cocok"],
     "yR5LHI": ["Masukkan nilai heksa 6 digit seperti #1A2B3C"],
@@ -4535,6 +4551,7 @@
     "zbymaY": [["0"], " mnt lalu"],
     "zcmYx4": ["konfigurasi git tidak tersedia"],
     "zd00pH": ["Salin Jalur"],
+    "zewp9w": ["Tujuannya berubah. Periksa daftarnya, lalu konfirmasi."],
     "zgSFyG": ["Tautan eksternal"],
     "zkz0Fg": ["Siapkan sinkronisasi"],
     "zlErBl": ["Respons galat judul halaman tidak sesuai RFC 9457"],

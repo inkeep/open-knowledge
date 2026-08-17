@@ -52,6 +52,7 @@ import type {
   McpWiringConfirmResult,
   McpWiringEditorDetection,
   McpWiringEditorId,
+  McpWiringGlobalSkillDescriptor,
   McpWiringPathInstallDescriptor,
   McpWiringSkipResult,
 } from '../shared/ipc-channels.ts';
@@ -354,12 +355,9 @@ export interface McpWiringPathInstallSurface {
  */
 export interface McpWiringSkillsSurface {
   /** One row per user-global bundle for the dialog. Read-only — must not
-   *  write. `alreadyInstalled` pre-checks the row (grandfathered install). */
-  computeDescriptors(): Array<{
-    id: string;
-    name: string;
-    alreadyInstalled: boolean;
-  }>;
+   *  write. `alreadyInstalled` pre-checks the row (grandfathered install);
+   *  the disclosure fields drive the row's cost/reach/destination display. */
+  computeDescriptors(): McpWiringGlobalSkillDescriptor[];
   /**
    * Finalize the per-bundle decision. Records enabled for every id in
    * `enabledBundleIds` and declined for the rest, then installs the enabled

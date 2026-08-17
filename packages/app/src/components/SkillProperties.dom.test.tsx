@@ -8,15 +8,40 @@
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type { SkillCostTiers, SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import * as linguiShim from '../../tests/lingui-macro-shim';
 
 vi.doMock('@lingui/react/macro', () => linguiShim);
 
+// The tokens row reads the skill's list entry. Drive it per-test through a
+// mutable state: `idle` (the default) leaves `entry` undefined, exactly as the
+// unmocked hook does before `/api/skills` resolves, so the identity-only tests
+// below see today's behaviour.
+type SkillsState = { status: 'idle' } | { status: 'ready'; data: readonly SkillsListEntry[] };
+let skillsState: SkillsState = { status: 'idle' };
+vi.doMock('@/hooks/use-skills', () => ({ useSkills: () => skillsState }));
+
+function readyEntry(size?: SkillCostTiers): SkillsState {
+  const entry = {
+    scope: 'project',
+    name: 'foo',
+    path: '.claude/skills/foo/SKILL.md',
+    installed: true,
+    hosts: ['claude'],
+    ...(size ? { size } : {}),
+  } as unknown as SkillsListEntry;
+  return { status: 'ready', data: [entry] };
+}
+
 const { SkillProperties } = await import('./SkillProperties');
 const { PropertyProvider } = await import('./PropertyContext');
+
+beforeEach(() => {
+  skillsState = { status: 'idle' };
+});
 
 /** SkillProperties reuses the document PropertyPanel, which reads the shared
  *  property-panel context — the same `PropertyProvider` EditorArea mounts. */
@@ -85,5 +110,58 @@ describe('SkillProperties (CRDT)', () => {
     // not a separate section above it.
     const panel = screen.getByTestId('property-panel');
     expect(panel.contains(screen.getByTestId('skill-name-input'))).toBe(true);
+  });
+});
+
+describe('SkillProperties tokens row', () => {
+  test('shows the three tiers from the list entry, bare and ~-prefixed', () => {
+    skillsState = readyEntry({ alwaysOn: 40, onTrigger: 3218, onDemand: 916 });
+    const { provider } = makeProvider(SOURCE);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={() => {}} />,
+    );
+    const row = screen.getByTestId('skill-cost-value');
+    const text = row.textContent ?? '';
+    // Each tier reads as its own figure — never a summed total. Over a thousand
+    // reads abbreviated (`~3.2k`); below stays bare.
+    expect(text).toContain('~40');
+    expect(text).toContain('~3.2k');
+    expect(text).toContain('~916');
+    expect(text).toContain('always-on');
+    expect(text).toContain('on trigger');
+    expect(text).toContain('on demand');
+    // Every one is under its budget here, so nothing is marked.
+    expect(screen.queryAllByRole('img')).toHaveLength(0);
+  });
+
+  test('hides the row when the entry carries no size (older server)', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    skillsState = readyEntry(undefined);
+    const { provider } = makeProvider(SOURCE);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={() => {}} />,
+    );
+    // Absent size renders nothing — never a zeroed-out row that would read as a
+    // free skill — and logs no error.
+    expect(screen.queryByTestId('skill-cost-value')).toBeNull();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  test('marks tiers over their published budget and leaves on-demand bare', () => {
+    skillsState = readyEntry({ alwaysOn: 250, onTrigger: 6000, onDemand: 40000 });
+    const { provider } = makeProvider(SOURCE);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={() => {}} />,
+    );
+    // always-on (>~100) and on-trigger (>5000) are each marked with an
+    // accessible over-budget reason; on-demand has no published norm, so its
+    // large figure is shown unmarked.
+    const marks = screen.getAllByRole('img');
+    expect(marks).toHaveLength(2);
+    for (const mark of marks) {
+      expect(mark.getAttribute('aria-label')).toMatch(/over the .* token budget/);
+    }
+    expect(screen.getByTestId('skill-cost-value').textContent).toContain('~40k');
   });
 });

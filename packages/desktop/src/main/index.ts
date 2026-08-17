@@ -74,6 +74,7 @@ import {
 import {
   AGENTS_SKILLS_ROOT,
   CLIENT_VERSION_HEADER,
+  estimateSkillCost,
   hasUninstallFeedbackContent,
   type LanguagePreference,
   OPENKNOWLEDGE_SKILLS_REPO,
@@ -92,6 +93,7 @@ import type {
   OkTerminalDockStateWriteResult,
   OkTerminalRestartSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
+import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   assertGitAvailable,
   BUNDLE_SKILL_NAME,
@@ -108,12 +110,14 @@ import {
   isProcessAlive,
   normalizeFsPath,
   prepareSingleFileOpen,
+  type ResolvedSkillHost,
   RUNTIME_VERSION,
   readBundleDecision,
   readServerLock,
   readServerPackageVersion,
   recordSkillInstallEvent,
   reportSkillInstall,
+  resolveBuiltinSkillHosts,
   resolveBundledSkillDir,
   resolveLockDir,
   resolveSkillInstallReportSettings,
@@ -521,6 +525,66 @@ import {
 const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
 
 const AGENTS_HUB_DIR = AGENTS_SKILLS_ROOT.split('/')[0] ?? '.agents';
+
+/**
+ * The skills roots a confirmed install actually writes, `~`-relative and in
+ * disclosure order. One walk feeds all three consumers - the destination list,
+ * the install state, and the post-install verification - because those three
+ * disagreeing is exactly the bug this replaced: `installed` probed only the
+ * central store, while the reclaim writes that store solely when `~/.agents`
+ * already exists (it never creates the hub). A user with a detected editor and
+ * no hub installed successfully, failed verification, got
+ * "Couldn't install <name>.", and kept a permanent Install button.
+ *
+ * Mapped by `skillsRoot`, not `hostDir + '/skills'` - Pi's user root is
+ * `.pi/agent/skills`, which the naive shape renders wrong.
+ */
+function installedSkillRoots(home: string): string[] {
+  return [
+    ...(existsSync(join(home, AGENTS_HUB_DIR)) ? [AGENTS_SKILLS_ROOT] : []),
+    ...USER_SKILL_HOSTS.filter((h) => existsSync(join(home, h.hostDir))).map((h) => h.skillsRoot),
+  ];
+}
+
+/** True when `name` occupies any root a confirmed install would have written. */
+function builtinSkillInstalled(home: string, name: string): boolean {
+  return installedSkillRoots(home).some((root) => existsSync(join(home, root, name)));
+}
+
+/**
+ * One derivation of a built-in skill's install disclosure — its own
+ * description, three-tier cost, install state, and the exact destination paths
+ * a confirmed install writes. Shared by the persistent Settings status and the
+ * first-launch consent descriptor so both surfaces disclose the same skill the
+ * same way and a destination-list drift between them is structurally impossible.
+ *
+ * `paths` mirrors the reclaim's own destination set and BOTH its gates: the hub
+ * entry only when `~/.agents` already exists (the reclaim never creates it), and
+ * `USER_SKILL_HOSTS` mapped by `skillsRoot` (not `hostDir + '/skills'` — Pi's
+ * user root is `.pi/agent/skills`, which the naive shape renders wrong). Both
+ * degrade fail-soft: a missing packaged asset gives an empty `sourceDir` (no
+ * preview link, no cost), an unreadable bundle a null parse (no description, no
+ * cost) — never a thrown group.
+ */
+function computeBuiltinSkillDisclosure(home: string, id: (typeof USER_GLOBAL_BUNDLE_IDS)[number]) {
+  const name = BUNDLE_SKILL_NAME[id];
+  let sourceDir: string;
+  try {
+    sourceDir = resolveBundledSkillDir(id, { checkDesktop: false });
+  } catch {
+    sourceDir = '';
+  }
+  const parsed = sourceDir ? parseSkillDir(sourceDir) : null;
+  const roots = installedSkillRoots(home);
+  return {
+    name,
+    description: parsed?.description ?? '',
+    size: parsed ? estimateSkillCost(parsed) : undefined,
+    installed: roots.some((root) => existsSync(join(home, root, name))),
+    sourceDir,
+    paths: roots.map((root) => `~/${root}/${name}`),
+  };
+}
 
 // Chrome stack is per-platform. Electron applies `titleBarStyle:
 // 'hiddenInset'` / `vibrancy` / `visualEffectState` / `transparent` /
@@ -4423,14 +4487,31 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
     // to install the enabled set and tear down any declined-but-present
     // bundle — one code path for install + removal.
     skills: {
-      computeDescriptors: () =>
-        USER_GLOBAL_BUNDLE_IDS.map((id) => ({
-          id,
-          name: BUNDLE_SKILL_NAME[id],
-          alreadyInstalled: existsSync(
-            join(osHomedir(), '.agents', 'skills', BUNDLE_SKILL_NAME[id]),
-          ),
-        })),
+      computeDescriptors: () => {
+        const home = osHomedir();
+        // Resolve reach once — identical for every built-in. A ledger read can
+        // throw (realpath containment), so degrade to zero hosts, which disables
+        // the row's checkbox rather than dropping every skill row for the boot.
+        let resolvedHosts: ResolvedSkillHost[];
+        try {
+          resolvedHosts = resolveBuiltinSkillHosts(home);
+        } catch {
+          resolvedHosts = [];
+        }
+        const hosts = resolvedHosts.map((h) => h.editor);
+        return USER_GLOBAL_BUNDLE_IDS.map((id) => {
+          const d = computeBuiltinSkillDisclosure(home, id);
+          return {
+            id,
+            name: d.name,
+            alreadyInstalled: d.installed,
+            description: d.description,
+            size: d.size,
+            hosts,
+            paths: d.paths,
+          };
+        });
+      },
       applyConsent: async (enabledIds: readonly string[]) => {
         const home = osHomedir();
         // The consent dialog is the trust boundary: a failed decision write
@@ -6704,35 +6785,32 @@ function registerIntegrationsSettingsIpc(): void {
       },
     },
     skills: {
-      computeStatuses: () =>
-        USER_GLOBAL_BUNDLE_IDS.map((id) => {
-          const home = osHomedir();
-          const name = BUNDLE_SKILL_NAME[id];
+      computeStatuses: () => {
+        const home = osHomedir();
+        // Resolve reach once — the target set is identical for every built-in.
+        // The ledger read touches the filesystem (realpath containment), so a
+        // throw degrades to zero hosts, keeping the skill rows visible instead
+        // of emptying the whole group.
+        let resolvedHosts: ResolvedSkillHost[];
+        try {
+          resolvedHosts = resolveBuiltinSkillHosts(home);
+        } catch {
+          resolvedHosts = [];
+        }
+        return USER_GLOBAL_BUNDLE_IDS.map((id) => {
+          const d = computeBuiltinSkillDisclosure(home, id);
           return {
             id,
-            name,
-            installed: existsSync(join(home, '.agents', 'skills', name)),
-            // Mirror the reclaim's own destination set and BOTH its gates, so
-            // this row can never advertise a copy that will not be written.
-            //
-            // USER_SKILL_HOSTS, not the project-shaped host list: that one drops
-            // Copilot and Pi by design, which silently omitted `~/.copilot`,
-            // `~/.pi/agent` and `~/.gemini` from a list users read as complete.
-            // And map `skillsRoot`, not `hostDir + '/skills'`: Pi's user root is
-            // `.pi/agent/skills`, which the naive shape renders as a `~/.pi/skills`
-            // that does not exist.
-            paths: [
-              // The hub is written only when it already exists — the reclaim
-              // never creates it. Same gate here.
-              ...(existsSync(join(home, AGENTS_HUB_DIR))
-                ? [`~/${AGENTS_SKILLS_ROOT}/${name}`]
-                : []),
-              ...USER_SKILL_HOSTS.filter((h) => existsSync(join(home, h.hostDir))).map(
-                (h) => `~/${h.skillsRoot}/${name}`,
-              ),
-            ],
+            name: d.name,
+            description: d.description,
+            installed: d.installed,
+            size: d.size,
+            sourceDir: d.sourceDir,
+            resolvedHosts,
+            paths: d.paths,
           };
-        }),
+        });
+      },
       setEnabled: async (bundleId, enabled) => {
         const home = osHomedir();
         const id = USER_GLOBAL_BUNDLE_IDS.find((b) => b === bundleId);
@@ -6767,10 +6845,11 @@ function registerIntegrationsSettingsIpc(): void {
         } catch (err) {
           return { ok: false as const, error: formatUnknownError(err) };
         }
-        // Verify by effect — the reclaim reports per-target entries, but the
-        // central-store dir is the definitive "installed" signal every other
-        // surface reads.
-        if (!existsSync(join(home, '.agents', 'skills', name))) {
+        // Verify by effect against the same roots the disclosure lists. The
+        // central store alone is NOT the signal: the reclaim skips it entirely
+        // when `~/.agents` does not already exist, so probing only there failed
+        // every install on a machine without the hub.
+        if (!builtinSkillInstalled(home, name)) {
           return { ok: false as const, error: `Couldn't install ${name}.` };
         }
         return { ok: true as const };
@@ -6819,6 +6898,19 @@ function registerProjectIntegrationsSettingsIpc(): void {
     projectConfigPath: (id, projectDir) =>
       EDITOR_TARGETS[id].projectConfigPath?.(projectDir) ?? null,
     projectSkillPath: (id, projectDir) => EDITOR_TARGETS[id].projectSkillPath?.(projectDir) ?? null,
+    // Same read the user-global rows use: parse the shipped bundle and price it
+    // from its own bytes, so the project row cannot quote a stale figure.
+    projectSkillBundle: () => {
+      // resolveBundledSkillDir throws when the bundled asset is missing (a dev
+      // tree that never ran the bundle build). Let it propagate: the caller
+      // already catches it, logs the cause, and degrades the row to no cost
+      // line - catching it here produced the same degraded row with no log at
+      // all, which made the caller's warn dead code for this path.
+      const sourceDir = resolveBundledSkillDir('project', { checkDesktop: false });
+      const parsed = sourceDir ? parseSkillDir(sourceDir) : null;
+      if (!parsed) return null;
+      return { sourceDir, description: parsed.description ?? '', size: estimateSkillCost(parsed) };
+    },
     entryLocator: (id) => {
       const target = EDITOR_TARGETS[id];
       // `format: 'file'` targets (Pi) own a whole managed file, not a keyed

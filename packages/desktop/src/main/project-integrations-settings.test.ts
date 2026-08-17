@@ -72,6 +72,11 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
     editorLabel: (id) => id,
     projectConfigPath: (id, projectDir) => (CONFIG[id] ? `${projectDir}/${CONFIG[id]}` : null),
     projectSkillPath: (id, projectDir) => (SKILL[id] ? `${projectDir}/${SKILL[id]}` : null),
+    projectSkillBundle: () => ({
+      sourceDir: '/bundled/project',
+      description: 'Teaches coding agents in this project.',
+      size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
+    }),
     entryLocator: (id) =>
       id === 'codex' ? '[mcp_servers.open-knowledge]' : 'mcpServers.open-knowledge',
     classifyExistingProjectMcpConfig: (id) =>
@@ -215,6 +220,38 @@ describe('registerProjectIntegrationsSettings — set', () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain('left unchanged');
+  });
+
+  test('the skill row carries reach, cost and source so the consent row can price it', async () => {
+    const cli = makeCli();
+    const { status } = register(cli);
+    const r = await status();
+    expect(r.skill).not.toBeNull();
+    // Reach and paths are derived from ONE walk of the capable editors, so they
+    // can never disagree about which editors are involved.
+    expect(r.skill?.hosts).toEqual(['claude', 'codex']);
+    expect(r.skill?.paths.length).toBe(2);
+    expect(r.skill?.size).toEqual({ alwaysOn: 140, onTrigger: 1495, onDemand: 0 });
+    expect(r.skill?.sourceDir).toBe('/bundled/project');
+    // The bundle's own description, not a hand-written subtext that can drift.
+    expect(r.skill?.description).toBe('Teaches coding agents in this project.');
+  });
+
+  test('an unreadable bundle costs the row its cost line, never the row itself', async () => {
+    const cli = makeCli();
+    const { status } = register({
+      ...cli,
+      projectSkillBundle: () => {
+        throw new Error('bundled asset missing');
+      },
+    });
+    const r = await status();
+    // Still a row — installed state and destinations come from disk, not the
+    // bundle — but with no cost figure and no preview affordance.
+    expect(r.skill).not.toBeNull();
+    expect(r.skill?.hosts).toEqual(['claude', 'codex']);
+    expect(r.skill?.size).toBeUndefined();
+    expect(r.skill?.sourceDir).toBeUndefined();
   });
 
   test('skill install fans out to every capable editor', async () => {

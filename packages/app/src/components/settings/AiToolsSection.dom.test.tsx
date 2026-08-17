@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -21,6 +21,13 @@ const toastError = vi.fn(() => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
+
+// Spy on the perf-mark instrumentation while keeping the module's other exports.
+const markSpy = vi.fn();
+vi.doMock('@/lib/perf', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/perf')>('@/lib/perf');
+  return { ...actual, mark: markSpy };
+});
 
 const { AiToolsSection } = await import('./AiToolsSection');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
@@ -75,17 +82,25 @@ const baseStatus: OkIntegrationsStatus = {
     {
       id: 'discovery',
       name: 'open-knowledge-discovery',
+      description: 'Helps your agent recognize OpenKnowledge projects.',
       installed: true,
       paths: [
         '~/.agents/skills/open-knowledge-discovery',
         '~/.claude/skills/open-knowledge-discovery',
       ],
+      size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
+      sourceDir: '/bundles/open-knowledge-discovery',
+      resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
     },
     {
       id: 'write-skill',
       name: 'open-knowledge-write-skill',
+      description: 'Adds a guided workflow for authoring new Agent Skills.',
       installed: false,
       paths: ['~/.agents/skills/open-knowledge-write-skill'],
+      size: { alwaysOn: 156, onTrigger: 3218, onDemand: 916 },
+      sourceDir: '/bundles/open-knowledge-write-skill',
+      resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
     },
   ],
 };
@@ -123,6 +138,8 @@ async function expandEditors(): Promise<void> {
 afterEach(() => {
   cleanup();
   toastError.mockClear();
+  markSpy.mockClear();
+  window.location.hash = '';
   // biome-ignore lint/suspicious/noExplicitAny: test-only global teardown.
   (window as any).okDesktop = undefined;
 });
@@ -167,13 +184,12 @@ describe('AiToolsSection', () => {
     );
     expect(screen.getByTestId('ai-tools-editor-status-opencode').tagName).toBe('SPAN');
 
-    // Skills: installed state drives the checkbox.
-    expect(screen.getByTestId('ai-tools-skill-checkbox-discovery').getAttribute('data-state')).toBe(
-      'checked',
-    );
-    expect(
-      screen.getByTestId('ai-tools-skill-checkbox-write-skill').getAttribute('data-state'),
-    ).toBe('unchecked');
+    // Skills: no checkbox — installed drives an Uninstall button, uninstalled an
+    // Install button. The row shows the skill's own frontmatter description.
+    expect(screen.queryByTestId('ai-tools-skill-checkbox-discovery')).toBeNull();
+    expect(screen.getByTestId('ai-tools-skill-uninstall-discovery')).toBeTruthy();
+    expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    expect(screen.getByText('Adds a guided workflow for authoring new Agent Skills.')).toBeTruthy();
   });
 
   test('detection orders a row but never claims presence on it', async () => {
@@ -236,12 +252,14 @@ describe('AiToolsSection', () => {
     const { setCalls } = installBridge();
     renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('ai-tools-skill-checkbox-discovery')).toBeTruthy();
+      expect(screen.getByTestId('ai-tools-editor-checkbox-claude')).toBeTruthy();
     });
 
-    await userEvent.click(screen.getByTestId('ai-tools-skill-checkbox-discovery'));
+    // Claude is installed → unchecking it removes the MCP entry. (Skill
+    // uninstall is the Install/Uninstall button flow, covered separately.)
+    await userEvent.click(screen.getByTestId('ai-tools-editor-checkbox-claude'));
     await waitFor(() => {
-      expect(setCalls).toEqual([{ component: { kind: 'skill', id: 'discovery' }, enabled: false }]);
+      expect(setCalls).toEqual([{ component: { kind: 'editor', id: 'claude' }, enabled: false }]);
     });
   });
 
@@ -278,7 +296,7 @@ describe('AiToolsSection', () => {
     expect(screen.getByTestId('ai-tools-editor-checkbox-claude').hasAttribute('disabled')).toBe(
       true,
     );
-    expect(screen.getByTestId('ai-tools-skill-checkbox-discovery').hasAttribute('disabled')).toBe(
+    expect(screen.getByTestId('ai-tools-skill-uninstall-discovery').hasAttribute('disabled')).toBe(
       true,
     );
   });
@@ -302,5 +320,180 @@ describe('AiToolsSection', () => {
     expect(paths.length).toBeGreaterThan(0);
     const locators = await screen.findAllByText('mcpServers.open-knowledge');
     expect(locators.length).toBeGreaterThan(0);
+  });
+
+  test('the skills group states that skill reach is independent of the MCP selection', async () => {
+    installBridge();
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-fanout-note')).toBeTruthy();
+    });
+    expect(screen.getByTestId('ai-tools-skill-fanout-note').textContent).toContain(
+      'independent of the MCP connections',
+    );
+  });
+
+  test('clicking the row body opens the built-in preview, which dismisses the settings surface', async () => {
+    installBridge();
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('skill-consent-row-preview').length).toBeGreaterThan(0);
+    });
+    // Settings is a hash-driven dialog (#settings); navigating to a preview hash
+    // is exactly what dismisses it.
+    window.location.hash = '#settings';
+
+    await userEvent.click(screen.getAllByTestId('skill-consent-row-preview')[0]);
+
+    expect(window.location.hash.startsWith('#/__skill-preview__/')).toBe(true);
+    expect(window.location.hash).not.toBe('#settings');
+  });
+
+  test('Install opens a confirm modal naming the skill and its destinations; nothing writes until confirmed', async () => {
+    const withCustomRoot: OkIntegrationsStatus = {
+      ...baseStatus,
+      skills: baseStatus.skills.map((s) =>
+        s.id === 'write-skill'
+          ? {
+              ...s,
+              paths: [
+                '~/.agents/skills/open-knowledge-write-skill',
+                '~/my-agent/skills/open-knowledge-write-skill',
+              ],
+              resolvedHosts: [
+                { editor: 'claude', skillsRoot: '.claude/skills', custom: false },
+                {
+                  editor: '~/my-agent/skills',
+                  skillsRoot: '~/my-agent/skills',
+                  custom: true,
+                },
+              ],
+            }
+          : s,
+      ),
+    };
+    const { setCalls } = installBridge({ status: withCustomRoot });
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    });
+    // No checkbox in the skills group any more — the control is an explicit button.
+    expect(screen.queryByTestId('ai-tools-skill-checkbox-write-skill')).toBeNull();
+
+    await userEvent.click(screen.getByTestId('ai-tools-skill-install-write-skill'));
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText('Install open-knowledge-write-skill')).toBeTruthy();
+    // Every destination is listed, including the declared custom root, verbatim.
+    expect(within(dialog).getByText('~/.agents/skills/open-knowledge-write-skill')).toBeTruthy();
+    expect(within(dialog).getByText('~/my-agent/skills/open-knowledge-write-skill')).toBeTruthy();
+    // Nothing is written before the user confirms.
+    expect(setCalls).toEqual([]);
+
+    await userEvent.click(within(dialog).getByTestId('skill-confirm-primary'));
+    await waitFor(() => {
+      expect(setCalls).toEqual([
+        { component: { kind: 'skill', id: 'write-skill' }, enabled: true },
+      ]);
+    });
+  });
+
+  test('a skill with zero resolved hosts disables Install and states the reason on the row', async () => {
+    const noHosts: OkIntegrationsStatus = {
+      ...baseStatus,
+      skills: baseStatus.skills.map((s) =>
+        s.id === 'write-skill' ? { ...s, resolvedHosts: [] } : s,
+      ),
+    };
+    installBridge({ status: noHosts });
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    });
+
+    expect(screen.getByTestId('ai-tools-skill-install-write-skill').hasAttribute('disabled')).toBe(
+      true,
+    );
+    // The row states what would make it clickable (exactly the zero-host skill).
+    expect(screen.getByTestId('skill-consent-row-no-hosts').textContent).toContain(
+      'No AI tools detected',
+    );
+  });
+
+  test('an install that fails for every host stays uninstalled and surfaces the failure', async () => {
+    installBridge({
+      setResult: () => ({
+        ok: false as const,
+        error: "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
+        status: baseStatus,
+      }),
+    });
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByTestId('ai-tools-skill-install-write-skill'));
+    await userEvent.click(await screen.findByTestId('skill-confirm-primary'));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
+      );
+    });
+    // No silent revert: the control still reads Install (uninstalled).
+    expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    expect(screen.queryByTestId('ai-tools-skill-uninstall-write-skill')).toBeNull();
+  });
+
+  test('a confirmed install marks an event carrying the originating surface and host count', async () => {
+    const { setCalls } = installBridge();
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByTestId('ai-tools-skill-install-write-skill'));
+    await userEvent.click(await screen.findByTestId('skill-confirm-primary'));
+    await waitFor(() => {
+      expect(setCalls.length).toBe(1);
+    });
+
+    expect(markSpy).toHaveBeenCalledWith(
+      'ok/skill/install',
+      expect.objectContaining({ surface: 'settings', mode: 'install', hostCount: 1 }),
+    );
+  });
+
+  test('a partial install is treated as installed with the reach the fresh status reports', async () => {
+    // Fresh snapshot after a partial install: write-skill now installed, its
+    // reach reflecting only the host that actually took the copy.
+    const landed: OkIntegrationsStatus = {
+      ...baseStatus,
+      skills: baseStatus.skills.map((s) =>
+        s.id === 'write-skill'
+          ? {
+              ...s,
+              installed: true,
+              resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
+            }
+          : s,
+      ),
+    };
+    installBridge({ setResult: () => ({ ok: true as const, status: landed }) });
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-install-write-skill')).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByTestId('ai-tools-skill-install-write-skill'));
+    await userEvent.click(await screen.findByTestId('skill-confirm-primary'));
+
+    // The fresh status flips the control to Uninstall — treated as installed —
+    // and no failure is surfaced.
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-tools-skill-uninstall-write-skill')).toBeTruthy();
+    });
+    expect(toastError).not.toHaveBeenCalled();
   });
 });

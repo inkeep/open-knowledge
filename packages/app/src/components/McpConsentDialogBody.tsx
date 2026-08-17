@@ -25,6 +25,9 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
+import { SkillConsentRow } from '@/components/SkillConsentRow';
+import { SkillCostValue } from '@/components/SkillCostValue';
+import { SkillDestinationList } from '@/components/SkillDestinationList';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -127,14 +130,16 @@ export function partitionEditorsForDisplay(
 }
 
 /**
- * Pure helper: initial skill checkbox state — every offered bundle starts
- * checked (opt-out default: preserves today's install-everywhere behavior
- * while making it one-click-off).
+ * Pure helper: initial skill checkbox state — every offered bundle with a place
+ * to land starts checked (opt-out default: preserves today's install-everywhere
+ * behavior while making it one-click-off). A bundle whose reach resolved to zero
+ * hosts starts unchecked; its row disables the checkbox, so it can never be
+ * staged for an install that would land nowhere.
  */
 export function computeInitialSkillSelection(
   globalSkills: readonly GlobalSkillDescriptor[],
 ): ReadonlySet<string> {
-  return new Set(globalSkills.map((s) => s.id));
+  return new Set(globalSkills.filter((s) => s.hosts.length > 0).map((s) => s.id));
 }
 
 /** Pure helper: toggle a skill checkbox; returns a new Set. */
@@ -267,10 +272,13 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   // Pre-checked (opt-out) when the row solicits a decision; informational
   // rows render force-checked + disabled below and never read this state.
   const [pathChecked, setPathChecked] = useState(true);
-  // Pre-checked (opt-out) — every offered bundle starts on.
+  // Pre-checked (opt-out) — every offered bundle with a resolved host starts on.
   const [skillSelection, setSkillSelection] = useState<ReadonlySet<string>>(() =>
     computeInitialSkillSelection(globalSkills),
   );
+  // Which skill rows are expanded to their full cost + destination disclosure.
+  // Purely presentational — expansion never touches the staged selection.
+  const [expandedSkills, setExpandedSkills] = useState<ReadonlySet<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   // Progressive disclosure: detected tools show by default; undetected ones hide
   // behind a "Show N more" toggle (see partitionEditorsForDisplay for the
@@ -281,6 +289,15 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
 
   function onToggle(id: OkMcpWiringEditorId) {
     setSelection((prev) => toggleSelectedId(prev, id));
+  }
+
+  function toggleSkillExpanded(id: string) {
+    setExpandedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function onAdd() {
@@ -560,11 +577,18 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
             )}
           </div>
           {/*
-           * User-global Agent Skills consent section — one pre-checked row per
-           * bundle. Distinct from the editor list because skills install to every
-           * detected host by design (not per-editor). Unchecking an already-
-           * installed bundle removes it; the decision is honored by every install
-           * actor (desktop reclaim, ok init, ok start).
+           * User-global Agent Skills consent section — one staged, pre-checked
+           * row per bundle rendered through the shared SkillConsentRow, so this
+           * surface and Settings disclose a skill identically (its own
+           * description, reach cluster, and cost). Distinct from the editor list
+           * because skills install to every detected host by design, not per
+           * editor — the fan-out note states that independence. Nothing writes on
+           * check; the single Connect commits the whole staged set. Clicking a
+           * row body expands it in place — never leaving this modal — to the full
+           * three-tier cost and destination list the Settings confirm modal
+           * carries. A bundle whose reach resolved to zero hosts renders its
+           * checkbox unchecked + disabled with the row's own no-hosts copy, so
+           * first launch never stages an install that cannot land.
            */}
           {skillsOffered && (
             <div className="flex flex-col gap-1.5">
@@ -573,57 +597,77 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                   Agent Skills
                 </Trans>
               </span>
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid="mcp-consent-skill-fanout-note"
+              >
+                <Trans comment="Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above">
+                  Skills install to every AI tool detected on this machine, independent of the MCP
+                  connections you chose above.
+                </Trans>
+              </p>
               <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
                 {globalSkills.map((skill) => {
                   const checked = skillSelection.has(skill.id);
+                  const hasHosts = skill.hosts.length > 0;
+                  const expanded = expandedSkills.has(skill.id);
                   const checkboxId = `${idPrefix}-skill-${skill.id}`;
                   return (
-                    <li key={skill.id}>
-                      <Label
-                        htmlFor={checkboxId}
-                        className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal hover:bg-accent"
-                      >
-                        <Checkbox
-                          id={checkboxId}
-                          checked={checked}
-                          disabled={busy}
-                          onCheckedChange={() =>
-                            setSkillSelection((prev) => toggleSkillId(prev, skill.id))
-                          }
-                          className="mt-0.5"
-                          data-testid={`mcp-consent-skill-checkbox-${skill.id}`}
-                        />
-                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="text-sm font-medium text-foreground">
-                            <code>{skill.name}</code>
-                          </span>
-                          <span
-                            className="text-xs text-muted-foreground"
-                            data-testid={`mcp-consent-skill-status-${skill.id}`}
-                          >
-                            {skill.id === 'discovery' ? (
-                              <Trans comment="Subtext for the open-knowledge-discovery skill row">
-                                Helps your coding agent recognize OpenKnowledge projects and route
-                                reads and writes through it.
-                              </Trans>
-                            ) : (
-                              <Trans comment="Subtext for the open-knowledge-write-skill skill row">
-                                Adds a guided workflow for authoring new Agent Skills.
-                              </Trans>
-                            )}
-                          </span>
-                          {skill.alreadyInstalled && !checked && (
-                            <span
-                              className="text-xs text-amber-600 dark:text-amber-400"
-                              data-testid={`mcp-consent-skill-warning-${skill.id}`}
-                            >
-                              <Trans comment="Warning shown when the user unchecks an already-installed skill">
-                                Removes this skill from your editors.
-                              </Trans>
-                            </span>
+                    <li key={skill.id} className="hover:bg-accent">
+                      <SkillConsentRow
+                        name={skill.name}
+                        description={skill.description}
+                        hosts={skill.hosts}
+                        size={skill.size}
+                        onActivate={() => toggleSkillExpanded(skill.id)}
+                        ariaExpanded={expanded}
+                        control={
+                          <Checkbox
+                            id={checkboxId}
+                            checked={hasHosts && checked}
+                            disabled={busy || !hasHosts}
+                            onCheckedChange={() =>
+                              setSkillSelection((prev) => toggleSkillId(prev, skill.id))
+                            }
+                            aria-label={t`Set up ${skill.name}`}
+                            data-testid={`mcp-consent-skill-checkbox-${skill.id}`}
+                          />
+                        }
+                      />
+                      {skill.alreadyInstalled && hasHosts && !checked && (
+                        <p
+                          role="status"
+                          className="px-3 pb-2.5 text-xs text-amber-600 dark:text-amber-400"
+                          data-testid={`mcp-consent-skill-warning-${skill.id}`}
+                        >
+                          <Trans comment="Warning shown when the user unchecks an already-installed skill">
+                            Removes this skill from your editors.
+                          </Trans>
+                        </p>
+                      )}
+                      {expanded && (
+                        <div
+                          className="flex flex-col gap-3 px-3 pb-3"
+                          data-testid={`mcp-consent-skill-expansion-${skill.id}`}
+                        >
+                          {skill.size ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                <Trans>Context cost</Trans>
+                              </span>
+                              <SkillCostValue size={skill.size} />
+                            </div>
+                          ) : null}
+                          {skill.paths.length > 0 && (
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                <Trans>Installs to</Trans>
+                              </span>
+                              <SkillDestinationList paths={skill.paths} />
+                            </div>
                           )}
-                        </span>
-                      </Label>
+                        </div>
+                      )}
                     </li>
                   );
                 })}

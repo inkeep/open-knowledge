@@ -1389,13 +1389,6 @@ msgstr "এই বার্তায় আপনার মন্তব্য �
 msgid "Added"
 msgstr "যোগ করা হয়েছে"
 
-#. Subtext for the open-knowledge-write-skill skill row
-#. Subtext for the open-knowledge-write-skill skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a guided workflow for authoring new Agent Skills."
-msgstr "নতুন Agent Skills লেখার জন্য একটি পথনির্দেশী কর্মপ্রবাহ যোগ করে।"
-
 #: src/components/settings/AiToolsSection.tsx
 msgid "Adds a managed block to"
 msgstr "এতে একটি পরিচালিত ব্লক যোগ করে"
@@ -1578,6 +1571,15 @@ msgstr "আগে থেকেই সাইন ইন করা আছে?"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "সবসময় অন্তর্ভুক্ত"
+
+#: src/components/SkillCostValue.tsx
+msgid "always-on"
+msgstr "সর্বদা সক্রিয়"
+
+#. Suffix on a skill directory card's context-cost figure
+#: src/components/SkillDirectoryResult.tsx
+msgid "always-on tokens"
+msgstr "সর্বদা সক্রিয় টোকেন"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -2185,6 +2187,7 @@ msgstr "এই পাথ শেয়ার করা যাচ্ছে না�
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -3018,6 +3021,11 @@ msgstr "বিষয়বস্তুর নিয়ম"
 #: src/components/settings/LintingSection.tsx
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "বিষয়বস্তুর নিয়ম এখনও লোড হয়নি — একটু পরে আবার চেষ্টা করুন"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Context cost"
+msgstr "কনটেক্সট খরচ"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
@@ -5653,8 +5661,6 @@ msgstr "ফোল্ডার শেয়ার লিংক কপি কর�
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "ফোল্ডার লক্ষ্য: {linkTitle}। সংক্ষিপ্তসার খুলতে ক্লিক করুন।"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Folders"
 msgstr "ফোল্ডার"
@@ -6021,13 +6027,6 @@ msgstr "সহায়তা"
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "কোডিং এজেন্টদের OKF নথির ধরন বেছে নিতে, মূল স্থান সংরক্ষণ করতে এবং অসমর্থিত মেটাডেটা উদ্ভাবন এড়াতে সাহায্য করে।"
-
-#. Subtext for the open-knowledge-discovery skill row
-#. Subtext for the open-knowledge-discovery skill row
-#: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-msgid "Helps your coding agent recognize OpenKnowledge projects and route reads and writes through it."
-msgstr "আপনার কোডিং এজেন্টকে OpenKnowledge প্রকল্প চিনতে এবং পড়া ও লেখা তার মাধ্যমেই করতে সাহায্য করে।"
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -6554,8 +6553,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror-এর ডিফল্ট কীম্যাপ দিয়ে সোর্স সম্পাদকের লাইন ঢোকান, মুছুন, সরান, কপি করুন ও ভেতরে নিন।"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/skill-actions.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6569,6 +6571,11 @@ msgstr "{0} ইনস্টল করুন"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "{brand} ইনস্টল করুন →"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Install {name}"
+msgstr "{name} ইনস্টল করুন"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6699,6 +6706,11 @@ msgstr "ইনস্টল করা হচ্ছে"
 #: src/components/acp/ThreadView.tsx
 msgid "Installing {agentName}…"
 msgstr "{agentName} ইনস্টল করা হচ্ছে…"
+
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Installs to"
+msgstr "যেখানে ইনস্টল হবে"
 
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
@@ -7929,6 +7941,10 @@ msgstr "কোনো এজেন্ট নির্বাচিত হয়ন
 msgid "No AI agents installed"
 msgstr "কোনো AI এজেন্ট ইনস্টল করা নেই"
 
+#: src/components/SkillConsentRow.tsx
+msgid "No AI tools detected. Install one to use this skill."
+msgstr "কোনো AI টুল পাওয়া যায়নি। এই স্কিল ব্যবহার করতে একটি ইনস্টল করুন।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "এই এন্ডপয়েন্টের জন্য কোনো API কী নির্ধারিত নেই। উপরে একটি যোগ করুন।"
@@ -8402,6 +8418,10 @@ msgstr "চালু — আপনার অনুসন্ধানের প�
 msgid "On <0>{address}</0>"
 msgstr "<0>{address}</0>-এ"
 
+#: src/components/SkillCostValue.tsx
+msgid "on demand"
+msgstr "চাহিদা অনুযায়ী"
+
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "<0>{address}</0>-এ নির্বাচিত লেখার উপর"
@@ -8409,6 +8429,10 @@ msgstr "<0>{address}</0>-এ নির্বাচিত লেখার উপ�
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "রুট ইনডেক্সে, okf_version একটি উদ্ধৃত স্ট্রিং হিসাবে লেখা হয় যেমন \"0.2\"। উদ্ধৃতিহীন, YAML এটিকে একটি সংখ্যা হিসাবে পড়ে এবং 0.10 নিঃশব্দে 0.1 হয়ে যায়।"
+
+#: src/components/SkillCostValue.tsx
+msgid "on trigger"
+msgstr "ট্রিগার হলে"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -9091,6 +9115,10 @@ msgstr "বহির্গামী"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "রূপরেখা"
+
+#: src/components/SkillCostValue.tsx
+msgid "over the {budgetLabel} token budget"
+msgstr "{budgetLabel} টোকেন বাজেটের বেশি"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -10041,6 +10069,10 @@ msgstr "\"{0}\"-কে অন্য প্রতিটি জায়গা থ
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\"-কে সাম্প্রতিক প্রকল্প থেকে সরানো হয়েছে। এর ফোল্ডারটি আর নেই।"
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Removes from"
+msgstr "যেখান থেকে সরানো হবে"
 
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx
@@ -11068,6 +11100,11 @@ msgstr "Plugins-এর নিচে এর নিজের পাতায় �
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "যাঁরা এই প্রকল্পটি প্রথমবার খুলবেন তাঁদের জন্য সিঙ্কের ডিফল্ট নির্ধারণ করুন। এই সেটিং আপনার রিপোজিটরিতে কমিট হয়।"
 
+#. placeholder {0}: skill.name
+#: src/components/McpConsentDialogBody.tsx
+msgid "Set up {0}"
+msgstr "{0} সেট আপ করুন"
+
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "OpenKnowledge সংযুক্তি সেট আপ করুন"
@@ -11474,6 +11511,13 @@ msgstr "স্কিল"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "স্কিল এখন ভাগ করা। আপনার দলের সঙ্গে ভাগ করতে .ok/skills কমিট করুন।"
+
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AiToolsSection.tsx
+msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
+msgstr "স্কিল এই মেশিনে শনাক্ত হওয়া প্রতিটি AI টুলে ইনস্টল হয়, উপরে বেছে নেওয়া MCP সংযোগ যাই হোক না কেন।"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -12113,7 +12157,6 @@ msgstr "কাজের তালিকা"
 msgid "Task List"
 msgstr "কাজের তালিকা"
 
-#. Subtext for the project runtime-skill row
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
 msgstr "এই প্রকল্পের কোডিং এজেন্টদের OpenKnowledge-এর মাধ্যমে পড়তে ও লিখতে শেখায়।"
@@ -12334,6 +12377,10 @@ msgstr "ডিফল্ট স্কিল ফোল্ডার (সংরক�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "ডেস্কটপ অ্যাপ সাড়া দিচ্ছে না। সতেজ করে আবার চেষ্টা করুন।"
+
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "The destinations changed. Review the list, then confirm."
+msgstr "গন্তব্য বদলে গেছে। তালিকা দেখে নিশ্চিত করুন।"
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12914,6 +12961,11 @@ msgstr "এই সেটিংটি প্রতি-মেশিন ভিত�
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "এই সেটিংটি প্রতি-মেশিন ভিত্তিক এবং সহযোগীদের সঙ্গে ভাগ করা হয় না। এর জন্য একটি API কী দরকার (নিচে নির্ধারণ করুন), যদি না আপনার এন্ডপয়েন্ট এমন কোনো স্থানীয় সার্ভার হয় যার সেটি লাগে না।"
 
+#. Tells the user the project skill is committed to the repo, unlike the user-global skills
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
+msgstr "এই স্কিলটি প্রজেক্ট ফোল্ডারে থাকে, তাই যিনিই এই প্রজেক্ট খুলবেন তার জন্যই এটি ইনস্টল হয়, শুধু আপনার জন্য নয়।"
+
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
 msgstr "এই উৎসে কয়েকটি স্কিল আছে — একটি বাছুন, তারপর Import করুন।"
@@ -13078,6 +13130,11 @@ msgstr "নিম্নরেখার বিন্যাস চালু বা
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "প্যাটার্ন {0}/** টগল করুন"
+
+#: src/components/SkillBundlePreview.tsx
+#: src/components/SkillProperties.tsx
+msgid "tokens"
+msgstr "টোকেন"
 
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
@@ -13269,6 +13326,17 @@ msgstr "এই সম্পাদনা পর্যন্ত পূর্বা
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Edit source প্যানেলে বা কোড-ধাঁচের কোনো প্রপার্টি ফিল্ডে নির্বাচনের পরিবর্তন পূর্বাবস্থায় ফেরান, পুনরায় করুন, বা এক এক করে দেখুন।"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall"
+msgstr "আনইনস্টল করুন"
+
+#: src/components/settings/AiToolsSection.tsx
+#: src/components/SkillInstallConfirmDialog.tsx
+msgid "Uninstall {name}"
+msgstr "{name} আনইনস্টল করুন"
 
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
