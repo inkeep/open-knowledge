@@ -278,11 +278,6 @@ msgstr "{0, plural, one {Aucun problème dans # document.} many {Aucun problème
 msgid "{0, plural, one {Plugin} other {Plugins}}"
 msgstr "{0, plural, one {Extension} many {Extensions} other {Extensions}}"
 
-#. placeholder {0}: editorList.hiddenCount
-#: src/components/McpConsentDialogBody.tsx
-msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
-msgstr "{0, plural, one {Afficher # outil de plus} many {Afficher # outils de plus} other {Afficher # outils de plus}}"
-
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Skill} other {Skills}}"
@@ -1414,6 +1409,21 @@ msgstr "Ajoute un bloc géré à"
 msgid "Adds a managed block to {0}"
 msgstr "Ajoute un bloc géré à {0}"
 
+#. Subtext under the create-project AI-tools checkbox
+#: src/components/CreateProjectDialog.tsx
+msgid "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
+msgstr "Ajoute une entrée MCP OpenKnowledge et la compétence du projet, pour que chaque outil puisse lire et mettre à jour ces documents."
+
+#. Subtext under the single AI-tools checkbox when a skill is also installed
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds OpenKnowledge's MCP connection to each, plus the open-knowledge-discovery skill so your agents recognize OpenKnowledge projects."
+msgstr "Ajoute la connexion MCP d'OpenKnowledge à chacun, ainsi que la compétence open-knowledge-discovery pour que vos agents reconnaissent les projets OpenKnowledge."
+
+#. Subtext under the single AI-tools checkbox when only MCP is wired
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds OpenKnowledge's MCP connection to each."
+msgstr "Ajoute la connexion MCP d'OpenKnowledge à chacun."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
 msgstr "Ajoute la télémétrie, l'état du serveur et les informations d'exécution lorsqu'elles sont disponibles. Les identifiants sont toujours supprimés ; les noms de documents, s'ils sont inclus, apparaissent en clair (non masqués)."
@@ -1469,9 +1479,12 @@ msgstr "Le panneau des agents a été fermé pour que Terminal reste lisible."
 msgid "Agent settings"
 msgstr "Paramètres de l'agent"
 
-#. Group label above the skill rows in Settings → AI tools & CLI
-#. Section label above the skill checkboxes in the first-launch dialog
+#. Heading above the skill install destinations in the disclosure
 #: src/components/McpConsentDialogBody.tsx
+msgid "Agent Skill"
+msgstr "Compétence d'agent"
+
+#. Group label above the skill rows in Settings → AI tools & CLI
 #: src/components/settings/AiToolsSection.tsx
 msgid "Agent Skills"
 msgstr "Compétences d'agent"
@@ -1488,6 +1501,8 @@ msgstr "Agents"
 msgid "AI tool management is only available in the OpenKnowledge desktop app."
 msgstr "La gestion des outils IA n'est disponible que dans l'application de bureau OpenKnowledge."
 
+#. Section label above the AI-tools checkbox in the first-launch dialog
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
@@ -2375,6 +2390,10 @@ msgstr "Vérification des compétences"
 msgid "Checking source"
 msgstr "Vérification de la source"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Checking which AI tools you have"
+msgstr "Vérification des outils IA dont vous disposez"
+
 #: src/components/settings/AccountSection.tsx
 msgid "Checking your GitHub connection"
 msgstr "Vérification de votre connexion GitHub"
@@ -2925,11 +2944,14 @@ msgstr "Fichiers en conflit : {0}."
 msgid "Conflicts"
 msgstr "Conflits"
 
-#. Primary button that writes MCP config for the selected AI tools
 #: src/components/AuthModal.tsx
-#: src/components/McpConsentDialogBody.tsx
 msgid "Connect"
 msgstr "Connecter"
+
+#. placeholder {0}: formatToolList( status.editors.map((id) => EDITOR_LABELS[id]), i18n.locale, )
+#: src/components/CreateProjectDialog.tsx
+msgid "Connect {0} to this project"
+msgstr "Connecter {0} à ce projet"
 
 #: src/components/settings/AccountSection.tsx
 msgid "Connect a GitHub account to browse and sync your repositories."
@@ -2964,7 +2986,6 @@ msgid "Connect this project to GitHub to share."
 msgstr "Connectez ce projet à GitHub pour le partager."
 
 #: src/components/ConsentDialogBody.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Connect to AI tools"
 msgstr "Connecter aux outils IA"
 
@@ -3063,7 +3084,6 @@ msgstr "Règles de contenu"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Context cost"
 msgstr "Coût de contexte"
@@ -3075,6 +3095,11 @@ msgstr "Fenêtre de contexte :"
 #: src/components/acp/ThreadView.tsx
 msgid "Context window: {percent}% used, {usedLabel} of {sizeLabel} tokens"
 msgstr "Fenêtre de contexte : {percent}% utilisée, {usedLabel} tokens sur {sizeLabel}"
+
+#. Primary button that applies the first-launch setup choices
+#: src/components/McpConsentDialogBody.tsx
+msgid "Continue"
+msgstr "Continuer"
 
 #: src/components/AuthModal.tsx
 msgid "Continue in browser"
@@ -4661,10 +4686,6 @@ msgstr "par ex. L'éditeur s'est figé après avoir collé un grand tableau"
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "Chaque pack équipe votre projet de dossiers et de modèles prêts à l'emploi."
 
-#: src/components/CreateProjectDialog.tsx
-msgid "Each selected tool gets an OpenKnowledge MCP entry."
-msgstr "Chaque outil sélectionné reçoit une entrée MCP OpenKnowledge."
-
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5021,7 +5042,6 @@ msgstr "Saisissez une URL valide, par exemple https://notes.example.com"
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "Saisissez l'origine publique servie par votre tunnel, par exemple https://notes.example.com"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Entry"
@@ -5531,7 +5551,6 @@ msgstr "Champs"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
@@ -5981,8 +6000,8 @@ msgid "Give the AI tools you use access to read and update your projects. Checki
 msgstr "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Cocher une case configure l'outil immédiatement ; décocher le retire."
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
-msgstr "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Choisissez ci-dessous ce qu'il faut configurer, et modifiez-le à tout moment dans Paramètres > Outils IA et CLI."
+msgid "Give the AI tools you use access to read and update your projects. You can change any of this later in Settings > AI tools & CLI."
+msgstr "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Vous pourrez tout modifier plus tard dans Paramètres > Outils IA et CLI."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6164,7 +6183,11 @@ msgstr "Masquer les options avancées"
 msgid "Hide Agents"
 msgstr "Masquer les agents"
 
+#. Collapses the list of files the setup writes to
+#. Collapses the list of project files the AI-tool setup writes
 #: src/components/acp/ThreadView.tsx
+#: src/components/CreateProjectDialog.tsx
+#: src/components/McpConsentDialogBody.tsx
 msgid "Hide details"
 msgstr "Masquer les détails"
 
@@ -6306,14 +6329,11 @@ msgid "How to push manually"
 msgstr "Comment pousser manuellement"
 
 #. Link on an undetected tool row to its OpenKnowledge setup guide
-#. Link on an undetected tool row to its OpenKnowledge setup guide
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up"
 msgstr "Comment configurer"
 
 #. placeholder {0}: editor.label
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "Comment configurer {0} (s'ouvre dans le navigateur)"
@@ -6795,7 +6815,6 @@ msgstr "Installation"
 msgid "Installing {agentName}…"
 msgstr "Installation de {agentName}…"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "S'installe dans"
@@ -7438,7 +7457,7 @@ msgstr "La réparation automatique de MCP a échoué"
 
 #. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
 #. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#. Section label above the editor checkbox list in the first-launch dialog — each row wires OpenKnowledge's MCP server into that tool
+#. Heading above the per-tool MCP config paths in the disclosure
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8045,6 +8064,15 @@ msgstr "Aucun agent sélectionné — les compétences sont enregistrées mais i
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
 msgstr "Aucun agent IA installé"
+
+#. Shown in place of the AI-tools checkbox when no AI tool was detected
+#: src/components/McpConsentDialogBody.tsx
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
+msgstr "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Outils IA et CLI."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
+msgstr "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Ce projet."
 
 #: src/components/SkillConsentRow.tsx
 msgid "No AI tools detected. Install one to use this skill."
@@ -10179,11 +10207,6 @@ msgstr "« {projectName} » retiré des projets récents. Son dossier n'existe p
 msgid "Removes from"
 msgstr "Supprime de"
 
-#. Warning shown when the user unchecks an already-installed skill
-#: src/components/McpConsentDialogBody.tsx
-msgid "Removes this skill from your editors."
-msgstr "Retire cette compétence de vos éditeurs."
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "Retrait en cours"
@@ -10337,6 +10360,11 @@ msgstr "Remplacer ces copies par des liens symboliques vers la source ?"
 #: src/components/SkillInstallMenu.tsx
 msgid "Replace these symlinks with independent copies?"
 msgstr "Remplacer ces liens symboliques par des copies indépendantes ?"
+
+#. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
+#: src/components/McpConsentDialogBody.tsx
+msgid "Replaces the existing OpenKnowledge entry in {0}"
+msgstr "Remplace l'entrée OpenKnowledge existante dans {0}"
 
 #: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
@@ -11213,7 +11241,7 @@ msgstr "Configurez-le sur sa propre page sous Plugins."
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "Définissez la synchronisation par défaut pour les utilisateurs qui ouvrent ce projet pour la première fois. Ce réglage est validé dans votre dépôt."
 
-#. placeholder {0}: skill.name
+#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
 msgid "Set up {0}"
 msgstr "Configurer {0}"
@@ -11405,9 +11433,7 @@ msgstr "Afficher le panneau du document"
 msgid "Show external URL nodes"
 msgstr "Afficher les nœuds d'URL externes"
 
-#. Collapses the undetected AI tools back behind the toggle
 #: src/components/LinksPanel.tsx
-#: src/components/McpConsentDialogBody.tsx
 msgid "Show fewer"
 msgstr "Afficher moins"
 
@@ -11626,8 +11652,6 @@ msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Les compétences sont maintenant partagées. Validez .ok/skills pour les partager avec votre équipe."
 
 #. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
-#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
 msgstr "Les compétences s'installent dans tous les outils IA détectés sur cette machine, indépendamment des connexions MCP choisies ci-dessus."
@@ -11654,11 +11678,6 @@ msgstr "skills.sh est indisponible ; affichage des résultats GitHub (sans class
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
 msgstr "Ignorer"
-
-#. Secondary button — dismisses the dialog without wiring any tools
-#: src/components/McpConsentDialogBody.tsx
-msgid "Skip for now"
-msgstr "Passer pour l'instant"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -13993,11 +14012,13 @@ msgstr "Que doit faire l'IA ? (facultatif)"
 msgid "What the agent may read, write, and surface."
 msgstr "Ce que l'agent peut lire, écrire et faire remonter."
 
+#. Expands the list of files the setup writes to
+#. Expands the list of project files the AI-tool setup writes
+#: src/components/CreateProjectDialog.tsx
 #: src/components/McpConsentDialogBody.tsx
 msgid "What this changes"
 msgstr "Ce que cela change"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "What this checkbox changes"
@@ -14090,11 +14111,6 @@ msgstr "Sera créé dans : <0>{targetPreview}</0>"
 #: src/components/CreateProjectDialog.tsx
 msgid "Will be saved as <0>{sanitized}</0>."
 msgstr "Sera enregistré sous <0>{sanitized}</0>."
-
-#. Disclosure that Add will overwrite the tool's existing OpenKnowledge MCP entry
-#: src/components/McpConsentDialogBody.tsx
-msgid "Will replace existing OpenKnowledge entry"
-msgstr "Remplacera l'entrée OpenKnowledge existante"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts

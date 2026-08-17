@@ -8,11 +8,12 @@
  * Layout: shadcn Dialog. The form leads with a Project name <Input> (focused
  * on open) followed by a Location field (read-only display + Browse button
  * that picks the PARENT directory). A live "Will be created at: …" caption
- * shows the resolved target before submit. The config-sharing posture
- * (side-by-side radio cards) and the editor-checkbox group (pre-checked from
- * `bridge.integrations.status().detectedEditorIds` on open) both collapse under
- * an "Advanced settings" section. Cancel +
- * Create footer. Create stays enabled with an empty name — a click then
+ * shows the resolved target before submit. Below that sits the AI-tool
+ * decision (`ProjectAiToolsField`) — one pre-checked checkbox naming the
+ * detected tools, always visible, because whether the project is reachable
+ * from the user's agents is not an advanced concern. Only the config-sharing
+ * posture (side-by-side radio cards) collapses under "Advanced settings".
+ * Cancel + Create footer. Create stays enabled with an empty name — a click then
  * surfaces an "Enter a project name" toast (see onSubmit) rather than sitting
  * disabled with no hint. The two fields (`location`, `name`) are the source of
  * truth; the submit IPC takes `{ parent: location, name, ... }` with no
@@ -65,14 +66,17 @@
  */
 
 import {
-  ALL_EDITOR_IDS,
   CREATE_NEW_PROJECT_FAILURE_REASONS,
   type CreateNewBannerKind,
   type CreateNewProjectFailureReason,
   EDITOR_LABELS,
+  EDITOR_PROJECT_CONFIG_PATH,
+  EDITOR_PROJECT_SKILL_ROOT,
+  RESERVED_PROJECT_SKILL_NAME,
+  receivesProjectIntegrationWrite,
   sanitizeFolderName,
 } from '@inkeep/open-knowledge-core';
-import type { MessageDescriptor } from '@lingui/core';
+import { i18n, type MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
@@ -108,6 +112,7 @@ import type {
 } from '@/lib/desktop-bridge-types';
 import { PACK_BLURBS } from '@/lib/pack-copy';
 import { seedClient } from '@/lib/seed-client';
+import { formatToolList } from '@/lib/tool-list-format';
 import { cn } from '@/lib/utils';
 
 /**
@@ -357,15 +362,20 @@ export function CreateProjectDialog({
   // Project name typed into the always-present <Input>. The creation target
   // is `joinPathPreview(location, sanitizeFolderName(name))`.
   const [name, setName] = useState('');
-  // AI tools that get wired on submit. Seeded on each open from
-  // `bridge.integrations.status().detectedEditorIds` — the tools whose host root
-  // already exists on this machine — because the checkboxes live behind a collapsed
-  // "Advanced settings" section: a user who types a name and clicks Create
-  // never sees them, so an empty default would silently produce a project with
-  // no MCP config and no project skill for tools they DO have. Seeding from
-  // detection keeps the other half of that contract too: we never create a
-  // host root for a tool the user doesn't have.
-  const [editorIds, setEditorIds] = useState<ReadonlySet<OkMcpWiringEditorId>>(() => new Set());
+  // Tools detected on this machine that also have a project surface, probed on
+  // each open. `null` means the probe is still in flight — distinct from `[]`
+  // ("probed, found nothing"), because the row is always visible now and has to
+  // say which of the two it is rather than flashing an empty state.
+  const [detectedEditors, setDetectedEditors] = useState<readonly OkMcpWiringEditorId[] | null>(
+    null,
+  );
+  // Whether to wire those tools on submit. One decision, pre-checked: the write
+  // set is exactly the detected tools, so there is nothing to seed and no race
+  // with the probe — a late result changes the list the label names, never the
+  // answer the user gave.
+  const [connectEditors, setConnectEditors] = useState(true);
+  // Expands the exact list of files the connection writes.
+  const [showEditorDetails, setShowEditorDetails] = useState(false);
   // OK config sharing mode. Defaults to `'shared'` (encourages team
   // adoption). Rendered via SharingModeField inside "Advanced settings" — the
   // greenfield dialog tucks the choice away (sensible default already set),
@@ -374,9 +384,8 @@ export function CreateProjectDialog({
   // always runs `ensureProjectGit` (step 6 of runCreateNew), so the gitdir is
   // guaranteed to exist by the time the sharing transition runs.
   const [sharing, setSharing] = useState<'shared' | 'local-only'>('shared');
-  // Editor controls and the sharing posture collapse under "Advanced settings"
-  // so the dialog leads with just the name and location fields. Reset closed
-  // on each open.
+  // The sharing posture collapses under "Advanced settings" so the dialog leads
+  // with just the name, location and AI-tool fields. Reset closed on each open.
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // Starter-pack selection + where it scaffolds. `packId` starts at the
   // launcher's pick and can be changed in-dialog (step 'pick'); the root
@@ -418,12 +427,6 @@ export function CreateProjectDialog({
   // banner, so a result that arrives after the banner has moved on would
   // otherwise be lost without UX feedback).
   const removeGitCallIdRef = useRef(0);
-  // True once the user has toggled an editor checkbox during the current open.
-  // The on-open detection probe is async, so a user who expands Advanced and
-  // ticks a box before it resolves would otherwise have their choice silently
-  // overwritten by the seed landing late. What the checkboxes show right after
-  // their click is the truth; a late probe never overrides it.
-  const editorsTouchedRef = useRef(false);
   // Whether the next pack-preview plan is the first of this open cycle — it
   // fires immediately, later ones debounce. Reset on open and whenever the
   // user picks a different pack.
@@ -445,8 +448,9 @@ export function CreateProjectDialog({
     setProbeLifecycle('idle');
     setBusy(false);
     setName('');
-    setEditorIds(new Set());
-    editorsTouchedRef.current = false;
+    setDetectedEditors(null);
+    setConnectEditors(true);
+    setShowEditorDetails(false);
     setSharing('shared');
     setAdvancedOpen(false);
     setRemoveGitState({ kind: 'idle' });
@@ -464,19 +468,42 @@ export function CreateProjectDialog({
 
     let cancelled = false;
     // Re-probe detection on every open (the user may have installed a tool
-    // since last time). A selection the user has already edited wins over the
-    // seed: this probe is a round-trip the user can beat.
+    // since last time). Filtered to the tools this create will actually write
+    // something for — `receivesProjectIntegrationWrite`, not mere surface
+    // membership. A user-global-only tool has nothing to write; Copilot has a
+    // project skill root but its skill is gated on Copilot's user-global
+    // OpenKnowledge entry, so before that exists the write lands as
+    // `skipped-prerequisite`. Naming either in the checkbox label would promise
+    // a file that never appears.
     bridge.integrations
       .status()
       .then((status) => {
-        if (!cancelled && !editorsTouchedRef.current) {
-          setEditorIds(new Set(status.detectedEditorIds));
-        }
+        if (cancelled) return;
+        // `installed` only — deliberately stricter than the write path's own
+        // check, which asks whether ANY entry sits under OpenKnowledge's server
+        // name and so also passes on `foreign` (an entry under that name that
+        // isn't ours). A foreign entry means OK's MCP is not actually
+        // registered, so the skill would tell the agent to call tools that
+        // aren't there. Erring strict costs a Copilot user with a foreign entry
+        // nothing they were promised; erring loose would name a tool whose
+        // setup does not work.
+        const userMcpInstalled = new Set(
+          status.editors.filter((e) => e.state === 'installed').map((e) => e.id),
+        );
+        setDetectedEditors(
+          status.detectedEditorIds.filter((id) =>
+            receivesProjectIntegrationWrite(id, {
+              userMcpEntryInstalled: userMcpInstalled.has(id),
+            }),
+          ),
+        );
       })
       .catch((err) => {
-        // Best-effort: leave the selection empty so we never create a host
-        // root for a tool we could not confirm. Advanced settings still works.
+        // Best-effort: settle on an empty list so we never create a host root
+        // for a tool we could not confirm, and the row says so rather than
+        // hanging on "Checking…".
         console.warn('[CreateProjectDialog] editor-detection probe failed:', err);
+        if (!cancelled) setDetectedEditors([]);
       });
 
     // Reset Location before refetching — second-open after a first-open
@@ -551,9 +578,10 @@ export function CreateProjectDialog({
     selectedPack !== undefined && rootChoice === 'subfolder' && trimmedSubfolder === '';
   const packRootDir = rootChoice === 'project-root' ? undefined : trimmedSubfolder;
   // The pack's skills install only into editors this project is set up for,
-  // and `runCreateNew` writes those integrations before it seeds — so an empty
-  // editor selection means no skill lands, and the preview must say so.
-  const skillsInstallable = editorIds.size > 0;
+  // and `runCreateNew` writes those integrations before it seeds — so declining
+  // the AI-tool setup (or finding no tool to set up) means no skill lands, and
+  // the preview must say so.
+  const skillsInstallable = connectEditors && (detectedEditors?.length ?? 0) > 0;
 
   // Live pack preview. Re-plans on every input that changes what would be
   // written; nothing here touches disk (main plans against a throwaway dir).
@@ -837,17 +865,16 @@ export function CreateProjectDialog({
   // ("Enter a project name", see onSubmit). Genuinely-blocked states
   // (in-flight probe, blocking cascade, unusable name) stay disabled
   // because they already render inline feedback that explains the block.
-  const submitDisabled = busy || (rawName !== '' && !canSubmit);
-
-  function toggleEditor(id: OkMcpWiringEditorId) {
-    editorsTouchedRef.current = true;
-    setEditorIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  //
+  // The detection probe is one of those blocks. It settles independently of the
+  // location/cascade probes, so Create can otherwise unlock while
+  // `detectedEditors` is still null — and submitting then sends `editors: []`,
+  // creating a project wired to nothing while the row still says "Checking
+  // which AI tools you have". Only gate it while the user actually intends to
+  // connect: with the box unchecked the list is never read, so there is nothing
+  // to wait for. The row's own status text explains the wait.
+  const detectionPending = connectEditors && detectedEditors === null;
+  const submitDisabled = busy || detectionPending || (rawName !== '' && !canSubmit);
 
   async function onBrowse() {
     try {
@@ -900,7 +927,7 @@ export function CreateProjectDialog({
       await bridge.project.createNew({
         parent: location,
         name: sanitized,
-        editors: Array.from(editorIds),
+        editors: connectEditors ? [...(detectedEditors ?? [])] : [],
         sharing,
         // Seed the chosen starter pack (packs-forward first-run). Undefined on
         // the blank-create path — main opens an empty project as before.
@@ -1207,6 +1234,20 @@ export function CreateProjectDialog({
                 </div>
               ) : null}
 
+              {/* AI-tool setup, always visible: it decides whether the project is
+                usable from the user's agents at all, which is not an advanced
+                concern. Mirrors the first-launch consent dialog — one pre-checked
+                checkbox whose label names the write set, plus an expander with the
+                exact files. Per-tool control lives in Settings > This project. */}
+              <ProjectAiToolsField
+                detectedEditors={detectedEditors}
+                checked={connectEditors}
+                onCheckedChange={setConnectEditors}
+                showDetails={showEditorDetails}
+                onShowDetailsChange={setShowEditorDetails}
+                disabled={busy}
+              />
+
               <Collapsible
                 open={advancedOpen}
                 onOpenChange={setAdvancedOpen}
@@ -1224,30 +1265,6 @@ export function CreateProjectDialog({
                   />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-6 border-t border-border px-3 py-4">
-                  <fieldset className="flex flex-col space-y-2 pb-2">
-                    <legend className="text-sm font-medium">
-                      <Trans>Connect to AI tools</Trans>
-                    </legend>
-                    <p className="text-1sm text-muted-foreground">
-                      <Trans>Each selected tool gets an OpenKnowledge MCP entry.</Trans>
-                    </p>
-                    {ALL_EDITOR_IDS.map((id) => {
-                      const inputId = `create-editor-${id}`;
-                      return (
-                        <Label key={id} htmlFor={inputId} className="text-sm font-normal">
-                          <Checkbox
-                            id={inputId}
-                            checked={editorIds.has(id)}
-                            onCheckedChange={() => toggleEditor(id)}
-                            disabled={busy}
-                            data-testid={`create-editor-${id}`}
-                          />
-                          <span>{EDITOR_LABELS[id]}</span>
-                        </Label>
-                      );
-                    })}
-                  </fieldset>
-
                   <SharingModeField
                     idPrefix="create"
                     testIdPrefix="create-sharing"
@@ -1308,6 +1325,177 @@ export function CreateProjectDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface ProjectAiToolsFieldProps {
+  /** `null` while the detection probe is in flight; `[]` once it settled empty. */
+  detectedEditors: readonly OkMcpWiringEditorId[] | null;
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  showDetails: boolean;
+  onShowDetailsChange: (next: boolean) => void;
+  disabled: boolean;
+}
+
+/**
+ * The project's AI-tool decision: one checkbox covering every detected tool,
+ * with a read-only expander naming the exact project-relative files it writes.
+ *
+ * The paths come from the same two core maps the project writer resolves its
+ * targets from (`EDITOR_PROJECT_CONFIG_PATH`, `EDITOR_PROJECT_SKILL_ROOT`), so
+ * the disclosure cannot advertise a file that never gets written. Tools with a
+ * null entry in both are filtered out upstream and never reach this component.
+ */
+function ProjectAiToolsField({
+  detectedEditors,
+  checked,
+  onCheckedChange,
+  showDetails,
+  onShowDetailsChange,
+  disabled,
+}: ProjectAiToolsFieldProps) {
+  const { t } = useLingui();
+  const detailsId = useId();
+  const checkboxId = useId();
+
+  // The probe's two non-interactive outcomes share ONE live region that is
+  // always mounted. A region that appears at the same moment as its text is not
+  // a change to announce — assistive tech has to be observing the node before
+  // the content lands — so swapping the message inside a persistent node is what
+  // makes "checking…" → "none found" actually reach a screen reader.
+  const status =
+    detectedEditors === null
+      ? { kind: 'probing' as const, message: t`Checking which AI tools you have` }
+      : detectedEditors.length === 0
+        ? {
+            kind: 'none' as const,
+            message: t`No AI tools detected yet. Once you install one, connect it from Settings > This project.`,
+          }
+        : // Carrying the narrowed list on the ready arm is what lets the early
+          // return below discriminate it — the guard alone doesn't re-narrow
+          // `detectedEditors` for the JSX that follows.
+          { kind: 'ready' as const, message: '', editors: detectedEditors };
+
+  const statusRegion = (
+    <p
+      aria-live="polite"
+      className={cn(
+        status.kind === 'ready'
+          ? 'sr-only'
+          : 'rounded-md border border-border px-3 py-2.5 text-1sm text-muted-foreground',
+      )}
+      data-status={status.kind}
+      data-testid="create-editors-status"
+    >
+      {status.message}
+    </p>
+  );
+
+  if (status.kind !== 'ready') return statusRegion;
+
+  return (
+    <>
+      {/* Stays mounted (visually hidden, empty) so the region survives every
+        transition rather than being torn down when the checkbox appears. */}
+      {statusRegion}
+      <div className="overflow-hidden rounded-md border border-border">
+        <Label
+          htmlFor={checkboxId}
+          className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal hover:bg-muted/50"
+        >
+          <Checkbox
+            id={checkboxId}
+            checked={checked}
+            onCheckedChange={() => onCheckedChange(!checked)}
+            disabled={disabled}
+            className="mt-0.5"
+            data-testid="create-editors-checkbox"
+          />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span
+              className="text-sm font-medium text-foreground"
+              data-testid="create-editors-summary"
+            >
+              {t`Connect ${formatToolList(
+                status.editors.map((id) => EDITOR_LABELS[id]),
+                i18n.locale,
+              )} to this project`}
+            </span>
+            <span className="text-1sm text-muted-foreground">
+              <Trans comment="Subtext under the create-project AI-tools checkbox">
+                Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and
+                update these notes.
+              </Trans>
+            </span>
+          </span>
+        </Label>
+        <div className="border-t border-border">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto w-full justify-start gap-1 rounded-none px-3 py-2 text-xs font-normal text-muted-foreground hover:text-foreground"
+            onClick={() => onShowDetailsChange(!showDetails)}
+            aria-expanded={showDetails}
+            aria-controls={detailsId}
+            data-testid="create-editors-details-toggle"
+          >
+            <ChevronRight
+              className={cn(
+                'size-3.5 transition-transform motion-reduce:transition-none',
+                showDetails && 'rotate-90',
+              )}
+              aria-hidden
+            />
+            {showDetails ? (
+              <Trans comment="Collapses the list of project files the AI-tool setup writes">
+                Hide details
+              </Trans>
+            ) : (
+              <Trans comment="Expands the list of project files the AI-tool setup writes">
+                What this changes
+              </Trans>
+            )}
+          </Button>
+          {/* The region element is always present so the toggle's `aria-controls`
+          never dangles — axe flags a reference to an id that isn't in the DOM,
+          which is what a conditionally-mounted target produces. */}
+          <div id={detailsId}>
+            {showDetails && (
+              <ul
+                className="flex flex-col gap-1.5 border-t border-border px-3 py-2.5"
+                data-testid="create-editors-details"
+              >
+                {status.editors.map((id) => {
+                  const configPath = EDITOR_PROJECT_CONFIG_PATH[id];
+                  const skillRoot = EDITOR_PROJECT_SKILL_ROOT[id];
+                  return (
+                    <li
+                      key={id}
+                      className="flex min-w-0 flex-col"
+                      data-testid={`create-editor-${id}`}
+                    >
+                      <span className="text-1sm text-foreground">{EDITOR_LABELS[id]}</span>
+                      {configPath !== null && (
+                        <code className="text-xs text-muted-foreground break-all">
+                          {configPath}
+                        </code>
+                      )}
+                      {skillRoot !== null && (
+                        <code className="text-xs text-muted-foreground break-all">
+                          {`${skillRoot}/${RESERVED_PROJECT_SKILL_NAME}/`}
+                        </code>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 

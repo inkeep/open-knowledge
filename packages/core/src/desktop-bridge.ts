@@ -522,14 +522,15 @@ export type OkMcpWiringEditorId = EditorId;
 
 /**
  * Payload delivered to `mcpWiring.onShow` subscribers on first-launch MCP
- * consent. Every editor in `ALL_EDITOR_IDS` appears; `detected: true`
- * preselects the checkbox in `<McpConsentDialog>`. `willReplace: true`
- * signals that the editor has an existing OK-managed entry that Add would
- * overwrite — surfaced per-row so long-time CLI users aren't surprised to
- * find their pre-existing entry stomped. `pathInstall` drives the dialog's
- * shell-PATH toggle row: `shellDetected: false` hides the row;
- * `alreadyInstalled: true` renders it informational; `rcFilesToTouch`
- * names the tildified shell files a grant would edit.
+ * consent. Every editor in `ALL_EDITOR_IDS` appears, but only `detected: true`
+ * ones are in `<McpConsentDialog>`'s write set — the rest have no config to
+ * wire and are not shown. `willReplace: true` signals an existing OK-managed
+ * entry the setup would overwrite, which the dialog surfaces next to its
+ * checkbox so long-time CLI users aren't surprised to find their pre-existing
+ * entry stomped. `pathInstall` drives the dialog's shell-PATH toggle row:
+ * `shellDetected: false` hides the row; `alreadyInstalled: true` renders it
+ * informational; `rcFilesToTouch` names the tildified shell files a grant
+ * would edit.
  */
 export interface OkMcpWiringShowPayload {
   readonly detectedEditors: readonly {
@@ -547,24 +548,14 @@ export interface OkMcpWiringShowPayload {
     readonly rcFilesToTouch: readonly string[];
     readonly alreadyInstalled: boolean;
   };
-  /** Per-bundle opt-in rows for the two user-global skills. Empty ⇒ no skill
-   *  decision solicited. `alreadyInstalled: true` renders the row pre-checked
-   *  as an existing install the user can uncheck to remove. The disclosure
-   *  fields (description, size, hosts, paths) let the row show what the skill
-   *  is, costs, and where it would land — the same information Settings shows,
-   *  so first-launch consent is as informed. `hosts` empty ⇒ nowhere to land,
-   *  and the row disables its checkbox. */
+  /** The user-global skill bundles onboarding sets up alongside the MCP wiring.
+   *  Empty ⇒ no skill decision solicited. `paths` lists every destination the
+   *  install writes to, computed from the installer's own iteration set and
+   *  gates, so the dialog's disclosure can never advertise a copy that will not
+   *  be made. */
   readonly globalSkills: readonly {
     readonly id: string;
     readonly name: string;
-    readonly alreadyInstalled: boolean;
-    /** The skill's own frontmatter description. */
-    readonly description: string;
-    /** Three-tier context cost; absent when the packaged bundle is unreadable. */
-    readonly size?: SkillCostTiers;
-    /** Resolved reach: static editor ids plus declared custom-root paths. */
-    readonly hosts: readonly string[];
-    /** Destination paths a confirmed install writes (or an uninstall removes). */
     readonly paths: readonly string[];
   }[];
 }
@@ -575,9 +566,12 @@ export interface OkMcpWiringShowPayload {
  * granted); `false` → record declined, touch no rc file; absent → no PATH
  * decision was solicited (row hidden or informational).
  *
- * `skills` — bundle ids the user left checked. Present ⇒ a skill decision was
- * solicited; every offered bundle not in the list is recorded declined (and
- * removed if already installed).
+ * `skills` — bundle ids the user left checked. An ARRAY (even empty) ⇒ a
+ * decision was made, and every offered bundle not in the list is recorded
+ * declined (and removed if already installed). Absent ⇒ no decision was made:
+ * the skills leg is skipped, so nothing is written and nothing installed is
+ * torn down. Onboarding sends the absent form when the user declines setup,
+ * because declining must never uninstall an existing bundle.
  */
 export interface OkMcpWiringConfirmRequest {
   readonly editorIds: readonly OkMcpWiringEditorId[];

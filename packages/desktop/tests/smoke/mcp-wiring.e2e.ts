@@ -330,7 +330,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     }
   });
 
-  test('skip — writes configured:false marker and no editor configs', async ({
+  test('dismiss — writes configured:false marker and no editor configs', async ({
     captureStderrFor,
   }) => {
     const tmpHome = createTmpHome('skip');
@@ -339,12 +339,16 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const app = await launchApp({ tmpHome });
       captureStderrFor(app);
       const window = await waitForConsentDialog(app);
-      await window.getByTestId('mcp-consent-skip').click();
+      // Escape is the skip path now that the dialog has a single Continue
+      // button: unchecking says "don't set up", while dismissing says "I made
+      // no decision". Both must leave editor configs untouched, and only this
+      // one writes the skipped marker.
+      await window.keyboard.press('Escape');
 
       await expect
         .poll(() => readMarker(tmpHome), {
           timeout: 15_000,
-          message: 'skip marker not written within 15s of Skip click',
+          message: 'skip marker not written within 15s of dismissing the dialog',
         })
         .not.toBeNull();
 

@@ -504,29 +504,23 @@ export interface McpWiringPathInstallDescriptor {
 export interface McpWiringConfirmRequest {
   readonly editorIds: readonly McpWiringEditorId[];
   readonly pathInstall?: boolean;
-  /** Bundle ids the user left checked. Present ⇒ a skill decision was
-   *  solicited; every offered bundle not listed is recorded declined (and
-   *  removed if already installed). */
+  /** Bundle ids the user left checked. An ARRAY (even empty) ⇒ a skill decision
+   *  was made; every offered bundle not listed is recorded declined (and removed
+   *  if already installed). `undefined` ⇒ no decision was made — main skips the
+   *  skills leg entirely, so nothing is written and nothing already installed is
+   *  torn down. Onboarding sends `undefined` when the user declines the whole
+   *  setup, because declining setup must never uninstall an existing bundle. */
   readonly skills?: readonly string[];
 }
 
-/** One user-global skill row in the first-launch consent dialog. Computed
- *  read-only at arming time from `USER_GLOBAL_BUNDLE_IDS` + disk/marker state.
- *  `alreadyInstalled: true` renders the row pre-checked as an existing install
- *  the user can uncheck to remove. The disclosure fields mirror the Settings
- *  skill status so both consent surfaces show the same what/cost/where; `hosts`
- *  empty ⇒ nowhere to land and the row disables its checkbox. */
+/** One user-global skill bundle offered by the first-launch consent dialog.
+ *  Computed read-only at arming time from `ONBOARDING_BUNDLE_IDS` + disk state.
+ *  `paths` lists every destination the install writes to, computed from the
+ *  installer's own iteration set + gates so a disclosure can never advertise a
+ *  copy that will not be made. */
 export interface McpWiringGlobalSkillDescriptor {
   readonly id: string;
   readonly name: string;
-  readonly alreadyInstalled: boolean;
-  /** The skill's own frontmatter description. */
-  readonly description: string;
-  /** Three-tier context cost; absent when the packaged bundle is unreadable. */
-  readonly size?: SkillCostTiers;
-  /** Resolved reach: static editor ids plus declared custom-root paths. */
-  readonly hosts: readonly string[];
-  /** Destination paths a confirmed install writes (or an uninstall removes). */
   readonly paths: readonly string[];
 }
 

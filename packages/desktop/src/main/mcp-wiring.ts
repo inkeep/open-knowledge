@@ -354,9 +354,10 @@ export interface McpWiringPathInstallSurface {
  * teardown pipeline in.
  */
 export interface McpWiringSkillsSurface {
-  /** One row per user-global bundle for the dialog. Read-only — must not
-   *  write. `alreadyInstalled` pre-checks the row (grandfathered install);
-   *  the disclosure fields drive the row's cost/reach/destination display. */
+  /** One row per bundle onboarding offers. Read-only — must not write.
+   *  `paths` lists every destination the install writes to, so the dialog's
+   *  disclosure comes from the installer's own gates rather than a parallel
+   *  list. */
   computeDescriptors(): McpWiringGlobalSkillDescriptor[];
   /**
    * Finalize the per-bundle decision. Records enabled for every id in
@@ -975,16 +976,18 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     }
 
     // Skills leg — apply per-bundle consent when the dialog solicited a
-    // decision (skill rows were offered). Runs after PATH and BEFORE the
-    // marker write so a failed skills leg defers the marker like a failed
-    // editor/PATH write: the dialog stays mounted for a same-boot retry and
-    // re-fires next boot. `request.skills` is the checked subset; every offered
-    // bundle not listed is recorded declined (and removed if present).
-    if (skillDescriptors.length > 0) {
+    // decision (skill rows were offered) AND the user made one. Runs after PATH
+    // and BEFORE the marker write so a failed skills leg defers the marker like
+    // a failed editor/PATH write: the dialog stays mounted for a same-boot retry
+    // and re-fires next boot. An ARRAY `request.skills` is the checked subset —
+    // every offered bundle not listed is recorded declined (and removed if
+    // present). `undefined` means no decision was made, which is NOT the same as
+    // declining: the leg is skipped entirely, so nothing is recorded and an
+    // existing install is left standing. Onboarding relies on that distinction —
+    // dismissing the setup offer must never tear down a bundle already on disk.
+    if (skillDescriptors.length > 0 && Array.isArray(request?.skills)) {
       const offeredIds = new Set(skillDescriptors.map((d) => d.id));
-      const enabledIds = Array.isArray(request?.skills)
-        ? request.skills.filter((id) => offeredIds.has(id))
-        : [];
+      const enabledIds = request.skills.filter((id) => offeredIds.has(id));
       let skillResult: { ok: true } | { ok: false; error: string };
       try {
         skillResult = await skills.applyConsent(enabledIds);

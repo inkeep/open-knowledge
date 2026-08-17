@@ -353,17 +353,6 @@
     "3pU8e-": ["Fixar aba"],
     "3qDsdf": ["Instalar habilidade"],
     "3ri_4O": ["Mantém sua base de conhecimento alinhada ao Open Knowledge Format."],
-    "3s-k7L": [
-      [
-        "0",
-        "plural",
-        {
-          "one": ["Mostrar mais ", "#", " ferramenta"],
-          "many": ["Mostrar mais ", "#", " ferramentas"],
-          "other": ["Mostrar mais ", "#", " ferramentas"]
-        }
-      ]
-    ],
     "3uSzeS": [
       "Imagens de qualquer lugar · arquivos que não são imagens devem estar no espaço de trabalho"
     ],
@@ -734,7 +723,6 @@
       ["0"],
       " — essa pasta não é esta habilidade. Renomeie ou exclua uma das duas para resolver."
     ],
-    "8IP5jY": ["Cada ferramenta selecionada recebe uma entrada MCP do OpenKnowledge."],
     "8Jm2EP": ["Liga ou desliga os níveis de título de 1 a 6."],
     "8L0EPw": ["ou cole um token"],
     "8OGgNM": ["Abre ou fecha a busca do editor visual."],
@@ -1018,6 +1006,9 @@
     "C0cll5": ["Instalado em ", ["0"], " — clique para remover"],
     "C0hoX6": ["Sempre incluído"],
     "C3Zc44": ["Explorar habilidades"],
+    "C4HK3A": [
+      "Adiciona uma entrada MCP do OpenKnowledge e a habilidade do projeto, para que cada ferramenta possa ler e atualizar estes documentos."
+    ],
     "C62P6b": ["Seleção do editor"],
     "C7PKTv": ["Enviar os comentários marcados para o chat"],
     "C7waqI": [
@@ -1748,6 +1739,7 @@
     "L83DKQ": ["A instalação no PATH falhou: ", ["summary"]],
     "L8fKuc": ["Rode isto no seu terminal"],
     "L9Y9Om": ["Páginas mais ligadas"],
+    "LAR9ub": ["Substitui a entrada existente do OpenKnowledge em ", ["0"]],
     "LBv_TR": ["Converter os locais em links simbólicos"],
     "LBwUR6": ["A troca de ramo expirou — tente abrir ", ["targetNoun"], " manualmente."],
     "LCUy_N": ["A sessão terminou"],
@@ -2021,6 +2013,9 @@
     "OEEQKT": ["Bom"],
     "OETysD": [
       "Ainda não há páginas de índice. Os índices aparecem quando as páginas acumulam links de entrada no grafo."
+    ],
+    "OFIL46": [
+      "Dê às ferramentas de IA que você usa acesso para ler e atualizar seus projetos. Você pode mudar tudo isso depois em Configurações > Ferramentas de IA e CLI."
     ],
     "OJ4VDl": [
       "Este agente roda pelo ",
@@ -2396,7 +2391,6 @@
     "TDeOpa": [
       "Desfaz ou refaz suas próprias edições, deixando intactas as de colaboradores e agentes."
     ],
-    "TEEPPF": ["Vai substituir a entrada existente do OpenKnowledge"],
     "TEJiKw": ["OpenKnowledge verificou ", ["subject"]],
     "TKQ7K-": ["Instalar"],
     "TLIO3j": ["Liga ou desliga o itálico."],
@@ -3083,6 +3077,9 @@
       ". Instale qualquer uma delas pelo plugin."
     ],
     "aRI3Om": ["Fechar janela"],
+    "aSVmqV": [
+      "Nenhuma ferramenta de IA detectada ainda. Depois de instalar uma, conecte-a em Configurações > Este projeto."
+    ],
     "aWlJai": ["Iniciando o fluxo de login"],
     "aXkLuE": ["Resposta de aplicação malformada"],
     "a_2_uB": ["Não deu para criar ", ["trimmed"], ": ", ["0"]],
@@ -3322,7 +3319,6 @@
     "dVaXnv": ["As regras de conteúdo ainda não carregaram — tente de novo em instantes"],
     "dXCi3J": ["Algo quebrou"],
     "dXOolp": ["Sincronizando suas alterações"],
-    "dXWMFn": ["Remove esta habilidade dos seus editores."],
     "darW93": [
       [
         "pageCount",
@@ -3398,6 +3394,7 @@
     "ePK91l": ["Editar"],
     "eQkgKV": ["Instalado"],
     "eQn7nI": ["Carregando compartilhamento da configuração"],
+    "eQsWFc": ["Habilidade de agente"],
     "eQxm13": ["Falha ao atualizar o local dos anexos — ", ["detail"]],
     "eRSPr9": ["Abrir o terminal"],
     "eTL5y9": ["Mostrar a pré-visualização da seleção"],
@@ -3499,6 +3496,7 @@
       "As configurações de sincronização ainda não carregaram — tente de novo em instantes"
     ],
     "fj5YiP": ["Baixa uma cópia nova do GitHub."],
+    "fmwwju": ["Adiciona a conexão MCP do OpenKnowledge a cada uma."],
     "fnlBN4": [
       "As configurações de aprovação automática ainda não carregaram — tente de novo em instantes"
     ],
@@ -3686,7 +3684,6 @@
     "hmYd9H": [
       "Acompanhe as pessoas e empresas com quem você trabalha e as reuniões que tem com elas. Bom para lembrar quem é alguém, de onde você a conhece e sobre o que vocês falaram da última vez."
     ],
-    "hnlGzG": ["Pular por enquanto"],
     "hnq8fP": ["Remover ", ["label"], " do contexto"],
     "hp8OtS": ["Adicionado"],
     "hpDtUm": ["Link wiki externo"],
@@ -3819,6 +3816,7 @@
     "j2kt1j": [
       "Abre uma nova sessão com a IA que você preferir. Com um texto selecionado, prepara-o lá em vez de executar."
     ],
+    "j4SmVY": ["Conectar ", ["0"], " a este projeto"],
     "j5CWO4": ["Atualizado"],
     "j9Vqvc": ["herdado"],
     "j9tqwO": ["Não está na barra lateral"],
@@ -3845,6 +3843,7 @@
     "jTLWxh": [
       "Incorpora uma página externa em um iframe embutido (documentação, demos, Figma, CodeSandbox)."
     ],
+    "jWzDfC": ["Verificando quais ferramentas de IA você tem"],
     "jZ_E5M": ["Falha ao buscar — veja os logs do servidor para os detalhes."],
     "j_Z6g7": ["Padrão compartilhado"],
     "jbSG8V": ["Mostrar Arquivos (", ["sidebarShortcutLabel"], ")"],
@@ -3991,9 +3990,6 @@
       "Colore e marca os arquivos com problemas de análise ou de links, sem precisar abri-los."
     ],
     "ku0yLQ": ["As páginas viram embeddings na primeira vez que uma busca precisa delas."],
-    "kwLcuN": [
-      "Dê às ferramentas de IA que você usa acesso para ler e atualizar seus projetos. Escolha abaixo o que configurar e mude quando quiser em Configurações > Ferramentas de IA e CLI."
-    ],
     "kwNS82": ["Este tema não pode ser usado até que o arquivo seja corrigido."],
     "ky9Tuc": ["Editar o código de ", ["0"]],
     "kzpkcn": ["Não deu para salvar essa edição."],
@@ -4683,6 +4679,9 @@
     "tHKQ6j": ["Renomeando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escreveu um documento"],
+    "tLd2qa": [
+      "Nenhuma ferramenta de IA detectada ainda. Depois de instalar uma, conecte-a em Configurações > Ferramentas de IA e CLI."
+    ],
     "tM5uzl": [
       "As famílias de origem, confiança e ciclo de vida: sources, generated, verified, status e stale_after. Cada campo é opcional e a ausência nunca é um erro."
     ],
@@ -5002,6 +5001,7 @@
     "xEb24l": ["Deixe a gente responder por e-mail"],
     "xFQRu4": ["Já tenho isso localmente"],
     "xG4tb6": ["A conexão com \"", ["docName"], "\" foi perdida."],
+    "xGVfLh": ["Continuar"],
     "xHGM4U": ["Ocultar a pré-visualização do HTML"],
     "xK291b": ["Duas páginas (ímpares)"],
     "xKDsGS": ["Ir para a linha ", ["0"], " em ", ["1"]],
@@ -5096,6 +5096,9 @@
     "ycIX5i": ["Você saiu da conta — entre para retomar a sincronização."],
     "yckias": ["Renomear o arquivo"],
     "ydzS9x": ["Sair"],
+    "yeMZk8": [
+      "Adiciona a conexão MCP do OpenKnowledge a cada uma, mais a habilidade open-knowledge-discovery para que seus agentes reconheçam projetos do OpenKnowledge."
+    ],
     "yf5auF": ["Busque regras por id, apelido ou nome"],
     "yf5r22": [
       "Tipo de ",

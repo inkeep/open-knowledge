@@ -351,7 +351,9 @@ export {
   PROJECT_SKILL_EDITOR_IDS,
   PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
   RESERVED_PROJECT_SKILL_NAME,
+  receivesProjectIntegrationWrite,
   skillRootActivationPath,
+  USER_MCP_GATED_EDITOR_IDS,
   USER_SKILL_HOSTS,
 } from './constants/editors.ts';
 export {

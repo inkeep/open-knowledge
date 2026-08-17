@@ -371,17 +371,6 @@
     "3pU8e-": ["Épingler l'onglet"],
     "3qDsdf": ["Installer la compétence"],
     "3ri_4O": ["Maintient votre base de connaissances alignée sur l’Open Knowledge Format."],
-    "3s-k7L": [
-      [
-        "0",
-        "plural",
-        {
-          "one": ["Afficher ", "#", " outil de plus"],
-          "many": ["Afficher ", "#", " outils de plus"],
-          "other": ["Afficher ", "#", " outils de plus"]
-        }
-      ]
-    ],
     "3uSzeS": [
       "Images de n'importe où · les fichiers non-image doivent être dans l'espace de travail"
     ],
@@ -768,7 +757,6 @@
       ["0"],
       " — ce dossier n'est pas cette compétence. Renommez ou supprimez l'une des deux pour résoudre le problème."
     ],
-    "8IP5jY": ["Chaque outil sélectionné reçoit une entrée MCP OpenKnowledge."],
     "8Jm2EP": ["Bascule les niveaux de titre 1 à 6."],
     "8L0EPw": ["ou collez un jeton"],
     "8OGgNM": ["Ouvre ou ferme la recherche de l'éditeur visuel."],
@@ -1056,6 +1044,9 @@
     "C0cll5": ["Installé dans ", ["0"], " — cliquez pour retirer"],
     "C0hoX6": ["Toujours inclus"],
     "C3Zc44": ["Explorer les compétences"],
+    "C4HK3A": [
+      "Ajoute une entrée MCP OpenKnowledge et la compétence du projet, pour que chaque outil puisse lire et mettre à jour ces documents."
+    ],
     "C62P6b": ["Sélection de l'éditeur"],
     "C7PKTv": ["Envoyer les commentaires cochés dans la discussion"],
     "C7waqI": [
@@ -1797,6 +1788,7 @@
     "L83DKQ": ["L'installation dans PATH a échoué : ", ["summary"]],
     "L8fKuc": ["Exécutez ceci dans votre terminal"],
     "L9Y9Om": ["Pages les plus liées"],
+    "LAR9ub": ["Remplace l'entrée OpenKnowledge existante dans ", ["0"]],
     "LBv_TR": ["Convertir les emplacements en liens symboliques"],
     "LBwUR6": [
       "Le changement de branche a expiré — essayez d'ouvrir ",
@@ -2074,6 +2066,9 @@
     "OEEQKT": ["Bien"],
     "OETysD": [
       "Pas encore de pages pivots. Les pivots apparaissent une fois que les pages accumulent des liens entrants dans le graphe."
+    ],
+    "OFIL46": [
+      "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Vous pourrez tout modifier plus tard dans Paramètres > Outils IA et CLI."
     ],
     "OJ4VDl": [
       "Cet agent fonctionne via ",
@@ -2453,7 +2448,6 @@
     "TDeOpa": [
       "Annule ou rétablit vos propres modifications, en laissant en place celles des collaborateurs et des agents."
     ],
-    "TEEPPF": ["Remplacera l'entrée OpenKnowledge existante"],
     "TEJiKw": ["OpenKnowledge a vérifié ", ["subject"]],
     "TKQ7K-": ["Installer"],
     "TLIO3j": ["Bascule la mise en forme italique."],
@@ -3176,6 +3170,9 @@
       ". Installez-en n'importe laquelle depuis le plugin."
     ],
     "aRI3Om": ["Fermer la fenêtre"],
+    "aSVmqV": [
+      "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Ce projet."
+    ],
     "aWlJai": ["Démarrage du processus de connexion"],
     "aXkLuE": ["Réponse d'application mal formée"],
     "a_2_uB": ["Impossible de créer ", ["trimmed"], " : ", ["0"]],
@@ -3425,7 +3422,6 @@
     "dVaXnv": ["Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"],
     "dXCi3J": ["Quelque chose s'est cassé"],
     "dXOolp": ["Synchronisation de vos modifications"],
-    "dXWMFn": ["Retire cette compétence de vos éditeurs."],
     "darW93": [
       [
         "pageCount",
@@ -3501,6 +3497,7 @@
     "ePK91l": ["Modifier"],
     "eQkgKV": ["Installé"],
     "eQn7nI": ["Chargement du partage de la configuration"],
+    "eQsWFc": ["Compétence d'agent"],
     "eQxm13": ["Échec de la mise à jour de l'emplacement des pièces jointes — ", ["detail"]],
     "eRSPr9": ["Ouvrir le terminal"],
     "eTL5y9": ["Afficher l'aperçu de la sélection"],
@@ -3602,6 +3599,7 @@
       "Les paramètres de synchronisation ne sont pas encore chargés — réessayez dans un instant"
     ],
     "fj5YiP": ["Télécharge une copie neuve depuis GitHub."],
+    "fmwwju": ["Ajoute la connexion MCP d'OpenKnowledge à chacun."],
     "fnlBN4": [
       "Les paramètres d'approbation automatique ne sont pas encore chargés — réessayez dans un instant"
     ],
@@ -3791,7 +3789,6 @@
     "hmYd9H": [
       "Gardez la trace des personnes et des entreprises avec lesquelles vous travaillez et des réunions que vous avez avec elles. Utile pour se rappeler qui est quelqu'un, comment vous le connaissez, et de quoi vous avez parlé la dernière fois."
     ],
-    "hnlGzG": ["Passer pour l'instant"],
     "hnq8fP": ["Retirer ", ["label"], " du contexte"],
     "hp8OtS": ["Ajouté"],
     "hpDtUm": ["Lien wiki externe"],
@@ -3926,6 +3923,7 @@
     "j2kt1j": [
       "Ouvre une nouvelle session avec l'IA de votre choix. Si du texte est sélectionné, il y est préparé au lieu d'être exécuté."
     ],
+    "j4SmVY": ["Connecter ", ["0"], " à ce projet"],
     "j5CWO4": ["À jour"],
     "j9Vqvc": ["hérité"],
     "j9tqwO": ["Pas dans la barre latérale"],
@@ -3954,6 +3952,7 @@
     "jTLWxh": [
       "Intègre une page externe dans une iframe en ligne (docs, démos, Figma, CodeSandbox)."
     ],
+    "jWzDfC": ["Vérification des outils IA dont vous disposez"],
     "jZ_E5M": ["Échec de la récupération — consultez les journaux du serveur pour les détails."],
     "j_Z6g7": ["Valeur par défaut partagée"],
     "jbSG8V": ["Afficher les fichiers (", ["sidebarShortcutLabel"], ")"],
@@ -4100,9 +4099,6 @@
       "Colore et marque les fichiers qui ont des problèmes de vérification ou de liens, sans les ouvrir."
     ],
     "ku0yLQ": ["Les pages reçoivent leur embedding la première fois qu'une recherche en a besoin."],
-    "kwLcuN": [
-      "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Choisissez ci-dessous ce qu'il faut configurer, et modifiez-le à tout moment dans Paramètres > Outils IA et CLI."
-    ],
     "kwNS82": ["Ce thème ne peut pas être utilisé tant que le fichier n’est pas corrigé."],
     "ky9Tuc": ["Modifier la source de ", ["0"]],
     "kzpkcn": ["Impossible d'enregistrer cette modification."],
@@ -4828,6 +4824,9 @@
     "tHKQ6j": ["Renommage"],
     "tKlWWY": ["Émoji"],
     "tLX6LY": ["OpenKnowledge a écrit un document"],
+    "tLd2qa": [
+      "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Outils IA et CLI."
+    ],
     "tM5uzl": [
       "Les familles de provenance, de confiance et de cycle de vie : sources, generated, verified, status et stale_after. Chaque champ est facultatif et l'absence n'est jamais une erreur."
     ],
@@ -5168,6 +5167,7 @@
     "xEb24l": ["Autorisez-nous à vous recontacter par e-mail"],
     "xFQRu4": ["Je l'ai déjà en local"],
     "xG4tb6": ["Connexion perdue avec « ", ["docName"], " »."],
+    "xGVfLh": ["Continuer"],
     "xHGM4U": ["Masquer l'aperçu HTML"],
     "xK291b": ["Deux pages (impaires)"],
     "xKDsGS": ["Aller à la ligne ", ["0"], " dans ", ["1"]],
@@ -5270,6 +5270,9 @@
     "ycIX5i": ["Vous êtes déconnecté — connectez-vous pour reprendre la synchronisation."],
     "yckias": ["Renommer le fichier"],
     "ydzS9x": ["Quitter"],
+    "yeMZk8": [
+      "Ajoute la connexion MCP d'OpenKnowledge à chacun, ainsi que la compétence open-knowledge-discovery pour que vos agents reconnaissent les projets OpenKnowledge."
+    ],
     "yf5auF": ["Rechercher des règles par id, alias ou nom"],
     "yf5r22": [
       "Type de ",

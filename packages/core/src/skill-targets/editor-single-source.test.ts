@@ -17,10 +17,13 @@
 import { describe, expect, test } from 'vitest';
 import {
   ALL_EDITOR_IDS,
+  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   HOSTS_WITH_USER_SKILL_DIR,
   PROJECT_SKILL_EDITOR_IDS,
+  receivesProjectIntegrationWrite,
+  USER_MCP_GATED_EDITOR_IDS,
   USER_SKILL_HOSTS,
 } from '../constants/editors.ts';
 import { SkillTargetEditorSchema } from './schema.ts';
@@ -93,5 +96,55 @@ describe('project-skill editor-id single source', () => {
     // it has no project skill surface (reads user-global skills only).
     expect(EDITOR_PROJECT_SKILL_ROOT['claude-desktop']).toBeNull();
     expect(SkillTargetEditorSchema.options).not.toContain('claude-desktop');
+  });
+});
+
+describe('receivesProjectIntegrationWrite', () => {
+  // Surface membership is necessary but not sufficient: this predicate is what
+  // a project-scoped picker owes the user, because it answers "will ticking
+  // this produce a file?" rather than "could it in principle?".
+  const installed = { userMcpEntryInstalled: true };
+  const notInstalled = { userMcpEntryInstalled: false };
+
+  test('an editor with a project MCP config always writes, whatever the global state', () => {
+    for (const id of ['claude', 'cursor', 'codex', 'opencode', 'pi'] as const) {
+      expect(EDITOR_PROJECT_CONFIG_PATH[id]).not.toBeNull();
+      expect(receivesProjectIntegrationWrite(id, installed)).toBe(true);
+      expect(receivesProjectIntegrationWrite(id, notInstalled)).toBe(true);
+    }
+  });
+
+  test('a user-global-only editor never writes', () => {
+    for (const id of [
+      'claude-desktop',
+      'openclaw',
+      'antigravity',
+      'lm-studio',
+      'hermes',
+    ] as const) {
+      expect(receivesProjectIntegrationWrite(id, installed)).toBe(false);
+      expect(receivesProjectIntegrationWrite(id, notInstalled)).toBe(false);
+    }
+  });
+
+  test('Copilot writes only once its user-global entry exists', () => {
+    // Copilot is skill-only at project scope (`.github/skills`) and
+    // `isProjectSkillPrerequisiteMet` refuses to write that skill until
+    // Copilot's user-global OpenKnowledge entry is there — the skill would sit
+    // on disk unloaded. Until then, a project setup writes nothing for it.
+    expect(EDITOR_PROJECT_CONFIG_PATH.copilot).toBeNull();
+    expect(USER_MCP_GATED_EDITOR_IDS.map(String)).toContain('copilot');
+    expect(receivesProjectIntegrationWrite('copilot', notInstalled)).toBe(false);
+    expect(receivesProjectIntegrationWrite('copilot', installed)).toBe(true);
+  });
+
+  test('every gated editor is skill-only — a project MCP config would make the gate moot', () => {
+    // The gate exists because the skill is the ONLY project artifact. An editor
+    // that also writes a project MCP config would short-circuit to true above,
+    // silently making its presence in the list decorative.
+    for (const id of USER_MCP_GATED_EDITOR_IDS) {
+      expect(EDITOR_PROJECT_CONFIG_PATH[id]).toBeNull();
+      expect(EDITOR_PROJECT_SKILL_ROOT[id]).not.toBeNull();
+    }
   });
 });

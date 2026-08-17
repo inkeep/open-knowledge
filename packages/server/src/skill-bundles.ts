@@ -70,6 +70,26 @@ export const BUNDLE_SCOPE: Record<BundleId, 'user' | 'project'> = {
 export const USER_GLOBAL_BUNDLE_IDS = BUNDLE_IDS.filter((id) => BUNDLE_SCOPE[id] === 'user');
 
 /**
+ * The user-global bundles first-launch onboarding sets up as part of its single
+ * "connect my AI tools" decision. `discovery` only: it is what lets an agent
+ * recognize an OpenKnowledge project at all, so it belongs with the MCP wiring.
+ * `write-skill` is an authoring convenience with no bearing on whether the tools
+ * work, and onboarding neither installs nor records a decision for it — it stays
+ * available from Settings and from `ok init`.
+ *
+ * A bundle absent here is left with NO recorded decision, which `resolveBundleEnabled`
+ * reads as "uninstalled on a fresh machine, untouched where it already exists" —
+ * so dropping one from onboarding never uninstalls an existing copy.
+ *
+ * Spelled as a literal rather than filtered out of `USER_GLOBAL_BUNDLE_IDS`: a
+ * filter widens to `BundleId[]`, so renaming the `discovery` bundle would
+ * silently yield an EMPTY onboarding set — first launch would quietly stop
+ * offering the skill. `satisfies` turns that rename into a type error instead.
+ * The subset relationship with `USER_GLOBAL_BUNDLE_IDS` is asserted in tests.
+ */
+export const ONBOARDING_BUNDLE_IDS = ['discovery'] as const satisfies readonly BundleId[];
+
+/**
  * Repo-relative path of a bundle's `SKILL.md` (the file whose
  * `metadata.version` the release sync bumps). Derived from the id, which equals
  * the source-dir name.

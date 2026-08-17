@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -13,6 +13,12 @@ vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
+
+const DISCOVERY_SKILL = {
+  id: 'discovery',
+  name: 'open-knowledge-discovery',
+  paths: ['~/.agents/skills/open-knowledge-discovery', '~/.claude/skills/open-knowledge-discovery'],
+};
 
 const payload: OkMcpWiringShowPayload = {
   detectedEditors: [
@@ -46,10 +52,10 @@ const payload: OkMcpWiringShowPayload = {
     rcFilesToTouch: ['~/.zshrc', '~/.config/fish/conf.d/open-knowledge.fish'],
     alreadyInstalled: false,
   },
-  globalSkills: [],
+  globalSkills: [DISCOVERY_SKILL],
 };
 
-/** Same editors, zero detected — exercises the Add-enable matrix. */
+/** Same shell state, zero detected tools — exercises the empty state. */
 const noneDetectedPayload: OkMcpWiringShowPayload = {
   detectedEditors: [
     {
@@ -62,7 +68,7 @@ const noneDetectedPayload: OkMcpWiringShowPayload = {
     },
   ],
   pathInstall: payload.pathInstall,
-  globalSkills: [],
+  globalSkills: [DISCOVERY_SKILL],
 };
 
 function deferredResult() {
@@ -76,56 +82,8 @@ function deferredResult() {
 interface RecordedConfirm {
   editorIds: readonly string[];
   pathInstall: boolean | undefined;
-  skills?: readonly string[];
+  skills: readonly string[] | undefined;
 }
-
-/** Payload variant that offers both skill rows — exercises the skills section. */
-const skillsPayload: OkMcpWiringShowPayload = {
-  detectedEditors: [
-    {
-      id: 'claude',
-      label: 'Claude',
-      detected: true,
-      willReplace: false,
-      configPath: '~/.claude.json',
-      entryLocator: 'mcpServers.open-knowledge',
-    },
-  ],
-  pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
-  globalSkills: [
-    {
-      id: 'discovery',
-      name: 'open-knowledge-discovery',
-      alreadyInstalled: false,
-      description: 'Recognize OpenKnowledge projects and route reads and writes through it.',
-      size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
-      hosts: ['claude', 'cursor'],
-      paths: [
-        '~/.agents/skills/open-knowledge-discovery',
-        '~/.claude/skills/open-knowledge-discovery',
-      ],
-    },
-    {
-      id: 'write-skill',
-      name: 'open-knowledge-write-skill',
-      alreadyInstalled: true,
-      description: 'A guided workflow for authoring new Agent Skills.',
-      size: { alwaysOn: 156, onTrigger: 3218, onDemand: 916 },
-      hosts: ['claude', 'cursor'],
-      paths: [
-        '~/.agents/skills/open-knowledge-write-skill',
-        '~/.claude/skills/open-knowledge-write-skill',
-      ],
-    },
-  ],
-};
-
-/** Same two bundles, zero resolved hosts — exercises the disabled/unchecked
- *  state and the row's no-hosts copy (nothing can land). */
-const skillsNoHostsPayload: OkMcpWiringShowPayload = {
-  ...skillsPayload,
-  globalSkills: skillsPayload.globalSkills.map((s) => ({ ...s, hosts: [], paths: [] })),
-};
 
 function makeHarness({
   confirmResult = async () => ({ ok: true as const }),
@@ -145,7 +103,7 @@ function makeHarness({
       confirmCalls.push({
         editorIds: [...request.editorIds],
         pathInstall: request.pathInstall,
-        skills: request.skills ? [...request.skills] : undefined,
+        skills: request.skills ? [...request.skills] : request.skills,
       });
       return confirmResult(request.editorIds);
     },
@@ -169,8 +127,8 @@ async function renderDialog(harness = makeHarness()) {
   const { McpConsentDialogBody } = await import('./McpConsentDialogBody');
   const { TooltipProvider } = await import('@/components/ui/tooltip');
   // Mirror production: the app mounts a single root TooltipProvider (main.tsx),
-  // and the dialog's per-row info tooltips rely on it rather than each wrapping
-  // their own — so the isolated render must supply it too.
+  // and the PATH row's info tooltip relies on it rather than wrapping its own —
+  // so the isolated render must supply it too.
   render(
     <TooltipProvider>
       <McpConsentDialogBody
@@ -183,108 +141,72 @@ async function renderDialog(harness = makeHarness()) {
   return harness;
 }
 
-describe('McpConsentDialog runtime behavior', () => {
+describe('McpConsentDialog AI-tools decision', () => {
   afterEach(() => cleanup());
 
-  test('renders willReplace disclosure and preselects detected editors only', async () => {
+  test('one pre-checked box whose label names every tool in the write set', async () => {
     await renderDialog();
 
     expect(
       screen.getByRole('dialog', { name: 'Connect your AI tools to OpenKnowledge' }),
     ).toBeTruthy();
-    expect(screen.getByTestId('mcp-consent-status-claude').textContent).toBe(
-      'Will replace existing OpenKnowledge entry',
-    );
-    // Detected tools carry no status line — the checked box conveys it.
-    expect(screen.queryByTestId('mcp-consent-status-cursor')).toBeNull();
-    // Progressive disclosure: undetected codex starts hidden behind the toggle.
-    expect(screen.queryByTestId('mcp-consent-checkbox-codex')).toBeNull();
-    expect(screen.getByTestId('mcp-consent-checkbox-claude').getAttribute('aria-checked')).toBe(
+    expect(screen.getByTestId('mcp-consent-connect-checkbox').getAttribute('aria-checked')).toBe(
       'true',
     );
-    expect(screen.getByTestId('mcp-consent-checkbox-cursor').getAttribute('aria-checked')).toBe(
-      'true',
-    );
-
-    // Reveal the undetected tools — codex links to its setup guide, unchecked.
-    await userEvent.click(screen.getByTestId('mcp-consent-editors-toggle'));
-    const codexStatus = screen.getByTestId('mcp-consent-status-codex');
-    expect(codexStatus.tagName).toBe('A');
-    expect(codexStatus.textContent).toContain('How to set up');
-    expect(codexStatus.getAttribute('href')).toBe(
-      'https://openknowledge.ai/docs/integrations/codex',
-    );
-    expect(screen.getByTestId('mcp-consent-checkbox-codex').getAttribute('aria-checked')).toBe(
-      'false',
-    );
+    // Consent integrity: collapsed, the summary still discloses the write set.
+    const summary = screen.getByTestId('mcp-consent-connect-summary').textContent ?? '';
+    expect(summary).toContain('Claude');
+    expect(summary).toContain('Cursor');
+    // Undetected tools are not in the write set and are not named.
+    expect(summary).not.toContain('Codex');
   });
 
-  test('consent integrity: a checked undetected tool stays visible after collapse', async () => {
-    // Two undetected tools so a toggle still exists after one is checked.
+  test('consent integrity: the overwrite warning shows without expanding anything', async () => {
+    await renderDialog();
+
+    // Claude carries willReplace; the warning must be visible while the
+    // disclosure is still collapsed, naming the tool whose entry is replaced.
+    expect(screen.queryByTestId('mcp-consent-details')).toBeNull();
+    const warning = screen.getByTestId('mcp-consent-connect-replace-warning').textContent ?? '';
+    expect(warning).toContain('Claude');
+    expect(warning).not.toContain('Cursor');
+  });
+
+  test('no overwrite warning when nothing will be replaced', async () => {
     await renderDialog(
       makeHarness({
         snapshot: {
-          detectedEditors: [
-            {
-              id: 'claude',
-              label: 'Claude',
-              detected: true,
-              willReplace: false,
-              configPath: '~/.claude.json',
-              entryLocator: 'mcpServers.open-knowledge',
-            },
-            {
-              id: 'codex',
-              label: 'Codex',
-              detected: false,
-              willReplace: false,
-              configPath: '~/.codex/config.toml',
-              entryLocator: '[mcp_servers.open-knowledge]',
-            },
-            {
-              id: 'opencode',
-              label: 'OpenCode',
-              detected: false,
-              willReplace: false,
-              configPath: '~/.config/opencode/opencode.json',
-              entryLocator: 'mcp.open-knowledge',
-            },
-          ],
-          pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
-          globalSkills: [],
+          ...payload,
+          detectedEditors: payload.detectedEditors.map((e) => ({ ...e, willReplace: false })),
         },
       }),
     );
-    // Both undetected tools hidden until expanded.
-    expect(screen.queryByTestId('mcp-consent-checkbox-codex')).toBeNull();
-
-    await userEvent.click(screen.getByTestId('mcp-consent-editors-toggle'));
-    await userEvent.click(screen.getByTestId('mcp-consent-checkbox-codex'));
-    expect(screen.getByTestId('mcp-consent-checkbox-codex').getAttribute('aria-checked')).toBe(
-      'true',
-    );
-
-    // Collapse: checked codex stays visible (still in the write set); unchecked
-    // opencode hides again, so the toggle persists.
-    await userEvent.click(screen.getByTestId('mcp-consent-editors-toggle'));
-    expect(screen.getByTestId('mcp-consent-checkbox-codex').getAttribute('aria-checked')).toBe(
-      'true',
-    );
-    expect(screen.queryByTestId('mcp-consent-checkbox-opencode')).toBeNull();
+    expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
   });
 
-  test('location tooltip discloses the config file and entry locator on focus', async () => {
+  test('the disclosure lists every config file, entry and skill destination', async () => {
     await renderDialog();
-    // Content is portaled — mounts only once the info trigger is focused. Radix
-    // renders it twice when open (visible + a11y mirror), so assert getAllByText.
-    screen.getByTestId('mcp-consent-editor-info-claude').focus();
-    await waitFor(() => {
-      expect(screen.getAllByText('~/.claude.json').length).toBeGreaterThan(0);
-      expect(screen.getAllByText('mcpServers.open-knowledge').length).toBeGreaterThan(0);
-    });
+
+    await userEvent.click(screen.getByTestId('mcp-consent-details-toggle'));
+    const details = screen.getByTestId('mcp-consent-details');
+
+    expect(details.textContent).toContain('~/.claude.json');
+    expect(details.textContent).toContain('mcpServers.open-knowledge');
+    expect(details.textContent).toContain('~/.cursor/mcp.json');
+    // Undetected tools get no row — nothing is written for them.
+    expect(screen.queryByTestId('mcp-consent-detail-codex')).toBeNull();
+
+    // Skill destinations come from the payload (main computes them from the
+    // installer's own gates), never re-derived in the renderer.
+    const skillDetail = screen.getByTestId('mcp-consent-detail-skill-discovery');
+    expect(skillDetail.textContent).toContain('~/.agents/skills/open-knowledge-discovery');
+    expect(skillDetail.textContent).toContain('~/.claude/skills/open-knowledge-discovery');
+
+    await userEvent.click(screen.getByTestId('mcp-consent-details-toggle'));
+    expect(screen.queryByTestId('mcp-consent-details')).toBeNull();
   });
 
-  test('location tooltip shows the null-configPath fallback', async () => {
+  test('the null-configPath fallback renders in the disclosure', async () => {
     // claude-desktop has no user-global config on this platform (configPath null).
     await renderDialog(
       makeHarness({
@@ -293,7 +215,7 @@ describe('McpConsentDialog runtime behavior', () => {
             {
               id: 'claude-desktop',
               label: 'Claude Desktop',
-              detected: false,
+              detected: true,
               willReplace: false,
               configPath: null,
               entryLocator: 'mcpServers.open-knowledge',
@@ -304,42 +226,104 @@ describe('McpConsentDialog runtime behavior', () => {
         },
       }),
     );
-    screen.getByTestId('mcp-consent-editor-info-claude-desktop').focus();
+
+    await userEvent.click(screen.getByTestId('mcp-consent-details-toggle'));
+    expect(screen.getByTestId('mcp-consent-detail-claude-desktop').textContent).toContain(
+      'unavailable on this platform',
+    );
+  });
+
+  test('Continue sends every detected tool plus the offered skill bundles', async () => {
+    const harness = await renderDialog();
+
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
     await waitFor(() => {
-      expect(screen.getAllByText('unavailable on this platform').length).toBeGreaterThan(0);
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: ['claude', 'cursor'], pathInstall: true, skills: ['discovery'] },
+      ]);
     });
   });
 
-  test('undetected claude-desktop links to the shared claude-code guide (aliased slug)', async () => {
-    // claude-desktop → claude-code is the only non-1:1 entry in
-    // EDITOR_SETUP_DOC_SLUG; a regression to `editor.id` in the URL would 404.
-    await renderDialog(
-      makeHarness({
-        snapshot: {
-          detectedEditors: [
-            {
-              id: 'claude-desktop',
-              label: 'Claude Desktop',
-              detected: false,
-              willReplace: false,
-              configPath: null,
-              entryLocator: 'mcpServers.open-knowledge',
-            },
-          ],
-          pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
-          globalSkills: [],
-        },
-      }),
-    );
+  test('unchecking sends no editors AND no skill decision — declining never removes', async () => {
+    const harness = await renderDialog();
 
-    const status = screen.getByTestId('mcp-consent-status-claude-desktop');
-    expect(status.tagName).toBe('A');
-    expect(status.getAttribute('href')).toBe(
-      'https://openknowledge.ai/docs/integrations/claude-code',
-    );
+    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+
+    await waitFor(() => {
+      // `skills: undefined`, not `[]`: main reads an array as "decline every
+      // offered bundle and tear down any that is installed", which this screen
+      // must never do.
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: [], pathInstall: true, skills: undefined },
+      ]);
+    });
+    expect(harness.toastMessages).toEqual(['This can be configured in Settings > AI tools & CLI']);
   });
 
-  test('failed Add resets busy state, reports the error, and allows retry', async () => {
+  test('connecting does not fire the Settings pointer toast', async () => {
+    const harness = await renderDialog();
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await waitFor(() => {
+      expect(harness.confirmCalls.length).toBe(1);
+    });
+    expect(harness.toastMessages).toEqual([]);
+  });
+
+  test('no skills offered: subtext claims only MCP, and confirm sends no skill decision', async () => {
+    // `skillsOffered = false` drives two things a consent screen must not get
+    // wrong: the subtext must stop promising the discovery skill, and the
+    // confirm must send `skills: undefined` rather than an array — an array
+    // would record a decline for bundles that were never offered.
+    const harness = await renderDialog(makeHarness({ snapshot: { ...payload, globalSkills: [] } }));
+
+    const row = screen.getByTestId('mcp-consent-connect-checkbox').closest('label');
+    expect(row?.textContent ?? '').not.toContain('discovery');
+    expect(row?.textContent ?? '').not.toContain('skill');
+
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await waitFor(() => {
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: ['claude', 'cursor'], pathInstall: true, skills: undefined },
+      ]);
+    });
+  });
+
+  test('the overwrite warning disappears when the box is unchecked', async () => {
+    // "Replaces …" is present tense. Leaving it up after an uncheck states a
+    // consequence that will not happen, and reads as the uncheck not taking.
+    await renderDialog();
+    expect(screen.getByTestId('mcp-consent-connect-replace-warning')).toBeTruthy();
+    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
+    expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
+  });
+
+  test('no detected tools: no checkbox, an explanatory line, and a PATH-only confirm', async () => {
+    const harness = await renderDialog(makeHarness({ snapshot: noneDetectedPayload }));
+
+    expect(screen.queryByTestId('mcp-consent-connect-checkbox')).toBeNull();
+    expect(screen.getByTestId('mcp-consent-no-tools').textContent).toContain(
+      'No AI tools detected',
+    );
+
+    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    await userEvent.click(add);
+    await waitFor(() => {
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: [], pathInstall: true, skills: undefined },
+      ]);
+    });
+  });
+
+  test('Continue stays enabled with nothing selected — it always records a decision', async () => {
+    await renderDialog();
+    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
+    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
+    expect((screen.getByTestId('mcp-consent-add') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('failed Continue resets busy state, reports the error, and allows retry', async () => {
     const first = deferredResult();
     const second = deferredResult();
     const outcomes = [first, second];
@@ -349,11 +333,9 @@ describe('McpConsentDialog runtime behavior', () => {
     await renderDialog(harness);
 
     const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
-    const skip = screen.getByTestId('mcp-consent-skip') as HTMLButtonElement;
 
     await userEvent.click(add);
     expect(add.disabled).toBe(true);
-    expect(skip.disabled).toBe(true);
     expect(add.textContent).toBe('Working');
 
     first.resolve({ ok: false, error: 'Could not write Claude config' });
@@ -361,65 +343,14 @@ describe('McpConsentDialog runtime behavior', () => {
       expect(add.disabled).toBe(false);
     });
 
-    expect(skip.disabled).toBe(false);
-    expect(add.textContent).toBe('Connect');
-    expect(harness.confirmCalls).toEqual([{ editorIds: ['claude', 'cursor'], pathInstall: true }]);
+    expect(add.textContent).toBe('Continue');
     expect(harness.toastErrors).toEqual(['Could not write Claude config']);
 
     await userEvent.click(add);
     second.resolve({ ok: false, error: 'Still unwritable' });
     await waitFor(() => {
-      expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: true },
-        { editorIds: ['claude', 'cursor'], pathInstall: true },
-      ]);
+      expect(harness.confirmCalls.length).toBe(2);
     });
-  });
-
-  test('failed Skip resets busy state, reports the error, and allows retry', async () => {
-    const first = deferredResult();
-    const second = deferredResult();
-    const outcomes = [first, second];
-    const harness = makeHarness({
-      skipResult: async () => outcomes.shift()?.promise ?? { ok: true },
-    });
-    await renderDialog(harness);
-
-    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
-    const skip = screen.getByTestId('mcp-consent-skip') as HTMLButtonElement;
-
-    await userEvent.click(skip);
-    expect(add.disabled).toBe(true);
-    expect(skip.disabled).toBe(true);
-
-    first.resolve({ ok: false, error: 'Could not write marker' });
-    await waitFor(() => {
-      expect(skip.disabled).toBe(false);
-    });
-
-    expect(add.disabled).toBe(false);
-    expect(harness.skipCalls).toEqual(['skip']);
-    expect(harness.toastErrors).toEqual(['Could not write marker']);
-
-    await userEvent.click(skip);
-    second.resolve({ ok: false, error: 'Still cannot write marker' });
-    await waitFor(() => {
-      expect(harness.skipCalls).toEqual(['skip', 'skip']);
-    });
-  });
-
-  test('successful Skip points the user at the Settings surface via a toast', async () => {
-    const harness = makeHarness();
-    await renderDialog(harness);
-
-    await userEvent.click(screen.getByTestId('mcp-consent-skip'));
-
-    await waitFor(() => {
-      expect(harness.toastMessages).toEqual([
-        'This can be configured in Settings > AI tools & CLI',
-      ]);
-    });
-    expect(harness.toastErrors).toEqual([]);
   });
 });
 
@@ -456,7 +387,7 @@ describe('McpConsentDialog PATH consent row', () => {
     );
   });
 
-  test('unchecking the toggle sends pathInstall:false on Add', async () => {
+  test('unchecking the toggle sends pathInstall:false on Continue', async () => {
     const harness = await renderDialog();
 
     await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
@@ -464,29 +395,9 @@ describe('McpConsentDialog PATH consent row', () => {
 
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: false },
+        { editorIds: ['claude', 'cursor'], pathInstall: false, skills: ['discovery'] },
       ]);
     });
-  });
-
-  test('FR8: zero editors selected + PATH checked keeps Add enabled and confirms PATH-only', async () => {
-    const harness = await renderDialog(makeHarness({ snapshot: noneDetectedPayload }));
-
-    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
-    expect(add.disabled).toBe(false);
-
-    await userEvent.click(add);
-    await waitFor(() => {
-      expect(harness.confirmCalls).toEqual([{ editorIds: [], pathInstall: true }]);
-    });
-  });
-
-  test('FR8: zero editors + PATH unchecked disables Add', async () => {
-    await renderDialog(makeHarness({ snapshot: noneDetectedPayload }));
-
-    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
-    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
-    expect(add.disabled).toBe(true);
   });
 
   test('alreadyInstalled renders an informational row and solicits no decision', async () => {
@@ -509,7 +420,7 @@ describe('McpConsentDialog PATH consent row', () => {
     await userEvent.click(screen.getByTestId('mcp-consent-add'));
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: undefined },
+        { editorIds: ['claude', 'cursor'], pathInstall: undefined, skills: ['discovery'] },
       ]);
     });
   });
@@ -529,121 +440,42 @@ describe('McpConsentDialog PATH consent row', () => {
     await userEvent.click(screen.getByTestId('mcp-consent-add'));
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: undefined },
+        { editorIds: ['claude', 'cursor'], pathInstall: undefined, skills: ['discovery'] },
       ]);
     });
   });
 });
 
-describe('McpConsentDialog skills section', () => {
+describe('McpConsentDialog dismissal', () => {
   afterEach(() => cleanup());
 
-  test('FR2: renders one pre-checked row per bundle', async () => {
-    await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    for (const id of ['discovery', 'write-skill']) {
-      expect(
-        screen.getByTestId(`mcp-consent-skill-checkbox-${id}`).getAttribute('aria-checked'),
-      ).toBe('true');
-    }
-  });
+  test('Escape skips without recording any decision and points at Settings', async () => {
+    const harness = await renderDialog();
 
-  test('FR9: unchecking write-skill sends only the checked bundle on Add', async () => {
-    const harness = await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-write-skill'));
-    // Unchecking an already-installed bundle surfaces the removal warning.
-    expect(screen.getByTestId('mcp-consent-skill-warning-write-skill')).toBeTruthy();
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await userEvent.keyboard('{Escape}');
+
     await waitFor(() => {
-      expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude'], pathInstall: undefined, skills: ['discovery'] },
-      ]);
+      expect(harness.skipCalls).toEqual(['skip']);
     });
-  });
-
-  test('declining every skill keeps Add enabled and confirms an empty skill set', async () => {
-    const harness = await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-discovery'));
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-write-skill'));
-    // Uncheck the only detected editor too — Add stays enabled because skills
-    // were offered (declining is itself an action).
-    await userEvent.click(screen.getByTestId('mcp-consent-checkbox-claude'));
-    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
-    expect(add.disabled).toBe(false);
-    await userEvent.click(add);
-    await waitFor(() => {
-      expect(harness.confirmCalls).toEqual([{ editorIds: [], pathInstall: undefined, skills: [] }]);
-    });
-  });
-
-  test("renders each skill's own frontmatter description, not hand-written subtext", async () => {
-    await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    expect(screen.getByText('A guided workflow for authoring new Agent Skills.')).toBeTruthy();
-  });
-
-  test('states skill reach is independent of the MCP editor selection', async () => {
-    await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    expect(screen.getByTestId('mcp-consent-skill-fanout-note').textContent).toContain(
-      'independent of the MCP',
-    );
-  });
-
-  test('clicking a row expands it in place with the full cost and destination list', async () => {
-    await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    // Collapsed: no expansion mounted.
-    expect(screen.queryByTestId('mcp-consent-skill-expansion-write-skill')).toBeNull();
-
-    // The row body is the expand affordance (first launch expands; it never
-    // navigates away). Clicking the skill name bubbles to its row button.
-    await userEvent.click(screen.getByText('open-knowledge-write-skill'));
-
-    const expansion = screen.getByTestId('mcp-consent-skill-expansion-write-skill');
-    // Full three-tier cost — the on-demand tier appears only here, never on the
-    // compact row above it.
-    expect(expansion.textContent).toContain('on demand');
-    // Every destination path is disclosed, including the ~/.agents hub — the
-    // same list the Settings confirm modal carries.
-    const paths = within(expansion).getByTestId('skill-destination-list');
-    expect(paths.textContent).toContain('~/.agents/skills/open-knowledge-write-skill');
-    expect(paths.textContent).toContain('~/.claude/skills/open-knowledge-write-skill');
-    // The dialog is never left.
-    expect(
-      screen.getByRole('dialog', { name: 'Connect your AI tools to OpenKnowledge' }),
-    ).toBeTruthy();
-  });
-
-  test('checking a skill stages it — nothing is written until Connect', async () => {
-    const harness = await renderDialog(makeHarness({ snapshot: skillsPayload }));
-    // Toggle discovery off then on — the checkbox itself never confirms.
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-discovery'));
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox-discovery'));
     expect(harness.confirmCalls).toEqual([]);
-    // Only Connect commits the staged set.
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
-    await waitFor(() => {
-      expect(harness.confirmCalls).toHaveLength(1);
-    });
+    expect(harness.toastMessages).toEqual(['This can be configured in Settings > AI tools & CLI']);
   });
 
-  test('zero resolved hosts unchecks and disables the skill checkboxes with a reason', async () => {
-    await renderDialog(makeHarness({ snapshot: skillsNoHostsPayload }));
-    for (const id of ['discovery', 'write-skill']) {
-      const box = screen.getByTestId(`mcp-consent-skill-checkbox-${id}`);
-      expect(box.getAttribute('aria-checked')).toBe('false');
-      expect(box.hasAttribute('disabled')).toBe(true);
-    }
-    // Each row states what would make it installable — the shared no-hosts copy.
-    expect(screen.getAllByTestId('skill-consent-row-no-hosts')).toHaveLength(2);
-  });
+  test('failed skip resets busy state and reports the error', async () => {
+    const first = deferredResult();
+    const harness = makeHarness({ skipResult: async () => first.promise });
+    await renderDialog(harness);
 
-  test('a staged skill with zero hosts is never sent on Connect', async () => {
-    const harness = await renderDialog(makeHarness({ snapshot: skillsNoHostsPayload }));
-    // Skills were offered, so Add stays enabled; confirming sends an empty set
-    // (nothing can land nowhere) rather than the pre-checked default.
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await userEvent.keyboard('{Escape}');
+    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
     await waitFor(() => {
-      expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude'], pathInstall: undefined, skills: [] },
-      ]);
+      expect(add.disabled).toBe(true);
     });
+
+    first.resolve({ ok: false, error: 'Could not write marker' });
+    await waitFor(() => {
+      expect(add.disabled).toBe(false);
+    });
+    expect(harness.toastErrors).toEqual(['Could not write marker']);
   });
 });

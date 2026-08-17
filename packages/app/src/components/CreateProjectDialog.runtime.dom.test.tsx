@@ -1,4 +1,4 @@
-import { ALL_EDITOR_IDS, EDITOR_LABELS } from '@inkeep/open-knowledge-core';
+import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -77,6 +77,15 @@ const UNDETECTED: OkMcpWiringEditorId = 'codex';
 function makeBridge() {
   let pickedParent: string | null = PARENT;
   let detectedEditorIdsImpl = (): Promise<OkMcpWiringEditorId[]> => Promise.resolve([...DETECTED]);
+  /** Per-editor user-global MCP state. Empty = no editor has an OK entry yet. */
+  let editorStatesImpl = (): Array<{
+    id: OkMcpWiringEditorId;
+    label: string;
+    detected: boolean;
+    state: 'installed' | 'not-installed' | 'foreign' | 'unmanageable';
+    configPath: string | null;
+    entryLocator: string;
+  }> => [];
   let defaultRootImpl = (): Promise<string> => Promise.resolve(PARENT);
   let folderStateImpl = async (_path: string): Promise<OkFolderState> => 'free';
   let createNewImpl = (): Promise<void> => Promise.resolve();
@@ -109,11 +118,13 @@ function makeBridge() {
       }),
     },
     integrations: {
-      // The dialog reads only `detectedEditorIds` off this snapshot; the rest of
-      // the shape exists so the fake matches the real status contract.
+      // The dialog reads `detectedEditorIds` plus each editor's `state` (which
+      // tells it whether a user-global OpenKnowledge entry exists — Copilot's
+      // project skill is gated on that). The rest of the shape exists so the
+      // fake matches the real status contract.
       status: vi.fn(async () => ({
         available: true,
-        editors: [],
+        editors: editorStatesImpl(),
         path: { shellDetected: false, rcFilesToTouch: [], installed: false },
         skills: [],
         detectedEditorIds: await detectedEditorIdsImpl(),
@@ -152,6 +163,9 @@ function makeBridge() {
     },
     setDetectedEditorsImpl: (next: () => Promise<OkMcpWiringEditorId[]>) => {
       detectedEditorIdsImpl = next;
+    },
+    setEditorStatesImpl: (next: typeof editorStatesImpl) => {
+      editorStatesImpl = next;
     },
     setDefaultProjectsRootImpl: (next: () => Promise<string>) => {
       defaultRootImpl = next;
@@ -208,7 +222,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     cleanup();
   });
 
-  test('detected agent harnesses start selected, undetected ones do not, and edits ride along', async () => {
+  test('the AI-tools row is always visible, names the detected tools, and rides along on submit', async () => {
     const stub = await renderDialog();
 
     const form = screen.getByTestId('create-project-form') as HTMLFormElement;
@@ -235,36 +249,33 @@ describe('CreateProjectDialog runtime wiring', () => {
 
     await waitForLocationHydrate();
 
-    // Config sharing and the editor controls both live inside the collapsed
-    // "Advanced settings" section (Radix unmounts collapsed content), so
-    // neither is in the DOM until the section is expanded.
+    // Config sharing still lives inside the collapsed "Advanced settings"
+    // section (Radix unmounts collapsed content), so it is not in the DOM until
+    // expanded. The AI-tools decision no longer does — it decides whether the
+    // project is reachable from the user's agents at all.
     expect(screen.queryByTestId('create-sharing')).toBeNull();
-    expect(screen.queryByTestId('create-editor-cursor')).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId('create-editors-checkbox').getAttribute('aria-checked')).toBe(
+        'true',
+      );
+    });
     fireEvent.click(screen.getByTestId('create-advanced-trigger'));
     expect(screen.getByTestId('create-sharing')).not.toBeNull();
 
-    // Every editor still renders a labelled row; only the DETECTED ones come
-    // pre-checked. A tool whose host root does not exist is never pre-selected,
-    // so we never create a config dir for something the user doesn't have.
-    await waitFor(() => {
-      expect(screen.getByTestId('create-editor-claude').getAttribute('aria-checked')).toBe('true');
-    });
-    for (const id of ALL_EDITOR_IDS) {
-      const checkbox = screen.getByTestId(`create-editor-${id}`);
-      expect(checkbox.closest('label')?.textContent).toContain(EDITOR_LABELS[id]);
-      expect(checkbox.getAttribute('aria-checked')).toBe(DETECTED.includes(id) ? 'true' : 'false');
-    }
-    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
-      'false',
-    );
+    // Consent integrity: collapsed, the label already names every tool that
+    // gets written to, and names no tool that doesn't.
+    const summary = screen.getByTestId('create-editors-summary').textContent ?? '';
+    for (const id of DETECTED) expect(summary).toContain(EDITOR_LABELS[id]);
+    expect(summary).not.toContain(EDITOR_LABELS[UNDETECTED]);
+    // Undetected tools have no row anywhere — nothing is written for them.
+    expect(screen.queryByTestId(`create-editor-${UNDETECTED}`)).toBeNull();
 
-    // Ticking an undetected tool adds it; unticking a detected one drops it.
-    fireEvent.click(screen.getByTestId(`create-editor-${UNDETECTED}`));
-    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
-      'true',
-    );
-    fireEvent.click(screen.getByTestId('create-editor-cursor'));
-    expect(screen.getByTestId('create-editor-cursor').getAttribute('aria-checked')).toBe('false');
+    // The disclosure names the exact project-relative artifacts.
+    fireEvent.click(screen.getByTestId('create-editors-details-toggle'));
+    const details = screen.getByTestId('create-editors-details');
+    expect(details.textContent).toContain('.mcp.json');
+    expect(details.textContent).toContain('.claude/skills/open-knowledge/');
+    expect(details.textContent).toContain('.cursor/mcp.json');
 
     fireEvent.click(cancel);
     expect(stub.onOpenChange).toHaveBeenCalledWith(false);
@@ -282,21 +293,17 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(submitted?.parent).toBe(PARENT);
     expect(submitted?.name).toBe(PROJECT_NAME);
     expect(submitted?.sharing).toBe('shared');
-    expect([...(submitted?.editors ?? [])].sort()).toEqual(['claude', UNDETECTED].sort());
+    expect([...(submitted?.editors ?? [])].sort()).toEqual([...DETECTED].sort());
     expect(stub.onOpenChange).toHaveBeenLastCalledWith(false);
   });
 
-  test('submitting without ever opening Advanced settings wires the detected editors', async () => {
-    // The regression this pins: the editor checkboxes live behind a collapsed
-    // "Advanced settings" section, so the overwhelmingly common path is
-    // name → Create. That path must still produce MCP config + the project
-    // skill for the tools the user actually has — an empty `editors` array
-    // silently yields a project wired to nothing, and nothing back-fills it.
+  test('the straight-through path wires the detected editors', async () => {
+    // The overwhelmingly common path is name → Create. It must produce MCP
+    // config + the project skill for the tools the user actually has — an empty
+    // `editors` array silently yields a project wired to nothing, and nothing
+    // back-fills it.
     const stub = await renderDialog();
     await waitForLocationHydrate();
-
-    // Advanced is never expanded in this test.
-    expect(screen.queryByTestId('create-editor-claude')).toBeNull();
 
     await typeProjectName(PROJECT_NAME);
     await waitForSubmitEnabled();
@@ -308,13 +315,14 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect([...(stub.createNewCalls[0]?.editors ?? [])].sort()).toEqual([...DETECTED].sort());
   });
 
-  test('a failed detection probe leaves the selection empty rather than guessing', async () => {
-    // Degrade toward writing nothing, never toward creating host roots for
-    // tools we could not confirm. Advanced settings remains the manual escape.
-    const stub = makeBridge();
-    stub.setDetectedEditorsImpl(() => Promise.reject(new Error('detection blew up')));
-    await renderDialog(stub);
+  test('unchecking the row creates the project without wiring anything', async () => {
+    const stub = await renderDialog();
     await waitForLocationHydrate();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-editors-checkbox')).not.toBeNull();
+    });
+    fireEvent.click(screen.getByTestId('create-editors-checkbox'));
 
     await typeProjectName(PROJECT_NAME);
     await waitForSubmitEnabled();
@@ -326,11 +334,178 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(stub.createNewCalls[0]?.editors).toEqual([]);
   });
 
-  test('a detection probe that lands after the user ticks does not clobber the selection', async () => {
-    // Seeding is an async round-trip the user can beat: Advanced is one click
-    // away and the checkboxes are live well before `integrations.status()`
-    // resolves. Whatever the checkboxes show after the user's click is what
-    // gets submitted — a late seed neither replaces nor merges into it.
+  test('a detected user-global-only tool is neither named nor submitted', async () => {
+    // Claude Desktop has no project MCP config and no project skill root, so
+    // every project writer returns `skipped-unsupported` for it. Detection
+    // still finds it (its host root exists), which is exactly why the filter
+    // has to be on what gets WRITTEN rather than on what was detected.
+    const stub = makeBridge();
+    stub.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'claude-desktop']));
+    await renderDialog(stub);
+    await waitForLocationHydrate();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-editors-checkbox')).not.toBeNull();
+    });
+    const summary = screen.getByTestId('create-editors-summary').textContent ?? '';
+    expect(summary).toContain(EDITOR_LABELS.claude);
+    expect(summary).not.toContain(EDITOR_LABELS['claude-desktop']);
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    expect(stub.createNewCalls[0]?.editors).toEqual(['claude']);
+  });
+
+  test('Copilot is dropped until its user-global entry exists, then included', async () => {
+    // Copilot's project skill (`.github/skills`) is refused by
+    // `isProjectSkillPrerequisiteMet` until Copilot's USER-GLOBAL OpenKnowledge
+    // entry is present, and it has no project MCP config — so before that, a
+    // create writes nothing for it and must not say otherwise.
+    const withoutEntry = makeBridge();
+    withoutEntry.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'copilot']));
+    await renderDialog(withoutEntry);
+    await waitForLocationHydrate();
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-editors-checkbox')).not.toBeNull();
+    });
+    expect(screen.getByTestId('create-editors-summary').textContent ?? '').not.toContain(
+      EDITOR_LABELS.copilot,
+    );
+
+    cleanup();
+
+    const withEntry = makeBridge();
+    withEntry.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'copilot']));
+    withEntry.setEditorStatesImpl(() => [
+      {
+        id: 'copilot',
+        label: EDITOR_LABELS.copilot,
+        detected: true,
+        state: 'installed',
+        configPath: '~/.copilot/mcp-config.json',
+        entryLocator: 'mcpServers.open-knowledge',
+      },
+    ]);
+    await renderDialog(withEntry);
+    await waitForLocationHydrate();
+    await waitFor(() => {
+      expect(screen.getByTestId('create-editors-summary').textContent ?? '').toContain(
+        EDITOR_LABELS.copilot,
+      );
+    });
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => {
+      expect(withEntry.createNewCalls).toHaveLength(1);
+    });
+    expect([...(withEntry.createNewCalls[0]?.editors ?? [])].sort()).toEqual(['claude', 'copilot']);
+  });
+
+  test('a foreign Copilot entry is treated as not-connected', async () => {
+    // The renderer reads `state === 'installed'` — deliberately stricter than the
+    // write path, which passes on ANY entry under OpenKnowledge's server name.
+    // A foreign entry means OK's MCP isn't registered, so the skill would point
+    // the agent at tools that aren't there. Widening this filter to
+    // `!== 'not-installed'` is the regression this pins.
+    const stub = makeBridge();
+    stub.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'copilot']));
+    stub.setEditorStatesImpl(() => [
+      {
+        id: 'copilot',
+        label: EDITOR_LABELS.copilot,
+        detected: true,
+        state: 'foreign',
+        configPath: '~/.copilot/mcp-config.json',
+        entryLocator: 'mcpServers.open-knowledge',
+      },
+    ]);
+    await renderDialog(stub);
+    await waitForLocationHydrate();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-editors-checkbox')).not.toBeNull();
+    });
+    expect(screen.getByTestId('create-editors-summary').textContent ?? '').not.toContain(
+      EDITOR_LABELS.copilot,
+    );
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    expect(stub.createNewCalls[0]?.editors).toEqual(['claude']);
+  });
+
+  test('Create stays blocked while detection is in flight, so no project is wired to nothing', async () => {
+    // The detection probe settles independently of the location/cascade probes,
+    // so Create could otherwise unlock while `detectedEditors` is still null —
+    // and submitting then sends `editors: []`, silently creating a project wired
+    // to nothing while the row still reads "Checking which AI tools you have".
+    let releaseDetection = (): void => {};
+    const stub = makeBridge();
+    stub.setDetectedEditorsImpl(
+      () =>
+        new Promise<OkMcpWiringEditorId[]>((resolve) => {
+          releaseDetection = () => resolve([...DETECTED]);
+        }),
+    );
+    await renderDialog(stub);
+    await waitForLocationHydrate();
+    await typeProjectName(PROJECT_NAME);
+
+    // Location probe has settled; detection has not. Create must stay disabled.
+    await waitFor(() => {
+      expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe(
+        'probing',
+      );
+    });
+    expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(true);
+
+    releaseDetection();
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    // The write set is the real one, not the empty list the race would produce.
+    expect([...(stub.createNewCalls[0]?.editors ?? [])].sort()).toEqual([...DETECTED].sort());
+  });
+
+  test('a failed detection probe settles empty rather than guessing', async () => {
+    // Degrade toward writing nothing, never toward creating host roots for
+    // tools we could not confirm — and say so, rather than hanging on the
+    // in-flight placeholder forever.
+    const stub = makeBridge();
+    stub.setDetectedEditorsImpl(() => Promise.reject(new Error('detection blew up')));
+    await renderDialog(stub);
+    await waitForLocationHydrate();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe('none');
+    });
+    expect(screen.queryByTestId('create-editors-checkbox')).toBeNull();
+
+    await typeProjectName(PROJECT_NAME);
+    await waitForSubmitEnabled();
+    fireEvent.click(screen.getByTestId('create-submit'));
+
+    await waitFor(() => {
+      expect(stub.createNewCalls).toHaveLength(1);
+    });
+    expect(stub.createNewCalls[0]?.editors).toEqual([]);
+  });
+
+  test('an in-flight probe shows a checking state, and a late result cannot flip the answer', async () => {
+    // The probe is a round-trip the user can beat. It fills the list of tools
+    // the label names; it never changes the answer the user already gave.
     let releaseDetection = (): void => {};
     const stub = makeBridge();
     stub.setDetectedEditorsImpl(
@@ -342,26 +517,31 @@ describe('CreateProjectDialog runtime wiring', () => {
     await renderDialog(stub);
     await waitForLocationHydrate();
 
-    fireEvent.click(screen.getByTestId('create-advanced-trigger'));
-    fireEvent.click(screen.getByTestId(`create-editor-${UNDETECTED}`));
-    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
-      'true',
-    );
+    // While probing: no checkbox to click yet, and the row says why. The status
+    // region is always mounted, so assert its state rather than its presence.
+    expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe('probing');
+    expect(screen.queryByTestId('create-editors-checkbox')).toBeNull();
 
     releaseDetection();
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-editors-checkbox')).not.toBeNull();
+    });
+    // Same node, new state — the region survived the transition rather than
+    // being torn down and remounted, which is what makes it announceable.
+    expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe('ready');
+    // Pre-checked on arrival; unchecking after the fact still wins.
+    fireEvent.click(screen.getByTestId('create-editors-checkbox'));
+    expect(screen.getByTestId('create-editors-checkbox').getAttribute('aria-checked')).toBe(
+      'false',
+    );
 
     await typeProjectName(PROJECT_NAME);
     await waitForSubmitEnabled();
-    expect(screen.getByTestId(`create-editor-${UNDETECTED}`).getAttribute('aria-checked')).toBe(
-      'true',
-    );
-    expect(screen.getByTestId('create-editor-claude').getAttribute('aria-checked')).toBe('false');
-
     fireEvent.click(screen.getByTestId('create-submit'));
     await waitFor(() => {
       expect(stub.createNewCalls).toHaveLength(1);
     });
-    expect(stub.createNewCalls[0]?.editors).toEqual([UNDETECTED]);
+    expect(stub.createNewCalls[0]?.editors).toEqual([]);
   });
 
   test('reopening the dialog re-collapses Advanced so sharing is hidden again', async () => {

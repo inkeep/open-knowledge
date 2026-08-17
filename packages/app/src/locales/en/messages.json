@@ -308,13 +308,6 @@
     "3pU8e-": ["Pin tab"],
     "3qDsdf": ["Install skill"],
     "3ri_4O": ["Keeps your knowledge base aligned with the Open Knowledge Format."],
-    "3s-k7L": [
-      [
-        "0",
-        "plural",
-        { "one": ["Show ", "#", " more tool"], "other": ["Show ", "#", " more tools"] }
-      ]
-    ],
     "3uSzeS": ["Images from anywhere · non-image files must be in the workspace"],
     "3v62tp": ["Popular on skills.sh"],
     "3wiBAs": ["Where should it live?"],
@@ -626,7 +619,6 @@
       ["0"],
       " — that folder is not this skill. Rename or delete one of the two to resolve."
     ],
-    "8IP5jY": ["Each selected tool gets an OpenKnowledge MCP entry."],
     "8Jm2EP": ["Toggle heading levels 1 through 6."],
     "8L0EPw": ["or paste a token"],
     "8OGgNM": ["Open or close visual-editor find."],
@@ -881,6 +873,9 @@
     "C0cll5": ["Installed at ", ["0"], " — click to remove"],
     "C0hoX6": ["Always included"],
     "C3Zc44": ["Explore skills"],
+    "C4HK3A": [
+      "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
+    ],
     "C62P6b": ["Editor selection"],
     "C7PKTv": ["Send checked comments to chat"],
     "C7waqI": [["0", "plural", { "one": ["#", " document"], "other": ["#", " documents"] }]],
@@ -1515,6 +1510,7 @@
     "L83DKQ": ["PATH install failed: ", ["summary"]],
     "L8fKuc": ["Run this in your terminal"],
     "L9Y9Om": ["Top linked pages"],
+    "LAR9ub": ["Replaces the existing OpenKnowledge entry in ", ["0"]],
     "LBv_TR": ["Convert locations to symlinks"],
     "LBwUR6": ["Branch switch timed out — try opening the ", ["targetNoun"], " manually."],
     "LCUy_N": ["Session ended"],
@@ -1766,6 +1762,9 @@
     "ODGGlj": ["Folder name: ", ["detail"]],
     "OEEQKT": ["Good"],
     "OETysD": ["No hub pages yet. Hubs appear once pages accumulate inbound graph links."],
+    "OFIL46": [
+      "Give the AI tools you use access to read and update your projects. You can change any of this later in Settings > AI tools & CLI."
+    ],
     "OJ4VDl": [
       "This agent runs through ",
       ["0"],
@@ -2113,7 +2112,6 @@
     "TDeOpa": [
       "Undo or redo your own edits, leaving edits from collaborators and agents in place."
     ],
-    "TEEPPF": ["Will replace existing OpenKnowledge entry"],
     "TEJiKw": ["OpenKnowledge checked ", ["subject"]],
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
@@ -2716,6 +2714,9 @@
       ". Install any of them from the plugin."
     ],
     "aRI3Om": ["Close Window"],
+    "aSVmqV": [
+      "No AI tools detected yet. Once you install one, connect it from Settings > This project."
+    ],
     "aWlJai": ["Starting sign-in flow"],
     "aXkLuE": ["Malformed apply response"],
     "a_2_uB": ["Couldn't create ", ["trimmed"], ": ", ["0"]],
@@ -2919,7 +2920,6 @@
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
     "dXCi3J": ["Something broke"],
     "dXOolp": ["Syncing your changes"],
-    "dXWMFn": ["Removes this skill from your editors."],
     "darW93": [
       [
         "pageCount",
@@ -2982,6 +2982,7 @@
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
     "eQn7nI": ["Loading config sharing"],
+    "eQsWFc": ["Agent Skill"],
     "eQxm13": ["Failed to update attachment location — ", ["detail"]],
     "eRSPr9": ["Open terminal"],
     "eTL5y9": ["Show selection preview"],
@@ -3061,6 +3062,7 @@
     "fhaxJL": ["Clone failed — empty response body"],
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
+    "fmwwju": ["Adds OpenKnowledge's MCP connection to each."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
     "fo0VXg": ["Uninstall"],
     "fo6CCk": ["pane ", ["0"]],
@@ -3235,7 +3237,6 @@
     "hmYd9H": [
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
     ],
-    "hnlGzG": ["Skip for now"],
     "hnq8fP": ["Remove ", ["label"], " from context"],
     "hp8OtS": ["Added"],
     "hpDtUm": ["External wiki link"],
@@ -3352,6 +3353,7 @@
     "j2kt1j": [
       "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
     ],
+    "j4SmVY": ["Connect ", ["0"], " to this project"],
     "j5CWO4": ["Up to date"],
     "j9Vqvc": ["inherited"],
     "j9tqwO": ["Not in sidebar"],
@@ -3376,6 +3378,7 @@
     "jSO1X5": ["Inherited templates can't be renamed here — rename it in the folder that owns it."],
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
+    "jWzDfC": ["Checking which AI tools you have"],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
     "jbSG8V": ["Show Files (", ["sidebarShortcutLabel"], ")"],
@@ -3507,9 +3510,6 @@
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
     "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
     "ku0yLQ": ["Pages are embedded the first time a search needs them."],
-    "kwLcuN": [
-      "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
-    ],
     "kwNS82": ["This theme can’t be used until the file is fixed."],
     "ky9Tuc": ["Edit ", ["0"], " source"],
     "kzpkcn": ["Couldn't save that edit."],
@@ -4134,6 +4134,9 @@
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge wrote a document"],
+    "tLd2qa": [
+      "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
+    ],
     "tM5uzl": [
       "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
     ],
@@ -4428,6 +4431,7 @@
     "xEb24l": ["Let us follow up by email"],
     "xFQRu4": ["I already have it locally"],
     "xG4tb6": ["Lost connection to \"", ["docName"], "\"."],
+    "xGVfLh": ["Continue"],
     "xHGM4U": ["Hide HTML preview"],
     "xK291b": ["Two-page (odd)"],
     "xKDsGS": ["Go to line ", ["0"], " in ", ["1"]],
@@ -4519,6 +4523,9 @@
     "ycIX5i": ["You're signed out — sign in to resume syncing."],
     "yckias": ["Rename file"],
     "ydzS9x": ["Exit"],
+    "yeMZk8": [
+      "Adds OpenKnowledge's MCP connection to each, plus the open-knowledge-discovery skill so your agents recognize OpenKnowledge projects."
+    ],
     "yf5auF": ["Search rules by id, alias, or name"],
     "yf5r22": [
       ["keyName"],

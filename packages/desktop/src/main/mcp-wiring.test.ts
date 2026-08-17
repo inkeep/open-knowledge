@@ -714,16 +714,19 @@ function buildWiringOpts(overrides: Partial<WiringOpts> = {}): WiringOpts {
 }
 
 describe('runMcpWiringOnFirstLaunch — skills consent leg', () => {
+  // Two bundles even though onboarding currently offers one: this module is
+  // generic over whatever main hands it, and a multi-bundle payload is what
+  // exercises the per-bundle grant/decline split.
   const TWO_SKILLS = [
     {
       id: 'discovery',
       name: 'open-knowledge-discovery',
-      alreadyInstalled: false,
+      paths: ['~/.claude/skills/open-knowledge-discovery'],
     },
     {
       id: 'write-skill',
       name: 'open-knowledge-write-skill',
-      alreadyInstalled: true,
+      paths: ['~/.claude/skills/open-knowledge-write-skill'],
     },
   ];
 
@@ -763,6 +766,52 @@ describe('runMcpWiringOnFirstLaunch — skills consent leg', () => {
       event: 'mcp-wiring-skill-consent-declined',
       bundle: 'write-skill',
     });
+  });
+
+  test('an omitted skills field records no decision and leaves installs standing', async () => {
+    // `undefined` is "no decision made", NOT "decline everything" — onboarding
+    // sends it when the user dismisses the setup offer, and an already-installed
+    // bundle must survive that. An empty array would tear one down.
+    const ipcMain = stubIpcMain();
+    const wc = fakeWebContents(11);
+    const fs = memoryFs();
+    const { cli } = buildFirstLaunchCli();
+    const skills = stubSkills(TWO_SKILLS);
+    const events: Array<Record<string, unknown>> = [];
+    const logger = {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      event: (p: { event: string; [k: string]: unknown }) => events.push(p),
+    };
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({ ipcMain, cli, fs, skills, logger, immediateDispatchTarget: wc }),
+    );
+
+    const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+    const result = await confirm?.({ sender: { id: 11 } }, { editorIds: [] });
+    expect(result).toEqual({ ok: true });
+    expect(skills.consentCalls).toEqual([]);
+    expect(events.filter((e) => String(e.event).startsWith('mcp-wiring-skill-consent'))).toEqual(
+      [],
+    );
+    // The marker still lands — a decision about the OTHER legs was made.
+    expect(readMcpStatusMarker('/home/u', fs)).toMatchObject({ configured: true });
+  });
+
+  test('an explicit empty skills array still declines every offered bundle', async () => {
+    const ipcMain = stubIpcMain();
+    const wc = fakeWebContents(11);
+    const fs = memoryFs();
+    const { cli } = buildFirstLaunchCli();
+    const skills = stubSkills(TWO_SKILLS);
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({ ipcMain, cli, fs, skills, immediateDispatchTarget: wc }),
+    );
+
+    const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+    await confirm?.({ sender: { id: 11 } }, { editorIds: [], skills: [] });
+    expect(skills.consentCalls).toEqual([[]]);
   });
 
   test('a failed skills leg defers the marker so the dialog re-fires', async () => {
@@ -1148,6 +1197,35 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
       alreadyInstalled: false,
     });
     expect(events.some((e) => e.event === 'mcp-wiring-path-descriptor-failed')).toBe(true);
+  });
+
+  test('a throwing skills descriptor degrades to no skill rows instead of killing the dialog', () => {
+    // Mirrors the PATH degradation above. `computeDescriptors` runs at ARMING
+    // time, before the IPC handlers register, so an unguarded throw would leave
+    // the user with no consent dialog and no way to reach one — a worse outcome
+    // than simply not offering the skill this boot.
+    const ipcMain = stubIpcMain();
+    const wc = fakeWebContents(11);
+    const events: Array<Record<string, unknown>> = [];
+    const skills = stubSkills([], {
+      computeDescriptors: () => {
+        throw new Error('bundle dir unreadable');
+      },
+    });
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({
+        ipcMain,
+        skills,
+        immediateDispatchTarget: wc,
+        logger: { info() {}, warn() {}, error() {}, event: (e) => events.push(e) },
+      }),
+    );
+
+    expect(wc.sent).toHaveLength(1);
+    expect((wc.sent[0]?.payload as { globalSkills: unknown }).globalSkills).toEqual([]);
+    expect(events.some((e) => e.event === 'mcp-wiring-skill-descriptors-failed')).toBe(true);
+    // The dialog is still live: confirm is armed and answerable.
+    expect(ipcMain.handlers.has('ok:mcp-wiring:confirm')).toBe(true);
   });
 
   test('skip never touches the PATH surface', async () => {

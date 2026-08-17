@@ -110,6 +110,7 @@ import {
   initContent,
   isProcessAlive,
   normalizeFsPath,
+  ONBOARDING_BUNDLE_IDS,
   prepareSingleFileOpen,
   type ResolvedSkillHost,
   RUNTIME_VERSION,
@@ -4455,6 +4456,32 @@ function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaun
   };
 }
 
+/**
+ * Every destination a user-global bundle install writes to, tildified for
+ * display. Mirrors the reclaim's own destination set and BOTH its gates, so no
+ * surface can advertise a copy that will not be written:
+ *
+ *   - `USER_SKILL_HOSTS`, not the project-shaped host list — that one drops
+ *     Copilot and Pi by design, silently omitting `~/.copilot`, `~/.pi/agent`
+ *     and `~/.gemini` from a list users read as complete.
+ *   - `skillsRoot`, not `hostDir + '/skills'` — Pi's user root is
+ *     `.pi/agent/skills`, which the naive shape renders as a nonexistent
+ *     `~/.pi/skills`.
+ *   - The `.agents` hub only when it already exists; the reclaim writes that
+ *     copy but never creates the hub.
+ *
+ * Single source for the first-launch consent disclosure AND the Settings row,
+ * so the two cannot drift apart the way a hand-maintained second list did.
+ */
+function userGlobalSkillDestinations(home: string, name: string): string[] {
+  return [
+    ...(existsSync(join(home, AGENTS_HUB_DIR)) ? [`~/${AGENTS_SKILLS_ROOT}/${name}`] : []),
+    ...USER_SKILL_HOSTS.filter((h) => existsSync(join(home, h.hostDir))).map(
+      (h) => `~/${h.skillsRoot}/${name}`,
+    ),
+  ];
+}
+
 function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
   return {
     isPackaged: app.isPackaged,
@@ -4493,37 +4520,20 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
         return { ok: true as const };
       },
     },
-    // Skills leg of the first-launch consent dialog: per-bundle rows for the
-    // show payload + the confirm finalizer. `applyConsent` records every
-    // bundle's decision, then reuses the launch reclaim (now decision-gated)
-    // to install the enabled set and tear down any declined-but-present
-    // bundle — one code path for install + removal.
+    // Skills leg of the first-launch consent dialog: the bundles onboarding
+    // offers + the confirm finalizer. `applyConsent` records each OFFERED
+    // bundle's decision, then reuses the launch reclaim (decision-gated) to
+    // install the enabled set and tear down any declined-but-present bundle —
+    // one code path for install + removal. Bundles outside the onboarding set
+    // are never touched here: no decision recorded, nothing installed, and an
+    // existing copy left alone.
     skills: {
-      computeDescriptors: () => {
-        const home = osHomedir();
-        // Resolve reach once — identical for every built-in. A ledger read can
-        // throw (realpath containment), so degrade to zero hosts, which disables
-        // the row's checkbox rather than dropping every skill row for the boot.
-        let resolvedHosts: ResolvedSkillHost[];
-        try {
-          resolvedHosts = resolveBuiltinSkillHosts(home);
-        } catch {
-          resolvedHosts = [];
-        }
-        const hosts = resolvedHosts.map((h) => h.editor);
-        return USER_GLOBAL_BUNDLE_IDS.map((id) => {
-          const d = computeBuiltinSkillDisclosure(home, id);
-          return {
-            id,
-            name: d.name,
-            alreadyInstalled: d.installed,
-            description: d.description,
-            size: d.size,
-            hosts,
-            paths: d.paths,
-          };
-        });
-      },
+      computeDescriptors: () =>
+        ONBOARDING_BUNDLE_IDS.map((id) => {
+          const home = osHomedir();
+          const name = BUNDLE_SKILL_NAME[id];
+          return { id, name, paths: userGlobalSkillDestinations(home, name) };
+        }),
       applyConsent: async (enabledIds: readonly string[]) => {
         const home = osHomedir();
         // The consent dialog is the trust boundary: a failed decision write
@@ -4532,7 +4542,7 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
         // to enabled, and still return ok — silently losing the user's
         // decline. Surface {ok:false} so mcp-wiring defers the marker and the
         // dialog re-fires for a retry (same as a failed PATH/editor write).
-        for (const id of USER_GLOBAL_BUNDLE_IDS) {
+        for (const id of ONBOARDING_BUNDLE_IDS) {
           try {
             await writeBundleDecision(home, BUNDLE_SKILL_NAME[id], enabledIds.includes(id));
           } catch (err) {

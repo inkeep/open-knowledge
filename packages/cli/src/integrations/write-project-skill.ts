@@ -16,6 +16,7 @@ import {
   statSync,
 } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { USER_MCP_GATED_EDITOR_IDS } from '@inkeep/open-knowledge-core';
 import { resolveBundledSkillDir } from '@inkeep/open-knowledge-server';
 import { type ParseError, parse as parseJsonc } from 'jsonc-parser';
 import type { EditorId, EditorMcpTarget } from '../commands/editors.ts';
@@ -170,13 +171,17 @@ function configHasOpenKnowledgeEntry(
  * Copilot loads OK's runtime skill from the project but its MCP registration
  * from user-global config. Shared project MCP wiring belongs to other hosts and
  * cannot satisfy Copilot's prerequisite.
+ *
+ * The gated set lives in core so UI that names which tools a project setup
+ * covers reads the same list this write path enforces — otherwise a picker can
+ * promise a skill install that lands as `skipped-prerequisite`.
  */
 function isProjectSkillPrerequisiteMet(
   target: EditorMcpTarget,
   cwd: string,
   options: ProjectSkillWriteOptions = {},
 ): boolean {
-  if (target.id !== 'copilot') return true;
+  if (!USER_MCP_GATED_EDITOR_IDS.includes(target.id)) return true;
 
   try {
     return configHasOpenKnowledgeEntry(target, cwd, target.configPath(cwd, options.home));

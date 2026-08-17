@@ -211,9 +211,24 @@ function rcTargets(
   // the real host, where process.platform is the right answer.
   platform: string = process.platform,
 ): Array<{ path: string; create: boolean; content: string }> {
+  const fishConfigDir = join(home, '.config', 'fish');
+  const fishDetected =
+    (shell?.endsWith('/fish') ?? false) ||
+    fs.existsSync(join(fishConfigDir, 'config.fish')) ||
+    // Fish creates fish_variables on first interactive use. Unlike the config
+    // directory and our conf.d file, older OpenKnowledge builds never created
+    // it, so it is independent evidence for users who launch Fish from a
+    // terminal profile while retaining zsh/bash as their login shell.
+    fs.existsSync(join(fishConfigDir, 'fish_variables'));
   const base = [
     { path: join(home, '.zshrc'), create: shell?.endsWith('/zsh') ?? false, content: block() },
-    { path: join(home, '.bash_profile'), create: false, content: block() },
+    {
+      path: join(home, '.bash_profile'),
+      // A fresh macOS Bash user needs `create: true`; otherwise the final
+      // filter only keeps entries for files that already exist on disk.
+      create: platform === 'darwin' && (shell?.endsWith('/bash') ?? false),
+      content: block(),
+    },
     // Linux interactive non-login bash reads ~/.bashrc, not ~/.bash_profile
     // (which most distros source only on login shells). Kept off macOS so
     // the shipping darwin behavior — never touching a mac user's .bashrc —
@@ -227,11 +242,19 @@ function rcTargets(
           },
         ]
       : []),
-    {
-      path: join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish'),
-      create: true,
-      content: fishBlock(),
-    },
+    // Fish gets the same current-shell-or-existing-user-config treatment as
+    // zsh/bash. Do NOT use the fish directory or this OK-owned conf.d file as
+    // evidence: older Desktop builds created both unconditionally, including
+    // on machines where Fish was never installed.
+    ...(fishDetected
+      ? [
+          {
+            path: join(fishConfigDir, 'conf.d', 'open-knowledge.fish'),
+            create: true,
+            content: fishBlock(),
+          },
+        ]
+      : []),
   ];
   return base.filter((t) => t.create || fs.existsSync(t.path));
 }
@@ -616,9 +639,14 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     if (canSkipRc && prior) {
       rcFiles.push(...activePriorRcFiles);
     } else if (rcConsented) {
+      // Keep no-longer-targeted prior files in the marker so Settings/uninstall
+      // can still clean up footprints from older targeting rules (notably the
+      // Fish file that older Desktop builds created for every user). Only the
+      // currently detected targets are written or refreshed.
+      rcFiles.push(...activePriorRcFiles);
       for (const target of targets) {
         if (upsertBlock(target.path, target.content, fs)) changedRcFiles.push(target.path);
-        rcFiles.push(target.path);
+        if (!rcFiles.includes(target.path)) rcFiles.push(target.path);
       }
     } else {
       // Declined or undecided: never write into the user's rc files. Keep
@@ -779,13 +807,18 @@ export function removePathShimFromRcFiles(opts: {
 }): RemovePathShimResult {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
   const marker = readMarker(home, fs, logger);
+  const okOwnedFishConf = join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish');
   const candidates = new Set<string>([
     ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
       (target) => target.path,
     ),
     ...(marker?.rcFiles ?? []),
+    // Detection and cleanup intentionally differ: this self-identifying,
+    // OK-owned path is not evidence that Fish is installed, but uninstall
+    // must still find footprints from unconditional older installs even when
+    // their marker is missing or malformed.
+    okOwnedFishConf,
   ]);
-  const okOwnedFishConf = join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish');
   const strippedFiles: string[] = [];
   try {
     for (const path of candidates) {

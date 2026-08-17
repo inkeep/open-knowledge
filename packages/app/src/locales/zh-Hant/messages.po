@@ -278,11 +278,6 @@ msgstr "{0, plural, other {# 份文件都沒有問題。}}"
 msgid "{0, plural, one {Plugin} other {Plugins}}"
 msgstr "{0, plural, other {外掛程式}}"
 
-#. placeholder {0}: editorList.hiddenCount
-#: src/components/McpConsentDialogBody.tsx
-msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
-msgstr "{0, plural, other {再顯示 # 個工具}}"
-
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Skill} other {Skills}}"
@@ -1414,6 +1409,21 @@ msgstr "加入一個受管理的區塊到"
 msgid "Adds a managed block to {0}"
 msgstr "加入一個受管理的區塊到 {0}"
 
+#. Subtext under the create-project AI-tools checkbox
+#: src/components/CreateProjectDialog.tsx
+msgid "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
+msgstr "新增 OpenKnowledge 的 MCP 項目與專案技能，讓每個工具都能讀取並更新這些文件。"
+
+#. Subtext under the single AI-tools checkbox when a skill is also installed
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds OpenKnowledge's MCP connection to each, plus the open-knowledge-discovery skill so your agents recognize OpenKnowledge projects."
+msgstr "為每個工具新增 OpenKnowledge 的 MCP 連接，並安裝 open-knowledge-discovery 技能，讓你的智慧代理辨識 OpenKnowledge 專案。"
+
+#. Subtext under the single AI-tools checkbox when only MCP is wired
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds OpenKnowledge's MCP connection to each."
+msgstr "為每個工具新增 OpenKnowledge 的 MCP 連接。"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
 msgstr "在可取得時附上遙測資料、伺服器狀態和執行階段資訊。憑證一律會移除；如果包含文件名稱，它們會以明文出現（不做遮蔽）。"
@@ -1469,9 +1479,12 @@ msgstr "為保持 Terminal 清晰可讀，已關閉智慧代理面板。"
 msgid "Agent settings"
 msgstr "代理設定"
 
-#. Group label above the skill rows in Settings → AI tools & CLI
-#. Section label above the skill checkboxes in the first-launch dialog
+#. Heading above the skill install destinations in the disclosure
 #: src/components/McpConsentDialogBody.tsx
+msgid "Agent Skill"
+msgstr "代理技能"
+
+#. Group label above the skill rows in Settings → AI tools & CLI
 #: src/components/settings/AiToolsSection.tsx
 msgid "Agent Skills"
 msgstr "代理技能"
@@ -1488,6 +1501,8 @@ msgstr "代理"
 msgid "AI tool management is only available in the OpenKnowledge desktop app."
 msgstr "AI 工具管理只在 OpenKnowledge 桌面應用程式中提供。"
 
+#. Section label above the AI-tools checkbox in the first-launch dialog
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
@@ -2375,6 +2390,10 @@ msgstr "檢查技能"
 msgid "Checking source"
 msgstr "正在檢查來源"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Checking which AI tools you have"
+msgstr "正在檢查你安裝了哪些 AI 工具"
+
 #: src/components/settings/AccountSection.tsx
 msgid "Checking your GitHub connection"
 msgstr "正在檢查你的 GitHub 連線"
@@ -2925,11 +2944,14 @@ msgstr "衝突的檔案：{0}。"
 msgid "Conflicts"
 msgstr "衝突"
 
-#. Primary button that writes MCP config for the selected AI tools
 #: src/components/AuthModal.tsx
-#: src/components/McpConsentDialogBody.tsx
 msgid "Connect"
 msgstr "連接"
+
+#. placeholder {0}: formatToolList( status.editors.map((id) => EDITOR_LABELS[id]), i18n.locale, )
+#: src/components/CreateProjectDialog.tsx
+msgid "Connect {0} to this project"
+msgstr "將 {0} 連接到這個專案"
 
 #: src/components/settings/AccountSection.tsx
 msgid "Connect a GitHub account to browse and sync your repositories."
@@ -2964,7 +2986,6 @@ msgid "Connect this project to GitHub to share."
 msgstr "把這個專案連接到 GitHub 才能分享。"
 
 #: src/components/ConsentDialogBody.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Connect to AI tools"
 msgstr "連接 AI 工具"
 
@@ -3063,7 +3084,6 @@ msgstr "內容規則"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "內容規則尚未載入——請稍候再試"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Context cost"
 msgstr "上下文開銷"
@@ -3075,6 +3095,11 @@ msgstr "脈絡視窗："
 #: src/components/acp/ThreadView.tsx
 msgid "Context window: {percent}% used, {usedLabel} of {sizeLabel} tokens"
 msgstr "脈絡視窗：已使用 {percent}%，{usedLabel}/{sizeLabel} 個 token"
+
+#. Primary button that applies the first-launch setup choices
+#: src/components/McpConsentDialogBody.tsx
+msgid "Continue"
+msgstr "繼續"
 
 #: src/components/AuthModal.tsx
 msgid "Continue in browser"
@@ -4661,10 +4686,6 @@ msgstr "例如：貼上一個很大的表格之後編輯器卡住了"
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "每個套件都會用現成的資料夾和範本幫你的專案搭好骨架。"
 
-#: src/components/CreateProjectDialog.tsx
-msgid "Each selected tool gets an OpenKnowledge MCP entry."
-msgstr "每個選取的工具都會得到一筆 OpenKnowledge MCP 項目。"
-
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5021,7 +5042,6 @@ msgstr "輸入有效的 URL，例如 https://notes.example.com"
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "輸入你的通道所提供服務的公開來源，例如 https://notes.example.com"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Entry"
@@ -5531,7 +5551,6 @@ msgstr "欄位"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
@@ -5981,8 +6000,8 @@ msgid "Give the AI tools you use access to read and update your projects. Checki
 msgstr "讓你用的 AI 工具能夠讀取和更新你的專案。勾選就會立刻設定好；取消勾選則會移除。"
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
-msgstr "讓你用的 AI 工具能夠讀取和更新你的專案。在下面挑要設定的項目，之後隨時可以在「設定 > AI 工具與 CLI」中變更。"
+msgid "Give the AI tools you use access to read and update your projects. You can change any of this later in Settings > AI tools & CLI."
+msgstr "讓你使用的 AI 工具能夠讀取並更新你的專案。這些之後都可以在「設定 > AI 工具與 CLI」中更改。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6164,7 +6183,11 @@ msgstr "隱藏進階選項"
 msgid "Hide Agents"
 msgstr "隱藏「代理」"
 
+#. Collapses the list of files the setup writes to
+#. Collapses the list of project files the AI-tool setup writes
 #: src/components/acp/ThreadView.tsx
+#: src/components/CreateProjectDialog.tsx
+#: src/components/McpConsentDialogBody.tsx
 msgid "Hide details"
 msgstr "隱藏詳細資料"
 
@@ -6306,14 +6329,11 @@ msgid "How to push manually"
 msgstr "如何手動推送"
 
 #. Link on an undetected tool row to its OpenKnowledge setup guide
-#. Link on an undetected tool row to its OpenKnowledge setup guide
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up"
 msgstr "如何設定"
 
 #. placeholder {0}: editor.label
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "如何設定 {0}（在瀏覽器中開啟）"
@@ -6795,7 +6815,6 @@ msgstr "正在安裝"
 msgid "Installing {agentName}…"
 msgstr "正在安裝 {agentName}…"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "安裝到"
@@ -7438,7 +7457,7 @@ msgstr "MCP 自動修復失敗"
 
 #. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
 #. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#. Section label above the editor checkbox list in the first-launch dialog — each row wires OpenKnowledge's MCP server into that tool
+#. Heading above the per-tool MCP config paths in the disclosure
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8045,6 +8064,15 @@ msgstr "沒有選取任何代理——技能已儲存，但沒有安裝到任何
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
 msgstr "沒有安裝任何 AI 代理"
+
+#. Shown in place of the AI-tools checkbox when no AI tool was detected
+#: src/components/McpConsentDialogBody.tsx
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
+msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > AI 工具與 CLI」中連接。"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
+msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > 這個專案」中連接。"
 
 #: src/components/SkillConsentRow.tsx
 msgid "No AI tools detected. Install one to use this skill."
@@ -10179,11 +10207,6 @@ msgstr "已把「{projectName}」從最近的專案中移除。它的資料夾�
 msgid "Removes from"
 msgstr "從以下位置移除"
 
-#. Warning shown when the user unchecks an already-installed skill
-#: src/components/McpConsentDialogBody.tsx
-msgid "Removes this skill from your editors."
-msgstr "把這個技能從你的編輯器中移除。"
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "正在移除"
@@ -10337,6 +10360,11 @@ msgstr "要把這些副本換成指向來源的符號連結嗎？"
 #: src/components/SkillInstallMenu.tsx
 msgid "Replace these symlinks with independent copies?"
 msgstr "要把這些符號連結換成獨立的副本嗎？"
+
+#. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
+#: src/components/McpConsentDialogBody.tsx
+msgid "Replaces the existing OpenKnowledge entry in {0}"
+msgstr "將取代 {0} 中既有的 OpenKnowledge 項目"
 
 #: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
@@ -11213,7 +11241,7 @@ msgstr "在「外掛」底下它自己的頁面中設定。"
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "為第一次開啟這個專案的使用者設定同步預設值。這項設定會提交到你的儲存庫。"
 
-#. placeholder {0}: skill.name
+#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
 msgid "Set up {0}"
 msgstr "設定 {0}"
@@ -11405,9 +11433,7 @@ msgstr "顯示文件面板"
 msgid "Show external URL nodes"
 msgstr "顯示外部 URL 節點"
 
-#. Collapses the undetected AI tools back behind the toggle
 #: src/components/LinksPanel.tsx
-#: src/components/McpConsentDialogBody.tsx
 msgid "Show fewer"
 msgstr "顯示少一點"
 
@@ -11626,8 +11652,6 @@ msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "技能現在已分享。提交 .ok/skills 就能分享給你的團隊。"
 
 #. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
-#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
 msgstr "技能會安裝到本機偵測到的每個 AI 工具，與上面選擇的 MCP 連線無關。"
@@ -11654,11 +11678,6 @@ msgstr "skills.sh 無法使用；改為顯示 GitHub 結果（沒有安裝次數
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
 msgstr "略過"
-
-#. Secondary button — dismisses the dialog without wiring any tools
-#: src/components/McpConsentDialogBody.tsx
-msgid "Skip for now"
-msgstr "先略過"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -13993,11 +14012,13 @@ msgstr "希望 AI 做什麼？（選填）"
 msgid "What the agent may read, write, and surface."
 msgstr "代理可以讀取、寫入和呈現的內容。"
 
+#. Expands the list of files the setup writes to
+#. Expands the list of project files the AI-tool setup writes
+#: src/components/CreateProjectDialog.tsx
 #: src/components/McpConsentDialogBody.tsx
 msgid "What this changes"
 msgstr "這會改變什麼"
 
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "What this checkbox changes"
@@ -14090,11 +14111,6 @@ msgstr "會建立在：<0>{targetPreview}</0>"
 #: src/components/CreateProjectDialog.tsx
 msgid "Will be saved as <0>{sanitized}</0>."
 msgstr "會儲存成 <0>{sanitized}</0>。"
-
-#. Disclosure that Add will overwrite the tool's existing OpenKnowledge MCP entry
-#: src/components/McpConsentDialogBody.tsx
-msgid "Will replace existing OpenKnowledge entry"
-msgstr "會取代既有的 OpenKnowledge 項目"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts

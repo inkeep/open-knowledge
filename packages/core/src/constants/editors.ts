@@ -317,3 +317,39 @@ export const EDITOR_PROJECT_CONFIG_PATH = {
   // "project-configured" — same as OpenClaw.
   hermes: null,
 } as const satisfies Record<EditorId, string | null>;
+
+/**
+ * Editors whose PROJECT skill only loads once their USER-GLOBAL MCP entry
+ * exists. Copilot reads the skill from the project (`.github/skills`) but takes
+ * its OpenKnowledge registration from user-global config, and project MCP wiring
+ * belongs to other hosts — so writing the skill before the global entry is there
+ * produces a file Copilot never loads.
+ *
+ * The write path enforces this in `isProjectSkillPrerequisiteMet`; UI that names
+ * which tools a project setup covers reads it through
+ * {@link receivesProjectIntegrationWrite}. One list, so a screen can't claim a
+ * write the writer will skip.
+ *
+ * Named `*_EDITOR_IDS` like every other filtered id list here; the `EDITOR_*`
+ * prefix in this file is reserved for `Record<EditorId, T>` maps.
+ */
+export const USER_MCP_GATED_EDITOR_IDS: readonly EditorId[] = ['copilot'];
+
+/**
+ * Whether setting up a project for `id` actually writes something, given
+ * whether that editor's user-global OpenKnowledge MCP entry is already
+ * installed. This is the predicate a project-scoped picker owes the user: it
+ * answers "will ticking this produce a file?", not "does this editor have a
+ * surface in principle".
+ *
+ * A project MCP config always lands. A project skill lands unless the editor
+ * gates it on a user-global entry that isn't there yet.
+ */
+export function receivesProjectIntegrationWrite(
+  id: EditorId,
+  opts: { userMcpEntryInstalled: boolean },
+): boolean {
+  if (EDITOR_PROJECT_CONFIG_PATH[id] !== null) return true;
+  if (EDITOR_PROJECT_SKILL_ROOT[id] === null) return false;
+  return !USER_MCP_GATED_EDITOR_IDS.includes(id) || opts.userMcpEntryInstalled;
+}

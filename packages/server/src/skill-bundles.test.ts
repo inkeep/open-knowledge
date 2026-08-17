@@ -5,8 +5,10 @@ import { extractSkillRefs, RESERVED_PROJECT_SKILL_NAME } from '@inkeep/open-know
 import { describe, expect, test } from 'vitest';
 import {
   BUNDLE_IDS,
+  BUNDLE_SCOPE,
   BUNDLE_SKILL_NAME,
   bundleSkillMdPath,
+  ONBOARDING_BUNDLE_IDS,
   USER_GLOBAL_BUNDLE_IDS,
 } from './skill-bundles.ts';
 
@@ -56,6 +58,27 @@ describe('skill-bundles (single source of truth)', () => {
       const refs = extractSkillRefs(raw);
       expect({ id, refs }).toEqual({ id, refs: [] });
     }
+  });
+
+  test('onboarding offers a non-empty subset of the user-global bundles', () => {
+    // The constant is a literal (a `.filter()` would widen to `BundleId[]` and
+    // let a bundle rename silently empty it), so the two properties a filter
+    // used to give for free are asserted here: every onboarding bundle is
+    // actually user-global, and the set is never empty — an empty one would
+    // mean first launch quietly stopped offering any skill.
+    expect(ONBOARDING_BUNDLE_IDS.length).toBeGreaterThan(0);
+    for (const id of ONBOARDING_BUNDLE_IDS) {
+      expect(USER_GLOBAL_BUNDLE_IDS).toContain(id);
+      expect(BUNDLE_SCOPE[id]).toBe('user');
+    }
+  });
+
+  test('write-skill is deliberately NOT an onboarding bundle', () => {
+    // Onboarding covers what decides whether a tool works at all; authoring
+    // helpers wait for Settings or an explicit `ok init`. Recorded here because
+    // the absence is the decision, and absences do not fail loudly on their own.
+    expect(USER_GLOBAL_BUNDLE_IDS).toContain('write-skill');
+    expect(ONBOARDING_BUNDLE_IDS as readonly string[]).not.toContain('write-skill');
   });
 
   test('write-skill description is within the skill contract (≤1024, no XML tags)', () => {

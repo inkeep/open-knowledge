@@ -94,6 +94,7 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
     const zshrc = readFileSync(join(h, '.zshrc'), 'utf8');
     expect(zshrc).toContain('# >>> open-knowledge cli >>>');
     expect(zshrc).toContain('Delete this whole block to opt out');
+    expect(existsSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'))).toBe(false);
     const marker = readMarkerFile(h);
     expect(marker.consent).toEqual({ status: 'granted', at: GRANTED.at });
     const granted = events.find((e) => e.event === 'path-install-consent-granted');
@@ -379,6 +380,22 @@ describe('ensureCliOnPath', () => {
     });
   });
 
+  test('darwin bash creates .bash_profile from scratch', async () => {
+    const h = home();
+    const result = await ensureCliOnPath(
+      baseOpts(h, {
+        env: { HOME: h, SHELL: '/bin/bash' },
+        consentDecision: GRANTED,
+      }),
+    );
+    expect(result.status).toBe('installed');
+    expect(readFileSync(join(h, '.bash_profile'), 'utf8')).toContain(
+      '# >>> open-knowledge cli >>>',
+    );
+    expect(existsSync(join(h, '.zshrc'))).toBe(false);
+    expect(existsSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'))).toBe(false);
+  });
+
   test('linux deb install: symlinks target the flat-layout wrapper and bash gets .bashrc', async () => {
     const h = home();
     const result = await ensureCliOnPath(
@@ -428,13 +445,40 @@ describe('ensureCliOnPath', () => {
     if (result.status === 'failed-all') expect(result.error).toContain('EACCES');
   });
 
-  test('fish conf.d block uses fish syntax, not POSIX export', async () => {
+  test('fish login shell gets a fish-syntax conf.d block, not a POSIX block', async () => {
     const h = home();
-    await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
+    await ensureCliOnPath(
+      baseOpts(h, {
+        env: { HOME: h, SHELL: '/opt/homebrew/bin/fish' },
+        consentDecision: GRANTED,
+      }),
+    );
     const fish = readFileSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'), 'utf8');
     expect(fish).toContain('# >>> open-knowledge cli >>>');
     expect(fish).toContain('set -gx PATH');
     expect(fish).not.toContain('export PATH');
+    expect(existsSync(join(h, '.zshrc'))).toBe(false);
+  });
+
+  test('a full pass retains a previously recorded Fish file for later cleanup', async () => {
+    const h = home();
+    const fishConf = join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish');
+    await ensureCliOnPath(
+      baseOpts(h, {
+        env: { HOME: h, SHELL: '/opt/homebrew/bin/fish' },
+        consentDecision: GRANTED,
+      }),
+    );
+
+    const newExe = '/Users/someone/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
+    await ensureCliOnPath(baseOpts(h, { executablePath: newExe }));
+
+    const marker = readMarkerFile(h);
+    expect(marker.rcFiles).toEqual([fishConf, join(h, '.zshrc')]);
+    expect(removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } }).status).toBe(
+      'removed',
+    );
+    expect(existsSync(fishConf)).toBe(false);
   });
 
   test('app update repoints canonical symlinks to the new bundle wrapper', async () => {
@@ -463,23 +507,105 @@ describe('computePathInstallDescriptor', () => {
     });
     expect(descriptor).toEqual({
       shellDetected: true,
-      rcFilesToTouch: ['~/.zshrc', '~/.config/fish/conf.d/open-knowledge.fish'],
+      rcFilesToTouch: ['~/.zshrc'],
       alreadyInstalled: false,
     });
   });
 
-  test('an existing .bash_profile joins the touch list; a non-zsh shell skips .zshrc creation', () => {
+  test('a fresh macOS Bash machine gets .bash_profile; an existing profile remains sufficient evidence', () => {
+    const freshHome = home();
+    expect(
+      computePathInstallDescriptor({
+        home: freshHome,
+        platform: 'darwin',
+        env: { SHELL: '/bin/bash' },
+      }).rcFilesToTouch,
+    ).toEqual(['~/.bash_profile']);
+
+    const configuredHome = home();
+    writeFileSync(join(configuredHome, '.bash_profile'), 'export BAR=1\n');
+    expect(
+      computePathInstallDescriptor({
+        home: configuredHome,
+        platform: 'darwin',
+        env: { SHELL: '/bin/sh' },
+      }).rcFilesToTouch,
+    ).toEqual(['~/.bash_profile']);
+  });
+
+  test('an unsupported shell with no recognized config has no PATH target', () => {
     const h = home();
-    writeFileSync(join(h, '.bash_profile'), 'export BAR=1\n');
+    expect(
+      computePathInstallDescriptor({
+        home: h,
+        platform: 'darwin',
+        env: { SHELL: '/bin/nu' },
+      }),
+    ).toEqual({ shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false });
+  });
+
+  test('fish is targeted when it is the login shell or has independent usage evidence', () => {
+    const loginShellHome = home();
+    expect(
+      computePathInstallDescriptor({
+        home: loginShellHome,
+        platform: 'darwin',
+        env: { SHELL: '/opt/homebrew/bin/fish' },
+      }).rcFilesToTouch,
+    ).toEqual(['~/.config/fish/conf.d/open-knowledge.fish']);
+
+    const configuredHome = home();
+    mkdirSync(join(configuredHome, '.config', 'fish'), { recursive: true });
+    writeFileSync(join(configuredHome, '.config', 'fish', 'config.fish'), '# user config\n');
+    expect(
+      computePathInstallDescriptor({
+        home: configuredHome,
+        platform: 'darwin',
+        env: { SHELL: '/bin/zsh' },
+      }).rcFilesToTouch,
+    ).toEqual(['~/.zshrc', '~/.config/fish/conf.d/open-knowledge.fish']);
+
+    const usedHome = home();
+    mkdirSync(join(usedHome, '.config', 'fish'), { recursive: true });
+    writeFileSync(
+      join(usedHome, '.config', 'fish', 'fish_variables'),
+      '# This file contains fish universal variable definitions.\n',
+    );
+    expect(
+      computePathInstallDescriptor({
+        home: usedHome,
+        platform: 'darwin',
+        env: { SHELL: '/bin/zsh' },
+      }).rcFilesToTouch,
+    ).toEqual(['~/.zshrc', '~/.config/fish/conf.d/open-knowledge.fish']);
+  });
+
+  test('a legacy OK-created fish directory and conf file are not Fish-detection evidence', async () => {
+    const h = home();
+    const fishConf = join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish');
+    mkdirSync(dirname(fishConf), { recursive: true });
+    const legacyBlock =
+      '# >>> open-knowledge cli >>>\n# legacy OK-owned block\n# <<< open-knowledge cli <<<\n';
+    writeFileSync(fishConf, legacyBlock);
+
     const descriptor = computePathInstallDescriptor({
       home: h,
       platform: 'darwin',
-      env: { SHELL: '/bin/bash' },
+      env: { SHELL: '/bin/zsh' },
     });
-    expect(descriptor.rcFilesToTouch).toEqual([
-      '~/.bash_profile',
-      '~/.config/fish/conf.d/open-knowledge.fish',
-    ]);
+    expect(descriptor.rcFilesToTouch).toEqual(['~/.zshrc']);
+    expect(descriptor.alreadyInstalled).toBe(false);
+
+    await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
+    expect(readFileSync(fishConf, 'utf8')).toBe(legacyBlock);
+    expect(readMarkerFile(h).rcFiles as string[]).not.toContain(fishConf);
+
+    // Cleanup is deliberately broader than detection: Settings must still
+    // remove the self-identifying legacy file even when no marker owns it.
+    expect(removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } }).status).toBe(
+      'removed',
+    );
+    expect(existsSync(fishConf)).toBe(false);
   });
 
   test('a healthy managed block flips alreadyInstalled', async () => {
@@ -521,7 +647,6 @@ describe('computePathInstallDescriptor', () => {
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     // User strips the block → opt-out recorded on the next boot.
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
-    unlinkSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'));
     await ensureCliOnPath(baseOpts(h));
     const descriptor = computePathInstallDescriptor({
       home: h,
@@ -565,6 +690,8 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
   test('grant → installed reads true; remove strips every block, deletes the OK-owned fish conf, and records declined', async () => {
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
+    mkdirSync(join(h, '.config', 'fish'), { recursive: true });
+    writeFileSync(join(h, '.config', 'fish', 'config.fish'), '# user fish config\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     const env = { SHELL: '/bin/zsh' };
     expect(isPathShimInstalled({ home: h, env })).toBe(true);

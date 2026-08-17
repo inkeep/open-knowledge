@@ -38,8 +38,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
+import { delimiter, join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { typeProjectName } from './_helpers/create-new-dialog';
@@ -59,14 +58,45 @@ const TARGET = resolveDesktopTarget();
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 /**
- * Editor controls live inside the collapsed "Advanced settings" section (Radix
- * unmounts collapsed content) — expand it before driving or asserting on those
- * checkboxes. (Config sharing is top-level, not in Advanced.)
+ * Only the config-sharing posture lives inside the collapsed "Advanced settings"
+ * section now (Radix unmounts collapsed content) — expand it before driving or
+ * asserting on that control. The AI-tool decision is top-level.
  */
 async function expandCreateAdvanced(page: Page): Promise<void> {
   const trigger = page.locator('[data-testid="create-advanced-trigger"]');
   await expect(trigger).toBeVisible({ timeout: 15_000 });
   await trigger.click();
+}
+
+/**
+ * Make `bin` resolve as an installed CLI for editor-presence detection.
+ * `bin` must be the registry binary name (`TERMINAL_CLIS[<id>].bin` in
+ * core/src/handoff/terminal-launch.ts) — the editor id and its binary differ
+ * for some tools (cursor → `cursor-agent`).
+ * Detection is probe-based (login-shell `command -v` on POSIX, `where` on
+ * Windows) — a config directory under HOME is deliberately NOT a presence
+ * signal, so this seeds a real executable stub instead:
+ *   - a stub under `<tmpHome>/bin` (`.cmd` flavor for `where` + PATHEXT),
+ *   - login+interactive rc files prepending it to PATH (the POSIX probe spawns
+ *     `$SHELL -l -i`, which rebuilds PATH from these; bash reads the profile
+ *     files, zsh reads .zprofile/.zshrc),
+ *   - launchApp additionally prepends `<tmpHome>/bin` to the app's PATH env,
+ *     which is what the Windows `where` probe consults.
+ * Scheme-handler probes stay untouched — empty CI homes report none, which is
+ * the hermetic baseline these tests rely on.
+ */
+function seedCliOnPath(tmpHome: string, bin: string): void {
+  const binDir = join(tmpHome, 'bin');
+  mkdirSync(binDir, { recursive: true });
+  if (process.platform === 'win32') {
+    writeFileSync(join(binDir, `${bin}.cmd`), '@exit /b 0\r\n');
+  } else {
+    writeFileSync(join(binDir, bin), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const pathLine = 'export PATH="$HOME/bin:$PATH"\n';
+    for (const rc of ['.zprofile', '.zshrc', '.bash_profile', '.profile']) {
+      writeFileSync(join(tmpHome, rc), pathLine);
+    }
+  }
 }
 
 function seedTmpHome(prefix: string, stateOverride?: Record<string, unknown>): string {
@@ -105,6 +135,9 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
       timeout: 30_000,
       env: {
         ...process.env,
+        // `<tmpHome>/bin` first so seedCliOnPath stubs win resolution — the
+        // Windows `where` presence probe reads this PATH directly.
+        PATH: `${join(tmpHome, 'bin')}${delimiter}${process.env.PATH ?? ''}`,
         ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
         ...(opts.pickedParent !== undefined
@@ -173,8 +206,16 @@ test.describe('QA extended create-new-project', () => {
 
   // editor customization → only chosen editors land on
   // disk; aria roles; telemetry variant via flow_kind attribute.
-  test('QA-005 editor customization writes only checked editors', async ({ captureStderrFor }) => {
+  test('QA-005 the AI-tool decision writes exactly the detected tools', async ({
+    captureStderrFor,
+  }) => {
     const tmpHome = seedTmpHome('editors');
+    // Cursor only: the write set is now "every tool we detected", so what makes
+    // this test meaningful is that the OTHER editors' artifacts stay absent.
+    // Cursor's terminal CLI ships as `cursor-agent`, not `cursor` — must match
+    // `TERMINAL_CLIS.cursor.bin` (core/src/handoff/terminal-launch.ts) or the
+    // presence probe resolves nothing.
+    seedCliOnPath(tmpHome, 'cursor-agent');
     const parent = join(tmpHome, 'projects');
     mkdirSync(parent, { recursive: true });
     const projectName = 'Customized';
@@ -205,18 +246,16 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 5_000 },
     );
 
-    // The selection is seeded from detection, and the seeded tmp HOME has no
-    // agent tool installed on it — so the baseline is nothing checked. Tick
-    // cursor and only cursor. EDITOR IDs from cli (NOT 'claude-code').
-    await expandCreateAdvanced(navigator);
-    const cursorBox = navigator.locator('[data-testid="create-editor-cursor"]');
-    await expect(cursorBox).not.toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-codex"]')).not.toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-claude"]')).not.toBeChecked();
-    await cursorBox.click();
-    await expect(cursorBox).toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-codex"]')).not.toBeChecked();
-    await expect(navigator.locator('[data-testid="create-editor-claude"]')).not.toBeChecked();
+    // One pre-checked box covering the detected tools, top-level (no longer
+    // behind Advanced). Its label names the write set, so assert the label
+    // rather than per-editor checkboxes that no longer exist.
+    const connectBox = navigator.locator('[data-testid="create-editors-checkbox"]');
+    await expect(connectBox).toBeVisible({ timeout: 15_000 });
+    await expect(connectBox).toBeChecked();
+    const summary = navigator.locator('[data-testid="create-editors-summary"]');
+    await expect(summary).toContainText('Cursor');
+    await expect(summary).not.toContainText('Codex');
+    await expect(summary).not.toContainText('Claude');
 
     const submit = navigator.locator('[data-testid="create-submit"]');
     await expect(submit).toBeEnabled();
@@ -230,7 +269,7 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => existsSync(join(expected, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
 
-    // The ticked editor is wired; the unticked ones leave nothing behind.
+    // The detected editor is wired; undetected ones leave nothing behind.
     await expect
       .poll(() => existsSync(join(expected, '.cursor', 'mcp.json')), { timeout: 15_000 })
       .toBe(true);
@@ -239,10 +278,11 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(expected, '.mcp.json'))).toBe(false);
   });
 
-  // dialog UX: name input is focused on open, Location is hydrated,
-  // every editor row is visible and tickable under Advanced settings.
+  // dialog UX: name input is focused on open, Location is hydrated, and the
+  // AI-tool decision is a single top-level checkbox with a live status region.
   test('QA-010 dialog UX — focus, location, checkboxes, ARIA', async ({ captureStderrFor }) => {
     const tmpHome = seedTmpHome('uxshape');
+    seedCliOnPath(tmpHome, 'codex');
     const parent = join(tmpHome, 'projects');
     mkdirSync(parent, { recursive: true });
     const projectName = 'Live Preview';
@@ -271,19 +311,30 @@ test.describe('QA extended create-new-project', () => {
     const ariaLive = await caption.getAttribute('aria-live');
     expect(ariaLive).toBe('polite');
 
-    // Every known editor renders a row under Advanced settings. None starts
-    // checked: the selection is seeded from detection and nothing is installed
-    // under the seeded tmp HOME.
-    await expandCreateAdvanced(navigator);
-    for (const id of ALL_EDITOR_IDS) {
-      const checkbox = navigator.locator(`[data-testid="create-editor-${id}"]`);
-      await expect(checkbox).toBeVisible();
-      await expect(checkbox).not.toBeChecked();
-    }
-    // The rows are interactive, not merely rendered.
-    const codexBox = navigator.locator('[data-testid="create-editor-codex"]');
-    await codexBox.click();
-    await expect(codexBox).toBeChecked();
+    // The AI-tool decision is one top-level, pre-checked box naming the tools
+    // it covers — no longer a row per editor behind Advanced settings.
+    const connectBox = navigator.locator('[data-testid="create-editors-checkbox"]');
+    await expect(connectBox).toBeVisible({ timeout: 15_000 });
+    await expect(connectBox).toBeChecked();
+    await expect(navigator.locator('[data-testid="create-editors-summary"]')).toContainText(
+      'Codex',
+    );
+
+    // The status region is a live region that persists across probe states, so
+    // "checking…" → settled actually announces.
+    const status = navigator.locator('[data-testid="create-editors-status"]');
+    expect(await status.getAttribute('aria-live')).toBe('polite');
+    await expect(status).toHaveAttribute('data-status', 'ready');
+
+    // The disclosure names the exact project files, and the box is interactive.
+    await navigator.locator('[data-testid="create-editors-details-toggle"]').click();
+    await expect(navigator.locator('[data-testid="create-editors-details"]')).toContainText(
+      '.codex/config.toml',
+    );
+    await connectBox.click();
+    await expect(connectBox).not.toBeChecked();
+    await connectBox.click();
+    await expect(connectBox).toBeChecked();
 
     // Type the name + Browse → caption shows the resolved target.
     await typeProjectName(navigator, projectName);
@@ -393,8 +444,9 @@ test.describe('QA extended create-new-project', () => {
     rmSync(join(userDataDir, 'bug-report-dirty-shutdown.json'), { force: true });
 
     // Second launch: relaunch. Location prefills from lastUsedProjectParent;
-    // the Name input resets to empty; the editor selection re-seeds from
-    // detection (still empty under the seeded tmp HOME).
+    // the Name input resets to empty; the AI-tool decision re-probes detection
+    // (which finds nothing under the seeded tmp HOME) and the checkbox itself
+    // resets to its pre-checked default.
     const app2 = await launchApp(tmpHome);
     captureStderrFor(app2);
     const navigator2 = await findWindowByMode(app2, 'navigator', 30_000);
@@ -411,13 +463,18 @@ test.describe('QA extended create-new-project', () => {
       persistedParent,
       { timeout: 15_000 },
     );
+    // Nothing is installed under this HOME, so the probe settles empty and the
+    // row says so instead of offering a checkbox that would write nothing.
+    await expect(navigator2.locator('[data-testid="create-editors-status"]')).toHaveAttribute(
+      'data-status',
+      'none',
+      { timeout: 15_000 },
+    );
+    await expect(navigator2.locator('[data-testid="create-editors-checkbox"]')).toHaveCount(0);
+    // Advanced still collapses back to hidden on a fresh open.
+    await expect(navigator2.locator('[data-testid="create-sharing"]')).toHaveCount(0);
     await expandCreateAdvanced(navigator2);
-    await expect(navigator2.locator('[data-testid="create-editor-claude"]')).not.toBeChecked();
-    await expect(
-      navigator2.locator('[data-testid="create-editor-claude-desktop"]'),
-    ).not.toBeChecked();
-    await expect(navigator2.locator('[data-testid="create-editor-cursor"]')).not.toBeChecked();
-    await expect(navigator2.locator('[data-testid="create-editor-codex"]')).not.toBeChecked();
+    await expect(navigator2.locator('[data-testid="create-sharing"]')).toBeVisible();
   });
 
   // Create stays enabled even before the user types a name — a disabled

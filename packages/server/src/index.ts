@@ -529,6 +529,7 @@ export {
   BUNDLE_SCOPE,
   BUNDLE_SKILL_NAME,
   bundleSkillMdPath,
+  ONBOARDING_BUNDLE_IDS,
   USER_GLOBAL_BUNDLE_IDS,
 } from './skill-bundles.ts';
 export {

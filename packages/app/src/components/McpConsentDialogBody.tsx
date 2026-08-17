@@ -3,31 +3,43 @@
  * so that file can lazy-load this module via `React.lazy()`. See that file's
  * header for the why.
  *
- * Minimum-viable UI: title, scrollable checkbox list of detected
- * editors (preselected — true if detection.detected), Add primary +
- * Skip secondary. ESC / outside-click = skip via shadcn Dialog's built-in
- * behavior (routed through `onOpenChange(false)` → skip()).
+ * One decision per independent consequence, and no more. The AI-tool setup is a
+ * SINGLE pre-checked checkbox covering every detected tool plus the user-global
+ * discovery skill, because those are one thought ("let my agents see this") and
+ * splitting them made a first-run screen the user had to audit row by row.
+ * Per-tool granularity lives in Settings → AI tools & CLI, where it can be
+ * revisited; here it would only slow down the common answer.
  *
- * The dialog also gates the shell-PATH install: a distinct pre-checked
- * toggle in its own "Terminal" section, rendered first in the scrollable
- * body above the editor list, driven by `payload.pathInstall`. Hidden when no rc file is
- * touchable; informational when the managed block is already on disk /
- * consent already granted. Unchecking degrades only `ok` in EXTERNAL
- * terminals — OpenKnowledge's built-in terminal injects `~/.ok/bin` itself
- * and MCP wiring runs over npx, so the warning copy is scoped to exactly
- * that.
+ * The shell-PATH install stays its own checkbox: MCP runs over npx / the bundle
+ * wrapper and never over bare `ok`, so wanting one says nothing about wanting
+ * the other.
+ *
+ * Consent integrity — this dialog fires once, so it must disclose exactly what
+ * it will touch:
+ *   - The checkbox label NAMES every tool in the write set, collapsed or not.
+ *   - A replacement warning sits next to the checkbox, never behind the
+ *     expander, so an overwrite is never something the user had to go looking
+ *     for.
+ *   - "What this changes" lists the exact files, entries and skill destinations.
+ *     Every path comes from main's descriptors, which are computed from the
+ *     installer's own iteration set and gates — never re-derived here.
+ *
+ * Undetected tools are absent entirely: a row that writes nothing is noise on a
+ * first-run screen, and Settings lists them all.
+ *
+ * The screen only ever ADDS. Leaving the box unchecked records no skill decision
+ * (`skills: undefined`, which main reads as "no decision" rather than "decline
+ * all"), so dismissing setup can never tear down a bundle already on disk.
+ * Removal is Settings' job, where the row states what it removes.
  */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import { EDITOR_SETUP_DOC_SLUG } from '@inkeep/open-knowledge-core';
-import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { ArrowUpRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { i18n } from '@lingui/core';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
-import { SkillConsentRow } from '@/components/SkillConsentRow';
-import { SkillCostValue } from '@/components/SkillCostValue';
-import { SkillDestinationList } from '@/components/SkillDestinationList';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -41,13 +53,12 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { OkMcpWiringEditorId, OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
-import { dispatchExternalLinkClick } from '@/lib/external-link';
+import type { OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
 import { type McpConsentStore, mcpConsentStore } from '@/lib/mcp-consent-store';
+import { formatToolList } from '@/lib/tool-list-format';
 
 type EditorDetection = OkMcpWiringShowPayload['detectedEditors'][number];
 type PathInstallDescriptor = OkMcpWiringShowPayload['pathInstall'];
-type GlobalSkillDescriptor = OkMcpWiringShowPayload['globalSkills'][number];
 
 /**
  * Pure helper: whether the PATH row solicits a decision. Hidden rows
@@ -60,102 +71,14 @@ export function isPathRowActionable(pathInstall: PathInstallDescriptor): boolean
 }
 
 /**
- * Pure helper: from the detection payload, compute the initial checkbox
- * state — each detected editor starts checked, undetected
- * editors start unchecked but still appear in the list.
+ * Pure helper: the write set. Detected tools only, in payload order — an
+ * undetected tool has no config to wire, so including it would name a
+ * destination nothing is written to.
  */
-export function computeInitialSelection(
-  detectedEditors: readonly EditorDetection[],
-): ReadonlySet<OkMcpWiringEditorId> {
-  const out = new Set<OkMcpWiringEditorId>();
-  for (const d of detectedEditors) if (d.detected) out.add(d.id);
-  return out;
-}
-
-/** Pure helper: toggle a checkbox; returns a new Set (immutable-style). */
-export function toggleSelectedId(
-  prev: ReadonlySet<OkMcpWiringEditorId>,
-  id: OkMcpWiringEditorId,
-): ReadonlySet<OkMcpWiringEditorId> {
-  const next = new Set(prev);
-  if (next.has(id)) {
-    next.delete(id);
-  } else {
-    next.add(id);
-  }
-  return next;
-}
-
-/**
- * Pure helper: project the selected Set back into an array preserving the
- * detection payload's order. Used at confirm time so downstream writes iterate
- * editors in the same order the user saw them.
- */
-export function selectedIdsOrdered(
-  selection: ReadonlySet<OkMcpWiringEditorId>,
-  detectedEditors: readonly EditorDetection[],
-): OkMcpWiringEditorId[] {
-  const out: OkMcpWiringEditorId[] = [];
-  for (const d of detectedEditors) if (selection.has(d.id)) out.push(d.id);
-  return out;
-}
-
-/**
- * Pure helper: progressive-disclosure split for the editor list. Rows that are
- * detected OR currently checked always show; the rest hide behind a "Show N
- * more" toggle until `showAll`. Keying visibility off `selection` (not just
- * `detected`) is load-bearing for consent integrity: a checked undetected tool
- * must never be collapsed out of view while it's still in the write set — this
- * dialog discloses exactly what Connect will touch, and it fires once. So
- * `hiddenCount` is the count of rows actually hidden (unchecked + undetected),
- * which keeps the toggle label truthful. `collapsible` is false when the split
- * is pointless — nothing hideable, or nothing always-shown (which would blank
- * the list) — in which case every row shows.
- */
-export function partitionEditorsForDisplay(
+export function connectableEditors(
   editors: readonly EditorDetection[],
-  selection: ReadonlySet<OkMcpWiringEditorId>,
-  showAll: boolean,
-): { visible: readonly EditorDetection[]; hiddenCount: number; collapsible: boolean } {
-  const alwaysShown = editors.filter((e) => e.detected || selection.has(e.id));
-  const hideable = editors.filter((e) => !e.detected && !selection.has(e.id));
-  if (alwaysShown.length === 0 || hideable.length === 0) {
-    return { visible: editors, hiddenCount: 0, collapsible: false };
-  }
-  return {
-    visible: showAll ? [...alwaysShown, ...hideable] : alwaysShown,
-    hiddenCount: hideable.length,
-    collapsible: true,
-  };
-}
-
-/**
- * Pure helper: initial skill checkbox state — every offered bundle with a place
- * to land starts checked (opt-out default: preserves today's install-everywhere
- * behavior while making it one-click-off). A bundle whose reach resolved to zero
- * hosts starts unchecked; its row disables the checkbox, so it can never be
- * staged for an install that would land nowhere.
- */
-export function computeInitialSkillSelection(
-  globalSkills: readonly GlobalSkillDescriptor[],
-): ReadonlySet<string> {
-  return new Set(globalSkills.filter((s) => s.hosts.length > 0).map((s) => s.id));
-}
-
-/** Pure helper: toggle a skill checkbox; returns a new Set. */
-export function toggleSkillId(prev: ReadonlySet<string>, id: string): ReadonlySet<string> {
-  const next = new Set(prev);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  return next;
-}
-
-/** Pure helper: project the checked skills back into payload order. */
-export function skillIdsOrdered(
-  selection: ReadonlySet<string>,
-  globalSkills: readonly GlobalSkillDescriptor[],
-): string[] {
-  return globalSkills.filter((s) => selection.has(s.id)).map((s) => s.id);
+): readonly EditorDetection[] {
+  return editors.filter((e) => e.detected);
 }
 
 /**
@@ -206,53 +129,6 @@ export function McpConsentDialogBody({
   return <McpConsentDialogForm payload={snapshot} store={store} toast={toast} />;
 }
 
-/**
- * Per-editor location disclosure — the exact config file + entry an Add would
- * touch, shown behind an info affordance. Mirrors Settings → AI tools'
- * `RowInfoTooltip` (reuses the same "File" / "Entry" copy) so the first-launch
- * dialog and the persistent settings surface disclose identically — including
- * relying on the root `TooltipProvider` (main.tsx) rather than wrapping a
- * per-row one, so sibling info buttons share Radix's skip-delay window.
- */
-function EditorLocationTooltip({ editor }: { editor: EditorDetection }) {
-  const { t } = useLingui();
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="mt-1.5 mr-1.5 size-6 shrink-0 text-muted-foreground opacity-60 hover:opacity-100"
-          aria-label={t`What this checkbox changes`}
-          data-testid={`mcp-consent-editor-info-${editor.id}`}
-        >
-          <Info className="size-3.5" aria-hidden />
-        </Button>
-      </TooltipTrigger>
-      {/* Base TooltipContent is an inline-flex row — the column wrapper keeps
-            the File/Entry pairs stacked instead of side by side. */}
-      <TooltipContent side="left" className="max-w-sm text-left">
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="opacity-70">
-            <Trans>File</Trans>
-          </p>
-          <p>
-            <code className="break-all">
-              {editor.configPath ?? t`unavailable on this platform`}
-            </code>
-          </p>
-          <p className="pt-1 opacity-70">
-            <Trans>Entry</Trans>
-          </p>
-          <p>
-            <code className="break-all">{editor.entryLocator}</code>
-          </p>
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 interface McpConsentDialogFormProps {
   payload: OkMcpWiringShowPayload;
   store: McpConsentStore;
@@ -261,64 +137,49 @@ interface McpConsentDialogFormProps {
 
 function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormProps) {
   const { t } = useLingui();
-  const detectedEditors = payload.detectedEditors;
   const pathInstall = payload.pathInstall;
   const globalSkills = payload.globalSkills;
   const skillsOffered = globalSkills.length > 0;
   const pathActionable = isPathRowActionable(pathInstall);
-  const [selection, setSelection] = useState<ReadonlySet<OkMcpWiringEditorId>>(() =>
-    computeInitialSelection(detectedEditors),
-  );
+  const editors = connectableEditors(payload.detectedEditors);
+  const hasEditors = editors.length > 0;
+  const replacing = editors.filter((e) => e.willReplace);
+  // Pre-checked (opt-out): the common answer is yes, and the label names
+  // everything it covers so agreeing isn't agreeing blind.
+  const [connectChecked, setConnectChecked] = useState(true);
   // Pre-checked (opt-out) when the row solicits a decision; informational
   // rows render force-checked + disabled below and never read this state.
   const [pathChecked, setPathChecked] = useState(true);
-  // Pre-checked (opt-out) — every offered bundle with a resolved host starts on.
-  const [skillSelection, setSkillSelection] = useState<ReadonlySet<string>>(() =>
-    computeInitialSkillSelection(globalSkills),
-  );
-  // Which skill rows are expanded to their full cost + destination disclosure.
-  // Purely presentational — expansion never touches the staged selection.
-  const [expandedSkills, setExpandedSkills] = useState<ReadonlySet<string>>(() => new Set());
+  const [showDetails, setShowDetails] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Progressive disclosure: detected tools show by default; undetected ones hide
-  // behind a "Show N more" toggle (see partitionEditorsForDisplay for the
-  // empty-state fallback that shows all when nothing is detected).
-  const [showAllEditors, setShowAllEditors] = useState(false);
-  const editorList = partitionEditorsForDisplay(detectedEditors, selection, showAllEditors);
   const idPrefix = useId();
 
-  function onToggle(id: OkMcpWiringEditorId) {
-    setSelection((prev) => toggleSelectedId(prev, id));
-  }
-
-  function toggleSkillExpanded(id: string) {
-    setExpandedSkills((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  async function onAdd() {
+  async function onContinue() {
     setBusy(true);
+    const connecting = connectChecked && hasEditors;
     const result = await store.confirm({
-      editorIds: selectedIdsOrdered(selection, detectedEditors),
+      editorIds: connecting ? editors.map((e) => e.id) : [],
       pathInstall: pathActionable ? pathChecked : undefined,
-      // When skills are offered, always send the (possibly empty) selection so
-      // main records a decision for every bundle — an empty list declines both.
-      skills: skillsOffered ? skillIdsOrdered(skillSelection, globalSkills) : undefined,
+      // An array records a decision for every offered bundle; `undefined` records
+      // none. Declining setup must leave an existing install alone, so the
+      // decline path sends `undefined`, never `[]`.
+      skills: connecting && skillsOffered ? globalSkills.map((s) => s.id) : undefined,
     });
     // Success: the store clears `currentRequest` → useSyncExternalStore
     // unmounts this subtree, so there's nothing to reset. Failure
     // (ok:false / thrown rejection): the store KEEPS the snapshot
-    // populated, so we must reset
-    // `busy` here or the Add button stays disabled forever and same-boot
-    // retry is impossible. Sonner is mounted globally in main.tsx; the
-    // toast surfaces even if the dialog were to unmount.
+    // populated, so we must reset `busy` here or the button stays disabled
+    // forever and same-boot retry is impossible. Sonner is mounted globally
+    // in main.tsx; the toast surfaces even if the dialog were to unmount.
     if (!result.ok) {
       toast.error(result.error);
       setBusy(false);
+      return;
+    }
+    // Continuing without connecting anything is a legitimate choice, but the
+    // dialog is one-shot — without this the surface is easy to lose track of.
+    if (!connecting) {
+      toast.message(t`This can be configured in Settings > AI tools & CLI`);
     }
   }
 
@@ -326,20 +187,18 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
     setBusy(true);
     const result = await store.skip();
     if (result.ok) {
-      // Point the user at where these same choices live for later — the
-      // dialog is one-shot per boot, so without this the surface is easy
-      // to lose track of.
       toast.message(t`This can be configured in Settings > AI tools & CLI`);
     } else {
       toast.error(result.error);
-      // Matching rationale to onAdd — reset `busy` so Skip stays
-      // clickable after a transient marker-write failure.
+      // Matching rationale to onContinue — reset `busy` so the dialog stays
+      // usable after a transient marker-write failure.
       setBusy(false);
     }
   }
 
   function onOpenChange(open: boolean) {
-    // ESC, outside-click, X button — treat as skip.
+    // ESC, outside-click, X button — no decision was made, so this is a skip
+    // (marker only), not a decline.
     if (!open && !busy) void onSkip();
   }
 
@@ -349,21 +208,21 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
        * Radix Dialog auto-wires `aria-labelledby` / `aria-describedby` on
        * `DialogContent` from `DialogTitle` / `DialogDescription` via context
        * — no manual `useId` plumbing needed. Each row's `<Label>` is
-       * associated to its `<Checkbox>` by
-       * `htmlFor` + matching `id`, providing the accessible name; no
-       * `aria-describedby` on the checkbox itself, since duplicating the
-       * label content via that attr causes screen readers to either
-       * announce the label twice or drop the association.
+       * associated to its `<Checkbox>` by `htmlFor` + matching `id`,
+       * providing the accessible name; no `aria-describedby` on the checkbox
+       * itself, since duplicating the label content via that attr causes
+       * screen readers to either announce the label twice or drop the
+       * association.
        */}
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" aria-busy={busy}>
         <DialogHeader>
           <DialogTitle>
             <Trans>Connect your AI tools to OpenKnowledge</Trans>
           </DialogTitle>
           <DialogDescription>
             <Trans>
-              Give the AI tools you use access to read and update your projects. Pick what to set up
-              below, and change it anytime in Settings &gt; AI tools & CLI.
+              Give the AI tools you use access to read and update your projects. You can change any
+              of this later in Settings &gt; AI tools & CLI.
             </Trans>
           </DialogDescription>
         </DialogHeader>
@@ -371,11 +230,11 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
         <DialogBody className="flex flex-col gap-6 min-h-0">
           {/*
            * Shell-PATH consent section — rendered first inside the scrollable
-           * DialogBody, above the editor list. Distinct from the per-editor
-           * MCP checkboxes because the two decisions are independent (MCP runs
-           * over npx / the bundle wrapper, never bare `ok`). Hidden when no rc
-           * file is touchable; informational when a managed block is already
-           * on disk or consent was already granted.
+           * DialogBody, above the AI-tools row. Distinct from the AI-tools
+           * checkbox because the two decisions are independent (MCP runs over
+           * npx / the bundle wrapper, never bare `ok`). Hidden when no rc file
+           * is touchable; informational when a managed block is already on disk
+           * or consent was already granted.
            */}
           {pathInstall.shellDetected && (
             <div className="flex flex-col gap-1.5">
@@ -413,12 +272,12 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                       </Trans>
                       {pathActionable && (
                         <Tooltip>
-                          {/* Relies on the root TooltipProvider (main.tsx), same as
-                            EditorLocationTooltip — so every info button in this dialog
-                            shares one skip-delay window. Nested inside the row <Label>,
-                            so stop the click from bubbling to toggle the checkbox;
-                            Radix opens on hover/focus (not click), so preventing the
-                            click default costs nothing. */}
+                          {/* Relies on the root TooltipProvider (main.tsx) so every
+                            info button in this dialog shares one skip-delay window.
+                            Nested inside the row <Label>, so stop the click from
+                            bubbling to toggle the checkbox; Radix opens on
+                            hover/focus (not click), so preventing the click default
+                            costs nothing. */}
                           <TooltipTrigger
                             onClick={(e) => {
                               e.preventDefault();
@@ -452,7 +311,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                   )}
                   {pathActionable && !pathChecked && (
                     <span
-                      className="ps-6.5 text-xs text-amber-600 dark:text-amber-400"
+                      className="ps-6.5 text-xs text-amber-700 dark:text-amber-400"
                       data-testid="mcp-consent-path-warning"
                     >
                       <Trans comment="Warning shown when the user unchecks the PATH toggle — only external terminals degrade">
@@ -466,238 +325,196 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               </div>
             </div>
           )}
+
+          {/*
+           * The AI-tools decision. One checkbox for every detected tool plus the
+           * offered skill bundles; the label names the tools so the collapsed
+           * state still discloses the write set.
+           */}
           <div className="flex flex-col gap-1.5">
-            {/* Group label only when the Terminal section renders above —
-              with a single group there is nothing to distinguish. */}
             {pathInstall.shellDetected && (
               <div className="text-xs font-medium text-muted-foreground">
-                <Trans comment="Section label above the editor checkbox list in the first-launch dialog — each row wires OpenKnowledge's MCP server into that tool">
-                  MCP connections
+                <Trans comment="Section label above the AI-tools checkbox in the first-launch dialog">
+                  AI tools
                 </Trans>
               </div>
             )}
-            <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
-              {editorList.visible.map((editor) => {
-                const checked = selection.has(editor.id);
-                const checkboxId = `${idPrefix}-${editor.id}`;
-                const setupUrl = `https://openknowledge.ai/docs/integrations/${EDITOR_SETUP_DOC_SLUG[editor.id]}`;
-                return (
-                  // The <Label> owns the full row (flex-1) and height (py-2.5) so the
-                  // whole name area toggles the checkbox. The setup link and location
-                  // info button are siblings OUTSIDE the label (an anchor / a second
-                  // interactive control must not live in the checkbox's activation
-                  // path).
-                  <li key={editor.id} className="flex items-start hover:bg-accent">
-                    <Label
-                      htmlFor={checkboxId}
-                      className="flex flex-1 cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal"
+            {hasEditors ? (
+              <div className="overflow-hidden rounded-md border border-border bg-card/50">
+                <Label
+                  htmlFor={`${idPrefix}-connect`}
+                  className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal hover:bg-accent"
+                >
+                  <Checkbox
+                    id={`${idPrefix}-connect`}
+                    checked={connectChecked}
+                    disabled={busy}
+                    onCheckedChange={() => setConnectChecked((prev) => !prev)}
+                    className="mt-0.5"
+                    data-testid="mcp-consent-connect-checkbox"
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span
+                      className="text-sm font-medium text-foreground"
+                      data-testid="mcp-consent-connect-summary"
                     >
-                      <Checkbox
-                        id={checkboxId}
-                        checked={checked}
-                        disabled={busy}
-                        onCheckedChange={() => onToggle(editor.id)}
-                        className="mt-0.5"
-                        data-testid={`mcp-consent-checkbox-${editor.id}`}
-                      />
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="text-sm font-medium text-foreground">{editor.label}</span>
-                        {/* willReplace warns Add will overwrite an existing OK-managed
-                          entry (reclaimed by name). Sits under the name, inside the
-                          label column, so it aligns with the Settings status subtext. */}
-                        {editor.willReplace && (
-                          <span
-                            className="text-xs text-amber-600 dark:text-amber-400"
-                            data-testid={`mcp-consent-status-${editor.id}`}
-                          >
-                            <Trans comment="Disclosure that Add will overwrite the tool's existing OpenKnowledge MCP entry">
-                              Will replace existing OpenKnowledge entry
+                      {t`Set up ${formatToolList(
+                        editors.map((e) => e.label),
+                        i18n.locale,
+                      )}`}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {skillsOffered ? (
+                        <Trans comment="Subtext under the single AI-tools checkbox when a skill is also installed">
+                          Adds OpenKnowledge's MCP connection to each, plus the
+                          open-knowledge-discovery skill so your agents recognize OpenKnowledge
+                          projects.
+                        </Trans>
+                      ) : (
+                        <Trans comment="Subtext under the single AI-tools checkbox when only MCP is wired">
+                          Adds OpenKnowledge's MCP connection to each.
+                        </Trans>
+                      )}
+                    </span>
+                    {/* Overwrite disclosure lives beside the checkbox, never behind
+                      the expander — replacing a config the user never saw named is
+                      the one outcome a collapsed summary must not hide. Gated on
+                      the checkbox too: "Replaces …" is present tense, so leaving it
+                      up after an uncheck states a consequence that will not happen,
+                      and reads to a consent-conscious user as the uncheck not
+                      having taken. The expander stays ungated — it describes what
+                      the setup writes, which is the thing being decided about. */}
+                    {connectChecked && replacing.length > 0 && (
+                      <span
+                        className="text-xs text-amber-700 dark:text-amber-400"
+                        data-testid="mcp-consent-connect-replace-warning"
+                      >
+                        {t`Replaces the existing OpenKnowledge entry in ${formatToolList(
+                          replacing.map((e) => e.label),
+                          i18n.locale,
+                        )}`}
+                      </span>
+                    )}
+                  </span>
+                </Label>
+                <div className="border-t border-border">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto w-full justify-start gap-1 rounded-none px-3 py-2 text-xs font-normal text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowDetails((v) => !v)}
+                    data-testid="mcp-consent-details-toggle"
+                    aria-expanded={showDetails}
+                    aria-controls={`${idPrefix}-details`}
+                  >
+                    {showDetails ? (
+                      <>
+                        <ChevronUp className="size-3.5" aria-hidden />
+                        <Trans comment="Collapses the list of files the setup writes to">
+                          Hide details
+                        </Trans>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="size-3.5" aria-hidden />
+                        <Trans comment="Expands the list of files the setup writes to">
+                          What this changes
+                        </Trans>
+                      </>
+                    )}
+                  </Button>
+                  {/* The region element is always present so the toggle's
+                    `aria-controls` never dangles — axe flags a reference to an
+                    id that isn't in the DOM, which is exactly what a
+                    conditionally-mounted target produces. */}
+                  <div id={`${idPrefix}-details`}>
+                    {showDetails && (
+                      <div
+                        className="flex flex-col gap-3 border-t border-border px-3 py-2.5"
+                        data-testid="mcp-consent-details"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            <Trans comment="Heading above the per-tool MCP config paths in the disclosure">
+                              MCP connections
                             </Trans>
                           </span>
-                        )}
-                      </span>
-                    </Label>
-                    {/* Undetected tools link to their setup guide instead of a
-                      dead-end "Not detected"; detected tools need no trailing line. */}
-                    {!editor.willReplace && !editor.detected && (
-                      <a
-                        href={setupUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => dispatchExternalLinkClick(e, setupUrl)}
-                        onAuxClick={(e) => dispatchExternalLinkClick(e, setupUrl)}
-                        // Per-tool name so a screen-reader link list distinguishes rows
-                        // (2.4.4); contains the visible text (2.5.3) and flags the
-                        // new-tab behavior the arrow icon shows sighted users.
-                        aria-label={t`How to set up ${editor.label} (opens in browser)`}
-                        className="flex shrink-0 items-center gap-0.5 px-2 py-2.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                        data-testid={`mcp-consent-status-${editor.id}`}
-                      >
-                        <Trans comment="Link on an undetected tool row to its OpenKnowledge setup guide">
-                          How to set up
-                        </Trans>
-                        <ArrowUpRight className="size-3" aria-hidden />
-                      </a>
+                          <ul className="flex flex-col gap-1.5">
+                            {editors.map((editor) => (
+                              <li
+                                key={editor.id}
+                                className="flex min-w-0 flex-col"
+                                data-testid={`mcp-consent-detail-${editor.id}`}
+                              >
+                                <span className="text-1sm text-foreground">{editor.label}</span>
+                                <span className="text-xs text-muted-foreground wrap-break-word">
+                                  <code className="break-all">
+                                    {editor.configPath ?? t`unavailable on this platform`}
+                                  </code>{' '}
+                                  · <code className="break-all">{editor.entryLocator}</code>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        {globalSkills.map((skill) => (
+                          <div
+                            key={skill.id}
+                            className="flex flex-col gap-1"
+                            data-testid={`mcp-consent-detail-skill-${skill.id}`}
+                          >
+                            <span className="text-xs font-medium text-muted-foreground">
+                              <Trans comment="Heading above the skill install destinations in the disclosure">
+                                Agent Skill
+                              </Trans>
+                            </span>
+                            <span className="text-1sm text-foreground">
+                              <code>{skill.name}</code>
+                            </span>
+                            <ul className="flex flex-col">
+                              {skill.paths.map((path) => (
+                                <li
+                                  key={path}
+                                  className="text-xs text-muted-foreground wrap-break-word"
+                                >
+                                  <code className="break-all">{path}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    <EditorLocationTooltip editor={editor} />
-                  </li>
-                );
-              })}
-            </ul>
-            {/* Progressive disclosure toggle — only when the list has both
-              detected and undetected tools, so there is something to hide/reveal. */}
-            {editorList.collapsible && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-auto justify-start gap-1 self-start px-1 py-1 text-xs font-normal text-muted-foreground hover:text-foreground"
-                onClick={() => setShowAllEditors((v) => !v)}
-                data-testid="mcp-consent-editors-toggle"
-                aria-expanded={showAllEditors}
-              >
-                {showAllEditors ? (
-                  <>
-                    <ChevronUp className="size-3.5" aria-hidden />
-                    <Trans comment="Collapses the undetected AI tools back behind the toggle">
-                      Show fewer
-                    </Trans>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="size-3.5" aria-hidden />
-                    <Plural
-                      value={editorList.hiddenCount}
-                      one="Show # more tool"
-                      other="Show # more tools"
-                    />
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
-          {/*
-           * User-global Agent Skills consent section — one staged, pre-checked
-           * row per bundle rendered through the shared SkillConsentRow, so this
-           * surface and Settings disclose a skill identically (its own
-           * description, reach cluster, and cost). Distinct from the editor list
-           * because skills install to every detected host by design, not per
-           * editor — the fan-out note states that independence. Nothing writes on
-           * check; the single Connect commits the whole staged set. Clicking a
-           * row body expands it in place — never leaving this modal — to the full
-           * three-tier cost and destination list the Settings confirm modal
-           * carries. A bundle whose reach resolved to zero hosts renders its
-           * checkbox unchecked + disabled with the row's own no-hosts copy, so
-           * first launch never stages an install that cannot land.
-           */}
-          {skillsOffered && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                <Trans comment="Section label above the skill checkboxes in the first-launch dialog">
-                  Agent Skills
-                </Trans>
-              </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Nothing detected: no checkbox, because there is nothing to write.
+                 The Terminal row above may still be actionable, so the dialog
+                 itself stays. */
               <p
-                className="text-xs text-muted-foreground"
-                data-testid="mcp-consent-skill-fanout-note"
+                className="rounded-md border border-border bg-card/50 px-3 py-2.5 text-1sm text-muted-foreground"
+                data-testid="mcp-consent-no-tools"
               >
-                <Trans comment="Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above">
-                  Skills install to every AI tool detected on this machine, independent of the MCP
-                  connections you chose above.
+                <Trans comment="Shown in place of the AI-tools checkbox when no AI tool was detected">
+                  No AI tools detected yet. Once you install one, connect it from Settings &gt; AI
+                  tools & CLI.
                 </Trans>
               </p>
-              <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
-                {globalSkills.map((skill) => {
-                  const checked = skillSelection.has(skill.id);
-                  const hasHosts = skill.hosts.length > 0;
-                  const expanded = expandedSkills.has(skill.id);
-                  const checkboxId = `${idPrefix}-skill-${skill.id}`;
-                  return (
-                    <li key={skill.id} className="hover:bg-accent">
-                      <SkillConsentRow
-                        name={skill.name}
-                        description={skill.description}
-                        hosts={skill.hosts}
-                        size={skill.size}
-                        onActivate={() => toggleSkillExpanded(skill.id)}
-                        ariaExpanded={expanded}
-                        control={
-                          <Checkbox
-                            id={checkboxId}
-                            checked={hasHosts && checked}
-                            disabled={busy || !hasHosts}
-                            onCheckedChange={() =>
-                              setSkillSelection((prev) => toggleSkillId(prev, skill.id))
-                            }
-                            aria-label={t`Set up ${skill.name}`}
-                            data-testid={`mcp-consent-skill-checkbox-${skill.id}`}
-                          />
-                        }
-                      />
-                      {skill.alreadyInstalled && hasHosts && !checked && (
-                        <p
-                          role="status"
-                          className="px-3 pb-2.5 text-xs text-amber-600 dark:text-amber-400"
-                          data-testid={`mcp-consent-skill-warning-${skill.id}`}
-                        >
-                          <Trans comment="Warning shown when the user unchecks an already-installed skill">
-                            Removes this skill from your editors.
-                          </Trans>
-                        </p>
-                      )}
-                      {expanded && (
-                        <div
-                          className="flex flex-col gap-3 px-3 pb-3"
-                          data-testid={`mcp-consent-skill-expansion-${skill.id}`}
-                        >
-                          {skill.size ? (
-                            <div className="flex flex-col gap-1">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                <Trans>Context cost</Trans>
-                              </span>
-                              <SkillCostValue size={skill.size} />
-                            </div>
-                          ) : null}
-                          {skill.paths.length > 0 && (
-                            <div className="flex flex-col gap-1">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                <Trans>Installs to</Trans>
-                              </span>
-                              <SkillDestinationList paths={skill.paths} />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+            )}
+          </div>
         </DialogBody>
         <DialogFooter>
-          <Button
-            variant="outline-mono"
-            onClick={() => void onSkip()}
-            disabled={busy}
-            data-testid="mcp-consent-skip"
-          >
-            <Trans comment="Secondary button — dismisses the dialog without wiring any tools">
-              Skip for now
-            </Trans>
-          </Button>
-          <Button
-            onClick={() => void onAdd()}
-            disabled={
-              busy || (selection.size === 0 && !(pathActionable && pathChecked) && !skillsOffered)
-            }
-            data-testid="mcp-consent-add"
-          >
+          {/* One button: with a single checkbox, a separate "Skip" would be a
+            second way to say what unchecking already says. ESC / outside-click
+            still route to skip() — that path made no decision at all. */}
+          <Button onClick={() => void onContinue()} disabled={busy} data-testid="mcp-consent-add">
             {busy ? (
               <Trans>Working</Trans>
             ) : (
-              <Trans comment="Primary button that writes MCP config for the selected AI tools">
-                Connect
+              <Trans comment="Primary button that applies the first-launch setup choices">
+                Continue
               </Trans>
             )}
           </Button>
