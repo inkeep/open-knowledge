@@ -27,6 +27,7 @@ import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToConfigValidationRejected } from '@/lib/config-validation-events';
 import { cn } from '@/lib/utils';
 import { firstIssuePath, SavedIndicator, SectionSkeleton } from './field-controls';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 import { pickFirstIssueForPath } from './use-config-form';
 
 type AttachmentPlacementMode =
@@ -177,14 +178,14 @@ function AttachmentsSectionBody({ binding, value }: { binding: ConfigBinding; va
       className="space-y-3"
       data-testid="settings-attachments"
     >
-      <div className="space-y-1">
-        <h3 id="settings-attachments-title" className="text-base font-semibold">
-          <Trans>Attachments</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>Set where pasted and dropped files are stored for this project.</Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-attachments-title"
+        title={<Trans>Attachments</Trans>}
+        scope="project"
+        level="block"
+      >
+        <Trans>Set where pasted and dropped files are stored for this project.</Trans>
+      </SettingsSectionHeader>
 
       <div
         className={cn('rounded-md border p-3', flashed && 'animate-settings-flash')}

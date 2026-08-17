@@ -1330,8 +1330,8 @@ msgid "Add link"
 msgstr "Adicionar link"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
-msgstr "Adiciona à busca uma classificação por significado para que páginas relacionadas conceitualmente apareçam mesmo sem palavras-chave em comum. Este ajuste vale só para este computador."
+msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
+msgstr "Adiciona à busca uma classificação por significado para que páginas relacionadas conceitualmente apareçam mesmo sem palavras-chave em comum."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add pattern"
@@ -1673,6 +1673,10 @@ msgstr "Aplica-se a (globs — um ! inicial exclui; vazio significa todos os doc
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "Aplica-se a todos os projetos deste computador. Claude e Codex, iniciados pelo terminal integrado, aprovam automaticamente as ferramentas de leitura e escrita do OpenKnowledge (o Claude também executa \"ok open\" sozinho). Excluir, mover, compartilhar, importar ou instalar habilidades, outros comandos e edições de arquivos fora do OpenKnowledge continuam perguntando. Cursor, OpenCode e Pi não são afetados. É um esforço por agente, sem garantias."
 
+#: src/components/settings/ScopeBadge.tsx
+msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
+msgstr "Aplica-se a este projeto somente neste computador. Guardado em .ok/local, não compartilhado pelo git."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "Aplicar e reiniciar o servidor do projeto"
@@ -1810,6 +1814,7 @@ msgid "Attach the file in an email to <0/>"
 msgstr "Anexe o arquivo em um e-mail para <0/>"
 
 #: src/components/settings/AttachmentsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "Anexos"
 
@@ -6199,10 +6204,6 @@ msgstr "Ocultar o painel"
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "Ocultar o painel ({panelShortcutLabel})"
 
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Hide problem indicators"
-msgstr "Ocultar os indicadores de problemas"
-
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
 msgstr "Ocultar substituir"
@@ -6309,8 +6310,8 @@ msgid "How to set up {0} (opens in browser)"
 msgstr "Como configurar {0} (abre no navegador)"
 
 #: src/components/settings/ContentRulesSection.tsx
-msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
-msgstr "Como os achados de validação aparecem no projeto. Estas escolhas ficam salvas no config.yml e são compartilhadas com todos os colaboradores pelo git."
+msgid "How validation findings surface across the project."
+msgstr "Como os achados de validação aparecem no projeto."
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "HTML"
@@ -6986,11 +6987,11 @@ msgstr "Layout"
 msgid "Layout options"
 msgstr "Opções de layout"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more"
 msgstr "Saiba mais"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "Saiba mais sobre {title}"
 
@@ -7150,6 +7151,10 @@ msgstr "Carregando as duas versões"
 msgid "Loading branch state"
 msgstr "Carregando o estado dos ramos"
 
+#: src/components/settings/SharingSection.tsx
+msgid "Loading config sharing"
+msgstr "Carregando compartilhamento da configuração"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Loading conflict for {filePath}"
 msgstr "Carregando o conflito de {filePath}"
@@ -7301,8 +7306,8 @@ msgid "Local server port"
 msgstr "Porta do servidor local"
 
 #: src/lib/install-onboarding-toast.ts
-msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
-msgstr "Somente local foi solicitado, mas nenhum repositório git foi criado. Você pode mudar depois em Configurações → Compartilhamento da configuração, quando o projeto estiver em um repositório git."
+msgid "Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo."
+msgstr "Somente local foi solicitado, mas nenhum repositório git foi criado. Você pode mudar depois em Configurações → Sincronização e compartilhamento, quando o projeto estiver em um repositório git."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
@@ -9438,8 +9443,8 @@ msgid "Personal access token"
 msgstr "Token de acesso pessoal"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Personal to this device — stored in your user config, not shared."
-msgstr "Pessoal deste dispositivo — guardado na sua configuração de usuário, não compartilhado."
+msgid "Personal to this device. Applies to every project you open here and is never shared with collaborators."
+msgstr "Pessoal deste dispositivo. Vale para todos os projetos que você abrir aqui e nunca é compartilhado com os colaboradores."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -9689,8 +9694,8 @@ msgid "Project name"
 msgstr "Nome do projeto"
 
 #: src/components/settings/LintingSection.tsx
-msgid "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "Os plugins de projeto são o padrão de autoria do seu projeto — ligue ou desligue aqui. A escolha fica salva no config.yml e é compartilhada com todos os colaboradores pelo git. Cada plugin ativado ganha uma página própria em Plugins, na barra lateral de configurações."
+msgid "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "Os plugins de projeto são o padrão de autoria do seu projeto — ligue ou desligue aqui. Cada plugin ativado ganha uma página própria em Plugins, na barra lateral de configurações."
 
 #: src/components/FileTree.tsx
 #: src/components/SeedRootPicker.tsx
@@ -11240,6 +11245,10 @@ msgstr "Conteúdo das configurações"
 msgid "Settings failed to load"
 msgstr "Falha ao carregar as configurações"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
+msgstr "Configurações deste projeto. Algumas são compartilhadas com cada colaborador pelo git; outras se aplicam somente neste computador."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings sections"
 msgstr "Seções das configurações"
@@ -11310,8 +11319,8 @@ msgid "Shared repositories"
 msgstr "Repositórios compartilhados"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Shared with everyone on this project — committed to config.yml via git."
-msgstr "Compartilhado com todo mundo neste projeto — salvo no config.yml pelo git."
+msgid "Shared with everyone on this project. Stored in the project folder and travels with it through git."
+msgstr "Compartilhado com todo mundo no projeto. Fica na pasta do projeto e viaja junto com ela pelo git."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
@@ -11355,8 +11364,8 @@ msgid "Show {hiddenCount} more"
 msgstr "Mostrar mais {hiddenCount}"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
-msgstr "Mostra um cartão de pré-visualização quando você passa o cursor sobre um link externo no editor. Esta configuração vale só para este computador."
+msgid "Show a preview card when you hover an external link in the editor."
+msgstr "Mostra um cartão de pré-visualização quando você passa o cursor sobre um link externo no editor."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -11454,10 +11463,6 @@ msgstr "Mostrar o painel"
 #: src/components/EditorToolbar.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "Mostrar o painel ({panelShortcutLabel})"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Show problem indicators"
-msgstr "Mostrar os indicadores de problemas"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
@@ -12092,11 +12097,15 @@ msgstr "Cria um link simbólico da habilidade para {0}"
 msgid "Symlinks the skill to {path}"
 msgstr "Cria um link simbólico da habilidade para {path}"
 
-#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "Sincronização"
+
+#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Sync & sharing"
+msgstr "Sincronização e compartilhamento"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled"
@@ -12922,6 +12931,10 @@ msgstr "este item"
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "Isto parece a raiz de uma unidade (ex.: C:\\). Preparar o projeto aqui vai varrer uma unidade inteira."
+
+#: src/components/settings/ScopeBadge.tsx
+msgid "This machine"
+msgstr "Esta máquina"
 
 #: src/uninstall/UninstallProgressScreen.tsx
 msgid "This may take a moment. Your markdown content is kept."
@@ -13775,8 +13788,8 @@ msgid "User"
 msgstr "Usuário"
 
 #: src/components/settings/LintingSection.tsx
-msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "Os plugins de usuário são pessoais deste dispositivo — ligue ou desligue aqui. A escolha fica na sua configuração de usuário e nunca vai para o projeto. Cada plugin ativado ganha uma página própria em Plugins, na barra lateral de configurações."
+msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "Os plugins de usuário são pessoais deste dispositivo — ligue ou desligue aqui. Cada plugin ativado ganha uma página própria em Plugins, na barra lateral de configurações."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

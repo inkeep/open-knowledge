@@ -32,6 +32,7 @@ import type { OkIntegrationsSetRequest, OkIntegrationsStatus } from '@/lib/deskt
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
 import { mark } from '@/lib/perf';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type ComponentRef = OkIntegrationsSetRequest['component'];
 
@@ -166,17 +167,16 @@ export function AiToolsSection() {
   const hiddenCount = foldable ? editors.length - primaryEditors.length : 0;
 
   const header = (
-    <div className="space-y-1">
-      <h3 id="settings-ai-tools-title" className="text-base font-semibold">
-        <Trans>AI tools & CLI</Trans>
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        <Trans>
-          Give the AI tools you use access to read and update your projects. Checking a box sets it
-          up right away; unchecking removes it.
-        </Trans>
-      </p>
-    </div>
+    <SettingsSectionHeader
+      titleId="settings-ai-tools-title"
+      title={<Trans>AI tools & CLI</Trans>}
+      scope="user"
+    >
+      <Trans>
+        Give the AI tools you use access to read and update your projects. Checking a box sets it up
+        right away; unchecking removes it.
+      </Trans>
+    </SettingsSectionHeader>
   );
 
   if (!bridge || loadFailed) {

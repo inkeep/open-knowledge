@@ -1,5 +1,6 @@
 /**
- * Settings → Terminal: two desktop-only toggles.
+ * Settings → This project → Preferences, Terminal block: two desktop-only
+ * toggles.
  *  1. The per-project opt-out for the in-app real OS shell (`terminal.enabled`,
  *     project-local — reads/writes via `use-terminal-enabled`).
  *  2. A per-machine (user-scope) toggle to auto-approve OpenKnowledge's OWN tools
@@ -16,6 +17,8 @@ import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { useTerminalConsentState, useTerminalEnabledWriter } from '@/hooks/use-terminal-enabled';
 import { useConfigContext } from '@/lib/config-provider';
+import { ScopeBadge } from './ScopeBadge';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 export function TerminalSection() {
   const { t } = useLingui();
@@ -82,15 +85,23 @@ export function TerminalSection() {
   }
 
   return (
-    <section aria-labelledby="settings-terminal-title" className="space-y-3">
-      <div className="space-y-1">
-        <h3 id="settings-terminal-title" className="text-base font-semibold">
-          {t`Terminal`}
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          {t`Run a real terminal docked inside OpenKnowledge, starting in this project's folder.`}
-        </p>
-      </div>
+    <section
+      aria-labelledby="settings-terminal-title"
+      className="space-y-3"
+      data-field="section:terminal"
+      data-testid="settings-terminal"
+    >
+      {/* The heading badge covers the shell toggle below it; the auto-approve
+          toggle is user-scope and carries its own badge, because one heading
+          can't honestly speak for two storage locations. */}
+      <SettingsSectionHeader
+        titleId="settings-terminal-title"
+        title={t`Terminal`}
+        scope="project-local"
+        level="block"
+      >
+        {t`Run a real terminal docked inside OpenKnowledge, starting in this project's folder.`}
+      </SettingsSectionHeader>
 
       <div className="flex items-center justify-between gap-3 rounded-md border p-3">
         <div className="space-y-0.5">
@@ -115,9 +126,12 @@ export function TerminalSection() {
 
       <div className="flex items-center justify-between gap-3 rounded-md border p-3">
         <div className="space-y-0.5">
-          <label htmlFor="settings-terminal-autoapprove-toggle" className="text-sm font-medium">
-            {t`Let agents use OpenKnowledge without asking`}
-          </label>
+          <div className="flex items-center gap-2">
+            <label htmlFor="settings-terminal-autoapprove-toggle" className="text-sm font-medium">
+              {t`Let agents use OpenKnowledge without asking`}
+            </label>
+            <ScopeBadge scope="user" />
+          </div>
           <p
             className="text-1sm text-muted-foreground"
             data-testid="settings-terminal-autoapprove-body"

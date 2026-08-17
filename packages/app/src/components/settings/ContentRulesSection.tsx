@@ -1,5 +1,6 @@
 /**
- * Settings → This project → Content rules — the validation-surface knobs that
+ * Settings → This project → Preferences, Content rules block — the
+ * validation-surface knobs that
  * are NOT lint plugins: how broken internal links are classified (hidden /
  * warning / error) and whether the file tree tints problem files. Both are
  * project-scope (`validation.*` in config.yml, committed and shared via git);
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useConfigContext } from '@/lib/config-provider';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 export function ContentRulesSection() {
   const { t } = useLingui();
@@ -47,18 +49,16 @@ export function ContentRulesSection() {
       aria-labelledby="settings-content-rules-title"
       className="space-y-4"
       data-testid="settings-content-rules"
+      data-field="section:content-rules"
     >
-      <div className="space-y-1">
-        <h3 id="settings-content-rules-title" className="text-base font-semibold">
-          <Trans>Content rules</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            How validation findings surface across the project. These choices are committed to
-            config.yml and shared with every collaborator via git.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-content-rules-title"
+        title={<Trans>Content rules</Trans>}
+        scope="project"
+        level="block"
+      >
+        <Trans>How validation findings surface across the project.</Trans>
+      </SettingsSectionHeader>
 
       <div className="divide-y rounded-md border">
         <div className="flex items-center justify-between gap-3 px-3 py-3">
@@ -123,7 +123,11 @@ export function ContentRulesSection() {
             checked={indicatorsOn}
             disabled={!bindingReady}
             onCheckedChange={(next) => write({ fileTreeIndicators: next })}
-            aria-label={indicatorsOn ? t`Hide problem indicators` : t`Show problem indicators`}
+            // No aria-label: the associated <Label> is the accessible name, so
+            // voice control can activate this switch by the words on screen. An
+            // aria-label would replace that name with text the user cannot see
+            // (WCAG 2.5.3), and the on/off state it described is already carried
+            // by the switch role.
             data-testid="settings-content-rules-indicators"
           />
         </div>

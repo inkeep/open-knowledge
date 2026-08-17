@@ -15,6 +15,7 @@ import {
   type ShortcutBinding,
 } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 function ShortcutBindingChips({ binding }: { binding: ShortcutBinding }) {
   return formatShortcutBinding(binding)
@@ -41,14 +42,9 @@ export function HotkeysSection() {
   const titleId = 'settings-hotkeys-title';
   return (
     <section aria-labelledby={titleId} className="space-y-5" data-testid="settings-hotkeys">
-      <div className="space-y-1">
-        <h3 id={titleId} className="text-base font-semibold">
-          <Trans>Hotkeys</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>Keyboard shortcuts available in the editor and workspace.</Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader titleId={titleId} title={<Trans>Hotkeys</Trans>} scope="user">
+        <Trans>Keyboard shortcuts available in the editor and workspace.</Trans>
+      </SettingsSectionHeader>
 
       <div className="space-y-6" data-testid="settings-hotkeys-list">
         {SHORTCUT_CATEGORY_ORDER.map((category) => {

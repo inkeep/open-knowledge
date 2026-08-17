@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isSettingsHashOpen } from '@/lib/use-settings-route';
-import { PluginSectionHeader } from './PluginSectionHeader';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 /** The command shown, copied, AND run — read from the terminal-command registry
  *  rather than restated here. The panel displaying one command while the button
@@ -234,7 +234,7 @@ export function SlidesPluginSection() {
       className="space-y-4"
       data-testid="settings-plugin-slides"
     >
-      <PluginSectionHeader
+      <SettingsSectionHeader
         titleId="settings-plugin-slides-title"
         // A product name, not a translatable label — passed raw the way the
         // markdownlint panel passes its own.
@@ -249,7 +249,7 @@ export function SlidesPluginSection() {
           document's frontmatter, then open it with the Slidev action. Rendering is handled by the
           Slidev CLI, which OpenKnowledge does not bundle.
         </Trans>
-      </PluginSectionHeader>
+      </SettingsSectionHeader>
       {/* The status resolves asynchronously (mount probe + focus re-probe), so a
           polite live region announces the flip from "Checking" to found /
           missing / check-failed, matching the sibling settings sections. */}

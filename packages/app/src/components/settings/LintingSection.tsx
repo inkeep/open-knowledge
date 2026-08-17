@@ -95,8 +95,8 @@ import { indexGlobProblemsByFile, parseAppliesToGlobProblem } from './applies-to
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { MarkdownlintRuleBrowser } from './markdownlint-rule-browser';
 import { PluginBetaBadge } from './PluginBetaBadge';
-import { PluginSectionHeader } from './PluginSectionHeader';
 import { notifyPluginEnabled } from './plugin-enabled-notice';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 /** Project-scope content-rules config + a `contentRules`-patch writer. Shared by the sections. */
 function useLinterConfig() {
@@ -161,18 +161,16 @@ export function ProjectPluginsManageSection() {
       className="space-y-4"
       data-testid="settings-plugins-manage"
     >
-      <div className="space-y-1">
-        <h3 id="settings-plugins-title" className="text-base font-semibold">
-          <Trans>Plugins</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            Project plugins are your project's authoring standard — turn them on or off here. The
-            choice is committed to config.yml and shared with every collaborator via git. Each
-            enabled plugin gets its own page under Plugins in the settings sidebar.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-plugins-title"
+        title={<Trans>Plugins</Trans>}
+        scope="project"
+      >
+        <Trans>
+          Project plugins are your project's authoring standard — turn them on or off here. Each
+          enabled plugin gets its own page under Plugins in the settings sidebar.
+        </Trans>
+      </SettingsSectionHeader>
 
       <div className="divide-y rounded-md border" data-testid="settings-plugins-list">
         {LINT_PLUGIN_META.map((plugin) => {
@@ -236,18 +234,16 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
       className="space-y-4"
       data-testid="settings-user-plugins-manage"
     >
-      <div className="space-y-1">
-        <h3 id="settings-user-plugins-title" className="text-base font-semibold">
-          <Trans>Plugins</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            User plugins are personal to this device — turn them on or off here. The choice lives in
-            your user config and is never committed to the project. Each enabled plugin gets its own
-            page under Plugins in the settings sidebar.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-user-plugins-title"
+        title={<Trans>Plugins</Trans>}
+        scope="user"
+      >
+        <Trans>
+          User plugins are personal to this device — turn them on or off here. Each enabled plugin
+          gets its own page under Plugins in the settings sidebar.
+        </Trans>
+      </SettingsSectionHeader>
 
       <div className="divide-y rounded-md border" data-testid="settings-user-plugins-list">
         <div className="flex items-center justify-between gap-3 px-3 py-3">
@@ -351,7 +347,7 @@ export function MarkdownlintPluginSection({
       className="space-y-4"
       data-testid="settings-plugin-markdownlint"
     >
-      <PluginSectionHeader
+      <SettingsSectionHeader
         titleId="settings-plugin-markdownlint-title"
         title="markdownlint"
         scope="project"
@@ -376,7 +372,7 @@ export function MarkdownlintPluginSection({
           </a>
           .
         </Trans>
-      </PluginSectionHeader>
+      </SettingsSectionHeader>
       <MarkdownlintRuleBrowser initialRuleQuery={initialRuleQuery} />
     </section>
   );
@@ -659,7 +655,7 @@ export function OkfPluginSection() {
       className="space-y-4"
       data-testid="settings-plugin-okf"
     >
-      <PluginSectionHeader
+      <SettingsSectionHeader
         titleId="settings-plugin-okf-title"
         title="OKF"
         scope="project"
@@ -667,7 +663,7 @@ export function OkfPluginSection() {
         docUrl={pluginDocUrl('okf')}
       >
         <Trans>Keeps your knowledge base aligned with the Open Knowledge Format.</Trans>
-      </PluginSectionHeader>
+      </SettingsSectionHeader>
 
       {recommendedSkills.length > 0 ? (
         <div className="flex flex-col gap-2" data-testid="settings-okf-recommended-skills">
@@ -1316,9 +1312,10 @@ export function FrontmatterPluginSection() {
       className="space-y-4"
       data-testid="settings-plugin-frontmatter"
     >
-      <PluginSectionHeader
+      <SettingsSectionHeader
         titleId="settings-plugin-frontmatter-title"
         title={t`Frontmatter schemas`}
+        scope="project"
         beta={pluginIsBeta('frontmatter')}
         docUrl={pluginDocUrl('frontmatter')}
       >
@@ -1327,7 +1324,7 @@ export function FrontmatterPluginSection() {
           2019-09, or 2020-12). Toggle a schema on to validate the docs its globs match; violations
           surface as warnings and never block a write. Use Edit to open the schema file.
         </Trans>
-      </PluginSectionHeader>
+      </SettingsSectionHeader>
 
       {problems.length > 0 && (
         <div

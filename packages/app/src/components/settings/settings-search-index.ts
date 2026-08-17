@@ -25,6 +25,12 @@ export interface SettingsSearchEntry {
   sectionId: string;
   /** Primary display + search text. */
   label: string;
+  /**
+   * Where the result lives, rendered beside the label. Labels are not unique on
+   * their own — "Preferences" is both a User and a This-project page — so a
+   * result list showing only labels offers no way to tell two rows apart.
+   */
+  context?: string;
   /** Extra search terms (group label, description, rule id/aliases). */
   keywords: string[];
   /** Dotted config path — field entries only. Drives the scroll-to-flash. */
@@ -56,8 +62,24 @@ export function buildSettingsSearchIndex(input: {
         kind: 'section',
         sectionId: item.id,
         label: item.label,
+        context: group.label,
         keywords: [group.label],
       });
+      // Subsections: named blocks stacked inside the item's page (merged
+      // former sections). They ride the item's declaration so its host gates
+      // are inherited, and navigate like fields — land on the page, then
+      // scroll-to-flash the block's `data-field` anchor.
+      for (const sub of item.subsections ?? []) {
+        entries.push({
+          id: `subsection:${item.id}:${sub.id}`,
+          kind: 'field',
+          sectionId: item.id,
+          label: sub.label,
+          context: `${group.label} → ${item.label}`,
+          keywords: [group.label, item.label],
+          targetField: sub.anchor,
+        });
+      }
     }
   }
 

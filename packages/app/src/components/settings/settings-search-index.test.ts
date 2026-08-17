@@ -91,6 +91,68 @@ describe('buildSettingsSearchIndex', () => {
     expect(structuralTranslate).toHaveBeenCalledWith(previewField.description);
   });
 
+  // Two sidebar rows are both called "Preferences" (User and This project). The
+  // result list renders the label, so without a context the two rows are
+  // indistinguishable and search stops being a usable way to reach either.
+  test('sections carry their group as context, so colliding labels stay tellable apart', () => {
+    const groups: SidebarGroup[] = [
+      {
+        id: 'user',
+        label: 'User',
+        enabled: true,
+        items: [{ id: 'preferences', label: 'Preferences' }],
+      },
+      {
+        id: 'project',
+        label: 'This project',
+        enabled: true,
+        items: [{ id: 'project-preferences', label: 'Preferences' }],
+      },
+    ];
+    const entries = buildSettingsSearchIndex({ groups, translate });
+    const preferences = entries.filter((e) => e.label === 'Preferences');
+
+    expect(preferences).toHaveLength(2);
+    // The pair is what matters: same label, different context.
+    expect(preferences.map((e) => e.context).sort()).toEqual(['This project', 'User']);
+  });
+
+  test('subsections emit field-kind entries that navigate to the parent and anchor its block', () => {
+    const groups: SidebarGroup[] = [
+      {
+        id: 'project',
+        label: 'This project',
+        enabled: true,
+        items: [
+          {
+            id: 'project-preferences',
+            label: 'Preferences',
+            subsections: [
+              { id: 'content-rules', label: 'Content rules', anchor: 'section:content-rules' },
+            ],
+          },
+        ],
+      },
+    ];
+    const entries = buildSettingsSearchIndex({ groups, translate });
+    const sub = entries.find((e) => e.id === 'subsection:project-preferences:content-rules');
+    expect(sub).toMatchObject({
+      kind: 'field',
+      sectionId: 'project-preferences',
+      label: 'Content rules',
+      context: 'This project → Preferences',
+      keywords: ['This project', 'Preferences'],
+      targetField: 'section:content-rules',
+    });
+
+    // Subsections inherit the group's enablement gate like everything else.
+    const disabled = buildSettingsSearchIndex({
+      groups: [{ ...groups[0], enabled: false }],
+      translate,
+    });
+    expect(disabled.some((e) => e.id.startsWith('subsection:'))).toBe(false);
+  });
+
   test('theme field indexed only when the theme plugin is a visible section', () => {
     const withTheme = buildSettingsSearchIndex({
       groups: groupsFixture({ themeVisible: true }),

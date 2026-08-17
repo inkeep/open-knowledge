@@ -2,9 +2,11 @@
  * Settings → This project → AI tools — the project-scoped sibling of
  * `AiToolsSection.tsx`. Where that surface manages OK's user-global footprint
  * (per-editor USER MCP entries, the shell-PATH shim, user-global skills), this
- * one manages the PROJECT-LOCAL footprint of the currently-open project:
+ * one manages the per-project footprint of the currently-open project:
  * per-editor project MCP config files (`.mcp.json`, `.cursor/mcp.json`,
- * `.codex/config.toml`, …) and the project runtime skill. Checkboxes reflect
+ * `.codex/config.toml`, …) and the project runtime skill. These live in the
+ * project folder and travel with it via git — a `project` (shared), not
+ * `project-local` (per-machine), storage scope. Checkboxes reflect
  * LIVE installed state; each click applies immediately (check = install,
  * uncheck = uninstall) over the `projectIntegrations` bridge, which resolves
  * the window's project in main.
@@ -38,6 +40,7 @@ import type {
   OkProjectIntegrationsStatus,
 } from '@/lib/desktop-bridge-types';
 import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type EditorRow = OkProjectIntegrationsStatus['editors'][number];
 type ComponentRef = OkProjectIntegrationsSetRequest['component'];
@@ -153,17 +156,16 @@ export function ProjectAiToolsSection() {
   }
 
   const header = (
-    <div className="space-y-1">
-      <h3 id="settings-project-ai-tools-title" className="text-base font-semibold">
-        <Trans>AI tools</Trans>
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        <Trans>
-          Connect the AI tools you use to this specific project. These files live in the project
-          folder, so anyone who opens it gets the same setup.
-        </Trans>
-      </p>
-    </div>
+    <SettingsSectionHeader
+      titleId="settings-project-ai-tools-title"
+      title={<Trans>AI tools</Trans>}
+      scope="project"
+    >
+      <Trans>
+        Connect the AI tools you use to this specific project. These files live in the project
+        folder, so anyone who opens it gets the same setup.
+      </Trans>
+    </SettingsSectionHeader>
   );
 
   if (!bridge || loadFailed) {

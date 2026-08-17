@@ -133,6 +133,22 @@ function renderPreferences(binding: ConfigBinding) {
   );
 }
 
+/** The project-scope Preferences page — where the attachments block lives. */
+function renderProjectPreferences() {
+  return render(
+    <SettingsContextProvider>
+      <TooltipProvider>
+        <SettingsDialogBody
+          activeId="project-preferences"
+          userBinding={null}
+          okignoreBinding={null}
+          okignoreSynced={false}
+        />
+      </TooltipProvider>
+    </SettingsContextProvider>,
+  );
+}
+
 describe('SettingsDialogBody preferences runtime', () => {
   afterEach(() => {
     cleanup();
@@ -263,8 +279,7 @@ describe('SettingsDialogBody preferences runtime', () => {
   });
 
   test('surfaces L3 config-validation rejections on the project attachment field', async () => {
-    const { binding } = makeBinding();
-    const { container } = renderPreferences(binding);
+    const { container } = renderProjectPreferences();
 
     const attachmentField = container.querySelector('[data-field="content.attachmentFolderPath"]');
     expect(attachmentField).toBeTruthy();

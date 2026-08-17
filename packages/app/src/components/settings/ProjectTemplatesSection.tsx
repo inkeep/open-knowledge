@@ -17,6 +17,7 @@ export function ProjectTemplatesSection() {
       config={{
         scope: 'local',
         title: t`Project templates`,
+        scopeBadge: 'project',
         description: (
           <Trans>
             Stored at <code className="font-mono">.ok/templates/</code> in this project. Available

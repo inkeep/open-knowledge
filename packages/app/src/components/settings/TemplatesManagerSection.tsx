@@ -11,6 +11,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { type TemplateMenuEntry, useFolderConfig } from '@/hooks/use-folder-config';
 import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { useSettingsRoute } from '@/lib/use-settings-route';
+import type { SettingsScope } from './ScopeBadge';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 /**
  * Shared chrome for a Settings-side template manager — list / edit / delete /
@@ -26,6 +28,13 @@ interface TemplatesManagerConfig {
   scope: TemplateMenuEntry['scope'];
   /** Section heading. */
   title: string;
+  /**
+   * Where this manager's templates are stored, shown as a heading badge. Named
+   * `scopeBadge` rather than `scope` to match the escape `schema-section.tsx`
+   * already makes: `scope` is taken by config-binding routing in that adapter,
+   * so both config-driven wrappers use the same name for the display badge.
+   */
+  scopeBadge: SettingsScope;
   /** Subheading prose, rendered under the title. */
   description: ReactNode;
   /** Shown when the resolver returns zero rows for `scope`. */
@@ -177,12 +186,13 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div>
-        <h3 id={config.settingsId} className="text-base font-semibold">
-          {config.title}
-        </h3>
-        <p className="text-sm text-muted-foreground">{config.description}</p>
-      </div>
+      <SettingsSectionHeader
+        titleId={config.settingsId}
+        title={config.title}
+        scope={config.scopeBadge}
+      >
+        {config.description}
+      </SettingsSectionHeader>
       {onNewClick ? (
         <Button
           variant="outline"

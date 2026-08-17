@@ -21,7 +21,8 @@ import { toast } from 'sonner';
 import { Form } from '@/components/ui/form';
 import { subscribeToConfigValidationRejected } from '@/lib/config-validation-events';
 import { firstIssuePath, type Scope, SettingsField } from './field-controls';
-import { ScopeBadge } from './ScopeBadge';
+import type { SettingsScope } from './ScopeBadge';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 import type { FieldDef } from './settings-fields';
 import { pickFirstIssueForPath, useConfigForm } from './use-config-form';
 
@@ -32,11 +33,16 @@ interface BoundSchemaSectionProps {
   binding: ConfigBinding;
   fields: FieldDef[];
   /**
-   * When set, renders a User/Project scope badge beside the title. Opt-in
-   * (distinct from `scope`, which routes config binding) so only the plugin
-   * panels show a badge — Preferences uses `scope="user"` too but must not.
+   * Storage-scope badge beside the title. Distinct from `scope`, which routes
+   * config binding and only distinguishes user from project — a panel bound to
+   * the project config can still store per-machine values, so the badge is
+   * declared rather than derived.
+   *
+   * Required, so a section added through this adapter cannot quietly ship
+   * without declaring where its values land. The sibling config-driven adapter
+   * (`TemplatesManagerConfig.scopeBadge`) enforces the same.
    */
-  scopeBadge?: Scope;
+  scopeBadge: SettingsScope;
 }
 
 /**
@@ -121,8 +127,8 @@ interface SchemaSectionProps {
   title: string;
   description: string;
   scope: Scope;
-  /** When set, renders a User/Project scope badge beside the title (plugin panels only). */
-  scopeBadge?: Scope;
+  /** Storage-scope badge beside the title. Required, matching the public prop. */
+  scopeBadge: SettingsScope;
   fields: FieldDef[];
   commitField: (name: FieldPath<Config>) => boolean;
   flashedPath: string | null;
@@ -140,15 +146,9 @@ function SchemaSection({
   const titleId = `settings-section-${scope}-title`;
   return (
     <section aria-labelledby={titleId} className="space-y-3">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <h3 id={titleId} className="text-base font-semibold">
-            {title}
-          </h3>
-          {scopeBadge ? <ScopeBadge scope={scopeBadge} /> : null}
-        </div>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
+      <SettingsSectionHeader titleId={titleId} title={title} scope={scopeBadge}>
+        {description}
+      </SettingsSectionHeader>
       <div className="space-y-10">
         {fields.map((field) => (
           <SettingsField

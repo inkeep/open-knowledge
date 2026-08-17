@@ -150,6 +150,9 @@
     ],
     "1LtA5r": ["Symlinks the skill to ", ["path"]],
     "1MGRQl": ["Terminal sessions"],
+    "1NKoc6": [
+      "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
+    ],
     "1NgrlY": ["Other ways to install"],
     "1OKzC_": ["Your report couldn't be sent. Try again or email it instead."],
     "1QfxQT": ["Dismiss"],
@@ -326,7 +329,6 @@
     ],
     "45MZFs": ["Commands"],
     "484LKL": ["Remove link"],
-    "494br3": ["Shared with everyone on this project — committed to config.yml via git."],
     "49Mb7P": ["We couldn't check whether Slidev is installed. Return to this window to retry."],
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
@@ -810,6 +812,7 @@
       "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
     ],
     "AwrGuz": ["This document is missing required properties"],
+    "AznQ2V": ["Sync & sharing"],
     "B11p-O": ["Edit markdown link"],
     "B2DrPb": ["Auto-save"],
     "B2Srgd": [["packName"], " skill installed."],
@@ -1140,13 +1143,13 @@
     "FEr96N": ["Theme"],
     "FF7V5K": ["Actual Size"],
     "FK57sK": ["repaired ", ["names"], " MCP integration"],
+    "FKVmcC": [
+      "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
+    ],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
     "FS4Udk": ["OpenKnowledge ran a command"],
-    "FTBN5g": [
-      "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
-    ],
     "FTUGgh": ["Enter a repository URL or owner/repo"],
     "FUMerq": ["Could not enable sync: ", ["detail"]],
     "FWQuPE": [
@@ -1221,6 +1224,9 @@
       "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
     ],
     "GSYWCm": ["Hide document panel"],
+    "GU1Y4A": [
+      "Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo."
+    ],
     "GUYwCr": ["Dismiss notice"],
     "GUZHkL": ["Missing palette colors"],
     "GUqTzn": ["Competitor research"],
@@ -1363,6 +1369,7 @@
     "IgN3LY": ["On selected text in <0>", ["address"], "</0>"],
     "IgTwLt": ["Open this document in the editor and collapse the graph."],
     "Ik-gP0": ["Heading H", ["level"], ": ", ["text"]],
+    "ImTzPZ": ["This machine"],
     "IoHQYP": ["Link validation is unavailable. Showing last known problems."],
     "Iq8zdU": ["Close terminal"],
     "IrB5AK": [
@@ -1715,6 +1722,9 @@
     "NeY1Np": ["Slidev timed out while starting. Try again."],
     "NfraGd": ["Other ways to install Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
+    "Ni4b7h": [
+      "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+    ],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Edit ", ["tag"]],
     "NkXEFS": ["Restore failed — document unchanged"],
@@ -1859,12 +1869,10 @@
     "PZt2Ds": ["Clone ended unexpectedly."],
     "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
-    "PaYmFG": [
-      "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
-    ],
     "PdA9NZ": [["ahead"], " ahead"],
     "PezM4_": ["OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."],
     "Pg83C9": ["Uploaded \"", ["0"], "\"."],
+    "PgJDqs": ["Show a preview card when you hover an external link in the editor."],
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Move to the previous visual-editor find result."],
     "PhIa-X": ["Replace these copies with symlinks to the source?"],
@@ -2081,6 +2089,9 @@
     "SiUUCS": ["Next match"],
     "SkMZlS": ["Couldn't remove <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
     "SkTkKV": ["The agent isn't stopping. Force stop closes this chat and quits the agent."],
+    "Ske_wc": [
+      "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+    ],
     "Skr_7L": ["Search worktrees"],
     "SlfejT": ["Error"],
     "Soy_80": [["0"], " acts without asking — OpenKnowledge can't add permission prompts for it"],
@@ -2146,7 +2157,6 @@
     "U6wmNc": ["Sync paused"],
     "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
-    "U9tm58": ["Hide problem indicators"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
     "UD_onR": ["Mulling…"],
@@ -2502,6 +2512,9 @@
     "YjiZAs": ["changed outside"],
     "YkvmF4": ["New session"],
     "YlDuro": ["Fit height"],
+    "YlwI5F": [
+      "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
+    ],
     "Yp-Hi_": ["Open settings"],
     "YsEYYS": [
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
@@ -2674,7 +2687,6 @@
       "/ and all files inside? This action cannot be undone."
     ],
     "a5gwRt": ["OpenKnowledge ran ", ["command"]],
-    "a7P3nH": ["Personal to this device — stored in your user config, not shared."],
     "a9OzSn": ["No pages found for \"", ["trimmedQuery"], "\""],
     "aBgwis": ["Scope"],
     "aByJ8j": ["How does sharing work?"],
@@ -2792,8 +2804,8 @@
     "cEoyWz": ["Add item to ", ["keyName"]],
     "cF9DyA": ["Reconnecting after server restart"],
     "cFCKYZ": ["Deny"],
-    "cGV6Mh": [
-      "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
+    "cFSbbh": [
+      "Personal to this device. Applies to every project you open here and is never shared with collaborators."
     ],
     "cH0dkG": ["It was missing a feature I needed"],
     "cHhH3i": ["a required git tool"],
@@ -2894,9 +2906,6 @@
     "dQHSCs": ["Convert (delete original)"],
     "dSORvE": ["Stops the current run and sends this instead"],
     "dTaauv": ["Reason: ", ["reason"]],
-    "dUQ7_J": [
-      "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
-    ],
     "dURmlQ": ["\"frontmatter\" is a reserved property name"],
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
     "dXCi3J": ["Something broke"],
@@ -2963,6 +2972,7 @@
     "eNhWUl": ["A PR reviewer, a release-notes writer, a deploy checklist..."],
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
+    "eQn7nI": ["Loading config sharing"],
     "eQxm13": ["Failed to update attachment location — ", ["detail"]],
     "eRSPr9": ["Open terminal"],
     "eTL5y9": ["Show selection preview"],
@@ -2974,6 +2984,9 @@
     "eaHUxx": ["Files toolbar"],
     "eazHgv": [
       "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
+    ],
+    "ebqMh6": [
+      "Shared with everyone on this project. Stored in the project folder and travels with it through git."
     ],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
     "ekSPiP": [["0"], " was already deleted."],
@@ -3125,6 +3138,7 @@
     "gZiT5e": ["Replace these symlinks with independent copies?"],
     "gayL_Q": ["Release plan"],
     "gbHcbI": ["Failed to delete property"],
+    "ge05IJ": ["How validation findings surface across the project."],
     "gfYI3o": ["Disable ", ["id"]],
     "gfb-CM": ["Could not fetch branch — sign in to GitHub and try again."],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
@@ -3402,9 +3416,6 @@
       " MB from ",
       ["4"],
       ") to replace it."
-    ],
-    "k2fEi7": [
-      "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
     ],
     "k4CuuV": [
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
@@ -3770,9 +3781,6 @@
     "oWsZk8": ["Create missing page ", ["target"]],
     "oX-rVu": ["Install failed: ", ["0"]],
     "oXKEsy": ["Delete an adjacent wiki-link or tag chip."],
-    "oXlLi4": [
-      "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-    ],
     "oYepHb": [
       "The terminal is turned off for this project. Turn it back on to run commands here."
     ],
@@ -4196,7 +4204,6 @@
     "uQewpR": [
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
-    "uR2YT3": ["Show problem indicators"],
     "uUCrBv": ["symlink"],
     "uUiiyC": [
       "You don't have permission to push to this repo. Follow can still keep your copy up to date."

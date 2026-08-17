@@ -38,6 +38,8 @@ import {
 } from '@/hooks/use-enable-sync-with-confirm';
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
+import { ScopeBadge } from './ScopeBadge';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 // Selected toggle items use the app's primary blue (the same token as the
 // Button default variant), not the muted ToggleGroup default, so the active
@@ -77,17 +79,17 @@ export function SyncSection() {
         className="space-y-4"
         data-testid="settings-sync-empty"
       >
-        <div className="space-y-1">
-          <h3 id="settings-sync-title" className="text-base font-semibold">
-            <Trans>Sync</Trans>
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            <Trans>
-              This project lives only on this computer. Connect it to GitHub to back it up and share
-              it with other people.
-            </Trans>
-          </p>
-        </div>
+        <SettingsSectionHeader
+          titleId="settings-sync-title"
+          title={<Trans>Sync</Trans>}
+          scope="project-local"
+          level="block"
+        >
+          <Trans>
+            This project lives only on this computer. Connect it to GitHub to back it up and share
+            it with other people.
+          </Trans>
+        </SettingsSectionHeader>
         <div className="flex items-center justify-between gap-3 rounded-md border p-3">
           <div className="space-y-0.5">
             <div className="text-sm font-medium">
@@ -180,8 +182,8 @@ export function SyncSection() {
     }
     // 'ask' clears the committed key (RFC 7396 merge-patch) → unanswered machines
     // see the onboarding prompt again. off/full stay legacy booleans so an older
-    // OK build still honors them verbatim; 'pull' has no legacy equivalent, so it
-    // is written as the mode string (older builds safely re-prompt on it).
+    // OK build still honors them verbatim; 'follow' has no legacy equivalent, so
+    // it is written as the mode string (older builds safely re-prompt on it).
     // Exhaustive per value: this writes committed (git-shared) config, so a
     // future mode must make a deliberate serialization choice here rather than
     // silently falling through to one arm.
@@ -213,17 +215,17 @@ export function SyncSection() {
 
   return (
     <section aria-labelledby="settings-sync-title" className="space-y-3">
-      <div className="space-y-1">
-        <h3 id="settings-sync-title" className="text-base font-semibold">
-          <Trans>Sync</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            Keep this project in sync with your git remote. Follow fetches updates without pushing;
-            full sync pushes your commits too. Turning sync on requires confirmation.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-sync-title"
+        title={<Trans>Sync</Trans>}
+        scope="project-local"
+        level="block"
+      >
+        <Trans>
+          Keep this project in sync with your git remote. Follow fetches updates without pushing;
+          full sync pushes your commits too. Turning sync on requires confirmation.
+        </Trans>
+      </SettingsSectionHeader>
       <div className="rounded-md border p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -406,8 +408,14 @@ export function SyncSection() {
       </div>
       <div className="rounded-md border p-3 space-y-2" data-testid="settings-sync-default">
         <div className="space-y-0.5">
-          <div id="settings-sync-default-label" className="text-sm font-medium">
-            <Trans>Shared default</Trans>
+          {/* The block heading is per-machine, but this one control is committed.
+              Same split as Terminal's auto-approve toggle: the control that
+              breaks its heading's scope states its own. */}
+          <div className="flex items-center gap-2">
+            <div id="settings-sync-default-label" className="text-sm font-medium">
+              <Trans>Shared default</Trans>
+            </div>
+            <ScopeBadge scope="project" />
           </div>
           <p className="text-muted-foreground text-1sm">
             <Trans>

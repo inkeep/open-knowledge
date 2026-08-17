@@ -172,6 +172,9 @@
     ],
     "1LtA5r": ["Enlaza simbólicamente la habilidad a ", ["path"]],
     "1MGRQl": ["Sesiones de terminal"],
+    "1NKoc6": [
+      "Añade a la búsqueda una clasificación por significado para que aparezcan páginas relacionadas conceptualmente aunque no compartan palabras clave."
+    ],
     "1NgrlY": ["Otras formas de instalarlo"],
     "1OKzC_": ["No se pudo enviar tu informe. Inténtalo de nuevo o mándalo por correo."],
     "1QfxQT": ["Descartar"],
@@ -381,7 +384,6 @@
     ],
     "45MZFs": ["Comandos"],
     "484LKL": ["Quitar el enlace"],
-    "494br3": ["Compartido con todos los de este proyecto: se guarda en config.yml mediante git."],
     "49Mb7P": [
       "No pudimos comprobar si Slidev está instalado. Vuelve a esta ventana para reintentarlo."
     ],
@@ -951,6 +953,7 @@
       "El endpoint respondió, pero no con una respuesta de embeddings compatible con OpenAI. Revisa la URL base."
     ],
     "AwrGuz": ["A este documento le faltan propiedades obligatorias"],
+    "AznQ2V": ["Sincronización y uso compartido"],
     "B11p-O": ["Editar el enlace markdown"],
     "B2DrPb": ["Guardado automático"],
     "B2Srgd": ["Habilidad ", ["packName"], " instalada."],
@@ -1317,13 +1320,13 @@
     "FEr96N": ["Tema"],
     "FF7V5K": ["Tamaño real"],
     "FK57sK": ["se reparó la integración MCP de ", ["names"]],
+    "FKVmcC": [
+      "Configuración de este proyecto. Una parte se comparte con cada colaborador mediante git; el resto se aplica solo en este equipo."
+    ],
     "FNTx6u": ["Buscar \"", ["semanticSubmitQuery"], "\" por significado"],
     "FOGD7m": ["Crea algo grande."],
     "FRYB1Q": ["/api/config devolvió un cuerpo con formato incorrecto"],
     "FS4Udk": ["OpenKnowledge ejecutó un comando"],
-    "FTBN5g": [
-      "Cómo aparecen los hallazgos de validación en el proyecto. Estas opciones se guardan en config.yml y se comparten con todos los colaboradores mediante git."
-    ],
     "FTUGgh": ["Escribe una URL de repositorio o propietario/repositorio"],
     "FUMerq": ["No se pudo activar la sincronización: ", ["detail"]],
     "FWQuPE": [
@@ -1418,6 +1421,9 @@
       "Cualquier archivo .mdx. El formato es solo .md, por lo que un lector que busca .md nunca lo abre y, si existe un .md con el mismo nombre, lo lee en su lugar."
     ],
     "GSYWCm": ["Ocultar el panel del documento"],
+    "GU1Y4A": [
+      "Se pidió solo local, pero no se creó ningún repositorio de git. Puedes cambiarlo más adelante en Configuración → Sincronización y uso compartido, cuando el proyecto esté en un repositorio de git."
+    ],
     "GUYwCr": ["Descartar el aviso"],
     "GUZHkL": ["Faltan colores de la paleta"],
     "GUqTzn": ["Investigación de la competencia"],
@@ -1598,6 +1604,7 @@
     "IgN3LY": ["Sobre el texto seleccionado en <0>", ["address"], "</0>"],
     "IgTwLt": ["Abre este documento en el editor y contrae el grafo."],
     "Ik-gP0": ["Encabezado H", ["level"], ": ", ["text"]],
+    "ImTzPZ": ["Este equipo"],
     "IoHQYP": [
       "La validación de enlaces no está disponible. Se muestran los últimos problemas conocidos."
     ],
@@ -1995,6 +2002,9 @@
     "NeY1Np": ["Slidev tardó demasiado en iniciarse. Inténtalo de nuevo."],
     "NfraGd": ["Otras formas de instalar Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " activos"],
+    "Ni4b7h": [
+      "Los complementos de proyecto son el estándar de autoría de tu proyecto: actívalos o desactívalos aquí. Cada complemento activado tiene su propia página bajo Complementos en la barra lateral de ajustes."
+    ],
     "NjrIak": ["Archivo: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Editar ", ["tag"]],
     "NkXEFS": ["Falló la restauración: el documento no cambió"],
@@ -2143,14 +2153,14 @@
     "PZt2Ds": ["La clonación terminó de forma inesperada."],
     "PZtgO0": ["Abriendo el worktree"],
     "P_bX4O": ["Cómo configurarlo"],
-    "PaYmFG": [
-      "Se pidió solo local, pero no se creó ningún repositorio de git. Puedes cambiarlo más adelante en Configuración → Uso compartido de la configuración, cuando el proyecto esté en un repositorio de git."
-    ],
     "PdA9NZ": [["ahead"], " por delante"],
     "PezM4_": [
       "Se guardó la habilidad de OpenKnowledge. Súbela en Claude Desktop y vuelve a hacer clic en Cowork."
     ],
     "Pg83C9": ["Se subió \"", ["0"], "\"."],
+    "PgJDqs": [
+      "Muestra una tarjeta de vista previa al pasar el cursor por un enlace externo en el editor."
+    ],
     "Pgu10b": ["Guardado como <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Ir al resultado de búsqueda anterior del editor visual."],
     "PhIa-X": ["¿Reemplazar estas copias por enlaces simbólicos al origen?"],
@@ -2389,6 +2399,9 @@
     "SiUUCS": ["Coincidencia siguiente"],
     "SkMZlS": ["No se pudo eliminar <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
     "SkTkKV": ["El agente no se detiene. La detención forzada cierra este chat y sale del agente."],
+    "Ske_wc": [
+      "Los complementos de usuario son personales de este dispositivo: actívalos o desactívalos aquí. Cada complemento activado tiene su propia página bajo Complementos en la barra lateral de ajustes."
+    ],
     "Skr_7L": ["Buscar worktrees"],
     "SlfejT": ["Error"],
     "Soy_80": [
@@ -2467,7 +2480,6 @@
     "U6wmNc": ["Sincronización en pausa"],
     "U88xbi": ["No se pudo crear el archivo de esquema"],
     "U8CD-l": ["Copiar ruta completa, sin espacio de trabajo"],
-    "U9tm58": ["Ocultar los indicadores de problemas"],
     "UBv8UK": ["Eliminar definitivamente"],
     "UDFrWm": ["Comprobando la conexión con GitHub..."],
     "UD_onR": ["Rumiando…"],
@@ -2905,6 +2917,9 @@
     "YjiZAs": ["modificado fuera"],
     "YkvmF4": ["Sesión nueva"],
     "YlDuro": ["Ajustar a la altura"],
+    "YlwI5F": [
+      "Se aplica a este proyecto solo en este equipo. Se guarda en .ok/local y no se comparte mediante git."
+    ],
     "Yp-Hi_": ["Abrir los ajustes"],
     "YsEYYS": [
       [
@@ -3102,9 +3117,6 @@
       "/ y todos los archivos que contiene? Esta acción no se puede deshacer."
     ],
     "a5gwRt": ["OpenKnowledge ejecutó ", ["command"]],
-    "a7P3nH": [
-      "Personal de este dispositivo: se guarda en tu configuración de usuario y no se comparte."
-    ],
     "a9OzSn": ["No se encontraron páginas para \"", ["trimmedQuery"], "\""],
     "aBgwis": ["Alcance"],
     "aByJ8j": ["¿Cómo funciona compartir?"],
@@ -3249,8 +3261,8 @@
     "cEoyWz": ["Añadir elemento a ", ["keyName"]],
     "cF9DyA": ["Reconectando tras el reinicio del servidor"],
     "cFCKYZ": ["Denegar"],
-    "cGV6Mh": [
-      "Muestra una tarjeta de vista previa al pasar el cursor por un enlace externo en el editor. Este ajuste se aplica solo a este equipo."
+    "cFSbbh": [
+      "Personal de este dispositivo. Se aplica a todos los proyectos que abras aquí y nunca se comparte con los colaboradores."
     ],
     "cH0dkG": ["Le faltaba una función que necesitaba"],
     "cHhH3i": ["una herramienta de git necesaria"],
@@ -3367,9 +3379,6 @@
     "dQHSCs": ["Convertir (eliminar el original)"],
     "dSORvE": ["Detiene la ejecución actual y envía esto en su lugar"],
     "dTaauv": ["Motivo: ", ["reason"]],
-    "dUQ7_J": [
-      "Añade a la búsqueda una clasificación por significado para que aparezcan páginas relacionadas conceptualmente aunque no compartan palabras clave. Este ajuste se aplica solo a este equipo."
-    ],
     "dURmlQ": ["\"frontmatter\" es un nombre de propiedad reservado"],
     "dVaXnv": ["Las reglas de contenido aún no se han cargado; inténtalo de nuevo en un momento"],
     "dXCi3J": ["Algo se rompió"],
@@ -3451,6 +3460,7 @@
     ],
     "ePK91l": ["Editar"],
     "eQkgKV": ["Instalado"],
+    "eQn7nI": ["Cargando uso compartido de la configuración"],
     "eQxm13": ["No se pudo actualizar la ubicación de los adjuntos — ", ["detail"]],
     "eRSPr9": ["Abrir la terminal"],
     "eTL5y9": ["Mostrar la vista previa de la selección"],
@@ -3462,6 +3472,9 @@
     "eaHUxx": ["Barra de herramientas de Archivos"],
     "eazHgv": [
       "Git no puede seguir esta carpeta: está vacía o solo contiene archivos ignorados. El enlace no funcionará hasta que añadas un documento seguido por git."
+    ],
+    "ebqMh6": [
+      "Se comparte con todos los del proyecto. Se guarda en la carpeta del proyecto y viaja con ella mediante git."
     ],
     "eiUA4k": [
       [
@@ -3648,6 +3661,7 @@
     "gZiT5e": ["¿Reemplazar estos enlaces simbólicos por copias independientes?"],
     "gayL_Q": ["Plan de lanzamiento"],
     "gbHcbI": ["No se pudo eliminar la propiedad"],
+    "ge05IJ": ["Cómo aparecen los hallazgos de validación en el proyecto."],
     "gfYI3o": ["Deshabilitar ", ["id"]],
     "gfb-CM": ["No se pudo obtener la rama: inicia sesión en GitHub e inténtalo de nuevo."],
     "gfdqcY": ["No se pudo aplicar el cambio: ", ["0"]],
@@ -3957,9 +3971,6 @@
       " MB desde ",
       ["4"],
       ") para reemplazarla."
-    ],
-    "k2fEi7": [
-      "Los complementos de usuario son personales de este dispositivo: actívalos o desactívalos aquí. La elección vive en tu configuración de usuario y nunca se guarda en el proyecto. Cada complemento activado tiene su propia página bajo Complementos en la barra lateral de ajustes."
     ],
     "k4CuuV": [
       "Carpetas y plantillas ya hechas para empezar rápido. Selecciona un paquete para ver qué se crea y añádelo después a tu proyecto."
@@ -4368,9 +4379,6 @@
     "oWsZk8": ["Crear la página inexistente ", ["target"]],
     "oX-rVu": ["Falló la instalación: ", ["0"]],
     "oXKEsy": ["Elimina un chip contiguo de enlace wiki o de etiqueta."],
-    "oXlLi4": [
-      "Los complementos de proyecto son el estándar de autoría de tu proyecto: actívalos o desactívalos aquí. La elección se guarda en config.yml y se comparte con todos los colaboradores mediante git. Cada complemento activado tiene su propia página bajo Complementos en la barra lateral de ajustes."
-    ],
     "oYepHb": [
       "La terminal está desactivada en este proyecto. Vuelve a activarla para ejecutar comandos aquí."
     ],
@@ -4845,7 +4853,6 @@
     "uQewpR": [
       "No se pudo reiniciar el servidor: se está ejecutando con otra cuenta. Reinicia el equipo para liberarlo y vuelve a abrir este proyecto."
     ],
-    "uR2YT3": ["Mostrar los indicadores de problemas"],
     "uUCrBv": ["enlace simbólico"],
     "uUiiyC": [
       "No tienes permiso para hacer push a este repositorio. Seguir puede mantener tu copia al día igualmente."

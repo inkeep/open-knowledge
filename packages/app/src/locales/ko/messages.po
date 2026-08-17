@@ -1334,8 +1334,8 @@ msgid "Add link"
 msgstr "링크 추가"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
-msgstr "개념적으로 관련된 페이지가 키워드를 공유하지 않아도 검색 결과에 나타나도록 의미 기반 순위를 검색에 추가합니다. 이 설정은 이 컴퓨터에만 적용됩니다."
+msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
+msgstr "검색에 의미 기반 순위를 추가하여 공통 키워드가 없어도 개념적으로 관련된 페이지가 나타나게 합니다."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add pattern"
@@ -1677,6 +1677,10 @@ msgstr "적용 대상 (glob, 앞의 !는 제외, 비워 두면 모든 문서)"
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "이 컴퓨터의 모든 프로젝트에 적용됩니다. 기본 제공 터미널에서 시작한 Claude와 Codex는 OpenKnowledge의 읽기 및 쓰기 도구를 자동 승인합니다(Claude는 \"ok open\"도 자동 실행). 삭제, 이동, 공유, 가져오기, 스킬 설치, 기타 명령, OpenKnowledge 외부 파일 편집은 계속 확인을 요청합니다. Cursor, OpenCode, Pi에는 적용되지 않습니다. 에이전트별로 최선의 동작을 시도합니다."
 
+#: src/components/settings/ScopeBadge.tsx
+msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
+msgstr "이 컴퓨터의 이 프로젝트에만 적용됩니다. .ok/local에 저장되며 git으로 공유되지 않습니다."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "적용하고 프로젝트 서버 재시작"
@@ -1814,6 +1818,7 @@ msgid "Attach the file in an email to <0/>"
 msgstr "<0/>에 보내는 이메일에 파일 첨부"
 
 #: src/components/settings/AttachmentsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "첨부 파일"
 
@@ -6203,10 +6208,6 @@ msgstr "패널 숨기기"
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "패널 숨기기 ({panelShortcutLabel})"
 
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Hide problem indicators"
-msgstr "문제 표시 숨기기"
-
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
 msgstr "바꾸기 숨기기"
@@ -6313,8 +6314,8 @@ msgid "How to set up {0} (opens in browser)"
 msgstr "{0} 설정 방법(브라우저에서 열림)"
 
 #: src/components/settings/ContentRulesSection.tsx
-msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
-msgstr "프로젝트 전체에서 검증 결과가 나타나는 방식을 설정합니다. 이 선택은 config.yml에 커밋되고 git을 통해 모든 공동 작업자와 공유됩니다."
+msgid "How validation findings surface across the project."
+msgstr "프로젝트 전체에서 검증 결과가 표시되는 방식입니다."
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "HTML"
@@ -6990,11 +6991,11 @@ msgstr "레이아웃"
 msgid "Layout options"
 msgstr "레이아웃 옵션"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more"
 msgstr "자세히 알아보기"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "{title} 자세히 알아보기"
 
@@ -7154,6 +7155,10 @@ msgstr "두 버전 불러오는 중"
 msgid "Loading branch state"
 msgstr "브랜치 상태 불러오는 중"
 
+#: src/components/settings/SharingSection.tsx
+msgid "Loading config sharing"
+msgstr "설정 공유 로드 중"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Loading conflict for {filePath}"
 msgstr "{filePath}의 충돌 불러오는 중"
@@ -7305,8 +7310,8 @@ msgid "Local server port"
 msgstr "로컬 서버 포트"
 
 #: src/lib/install-onboarding-toast.ts
-msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
-msgstr "로컬 전용이 요청되었지만 git 리포지토리가 생성되지 않았습니다. 프로젝트가 git 리포지토리에 들어간 후 설정 → 구성 공유에서 전환할 수 있습니다."
+msgid "Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo."
+msgstr "로컬 전용을 요청했지만 git 저장소가 생성되지 않았습니다. 프로젝트가 git 저장소에 포함되면 설정 → 동기화 및 공유에서 변경할 수 있습니다."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
@@ -9442,8 +9447,8 @@ msgid "Personal access token"
 msgstr "개인 액세스 토큰"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Personal to this device — stored in your user config, not shared."
-msgstr "이 디바이스에만 적용됩니다. 사용자 config에 저장되며 공유되지 않습니다."
+msgid "Personal to this device. Applies to every project you open here and is never shared with collaborators."
+msgstr "이 기기에만 적용됩니다. 여기에서 여는 모든 프로젝트에 적용되며 협업자와 공유되지 않습니다."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -9693,8 +9698,8 @@ msgid "Project name"
 msgstr "프로젝트 이름"
 
 #: src/components/settings/LintingSection.tsx
-msgid "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "프로젝트 플러그인은 프로젝트의 작성 표준입니다. 여기서 켜거나 끌 수 있습니다. 선택은 config.yml에 커밋되고 git을 통해 모든 공동 작업자와 공유됩니다. 활성화한 플러그인마다 설정 사이드바의 플러그인 아래에 자체 페이지가 생깁니다."
+msgid "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "프로젝트 플러그인은 이 프로젝트의 작성 표준입니다. 여기에서 켜거나 끌 수 있습니다. 활성화된 각 플러그인은 설정 사이드바의 플러그인 아래에 전용 페이지가 생깁니다."
 
 #: src/components/FileTree.tsx
 #: src/components/SeedRootPicker.tsx
@@ -11244,6 +11249,10 @@ msgstr "설정 콘텐츠"
 msgid "Settings failed to load"
 msgstr "설정을 불러오지 못했습니다"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
+msgstr "이 프로젝트의 설정입니다. 일부는 git을 통해 모든 협업자와 공유되고, 일부는 이 컴퓨터에만 적용됩니다."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings sections"
 msgstr "설정 섹션"
@@ -11314,8 +11323,8 @@ msgid "Shared repositories"
 msgstr "공유 저장소"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Shared with everyone on this project — committed to config.yml via git."
-msgstr "이 프로젝트의 모든 사람과 공유됨, git을 통해 config.yml에 커밋됩니다."
+msgid "Shared with everyone on this project. Stored in the project folder and travels with it through git."
+msgstr "이 프로젝트의 모든 사람과 공유됩니다. 프로젝트 폴더에 저장되어 git을 통해 함께 이동합니다."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
@@ -11359,8 +11368,8 @@ msgid "Show {hiddenCount} more"
 msgstr "{hiddenCount}개 더 보기"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
-msgstr "편집기에서 외부 링크 위에 마우스를 올릴 때 미리보기 카드를 나타냅니다. 이 설정은 이 컴퓨터에만 적용됩니다."
+msgid "Show a preview card when you hover an external link in the editor."
+msgstr "편집기에서 외부 링크 위에 마우스를 올리면 미리보기 카드를 표시합니다."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -11458,10 +11467,6 @@ msgstr "패널 보기"
 #: src/components/EditorToolbar.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "패널 보기 ({panelShortcutLabel})"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Show problem indicators"
-msgstr "문제 표시 보기"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
@@ -12096,11 +12101,15 @@ msgstr "{0}에 스킬을 심볼릭 링크합니다"
 msgid "Symlinks the skill to {path}"
 msgstr "{path}에 스킬을 심볼릭 링크합니다"
 
-#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "동기화"
+
+#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Sync & sharing"
+msgstr "동기화 및 공유"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled"
@@ -12926,6 +12935,10 @@ msgstr "이 항목"
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "드라이브 루트처럼 보입니다(예: Windows 드라이브 루트). 여기서 뼈대를 만들면 드라이브 전체를 검사합니다."
+
+#: src/components/settings/ScopeBadge.tsx
+msgid "This machine"
+msgstr "이 컴퓨터"
 
 #: src/uninstall/UninstallProgressScreen.tsx
 msgid "This may take a moment. Your markdown content is kept."
@@ -13779,8 +13792,8 @@ msgid "User"
 msgstr "사용자"
 
 #: src/components/settings/LintingSection.tsx
-msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "사용자 플러그인은 이 디바이스에만 적용됩니다. 여기서 켜거나 끌 수 있습니다. 선택은 사용자 config에 저장되며 프로젝트에 커밋되지 않습니다. 활성화한 플러그인마다 설정 사이드바의 플러그인 아래에 자체 페이지가 생깁니다."
+msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "사용자 플러그인은 이 기기에만 적용됩니다. 여기에서 켜거나 끌 수 있습니다. 활성화된 각 플러그인은 설정 사이드바의 플러그인 아래에 전용 페이지가 생깁니다."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

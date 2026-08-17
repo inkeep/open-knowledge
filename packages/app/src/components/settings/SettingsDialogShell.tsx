@@ -20,12 +20,21 @@
  *
  * Sidebar IA:
  *   USER         → Preferences, Configure agents, Hotkeys, Account, Plugins
- *                  (user-scope manage), AI tools & CLI (Electron host only)
- *   THIS PROJECT → Sync, Search, Plugins (project-scope manage), Link previews
- *                  (hidden on the packaged file:// renderer), Templates, Ignore
- *                  patterns, Config sharing
+ *                  (user-scope manage), Skills, AI tools & CLI (Electron host
+ *                  only)
+ *   THIS PROJECT → Preferences (Attachments + Content rules + Terminal
+ *                  stacked as subsections), Sync & sharing (Sync + Config
+ *                  sharing stacked as subsections), Search, Plugins
+ *                  (project-scope manage), Link previews (hidden on the
+ *                  packaged file:// renderer), AI tools (Electron host only),
+ *                  Templates, Skills, Ignore patterns
  *   PLUGINS      → one panel per enabled plugin (project + user, side by side)
  *   INTEGRATIONS → Claude Desktop (hidden when desktopPresent === false)
+ *
+ * Small-knob pages merge into the per-scope Preferences pages; manager
+ * surfaces (list editors, install managers) keep their own sidebar row. A
+ * merged former section stays searchable via its subsection entry (see
+ * `SidebarSubsection`).
  */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
@@ -54,8 +63,12 @@ import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-in
 import { subscribeToSettingsSection } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
+import {
+  isOkDesktopHost as isOkDesktopHostGate,
+  isTerminalSettingsAvailable,
+} from './settings-host-gates';
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
-import type { SidebarGroup, SidebarItem } from './settings-sidebar-types';
+import type { SidebarGroup, SidebarItem, SidebarSubsection } from './settings-sidebar-types';
 
 /**
  * GitHub Releases tag URL — mirrors `releaseUrlFor` in the desktop main
@@ -67,6 +80,32 @@ import type { SidebarGroup, SidebarItem } from './settings-sidebar-types';
  */
 function releaseNotesUrl(version: string): string {
   return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
+}
+
+/**
+ * Former standalone sections that merged into another page. Deep links
+ * (`#settings/<id>`) and in-dialog navigation to the old ids land on the page
+ * that absorbed them instead of falling back to Preferences.
+ */
+const LEGACY_SECTION_ALIASES: Record<string, { sectionId: string; anchor: string }> = {
+  'content-rules': { sectionId: 'project-preferences', anchor: 'section:content-rules' },
+  terminal: { sectionId: 'project-preferences', anchor: 'section:terminal' },
+  sharing: { sectionId: 'sync', anchor: 'section:sharing' },
+};
+
+/**
+ * Page plus the block within it, because the absorbing pages stack several
+ * blocks: resolving to the page alone drops an old deep link at the top of a
+ * multi-block page with no indication of which block it asked for. The anchor
+ * feeds the same scroll-to-flash a search result uses.
+ */
+function resolveSectionTarget(sectionId: string): { sectionId: string; anchor: string | null } {
+  const alias = LEGACY_SECTION_ALIASES[sectionId];
+  return alias ? { sectionId: alias.sectionId, anchor: alias.anchor } : { sectionId, anchor: null };
+}
+
+function resolveSectionId(sectionId: string): string {
+  return resolveSectionTarget(sectionId).sectionId;
 }
 
 interface SettingsDialogShellProps {
@@ -96,7 +135,7 @@ export function SettingsDialogShell({
   // given, else default to USER → Preferences. No in-session memory of
   // last-viewed section beyond the open edge; sidebar clicks update activeId
   // locally without touching the hash.
-  const [activeId, setActiveId] = useState(initialSection ?? 'preferences');
+  const [activeId, setActiveId] = useState(resolveSectionId(initialSection ?? 'preferences'));
   const [searchQuery, setSearchQuery] = useState('');
   // Navigation tokens set by a search-result click. fieldFlash re-fires its
   // consuming effect via object identity alone (each click sets a fresh
@@ -110,7 +149,9 @@ export function SettingsDialogShell({
 
   useEffect(() => {
     if (open) {
-      setActiveId(initialSection ?? 'preferences');
+      const target = resolveSectionTarget(initialSection ?? 'preferences');
+      setActiveId(target.sectionId);
+      setFieldFlash(target.anchor ? { path: target.anchor } : null);
       setSearchQuery('');
     }
   }, [open, initialSection]);
@@ -120,7 +161,15 @@ export function SettingsDialogShell({
   // in-dialog hash write is a `replaceState` and fires no `hashchange`, and its
   // target can equal the current hash after a sidebar click moved `activeId`
   // without it.
-  useEffect(() => subscribeToSettingsSection(setActiveId), []);
+  useEffect(
+    () =>
+      subscribeToSettingsSection((sectionId) => {
+        const target = resolveSectionTarget(sectionId);
+        setActiveId(target.sectionId);
+        if (target.anchor) setFieldFlash({ path: target.anchor });
+      }),
+    [],
+  );
 
   // Imperative scroll-to-flash for a field the search navigated to. The target
   // renders inside the lazily-loaded body and, for schema sections, only once
@@ -174,14 +223,10 @@ export function SettingsDialogShell({
   // a separate signal.
   const hasProject = collabUrl !== null;
 
-  // The docked terminal is desktop-only (the real shell has no web host), so
-  // its per-project revoke toggle only appears under the Electron preload.
-  const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
-  // The Terminal settings section configures the pty-backed dock, which is
-  // dark on hosts that can't spawn a PTY (Windows/Linux — node-pty is not
-  // bundled there). Same capability gate as the dock affordances themselves.
-  const terminalSettingsAvailable =
-    isOkDesktopHost && window.okDesktop?.config.ptyAvailable === true;
+  // Shared with SettingsDialogBody so the item/search entry and the block that
+  // renders it cannot disagree about whether the host supports them.
+  const isOkDesktopHost = isOkDesktopHostGate();
+  const terminalSettingsAvailable = isTerminalSettingsAvailable();
 
   // One sidebar item per ENABLED project-scope plugin. These populate the
   // "Project plugins" sidebar group; the manage page (which toggles membership)
@@ -237,14 +282,34 @@ export function SettingsDialogShell({
       label: t`This project`,
       enabled: hasProject,
       items: [
-        { id: 'sync', label: t`Sync` },
+        // The project-scope sibling of User → Preferences: small-knob blocks
+        // stacked on one page. A host gate sits at whichever level the surface
+        // occupies: the pty gate hides the Terminal SUBSECTION (and its search
+        // entry) below, while the file:// gate hides the whole `link-previews`
+        // ROW further down, since that one is still its own page.
+        {
+          id: 'project-preferences',
+          label: t`Preferences`,
+          subsections: [
+            { id: 'attachments', label: t`Attachments`, anchor: 'content.attachmentFolderPath' },
+            { id: 'content-rules', label: t`Content rules`, anchor: 'section:content-rules' },
+            ...(terminalSettingsAvailable
+              ? [{ id: 'terminal', label: t`Terminal`, anchor: 'section:terminal' }]
+              : []),
+          ] satisfies SidebarSubsection[],
+        },
+        {
+          id: 'sync',
+          label: t`Sync & sharing`,
+          subsections: [
+            { id: 'sharing', label: t`Config sharing`, anchor: 'section:sharing' },
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'search', label: t`Search` },
         { id: 'plugins-manage', label: t`Plugins` },
-        { id: 'content-rules', label: t`Content rules` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        ...(terminalSettingsAvailable ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the
-        // install actors live in the Electron main process (like Terminal).
+        // install actors live in the Electron main process.
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
         // Expose-via-tunnel controls — desktop-only (writes the project-local
         // exposure consent + restarts this window's server via the bridge).
@@ -252,7 +317,6 @@ export function SettingsDialogShell({
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills` },
         { id: 'okignore', label: t`Ignore patterns` },
-        { id: 'sharing', label: t`Config sharing` },
       ],
     },
     // Dedicated group listing every ENABLED plugin's own panel — project-scope
@@ -496,7 +560,11 @@ function SettingsSearchResultItem({
       onSelect={() => onNavigate(entry)}
       data-testid={`settings-search-result-${entry.id}`}
     >
-      <span className="truncate">
+      {/* `min-w-0` is what makes `truncate` work here: a flex item refuses to
+          shrink below its content width without it, so the label would overflow
+          the row rather than ellipsize — especially now that the context span
+          shares the row. */}
+      <span className="min-w-0 truncate">
         {splitTextByQueryMatches(entry.label, query).map((segment) =>
           segment.match ? (
             <span key={segment.start} className="font-semibold text-foreground">
@@ -507,6 +575,14 @@ function SettingsSearchResultItem({
           ),
         )}
       </span>
+      {/* Labels collide across groups (User and This project both have a
+          Preferences page), so the location is what makes two otherwise
+          identical rows tellable apart. */}
+      {entry.context !== undefined ? (
+        <span className="ms-auto shrink-0 truncate ps-3 text-1sm text-muted-foreground">
+          {entry.context}
+        </span>
+      ) : null}
     </CommandItem>
   );
 }

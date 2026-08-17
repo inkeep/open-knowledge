@@ -38,7 +38,7 @@ test.describe('Settings search — navigation + pinned layout', () => {
 
     // Scroll a bottom-of-list item into view — this scrolls the inner group
     // region, NOT the pinned search box.
-    await page.getByTestId('settings-sidebar-item-sharing').scrollIntoViewIfNeeded();
+    await page.getByTestId('settings-sidebar-item-okignore').scrollIntoViewIfNeeded();
 
     const after = await search.boundingBox();
     await expect(search).toBeInViewport();
@@ -82,6 +82,24 @@ test.describe('Settings search — navigation + pinned layout', () => {
     // …and the real CSS flash keyframe is applied, then clears.
     await expect(field).toHaveClass(/animate-settings-nav-flash/, { timeout: 2_000 });
     await expect(field).not.toHaveClass(/animate-settings-nav-flash/, { timeout: 3_000 });
+  });
+
+  test('a merged former section is searchable and lands on its block in the absorbing page', async ({
+    page,
+  }) => {
+    await openSettings(page);
+
+    // Config sharing merged into Sync & sharing; its subsection entry
+    // navigates there and flashes the sharing block's anchor.
+    await page.getByTestId('settings-search-input').fill('Config sharing');
+    const result = page.getByTestId('settings-search-result-subsection:sync:sharing');
+    await expect(result).toBeVisible({ timeout: 5_000 });
+    await result.click();
+
+    const block = page.locator('[data-field="section:sharing"]');
+    await expect(block).toBeVisible({ timeout: 5_000 });
+    await expect(block).toBeInViewport();
+    await expect(block).toHaveClass(/animate-settings-nav-flash/, { timeout: 2_000 });
   });
 
   test('Preview tabs is searchable from its catalog-backed label and description', async ({

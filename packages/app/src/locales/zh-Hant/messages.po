@@ -1334,8 +1334,8 @@ msgid "Add link"
 msgstr "新增連結"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
-msgstr "為搜尋加入以語意為基礎的排序，這樣即使沒有共同關鍵字，概念相關的頁面也能被找出來。這項設定只作用於這台電腦。"
+msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
+msgstr "為搜尋加入以語意為基礎的排序，這樣即使沒有共同關鍵字，概念相關的頁面也能被找出來。"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add pattern"
@@ -1677,6 +1677,10 @@ msgstr "適用於（glob 模式；開頭的 ! 表示排除；留空表示所有�
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "適用於這台電腦上的所有專案。從內建終端機啟動的 Claude 和 Codex 會自動核准 OpenKnowledge 的讀取與寫入工具（Claude 還會自動執行「ok open」）。刪除、移動、分享、匯入或安裝技能，以及其他指令和 OpenKnowledge 之外的檔案編輯，仍然會詢問。Cursor、OpenCode 和 Pi 不受影響。各代理盡力而為。"
 
+#: src/components/settings/ScopeBadge.tsx
+msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
+msgstr "只在這台電腦上對這個專案生效。存在 .ok/local 中，不會透過 git 分享。"
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "套用並重新啟動專案伺服器"
@@ -1814,6 +1818,7 @@ msgid "Attach the file in an email to <0/>"
 msgstr "把檔案用電子郵件寄到 <0/>"
 
 #: src/components/settings/AttachmentsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "附件"
 
@@ -6203,10 +6208,6 @@ msgstr "隱藏面板"
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "隱藏面板（{panelShortcutLabel}）"
 
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Hide problem indicators"
-msgstr "隱藏問題標記"
-
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
 msgstr "隱藏取代"
@@ -6313,8 +6314,8 @@ msgid "How to set up {0} (opens in browser)"
 msgstr "如何設定 {0}（在瀏覽器中開啟）"
 
 #: src/components/settings/ContentRulesSection.tsx
-msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
-msgstr "驗證結果會如何呈現在專案各處。這些選擇會寫進 config.yml，並透過 git 分享給每位協作者。"
+msgid "How validation findings surface across the project."
+msgstr "驗證結果會如何呈現在專案各處。"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "HTML"
@@ -6990,11 +6991,11 @@ msgstr "版面配置"
 msgid "Layout options"
 msgstr "版面配置選項"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more"
 msgstr "了解更多"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "進一步了解 {title}"
 
@@ -7154,6 +7155,10 @@ msgstr "正在載入兩個版本"
 msgid "Loading branch state"
 msgstr "正在載入分支狀態"
 
+#: src/components/settings/SharingSection.tsx
+msgid "Loading config sharing"
+msgstr "正在載入設定分享"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Loading conflict for {filePath}"
 msgstr "正在載入 {filePath} 的衝突"
@@ -7305,8 +7310,8 @@ msgid "Local server port"
 msgstr "本機伺服器連接埠"
 
 #: src/lib/install-onboarding-toast.ts
-msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
-msgstr "已要求僅限本機，但未建立 git 儲存庫。等專案位於 git 儲存庫後，可在「設定 → 設定分享」中切換。"
+msgid "Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo."
+msgstr "已要求僅限本機，但未建立 git 儲存庫。等專案位於 git 儲存庫後，可在「設定 → 同步與分享」中切換。"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
@@ -9442,8 +9447,8 @@ msgid "Personal access token"
 msgstr "個人存取權杖"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Personal to this device — stored in your user config, not shared."
-msgstr "只限這台裝置——存在你的使用者設定中，不會分享出去。"
+msgid "Personal to this device. Applies to every project you open here and is never shared with collaborators."
+msgstr "只限這台裝置。對你在這裡打開的每個專案都生效，而且絕不會分享給協作者。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -9693,8 +9698,8 @@ msgid "Project name"
 msgstr "專案名稱"
 
 #: src/components/settings/LintingSection.tsx
-msgid "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "專案外掛是你專案的寫作標準——在這裡開啟或關閉它們。這個選擇會寫進 config.yml，並透過 git 分享給每位協作者。每個啟用的外掛在設定側邊欄的「外掛」底下都有自己的頁面。"
+msgid "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "專案外掛是你專案的寫作標準——在這裡開啟或關閉它們。每個啟用的外掛在設定側邊欄的「外掛」底下都有自己的頁面。"
 
 #: src/components/FileTree.tsx
 #: src/components/SeedRootPicker.tsx
@@ -11244,6 +11249,10 @@ msgstr "設定內容"
 msgid "Settings failed to load"
 msgstr "設定載入失敗"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
+msgstr "這個專案的設定。部分設定會透過 git 與每位協作者分享；其餘只在這台電腦上生效。"
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings sections"
 msgstr "設定分區"
@@ -11314,8 +11323,8 @@ msgid "Shared repositories"
 msgstr "分享的儲存庫"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Shared with everyone on this project — committed to config.yml via git."
-msgstr "與這個專案的所有人共享——透過 git 提交到 config.yml。"
+msgid "Shared with everyone on this project. Stored in the project folder and travels with it through git."
+msgstr "與專案裡的所有人共享。存在專案資料夾中，並透過 git 隨專案一起流轉。"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
@@ -11359,8 +11368,8 @@ msgid "Show {hiddenCount} more"
 msgstr "再顯示 {hiddenCount} 個"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
-msgstr "在編輯器中把游標停在外部連結上時顯示預覽卡片。這項設定只作用於這台電腦。"
+msgid "Show a preview card when you hover an external link in the editor."
+msgstr "在編輯器中把游標停在外部連結上時顯示預覽卡片。"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -11458,10 +11467,6 @@ msgstr "顯示面板"
 #: src/components/EditorToolbar.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "顯示面板（{panelShortcutLabel}）"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Show problem indicators"
-msgstr "顯示問題標記"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
@@ -12096,11 +12101,15 @@ msgstr "把技能符號連結到 {0}"
 msgid "Symlinks the skill to {path}"
 msgstr "把技能符號連結到 {path}"
 
-#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "同步"
+
+#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Sync & sharing"
+msgstr "同步與分享"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled"
@@ -12926,6 +12935,10 @@ msgstr "這個項目"
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "這看起來像是磁碟機根目錄（例如 C:\\）。在這裡建立專案骨架會掃描整個磁碟機。"
+
+#: src/components/settings/ScopeBadge.tsx
+msgid "This machine"
+msgstr "這台機器"
 
 #: src/uninstall/UninstallProgressScreen.tsx
 msgid "This may take a moment. Your markdown content is kept."
@@ -13779,8 +13792,8 @@ msgid "User"
 msgstr "使用者"
 
 #: src/components/settings/LintingSection.tsx
-msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "使用者外掛只屬於這台裝置——在這裡開啟或關閉它們。這個選擇存在你的使用者設定中，絕不會提交到專案。每個啟用的外掛在設定側邊欄的「外掛」底下都有自己的頁面。"
+msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "使用者外掛只屬於這台裝置——在這裡開啟或關閉它們。每個啟用的外掛在設定側邊欄的「外掛」底下都有自己的頁面。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createContext, type ReactNode, use, useState } from 'react';
+import { FormProvider } from 'react-hook-form';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -119,7 +120,13 @@ vi.doMock('@/components/ui/skeleton', () => ({
 }));
 
 vi.doMock('@/components/ui/form', () => ({
-  Form: ({ children }: { children?: ReactNode }) => <form>{children}</form>,
+  // shadcn's Form *is* RHF's FormProvider — keep that so section bodies that
+  // read `useFormContext` (SettingsField) render instead of crashing on null.
+  Form: ({ children, ...form }: { children?: ReactNode; [key: string]: unknown }) => (
+    <FormProvider {...(form as never)}>
+      <form>{children}</form>
+    </FormProvider>
+  ),
   FormControl: ({ children }: { children?: ReactNode }) => <>{children}</>,
   FormDescription: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
   FormField: () => null,
@@ -261,14 +268,15 @@ vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => ({ status: syncStatus, fetchError: null }),
 }));
 
+const configContext = () => ({
+  projectBinding,
+  projectConfig,
+  projectLocalConfig,
+  projectLocalSynced,
+  projectSynced,
+});
 vi.doMock('@/lib/config-provider', () => ({
-  useConfigContext: () => ({
-    projectBinding,
-    projectConfig,
-    projectLocalConfig,
-    projectLocalSynced,
-    projectSynced,
-  }),
+  useConfigContext: configContext,
 }));
 
 type ModeWriterFn = (mode: string) => { ok: true };
@@ -389,10 +397,54 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     await renderBody({ activeId: 'project-templates' });
     expect(screen.getByTestId('project-templates-section')).not.toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
 
-    cleanup();
-    await renderBody({ activeId: 'terminal' });
-    expect(screen.getByTestId('settings-terminal-body')).not.toBeNull();
+  test('project preferences stacks the Terminal block only on a pty-capable Electron host', async () => {
+    const w = window as unknown as { okDesktop?: unknown };
+    w.okDesktop = {
+      config: { ptyAvailable: true },
+      terminal: { cliPreflight: () => Promise.resolve({ onPath: 'absent' }) },
+    };
+    try {
+      await renderBody({ activeId: 'project-preferences' });
+      expect(screen.getByTestId('settings-terminal-body')).not.toBeNull();
+
+      cleanup();
+      w.okDesktop = undefined;
+      await renderBody({ activeId: 'project-preferences' });
+      expect(screen.queryByTestId('settings-terminal-body')).toBeNull();
+    } finally {
+      w.okDesktop = undefined;
+    }
+  });
+
+  test('project preferences stacks attachments and content rules under one page title', async () => {
+    await renderBody({ activeId: 'project-preferences' });
+
+    // The page container is a labelled region, not a bare div: its heading id is
+    // what names the region for a screen reader, the same wiring every block uses.
+    const page = screen.getByTestId('settings-project-preferences');
+    expect(page.tagName).toBe('SECTION');
+    expect(page.getAttribute('aria-labelledby')).toBe('settings-project-preferences-title');
+    expect(document.getElementById('settings-project-preferences-title')?.textContent).toBe(
+      'Preferences',
+    );
+    expect(screen.getByTestId('settings-attachments')).not.toBeNull();
+    expect(screen.getByTestId('settings-content-rules')).not.toBeNull();
+    // Link previews stayed a standalone section, not a block on this page.
+    expect(screen.queryByTestId('settings-link-previews')).toBeNull();
+
+    // Every heading states where its values are stored: the page title plus
+    // both blocks, all of which write the shared, committed config.
+    expect(screen.getAllByTestId('settings-scope-badge-project').length).toBe(3);
+
+    // Headings cascade: one h3 page title above h4 block titles.
+    const pageTitles = screen.getAllByRole('heading', { level: 3 });
+    expect(pageTitles.length).toBe(1);
+    expect(pageTitles[0]?.textContent).toBe('Preferences');
+    const blockTitles = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent);
+    expect(blockTitles).toContain('Attachments');
+    expect(blockTitles).toContain('Content rules');
   });
 
   test('hotkeys section renders from the shared shortcut registry', async () => {
@@ -401,26 +453,62 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-hotkeys')).not.toBeNull();
     expect(screen.getByTestId('settings-hotkeys-list').textContent).toContain('Editor');
     expect(screen.getAllByText('Workspace').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
   });
 
-  test('preferences shows no user/project scope badge (badges are plugin-panel-only)', async () => {
-    await renderBody({ activeId: 'preferences' });
-    expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
+  test('user preferences carries the User badge on its heading', async () => {
+    await renderBody({
+      activeId: 'preferences',
+      userBinding: { current: () => ({}), subscribe: () => () => {} },
+    });
+    expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
     expect(screen.queryByTestId('settings-scope-badge-project')).toBeNull();
   });
 
-  test('preferences includes attachments controls mapped to content.attachmentFolderPath', async () => {
+  test('sync page stacks the config-sharing block under the sync controls', async () => {
+    syncStatus = { state: 'dormant', hasRemote: false, syncEnabled: false };
+
+    await renderBody({ activeId: 'sync' });
+
+    // No okDesktop bridge in jsdom → the sharing block renders its CLI-pointer
+    // stub, anchored for search navigation.
+    expect(document.querySelector('[data-field="section:sharing"]')).not.toBeNull();
+
+    // Headings cascade: one h3 "Sync & sharing" page title above the h4 Sync and
+    // Config sharing blocks. The two blocks are peers — Config sharing must not
+    // regress to an h4 under an h3 Sync (which would read as subordinate).
+    const pageTitles = screen.getAllByRole('heading', { level: 3 });
+    expect(pageTitles.map((h) => h.textContent)).toEqual(['Sync & sharing']);
+    const blockTitles = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent);
+    expect(blockTitles).toContain('Sync');
+    expect(blockTitles).toContain('Config sharing');
+
+    // Same labelled-region wiring as the project Preferences page.
+    const page = screen.getByTestId('settings-sync-sharing');
+    expect(page.tagName).toBe('SECTION');
+    expect(page.getAttribute('aria-labelledby')).toBe('settings-sync-sharing-title');
+
+    // Each block states its own storage scope (Sync per-machine, Config sharing
+    // committed); the grouping page header carries no badge.
+    expect(screen.getByTestId('settings-scope-badge-project-local').textContent).toBe(
+      'This machine',
+    );
+    expect(screen.getByTestId('settings-scope-badge-project').textContent).toBe('Project');
+  });
+
+  test('project preferences includes attachments controls mapped to content.attachmentFolderPath', async () => {
     projectConfig = {
       autoSync: { default: null },
       content: { attachmentFolderPath: './' },
     };
 
-    await renderBody({ activeId: 'preferences' });
+    await renderBody({ activeId: 'project-preferences' });
 
+    const attachments = () => within(screen.getByTestId('settings-attachments'));
     expect(screen.getByTestId('settings-attachments')).not.toBeNull();
-    expect(screen.getByTestId('select-root').getAttribute('data-value')).toBe('same-folder');
+    expect(attachments().getByTestId('select-root').getAttribute('data-value')).toBe('same-folder');
 
-    fireEvent.click(screen.getByText('Fixed folder in content root'));
+    fireEvent.click(attachments().getByText('Fixed folder in content root'));
     expect(projectBindingPatchCalls.at(-1)).toEqual({
       content: { attachmentFolderPath: 'attachments' },
     });
@@ -435,23 +523,25 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       content: { attachmentFolderPath: 'assets/uploads' },
     });
 
-    fireEvent.click(screen.getByText('Content root'));
+    fireEvent.click(attachments().getByText('Content root'));
     expect(projectBindingPatchCalls.at(-1)).toEqual({
       content: { attachmentFolderPath: '/' },
     });
   });
 
-  test('preferences round trips current-folder attachment subfolders', async () => {
+  test('project preferences round trips current-folder attachment subfolders', async () => {
     projectConfig = {
       autoSync: { default: null },
       content: { attachmentFolderPath: './attachments' },
     };
 
-    await renderBody({ activeId: 'preferences' });
+    await renderBody({ activeId: 'project-preferences' });
 
-    expect(screen.getByTestId('select-root').getAttribute('data-value')).toBe(
-      'current-folder-subfolder',
-    );
+    expect(
+      within(screen.getByTestId('settings-attachments'))
+        .getByTestId('select-root')
+        .getAttribute('data-value'),
+    ).toBe('current-folder-subfolder');
     expect((screen.getByTestId('settings-attachments-folder') as HTMLInputElement).value).toBe(
       'attachments',
     );
@@ -472,11 +562,13 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       content: { attachmentFolderPath: 'attachments' },
     };
 
-    await renderBody({ activeId: 'preferences' });
+    await renderBody({ activeId: 'project-preferences' });
 
-    expect(screen.getByTestId('select-root').getAttribute('data-value')).toBe(
-      'content-root-folder',
-    );
+    const attachmentsSelectValue = () =>
+      within(screen.getByTestId('settings-attachments'))
+        .getByTestId('select-root')
+        .getAttribute('data-value');
+    expect(attachmentsSelectValue()).toBe('content-root-folder');
     fireEvent.change(screen.getByTestId('settings-attachments-folder'), {
       target: { value: './media' },
     });
@@ -491,14 +583,12 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       content: { attachmentFolderPath: 'media' },
     };
     cleanup();
-    await renderBody({ activeId: 'preferences' });
+    await renderBody({ activeId: 'project-preferences' });
 
-    expect(screen.getByTestId('select-root').getAttribute('data-value')).toBe(
-      'content-root-folder',
-    );
+    expect(attachmentsSelectValue()).toBe('content-root-folder');
   });
 
-  test('preferences surfaces attachment patch failures inline', async () => {
+  test('project preferences surfaces attachment patch failures inline', async () => {
     projectConfig = {
       autoSync: { default: null },
       content: { attachmentFolderPath: './' },
@@ -522,9 +612,11 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       },
     };
 
-    await renderBody({ activeId: 'preferences' });
+    await renderBody({ activeId: 'project-preferences' });
 
-    fireEvent.click(screen.getByText('Fixed folder in content root'));
+    fireEvent.click(
+      within(screen.getByTestId('settings-attachments')).getByText('Fixed folder in content root'),
+    );
 
     expect(projectBindingPatchCalls.at(-1)).toEqual({
       content: { attachmentFolderPath: 'attachments' },
@@ -610,6 +702,12 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-sync-default-toggle').getAttribute('data-value')).toBe(
       'off',
     );
+
+    // This control writes the COMMITTED project binding while its block heading
+    // says This machine, so it states its own scope. Without this the heading
+    // would assert "not shared via git" over a control that is.
+    const defaultBlock = within(screen.getByTestId('settings-sync-default'));
+    expect(defaultBlock.getByTestId('settings-scope-badge-project').textContent).toBe('Project');
 
     // "Full by default" writes the legacy boolean seed `true` (older builds honor it).
     fireEvent.click(screen.getByTestId('settings-sync-default-full'));

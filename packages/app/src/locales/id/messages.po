@@ -1330,8 +1330,8 @@ msgid "Add link"
 msgstr "Tambahkan tautan"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
-msgstr "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci. Pengaturan ini hanya berlaku di komputer ini."
+msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
+msgstr "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add pattern"
@@ -1673,6 +1673,10 @@ msgstr "Berlaku untuk (glob — awalan ! mengecualikan; kosong berarti semua dok
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "Berlaku untuk semua proyek di komputer ini. Claude dan Codex, yang dijalankan dari terminal bawaan, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga menjalankan \"ok open\" sendiri). Menghapus, memindahkan, membagikan, mengimpor atau memasang keterampilan, perintah lain, dan penyuntingan berkas di luar OpenKnowledge tetap ditanyakan. Cursor, OpenCode, dan Pi tidak terpengaruh. Sebaik mungkin, per agen."
 
+#: src/components/settings/ScopeBadge.tsx
+msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
+msgstr "Berlaku untuk proyek ini hanya di komputer ini. Disimpan di .ok/local, tidak dibagikan lewat git."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "Terapkan dan mulai ulang server proyek"
@@ -1810,6 +1814,7 @@ msgid "Attach the file in an email to <0/>"
 msgstr "Lampirkan berkasnya dalam surel ke <0/>"
 
 #: src/components/settings/AttachmentsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "Lampiran"
 
@@ -6199,10 +6204,6 @@ msgstr "Sembunyikan panel"
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "Sembunyikan panel ({panelShortcutLabel})"
 
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Hide problem indicators"
-msgstr "Sembunyikan penanda masalah"
-
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
 msgstr "Sembunyikan penggantian"
@@ -6309,8 +6310,8 @@ msgid "How to set up {0} (opens in browser)"
 msgstr "Cara menyiapkan {0} (terbuka di peramban)"
 
 #: src/components/settings/ContentRulesSection.tsx
-msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
-msgstr "Bagaimana temuan validasi muncul di seluruh proyek. Pilihan ini disimpan di config.yml dan dibagikan ke setiap kolaborator lewat git."
+msgid "How validation findings surface across the project."
+msgstr "Bagaimana temuan validasi muncul di seluruh proyek."
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "HTML"
@@ -6986,11 +6987,11 @@ msgstr "Tata letak"
 msgid "Layout options"
 msgstr "Opsi tata letak"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more"
 msgstr "Pelajari lebih lanjut"
 
-#: src/components/settings/PluginSectionHeader.tsx
+#: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "Pelajari lebih lanjut tentang {title}"
 
@@ -7150,6 +7151,10 @@ msgstr "Memuat kedua versinya"
 msgid "Loading branch state"
 msgstr "Memuat keadaan cabang"
 
+#: src/components/settings/SharingSection.tsx
+msgid "Loading config sharing"
+msgstr "Memuat berbagi konfigurasi"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Loading conflict for {filePath}"
 msgstr "Memuat konflik untuk {filePath}"
@@ -7301,8 +7306,8 @@ msgid "Local server port"
 msgstr "Port server lokal"
 
 #: src/lib/install-onboarding-toast.ts
-msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
-msgstr "Mode hanya lokal diminta, tetapi tidak ada repositori git yang dibuat. Anda dapat menggantinya nanti lewat Pengaturan → Berbagi konfigurasi setelah proyek berada di repositori git."
+msgid "Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo."
+msgstr "Mode hanya lokal diminta, tetapi tidak ada repositori git yang dibuat. Anda dapat menggantinya nanti lewat Pengaturan → Sinkronisasi & berbagi setelah proyek berada di repositori git."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
@@ -9438,8 +9443,8 @@ msgid "Personal access token"
 msgstr "Token akses pribadi"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Personal to this device — stored in your user config, not shared."
-msgstr "Pribadi untuk perangkat ini — disimpan di konfigurasi pengguna Anda, tidak dibagikan."
+msgid "Personal to this device. Applies to every project you open here and is never shared with collaborators."
+msgstr "Pribadi untuk perangkat ini. Berlaku untuk setiap proyek yang Anda buka di sini dan tidak pernah dibagikan ke kolaborator."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -9689,8 +9694,8 @@ msgid "Project name"
 msgstr "Nama proyek"
 
 #: src/components/settings/LintingSection.tsx
-msgid "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau matikan di sini. Pilihan ini disimpan di config.yml dan dibagikan ke setiap kolaborator lewat git. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
+msgid "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
 
 #: src/components/FileTree.tsx
 #: src/components/SeedRootPicker.tsx
@@ -11240,6 +11245,10 @@ msgstr "Isi pengaturan"
 msgid "Settings failed to load"
 msgstr "Gagal memuat pengaturan"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
+msgstr "Pengaturan untuk proyek ini. Sebagian dibagikan ke setiap kolaborator lewat git; sisanya hanya berlaku di komputer ini."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings sections"
 msgstr "Bagian pengaturan"
@@ -11310,8 +11319,8 @@ msgid "Shared repositories"
 msgstr "Repositori bersama"
 
 #: src/components/settings/ScopeBadge.tsx
-msgid "Shared with everyone on this project — committed to config.yml via git."
-msgstr "Dibagikan dengan semua orang di proyek ini — disimpan di config.yml lewat git."
+msgid "Shared with everyone on this project. Stored in the project folder and travels with it through git."
+msgstr "Dibagikan ke semua orang di proyek ini. Disimpan di folder proyek dan ikut berpindah lewat git."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
@@ -11355,8 +11364,8 @@ msgid "Show {hiddenCount} more"
 msgstr "Tampilkan {hiddenCount} lagi"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
-msgstr "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting. Pengaturan ini hanya berlaku di komputer ini."
+msgid "Show a preview card when you hover an external link in the editor."
+msgstr "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -11454,10 +11463,6 @@ msgstr "Tampilkan panel"
 #: src/components/EditorToolbar.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "Tampilkan panel ({panelShortcutLabel})"
-
-#: src/components/settings/ContentRulesSection.tsx
-msgid "Show problem indicators"
-msgstr "Tampilkan penanda masalah"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
@@ -12092,11 +12097,15 @@ msgstr "Menautkan keterampilan secara symlink ke {0}"
 msgid "Symlinks the skill to {path}"
 msgstr "Menautkan keterampilan secara symlink ke {path}"
 
-#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "Sinkronisasi"
+
+#: src/components/settings/SettingsDialogBody.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Sync & sharing"
+msgstr "Sinkronisasi & berbagi"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled"
@@ -12922,6 +12931,10 @@ msgstr "item ini"
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "Ini tampak seperti akar sebuah drive (mis. C:\\). Menyusun proyek di sini akan memindai seluruh drive."
+
+#: src/components/settings/ScopeBadge.tsx
+msgid "This machine"
+msgstr "Mesin ini"
 
 #: src/uninstall/UninstallProgressScreen.tsx
 msgid "This may take a moment. Your markdown content is kept."
@@ -13775,8 +13788,8 @@ msgid "User"
 msgstr "Pengguna"
 
 #: src/components/settings/LintingSection.tsx
-msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
-msgstr "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Pilihan ini ada di konfigurasi pengguna Anda dan tidak pernah di-commit ke proyek. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
+msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

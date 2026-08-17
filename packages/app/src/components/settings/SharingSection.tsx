@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { OkSharingStatusResult } from '@/lib/desktop-bridge-types';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 const TITLE_ID = 'settings-sharing-title';
 
@@ -40,18 +41,18 @@ export function SharingSection() {
 
 function SharingSectionUnsupported() {
   return (
-    <section aria-labelledby={TITLE_ID} className="space-y-3">
-      <div className="space-y-1">
-        <h3 id={TITLE_ID} className="text-base font-semibold">
-          <Trans>Config sharing</Trans>
-        </h3>
-        <p className="text-1sm text-muted-foreground">
-          <Trans>
-            Available in the OpenKnowledge desktop app. From a terminal, use
-            <code> ok config-sharing status</code> / <code>share</code> / <code>unshare</code>.
-          </Trans>
-        </p>
-      </div>
+    <section aria-labelledby={TITLE_ID} className="space-y-3" data-field="section:sharing">
+      <SettingsSectionHeader
+        titleId={TITLE_ID}
+        title={<Trans>Config sharing</Trans>}
+        scope="project"
+        level="block"
+      >
+        <Trans>
+          Available in the OpenKnowledge desktop app. From a terminal, use
+          <code> ok config-sharing status</code> / <code>share</code> / <code>unshare</code>.
+        </Trans>
+      </SettingsSectionHeader>
     </section>
   );
 }
@@ -178,11 +179,22 @@ function SharingSectionBody() {
 
   if (status === null) {
     return (
-      <section aria-labelledby={TITLE_ID} className="space-y-3">
-        <h3 id={TITLE_ID} className="text-base font-semibold">
-          <Trans>Config sharing</Trans>
-        </h3>
-        <Skeleton className="h-24" />
+      <section aria-labelledby={TITLE_ID} className="space-y-3" data-field="section:sharing">
+        <SettingsSectionHeader
+          titleId={TITLE_ID}
+          title={<Trans>Config sharing</Trans>}
+          scope="project"
+          level="block"
+        />
+        {/* Announced the same way as the dialog's own content skeleton: without
+            it, a screen-reader user hears the Config sharing heading and then
+            silence, which is indistinguishable from an empty section. */}
+        <div role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">
+            <Trans>Loading config sharing</Trans>
+          </span>
+          <Skeleton className="h-24" />
+        </div>
       </section>
     );
   }
@@ -190,21 +202,24 @@ function SharingSectionBody() {
   const noGit = status.mode === 'no-git';
 
   return (
-    <section aria-labelledby={TITLE_ID} className="space-y-4" data-testid="settings-sharing">
-      <div className="space-y-1">
-        <div className="flex items-center gap-1.5">
-          <h3 id={TITLE_ID} className="text-base font-semibold">
-            <Trans>Config sharing</Trans>
-          </h3>
-          <ConfigSharingInfoTooltip />
-        </div>
-        <p className="text-1sm text-muted-foreground">
-          <Trans>
-            Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is
-            saved with the project so teammates get it too, or kept only on your computer.
-          </Trans>
-        </p>
-      </div>
+    <section
+      aria-labelledby={TITLE_ID}
+      className="space-y-4"
+      data-testid="settings-sharing"
+      data-field="section:sharing"
+    >
+      <SettingsSectionHeader
+        titleId={TITLE_ID}
+        title={<Trans>Config sharing</Trans>}
+        scope="project"
+        level="block"
+        adornment={<ConfigSharingInfoTooltip />}
+      >
+        <Trans>
+          Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is
+          saved with the project so teammates get it too, or kept only on your computer.
+        </Trans>
+      </SettingsSectionHeader>
 
       {noGit ? (
         <p

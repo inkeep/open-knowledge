@@ -150,6 +150,9 @@
     ],
     "1LtA5r": ["Menautkan keterampilan secara symlink ke ", ["path"]],
     "1MGRQl": ["Sesi terminal"],
+    "1NKoc6": [
+      "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci."
+    ],
     "1NgrlY": ["Cara lain untuk memasang"],
     "1OKzC_": ["Laporan Anda tidak bisa dikirim. Coba lagi atau kirim lewat surel saja."],
     "1QfxQT": ["Tutup"],
@@ -319,7 +322,6 @@
     ],
     "45MZFs": ["Perintah"],
     "484LKL": ["Hapus tautan"],
-    "494br3": ["Dibagikan dengan semua orang di proyek ini — disimpan di config.yml lewat git."],
     "49Mb7P": [
       "Kami tidak dapat memeriksa apakah Slidev terpasang. Kembali ke jendela ini untuk mencoba lagi."
     ],
@@ -805,6 +807,7 @@
       "Endpoint-nya menjawab, tetapi bukan dengan respons embedding yang kompatibel dengan OpenAI. Periksa URL dasarnya."
     ],
     "AwrGuz": ["Dokumen ini kehilangan properti yang wajib"],
+    "AznQ2V": ["Sinkronisasi & berbagi"],
     "B11p-O": ["Sunting tautan markdown"],
     "B2DrPb": ["Simpan otomatis"],
     "B2Srgd": ["Keterampilan ", ["packName"], " terpasang."],
@@ -1130,13 +1133,13 @@
     "FEr96N": ["Tema"],
     "FF7V5K": ["Ukuran Sebenarnya"],
     "FK57sK": ["integrasi MCP ", ["names"], " diperbaiki"],
+    "FKVmcC": [
+      "Pengaturan untuk proyek ini. Sebagian dibagikan ke setiap kolaborator lewat git; sisanya hanya berlaku di komputer ini."
+    ],
     "FNTx6u": ["Cari \"", ["semanticSubmitQuery"], "\" berdasarkan makna"],
     "FOGD7m": ["Ciptakan sesuatu yang hebat."],
     "FRYB1Q": ["/api/config mengembalikan isi yang salah bentuk"],
     "FS4Udk": ["OpenKnowledge menjalankan sebuah perintah"],
-    "FTBN5g": [
-      "Bagaimana temuan validasi muncul di seluruh proyek. Pilihan ini disimpan di config.yml dan dibagikan ke setiap kolaborator lewat git."
-    ],
     "FTUGgh": ["Masukkan URL repositori atau pemilik/repo"],
     "FUMerq": ["Sinkronisasi tidak dapat diaktifkan: ", ["detail"]],
     "FWQuPE": [
@@ -1215,6 +1218,9 @@
       "File .mdx apa pun. Formatnya hanya .md saja, sehingga pembaca yang memindai .md tidak akan pernah membukanya — dan jika ada .md dengan nama yang sama, maka yang dibaca adalah yang tersebut."
     ],
     "GSYWCm": ["Sembunyikan panel dokumen"],
+    "GU1Y4A": [
+      "Mode hanya lokal diminta, tetapi tidak ada repositori git yang dibuat. Anda dapat menggantinya nanti lewat Pengaturan → Sinkronisasi & berbagi setelah proyek berada di repositori git."
+    ],
     "GUYwCr": ["Tutup pemberitahuan"],
     "GUZHkL": ["Warna palet tidak lengkap"],
     "GUqTzn": ["Riset pesaing"],
@@ -1368,6 +1374,7 @@
     "IgN3LY": ["Pada teks terpilih di <0>", ["address"], "</0>"],
     "IgTwLt": ["Membuka dokumen ini di penyunting dan menciutkan graf."],
     "Ik-gP0": ["Judul H", ["level"], ": ", ["text"]],
+    "ImTzPZ": ["Mesin ini"],
     "IoHQYP": ["Validasi tautan tidak tersedia. Menampilkan masalah terakhir yang diketahui."],
     "Iq8zdU": ["Tutup terminal"],
     "IrB5AK": [
@@ -1721,6 +1728,9 @@
     "NeY1Np": ["Slidev terlalu lama saat memulai. Coba lagi."],
     "NfraGd": ["Cara lain untuk memasang Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " aktif"],
+    "Ni4b7h": [
+      "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
+    ],
     "NjrIak": ["Berkas: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Sunting ", ["tag"]],
     "NkXEFS": ["Gagal memulihkan — dokumen tidak berubah"],
@@ -1867,14 +1877,14 @@
     "PZt2Ds": ["Kloning berakhir secara tidak terduga."],
     "PZtgO0": ["Membuka worktree"],
     "P_bX4O": ["Cara menyiapkan"],
-    "PaYmFG": [
-      "Mode hanya lokal diminta, tetapi tidak ada repositori git yang dibuat. Anda dapat menggantinya nanti lewat Pengaturan → Berbagi konfigurasi setelah proyek berada di repositori git."
-    ],
     "PdA9NZ": [["ahead"], " di depan"],
     "PezM4_": [
       "Keterampilan OpenKnowledge disimpan. Unggah di Claude Desktop, lalu klik Cowork lagi."
     ],
     "Pg83C9": ["\"", ["0"], "\" diunggah."],
+    "PgJDqs": [
+      "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting."
+    ],
     "Pgu10b": ["Disimpan sebagai <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Pergi ke hasil pencarian penyunting visual sebelumnya."],
     "PhIa-X": ["Ganti salinan-salinan ini dengan symlink ke sumbernya?"],
@@ -2085,6 +2095,9 @@
     "SiUUCS": ["Kecocokan berikutnya"],
     "SkMZlS": ["<0>", ["targetGitPath"], "</0> tidak bisa dihapus: ", ["removeGitError"]],
     "SkTkKV": ["Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari agen."],
+    "Ske_wc": [
+      "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
+    ],
     "Skr_7L": ["Cari worktree"],
     "SlfejT": ["Galat"],
     "Soy_80": [
@@ -2157,7 +2170,6 @@
     "U6wmNc": ["Sinkronisasi dijeda"],
     "U88xbi": ["Gagal membuat berkas skema"],
     "U8CD-l": ["Salin jalur lengkap, tanpa ruang kerja"],
-    "U9tm58": ["Sembunyikan penanda masalah"],
     "UBv8UK": ["Hapus Permanen"],
     "UDFrWm": ["Memeriksa koneksi GitHub..."],
     "UD_onR": ["Mempertimbangkan…"],
@@ -2521,6 +2533,9 @@
     "YjiZAs": ["diubah di luar"],
     "YkvmF4": ["Sesi baru"],
     "YlDuro": ["Sesuaikan tinggi"],
+    "YlwI5F": [
+      "Berlaku untuk proyek ini hanya di komputer ini. Disimpan di .ok/local, tidak dibagikan lewat git."
+    ],
     "Yp-Hi_": ["Buka pengaturan"],
     "YsEYYS": [["behind", "plural", { "other": ["#", " commit di belakang"] }]],
     "YwPUUP": ["Paket ini sudah disiapkan di sini."],
@@ -2684,9 +2699,6 @@
       "/ dan semua berkas di dalamnya? Tindakan ini tidak bisa dibatalkan."
     ],
     "a5gwRt": ["OpenKnowledge menjalankan ", ["command"]],
-    "a7P3nH": [
-      "Pribadi untuk perangkat ini — disimpan di konfigurasi pengguna Anda, tidak dibagikan."
-    ],
     "a9OzSn": ["Tidak ada halaman yang ditemukan untuk \"", ["trimmedQuery"], "\""],
     "aBgwis": ["Cakupan"],
     "aByJ8j": ["Bagaimana cara kerja berbagi?"],
@@ -2823,8 +2835,8 @@
     "cEoyWz": ["Tambahkan item ke ", ["keyName"]],
     "cF9DyA": ["Menyambung ulang setelah server dimulai ulang"],
     "cFCKYZ": ["Tolak"],
-    "cGV6Mh": [
-      "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting. Pengaturan ini hanya berlaku di komputer ini."
+    "cFSbbh": [
+      "Pribadi untuk perangkat ini. Berlaku untuk setiap proyek yang Anda buka di sini dan tidak pernah dibagikan ke kolaborator."
     ],
     "cH0dkG": ["Ada fitur yang saya butuhkan tetapi tidak ada"],
     "cHhH3i": ["sebuah alat git yang diperlukan"],
@@ -2922,9 +2934,6 @@
     "dQHSCs": ["Ubah (hapus aslinya)"],
     "dSORvE": ["Menghentikan proses saat ini dan mengirim ini sebagai gantinya"],
     "dTaauv": ["Alasan: ", ["reason"]],
-    "dUQ7_J": [
-      "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci. Pengaturan ini hanya berlaku di komputer ini."
-    ],
     "dURmlQ": ["\"frontmatter\" adalah nama properti yang dicadangkan"],
     "dVaXnv": ["Aturan konten belum dimuat — coba lagi sebentar"],
     "dXCi3J": ["Ada yang rusak"],
@@ -2986,6 +2995,7 @@
     "eNhWUl": ["Peninjau PR, penulis catatan rilis, daftar periksa penerapan..."],
     "ePK91l": ["Sunting"],
     "eQkgKV": ["Terpasang"],
+    "eQn7nI": ["Memuat berbagi konfigurasi"],
     "eQxm13": ["Gagal memperbarui lokasi lampiran — ", ["detail"]],
     "eRSPr9": ["Buka terminal"],
     "eTL5y9": ["Tampilkan pratinjau pilihan"],
@@ -2997,6 +3007,9 @@
     "eaHUxx": ["Bilah alat Berkas"],
     "eazHgv": [
       "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
+    ],
+    "ebqMh6": [
+      "Dibagikan ke semua orang di proyek ini. Disimpan di folder proyek dan ikut berpindah lewat git."
     ],
     "eiUA4k": [["count", "plural", { "other": ["#", " komentar"] }]],
     "ekSPiP": [["0"], " sudah dihapus."],
@@ -3143,6 +3156,7 @@
     "gZiT5e": ["Ganti symlink-symlink ini dengan salinan mandiri?"],
     "gayL_Q": ["Rencana rilis"],
     "gbHcbI": ["Gagal menghapus properti"],
+    "ge05IJ": ["Bagaimana temuan validasi muncul di seluruh proyek."],
     "gfYI3o": ["Nonaktifkan ", ["id"]],
     "gfb-CM": ["Cabang tidak dapat diambil — masuk ke GitHub lalu coba lagi."],
     "gfdqcY": ["Perubahannya tidak bisa diterapkan: ", ["0"]],
@@ -3439,9 +3453,6 @@
       " MB dari ",
       ["4"],
       ") untuk menggantinya."
-    ],
-    "k2fEi7": [
-      "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Pilihan ini ada di konfigurasi pengguna Anda dan tidak pernah di-commit ke proyek. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
     ],
     "k4CuuV": [
       "Folder dan templat siap pakai agar Anda cepat memulai. Pilih sebuah paket untuk melihat apa yang akan dibuat, lalu tambahkan ke proyek Anda."
@@ -3805,9 +3816,6 @@
     "oWsZk8": ["Buat halaman ", ["target"], " yang belum ada"],
     "oX-rVu": ["Pemasangan gagal: ", ["0"]],
     "oXKEsy": ["Menghapus chip tautan wiki atau tag yang ada di sebelahnya."],
-    "oXlLi4": [
-      "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau matikan di sini. Pilihan ini disimpan di config.yml dan dibagikan ke setiap kolaborator lewat git. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
-    ],
     "oYepHb": [
       "Terminal dimatikan untuk proyek ini. Nyalakan lagi untuk menjalankan perintah di sini."
     ],
@@ -4226,7 +4234,6 @@
     "uQewpR": [
       "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."
     ],
-    "uR2YT3": ["Tampilkan penanda masalah"],
     "uUCrBv": ["symlink"],
     "uUiiyC": [
       "Anda tidak punya izin push ke repo ini. Ikuti tetap bisa menjaga salinan Anda mutakhir."

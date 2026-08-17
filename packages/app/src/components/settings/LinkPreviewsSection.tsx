@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { useConfigContext } from '@/lib/config-provider';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 export function LinkPreviewsSection() {
   const { t } = useLingui();
@@ -87,17 +88,13 @@ export function LinkPreviewsSection() {
       className="space-y-3"
       data-testid="settings-link-previews"
     >
-      <div className="space-y-1">
-        <h3 id="settings-link-previews-title" className="text-base font-semibold">
-          <Trans>Link previews</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            Show a preview card when you hover an external link in the editor. This setting applies
-            only to this computer.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-link-previews-title"
+        title={<Trans>Link previews</Trans>}
+        scope="project-local"
+      >
+        <Trans>Show a preview card when you hover an external link in the editor.</Trans>
+      </SettingsSectionHeader>
 
       <div className="rounded-md border p-3">
         <div className="flex items-center justify-between gap-3">

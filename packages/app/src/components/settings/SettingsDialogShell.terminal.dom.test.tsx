@@ -1,13 +1,47 @@
 /**
- * The Settings → Terminal nav item is desktop-only: the docked terminal has no
- * web host, so its per-project revoke toggle must only be reachable under the
- * Electron preload (`window.okDesktop`).
+ * Terminal lives as a subsection of This project → Preferences, and stays
+ * desktop-only: the docked terminal has no web host, so its per-project revoke
+ * toggle must only be reachable under the Electron preload (`window.okDesktop`)
+ * on a pty-capable host. The observable shell-level surface for the gate is
+ * the settings SEARCH index: the subsection entry exists only on capable
+ * hosts.
  */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+// Radix/cmdk reach for DOM globals the jsdom preload doesn't expose; hoist the
+// same shims the sibling search test uses.
+type WindowGlobals = { MutationObserver?: typeof MutationObserver; NodeFilter?: typeof NodeFilter };
+type GlobalWithDomShims = typeof globalThis &
+  WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
+const globalWithDomShims = globalThis as GlobalWithDomShims;
+if (
+  globalWithDomShims.MutationObserver === undefined &&
+  globalWithDomShims.window?.MutationObserver !== undefined
+) {
+  globalWithDomShims.MutationObserver = globalWithDomShims.window.MutationObserver;
+}
+if (
+  globalWithDomShims.NodeFilter === undefined &&
+  globalWithDomShims.window?.NodeFilter !== undefined
+) {
+  globalWithDomShims.NodeFilter = globalWithDomShims.window.NodeFilter;
+}
+if (globalWithDomShims.ResizeObserver === undefined) {
+  class NoopResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalWithDomShims.ResizeObserver = NoopResizeObserver;
+}
+if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
 
 vi.doMock('@inkeep/open-knowledge-core', () => ({
   SHOW_INSTALL_SKILL: false,
@@ -29,8 +63,21 @@ vi.doMock('@lingui/react/macro', () => ({
   }),
 }));
 
+const probeActiveIds: string[] = [];
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
-  SettingsDialogBodyLazy: () => <div data-testid="settings-body-probe" />,
+  SettingsDialogBodyLazy: ({ activeId }: { activeId: string }) => {
+    probeActiveIds.push(activeId);
+    // Stands in for the blocks the legacy aliases target so the shell's
+    // scroll-to-flash has real `[data-field]` nodes to find — the same anchors
+    // the sidebar declares.
+    return (
+      <div data-testid="settings-body-probe">
+        <div data-field="section:terminal" data-testid="probe-terminal-block" />
+        <div data-field="section:content-rules" data-testid="probe-content-rules-block" />
+        <div data-field="section:sharing" data-testid="probe-sharing-block" />
+      </div>
+    );
+  },
 }));
 
 vi.doMock('@/components/ui/dialog', () => ({
@@ -71,7 +118,7 @@ const { SettingsDialogShell } = await import('./SettingsDialogShell');
 function setDesktopHost(present: boolean, opts: { ptyAvailable?: boolean } = {}) {
   const w = window as unknown as { okDesktop?: unknown };
   if (present) {
-    // The Terminal section additionally gates on the host's pty capability
+    // The Terminal subsection additionally gates on the host's pty capability
     // (`config.ptyAvailable`, false on win/linux where node-pty isn't
     // bundled) — model the capable macOS host by default.
     w.okDesktop = { config: { ptyAvailable: opts.ptyAvailable ?? true } };
@@ -80,28 +127,91 @@ function setDesktopHost(present: boolean, opts: { ptyAvailable?: boolean } = {})
   }
 }
 
-describe('SettingsDialogShell terminal nav item (desktop-only)', () => {
-  beforeEach(() => setDesktopHost(false));
+const SUBSECTION_RESULT_ID = 'settings-search-result-subsection:project-preferences:terminal';
+
+async function searchTerminal(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByTestId('settings-search-input'), 'Terminal');
+}
+
+describe('SettingsDialogShell terminal subsection (desktop-only)', () => {
+  beforeEach(() => {
+    setDesktopHost(false);
+    probeActiveIds.length = 0;
+  });
   afterEach(() => {
     cleanup();
     setDesktopHost(false);
   });
 
-  test('shows the Terminal section under the Electron host', () => {
+  test('indexes the Terminal subsection under the Electron host and navigates to project Preferences', async () => {
     setDesktopHost(true);
+    const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
-    expect(screen.getByTestId('settings-sidebar-item-terminal')).not.toBeNull();
+
+    // The former standalone sidebar item is gone for every host.
+    expect(screen.queryByTestId('settings-sidebar-item-terminal')).toBeNull();
+
+    await searchTerminal(user);
+    const result = await screen.findByTestId(SUBSECTION_RESULT_ID);
+
+    await user.click(result);
+    expect(probeActiveIds.at(-1)).toBe('project-preferences');
   });
 
-  test('hides the Terminal section on the web host (no okDesktop bridge)', () => {
+  // A legacy `#settings/terminal` link used to resolve to the page id alone,
+  // dropping the user at the top of a four-block page with nothing indicating
+  // which block they asked for. The alias carries the block anchor so the deep
+  // link lands where the equivalent search result does.
+  test('a legacy terminal deep link anchors the block, not just the page', async () => {
+    setDesktopHost(true);
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} initialSection="terminal" />);
+
+    expect(probeActiveIds.at(-1)).toBe('project-preferences');
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('probe-terminal-block').classList.contains('animate-settings-nav-flash'),
+      ).toBe(true);
+    });
+  });
+
+  // The mechanism is proven by the terminal case above; these guard the other
+  // two DATA entries in the alias map, which a typo'd anchor would break
+  // silently. Deep links are user-facing (bookmarks, onboarding toasts), so a
+  // silent regression means a link that quietly stops landing anywhere useful.
+  test.each([
+    ['content-rules', 'project-preferences', 'probe-content-rules-block'],
+    ['sharing', 'sync', 'probe-sharing-block'],
+  ])('a legacy %s deep link resolves to %s and anchors its block', async (alias, page, probe) => {
+    setDesktopHost(true);
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} initialSection={alias} />);
+
+    expect(probeActiveIds.at(-1)).toBe(page);
+    await waitFor(() => {
+      expect(screen.getByTestId(probe).classList.contains('animate-settings-nav-flash')).toBe(true);
+    });
+  });
+
+  test('drops the Terminal search entry on the web host (no okDesktop bridge)', async () => {
     setDesktopHost(false);
+    const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
-    expect(screen.queryByTestId('settings-sidebar-item-terminal')).toBeNull();
+
+    await searchTerminal(user);
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-search-empty')).toBeDefined();
+    });
+    expect(screen.queryByTestId(SUBSECTION_RESULT_ID)).toBeNull();
   });
 
-  test('hides the Terminal section on a pty-less Electron host (win/linux)', () => {
+  test('drops the Terminal search entry on a pty-less Electron host (win/linux)', async () => {
     setDesktopHost(true, { ptyAvailable: false });
+    const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
-    expect(screen.queryByTestId('settings-sidebar-item-terminal')).toBeNull();
+
+    await searchTerminal(user);
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-search-empty')).toBeDefined();
+    });
+    expect(screen.queryByTestId(SUBSECTION_RESULT_ID)).toBeNull();
   });
 });

@@ -51,6 +51,7 @@ import {
   useRegisteredAgents,
 } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 /** One toggle row: icon + name (+ optional muted hint) on the left, Switch on
  *  the right. The icon aligns to the name line only — a two-line row (name +
@@ -478,14 +479,9 @@ export function ConfigureAgentsSection(): ReactNode {
       className="space-y-6"
       data-testid="settings-configure-agents"
     >
-      <div className="space-y-1">
-        <h3 id={titleId} className="font-semibold text-base">
-          {t`Configure agents`}
-        </h3>
-        <p className="text-muted-foreground text-sm">
-          {t`Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them.`}
-        </p>
-      </div>
+      <SettingsSectionHeader titleId={titleId} title={t`Configure agents`} scope="user">
+        {t`Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them.`}
+      </SettingsSectionHeader>
 
       <div className="relative">
         <Search

@@ -93,7 +93,7 @@ export function installOnboardingToastListener(opts: {
     }
     if (payload.kind === 'sharing-no-git') {
       sonnerToast.warning(
-        t`Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo.`,
+        t`Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo.`,
         { duration: TOAST_DURATION_MS },
       );
       return;

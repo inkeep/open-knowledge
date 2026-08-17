@@ -69,6 +69,7 @@ import {
 } from './okignore-doc';
 import { countMatches } from './okignore-preview';
 import { checkHeuristicWarnings, type OkignoreWarning } from './okignore-warnings';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 interface OkignoreSectionProps {
   binding: OkignoreBinding | null;
@@ -98,12 +99,12 @@ function OkignoreSectionSkeleton() {
       className="space-y-3"
       data-testid="settings-okignore-skeleton"
     >
-      <div className="space-y-1">
-        <h3 id="settings-okignore-title" className="text-base font-semibold">
-          <Trans>Ignore patterns</Trans>
-        </h3>
-        <Skeleton className="h-4 w-72" />
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-okignore-title"
+        title={<Trans>Ignore patterns</Trans>}
+        scope="project"
+      />
+      <Skeleton className="h-4 w-72" />
       <Skeleton className="h-20 w-full" />
     </section>
   );
@@ -262,27 +263,26 @@ function OkignoreSectionBody({ binding }: { binding: OkignoreBinding }) {
       className="space-y-3"
       data-testid="settings-okignore-section"
     >
-      <div className="space-y-1">
-        <h3 id="settings-okignore-title" className="text-base font-semibold">
-          <Trans>Ignore patterns</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            Hide files and folders from your knowledge base. Hidden items don’t appear in the file
-            tree, search, or AI tools.{' '}
-            <a
-              href={PRIMER_HREF}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-primary underline-offset-2 hover:underline"
-              data-testid="settings-okignore-primer"
-            >
-              Learn more about patterns
-            </a>
-            .
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-okignore-title"
+        title={<Trans>Ignore patterns</Trans>}
+        scope="project"
+      >
+        <Trans>
+          Hide files and folders from your knowledge base. Hidden items don’t appear in the file
+          tree, search, or AI tools.{' '}
+          <a
+            href={PRIMER_HREF}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary underline-offset-2 hover:underline"
+            data-testid="settings-okignore-primer"
+          >
+            Learn more about patterns
+          </a>
+          .
+        </Trans>
+      </SettingsSectionHeader>
       {rejection !== null ? <RejectionBanner rejection={rejection} /> : null}
       {showAdvanced ? (
         <OkignoreAdvancedEditor binding={binding} text={text} />

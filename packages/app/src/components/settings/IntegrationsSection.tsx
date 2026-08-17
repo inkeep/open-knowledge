@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { InstallInClaudeDesktopDialog } from '@/components/InstallInClaudeDesktopDialog';
 import { Button } from '@/components/ui/button';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 export function IntegrationsSection() {
   const [installOpen, setInstallOpen] = useState(false);
@@ -17,14 +18,13 @@ export function IntegrationsSection() {
 
   return (
     <section aria-labelledby="settings-integrations-title" className="space-y-3">
-      <div className="space-y-1">
-        <h3 id="settings-integrations-title" className="text-base font-semibold">
-          <Trans>Integrations</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>Connect OpenKnowledge to other tools you use.</Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-integrations-title"
+        title={<Trans>Integrations</Trans>}
+        scope="user"
+      >
+        <Trans>Connect OpenKnowledge to other tools you use.</Trans>
+      </SettingsSectionHeader>
       <div className="rounded-md border p-3">
         <div className="flex items-center justify-between gap-3">
           <div>

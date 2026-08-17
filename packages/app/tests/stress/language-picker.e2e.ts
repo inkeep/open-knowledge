@@ -67,8 +67,10 @@ test.describe('language picker', () => {
     await expect(trigger).toHaveText('español');
 
     // The far end of the chain: the words themselves. `lang` alone would still
-    // be right if the catalog never loaded.
-    await expect(page.getByRole('button', { name: 'Preferencias' })).toBeVisible({
+    // be right if the catalog never loaded. Pinned to the User item by test id —
+    // "Preferences" is the label of two sidebar items (User and This project),
+    // so matching on the translated name alone is ambiguous in every language.
+    await expect(page.getByTestId('settings-sidebar-item-preferences')).toHaveText('Preferencias', {
       timeout: 10_000,
     });
 
@@ -90,7 +92,10 @@ test.describe('language picker', () => {
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'ko', { timeout: 10_000 });
     await expect(trigger).toHaveText('한국어');
-    await expect(page.getByRole('button', { name: '환경설정' })).toBeVisible({
+    // Pinned by test id for the same reason as the español case above: two
+    // sidebar items share the "Preferences" label, so the translated name alone
+    // resolves to both.
+    await expect(page.getByTestId('settings-sidebar-item-preferences')).toHaveText('환경설정', {
       timeout: 10_000,
     });
 

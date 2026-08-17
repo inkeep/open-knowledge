@@ -19,6 +19,7 @@ import {
   httpAuthQueryTransport,
 } from '@/lib/transports/auth-query-transport';
 import type { AuthTransport } from '@/lib/transports/auth-transport';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type StatusState =
   | { phase: 'loading' }
@@ -114,16 +115,15 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
       className="space-y-3"
       data-testid="settings-account"
     >
-      <div className="space-y-1">
-        <h3 id="settings-account-title" className="text-base font-semibold">
-          <Trans>Account</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            Manage the GitHub account OpenKnowledge uses to browse and sync your repositories.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-account-title"
+        title={<Trans>Account</Trans>}
+        scope="user"
+      >
+        <Trans>
+          Manage the GitHub account OpenKnowledge uses to browse and sync your repositories.
+        </Trans>
+      </SettingsSectionHeader>
 
       {status.phase === 'loading' ? (
         <div

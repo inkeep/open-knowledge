@@ -2259,7 +2259,7 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
         lines.push(
           `  ${dim('Counted on skills.sh (skill name + source repo, once per machine).')}`,
         );
-        lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → Preferences.')}`);
+        lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → User → Preferences.')}`);
         break;
       }
       case 'skip-current':

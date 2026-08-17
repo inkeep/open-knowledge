@@ -237,4 +237,17 @@ describe("TerminalSection (codex-can't-honor note)", () => {
     await waitFor(() => expect(autoApproveSwitch()).not.toBeNull());
     expect(codexNote()).toBeNull();
   });
+
+  // The split badge is the pattern the whole section exists to demonstrate: one
+  // heading cannot speak for two storage locations, so the control that differs
+  // states its own. Without this, either badge could be deleted silently.
+  test('the heading is badged per-machine while the user-scope auto-approve toggle badges itself', async () => {
+    render(<TerminalSection />);
+    await waitFor(() => expect(autoApproveSwitch()).not.toBeNull());
+
+    // The heading covers the shell toggle, which is project-local.
+    expect(screen.getByTestId('settings-scope-badge-project-local')).not.toBeNull();
+    // Auto-approve spans every project on this machine, so it says so itself.
+    expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
+  });
 });

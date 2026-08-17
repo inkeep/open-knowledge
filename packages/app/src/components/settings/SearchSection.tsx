@@ -59,6 +59,7 @@ import {
   type EmbeddingsKeyTransport,
   httpEmbeddingsKeyTransport,
 } from '@/lib/transports/embeddings-key-transport';
+import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 // Refetch `/api/semantic-status` at these delays (ms) after a toggle so the
 // coverage panel repaints once the persistence debounce + config file-watcher
@@ -295,17 +296,16 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
       className="space-y-3"
       data-testid="settings-search"
     >
-      <div className="space-y-1">
-        <h3 id="settings-search-title" className="text-base font-semibold">
-          <Trans>Semantic search</Trans>
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          <Trans>
-            Add meaning-based ranking to search so conceptually-related pages surface even when they
-            share no keywords. This setting applies only to this computer.
-          </Trans>
-        </p>
-      </div>
+      <SettingsSectionHeader
+        titleId="settings-search-title"
+        title={<Trans>Semantic search</Trans>}
+        scope="project-local"
+      >
+        <Trans>
+          Add meaning-based ranking to search so conceptually-related pages surface even when they
+          share no keywords.
+        </Trans>
+      </SettingsSectionHeader>
 
       <div className="rounded-md border p-3">
         <div className="flex items-center justify-between gap-3">

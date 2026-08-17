@@ -95,7 +95,7 @@ export function sharingStatusCommand(): Command {
         // Disambiguate: the toggle above promotes the WHOLE project to shared.
         // Undoing only the skills carve-out is a desktop-app action today.
         lines.push(
-          '  (that shares the whole project; to undo only the skills carve-out, use the desktop app: Settings > Config sharing)',
+          '  (that shares the whole project; to undo only the skills carve-out, use the desktop app: Settings > Sync & sharing)',
         );
       }
       process.stdout.write(`${lines.join('\n')}\n`);
