@@ -17917,7 +17917,13 @@ export function createApiExtension(
             : skillLiveDocName(body.scope, body.name);
         await flushDiskAndDetectOutcome(liveSkillDoc);
 
-        const validity = validateSkillForInstall(skillDir, body.name);
+        // Lifecycle verbs are ordinary for OK's own bundles: the reserved-name
+        // gate exists to stop a user AUTHORING over them, not to stop them being
+        // installed or uninstalled. Without this an uninstall of a built-in is
+        // refused as INVALID_SKILL_SOURCE and its placement can never be edited.
+        const validity = validateSkillForInstall(skillDir, body.name, {
+          allowReservedName: isInternalBundleSkillName(body.name),
+        });
         if (!validity.ok) {
           errorResponse(
             res,

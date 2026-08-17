@@ -312,6 +312,44 @@ function installUserBundleToHostDirs(
 ): { entries: UserSkillEntry[]; anyWritten: boolean; anyDestinationSucceeded: boolean } {
   const entries: UserSkillEntry[] = [];
   const centralDest = join(home, '.agents', 'skills', bundleDirName);
+  // Already installed somewhere ⇒ the user's current host set is the answer.
+  // Seeding is a FIRST-RUN act, not a per-run top-up: without this an uninstall
+  // from one agent is undone by the next sweep, and a host that merely reads the
+  // shared hub gets a duplicate under its own path. `userBundleExists` is the
+  // same "anywhere?" question the version fast-path already asks. Sibling of the
+  // desktop reclaim's identical gate — keep the two aligned.
+  if (userBundleExists(home, bundleDirName, fs)) {
+    // Report the destinations that actually hold a copy. A host the user removed
+    // it from is absent from the list rather than reported as a skip — it is not
+    // a destination any more.
+    if (fs.existsSync(centralDest)) {
+      entries.push({ kind: 'central', path: centralDest, outcome: 'skipped-present' });
+    }
+    for (const host of USER_SKILL_HOSTS) {
+      const hostDest = join(home, host.skillsRoot, bundleDirName);
+      if (hostDest === centralDest) continue;
+      if (!fs.existsSync(join(home, host.hostDir))) {
+        entries.push({
+          kind: 'host',
+          editorId: host.editorId,
+          hostDir: host.hostDir,
+          path: hostDest,
+          outcome: 'skipped-host-absent',
+        });
+        continue;
+      }
+      if (fs.existsSync(hostDest)) {
+        entries.push({
+          kind: 'host',
+          editorId: host.editorId,
+          hostDir: host.hostDir,
+          path: hostDest,
+          outcome: 'skipped-present',
+        });
+      }
+    }
+    return { entries, anyWritten: false, anyDestinationSucceeded: true };
+  }
   // SEED-IF-ABSENT: guarantee the built-in is PRESENT
   // but never OVERWRITE an existing copy — that copy may be a user-applied
   // skills.sh update. Updates flow through the manual "update available" path,

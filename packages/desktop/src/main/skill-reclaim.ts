@@ -312,6 +312,21 @@ interface ReclaimUserSkillsOpts {
  * `installUserBundleToHostDirs` in `packages/cli/src/commands/repair-skills.ts`
  * — keep the shape aligned.
  */
+/**
+ * True when this bundle already exists at ANY user-global location — the hub or
+ * any host root.
+ *
+ * Placement is the user's, and for an in-place skill the on-disk reality is the
+ * host-set truth (there is no marker to consult — the install verb deliberately
+ * records none for in-place skills). So "installed somewhere" is the only honest
+ * signal that a choice has been made, and the sweep must not second-guess it by
+ * topping the bundle back up into hosts the user removed it from.
+ */
+function bundleInstalledAnywhere(home: string, bundleDirName: string, fs: SkillFsOps): boolean {
+  if (fs.existsSync(join(home, '.agents', 'skills', bundleDirName))) return true;
+  return USER_SKILL_HOSTS.some((host) => fs.existsSync(join(home, host.skillsRoot, bundleDirName)));
+}
+
 function installUserBundleToHostDirs(
   home: string,
   bundleDirName: string,
@@ -322,6 +337,43 @@ function installUserBundleToHostDirs(
 ): { entries: UserSkillReclaimEntry[]; anyWritten: boolean; anyDestinationSucceeded: boolean } {
   const entries: UserSkillReclaimEntry[] = [];
   const centralDest = join(home, '.agents', 'skills', bundleDirName);
+  // Already installed somewhere ⇒ the user's current host set is the answer.
+  // Seeding is a FIRST-RUN act, not a per-launch top-up: without this an
+  // uninstall from one agent is undone on the next launch, and a host that
+  // merely reads the shared hub gets a duplicate under its own path.
+  if (bundleInstalledAnywhere(home, bundleDirName, fs)) {
+    // Report the destinations that actually hold a copy, so the event log still
+    // shows where the bundle lives. A host the user removed it from is simply
+    // absent from the list rather than reported as a skip — it is not a
+    // destination any more.
+    if (fs.existsSync(centralDest)) {
+      entries.push({ kind: 'central', path: centralDest, status: 'skipped-present' });
+    }
+    for (const host of USER_SKILL_HOSTS) {
+      const hostDest = join(home, host.skillsRoot, bundleDirName);
+      if (hostDest === centralDest) continue;
+      if (!fs.existsSync(join(home, host.hostDir))) {
+        entries.push({
+          kind: 'host',
+          hostDir: host.hostDir,
+          editorId: host.editorId,
+          path: hostDest,
+          status: 'skipped-host-absent',
+        });
+        continue;
+      }
+      if (fs.existsSync(hostDest)) {
+        entries.push({
+          kind: 'host',
+          hostDir: host.hostDir,
+          editorId: host.editorId,
+          path: hostDest,
+          status: 'skipped-present',
+        });
+      }
+    }
+    return { entries, anyWritten: false, anyDestinationSucceeded: true };
+  }
   // SEED-IF-ABSENT: the reclaim guarantees the
   // built-in is PRESENT (offline-safe), but never OVERWRITES an existing copy —
   // that copy may be a user-applied skills.sh update, and force-refreshing it
