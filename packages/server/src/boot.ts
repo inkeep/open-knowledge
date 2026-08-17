@@ -555,19 +555,20 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const skipAutoInit = opts.skipAutoInit ?? false;
   const log = opts.log ?? getLogger('boot');
 
-  // The resolved server.* runtime. The CLI passes its fully-layered
-  // resolution (flags > env > project-local > project > user). Direct
-  // embedders (desktop utility, dev-server plugin, tests) fall back to a
-  // files-only resolution — but that Config is NOT scope-resolved: it carries
-  // the committed `.ok/config.yml` alone, so a committed `server.allowExternal`
-  // would arm consent from a cloned repo (the exact clone-leak the scope-
-  // correct load exists to prevent). Config-derived consent is therefore
-  // untrusted here: force `allowExternal` off so only a caller that resolved
-  // it scope-correctly (the CLI's explicit `serverRuntime`) can consent. A
-  // committed non-loopback bind or `externalUrl` then trips the interlock below
-  // — the correct refusal, not a silent exposure. Desktop's own consent path
-  // (the network pane writes project-local, and this boot reads all three
-  // layers) is a follow-up; until then desktop is loopback-only by construction.
+  // The resolved server.* runtime. The CLI passes its fully-layered resolution
+  // (flags > env > project-local > project > user); the desktop utility passes
+  // an equivalent scope-resolved runtime (its `resolveDesktopServerRuntime`
+  // runs the same three-layer `loadConfig`), so desktop's Network access pane
+  // consent (project-local `server.allowExternal`) now takes effect through the
+  // trusted branch. Direct embedders that DON'T pass one (the dev-server
+  // plugin, tests) fall back to a files-only resolution — but that Config is
+  // NOT scope-resolved: it carries the committed `.ok/config.yml` alone, so a
+  // committed `server.allowExternal` would arm consent from a cloned repo (the
+  // exact clone-leak the scope-correct load exists to prevent). Config-derived
+  // consent is therefore untrusted here: force `allowExternal` off so only a
+  // caller that resolved it scope-correctly (the CLI's or desktop's explicit
+  // `serverRuntime`) can consent. A committed non-loopback bind or `externalUrl`
+  // then trips the interlock below — the correct refusal, not a silent exposure.
   const serverRuntime = opts.serverRuntime ?? {
     ...resolveServerRuntimeConfig(opts.config),
     allowExternal: false,

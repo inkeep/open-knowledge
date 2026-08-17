@@ -1520,6 +1520,10 @@ msgstr "Semua bagian sudah diselesaikan"
 msgid "All tags"
 msgstr "Semua tag"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Allow external access"
+msgstr "Izinkan akses eksternal"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "Nilai elemen yang diizinkan (kosong = apa saja)"
@@ -1659,13 +1663,25 @@ msgstr "Berlaku untuk (glob — awalan ! mengecualikan; kosong berarti semua dok
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "Berlaku untuk semua proyek di komputer ini. Claude dan Codex, yang dijalankan dari terminal bawaan, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga menjalankan \"ok open\" sendiri). Menghapus, memindahkan, membagikan, mengimpor atau memasang keterampilan, perintah lain, dan penyuntingan berkas di luar OpenKnowledge tetap ditanyakan. Cursor, OpenCode, dan Pi tidak terpengaruh. Sebaik mungkin, per agen."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Apply and restart project server"
+msgstr "Terapkan dan mulai ulang server proyek"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr "Terapkan tautan"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying restarts this project's server."
+msgstr "Menerapkan akan memulai ulang server proyek ini."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Applying your change"
 msgstr "Menerapkan perubahan Anda"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying…"
+msgstr "Menerapkan…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -1874,8 +1890,13 @@ msgstr "Pembaruan otomatis aktif untuk \"{name}\""
 
 #. Section label for the automatic, one-click install path
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic"
 msgstr "Otomatis"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
+msgstr "Otomatis memilih port bebas setiap kali dimulai. Pilih port tetap untuk mempertahankan alamat yang sama di seluruh mulai ulang."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2181,6 +2202,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -3724,6 +3746,12 @@ msgstr "Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjala
 msgid "Couldn’t save changes. Try editing a color again."
 msgstr "Perubahan tidak dapat disimpan. Coba sunting warna lagi."
 
+#. placeholder {0}: humanFormat(first.error)
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't save network settings — {0}"
+msgstr "Tidak dapat menyimpan pengaturan jaringan — {0}"
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr "Templat tidak bisa disimpan: {error}"
@@ -4933,6 +4961,10 @@ msgstr "Masukkan nama folder (mis. otak)."
 msgid "Enter a name for this theme."
 msgstr "Masukkan nama untuk tema ini."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a port between 1 and 65535."
+msgstr "Masukkan port antara 1 dan 65535."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "Masukkan nama proyek"
@@ -4956,6 +4988,14 @@ msgstr "Masukkan nama tema yang valid."
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "Masukkan URL yang valid (misalnya https://api.openai.com/v1)."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a valid URL, for example https://notes.example.com"
+msgstr "Masukkan URL yang valid, misalnya https://notes.example.com"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
+msgstr "Masukkan origin publik yang dilayani tunnel Anda, misalnya https://notes.example.com"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
@@ -5066,6 +5106,22 @@ msgstr "Jelajahi"
 msgid "Explore skills"
 msgstr "Jelajahi keterampilan"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose and restart"
+msgstr "Ekspos dan mulai ulang"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project to the network?"
+msgstr "Ekspos proyek ini ke jaringan?"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+msgstr "Ekspos server proyek ini ke jaringan yang lebih luas melalui tunnel yang Anda jalankan (misalnya Tailscale). Pemirsa di tunnel mendapatkan editor dan endpoint agen, mengedit secara langsung terhadap server mesin ini."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
+msgstr "Mengekspos akan menetapkan port tetap agar target tunnel tetap stabil di seluruh mulai ulang."
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5086,6 +5142,10 @@ msgstr "Pratinjau tautan eksternal"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
 msgstr "Pratinjau tautan eksternal menampilkan kartu berisi nama situs, judul halaman, dan deskripsi saat Anda mengarahkan kursor ke sebuah tautan."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "External origin"
+msgstr "Origin eksternal"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "External wiki link"
@@ -5584,6 +5644,10 @@ msgstr "Perbaiki {flatId}"
 msgid "Fix all with AI ({count})"
 msgstr "Perbaiki semua dengan AI ({count})"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed"
+msgstr "Tetap"
+
 #: src/lib/project-fix-sweep-store.ts
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, other {# berkas diperbaiki}}."
@@ -5591,6 +5655,10 @@ msgstr "{total, plural, other {# berkas diperbaiki}}."
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr "Folder tetap di akar konten"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed port number"
+msgstr "Nomor port tetap"
 
 #. placeholder {0}: fixing.done
 #. placeholder {1}: fixing.total
@@ -7218,6 +7286,10 @@ msgstr "Berkas lokal"
 msgid "Local path"
 msgstr "Jalur lokal"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Local server port"
+msgstr "Port server lokal"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
 msgstr "Mode hanya lokal diminta, tetapi tidak ada repositori git yang dibuat. Anda dapat menggantinya nanti lewat Pengaturan → Berbagi konfigurasi setelah proyek berada di repositori git."
@@ -7712,6 +7784,11 @@ msgstr "Galat .okignore bersarang di {path}"
 msgid "Nested fields"
 msgstr "Bidang bersarang"
 
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Network access"
+msgstr "Akses jaringan"
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Galat jaringan - {kind} \"{createdPath}\" masih ada di disk"
@@ -7728,6 +7805,10 @@ msgstr "kesalahan jaringan (apakah `ok start` sedang berjalan?)"
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
 msgstr "Galat jaringan saat pembersihan"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Network settings not yet loaded — try again in a moment."
+msgstr "Pengaturan jaringan belum dimuat — coba lagi sebentar."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9462,6 +9543,10 @@ msgstr "Populer"
 msgid "Popular on skills.sh"
 msgstr "Populer di skills.sh"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+msgstr "Port {configuredPort} sedang digunakan, jadi server berjalan di port {boundPort}. Tunnel yang menuju port tetap tidak akan menjangkaunya — bebaskan port itu dan terapkan lagi, atau pilih yang lain."
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -10383,6 +10468,10 @@ msgstr "Memulai ulang"
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
 msgstr "Memulai ulang akan menutup server proyek ini. Agen yang terhubung (Claude Code, Codex, Cursor) akan melihat koneksi MCP OpenKnowledge mereka tertutup tak terduga — Anda mungkin perlu memulai ulang agennya, atau mematikan lalu menyalakan server MCP OpenKnowledge padanya, untuk tersambung kembali."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Restarting the server is only available in the desktop app."
+msgstr "Memulai ulang server hanya tersedia di aplikasi desktop."
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting the server…"
@@ -12477,6 +12566,10 @@ msgstr "Penyedianya menolak permintaannya (HTTP {0}). Periksa kunci API dan id m
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "URL publik yang dilayani tunnel Anda. Server menerima permintaan untuk host ini dan mengumumkannya dalam URL yang diterbitkannya."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
 msgstr "Layanan laporan tidak dapat dihubungi."
@@ -12500,6 +12593,11 @@ msgstr "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidan
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "server merespons tetapi server.lock belum memiliki port"
+
+#. placeholder {0}: origin.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "Server akan menerima permintaan untuk {0} tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini — termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -12952,6 +13050,10 @@ msgstr "Ini mengirim konten keluar dari komputer Anda"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This sends the link's address off your machine"
 msgstr "Ini mengirim alamat tautannya keluar dari komputer Anda"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
+msgstr "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini — batasi akses di tepi tunnel (ACL Tailscale, reverse proxy dengan autentikasi, atau firewall)."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."
@@ -13627,6 +13729,10 @@ msgstr "Pakai paket awal"
 #: src/components/AuthModal.tsx
 msgid "Use a token instead"
 msgstr "Pakai token saja"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Use an http:// or https:// origin."
+msgstr "Gunakan origin http:// atau https://."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."

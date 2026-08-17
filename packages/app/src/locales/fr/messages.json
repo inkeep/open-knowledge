@@ -143,6 +143,7 @@
     "0yL--g": ["Examiner les conflits"],
     "0ySP5u": ["Les modifications sont automatiquement enregistrées dans ce thème."],
     "0zAhu6": ["tous les documents"],
+    "1-flC9": ["Port du serveur local"],
     "10g8I_": ["Désactiver Fichiers markdown uniquement"],
     "110eEb": [
       "Open Knowledge crée et gère un fichier de navigation nommé index.md dans chaque dossier contenant Markdown."
@@ -229,6 +230,7 @@
     "2BBAbc": ["Liste"],
     "2C-6zf": ["Non envoyé"],
     "2CHoQv": ["Forcer le rechargement"],
+    "2D1x3Y": ["Appliquer et redémarrer le serveur du projet"],
     "2FYpfJ": ["Plus"],
     "2FnYUD": [
       "Informations sur l'application et le système, journaux récents de l'application et journaux du serveur de projet : l'essentiel dont nous avons besoin pour reproduire le problème."
@@ -458,6 +460,9 @@
     "56WWtu": ["Impossible de charger les packs de démarrage : ", ["error"]],
     "56xUL1": ["Nom de la propriété"],
     "57fiu8": ["(lecture seule — modifiez en mode source pour l'instant)"],
+    "58ko2F": [
+      "Exposez le serveur de ce projet à un réseau plus large via un tunnel que vous exécutez (par exemple Tailscale). Un visiteur sur le tunnel obtient l'éditeur et le point de terminaison de l'agent, et modifie en direct sur le serveur de cette machine."
+    ],
     "58qIOK": ["Commenter cette sélection"],
     "5ALjdr": [
       "Parcourez les résultats de recherche de l'éditeur visuel depuis le champ de recherche."
@@ -557,6 +562,9 @@
     "62bOuM": ["Dernière modification"],
     "636K3K": ["Supprimer la puce adjacente"],
     "64sesb": ["Les encadrés attirent l'attention sur les informations essentielles."],
+    "65Ea2s": [
+      "L'exposition fixe un port afin que la cible du tunnel reste stable d'un redémarrage à l'autre."
+    ],
     "67Dpmh": ["Suggestions de commandes slash"],
     "67TEhP": [
       "Vos dossiers de compétences au niveau utilisateur — disponibles dans tous les projets de cette machine. Le menu d'installation de chaque compétence détermine où elle réside."
@@ -729,6 +737,7 @@
     "80c4-P": ["Code copié dans le presse-papiers"],
     "81H_23": ["Ajouter des propriétés"],
     "851WA-": ["Cela se configure dans Paramètres > Outils IA et CLI"],
+    "87GMKe": ["Exposer ce projet au réseau ?"],
     "881Uwh": ["Supprimer le tableau sélectionné"],
     "89TtiD": [
       "Nouveau fichier à partir du modèle « ",
@@ -769,6 +778,9 @@
     "8RtNI0": ["Échec du chargement des documents"],
     "8SrrDi": ["Nouveau record · appuyez sur espace pour rejouer"],
     "8TvlHF": ["Vidage de plantage"],
+    "8UmUyc": [
+      "L'URL publique servie par votre tunnel. Le serveur accepte les requêtes destinées à cet hôte et l'annonce dans les URL qu'il émet."
+    ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Changer de worktree"],
     "8Wav8y": [
@@ -1152,6 +1164,11 @@
       ["shareBranch"],
       "</0>. Vous avez des modifications non validées qui empêchent de changer de branche ici — ouvrez-le dans un worktree pour laisser vos modifications intactes."
     ],
+    "DTcfyN": [
+      "Le serveur acceptera les requêtes destinées à ",
+      ["0"],
+      " sans authentification intégrée. Quiconque peut atteindre votre tunnel aura le contrôle total de cette base de connaissances — y compris la synchronisation, les identifiants GitHub et les opérations locales. Assurez-vous que la bordure du tunnel restreint qui peut se connecter."
+    ],
     "DUWgfT": ["Se réauthentifier auprès de GitHub Enterprise Server"],
     "DUb7Ax": ["Plusieurs fichiers utilisent ce nom de thème"],
     "DVh_Tb": ["Échec du nettoyage après la mise à la corbeille"],
@@ -1169,6 +1186,7 @@
     "DgcGrb": [
       ["fileCount", "plural", { "one": ["fichier"], "many": ["fichiers"], "other": ["fichiers"] }]
     ],
+    "Dh11sK": ["Le redémarrage du serveur n'est disponible que dans l'application de bureau."],
     "DhLHEb": ["Échec du chargement de l'activité"],
     "DhT_PK": ["OpenKnowledge a importé une compétence"],
     "DiFKSL": ["Comptage des fichiers markdown"],
@@ -1188,6 +1206,9 @@
       ]
     ],
     "DskIkK": ["Le flux de connexion s'est terminé sans confirmation — veuillez réessayer"],
+    "DuCPiG": [
+      "Le mode automatique choisit un port libre à chaque démarrage. Choisissez un port fixe pour conserver la même adresse d'un redémarrage à l'autre."
+    ],
     "Dub54T": [
       "Les navigateurs d'aperçu ne peuvent pas copier automatiquement. Faites Cmd/Ctrl+C sur l'URL ci-dessus, ou ouvrez OK dans l'application de bureau."
     ],
@@ -1229,6 +1250,7 @@
     "ENpRJV": ["Aperçus de liens externes"],
     "EO4Dt1": ["Activer ", ["file"]],
     "EOjU5V": ["Propriétés de la formule en ligne"],
+    "EP8mZC": ["Exposer et redémarrer"],
     "EPGePE": ["Envoyé sous « ", ["0"], " » — le nom « ", ["1"], " » était déjà pris."],
     "EPKVES": ["Mettre à jour « ", ["skillName"], " » par-dessus vos modifications ?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens utilisés"],
@@ -1650,6 +1672,7 @@
     "JddocZ": ["Activer/désactiver la colonne d'en-tête"],
     "Jejur6": ["Impossible de charger le document"],
     "JfPuv7": [["shareBranch"], " n'est pas un nom de branche valide."],
+    "JgaVnN": ["Autoriser l'accès externe"],
     "Jhj_lh": ["Modifiez la cible du lien, l'ancre et le libellé affiché."],
     "JhqycE": ["Aucun fichier récent"],
     "JkCD2u": ["Synchronisation en pause — vous n'avez pas la permission de pousser vers ce dépôt"],
@@ -1717,6 +1740,7 @@
     "KZLdgR": ["Voir <0>#design-docs</0> pour les dernières spécifications."],
     "K_vT1F": ["Synchronisation amont"],
     "KaFCD3": ["Ouvre ce lien dans un nouvel onglet et réduit le graphe."],
+    "Kbz9RK": ["Numéro de port fixe"],
     "KeXgA-": [
       "Impossible de trouver ce passage — le texte auquel il était rattaché a peut-être changé."
     ],
@@ -2167,6 +2191,7 @@
     "PrVaZo": ["Désinstaller OpenKnowledge ?"],
     "PrWQiT": ["Déplacer Terminal à droite"],
     "PrhzDE": ["Faire défiler vers le haut"],
+    "Pw5PTU": ["Origine externe"],
     "Q-DKvr": ["Installer depuis ", ["source"]],
     "Q1mtyd": ["Masquer la barre latérale"],
     "Q5fqMz": ["Erreur de connexion — réessayez"],
@@ -2330,6 +2355,13 @@
     "S48xcO": ["en attente"],
     "S6eHlw": ["Ouvrez d'abord un projet."],
     "S6l5dv": ["Impossible de commencer la création d'un nouvel élément"],
+    "S79zoi": [
+      "Le port ",
+      ["configuredPort"],
+      " est utilisé, donc le serveur fonctionne sur le port ",
+      ["boundPort"],
+      " à la place. Un tunnel pointant vers le port fixe ne l'atteindra pas — libérez ce port et appliquez à nouveau, ou choisissez-en un autre."
+    ],
     "S9Vnum": ["Retirer ", ["patternText"]],
     "S9t1PI": ["Correction de ", ["0"], "/", ["1"]],
     "SCoBBH": ["Suggestions d'étiquettes"],
@@ -2406,6 +2438,7 @@
     "TKQ7K-": ["Installer"],
     "TLIO3j": ["Bascule la mise en forme italique."],
     "TMLAx2": ["Obligatoire"],
+    "TNKAIS": ["L'application redémarre le serveur de ce projet."],
     "TQJCR6": [
       [
         "0",
@@ -2433,6 +2466,7 @@
       "Indique aux agents quand recourir à cette compétence. Vous pourrez le modifier plus tard."
     ],
     "Tofsyo": ["Déplacer Terminal en bas"],
+    "TpqW74": ["Fixe"],
     "Tq3pcs": ["Garder la mienne"],
     "Tq9kNX": [
       "Aucun chat ouvert. Rouvrez-en un ancien ou démarrez-en un nouveau avec le bouton ＋."
@@ -3325,6 +3359,7 @@
     "cuA8QW": ["Organiser les spécifications"],
     "cuHhjo": ["Créer et modifier"],
     "d-GtJt": ["Afficher dans la source Markdown"],
+    "d02jS3": ["Accès réseau"],
     "d1JjXo": [
       "Votre copie locale de la branche <0>",
       ["branch"],
@@ -4814,6 +4849,7 @@
     "u5Utjn": [["0"], " a besoin de ", ["1"]],
     "u5hSeG": ["Donner votre avis"],
     "u6Hp4N": ["Markdown"],
+    "u779EG": ["Utilisez une origine http:// ou https://."],
     "u7H-Wn": ["Afficher le panneau (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Ajoute un lien au texte sélectionné, ou modifie le lien situé sous le curseur."],
     "uA_jXp": ["Changer de branche et mettre à jour"],
@@ -4824,6 +4860,7 @@
     "uDlyqd": [
       "Documente l'architecture de ce dépôt : crée une page de synthèse qui renvoie vers une page par module principal décrivant ses responsabilités et ses points d'entrée."
     ],
+    "uDzLV-": ["Saisissez une URL valide, par exemple https://notes.example.com"],
     "uF82hk": ["Macération…"],
     "uF9ruK": ["Enregistrement"],
     "uFQbYd": ["Page d'accueil et point d'entrée."],
@@ -4888,6 +4925,9 @@
     "um-es7": ["Livrez l'éditeur avec un"],
     "un-K1H": ["Reste sur cet ordinateur. Non validé dans git."],
     "un8kBM": ["Création de la page : ", ["linkTitle"], "."],
+    "unmCLE": [
+      "Ce serveur n'a pas d'authentification intégrée. Quiconque peut atteindre le tunnel obtient le contrôle total de cette base de connaissances — restreignez l'accès à la bordure du tunnel (une ACL Tailscale, un proxy inverse avec authentification ou un pare-feu)."
+    ],
     "uoJF_D": ["C'était trop compliqué à installer ou à prendre en main"],
     "ur2XSb": ["Éditeur visuel"],
     "uuoHOU": ["La commande a échoué."],
@@ -5038,6 +5078,7 @@
     "wTcjov": ["Aucun espace de travail"],
     "wU8WyK": ["Champs d'élément"],
     "wVa83H": ["Impossible de créer le rapport"],
+    "wWtVYd": ["Saisissez un port entre 1 et 65535."],
     "wXO4Tg": ["il y a ", ["hrs"], " h"],
     "wXw19Y": ["« ", ["projectName"], " » retiré des projets récents. Son dossier n'existe plus."],
     "wZPUJx": ["« ", ["0"], " »"],
@@ -5047,6 +5088,7 @@
     "wbv9xO": ["Créer un projet"],
     "wc54KE": ["Essai en cours…"],
     "wcfO9r": ["Pas encore de rapport de bug."],
+    "wdRxTD": ["Application…"],
     "wdxz7K": ["Source"],
     "wdzBgi": ["Le partage de la configuration est maintenant réglé sur Moi uniquement."],
     "weP6me": ["Impossible de charger les documents — saisissez @ à nouveau pour réessayer"],
@@ -5106,6 +5148,7 @@
     "xV5sXw": ["il y a ", ["0"], " sem"],
     "xWEvuo": ["Demander à l'IA"],
     "xWomUD": ["Utiliser la version ", ["editor"]],
+    "xXn6KB": ["Impossible d'enregistrer les paramètres réseau — ", ["0"]],
     "xXo8FT": ["Échec de l'enregistrement : ", ["error"]],
     "xYMPyY": [
       "Le collage était incomplet — ",
@@ -5223,6 +5266,7 @@
     "ylXj1N": ["Sélectionné"],
     "ymWJLd": ["Afficher ", ["0"], " de plus"],
     "ynIa4S": ["Élément de liste de l'éditeur visuel"],
+    "yopUSw": ["Paramètres réseau pas encore chargés — réessayez dans un instant."],
     "ypw6My": [
       "Affichage des ",
       ["0"],
@@ -5270,6 +5314,9 @@
         "plural",
         { "one": ["#", " document"], "many": ["#", " documents"], "other": ["#", " documents"] }
       ]
+    ],
+    "zHsZcU": [
+      "Saisissez l'origine publique servie par votre tunnel, par exemple https://notes.example.com"
     ],
     "zJL34S": ["Nouvelle fenêtre Terminal"],
     "zKxoPm": ["Impossible de renommer « ", ["0"], " » : ", ["1"]],

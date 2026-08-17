@@ -218,7 +218,11 @@ describe(`CLI Linux e2e (${SUT_MODE} SUT)`, () => {
       serverLog += d;
     });
 
-    const lockReady = await waitFor(() => readLockPort() !== null, { timeoutMs: 45_000 });
+    // Wait for the REAL bound port, not merely a present lock: server.lock is
+    // written with port 0 ("starting — not yet bound") before the listener
+    // binds, and readLockPort surfaces that 0, so a `!== null` predicate races
+    // the bind and can read the transient 0 on a slow runner.
+    const lockReady = await waitFor(() => (readLockPort() ?? 0) > 0, { timeoutMs: 45_000 });
     // Distinguish "lock absent" from "lock present but unreadable" (a partial
     // write or corrupt JSON also makes readLockPort return null) so a timeout
     // points triage at the right cause instead of always saying "never appeared".

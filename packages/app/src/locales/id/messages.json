@@ -123,6 +123,7 @@
     "0yL--g": ["Tinjau konflik"],
     "0ySP5u": ["Perubahan disimpan otomatis ke tema ini."],
     "0zAhu6": ["semua dokumen"],
+    "1-flC9": ["Port server lokal"],
     "10g8I_": ["Matikan Hanya berkas markdown"],
     "110eEb": [
       "Open Knowledge membuat dan memelihara file navigasi bernama index.md di setiap folder yang berisi Markdown."
@@ -193,6 +194,7 @@
     "2BBAbc": ["Daftar"],
     "2C-6zf": ["Belum terkirim"],
     "2CHoQv": ["Muat Ulang Paksa"],
+    "2D1x3Y": ["Terapkan dan mulai ulang server proyek"],
     "2FYpfJ": ["Lainnya"],
     "2FnYUD": [
       "Info aplikasi & sistem, log aplikasi terbaru, dan log server proyek: hal-hal penting yang kami perlukan untuk menirukan masalahnya."
@@ -376,6 +378,9 @@
     "56WWtu": ["Paket awal tidak bisa dimuat: ", ["error"]],
     "56xUL1": ["Nama properti"],
     "57fiu8": ["(hanya-baca — untuk sekarang, sunting di mode sumber)"],
+    "58ko2F": [
+      "Ekspos server proyek ini ke jaringan yang lebih luas melalui tunnel yang Anda jalankan (misalnya Tailscale). Pemirsa di tunnel mendapatkan editor dan endpoint agen, mengedit secara langsung terhadap server mesin ini."
+    ],
     "58qIOK": ["Komentari pilihan ini"],
     "5ALjdr": ["Menelusuri hasil pencarian penyunting visual dari bidang pencarian."],
     "5Ajb15": ["Rumus <0>c = √(a² + b²)</0> dirender sebaris."],
@@ -455,6 +460,9 @@
     "62bOuM": ["Suntingan terakhir"],
     "636K3K": ["Hapus chip di sebelahnya"],
     "64sesb": ["Kotak sorot menarik perhatian ke informasi penting."],
+    "65Ea2s": [
+      "Mengekspos akan menetapkan port tetap agar target tunnel tetap stabil di seluruh mulai ulang."
+    ],
     "67Dpmh": ["Saran perintah garis miring"],
     "67TEhP": [
       "Folder keterampilan tingkat pengguna Anda — tersedia di setiap proyek pada komputer ini. Menu pemasangan tiap keterampilan menentukan di mana ia berada."
@@ -595,6 +603,7 @@
     "80c4-P": ["Kode disalin ke papan klip"],
     "81H_23": ["Tambahkan properti"],
     "851WA-": ["Ini bisa diatur di Pengaturan > Alat AI & CLI"],
+    "87GMKe": ["Ekspos proyek ini ke jaringan?"],
     "881Uwh": ["Hapus tabel terpilih"],
     "89TtiD": [
       "Berkas baru dari templat \"",
@@ -625,6 +634,9 @@
     "8RtNI0": ["Gagal memuat dokumen"],
     "8SrrDi": ["Rekor baru · tekan spasi untuk main lagi"],
     "8TvlHF": ["Crash dump"],
+    "8UmUyc": [
+      "URL publik yang dilayani tunnel Anda. Server menerima permintaan untuk host ini dan mengumumkannya dalam URL yang diterbitkannya."
+    ],
     "8Uv5e6": ["Agen"],
     "8Vq20-": ["Ganti worktree"],
     "8Wav8y": [
@@ -943,6 +955,11 @@
       ["shareBranch"],
       "</0>. Anda punya perubahan yang belum di-commit sehingga tidak bisa berpindah di sini — buka di sebuah worktree agar perubahan Anda tetap utuh."
     ],
+    "DTcfyN": [
+      "Server akan menerima permintaan untuk ",
+      ["0"],
+      " tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini — termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
+    ],
     "DUWgfT": ["Autentikasi ulang dengan GitHub Enterprise Server"],
     "DUb7Ax": ["Beberapa berkas menggunakan nama tema ini"],
     "DVh_Tb": ["Gagal membersihkan setelah pemindahan ke tempat sampah"],
@@ -958,6 +975,7 @@
     "Dd6j2Q": ["Lihat komentar"],
     "DeDYLr": ["Tautan wiki tidak dikenali"],
     "DgcGrb": [["fileCount", "plural", { "other": ["berkas"] }]],
+    "Dh11sK": ["Memulai ulang server hanya tersedia di aplikasi desktop."],
     "DhLHEb": ["Gagal memuat aktivitas"],
     "DhT_PK": ["OpenKnowledge mengimpor sebuah keterampilan"],
     "DiFKSL": ["Menghitung berkas markdown"],
@@ -971,6 +989,9 @@
     "DrYM2Z": ["Sinkronisasi dinonaktifkan"],
     "DsDwR-": [["0", "plural", { "other": ["#", " galat"] }]],
     "DskIkK": ["Aliran proses masuk berakhir tanpa konfirmasi — silakan coba lagi"],
+    "DuCPiG": [
+      "Otomatis memilih port bebas setiap kali dimulai. Pilih port tetap untuk mempertahankan alamat yang sama di seluruh mulai ulang."
+    ],
     "Dub54T": [
       "Peramban pratinjau tidak bisa menyalin otomatis. Gunakan Cmd/Ctrl+C pada URL di atas, atau buka OK di aplikasi desktop."
     ],
@@ -1012,6 +1033,7 @@
     "ENpRJV": ["Pratinjau tautan eksternal"],
     "EO4Dt1": ["Aktifkan ", ["file"]],
     "EOjU5V": ["Properti Matematika Sebaris"],
+    "EP8mZC": ["Ekspos dan mulai ulang"],
     "EPGePE": ["Diunggah sebagai \"", ["0"], "\" — nama \"", ["1"], "\" sudah dipakai."],
     "EPKVES": ["Perbarui \"", ["skillName"], "\" menimpa suntingan Anda?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " token terpakai"],
@@ -1393,6 +1415,7 @@
     "JddocZ": ["Alihkan kolom header"],
     "Jejur6": ["Dokumen tidak bisa dimuat"],
     "JfPuv7": [["shareBranch"], " bukan nama cabang yang valid."],
+    "JgaVnN": ["Izinkan akses eksternal"],
     "Jhj_lh": ["Ubah tujuan tautan, jangkar, dan label tampilannya."],
     "JhqycE": ["Tidak ada berkas terbaru"],
     "JkCD2u": ["Sinkronisasi dijeda — Anda tidak punya izin push ke repo ini"],
@@ -1454,6 +1477,7 @@
     "KZLdgR": ["Lihat <0>#design-docs</0> untuk spesifikasi terbaru."],
     "K_vT1F": ["Sinkronisasi hulu"],
     "KaFCD3": ["Membuka tautan ini di tab baru dan menciutkan graf."],
+    "Kbz9RK": ["Nomor port tetap"],
     "KeXgA-": [
       "Tidak dapat menemukan bagian teks itu — teks yang ditandainya mungkin telah berubah."
     ],
@@ -1868,6 +1892,7 @@
     "PrVaZo": ["Copot OpenKnowledge?"],
     "PrWQiT": ["Pindahkan Terminal ke kanan"],
     "PrhzDE": ["Geser ke atas"],
+    "Pw5PTU": ["Origin eksternal"],
     "Q-DKvr": ["Pasang dari ", ["source"]],
     "Q1mtyd": ["Sembunyikan bilah sisi"],
     "Q5fqMz": ["Galat koneksi — coba lagi"],
@@ -2014,6 +2039,13 @@
     "S48xcO": ["tertunda"],
     "S6eHlw": ["Buka proyek terlebih dahulu."],
     "S6l5dv": ["Pembuatan item baru tidak dapat dimulai"],
+    "S79zoi": [
+      "Port ",
+      ["configuredPort"],
+      " sedang digunakan, jadi server berjalan di port ",
+      ["boundPort"],
+      ". Tunnel yang menuju port tetap tidak akan menjangkaunya — bebaskan port itu dan terapkan lagi, atau pilih yang lain."
+    ],
     "S9Vnum": ["Hapus ", ["patternText"]],
     "S9t1PI": ["Memperbaiki ", ["0"], "/", ["1"]],
     "SCoBBH": ["Saran tag"],
@@ -2079,6 +2111,7 @@
     "TKQ7K-": ["Pasang"],
     "TLIO3j": ["Menyalakan atau mematikan format miring."],
     "TMLAx2": ["Wajib"],
+    "TNKAIS": ["Menerapkan akan memulai ulang server proyek ini."],
     "TQJCR6": [["0", "plural", { "other": ["#", " hasil"] }]],
     "TTDXD8": ["Worktree baru…"],
     "TUzThQ": ["Bagikan keterampilan"],
@@ -2100,6 +2133,7 @@
       "Memberi tahu agen kapan harus memakai keterampilan ini. Anda bisa menyuntingnya nanti."
     ],
     "Tofsyo": ["Pindahkan Terminal ke bawah"],
+    "TpqW74": ["Tetap"],
     "Tq3pcs": ["Pakai punya saya"],
     "Tq9kNX": [
       "Tidak ada obrolan terbuka. Buka kembali obrolan sebelumnya, atau mulai yang baru dengan tombol ＋."
@@ -2853,6 +2887,7 @@
     "cuA8QW": ["Tata spesifikasi"],
     "cuHhjo": ["Buat dan sunting"],
     "d-GtJt": ["Lihat di sumber Markdown"],
+    "d02jS3": ["Akses jaringan"],
     "d1JjXo": [
       "Salinan lokal cabang <0>",
       ["branch"],
@@ -4155,6 +4190,7 @@
     "u5Utjn": [["0"], " membutuhkan ", ["1"]],
     "u5hSeG": ["Bagikan masukan"],
     "u6Hp4N": ["Markdown"],
+    "u779EG": ["Gunakan origin http:// atau https://."],
     "u7H-Wn": ["Tampilkan panel (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Menautkan teks yang dipilih, atau menyunting tautan di bawah kursor."],
     "uA_jXp": ["Ganti cabang dan perbarui"],
@@ -4165,6 +4201,7 @@
     "uDlyqd": [
       "Dokumentasikan arsitektur repo ini: buat halaman ikhtisar yang menaut ke satu halaman per modul utama yang menjelaskan tanggung jawab dan titik masuknya."
     ],
+    "uDzLV-": ["Masukkan URL yang valid, misalnya https://notes.example.com"],
     "uF82hk": ["Mengendap…"],
     "uF9ruK": ["Menyimpan"],
     "uFQbYd": ["Halaman utama dan titik masuk."],
@@ -4213,6 +4250,9 @@
     "um-es7": ["Rilis penyuntingnya dengan sebuah"],
     "un-K1H": ["Tetap di komputer ini. Tidak di-commit ke git."],
     "un8kBM": ["Membuat halaman: ", ["linkTitle"], "."],
+    "unmCLE": [
+      "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini — batasi akses di tepi tunnel (ACL Tailscale, reverse proxy dengan autentikasi, atau firewall)."
+    ],
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
     "ur2XSb": ["Penyunting visual"],
     "uuoHOU": ["Perintah gagal."],
@@ -4337,6 +4377,7 @@
     "wTcjov": ["Tanpa ruang kerja"],
     "wU8WyK": ["Bidang elemen"],
     "wVa83H": ["Laporannya tidak bisa dibuat"],
+    "wWtVYd": ["Masukkan port antara 1 dan 65535."],
     "wXO4Tg": [["hrs"], " j lalu"],
     "wXw19Y": ["\"", ["projectName"], "\" dihapus dari proyek terbaru. Foldernya sudah tidak ada."],
     "wZPUJx": ["“", ["0"], "”"],
@@ -4346,6 +4387,7 @@
     "wbv9xO": ["Buat proyek baru"],
     "wc54KE": ["Mencobanya…"],
     "wcfO9r": ["Belum ada laporan bug."],
+    "wdRxTD": ["Menerapkan…"],
     "wdxz7K": ["Sumber"],
     "wdzBgi": ["Berbagi konfigurasi kini Hanya saya."],
     "weP6me": ["Dokumen tidak bisa dimuat — ketik @ lagi untuk mencoba ulang"],
@@ -4399,6 +4441,7 @@
     "xV5sXw": [["0"], " mgg lalu"],
     "xWEvuo": ["Tanya AI"],
     "xWomUD": ["Pakai versi ", ["editor"]],
+    "xXn6KB": ["Tidak dapat menyimpan pengaturan jaringan — ", ["0"]],
     "xXo8FT": ["Gagal menyimpan: ", ["error"]],
     "xYMPyY": [
       "Penempelan belum lengkap — ",
@@ -4500,6 +4543,7 @@
     "ylXj1N": ["Terpilih"],
     "ymWJLd": ["Tampilkan ", ["0"], " lagi"],
     "ynIa4S": ["Item daftar penyunting visual"],
+    "yopUSw": ["Pengaturan jaringan belum dimuat — coba lagi sebentar."],
     "ypw6My": ["Menampilkan ", ["0"], " judul teratas — terus ketik untuk mempersempit"],
     "ysxgu8": ["proyek"],
     "yutJKi": ["Daftar periksa dengan kotak centang."],
@@ -4532,6 +4576,9 @@
     "zAsDLY": ["Visualisasi graf tautan antardokumen"],
     "zBUqvf": ["Siapkan integrasi OpenKnowledge…"],
     "zD1Nqf": [["count", "plural", { "other": ["#", " dokumen"] }]],
+    "zHsZcU": [
+      "Masukkan origin publik yang dilayani tunnel Anda, misalnya https://notes.example.com"
+    ],
     "zJL34S": ["Jendela Terminal baru"],
     "zKxoPm": ["\"", ["0"], "\" tidak bisa diganti namanya: ", ["1"]],
     "zL0LPh": ["Global di luar bidang teks"],

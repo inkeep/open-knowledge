@@ -38,6 +38,7 @@ import {
   UserPluginsManageSection,
 } from './LintingSection';
 import { LINT_PLUGIN_UI } from './lint-plugins';
+import { NetworkAccessSection } from './NetworkAccessSection';
 import { OkignoreSection } from './OkignoreSection';
 import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
@@ -197,6 +198,11 @@ export function SettingsDialogBody({
     // Electron host). Talks to main over the projectIntegrations bridge,
     // scoped to the window's open project.
     return <ProjectAiToolsSection />;
+  }
+  if (activeId === 'network-access') {
+    // Expose-via-tunnel controls — desktop-only (nav item gated to the Electron
+    // host). Writes the scope-split server.* leaves and restarts the server.
+    return <NetworkAccessSection />;
   }
   if (activeId === 'claude-desktop') {
     return <IntegrationsSection />;

@@ -1520,6 +1520,10 @@ msgstr ""
 msgid "All tags"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Allow external access"
+msgstr ""
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr ""
@@ -1659,12 +1663,24 @@ msgstr ""
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Apply and restart project server"
+msgstr ""
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying restarts this project's server."
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "Applying your change"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying…"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -1874,7 +1890,12 @@ msgstr ""
 
 #. Section label for the automatic, one-click install path
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -2181,6 +2202,7 @@ msgstr ""
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -3724,6 +3746,12 @@ msgstr ""
 msgid "Couldn’t save changes. Try editing a color again."
 msgstr ""
 
+#. placeholder {0}: humanFormat(first.error)
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't save network settings — {0}"
+msgstr ""
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr ""
@@ -4933,6 +4961,10 @@ msgstr ""
 msgid "Enter a name for this theme."
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a port between 1 and 65535."
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr ""
@@ -4955,6 +4987,14 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a valid URL, for example https://notes.example.com"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr ""
 
 #: src/components/McpConsentDialogBody.tsx
@@ -5066,6 +5106,22 @@ msgstr ""
 msgid "Explore skills"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose and restart"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project to the network?"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
+msgstr ""
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5085,6 +5141,10 @@ msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "External origin"
 msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -5584,12 +5644,20 @@ msgstr ""
 msgid "Fix all with AI ({count})"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed"
+msgstr ""
+
 #: src/lib/project-fix-sweep-store.ts
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr ""
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed port number"
 msgstr ""
 
 #. placeholder {0}: fixing.done
@@ -7218,6 +7286,10 @@ msgstr ""
 msgid "Local path"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Local server port"
+msgstr ""
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
 msgstr ""
@@ -7712,6 +7784,11 @@ msgstr ""
 msgid "Nested fields"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Network access"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr ""
@@ -7727,6 +7804,10 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Network settings not yet loaded — try again in a moment."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -9462,6 +9543,10 @@ msgstr ""
 msgid "Popular on skills.sh"
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -10382,6 +10467,10 @@ msgstr ""
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Restarting the server is only available in the desktop app."
 msgstr ""
 
 #: src/lib/install-server-drift-listener.ts
@@ -12477,6 +12566,10 @@ msgstr ""
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr ""
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
 msgstr ""
@@ -12499,6 +12592,11 @@ msgstr ""
 
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
+msgstr ""
+
+#. placeholder {0}: origin.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -12951,6 +13049,10 @@ msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This sends the link's address off your machine"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
 msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
@@ -13626,6 +13728,10 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Use a token instead"
+msgstr ""
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Use an http:// or https:// origin."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx

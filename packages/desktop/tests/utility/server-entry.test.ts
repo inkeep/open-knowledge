@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { resolveServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { ConfigSchema } from '@inkeep/open-knowledge-server';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { KeyringSmokeResult } from '../../src/utility/keyring-smoke.ts';
@@ -71,11 +72,13 @@ function buildEnv(): MockEnv {
  * `.ok/config.yml` exists.
  */
 function makeFakePrepared(overrides?: Partial<PreparedBootEnvironment>): PreparedBootEnvironment {
+  const config = overrides?.config ?? ConfigSchema.parse({});
   return {
-    config: ConfigSchema.parse({}),
+    config,
     contentDir: '/fake/content',
     contentRoot: undefined,
     configValid: true,
+    serverRuntime: resolveServerRuntimeConfig(config),
     ...overrides,
   };
 }
@@ -140,6 +143,10 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
     // Loaded config + resolved contentDir from the prelude wins over the IPC opts
     expect(callArgs?.contentDir).toBe('/fake/test-project');
     expect(callArgs?.config).toBe(prepared.config);
+    // The scope-resolved serverRuntime is threaded so exposure consent takes
+    // effect, and `bind` mirrors it so the interlock + ingress policy agree.
+    expect(callArgs?.serverRuntime).toBe(prepared.serverRuntime);
+    expect(callArgs?.bind).toBe(prepared.serverRuntime.bind);
 
     expect(env.parentPort.postMessage).toHaveBeenCalledWith({
       type: 'ready',
@@ -1027,8 +1034,11 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
       });
       await handle.readyPromise;
 
+      // The layered loader degrades an unparseable layer to empty (logging the
+      // parse failure) rather than throwing, so the merged config falls back to
+      // schema defaults for that layer and the boot still proceeds.
       const fallbackWarn = warnSpy.mock.calls.find((args) =>
-        String(args[0] ?? '').includes('[config] desktop boot config invalid'),
+        String(args[0] ?? '').includes('[config] Failed to parse'),
       );
       expect(fallbackWarn).toBeDefined();
 

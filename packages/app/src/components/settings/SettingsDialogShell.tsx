@@ -246,6 +246,9 @@ export function SettingsDialogShell({
         // Per-project MCP wiring + runtime skill — desktop-only because the
         // install actors live in the Electron main process (like Terminal).
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
+        // Expose-via-tunnel controls — desktop-only (writes the project-local
+        // exposure consent + restarts this window's server via the bridge).
+        ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Network access` }] : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills` },
         { id: 'okignore', label: t`Ignore patterns` },

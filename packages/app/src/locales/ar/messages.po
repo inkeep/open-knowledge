@@ -1524,6 +1524,10 @@ msgstr "تم حل كل المقاطع"
 msgid "All tags"
 msgstr "كل الوسوم"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Allow external access"
+msgstr "السماح بالوصول الخارجي"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "قيم العناصر المسموح بها (فارغ = أي قيمة)"
@@ -1663,13 +1667,25 @@ msgstr "ينطبق على (أنماط — البادئة ! تستثني؛ وال
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "ينطبق على كل المشاريع على هذا الجهاز. يوافق Claude وCodex، عند تشغيلهما من الطرفية المدمجة، تلقائيًا على أدوات القراءة والكتابة في OpenKnowledge (كما يشغّل Claude «ok open» تلقائيًا). أما الحذف والنقل والمشاركة والاستيراد وتثبيت المهارات، والأوامر الأخرى، وتحرير الملفات خارج OpenKnowledge فتظل تسأل. لا يتأثر Cursor وOpenCode وPi. حسب المتاح لكل وكيل."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Apply and restart project server"
+msgstr "تطبيق وإعادة تشغيل خادم المشروع"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr "تطبيق الرابط"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying restarts this project's server."
+msgstr "يؤدي التطبيق إلى إعادة تشغيل خادم هذا المشروع."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Applying your change"
 msgstr "يجري تطبيق تغييرك"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying…"
+msgstr "جارٍ التطبيق…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -1878,8 +1894,13 @@ msgstr "التحديث التلقائي مفعّل لـ «{name}»"
 
 #. Section label for the automatic, one-click install path
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic"
 msgstr "تلقائي"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
+msgstr "يختار الوضع التلقائي منفذًا متاحًا في كل بدء تشغيل. اختر منفذًا ثابتًا للاحتفاظ بالعنوان نفسه عبر عمليات إعادة التشغيل."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2185,6 +2206,7 @@ msgstr "تعذّرت مشاركة هذا المسار."
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -3728,6 +3750,12 @@ msgstr "تعذّر تشغيل الاختبار. تأكد من أن OpenKnowledge
 msgid "Couldn’t save changes. Try editing a color again."
 msgstr "تعذّر حفظ التغييرات. حاول تعديل لون مرة أخرى."
 
+#. placeholder {0}: humanFormat(first.error)
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't save network settings — {0}"
+msgstr "تعذّر حفظ إعدادات الشبكة — {0}"
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr "تعذّر حفظ القالب: {error}"
@@ -4937,6 +4965,10 @@ msgstr "أدخل اسم مجلد (مثل brain)."
 msgid "Enter a name for this theme."
 msgstr "أدخل اسمًا لهذه السمة."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a port between 1 and 65535."
+msgstr "أدخل منفذًا بين 1 و65535."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "أدخل اسم مشروع"
@@ -4960,6 +4992,14 @@ msgstr "أدخل اسم سمة صالحًا."
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "أدخل رابطًا صالحًا (مثل https://api.openai.com/v1)."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a valid URL, for example https://notes.example.com"
+msgstr "أدخل عنوان URL صالحًا، على سبيل المثال https://notes.example.com"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
+msgstr "أدخل الأصل العام الذي يخدمه النفق الخاص بك، على سبيل المثال https://notes.example.com"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
@@ -5070,6 +5110,22 @@ msgstr "استكشاف"
 msgid "Explore skills"
 msgstr "استكشاف المهارات"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose and restart"
+msgstr "الكشف وإعادة التشغيل"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project to the network?"
+msgstr "هل تريد كشف هذا المشروع على الشبكة؟"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+msgstr "اكشف خادم هذا المشروع لشبكة أوسع عبر نفق تشغّله أنت (على سبيل المثال Tailscale). يحصل المُشاهد على النفق على المحرّر ونقطة نهاية الوكيل، ويحرّر مباشرةً مقابل خادم هذا الجهاز."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
+msgstr "يثبّت الكشف منفذًا ثابتًا لكي يبقى هدف النفق مستقرًا عبر عمليات إعادة التشغيل."
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5090,6 +5146,10 @@ msgstr "معاينات الروابط الخارجية"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
 msgstr "تعرض معاينات الروابط الخارجية بطاقة باسم الموقع وعنوان الصفحة ووصفها عند تمرير المؤشر فوق رابط."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "External origin"
+msgstr "الأصل الخارجي"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "External wiki link"
@@ -5588,6 +5648,10 @@ msgstr "إصلاح {flatId}"
 msgid "Fix all with AI ({count})"
 msgstr "إصلاح الكل بالذكاء الاصطناعي ({count})"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed"
+msgstr "ثابت"
+
 #: src/lib/project-fix-sweep-store.ts
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, zero {لم يتم إصلاح أي ملف} one {تم إصلاح ملف واحد} two {تم إصلاح ملفين} few {تم إصلاح # ملفات} many {تم إصلاح # ملفًا} other {تم إصلاح # ملف}}."
@@ -5595,6 +5659,10 @@ msgstr "{total, plural, zero {لم يتم إصلاح أي ملف} one {تم إص
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr "مجلد ثابت في جذر المحتوى"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed port number"
+msgstr "رقم المنفذ الثابت"
 
 #. placeholder {0}: fixing.done
 #. placeholder {1}: fixing.total
@@ -7222,6 +7290,10 @@ msgstr "الملفات المحلية"
 msgid "Local path"
 msgstr "مسار محلي"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Local server port"
+msgstr "منفذ الخادم المحلي"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
 msgstr "طُلب الوضع المحلي فقط، لكن لم يُنشأ أي مستودع git. يمكنك التبديل لاحقًا من الإعدادات ← مشاركة الإعدادات بعد أن يصبح المشروع داخل مستودع git."
@@ -7716,6 +7788,11 @@ msgstr "خطأ في .okignore المتداخل في {path}"
 msgid "Nested fields"
 msgstr "حقول متداخلة"
 
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Network access"
+msgstr "الوصول إلى الشبكة"
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "خطأ في الشبكة - لا يزال {kind} «{createdPath}» موجودًا على القرص"
@@ -7732,6 +7809,10 @@ msgstr "خطأ في الشبكة (هل `ok start` يعمل؟)"
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
 msgstr "خطأ في الشبكة أثناء التنظيف"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Network settings not yet loaded — try again in a moment."
+msgstr "لم يتم تحميل إعدادات الشبكة بعد — أعد المحاولة بعد لحظة."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9466,6 +9547,10 @@ msgstr "شائع"
 msgid "Popular on skills.sh"
 msgstr "شائع على skills.sh"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+msgstr "المنفذ {configuredPort} قيد الاستخدام، لذا يعمل الخادم على المنفذ {boundPort} بدلاً منه. لن يصل النفق الموجَّه إلى المنفذ الثابت — حرِّر هذا المنفذ وطبِّق مرة أخرى، أو اختر منفذًا آخر."
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -10387,6 +10472,10 @@ msgstr "تجري إعادة التشغيل"
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
 msgstr "تُغلق إعادة التشغيل خادم هذا المشروع. سيرى الوكلاء المتصلون (Claude Code وCodex وCursor) اتصال MCP الخاص بـ OpenKnowledge يُغلق على نحو غير متوقع — وقد تحتاج إلى إعادة تشغيل الوكيل، أو إيقاف خادم MCP الخاص بـ OpenKnowledge ثم تشغيله، لإعادة الاتصال."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Restarting the server is only available in the desktop app."
+msgstr "إعادة تشغيل الخادم متاحة فقط في تطبيق سطح المكتب."
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting the server…"
@@ -12481,6 +12570,10 @@ msgstr "رفض المزوّد الطلب (HTTP {0}). تحقق من مفتاح AP
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "رفض المزوّد الطلب. تحقق من مفتاح API ومعرّف النموذج."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "عنوان URL العام الذي يخدمه النفق الخاص بك. يقبل الخادم الطلبات الموجّهة إلى هذا المضيف ويعلن عنه في عناوين URL التي يُصدرها."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
 msgstr "تعذّر الوصول إلى خدمة التقارير."
@@ -12504,6 +12597,11 @@ msgstr "ملف المخطط غير موجود أو فشل تحميله — إض�
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "استجاب الخادم لكن server.lock لا يحتوي على منفذ بعد"
+
+#. placeholder {0}: origin.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "سيقبل الخادم الطلبات الموجّهة إلى {0} دون أي مصادقة مدمجة. أي شخص يمكنه الوصول إلى النفق الخاص بك سيمتلك تحكمًا كاملًا في قاعدة المعرفة هذه — بما في ذلك المزامنة وبيانات اعتماد GitHub والعمليات المحلية. تأكد من أن حافة النفق تقيّد من يمكنه الاتصال."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -12956,6 +13054,10 @@ msgstr "هذا يرسل محتوى خارج جهازك"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This sends the link's address off your machine"
 msgstr "هذا يرسل عنوان الرابط خارج جهازك"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
+msgstr "لا يحتوي هذا الخادم على مصادقة مدمجة. أي شخص يمكنه الوصول إلى النفق يحصل على تحكم كامل في قاعدة المعرفة هذه — قيّد الوصول عند حافة النفق (قائمة تحكم ACL في Tailscale، أو وكيل عكسي مع مصادقة، أو جدار حماية)."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."
@@ -13631,6 +13733,10 @@ msgstr "استخدم حزمة بداية"
 #: src/components/AuthModal.tsx
 msgid "Use a token instead"
 msgstr "استخدم رمزًا بدلًا من ذلك"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Use an http:// or https:// origin."
+msgstr "استخدم أصلًا يبدأ بـ http:// أو https://."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."

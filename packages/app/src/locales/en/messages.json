@@ -123,6 +123,7 @@
     "0yL--g": ["Review conflicts"],
     "0ySP5u": ["Changes save automatically to this theme."],
     "0zAhu6": ["every doc"],
+    "1-flC9": ["Local server port"],
     "10g8I_": ["Turn off Only markdown files"],
     "110eEb": [
       "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
@@ -193,6 +194,7 @@
     "2BBAbc": ["List"],
     "2C-6zf": ["Not sent"],
     "2CHoQv": ["Force Reload"],
+    "2D1x3Y": ["Apply and restart project server"],
     "2FYpfJ": ["More"],
     "2FnYUD": [
       "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
@@ -375,6 +377,9 @@
     "56WWtu": ["Couldn't load starter packs: ", ["error"]],
     "56xUL1": ["Property name"],
     "57fiu8": ["(read-only — edit in source mode for now)"],
+    "58ko2F": [
+      "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+    ],
     "58qIOK": ["Comment on this selection"],
     "5ALjdr": ["Move through visual-editor find results from the find field."],
     "5Ajb15": ["The formula <0>c = √(a² + b²)</0> renders inline."],
@@ -452,6 +457,7 @@
     "62bOuM": ["Latest edit"],
     "636K3K": ["Delete adjacent chip"],
     "64sesb": ["Callouts draw attention to key information."],
+    "65Ea2s": ["Exposing pins a fixed port so the tunnel's target stays stable across restarts."],
     "67Dpmh": ["Slash command suggestions"],
     "67TEhP": [
       "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
@@ -593,6 +599,7 @@
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
     "851WA-": ["This can be configured in Settings > AI tools & CLI"],
+    "87GMKe": ["Expose this project to the network?"],
     "881Uwh": ["Delete selected table"],
     "89TtiD": [
       "New file from template \"",
@@ -627,6 +634,9 @@
     "8RtNI0": ["Failed to load documents"],
     "8SrrDi": ["New best · press space to play again"],
     "8TvlHF": ["Crash dump"],
+    "8UmUyc": [
+      "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+    ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Switch worktree"],
     "8Wav8y": [
@@ -961,6 +971,11 @@
       ["shareBranch"],
       "</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
     ],
+    "DTcfyN": [
+      "The server will accept requests for ",
+      ["0"],
+      " with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+    ],
     "DUWgfT": ["Re-authenticate with GitHub Enterprise Server"],
     "DUb7Ax": ["Multiple files use this theme name"],
     "DVh_Tb": ["Failed to clean up after trash"],
@@ -974,6 +989,7 @@
     "Dd6j2Q": ["View comments"],
     "DeDYLr": ["Unrecognized wiki link"],
     "DgcGrb": [["fileCount", "plural", { "one": ["file"], "other": ["files"] }]],
+    "Dh11sK": ["Restarting the server is only available in the desktop app."],
     "DhLHEb": ["Failed to load activity"],
     "DhT_PK": ["OpenKnowledge imported a skill"],
     "DiFKSL": ["Counting markdown files"],
@@ -987,6 +1003,9 @@
     "DrYM2Z": ["Sync disabled"],
     "DsDwR-": [["0", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
     "DskIkK": ["Sign-in stream ended without confirmation — please try again"],
+    "DuCPiG": [
+      "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
+    ],
     "Dub54T": [
       "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
     ],
@@ -1028,6 +1047,7 @@
     "ENpRJV": ["External link previews"],
     "EO4Dt1": ["Enable ", ["file"]],
     "EOjU5V": ["Inline Math Properties"],
+    "EP8mZC": ["Expose and restart"],
     "EPGePE": ["Uploaded as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
     "EPKVES": ["Update \"", ["skillName"], "\" over your edits?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
@@ -1388,6 +1408,7 @@
     "JddocZ": ["Toggle header column"],
     "Jejur6": ["Couldn't load document"],
     "JfPuv7": [["shareBranch"], " isn't a valid branch name."],
+    "JgaVnN": ["Allow external access"],
     "Jhj_lh": ["Modify the link target, anchor, and display label."],
     "JhqycE": ["No recent files"],
     "JkCD2u": ["Sync paused — you don't have permission to push to this repo"],
@@ -1447,6 +1468,7 @@
     "KZLdgR": ["See <0>#design-docs</0> for the latest specs."],
     "K_vT1F": ["Upstream sync"],
     "KaFCD3": ["Open this link in a new tab and collapse the graph."],
+    "Kbz9RK": ["Fixed port number"],
     "KeXgA-": ["Couldn't find that passage — the text it was on may have changed."],
     "Kf7GG5": ["Restarting the server…"],
     "Kge76t": ["Row options"],
@@ -1860,6 +1882,7 @@
     "PrVaZo": ["Uninstall OpenKnowledge?"],
     "PrWQiT": ["Move Terminal to right"],
     "PrhzDE": ["Pan up"],
+    "Pw5PTU": ["External origin"],
     "Q-DKvr": ["Install from ", ["source"]],
     "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
@@ -2008,6 +2031,13 @@
     "S48xcO": ["pending"],
     "S6eHlw": ["Open a project first."],
     "S6l5dv": ["Could not start creating a new item"],
+    "S79zoi": [
+      "Port ",
+      ["configuredPort"],
+      " is in use, so the server is running on port ",
+      ["boundPort"],
+      " instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+    ],
     "S9Vnum": ["Remove ", ["patternText"]],
     "S9t1PI": ["Fixing ", ["0"], "/", ["1"]],
     "SCoBBH": ["Tag suggestions"],
@@ -2074,6 +2104,7 @@
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
     "TMLAx2": ["Required"],
+    "TNKAIS": ["Applying restarts this project's server."],
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TTDXD8": ["New worktree…"],
     "TUzThQ": ["Share skills"],
@@ -2093,6 +2124,7 @@
     "Tjc1pH": ["Section <0>(optional heading anchor)</0>"],
     "Tn5sik": ["Tells agents when to reach for this skill. You can edit it later."],
     "Tofsyo": ["Move Terminal to bottom"],
+    "TpqW74": ["Fixed"],
     "Tq3pcs": ["Keep mine"],
     "Tq9kNX": ["No open chats. Reopen a past one, or start a new one with the ＋ button."],
     "TsZmgr": ["The file on disk, and the id agents use."],
@@ -2829,6 +2861,7 @@
     "cuA8QW": ["Organize specs"],
     "cuHhjo": ["Create & edit"],
     "d-GtJt": ["View in Source Markdown"],
+    "d02jS3": ["Network access"],
     "d1JjXo": [
       "Your local copy of branch <0>",
       ["branch"],
@@ -4129,6 +4162,7 @@
     "u5Utjn": [["0"], " needs ", ["1"]],
     "u5hSeG": ["Share feedback"],
     "u6Hp4N": ["Markdown"],
+    "u779EG": ["Use an http:// or https:// origin."],
     "u7H-Wn": ["Show panel (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Link the selected text, or edit the link under the caret."],
     "uA_jXp": ["Switch and update branch"],
@@ -4137,6 +4171,7 @@
     "uDlyqd": [
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
     ],
+    "uDzLV-": ["Enter a valid URL, for example https://notes.example.com"],
     "uF82hk": ["Percolating…"],
     "uF9ruK": ["Saving"],
     "uFQbYd": ["Home page and entry point."],
@@ -4196,6 +4231,9 @@
     "um-es7": ["Ship the editor with a"],
     "un-K1H": ["Stays on this computer. Not committed to git."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
+    "unmCLE": [
+      "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
+    ],
     "uoJF_D": ["It was too hard to set up or get started"],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
@@ -4317,6 +4355,7 @@
     "wTcjov": ["No workspace"],
     "wU8WyK": ["Element fields"],
     "wVa83H": ["Couldn't create the report"],
+    "wWtVYd": ["Enter a port between 1 and 65535."],
     "wXO4Tg": [["hrs"], "h ago"],
     "wXw19Y": [
       "Removed \"",
@@ -4330,6 +4369,7 @@
     "wbv9xO": ["Create new project"],
     "wc54KE": ["Trying it out…"],
     "wcfO9r": ["No bug reports yet."],
+    "wdRxTD": ["Applying…"],
     "wdxz7K": ["Source"],
     "wdzBgi": ["Config sharing is now Only me."],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
@@ -4380,6 +4420,7 @@
     "xV5sXw": [["0"], "w ago"],
     "xWEvuo": ["Ask AI"],
     "xWomUD": ["Use ", ["editor"], " version"],
+    "xXn6KB": ["Couldn't save network settings — ", ["0"]],
     "xXo8FT": ["Save failed: ", ["error"]],
     "xYMPyY": [
       "Paste was incomplete — ",
@@ -4485,6 +4526,7 @@
     "ylXj1N": ["Selected"],
     "ymWJLd": ["Show ", ["0"], " more"],
     "ynIa4S": ["Visual editor list item"],
+    "yopUSw": ["Network settings not yet loaded — try again in a moment."],
     "ypw6My": ["Showing top ", ["0"], " headings — keep typing to narrow"],
     "ysxgu8": ["project"],
     "yutJKi": ["Checklist with checkboxes."],
@@ -4513,6 +4555,7 @@
     "zAsDLY": ["Graph visualization of document links"],
     "zBUqvf": ["Set up OpenKnowledge integrations…"],
     "zD1Nqf": [["count", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
+    "zHsZcU": ["Enter the public origin your tunnel serves, for example https://notes.example.com"],
     "zJL34S": ["New Terminal Window"],
     "zKxoPm": ["Couldn't rename \"", ["0"], "\": ", ["1"]],
     "zL0LPh": ["Global outside text fields"],

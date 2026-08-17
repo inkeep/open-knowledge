@@ -141,6 +141,7 @@
     "0yL--g": ["Revisar los conflictos"],
     "0ySP5u": ["Los cambios se guardan automáticamente en este tema."],
     "0zAhu6": ["todos los documentos"],
+    "1-flC9": ["Puerto del servidor local"],
     "10g8I_": ["Desactivar Solo archivos markdown"],
     "110eEb": [
       "Open Knowledge crea y mantiene un archivo de navegación llamado index.md en cada carpeta que contiene Markdown."
@@ -217,6 +218,7 @@
     "2BBAbc": ["Lista"],
     "2C-6zf": ["No enviado"],
     "2CHoQv": ["Recargar a la fuerza"],
+    "2D1x3Y": ["Aplicar y reiniciar el servidor del proyecto"],
     "2FYpfJ": ["Más"],
     "2FnYUD": [
       "Información de la aplicación y del sistema, registros recientes de la aplicación y registros del servidor del proyecto: lo imprescindible para reproducir el problema."
@@ -444,6 +446,9 @@
     "56WWtu": ["No se pudieron cargar los paquetes iniciales: ", ["error"]],
     "56xUL1": ["Nombre de la propiedad"],
     "57fiu8": ["(solo lectura: por ahora edítalo en modo código)"],
+    "58ko2F": [
+      "Expón el servidor de este proyecto a una red más amplia a través de un túnel que tú gestionas (por ejemplo Tailscale). Un visitante del túnel obtiene el editor y el endpoint del agente, editando en directo contra el servidor de esta máquina."
+    ],
     "58qIOK": ["Comentar esta selección"],
     "5ALjdr": ["Recorre los resultados de búsqueda del editor visual desde el campo de búsqueda."],
     "5Ajb15": ["La fórmula <0>c = √(a² + b²)</0> se renderiza en línea."],
@@ -535,6 +540,9 @@
     "62bOuM": ["Última edición"],
     "636K3K": ["Eliminar el chip contiguo"],
     "64sesb": ["Los avisos destacan la información clave."],
+    "65Ea2s": [
+      "Exponer fija un puerto para que el destino del túnel permanezca estable entre reinicios."
+    ],
     "67Dpmh": ["Sugerencias de comandos de barra"],
     "67TEhP": [
       "Tus carpetas de habilidades de nivel de usuario: disponibles en todos los proyectos de este equipo. El menú de instalación de cada habilidad controla dónde vive."
@@ -705,6 +713,7 @@
     "80c4-P": ["Código copiado al portapapeles"],
     "81H_23": ["Añadir propiedades"],
     "851WA-": ["Esto se puede configurar en Ajustes > Herramientas de IA y CLI"],
+    "87GMKe": ["¿Exponer este proyecto a la red?"],
     "881Uwh": ["Eliminar la tabla seleccionada"],
     "89TtiD": [
       "Archivo nuevo a partir de la plantilla \"",
@@ -745,6 +754,9 @@
     "8RtNI0": ["No se pudieron cargar los documentos"],
     "8SrrDi": ["Nuevo récord · pulsa espacio para jugar de nuevo"],
     "8TvlHF": ["Volcado de fallo"],
+    "8UmUyc": [
+      "La URL pública que sirve tu túnel. El servidor admite solicitudes para este host y lo anuncia en las URL que emite."
+    ],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Cambiar de worktree"],
     "8Wav8y": [
@@ -1124,6 +1136,11 @@
       ["shareBranch"],
       "</0>. Tienes cambios sin confirmar que impiden cambiar aquí: ábrelo en un worktree para dejar tus cambios intactos."
     ],
+    "DTcfyN": [
+      "El servidor aceptará solicitudes para ",
+      ["0"],
+      " sin autenticación integrada. Cualquiera que pueda acceder a tu túnel tendrá control total de esta base de conocimiento — incluyendo la sincronización, las credenciales de GitHub y las operaciones locales. Asegúrate de que el perímetro del túnel restrinja quién puede conectarse."
+    ],
     "DUWgfT": ["Volver a autenticarse con GitHub Enterprise Server"],
     "DUb7Ax": ["Varios archivos usan este nombre de tema"],
     "DVh_Tb": ["No se pudo limpiar después de mover a la papelera"],
@@ -1141,6 +1158,7 @@
     "DgcGrb": [
       ["fileCount", "plural", { "one": ["archivo"], "many": ["archivos"], "other": ["archivos"] }]
     ],
+    "Dh11sK": ["Reiniciar el servidor solo está disponible en la aplicación de escritorio."],
     "DhLHEb": ["No se pudo cargar la actividad"],
     "DhT_PK": ["OpenKnowledge importó una habilidad"],
     "DiFKSL": ["Contando archivos markdown"],
@@ -1160,6 +1178,9 @@
       ]
     ],
     "DskIkK": ["El flujo de inicio de sesión terminó sin confirmación; inténtalo de nuevo"],
+    "DuCPiG": [
+      "El modo automático elige un puerto libre en cada inicio. Elige un puerto fijo para mantener la misma dirección entre reinicios."
+    ],
     "Dub54T": [
       "Los navegadores de vista previa no pueden copiar automáticamente. Usa Cmd/Ctrl+C sobre la URL de arriba, o abre OK en la aplicación de escritorio."
     ],
@@ -1201,6 +1222,7 @@
     "ENpRJV": ["Vista previa de enlaces externos"],
     "EO4Dt1": ["Activar ", ["file"]],
     "EOjU5V": ["Propiedades de la fórmula en línea"],
+    "EP8mZC": ["Exponer y reiniciar"],
     "EPGePE": ["Se subió como \"", ["0"], "\": el nombre \"", ["1"], "\" ya estaba ocupado."],
     "EPKVES": ["¿Actualizar \"", ["skillName"], "\" sobre tus ediciones?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens usados"],
@@ -1627,6 +1649,7 @@
     "JddocZ": ["Alternar columna de encabezado"],
     "Jejur6": ["No se pudo cargar el documento"],
     "JfPuv7": [["shareBranch"], " no es un nombre de rama válido."],
+    "JgaVnN": ["Permitir acceso externo"],
     "Jhj_lh": ["Modifica el destino del enlace, el ancla y el texto mostrado."],
     "JhqycE": ["No hay archivos recientes"],
     "JkCD2u": ["Sincronización en pausa: no tienes permiso para hacer push a este repositorio"],
@@ -1690,6 +1713,7 @@
     "KZLdgR": ["Consulta <0>#design-docs</0> para ver las últimas especificaciones."],
     "K_vT1F": ["Sincronización con el remoto"],
     "KaFCD3": ["Abre este enlace en una pestaña nueva y contrae el grafo."],
+    "Kbz9RK": ["Número de puerto fijo"],
     "KeXgA-": [
       "No se pudo encontrar ese pasaje — puede que el texto en el que estaba haya cambiado."
     ],
@@ -2140,6 +2164,7 @@
     "PrVaZo": ["¿Desinstalar OpenKnowledge?"],
     "PrWQiT": ["Mover Terminal a la derecha"],
     "PrhzDE": ["Desplazar hacia arriba"],
+    "Pw5PTU": ["Origen externo"],
     "Q-DKvr": ["Instalar desde ", ["source"]],
     "Q1mtyd": ["Ocultar la barra lateral"],
     "Q5fqMz": ["Error de conexión: inténtalo de nuevo"],
@@ -2301,6 +2326,13 @@
     "S48xcO": ["pendiente"],
     "S6eHlw": ["Abre primero un proyecto."],
     "S6l5dv": ["No se pudo empezar a crear un elemento nuevo"],
+    "S79zoi": [
+      "El puerto ",
+      ["configuredPort"],
+      " está en uso, por lo que el servidor se ejecuta en el puerto ",
+      ["boundPort"],
+      ". Un túnel que apunte al puerto fijo no lo alcanzará: libera ese puerto y aplica de nuevo, o elige otro."
+    ],
     "S9Vnum": ["Quitar ", ["patternText"]],
     "S9t1PI": ["Arreglando ", ["0"], "/", ["1"]],
     "SCoBBH": ["Sugerencias de etiquetas"],
@@ -2377,6 +2409,7 @@
     "TKQ7K-": ["Instalar"],
     "TLIO3j": ["Activa o desactiva la cursiva."],
     "TMLAx2": ["Obligatorio"],
+    "TNKAIS": ["Aplicar reinicia el servidor de este proyecto."],
     "TQJCR6": [
       [
         "0",
@@ -2404,6 +2437,7 @@
       "Indica a los agentes cuándo recurrir a esta habilidad. Puedes editarlo más adelante."
     ],
     "Tofsyo": ["Mover Terminal a la parte inferior"],
+    "TpqW74": ["Fijo"],
     "Tq3pcs": ["Conservar el mío"],
     "Tq9kNX": ["No hay chats abiertos. Reabre uno anterior o inicia uno nuevo con el botón ＋."],
     "TsZmgr": ["El archivo en el disco, y el id que usan los agentes."],
@@ -3290,6 +3324,7 @@
     "cuA8QW": ["Organizar las especificaciones"],
     "cuHhjo": ["Crear y editar"],
     "d-GtJt": ["Ver en el Markdown de origen"],
+    "d02jS3": ["Acceso a la red"],
     "d1JjXo": [
       "Tu copia local de la rama <0>",
       ["branch"],
@@ -4762,6 +4797,7 @@
     "u5Utjn": [["0"], " necesita ", ["1"]],
     "u5hSeG": ["Enviar comentarios"],
     "u6Hp4N": ["Markdown"],
+    "u779EG": ["Usa un origen http:// o https://."],
     "u7H-Wn": ["Mostrar el panel (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Enlaza el texto seleccionado o edita el enlace bajo el cursor."],
     "uA_jXp": ["Cambiar de rama y actualizar"],
@@ -4772,6 +4808,7 @@
     "uDlyqd": [
       "Documenta la arquitectura de este repositorio: crea una página general que enlace a una página por cada módulo principal describiendo sus responsabilidades y sus puntos de entrada."
     ],
+    "uDzLV-": ["Introduce una URL válida, por ejemplo https://notes.example.com"],
     "uF82hk": ["Macerando…"],
     "uF9ruK": ["Guardando"],
     "uFQbYd": ["Página de inicio y punto de entrada."],
@@ -4836,6 +4873,9 @@
     "um-es7": ["Publica el editor con un"],
     "un-K1H": ["Se queda en este equipo. No se guarda en git."],
     "un8kBM": ["Creando la página: ", ["linkTitle"], "."],
+    "unmCLE": [
+      "Este servidor no tiene autenticación integrada. Cualquiera que pueda acceder al túnel obtiene control total de esta base de conocimiento — restringe el acceso en el perímetro del túnel (una ACL de Tailscale, un proxy inverso con autenticación o un firewall)."
+    ],
     "uoJF_D": ["Era demasiado difícil de configurar o de empezar a usar"],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["El comando falló."],
@@ -4982,6 +5022,7 @@
     "wTcjov": ["Sin espacio de trabajo"],
     "wU8WyK": ["Campos del elemento"],
     "wVa83H": ["No se pudo crear el informe"],
+    "wWtVYd": ["Introduce un puerto entre 1 y 65535."],
     "wXO4Tg": ["hace ", ["hrs"], " h"],
     "wXw19Y": [
       "Se quitó \"",
@@ -4995,6 +5036,7 @@
     "wbv9xO": ["Crear proyecto"],
     "wc54KE": ["Probándolo…"],
     "wcfO9r": ["Todavía no hay informes de error."],
+    "wdRxTD": ["Aplicando…"],
     "wdxz7K": ["Código"],
     "wdzBgi": ["Compartir configuración ahora está en Solo yo."],
     "weP6me": ["No se pudieron cargar los documentos: escribe @ otra vez para reintentarlo"],
@@ -5054,6 +5096,7 @@
     "xV5sXw": ["hace ", ["0"], " sem"],
     "xWEvuo": ["Preguntar a la IA"],
     "xWomUD": ["Usar la versión de ", ["editor"]],
+    "xXn6KB": ["No se pudo guardar la configuración de red — ", ["0"]],
     "xXo8FT": ["Falló al guardar: ", ["error"]],
     "xYMPyY": [
       "El pegado quedó incompleto: llegaron ",
@@ -5171,6 +5214,7 @@
     "ylXj1N": ["Seleccionado"],
     "ymWJLd": ["Mostrar ", ["0"], " más"],
     "ynIa4S": ["Elemento de lista del editor visual"],
+    "yopUSw": ["La configuración de red aún no se ha cargado — inténtalo de nuevo en un momento."],
     "ypw6My": ["Mostrando los ", ["0"], " encabezados principales; sigue escribiendo para acotar"],
     "ysxgu8": ["proyecto"],
     "yutJKi": ["Lista de comprobación con casillas."],
@@ -5218,6 +5262,9 @@
         "plural",
         { "one": ["#", " documento"], "many": ["#", " documentos"], "other": ["#", " documentos"] }
       ]
+    ],
+    "zHsZcU": [
+      "Introduce el origen público que sirve tu túnel, por ejemplo https://notes.example.com"
     ],
     "zJL34S": ["Ventana de Terminal nueva"],
     "zKxoPm": ["No se pudo renombrar \"", ["0"], "\": ", ["1"]],

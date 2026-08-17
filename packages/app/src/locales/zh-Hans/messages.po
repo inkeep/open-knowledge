@@ -1524,6 +1524,10 @@ msgstr "所有差异块均已解决"
 msgid "All tags"
 msgstr "所有标签"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Allow external access"
+msgstr "允许外部访问"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "允许的元素值（留空 = 任意）"
@@ -1663,13 +1667,25 @@ msgstr "适用于（glob 模式；以 ! 开头表示排除；留空表示所有�
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "适用于这台电脑上的所有项目。从内置终端启动的 Claude 和 Codex 会自动批准 OpenKnowledge 的读写工具（Claude 还会自动运行 “ok open”）。删除、移动、共享、导入或安装技能，以及其他命令和 OpenKnowledge 之外的文件编辑，仍然会询问。Cursor、OpenCode 和 Pi 不受影响。各智能体尽力而为。"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Apply and restart project server"
+msgstr "应用并重启项目服务器"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr "应用链接"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying restarts this project's server."
+msgstr "应用此设置会重启此项目的服务器。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Applying your change"
 msgstr "正在应用你的更改"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying…"
+msgstr "正在应用…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -1878,8 +1894,13 @@ msgstr "已开启“{name}”的自动更新"
 
 #. Section label for the automatic, one-click install path
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic"
 msgstr "自动"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
+msgstr "自动模式会在每次启动时选择一个空闲端口。选择固定端口可在重启后保持相同地址。"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2185,6 +2206,7 @@ msgstr "无法共享此路径。"
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -3728,6 +3750,12 @@ msgstr "无法运行测试。请确认 OpenKnowledge 仍在运行。"
 msgid "Couldn’t save changes. Try editing a color again."
 msgstr "无法保存更改。请再次编辑颜色。"
 
+#. placeholder {0}: humanFormat(first.error)
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't save network settings — {0}"
+msgstr "无法保存网络设置 — {0}"
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr "无法保存模板：{error}"
@@ -4937,6 +4965,10 @@ msgstr "请输入文件夹名（例如 brain）。"
 msgid "Enter a name for this theme."
 msgstr "输入此主题的名称。"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a port between 1 and 65535."
+msgstr "请输入 1 到 65535 之间的端口。"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "请输入项目名"
@@ -4960,6 +4992,14 @@ msgstr "输入有效的主题名称。"
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "请输入有效的 URL（例如 https://api.openai.com/v1）。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a valid URL, for example https://notes.example.com"
+msgstr "输入有效的 URL，例如 https://notes.example.com"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
+msgstr "输入你的隧道所服务的公开来源，例如 https://notes.example.com"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
@@ -5070,6 +5110,22 @@ msgstr "探索"
 msgid "Explore skills"
 msgstr "探索技能"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose and restart"
+msgstr "公开并重启"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project to the network?"
+msgstr "要将此项目公开到网络吗？"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+msgstr "通过你自行运行的隧道（例如 Tailscale）将此项目的服务器公开到更广的网络。隧道上的访问者可获得编辑器和智能体端点，直接对本机的服务器进行实时编辑。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
+msgstr "公开时会固定一个端口，使隧道的目标在重启后保持稳定。"
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5090,6 +5146,10 @@ msgstr "外部链接预览"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
 msgstr "开启后，把鼠标悬停在链接上会显示一张卡片，包含站点名称、页面标题和描述。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "External origin"
+msgstr "外部来源"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "External wiki link"
@@ -5588,6 +5648,10 @@ msgstr "修复 {flatId}"
 msgid "Fix all with AI ({count})"
 msgstr "用 AI 全部修复（{count}）"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed"
+msgstr "固定"
+
 #: src/lib/project-fix-sweep-store.ts
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, other {已修复 # 个文件}}。"
@@ -5595,6 +5659,10 @@ msgstr "{total, plural, other {已修复 # 个文件}}。"
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr "内容根目录中的固定文件夹"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed port number"
+msgstr "固定端口号"
 
 #. placeholder {0}: fixing.done
 #. placeholder {1}: fixing.total
@@ -7222,6 +7290,10 @@ msgstr "本地文件"
 msgid "Local path"
 msgstr "本地路径"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Local server port"
+msgstr "本地服务器端口"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
 msgstr "已请求仅本地，但未创建 git 仓库。等项目位于 git 仓库中后，可在“设置 → 配置共享”中切换。"
@@ -7716,6 +7788,11 @@ msgstr "{path} 中嵌套的 .okignore 有错误"
 msgid "Nested fields"
 msgstr "嵌套字段"
 
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Network access"
+msgstr "网络访问"
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "网络错误 - {kind}“{createdPath}”在磁盘上仍然存在"
@@ -7732,6 +7809,10 @@ msgstr "网络错误（`ok start` 在运行吗？）"
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
 msgstr "清理过程中出现网络错误"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Network settings not yet loaded — try again in a moment."
+msgstr "网络设置尚未加载 — 请稍后重试。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9466,6 +9547,10 @@ msgstr "热门"
 msgid "Popular on skills.sh"
 msgstr "skills.sh 上的热门"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+msgstr "端口 {configuredPort} 已被占用，服务器改为在端口 {boundPort} 上运行。指向固定端口的隧道将无法连接——请释放该端口后重新应用，或选择其他端口。"
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -10387,6 +10472,10 @@ msgstr "正在重启"
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
 msgstr "重启会关闭这个项目的服务器。已连接的智能体（Claude Code、Codex、Cursor）会看到它们的 OpenKnowledge MCP 连接意外断开——你可能需要重启该智能体，或者把它的 OpenKnowledge MCP 服务器关掉再打开，才能重新连接。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Restarting the server is only available in the desktop app."
+msgstr "仅桌面应用支持重启服务器。"
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting the server…"
@@ -12481,6 +12570,10 @@ msgstr "服务提供方拒绝了这个请求（HTTP {0}）。请检查 API 密�
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "服务提供方拒绝了这个请求。请检查 API 密钥和模型 id。"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "你的隧道对外提供的公开 URL。服务器会接受针对此主机的请求，并在其签发的 URL 中公布该地址。"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
 msgstr "无法连接到报告服务。"
@@ -12504,6 +12597,11 @@ msgstr "架构文件不存在或加载失败——添加字段会自动创建它
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "服务器有响应，但 server.lock 中还没有端口"
+
+#. placeholder {0}: origin.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "服务器将接受针对 {0} 的请求，且没有内置身份验证。任何能访问你隧道的人都将拥有对此知识库的完全控制权——包括同步、GitHub 凭据和本地操作。请确保在隧道边缘限制谁可以连接。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -12956,6 +13054,10 @@ msgstr "这会把内容发送到你的电脑之外"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This sends the link's address off your machine"
 msgstr "这会把链接地址发送到你的电脑之外"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
+msgstr "此服务器没有内置身份验证。任何能访问隧道的人都将拥有对此知识库的完全控制权——请在隧道边缘限制访问（Tailscale ACL、带身份验证的反向代理或防火墙）。"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."
@@ -13631,6 +13733,10 @@ msgstr "使用入门包"
 #: src/components/AuthModal.tsx
 msgid "Use a token instead"
 msgstr "改用令牌"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Use an http:// or https:// origin."
+msgstr "请使用 http:// 或 https:// 来源。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."

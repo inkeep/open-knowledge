@@ -1520,6 +1520,10 @@ msgstr "সব হাংক মীমাংসিত"
 msgid "All tags"
 msgstr "সব ট্যাগ"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Allow external access"
+msgstr "বাহ্যিক অ্যাক্সেস অনুমোদন করুন"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "অনুমোদিত উপাদান মান (খালি = যেকোনো)"
@@ -1659,13 +1663,25 @@ msgstr "যার ক্ষেত্রে প্রযোজ্য (গ্ল�
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "এই মেশিনের সব প্রকল্পে প্রযোজ্য। নিজস্ব টার্মিনাল থেকে চালু করা Claude ও Codex, OpenKnowledge-এর পড়া ও লেখার টুল স্বয়ংক্রিয়ভাবে অনুমোদন করে (Claude \"ok open\"-ও নিজে থেকে চালায়)। স্কিল মোছা, সরানো, ভাগ করা, আমদানি করা বা ইনস্টল করা, অন্য কমান্ড, এবং OpenKnowledge-বহির্ভূত ফাইল সম্পাদনা এখনও জিজ্ঞেস করে। Cursor, OpenCode ও Pi অপ্রভাবিত। প্রতিটি এজেন্টের ক্ষেত্রে যথাসাধ্য।"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Apply and restart project server"
+msgstr "প্রয়োগ করুন এবং প্রজেক্ট সার্ভার পুনরায় চালু করুন"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr "লিংক প্রয়োগ করুন"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying restarts this project's server."
+msgstr "প্রয়োগ করলে এই প্রজেক্টের সার্ভার পুনরায় চালু হয়।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Applying your change"
 msgstr "আপনার পরিবর্তন প্রয়োগ করা হচ্ছে"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying…"
+msgstr "প্রয়োগ করা হচ্ছে…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -1874,8 +1890,13 @@ msgstr "\"{name}\"-এর জন্য স্বয়ংক্রিয় হ�
 
 #. Section label for the automatic, one-click install path
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic"
 msgstr "স্বয়ংক্রিয়"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
+msgstr "স্বয়ংক্রিয় প্রতিবার চালু হওয়ার সময় একটি ফাঁকা পোর্ট বেছে নেয়। পুনরায় চালু হওয়ার পরেও একই ঠিকানা রাখতে একটি নির্দিষ্ট পোর্ট বেছে নিন।"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2181,6 +2202,7 @@ msgstr "এই পাথ শেয়ার করা যাচ্ছে না�
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -3724,6 +3746,12 @@ msgstr "পরীক্ষা চালানো যায়নি। OpenKnowl
 msgid "Couldn’t save changes. Try editing a color again."
 msgstr "পরিবর্তনগুলি সংরক্ষণ করা যায়নি। একটি রং আবার সম্পাদনা করে দেখুন।"
 
+#. placeholder {0}: humanFormat(first.error)
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't save network settings — {0}"
+msgstr "নেটওয়ার্ক সেটিংস সংরক্ষণ করা যায়নি — {0}"
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr "টেমপ্লেট সংরক্ষণ করা যায়নি: {error}"
@@ -4933,6 +4961,10 @@ msgstr "একটি ফোল্ডারের নাম দিন (যেম�
 msgid "Enter a name for this theme."
 msgstr "এই থিমের জন্য একটি নাম লিখুন।"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a port between 1 and 65535."
+msgstr "১ থেকে ৬৫৫৩৫-এর মধ্যে একটি পোর্ট লিখুন।"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "একটি প্রকল্পের নাম দিন"
@@ -4956,6 +4988,14 @@ msgstr "একটি বৈধ থিমের নাম লিখুন।"
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "একটি বৈধ URL দিন (উদাহরণস্বরূপ https://api.openai.com/v1)।"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a valid URL, for example https://notes.example.com"
+msgstr "একটি বৈধ URL লিখুন, উদাহরণস্বরূপ https://notes.example.com"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
+msgstr "আপনার টানেল যে পাবলিক অরিজিন পরিবেশন করে তা লিখুন, উদাহরণস্বরূপ https://notes.example.com"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
@@ -5066,6 +5106,22 @@ msgstr "ঘুরে দেখুন"
 msgid "Explore skills"
 msgstr "স্কিল ঘুরে দেখুন"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose and restart"
+msgstr "এক্সপোজ করুন এবং পুনরায় চালু করুন"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project to the network?"
+msgstr "এই প্রজেক্টটি নেটওয়ার্কে এক্সপোজ করবেন?"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+msgstr "আপনি যে টানেল চালান (উদাহরণস্বরূপ Tailscale) তার মাধ্যমে এই প্রজেক্টের সার্ভারকে একটি বৃহত্তর নেটওয়ার্কে এক্সপোজ করুন। টানেলে থাকা একজন ভিউয়ার এডিটর ও এজেন্ট এন্ডপয়েন্ট পায়, এই মেশিনের সার্ভারের বিপরীতে লাইভ সম্পাদনা করে।"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
+msgstr "এক্সপোজ করলে একটি নির্দিষ্ট পোর্ট পিন হয় যাতে পুনরায় চালু হওয়ার পরেও টানেলের টার্গেট স্থিতিশীল থাকে।"
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5086,6 +5142,10 @@ msgstr "বাইরের লিংকের প্রাকদর্শন"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
 msgstr "আপনি কোনো লিংকের উপর মাউস নিলে বাইরের লিংকের প্রাকদর্শন সাইটের নাম, পাতার শিরোনাম ও বিবরণসহ একটি কার্ড দেখায়।"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "External origin"
+msgstr "বাহ্যিক অরিজিন"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "External wiki link"
@@ -5584,6 +5644,10 @@ msgstr "{flatId} ঠিক করুন"
 msgid "Fix all with AI ({count})"
 msgstr "AI দিয়ে সব ঠিক করুন ({count})"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed"
+msgstr "নির্দিষ্ট"
+
 #: src/lib/project-fix-sweep-store.ts
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, one {# টি ফাইল ঠিক করা হয়েছে} other {# টি ফাইল ঠিক করা হয়েছে}}।"
@@ -5591,6 +5655,10 @@ msgstr "{total, plural, one {# টি ফাইল ঠিক করা হয়
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr "বিষয়বস্তুর রুটে নির্দিষ্ট ফোল্ডার"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed port number"
+msgstr "নির্দিষ্ট পোর্ট নম্বর"
 
 #. placeholder {0}: fixing.done
 #. placeholder {1}: fixing.total
@@ -7218,6 +7286,10 @@ msgstr "স্থানীয় ফাইল"
 msgid "Local path"
 msgstr "স্থানীয় পথ"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Local server port"
+msgstr "লোকাল সার্ভার পোর্ট"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
 msgstr "শুধু-স্থানীয় চাওয়া হয়েছিল, কিন্তু কোনো git রিপোজিটরি তৈরি হয়নি। প্রকল্পটি git রিপোজিটরিতে এলে সেটিংস → কনফিগ শেয়ারিং থেকে পরে বদলে নিতে পারবেন।"
@@ -7712,6 +7784,11 @@ msgstr "{path}-এ নেস্টেড .okignore ত্রুটি"
 msgid "Nested fields"
 msgstr "নেস্টেড ফিল্ড"
 
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Network access"
+msgstr "নেটওয়ার্ক অ্যাক্সেস"
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "নেটওয়ার্ক ত্রুটি - {kind} \"{createdPath}\" এখনও ডিস্কে আছে"
@@ -7728,6 +7805,10 @@ msgstr "নেটওয়ার্ক ত্রুটি (`ok start` কি চ
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
 msgstr "পরিষ্কারের সময় নেটওয়ার্ক ত্রুটি"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Network settings not yet loaded — try again in a moment."
+msgstr "নেটওয়ার্ক সেটিংস এখনও লোড হয়নি — কিছুক্ষণ পরে আবার চেষ্টা করুন।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9462,6 +9543,10 @@ msgstr "জনপ্রিয়"
 msgid "Popular on skills.sh"
 msgstr "skills.sh-এ জনপ্রিয়"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+msgstr "পোর্ট {configuredPort} ব্যবহৃত হচ্ছে, তাই সার্ভার এর পরিবর্তে পোর্ট {boundPort}-এ চলছে। ফিক্সড পোর্টের দিকে যাওয়া টানেল এতে পৌঁছাবে না — সেই পোর্টটি খালি করে আবার প্রয়োগ করুন, বা অন্যটি বেছে নিন।"
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -10383,6 +10468,10 @@ msgstr "পুনরায় চালু করা হচ্ছে"
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
 msgstr "পুনরায় চালু করলে এই প্রকল্পের সার্ভার বন্ধ হয়ে যায়। যুক্ত এজেন্টরা (Claude Code, Codex, Cursor) তাদের OpenKnowledge MCP সংযোগ অপ্রত্যাশিতভাবে বন্ধ হতে দেখবে — আবার যুক্ত হতে আপনাকে এজেন্টটি পুনরায় চালু করতে হতে পারে, নয়তো তার OpenKnowledge MCP সার্ভার বন্ধ করে আবার চালু করতে হতে পারে।"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Restarting the server is only available in the desktop app."
+msgstr "সার্ভার পুনরায় চালু করা কেবল ডেস্কটপ অ্যাপে উপলব্ধ।"
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting the server…"
@@ -12477,6 +12566,10 @@ msgstr "সরবরাহকারী অনুরোধটি প্রত্�
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "সরবরাহকারী অনুরোধটি প্রত্যাখ্যান করেছে। API কী ও মডেল id দেখুন।"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "আপনার টানেল যে পাবলিক URL পরিবেশন করে। সার্ভার এই হোস্টের জন্য অনুরোধ গ্রহণ করে এবং এটি যে URL জারি করে তাতে সেটি প্রচার করে।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
 msgstr "রিপোর্ট সেবার নাগাল পাওয়া যায়নি।"
@@ -12500,6 +12593,11 @@ msgstr "স্কিমা ফাইলটি নেই বা লোড কর�
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "সার্ভার সাড়া দিয়েছে কিন্তু server.lock-এ এখনো কোনো পোর্ট নেই"
+
+#. placeholder {0}: origin.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "সার্ভার কোনো অন্তর্নির্মিত প্রমাণীকরণ ছাড়াই {0}-এর জন্য অনুরোধ গ্রহণ করবে। যে কেউ আপনার টানেলে পৌঁছাতে পারে সে এই জ্ঞানভাণ্ডারের সম্পূর্ণ নিয়ন্ত্রণ পাবে — সিঙ্ক, GitHub শংসাপত্র এবং লোকাল অপারেশন সহ। নিশ্চিত করুন যে টানেলের প্রান্ত কে সংযোগ করতে পারবে তা সীমাবদ্ধ করে।"
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -12952,6 +13050,10 @@ msgstr "এটি বিষয়বস্তু আপনার মেশিন
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This sends the link's address off your machine"
 msgstr "এটি লিংকের ঠিকানা আপনার মেশিনের বাইরে পাঠায়"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
+msgstr "এই সার্ভারে কোনো অন্তর্নির্মিত প্রমাণীকরণ নেই। যে কেউ টানেলে পৌঁছাতে পারে সে এই জ্ঞানভাণ্ডারের সম্পূর্ণ নিয়ন্ত্রণ পায় — টানেলের প্রান্তে অ্যাক্সেস সীমাবদ্ধ করুন (একটি Tailscale ACL, প্রমাণীকরণ সহ একটি রিভার্স প্রক্সি, বা একটি ফায়ারওয়াল)।"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."
@@ -13627,6 +13729,10 @@ msgstr "একটি স্টার্টার প্যাক ব্যবহ
 #: src/components/AuthModal.tsx
 msgid "Use a token instead"
 msgstr "বদলে একটি টোকেন ব্যবহার করুন"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Use an http:// or https:// origin."
+msgstr "একটি http:// বা https:// অরিজিন ব্যবহার করুন।"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."

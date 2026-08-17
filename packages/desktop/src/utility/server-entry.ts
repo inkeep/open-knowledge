@@ -24,10 +24,11 @@ import { rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import {
   detectGh,
+  loadConfig,
   makeLazyProbeTokenStore,
   probeOwnManagedEditorMcpEntry,
 } from '@inkeep/open-knowledge';
-import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import { resolveServerRuntimeConfig, type ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import {
   type BootedServer,
   type BootServerOptions,
@@ -189,8 +190,9 @@ export interface SetupUtilityDeps {
   /**
    * Test seam for the per-init pre-bootServer pipeline: ensure-git → scaffold
    * → load config → resolve contentDir. Production runs `ensureProjectGit`,
-   * `initContent`, `readConfigSafely`, and `resolveContentDir` against the
-   * real filesystem. Tests inject a stub so unit assertions never touch disk.
+   * `initContent`, `resolveDesktopServerRuntime`, and `resolveContentDir`
+   * against the real filesystem. Tests inject a stub so unit assertions never
+   * touch disk.
    */
   prepareBootEnvironment?: PrepareBootEnvironment;
 }
@@ -206,6 +208,14 @@ export interface PreparedBootEnvironment {
   contentDir: string;
   contentRoot: string | undefined;
   configValid: boolean;
+  /**
+   * The scope-correctly-resolved `server.*` runtime (bind list, externalUrl,
+   * exposure consent), passed to `bootServer` so exposure consent is honored
+   * only from the project-local layer. Without an explicit `serverRuntime`,
+   * `bootServer` forces `allowExternal` off and desktop is loopback-only by
+   * construction.
+   */
+  serverRuntime: ServerRuntimeConfig;
   /**
    * Defense-in-depth signals appended to `bootServer`'s `degraded` array.
    * Today's only producer: `'project-git-shell-only'` when the prelude's
@@ -342,11 +352,20 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       // + a search opts in.
       const embeddingsKeyStore = makeLazyEmbeddingsKeyStore();
 
-      booted = await server.bootServer({
+      const bootOpts: BootServerOptions = {
         ...msg.opts,
         contentDir: prepared.contentDir,
         contentRoot: prepared.contentRoot,
         config: prepared.config,
+        // Scope-correct exposure consent + admitted-Host source. Passing an
+        // explicit serverRuntime is what lets a project-local
+        // `server.allowExternal` arm exposure — without it bootServer forces
+        // consent off (loopback-only). `bind` mirrors serverRuntime.bind so the
+        // exposure interlock's effective-bind check and the ingress policy agree
+        // (default loopback for the tunnel case; a committed non-loopback bind
+        // then requires the same consent the CLI path demands).
+        serverRuntime: prepared.serverRuntime,
+        bind: prepared.serverRuntime.bind,
         idleShutdownMs: null, // BrowserWindow lifecycle owns utility lifetime
         skipAutoInit: true,
         autoInitFn: undefined,
@@ -367,7 +386,33 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         // the same UI the BrowserWindow shows. Resolved by main from the
         // packaged renderer entry path; absent in unusual dev configs.
         ...(msg.opts.reactShellDistDir ? { reactShellDistDir: msg.opts.reactShellDistDir } : {}),
-      });
+      };
+
+      // Port pinning: a tunnel forwards to a fixed target port, so an ephemeral
+      // port would break it on every restart. The scope-resolved `server.port`
+      // (project scope) wins; the IPC opt (main passes ephemeral `0`) is the
+      // fallback for the unpinned local case.
+      //
+      // A pinned port can be held by another process (EADDRINUSE). Don't crash
+      // or hang the boot — fall back to an ephemeral port so local editing still
+      // works. The Network access pane surfaces the mismatch: it compares the
+      // configured `server.port` against the port this window actually bound
+      // (read off the bridge apiOrigin), so the user learns the tunnel target no
+      // longer matches. bootServer releases its locks and tears down before
+      // throwing a listen error, so the ephemeral retry starts from a clean slate.
+      const requestedPort = prepared.serverRuntime.port ?? msg.opts.port;
+      try {
+        booted = await server.bootServer({ ...bootOpts, port: requestedPort });
+      } catch (err) {
+        if (isFixedPort(requestedPort) && isAddressInUse(err)) {
+          console.warn(
+            `[boot] pinned server.port ${requestedPort} is already in use — falling back to an ephemeral port`,
+          );
+          booted = await server.bootServer({ ...bootOpts, port: 0 });
+        } else {
+          throw err;
+        }
+      }
       const readyMsg: UtilityReadyMessage = {
         type: 'ready',
         port: booted.port,
@@ -376,10 +421,10 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       deps.parentPort?.postMessage(readyMsg);
       resolveReady(readyMsg);
 
-      const mergedDegraded: readonly string[] =
-        prepared.degradedHints && prepared.degradedHints.length > 0
-          ? [...booted.degraded, ...prepared.degradedHints]
-          : booted.degraded;
+      const mergedDegraded: readonly string[] = [
+        ...booted.degraded,
+        ...(prepared.degradedHints ?? []),
+      ];
       if (mergedDegraded.length > 0) {
         deps.parentPort?.postMessage({
           type: 'degraded',
@@ -518,6 +563,67 @@ async function defaultWriteSmokeResult(path: string, contents: string): Promise<
   await rename(tmp, path);
 }
 
+/** A pinned (fixed) listener port — a positive integer, not the ephemeral `0`/unset. */
+function isFixedPort(port: number | undefined): port is number {
+  return typeof port === 'number' && port > 0;
+}
+
+/** True for a listen error caused by the port already being bound. */
+function isAddressInUse(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'EADDRINUSE'
+  );
+}
+
+/**
+ * Load the project config scope-correctly (user + committed project +
+ * project-local, merged by the shared `loadConfig`) and resolve the effective
+ * `server.*` runtime from it.
+ *
+ * The single, shared `loadConfig` is deliberate: exposure consent
+ * (`server.allowExternal`) is a project-local leaf, so a committed value in a
+ * cloned repo must never arm it. `loadConfig`'s `mergeLayered` skips the
+ * committed layer for project-local leaves — a single implementation the CLI
+ * and desktop both call, so the clone-leak guard can't drift between them.
+ *
+ * `loadConfig` throws only on a schema-invalid merged config; desktop degrades
+ * to defaults there (boot on a repairable-in-place file rather than crash),
+ * which forces `server.allowExternal` off — the fail-closed direction.
+ */
+export function resolveDesktopServerRuntime(projectDir: string): {
+  config: Config;
+  configValid: boolean;
+  serverRuntime: ServerRuntimeConfig;
+} {
+  let config: Config;
+  let configValid: boolean;
+  try {
+    const result = loadConfig(projectDir);
+    config = result.config;
+    configValid = true;
+    // Surface the soft issues the CLI also reports rather than swallowing them:
+    // recoverable diagnostics (unknown/removed keys) and any file the loader
+    // sidelined to boot on defaults. Hard schema failures throw and are handled
+    // in the catch below.
+    for (const diag of result.diagnostics) {
+      const extra =
+        'detail' in diag ? `: ${diag.detail}` : 'path' in diag ? `: ${diag.path.join('.')}` : '';
+      console.warn(`[config] ${diag.code}${extra}`);
+    }
+    for (const { from, to } of result.sidelined) {
+      console.warn(
+        `[config] ${from} could not be parsed — moved to ${to}; booting on the remaining layers.`,
+      );
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`[config] desktop boot config invalid — using schema defaults: ${detail}`);
+    config = ConfigSchema.parse({});
+    configValid = false;
+  }
+  return { config, configValid, serverRuntime: resolveServerRuntimeConfig(config) };
+}
+
 /**
  * Production prelude: ensure-git → scaffold `.ok/` → load config → resolve
  * contentDir. Hits the real filesystem; tests substitute via
@@ -548,24 +654,13 @@ async function defaultPrepareBootEnvironment(
   // projects (`writeIfMissing` semantics).
   initContent(projectDir);
 
-  // Load project config. `sideline: false` — project errors are user-fixable
-  // in-place; on parse/validation failure we fall back to schema defaults
-  // rather than renaming the user's file.
-  const configResult = readConfigSafely({
-    absPath: resolveConfigPath('project', projectDir),
-    sideline: false,
-    warn: (m: string) => console.warn(m),
-  });
-  let config: Config;
-  let configValid: boolean;
-  if (configResult.valid) {
-    config = configResult.value;
-    configValid = true;
-  } else {
-    console.warn('[config] desktop boot config invalid — using schema defaults');
-    config = ConfigSchema.parse({});
-    configValid = false;
-  }
+  // Scope-correct three-layer config load (user + project + project-local),
+  // replacing the former project-scope-only read: a project-local
+  // `server.allowExternal: true` is now honored while a committed one stays
+  // inert, and `bootServer` receives an explicit `serverRuntime` so exposure
+  // consent can take effect. On a schema-invalid merged config, fall back to
+  // schema defaults rather than crashing the boot.
+  const { config, configValid, serverRuntime } = resolveDesktopServerRuntime(projectDir);
 
   const contentDir = resolveContentDir(projectDir, config, ipcOpts.contentDir);
   const rawContentDir = config.content.dir;
@@ -578,6 +673,7 @@ async function defaultPrepareBootEnvironment(
     contentDir,
     contentRoot,
     configValid,
+    serverRuntime,
     degradedHints: degradedHints.length > 0 ? degradedHints : undefined,
   };
 }

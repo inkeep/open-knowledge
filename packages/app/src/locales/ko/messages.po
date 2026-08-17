@@ -1524,6 +1524,10 @@ msgstr "모든 변경 블록 해결됨"
 msgid "All tags"
 msgstr "모든 태그"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Allow external access"
+msgstr "외부 접근 허용"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "허용되는 요소 값 (비워 두면 모두 허용)"
@@ -1663,13 +1667,25 @@ msgstr "적용 대상 (glob, 앞의 !는 제외, 비워 두면 모든 문서)"
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "이 컴퓨터의 모든 프로젝트에 적용됩니다. 기본 제공 터미널에서 시작한 Claude와 Codex는 OpenKnowledge의 읽기 및 쓰기 도구를 자동 승인합니다(Claude는 \"ok open\"도 자동 실행). 삭제, 이동, 공유, 가져오기, 스킬 설치, 기타 명령, OpenKnowledge 외부 파일 편집은 계속 확인을 요청합니다. Cursor, OpenCode, Pi에는 적용되지 않습니다. 에이전트별로 최선의 동작을 시도합니다."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Apply and restart project server"
+msgstr "적용하고 프로젝트 서버 재시작"
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
 msgstr "링크 적용"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying restarts this project's server."
+msgstr "적용하면 이 프로젝트의 서버가 재시작됩니다."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Applying your change"
 msgstr "변경사항 적용 중"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Applying…"
+msgstr "적용 중…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -1878,8 +1894,13 @@ msgstr "\"{name}\" 자동 업데이트 켜짐"
 
 #. Section label for the automatic, one-click install path
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic"
 msgstr "자동"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
+msgstr "자동을 선택하면 시작할 때마다 사용 가능한 포트를 고릅니다. 재시작해도 같은 주소를 유지하려면 고정 포트를 선택하세요."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2185,6 +2206,7 @@ msgstr "이 경로는 공유할 수 없습니다."
 #: src/components/SeedDialog.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
+#: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -3728,6 +3750,12 @@ msgstr "테스트를 실행하지 못했습니다. OpenKnowledge가 계속 실�
 msgid "Couldn’t save changes. Try editing a color again."
 msgstr "변경사항을 저장하지 못했습니다. 색상을 다시 편집합니다."
 
+#. placeholder {0}: humanFormat(first.error)
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't save network settings — {0}"
+msgstr "네트워크 설정을 저장하지 못했습니다 — {0}"
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr "템플릿 저장 실패: {error}"
@@ -4937,6 +4965,10 @@ msgstr "폴더 이름을 입력하세요(예: brain)."
 msgid "Enter a name for this theme."
 msgstr "이 테마의 이름을 입력합니다."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a port between 1 and 65535."
+msgstr "1에서 65535 사이의 포트를 입력하세요."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
 msgstr "프로젝트 이름 입력"
@@ -4960,6 +4992,14 @@ msgstr "유효한 테마 이름을 입력합니다."
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "유효한 URL 입력, 예: https://api.openai.com/v1"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter a valid URL, for example https://notes.example.com"
+msgstr "유효한 URL을 입력하세요. 예: https://notes.example.com"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
+msgstr "터널이 제공하는 공개 오리진을 입력하세요. 예: https://notes.example.com"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
@@ -5070,6 +5110,22 @@ msgstr "탐색"
 msgid "Explore skills"
 msgstr "스킬 탐색"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose and restart"
+msgstr "노출하고 재시작"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project to the network?"
+msgstr "이 프로젝트를 네트워크에 노출할까요?"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
+msgstr "직접 운영하는 터널(예: Tailscale)을 통해 이 프로젝트의 서버를 더 넓은 네트워크에 노출합니다. 터널에 접속한 사람은 에디터와 에이전트 엔드포인트를 사용하여 이 컴퓨터의 서버에 실시간으로 편집할 수 있습니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
+msgstr "노출하면 포트가 고정되어 재시작해도 터널의 대상이 안정적으로 유지됩니다."
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5090,6 +5146,10 @@ msgstr "외부 링크 미리보기"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
 msgstr "외부 링크 위에 마우스를 올리면 사이트 이름, 페이지 제목, 설명이 있는 미리보기 카드가 나타납니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "External origin"
+msgstr "외부 오리진"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "External wiki link"
@@ -5588,6 +5648,10 @@ msgstr "{flatId} 수정"
 msgid "Fix all with AI ({count})"
 msgstr "AI로 모두 수정 ({count})"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed"
+msgstr "고정"
+
 #: src/lib/project-fix-sweep-store.ts
 msgid "Fixed {total, plural, one {# file} other {# files}}."
 msgstr "{total, plural, other {파일 #개}}를 수정했습니다."
@@ -5595,6 +5659,10 @@ msgstr "{total, plural, other {파일 #개}}를 수정했습니다."
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Fixed folder in content root"
 msgstr "콘텐츠 루트의 고정 폴더"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Fixed port number"
+msgstr "고정 포트 번호"
 
 #. placeholder {0}: fixing.done
 #. placeholder {1}: fixing.total
@@ -7222,6 +7290,10 @@ msgstr "로컬 파일"
 msgid "Local path"
 msgstr "로컬 경로"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Local server port"
+msgstr "로컬 서버 포트"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Local-only requested but no git repository was created. Switch later via Settings → Config sharing once the project is in a git repo."
 msgstr "로컬 전용이 요청되었지만 git 리포지토리가 생성되지 않았습니다. 프로젝트가 git 리포지토리에 들어간 후 설정 → 구성 공유에서 전환할 수 있습니다."
@@ -7716,6 +7788,11 @@ msgstr "{path}의 중첩된 .okignore 오류"
 msgid "Nested fields"
 msgstr "중첩 필드"
 
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Network access"
+msgstr "네트워크 접근"
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "{kind} “{createdPath}”에 대한 네트워크 오류입니다. 해당 항목이 디스크에 여전히 있습니다."
@@ -7732,6 +7809,10 @@ msgstr "네트워크 오류 (`ok start` 실행 중인가요?)"
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
 msgstr "정리 중 네트워크 오류가 발생했습니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Network settings not yet loaded — try again in a moment."
+msgstr "네트워크 설정이 아직 로드되지 않았습니다. 잠시 후 다시 시도하세요."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9466,6 +9547,10 @@ msgstr "인기"
 msgid "Popular on skills.sh"
 msgstr "skills.sh에서 인기"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
+msgstr "포트 {configuredPort}이(가) 사용 중이어서 서버가 대신 포트 {boundPort}에서 실행 중입니다. 고정 포트로 전달하는 터널은 여기에 연결되지 않습니다. 해당 포트를 비운 후 다시 적용하거나 다른 포트를 선택하세요."
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -10387,6 +10472,10 @@ msgstr "재시작 중"
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
 msgstr "다시 시작하면 이 프로젝트의 서버가 닫힙니다. 연결된 에이전트(Claude Code, Codex, Cursor)는 OpenKnowledge MCP 연결이 예기치 않게 닫힌 것을 감지합니다. 다시 연결하려면 에이전트를 다시 시작하거나 OpenKnowledge MCP 서버를 껐다가 켜야 할 수 있습니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Restarting the server is only available in the desktop app."
+msgstr "서버 재시작은 데스크톱 앱에서만 가능합니다."
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restarting the server…"
@@ -12481,6 +12570,10 @@ msgstr "제공업체가 요청을 거부했습니다 (HTTP {0}). API 키와 모�
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "제공업체가 요청을 거부했습니다. API 키와 모델 ID를 확인합니다."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "터널이 제공하는 공개 URL입니다. 서버는 이 호스트에 대한 요청을 허용하고 발급하는 URL에 이 주소를 사용합니다."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
 msgstr "보고서 서비스에 연결할 수 없습니다."
@@ -12504,6 +12597,11 @@ msgstr "스키마 파일이 없거나 불러오지 못했습니다. 필드를 �
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "서버 응답 완료. server.lock에 포트 없음"
+
+#. placeholder {0}: origin.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "서버는 내장 인증 없이 {0}에 대한 요청을 수락합니다. 터널에 접근할 수 있는 사람은 누구나 이 지식 베이스를 완전히 제어할 수 있습니다. 여기에는 동기화, GitHub 자격 증명, 로컬 작업이 포함됩니다. 터널 경계에서 접속할 수 있는 대상을 제한하세요."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -12956,6 +13054,10 @@ msgstr "이 컴퓨터 밖으로 콘텐츠를 전송합니다"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This sends the link's address off your machine"
 msgstr "이 컴퓨터 밖으로 링크 주소를 전송합니다"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
+msgstr "이 서버에는 내장 인증이 없습니다. 터널에 접근할 수 있는 사람은 누구나 이 지식 베이스를 완전히 제어할 수 있습니다. 터널 경계에서 접근을 제한하세요(Tailscale ACL, 인증이 있는 리버스 프록시 또는 방화벽)."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."
@@ -13631,6 +13733,10 @@ msgstr "스타터 팩 사용"
 #: src/components/AuthModal.tsx
 msgid "Use a token instead"
 msgstr "대신 토큰 사용"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Use an http:// or https:// origin."
+msgstr "http:// 또는 https:// 오리진을 사용하세요."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
