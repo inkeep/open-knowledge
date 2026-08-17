@@ -1336,6 +1336,13 @@
     "Fqx38P": ["O que atrapalhou?"],
     "Fr8JGg": ["Arquivo zip"],
     "Fsx78O": ["Adicione o comando <0>ok</0> ao seu terminal"],
+    "Ftz_t9": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " pasta"], "many": ["#", " pastas"], "other": ["#", " pastas"] }
+      ]
+    ],
     "FvMSms": [
       "Renomear muda o arquivo no disco e o id que os agentes usam para escolher este modelo."
     ],
@@ -2456,6 +2463,7 @@
         }
       ]
     ],
+    "UIjjFa": ["Ver o que será adicionado"],
     "UJEFJY": ["Não foi possível iniciar ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge abriu a pré-visualização ao vivo"],
     "UL8A9w": ["Tag"],
@@ -3825,6 +3833,13 @@
     "jhtG3I": [" Sua seleção foi restaurada."],
     "jjtmV_": ["Nome do primeiro arquivo"],
     "jkt28V": ["Custo de contexto"],
+    "jlT89F": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " arquivo"], "many": ["#", " arquivos"], "other": ["#", " arquivos"] }
+      ]
+    ],
     "jnCROW": [
       "Um instantâneo de memória da falha, e o artefato que mais nos ajuda. Ele pode conter conteúdo de documentos e não pode ser ocultado, então desmarque se preferir não compartilhá-lo."
     ],

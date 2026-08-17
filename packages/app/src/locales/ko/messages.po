@@ -184,10 +184,20 @@ msgstr "{0, plural, other {#개 문서}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {오류 #개}}"
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, other {파일 #개}}"
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, other {#개 폴더를 선택했습니다}}"
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
+msgstr "{0, plural, other {폴더 #개}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -10948,6 +10958,10 @@ msgstr "스타터 팩 {0}개 모두 보기"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "전체 설치 안내 보기"
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
+msgstr "추가되는 항목 보기"
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx

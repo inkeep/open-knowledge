@@ -184,9 +184,19 @@ msgstr ""
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr ""
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr ""
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
+msgstr ""
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
 msgstr ""
 
 #. placeholder {0}: value.length
@@ -10943,6 +10953,10 @@ msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
+msgstr ""
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
 msgstr ""
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]

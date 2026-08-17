@@ -1171,6 +1171,7 @@
     "Fqx38P": ["What got in the way?"],
     "Fr8JGg": ["Zip file"],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
+    "Ftz_t9": [["0", "plural", { "one": ["#", " folder"], "other": ["#", " folders"] }]],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
     "Fx9aOF": ["OpenKnowledge edited a document"],
     "Fxf4jq": ["Description (optional)"],
@@ -2165,6 +2166,7 @@
     "UI0WPT": [
       ["propertyCount", "plural", { "one": ["#", " property"], "other": ["#", " properties"] }]
     ],
+    "UIjjFa": ["See what's added"],
     "UJEFJY": ["Couldn't start ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge opened the live preview"],
     "UL8A9w": ["Tag"],
@@ -3362,6 +3364,7 @@
     "jhtG3I": [" Your selection has been restored."],
     "jjtmV_": ["First file name"],
     "jkt28V": ["Context cost"],
+    "jlT89F": [["0", "plural", { "one": ["#", " file"], "other": ["#", " files"] }]],
     "jnCROW": [
       "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
     ],

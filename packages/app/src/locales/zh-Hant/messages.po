@@ -184,10 +184,20 @@ msgstr "{0, plural, other {# 個文件}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {# 個錯誤}}"
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, other {# 個檔案}}"
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, other {已選 # 個資料夾}}"
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
+msgstr "{0, plural, other {# 個資料夾}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -10948,6 +10958,10 @@ msgstr "查看全部 {0} 個入門套件"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "查看完整的安裝指南"
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
+msgstr "查看將新增的內容"
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx

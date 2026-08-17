@@ -24,6 +24,7 @@ import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Spinner } from '@/components/ui/spinner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import type {
   OkDesktopBridge,
@@ -744,18 +745,25 @@ function StarterPackRow({
         {pillPacks.map((pack) => {
           const Icon = iconForPack(pack.id);
           return (
-            <Button
-              key={pack.id}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={() => selectPack(pack.id)}
-              data-testid={`nav-pack-pill-${pack.id}`}
-            >
-              <Icon className="size-3.5 text-muted-foreground" />
-              {pack.name}
-            </Button>
+            // The pill shows the pack name only, so what it contains is
+            // invisible until the picker opens. Descriptions are server data
+            // (the pack registry), not UI copy — no Trans wrapper.
+            <Tooltip key={pack.id}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => selectPack(pack.id)}
+                  data-testid={`nav-pack-pill-${pack.id}`}
+                >
+                  <Icon className="size-3.5 text-muted-foreground" />
+                  {pack.name}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{pack.description}</TooltipContent>
+            </Tooltip>
           );
         })}
         {overflowCount > 0 ? (

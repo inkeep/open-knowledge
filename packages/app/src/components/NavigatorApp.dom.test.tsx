@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 let themeBridgeCalls: Array<[unknown, string]> = [];
@@ -132,7 +133,11 @@ async function renderNavigator(bridge: ReturnType<typeof createBridge>) {
     configurable: true,
     value: bridge,
   });
-  render(<NavigatorApp bridge={bridge as never} />);
+  render(
+    <TooltipProvider>
+      <NavigatorApp bridge={bridge as never} />
+    </TooltipProvider>,
+  );
   await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
 }
 

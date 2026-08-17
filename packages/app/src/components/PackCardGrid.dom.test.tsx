@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkPackId, OkSeedListPacksResult, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
 
 let listPacksImpl: () => Promise<OkSeedListPacksResult> = async () => ({
@@ -64,7 +65,11 @@ async function renderPackCardGrid(
 ) {
   const { PackCardGrid } = await import('./PackCardGrid');
   const selected: OkPackId[] = [];
-  render(<PackCardGrid onPackSelect={(packId) => selected.push(packId)} {...props} />);
+  render(
+    <TooltipProvider>
+      <PackCardGrid onPackSelect={(packId) => selected.push(packId)} {...props} />
+    </TooltipProvider>,
+  );
   return { selected };
 }
 
@@ -94,6 +99,28 @@ describe('PackCardGrid runtime behavior', () => {
 
     await userEvent.click(buttons[0]);
     expect(selected).toEqual(['knowledge-base']);
+  });
+
+  test('each card shows entry counts, a preview verb, and folder detail on hover', async () => {
+    await renderPackCardGrid({ packs: [makePack('knowledge-base', 1)] });
+
+    const card = screen.getByRole('button');
+    // makePack(_, 1) → 1 file, 2 folders: exercises both plural branches.
+    expect(card.textContent).toContain('1 file');
+    expect(card.textContent).toContain('2 folders');
+    // The click opens a preview step, not an install — the card has to say so.
+    expect(card.textContent).toContain("See what's added");
+
+    await userEvent.hover(card);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('folder-2');
+  });
+
+  test('a pack with no folders renders a bare card with no tooltip', async () => {
+    await renderPackCardGrid({ packs: [{ ...makePack('knowledge-base', 1), folders: [] }] });
+
+    await userEvent.hover(screen.getByRole('button'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   test('omits the blank-file card when onCreateBlankFile is not provided', async () => {

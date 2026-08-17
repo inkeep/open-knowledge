@@ -16,6 +16,7 @@
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   __resetLocalMenuActionBusForTests,
@@ -169,7 +170,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
 
   test('CreateProjectDialog is closed until the new-project menu action fires', async () => {
     const stub = makeNavigatorBridge();
-    render(<NavigatorApp bridge={stub.bridge} />);
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
 
     // Let listRecent's microtask settle so any post-mount render-cascade
     // finishes before we assert the dialog's absence.
@@ -179,7 +184,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
 
   test('new-project menu action opens CreateProjectDialog', async () => {
     const stub = makeNavigatorBridge();
-    render(<NavigatorApp bridge={stub.bridge} />);
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
 
     // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
@@ -196,7 +205,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
 
   test('unrelated menu actions do not open CreateProjectDialog', async () => {
     const stub = makeNavigatorBridge();
-    render(<NavigatorApp bridge={stub.bridge} />);
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
 
     // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
@@ -211,7 +224,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
 
   test('report-bug menu action opens the system-wide ReportBugDialog', async () => {
     const stub = makeNavigatorBridge();
-    render(<NavigatorApp bridge={stub.bridge} />);
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
 
     // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
@@ -235,7 +252,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
     // owns this path whenever it is the focused window — the editor-window
     // FeedbackMenuTrigger never runs here.
     const stub = makeNavigatorBridge();
-    render(<NavigatorApp bridge={stub.bridge} />);
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
 
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -255,7 +276,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
   test('close-active-tab-or-window menu action closes the navigator window', async () => {
     const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
     const stub = makeNavigatorBridge();
-    render(<NavigatorApp bridge={stub.bridge} />);
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
 
     // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));

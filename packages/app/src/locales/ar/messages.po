@@ -184,10 +184,20 @@ msgstr "{0, plural, zero {# مستند} one {مستند واحد} two {مستن�
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأً} other {# خطأ}}"
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}"
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, zero {لم يتم اختيار مجلدات} one {تم اختيار مجلد واحد} two {تم اختيار مجلدين} few {تم اختيار # مجلدات} many {تم اختيار # مجلدًا} other {تم اختيار # مجلد}}"
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
+msgstr "{0, plural, zero {# مجلد} one {مجلد واحد} two {مجلدان} few {# مجلدات} many {# مجلدًا} other {# مجلد}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -10948,6 +10958,10 @@ msgstr "عرض كل حزم البداية {0}"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "اطّلع على دليل التثبيت الكامل"
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
+msgstr "اطلع على ما سيُضاف"
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx

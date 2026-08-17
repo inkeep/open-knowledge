@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 let createDialogProps: Array<{
   open: boolean;
@@ -19,8 +21,11 @@ const PACK_IDS = [
 function packFixture() {
   return PACK_IDS.map((id) => ({
     id,
+    // Distinct from `name` so a hover test can prove the tooltip surfaces the
+    // description field, not the name. Real descriptions are non-empty
+    // (SeedPackInfoSchema requires `z.string().min(1)`); '' was unrealistic.
     name: id,
-    description: '',
+    description: `Description for ${id}`,
     folders: [],
     entryCounts: { files: 0, folders: 0 },
   }));
@@ -165,7 +170,11 @@ function createBridge(recents: unknown[]) {
 
 async function renderNavigator(bridge: ReturnType<typeof createBridge>) {
   Object.defineProperty(window, 'okDesktop', { configurable: true, value: bridge });
-  render(<NavigatorApp bridge={bridge as never} />);
+  render(
+    <TooltipProvider>
+      <NavigatorApp bridge={bridge as never} />
+    </TooltipProvider>,
+  );
   await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
 }
 
@@ -213,6 +222,19 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     // name has to say what the count refers to.
     const more = await screen.findByTestId('nav-pack-more');
     expect(more.getAttribute('aria-label')).toBe('See all 5 starter packs');
+  });
+
+  test('hovering a pack pill surfaces its description in a tooltip', async () => {
+    // The pill shows only the pack name, so what it contains is invisible until
+    // hover. Assert the description text (not the name) is the hover payload, so
+    // a later swap of `pack.description` for another field fails here.
+    const bridge = createBridge([]);
+    await renderNavigator(bridge);
+
+    await userEvent.hover(await screen.findByTestId('nav-pack-pill-knowledge-base'));
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Description for knowledge-base');
   });
 
   test('no overflow affordance when every pack fits in the pill row', async () => {

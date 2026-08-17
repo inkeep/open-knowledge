@@ -1,5 +1,5 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   ArrowRight,
   BookMarked,
@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Spinner } from '@/components/ui/spinner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OkPackId, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
 import { seedClient } from '@/lib/seed-client';
 import { cn } from '@/lib/utils';
@@ -254,7 +255,7 @@ interface PackCardProps {
 
 function PackCard({ pack, onSelect }: PackCardProps) {
   const Icon = iconForPack(pack.id);
-  return (
+  const card = (
     <button
       type="button"
       onClick={onSelect}
@@ -271,8 +272,43 @@ function PackCard({ pack, onSelect }: PackCardProps) {
         <p className="line-clamp-2 text-1sm leading-relaxed text-muted-foreground">
           {pack.description}
         </p>
+
+        <p className="text-xs text-muted-foreground">
+          <Plural value={pack.entryCounts.files} one="# file" other="# files" />
+          {' · '}
+          <Plural value={pack.entryCounts.folders} one="# folder" other="# folders" />
+        </p>
       </div>
+
+      {/* The card only opens the per-pack configurator — `SeedDialog` writes
+          nothing until its explicit Initialize button. Name that so the click
+          doesn't read as "install now". Always visible, unlike the folder
+          detail in the tooltip, which is hover/focus-only. */}
+      <span className="mt-auto inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
+        <Trans>See what's added</Trans>
+        <ArrowRight aria-hidden="true" className="size-3.5" />
+      </span>
     </button>
+  );
+
+  if (pack.folders.length === 0) return card;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{card}</TooltipTrigger>
+      {/* Folder paths + summaries are server data (the pack registry), not UI
+          copy — no Trans wrapper. */}
+      <TooltipContent className="flex-col items-start gap-1.5">
+        <ul className="flex flex-col gap-1.5 text-left">
+          {pack.folders.map((folder) => (
+            <li key={folder.path} className="flex flex-col">
+              <span className="font-mono">{folder.path}</span>
+              <span className="opacity-75">{folder.summary}</span>
+            </li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

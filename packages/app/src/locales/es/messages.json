@@ -1350,6 +1350,13 @@
     "Fqx38P": ["¿Qué te lo impidió?"],
     "Fr8JGg": ["Archivo zip"],
     "Fsx78O": ["Añade el comando <0>ok</0> a tu terminal"],
+    "Ftz_t9": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " carpeta"], "many": ["#", " carpetas"], "other": ["#", " carpetas"] }
+      ]
+    ],
     "FvMSms": [
       "Renombrarlo cambia el archivo en el disco y el id con el que los agentes eligen esta plantilla."
     ],
@@ -2488,6 +2495,7 @@
         }
       ]
     ],
+    "UIjjFa": ["Ver qué se añade"],
     "UJEFJY": ["No se pudo iniciar ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge abrió la vista previa en vivo"],
     "UL8A9w": ["Etiqueta"],
@@ -3905,6 +3913,13 @@
     "jhtG3I": [" Se restauró tu selección."],
     "jjtmV_": ["Nombre del primer archivo"],
     "jkt28V": ["Coste de contexto"],
+    "jlT89F": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " archivo"], "many": ["#", " archivos"], "other": ["#", " archivos"] }
+      ]
+    ],
     "jnCROW": [
       "Una instantánea de memoria del fallo, y el artefacto que más nos ayuda. Puede contener contenido de documentos y no se puede ocultar, así que desmárcalo si prefieres no compartirlo."
     ],

@@ -184,10 +184,20 @@ msgstr "{0, plural, one {# নথি} other {# নথি}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, one {# ত্রুটি} other {# ত্রুটি}}"
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, one {# ফাইল} other {# ফাইল}}"
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, one {# টি ফোল্ডার নির্বাচিত} other {# টি ফোল্ডার নির্বাচিত}}"
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
+msgstr "{0, plural, one {# টি ফোল্ডার} other {# টি ফোল্ডার}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -10944,6 +10954,10 @@ msgstr "সব {0}টি স্টার্টার প্যাক দেখ�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "পূর্ণ ইনস্টল নির্দেশিকা দেখুন"
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
+msgstr "কী যুক্ত হবে দেখুন"
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx

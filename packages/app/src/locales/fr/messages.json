@@ -1379,6 +1379,13 @@
     "Fqx38P": ["Qu'est-ce qui vous a gêné ?"],
     "Fr8JGg": ["Fichier zip"],
     "Fsx78O": ["Ajoutez la commande <0>ok</0> à votre terminal"],
+    "Ftz_t9": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " dossier"], "many": ["#", " dossiers"], "other": ["#", " dossiers"] }
+      ]
+    ],
     "FvMSms": [
       "Renommer modifie le fichier sur le disque ainsi que l'id que les agents utilisent pour choisir ce modèle."
     ],
@@ -2517,6 +2524,7 @@
         { "one": ["#", " propriété"], "many": ["#", " propriétés"], "other": ["#", " propriétés"] }
       ]
     ],
+    "UIjjFa": ["Voir ce qui est ajouté"],
     "UJEFJY": ["Impossible de démarrer ", ["0"], " : ", ["1"]],
     "UL-9ej": ["OpenKnowledge a ouvert l'aperçu en direct"],
     "UL8A9w": ["Étiquette"],
@@ -3934,6 +3942,13 @@
     "jhtG3I": [" Votre sélection a été restaurée."],
     "jjtmV_": ["Nom du premier fichier"],
     "jkt28V": ["Coût de contexte"],
+    "jlT89F": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " fichier"], "many": ["#", " fichiers"], "other": ["#", " fichiers"] }
+      ]
+    ],
     "jnCROW": [
       "Un instantané de la mémoire au moment du plantage, et l'élément qui nous aide le plus. Il peut contenir du contenu de document et ne peut pas être masqué, alors décochez-le si vous préférez ne pas le partager."
     ],

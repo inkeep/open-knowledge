@@ -184,10 +184,20 @@ msgstr "{0, plural, one {# documento} many {# documentos} other {# documentos}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, one {# erro} many {# erros} other {# erros}}"
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, one {# arquivo} many {# arquivos} other {# arquivos}}"
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, one {# pasta selecionada} many {# pastas selecionadas} other {# pastas selecionadas}}"
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
+msgstr "{0, plural, one {# pasta} many {# pastas} other {# pastas}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -10944,6 +10954,10 @@ msgstr "Ver os {0} pacotes iniciais"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "Ver o guia de instalação completo"
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
+msgstr "Ver o que será adicionado"
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx

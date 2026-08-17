@@ -1163,6 +1163,7 @@
     "Fqx38P": ["Apa yang menghambat?"],
     "Fr8JGg": ["Berkas zip"],
     "Fsx78O": ["Tambahkan perintah <0>ok</0> ke terminal Anda"],
+    "Ftz_t9": [["0", "plural", { "other": ["#", " folder"] }]],
     "FvMSms": [
       "Mengganti nama mengubah berkas di disk dan id yang dipakai agen untuk memilih templat ini."
     ],
@@ -2174,6 +2175,7 @@
       "."
     ],
     "UI0WPT": [["propertyCount", "plural", { "other": ["#", " properti"] }]],
+    "UIjjFa": ["Lihat yang ditambahkan"],
     "UJEFJY": ["Tidak dapat menjalankan ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge membuka pratinjau langsung"],
     "UL8A9w": ["Tag"],
@@ -3399,6 +3401,7 @@
     "jhtG3I": [" Pilihan Anda telah dipulihkan."],
     "jjtmV_": ["Nama berkas pertama"],
     "jkt28V": ["Biaya konteks"],
+    "jlT89F": [["0", "plural", { "other": ["#", " berkas"] }]],
     "jnCROW": [
       "Cuplikan memori dari kegagalan itu, dan artefak yang paling membantu kami. Isinya bisa memuat isi dokumen dan tidak bisa disunting, jadi hapus centangnya jika Anda tidak ingin membagikannya."
     ],

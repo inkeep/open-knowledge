@@ -184,10 +184,20 @@ msgstr "{0, plural, other {# dokumen}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {# galat}}"
 
+#. placeholder {0}: pack.entryCounts.files
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, other {# berkas}}"
+
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, other {# folder dipilih}}"
+
+#. placeholder {0}: pack.entryCounts.folders
+#: src/components/PackCardGrid.tsx
+msgid "{0, plural, one {# folder} other {# folders}}"
+msgstr "{0, plural, other {# folder}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -10944,6 +10954,10 @@ msgstr "Lihat semua {0} paket awal"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "Lihat panduan pemasangan lengkap"
+
+#: src/components/PackCardGrid.tsx
+msgid "See what's added"
+msgstr "Lihat yang ditambahkan"
 
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
