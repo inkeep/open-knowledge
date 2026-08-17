@@ -49,7 +49,10 @@ describe('host rows', () => {
     const withHub = derive(base, {
       allSkills: [entry({ name: 'other', path: '.agents/skills/other/SKILL.md' })],
     });
-    expect(withHub.rows[0]).toBe('agents');
+    expect(withHub.rows).toContain('agents');
+    // The hub sorts LAST, under the concrete host rows: it is a vendor-neutral
+    // fallback, not where most installs go.
+    expect(withHub.rows.at(-1)).toBe('agents');
   });
 
   it('activates the hub row when the skill itself lists it as a host', () => {

@@ -1184,10 +1184,6 @@ msgstr "Tentang {appName}"
 msgid "Above"
 msgstr "Di atas"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr "tidak ada"
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr "Terima"
@@ -4267,10 +4263,6 @@ msgstr "Detail tentang galat yang baru Anda alami disertakan. Rahasia seperti ku
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "Terdeteksi di {0}"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
-msgstr "Terdeteksi di komputer ini"
 
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Detected OpenKnowledge projects"
@@ -7904,6 +7896,10 @@ msgstr "Belum ada berkas <0>.markdownlint.*</0> — setiap aturan berjalan denga
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr "Tidak ditemukan proyek OpenKnowledge yang aktif maupun yang terbaru."
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr "Belum ada folder agen"
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr "Belum ada agen yang disiapkan — membuka Atur agen."
@@ -11217,9 +11213,10 @@ msgstr "Tampilkan {0} lagi"
 msgid "Show {hidden} more"
 msgstr "Tampilkan {hidden} lagi"
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
-msgstr "Tampilkan {inAppHiddenCount} lagi"
+msgid "Show {hiddenCount} more"
+msgstr "Tampilkan {hiddenCount} lagi"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
@@ -11285,6 +11282,7 @@ msgid "Show in Explorer"
 msgstr "Tampilkan di Explorer"
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr "Tampilkan lebih sedikit"

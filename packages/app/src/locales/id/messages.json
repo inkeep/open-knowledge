@@ -1328,6 +1328,7 @@
     "IInnZo": ["Konflik"],
     "IKoTAC": ["Biarkan nonaktif"],
     "IMLUBh": ["Nilai warna tidak valid"],
+    "INN7OX": ["Tampilkan ", ["hiddenCount"], " lagi"],
     "INp_z6": ["Beri komentar atau tanya AI tentang ", ["0"], " ini"],
     "IO8REi": ["\"", ["name"], "\" tidak bisa dibuka: ", ["0"]],
     "IQPyrD": ["Halaman belum ada — klik untuk membuat"],
@@ -1427,7 +1428,6 @@
     "KDrbNG": ["OpenKnowledge mencari tautan untuk ", ["subject"]],
     "KDuPiY": ["Mengunggah ", ["fileName"]],
     "KDw4GX": ["Coba lagi"],
-    "KFd4xz": ["tidak ada"],
     "KGF42E": ["Panel agen ditutup agar Terminal tetap mudah dibaca."],
     "KGJb9_": ["Konflik"],
     "KH5bQi": [
@@ -1596,6 +1596,7 @@
     "MJuO1q": ["Jendela konteks:"],
     "MKEPCY": ["Ikuti"],
     "MLVPcm": [["0"], " versi ", ["1"]],
+    "MOAoFO": ["Belum ada folder agen"],
     "MPpSAg": ["Buat proyek baru dari ", ["selectedPackName"]],
     "MQ5LOx": [
       "Mengubah ",
@@ -2711,7 +2712,6 @@
     "b4itZn": ["Bekerja"],
     "b5aNbi": [["targetNoun"], " tidak dapat dibuka — coba menuju ke sana secara manual."],
     "b6Fgpe": ["Setiap paket menyusun proyek Anda dengan folder dan templat siap pakai."],
-    "bBE5tC": ["Terdeteksi di komputer ini"],
     "bBcFK_": ["Buka pemilih emoji untuk ", ["keyName"]],
     "bD8I7O": ["Lengkap"],
     "bDiiSM": ["Sudah tercakup oleh folder induk yang dipilih"],
@@ -3707,7 +3707,6 @@
       ". Coba <0>ok status</0> atau periksa <1>.ok/local/last-spawn-error.log</1>."
     ],
     "np2zZM": ["Masuk ke ", ["agentName"], " untuk melanjutkan."],
-    "np9pbC": ["Tampilkan ", ["inAppHiddenCount"], " lagi"],
     "npcziF": ["Pasang di"],
     "nqV0Kk": [
       "Folder ini belum tersinkron ke GitHub. Tautannya akan berfungsi setelah sinkronisasi berikutnya."

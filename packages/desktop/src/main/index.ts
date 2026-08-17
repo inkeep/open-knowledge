@@ -6619,7 +6619,6 @@ function registerIntegrationsSettingsIpc(): void {
       // and startup repair sweep's scope filter in `mcp-wiring.ts`.
       allEditorIds: ALL_EDITOR_IDS.filter((id) => EDITOR_TARGETS[id].scope === 'global'),
       editorLabel: (editorId) => EDITOR_TARGETS[editorId].label,
-      detectInstalledEditors: (cwd, home) => detectInstalledEditors(cwd, home),
       classifyExistingMcpEntry: (editorId, home) =>
         classifyExistingMcpEntry(EDITOR_TARGETS[editorId], '', home),
       // The removal gate: `isEntryUpToDate` recognizes both the resolver-chain
@@ -6633,6 +6632,35 @@ function registerIntegrationsSettingsIpc(): void {
       writeUserMcpConfigs: (writeOpts) => writeUserMcpConfigs(writeOpts),
       removeUserMcpEntry: (editorId) =>
         removeOwnMcpEntry(EDITOR_TARGETS[editorId], '', osHomedir()),
+    },
+    // Reuses the probes the launcher surfaces already run and cache (~60s), so
+    // opening Settings costs no extra shell spawns and every surface answers the
+    // same question the same way.
+    probeEditorPresence: async () => {
+      const [cliOnPath, ...schemes] = await Promise.all([
+        resolveTerminalCliInstalledMap().catch(() => ({}) as Record<TerminalCli, boolean>),
+        ...(['claude', 'codex', 'cursor'] as const).map((scheme) =>
+          detectProtocolImpl(
+            {
+              platform: process.platform,
+              getApplicationInfoForProtocol: (url) => app.getApplicationInfoForProtocol(url),
+            },
+            scheme,
+          )
+            .then((r) => r.installed)
+            .catch(() => false),
+        ),
+      ]);
+      return {
+        cliOnPath,
+        // `claude-code` is the handoff-target id for the Claude desktop app; the
+        // other two share their scheme name with their target id.
+        schemeHandler: {
+          'claude-code': schemes[0] ?? false,
+          codex: schemes[1] ?? false,
+          cursor: schemes[2] ?? false,
+        },
+      };
     },
     path: {
       computeStatus: () => {

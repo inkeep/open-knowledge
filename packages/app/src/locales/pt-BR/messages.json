@@ -1530,6 +1530,7 @@
     "IInnZo": ["Conflito"],
     "IKoTAC": ["Deixar desativado"],
     "IMLUBh": ["Valor de cor inválido"],
+    "INN7OX": ["Mostrar mais ", ["hiddenCount"]],
     "INp_z6": ["Comente ou pergunte à IA sobre este ", ["0"]],
     "IO8REi": ["Não deu para abrir \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Página inexistente — clique para criar"],
@@ -1641,7 +1642,6 @@
     "KDrbNG": ["OpenKnowledge consultou os links de ", ["subject"]],
     "KDuPiY": ["Enviando ", ["fileName"]],
     "KDw4GX": ["Tente de novo"],
-    "KFd4xz": ["ausente"],
     "KGF42E": ["O painel de agentes foi fechado para manter o Terminal legível."],
     "KGJb9_": ["Conflitos"],
     "KH5bQi": [
@@ -1836,6 +1836,7 @@
     "MJuO1q": ["Janela de contexto:"],
     "MKEPCY": ["Acompanhar"],
     "MLVPcm": [["0"], " versão ", ["1"]],
+    "MOAoFO": ["Ainda não há pastas de agentes"],
     "MPpSAg": ["Criar novo projeto a partir de ", ["selectedPackName"]],
     "MQ5LOx": [
       "Transforma ",
@@ -3062,7 +3063,6 @@
     "b4itZn": ["Trabalhando"],
     "b5aNbi": ["Não foi possível abrir ", ["targetNoun"], " — tente chegar até lá manualmente."],
     "b6Fgpe": ["Cada pacote prepara seu projeto com pastas e modelos prontos."],
-    "bBE5tC": ["Detectado neste computador"],
     "bBcFK_": ["Abrir o seletor de emojis de ", ["keyName"]],
     "bD8I7O": ["Completo"],
     "bDiiSM": ["Já coberta por uma pasta principal selecionada"],
@@ -4174,7 +4174,6 @@
       ". Tente <0>ok status</0> ou verifique <1>.ok/local/last-spawn-error.log</1>."
     ],
     "np2zZM": ["Faça login em ", ["agentName"], " para continuar."],
-    "np9pbC": ["Mostrar mais ", ["inAppHiddenCount"]],
     "npcziF": ["Instalar em"],
     "nqV0Kk": [
       "Esta pasta ainda não sincronizou com o GitHub. O link vai funcionar depois da próxima sincronização."

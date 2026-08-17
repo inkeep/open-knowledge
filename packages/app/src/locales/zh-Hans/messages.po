@@ -1188,10 +1188,6 @@ msgstr "关于 {appName}"
 msgid "Above"
 msgstr "上方"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr "不存在"
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr "接受"
@@ -4271,10 +4267,6 @@ msgstr "其中包含你刚遇到的错误的详细信息。API 密钥、令牌�
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "在 {0} 中检测到"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
-msgstr "在这台电脑上检测到"
 
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Detected OpenKnowledge projects"
@@ -7908,6 +7900,10 @@ msgstr "还没有 <0>.markdownlint.*</0> 文件——所有规则都按与 VS Co
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr "没有找到活跃或最近的 OpenKnowledge 项目。"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr "尚无智能体文件夹"
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr "还没有配置任何智能体——正在打开「配置智能体」。"
@@ -11221,9 +11217,10 @@ msgstr "再显示 {0} 个"
 msgid "Show {hidden} more"
 msgstr "再显示 {hidden} 个"
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
-msgstr "再显示 {inAppHiddenCount} 个"
+msgid "Show {hiddenCount} more"
+msgstr "再显示 {hiddenCount} 个"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
@@ -11289,6 +11286,7 @@ msgid "Show in Explorer"
 msgstr "在资源管理器中显示"
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr "收起"

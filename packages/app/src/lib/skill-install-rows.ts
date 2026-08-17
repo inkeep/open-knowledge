@@ -141,8 +141,11 @@ export function deriveSkillInstallRows({
       ? allSkills.find((s) => s.scope === skill.scope)?.installableEditors
       : undefined);
   const installable = installableList ? new Set<string>(installableList) : null;
+  // The hub sorts LAST. It is a vendor-neutral fallback rather than a place most
+  // people install, so it belongs under the concrete host rows and the SOURCE
+  // row, not above them where it used to sit.
   const rows: SkillInstallTarget[] = (
-    hubActive ? (['agents', ...INSTALL_EDITORS] as SkillInstallTarget[]) : INSTALL_EDITORS
+    hubActive ? ([...INSTALL_EDITORS, 'agents'] as SkillInstallTarget[]) : INSTALL_EDITORS
   )
     .filter((e) => !(e in aliases))
     .filter((e) => e === 'agents' || installable === null || installable.has(e) || hostSet.has(e));

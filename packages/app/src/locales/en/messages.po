@@ -1188,10 +1188,6 @@ msgstr "About {appName}"
 msgid "Above"
 msgstr "Above"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr "absent"
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr "Accept"
@@ -4271,10 +4267,6 @@ msgstr "Details about the error you just hit are included. Secrets like API keys
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "Detected in {0}"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
-msgstr "Detected on this machine"
 
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Detected OpenKnowledge projects"
@@ -7908,6 +7900,10 @@ msgstr "No <0>.markdownlint.*</0> file yet — every rule runs on the same defau
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr "No active or recent OpenKnowledge projects were found."
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr "No agent folders yet"
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr "No agent is set up yet — opening Configure agents."
@@ -11221,9 +11217,10 @@ msgstr "Show {0} more"
 msgid "Show {hidden} more"
 msgstr "Show {hidden} more"
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
-msgstr "Show {inAppHiddenCount} more"
+msgid "Show {hiddenCount} more"
+msgstr "Show {hiddenCount} more"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
@@ -11289,6 +11286,7 @@ msgid "Show in Explorer"
 msgstr "Show in Explorer"
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr "Show less"

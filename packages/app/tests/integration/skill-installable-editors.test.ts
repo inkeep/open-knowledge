@@ -6,16 +6,17 @@ import {
   SkillInstallSuccessSchema,
   SkillsListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
 
 /**
- * the install menu must OFFER only editors installable on this machine.
- * Project scope = every editor with a project skill root (install creates the
- * dir). Global scope = only editors whose user-home skill dir EXISTS — a global
- * install never creates a host home, so offering an undetected editor (Copilot
- * with no `~/.copilot`) just no-ops and the checkmark flashes then reverts.
+ * the install menu must OFFER only editors installable on this machine, and
+ * BOTH scopes now gate on the same rule: the editor's home already exists.
+ * Global reads `~/.<host>`, project `<projectDir>/.<host>`. Offering an
+ * undetected editor either no-ops and reverts the checkmark, or succeeds by
+ * creating a dotdir for a tool the user does not have — which OK's own
+ * directory-based detection then reports back as installed.
  * The server surfaces `installableEditors` per entry; the menu gates on it.
  *
  */
@@ -39,6 +40,17 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.cleanup();
   rmSync(tmpHome, { recursive: true, force: true });
+});
+
+// The adoption cases below mkdir into the SHARED contentDir, and the baseline
+// assertion above depends on those dirs being absent. Without this the file
+// passes only because declaration order happens to match dependency order — a
+// shuffle, `test.concurrent`, or a moved case would turn it red for a reason
+// that has nothing to do with the behaviour under test.
+afterEach(() => {
+  for (const dir of ['.github', '.codex']) {
+    rmSync(join(server.contentDir, dir), { recursive: true, force: true });
+  }
 });
 
 const putSkill = (scope: 'project' | 'global', name: string) =>
@@ -67,10 +79,91 @@ describe('installableEditors gating (PRD-7600)', () => {
     expect(global?.installableEditors).toContain('claude');
     expect(global?.installableEditors).not.toContain('copilot');
 
-    // Project: install creates the dir, so every project-rooted editor is
-    // offered — including Copilot (`.github/skills`).
+    // Project: `.claude/skills` is seeded in the fixture → offered. Copilot's
+    // project root (`.github/skills`) is not there → NOT offered. It used to be,
+    // on the reasoning that install would create the dir.
     expect(project?.installableEditors).toContain('claude');
-    expect(project?.installableEditors).toContain('copilot');
+    expect(project?.installableEditors).not.toContain('copilot');
+  });
+
+  /**
+   * The activation path, not the bare dotdir. Copilot's project root is
+   * `.github/skills`, and `.github` exists in nearly every git repo for
+   * workflows and CODEOWNERS — gating on the dotdir would offer Copilot
+   * essentially everywhere.
+   *
+   */
+  test('a bare .github does not adopt Copilot, but .github/skills does', async () => {
+    const installable = async (): Promise<string[]> => {
+      const parsed = SkillsListSuccessSchema.safeParse(
+        await (await fetch(`${base()}/api/skills`)).json(),
+      );
+      if (!parsed.success) throw new Error('skills list failed schema validation');
+      return parsed.data.skills.find((s) => s.name === 'p-skill')?.installableEditors ?? [];
+    };
+
+    mkdirSync(join(server.contentDir, '.github'), { recursive: true });
+    expect(await installable()).not.toContain('copilot');
+
+    mkdirSync(join(server.contentDir, '.github', 'skills'), { recursive: true });
+    expect(await installable()).toContain('copilot');
+  });
+
+  /**
+   * An agent home WITHOUT its `skills/` subdir is still adoption: the project
+   * has the tool, it just has no skills installed yet. OK may create `skills/`
+   * inside a dotdir that already exists — that is the whole distinction between
+   * the activation path and the skills root.
+   *
+   */
+  test('an agent home with no skills subdir is still an offered target', async () => {
+    mkdirSync(join(server.contentDir, '.codex'), { recursive: true });
+    expect(existsSync(join(server.contentDir, '.codex', 'skills'))).toBe(false);
+
+    const parsed = SkillsListSuccessSchema.safeParse(
+      await (await fetch(`${base()}/api/skills`)).json(),
+    );
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.skills.find((s) => s.name === 'p-skill')?.installableEditors).toContain(
+      'codex',
+    );
+  });
+});
+
+describe('skill-targets folders are gated on activation (PRD-7985)', () => {
+  const folderRoots = async (): Promise<string[]> => {
+    const res = await fetch(`${base()}/api/skill-targets`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { folders?: { root: string; scope: string }[] };
+    return (body.folders ?? []).filter((f) => f.scope === 'project').map((f) => f.root);
+  };
+
+  // A row in `folders[]` is a WRITE DESTINATION — the Folders surface links and
+  // unlinks it. A standard root under a dotdir that is not there belongs to a
+  // tool the user does not have, so listing it is an offer to create that
+  // dotdir; OK's directory-based detection then reads what it created back as
+  // "installed", and one accepted offer manufactures its own evidence.
+  //
+  test('a standard root whose dotdir is absent is not offered, and appears once it exists', async () => {
+    expect(existsSync(join(server.contentDir, '.codex'))).toBe(false);
+    expect(await folderRoots()).not.toContain('.codex/skills');
+
+    // Adopting the host activates the root even with no `skills/` subdir yet:
+    // the dotdir is the adoption signal, and OK may create `skills/` under it.
+    mkdirSync(join(server.contentDir, '.codex'), { recursive: true });
+    expect(await folderRoots()).toContain('.codex/skills');
+  });
+
+  // `.github` is shared with tools that have nothing to do with agents, so the
+  // dotdir alone proves nothing — `skillRootActivationPath` requires the whole
+  // root. This is the case a gate written as "does the dotdir exist" gets wrong.
+  test('a non-agent dotdir does not activate its root; only the full root does', async () => {
+    mkdirSync(join(server.contentDir, '.github'), { recursive: true });
+    expect(await folderRoots()).not.toContain('.github/skills');
+
+    mkdirSync(join(server.contentDir, '.github', 'skills'), { recursive: true });
+    expect(await folderRoots()).toContain('.github/skills');
   });
 });
 

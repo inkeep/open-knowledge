@@ -8,6 +8,7 @@ import type {
 } from '../shared/ipc-channels.ts';
 import {
   classifyEditorState,
+  detectedEditorsFromProbes,
   type IntegrationsCliSurface,
   type IntegrationsPathSurface,
   type IntegrationsSkillsSurface,
@@ -89,7 +90,6 @@ function makeCli(overrides: CliOverrides = {}): IntegrationsCliSurface & {
     removals,
     allEditorIds: ['claude', 'cursor'] as McpWiringEditorId[],
     editorLabel: (id) => (id === 'claude' ? 'Claude' : 'Cursor'),
-    detectInstalledEditors: () => overrides.detected ?? (['claude'] as McpWiringEditorId[]),
     classifyExistingMcpEntry: (id) =>
       overrides.classifications?.[id] ?? { kind: 'no-entry' as const },
     isOwnEntry: (entry) => entry === OWN_ENTRY,
@@ -177,6 +177,9 @@ function setup(overrides: Partial<RegisterIntegrationsSettingsOpts> = {}) {
     path,
     skills,
     fs,
+    // Default: `claude` resolvable on PATH, nothing else. Individual tests pass
+    // their own `probeEditorPresence` to vary it.
+    probeEditorPresence: async () => ({ cliOnPath: { claude: true }, schemeHandler: {} }),
     now: () => new Date('2026-07-07T00:00:00.000Z'),
     logger: { warn: () => {}, error: () => {}, event: () => {} },
     ...overrides,
@@ -201,12 +204,59 @@ describe('classifyEditorState', () => {
   });
 });
 
+describe('detectedEditorsFromProbes', () => {
+  const none = { cliOnPath: {}, schemeHandler: {} };
+
+  test('a CLI on PATH detects its editor', () => {
+    const got = detectedEditorsFromProbes({ ...none, cliOnPath: { codex: true, pi: true } });
+    expect([...got].sort()).toEqual(['codex', 'pi']);
+  });
+
+  test('the Claude desktop scheme detects both Claude rows', () => {
+    // The CLI and the desktop app are separate installs, and either proves the
+    // user has Claude — but only the scheme proves the desktop app.
+    const got = detectedEditorsFromProbes({ ...none, schemeHandler: { 'claude-code': true } });
+    expect([...got].sort()).toEqual(['claude', 'claude-desktop']);
+  });
+
+  test('a false probe is not presence, and neither is a missing key', () => {
+    expect([...detectedEditorsFromProbes(none)]).toEqual([]);
+    expect([
+      ...detectedEditorsFromProbes({
+        cliOnPath: { claude: false, codex: false },
+        schemeHandler: { 'claude-code': false },
+      }),
+    ]).toEqual([]);
+  });
+
+  test('lm-studio is never detected — it has no honest probe', () => {
+    // No CLI and no scheme OK can ask about. It reports undetected rather than
+    // falling back to the config-directory check that made this whole surface
+    // untrustworthy; under-claiming is the safe direction.
+    const got = detectedEditorsFromProbes({
+      cliOnPath: { 'lm-studio': true } as Record<string, boolean>,
+      schemeHandler: { 'lm-studio': true },
+    });
+    expect([...got]).toEqual([]);
+  });
+
+  test('a config directory cannot manufacture detection', () => {
+    // The regression this replaces: OK creates `~/.copilot` during consent, the
+    // user removes the entry, and the row kept reporting Copilot as detected.
+    // Nothing in the probe surface can express that state any more.
+    const got = detectedEditorsFromProbes({
+      cliOnPath: { copilot: false },
+      schemeHandler: {},
+    });
+    expect(got.has('copilot' as McpWiringEditorId)).toBe(false);
+  });
+});
+
 describe('ok:integrations:dispatch — status', () => {
   test('returns per-editor state, detection, PATH and skill rows', async () => {
     const { status } = setup({
       cli: makeCli({
         classifications: { claude: { kind: 'present', entry: OWN_ENTRY } },
-        detected: ['claude'] as McpWiringEditorId[],
       }),
       skills: makeSkills(['discovery']),
     });
@@ -276,6 +326,45 @@ describe('ok:integrations:dispatch — status', () => {
     const snapshot = await status();
     expect(snapshot.path).toEqual({ shellDetected: false, rcFilesToTouch: [], installed: false });
     expect(snapshot.skills).toEqual([]);
+  });
+
+  test('a throwing presence probe degrades to undetected, not to a dead section', async () => {
+    // `probeEditorPresence` is injected and shells out (login-shell `command -v`,
+    // the OS scheme-handler lookup), so a throw is a live possibility rather than
+    // a hypothetical. Unknown must under-claim: no row may report detected, and
+    // the rest of the snapshot has to survive — narrowing or dropping the catch
+    // would take the whole AI-tools section down with it.
+    const { status } = setup({
+      probeEditorPresence: async () => {
+        throw new Error('spawn failed');
+      },
+    });
+    const snapshot = await status();
+    expect(snapshot.detectedEditorIds).toEqual([]);
+    expect(snapshot.editors.every((e) => e.detected === false)).toBe(true);
+    // Still usable: rows are present and classified, and the sibling surfaces
+    // are untouched by the probe failure.
+    expect(snapshot.editors.length).toBeGreaterThan(0);
+    expect(snapshot.editors.map((e) => e.state)).not.toContain(undefined);
+    expect(snapshot.path.installed).toBe(false);
+    expect(snapshot.available).toBe(true);
+  });
+
+  test('one status pass probes presence exactly once', async () => {
+    // The editor rows and `detectedEditorIds` answer the same question, so they
+    // must come from the same pass: the probe is uncached, and two passes can
+    // straddle an install or a removal and disagree inside one snapshot.
+    let probeCalls = 0;
+    const { status } = setup({
+      probeEditorPresence: async () => {
+        probeCalls += 1;
+        return { cliOnPath: { claude: true }, schemeHandler: {} };
+      },
+    });
+    const snapshot = await status();
+    expect(probeCalls).toBe(1);
+    expect(snapshot.detectedEditorIds).toContain('claude');
+    expect(snapshot.editors.find((e) => e.id === 'claude')?.detected).toBe(true);
   });
 });
 

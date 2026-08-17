@@ -4,8 +4,11 @@ import { stat } from 'node:fs/promises';
 import { homedir, platform as osPlatform } from 'node:os';
 import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import {
+  EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   OPENKNOWLEDGE_SKILLS_REPO,
+  PROJECT_SKILL_EDITOR_IDS,
+  skillRootActivationPath,
   USER_SKILL_HOSTS,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -130,6 +133,28 @@ export interface DetectedSkillHost {
  */
 export function detectUserSkillHosts(home: string): DetectedSkillHost[] {
   return USER_SKILL_HOSTS.filter((host) => existsSync(join(home, host.hostDir)));
+}
+
+/**
+ * The project-scoped counterpart of `detectUserSkillHosts`: editors this PROJECT
+ * has adopted, by the same activation-path rule.
+ *
+ * Offering every project-skill editor because "install creates the dir" gets the
+ * reasoning backwards: creating the dir IS the problem. It is how
+ * `<project>/.codex` appears in a repo whose owner does not use Codex, gets
+ * committed, and reaches teammates who never chose it. Project-level detection
+ * then reads it back as adopted.
+ *
+ * Copilot is the case that makes `skillRootActivationPath` load-bearing rather
+ * than decorative: its project root is `.github/skills`, and `.github` exists in
+ * nearly every git repo for workflows and CODEOWNERS. Gating on the dotdir alone
+ * would offer Copilot in essentially every project on earth.
+ */
+export function detectProjectSkillEditors(projectDir: string): EditorId[] {
+  return PROJECT_SKILL_EDITOR_IDS.filter((editorId) => {
+    const root = EDITOR_PROJECT_SKILL_ROOT[editorId];
+    return root !== null && existsSync(join(projectDir, skillRootActivationPath(root)));
+  });
 }
 
 async function installedUserSkillExists(home: string, bundleName: string): Promise<boolean> {

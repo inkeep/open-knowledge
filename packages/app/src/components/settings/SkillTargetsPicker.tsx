@@ -100,6 +100,15 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
             // or a parent's) has nothing left to merge and was the "why is that
             // still in the list" bug — picking it could only fail. Order is list
             // order: no name-based promotion of any root.
+            //
+            // `absent` stays offerable, and only because the server now filters
+            // this list to roots whose agent home exists. So an absent row means
+            // "`.claude` is here, `.claude/skills` is not yet" — linking it
+            // creates a skills dir inside a dotdir the user already has, which is
+            // squarely inside the consent boundary. Before that filter the same
+            // disjunct offered `~/.copilot/skills` on a machine with no Copilot,
+            // and accepting it created `~/.copilot` — after which OK's own
+            // directory-based detection reported Copilot as installed.
             const targets = folders.filter(
               (o) => o.root !== f.root && (o.state === 'own' || o.state === 'absent'),
             );
@@ -123,11 +132,6 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                       testId={`skill-folder-drift-${f.host}`}
                       title={t`OK last set this folder to ${f.expected ?? ''} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins.`}
                     />
-                  ) : null}
-                  {f.state === 'absent' ? (
-                    <span className="shrink-0 text-[10px] text-muted-foreground uppercase tracking-wide">
-                      <Trans>absent</Trans>
-                    </span>
                   ) : null}
                   {f.state === 'linked-parent' ? (
                     <span

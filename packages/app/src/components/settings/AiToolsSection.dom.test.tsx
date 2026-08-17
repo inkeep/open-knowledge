@@ -114,6 +114,12 @@ function installBridge({ status = baseStatus, setResult }: HarnessOpts = {}) {
   return { setCalls };
 }
 
+/** Open the MCP-connections fold. Rows that are neither configured nor detected
+ *  sit below it now, so a test asserting on one has to expand first. */
+async function expandEditors(): Promise<void> {
+  await userEvent.click(await screen.findByTestId('ai-tools-editors-show-more'));
+}
+
 afterEach(() => {
   cleanup();
   toastError.mockClear();
@@ -136,6 +142,9 @@ describe('AiToolsSection', () => {
     expect(screen.getByTestId('ai-tools-editor-checkbox-claude').getAttribute('data-state')).toBe(
       'checked',
     );
+    // Cursor is neither configured nor detected, so it starts below the fold.
+    expect(screen.queryByTestId('ai-tools-editor-checkbox-cursor')).toBeNull();
+    await expandEditors();
     expect(screen.getByTestId('ai-tools-editor-checkbox-cursor').getAttribute('data-state')).toBe(
       'unchecked',
     );
@@ -167,6 +176,31 @@ describe('AiToolsSection', () => {
     ).toBe('unchecked');
   });
 
+  test('detection orders a row but never claims presence on it', async () => {
+    // One rule across the agent lists: the probe may pick a row's position, and
+    // on the external-apps group its default, but no row prints an assertion of
+    // presence. The signal answers "is this tool on the machine", not "is it set
+    // up with us", so ranking is all it earns — the row still reads
+    // "How to set up", never "Detected on this machine".
+    const detectedButUnwired: OkIntegrationsStatus = {
+      ...baseStatus,
+      editors: baseStatus.editors.map((e) =>
+        e.id === 'cursor' ? { ...e, detected: true, state: 'not-installed' as const } : e,
+      ),
+    };
+    installBridge({ status: detectedButUnwired });
+    renderSection();
+
+    // Ordered up: above the fold without expanding.
+    await screen.findByTestId('ai-tools-editor-checkbox-cursor');
+    expect(screen.queryByTestId('ai-tools-editors-show-more')).toBeNull();
+
+    // But making no claim.
+    const status = screen.getByTestId('ai-tools-editor-status-cursor');
+    expect(status.textContent).not.toContain('Detected on this machine');
+    expect(status.textContent).toContain('How to set up');
+  });
+
   test('clicking a checkbox sends the matching install/uninstall and re-renders from the result', async () => {
     const flipped: OkIntegrationsStatus = {
       ...baseStatus,
@@ -178,6 +212,9 @@ describe('AiToolsSection', () => {
       setResult: () => ({ ok: true as const, status: flipped }),
     });
     renderSection();
+    // Cursor is neither configured nor detected in the fixture, so reaching its
+    // checkbox means opening the fold first.
+    await expandEditors();
     await waitFor(() => {
       expect(screen.getByTestId('ai-tools-editor-checkbox-cursor')).toBeTruthy();
     });

@@ -191,6 +191,32 @@ export function standardSkillRoots(scope: SkillScope): ReadonlySet<string> {
 }
 
 /**
+ * Is this root a place OK may offer to write, on THIS machine, right now?
+ *
+ * A standard host root qualifies once its activation path exists — the agent's
+ * own dotdir for an agent-owned root, the whole root for a shared one like
+ * `.github/skills` (see `skillRootActivationPath`). A root under a dotdir that
+ * is not there belongs to a tool the user does not have, and offering it is
+ * offering to CREATE that dotdir, which OK does not do.
+ * Directory-based detection then reads what we created back as "installed", so
+ * a single accepted offer manufactures its own evidence.
+ *
+ * Custom roots always qualify. A custom root exists only because a human typed
+ * it into "Add custom path"; that declaration IS the consent, and gating it on
+ * disk state would break the one escape hatch these surfaces have for wiring up
+ * a folder before its tool arrives.
+ *
+ * Deliberately NOT folded into `knownSkillRootsFor`: cleanup paths
+ * (`removableSkillOccurrenceDirs`, the reclaim sweeps) must keep seeing every
+ * root, or a stray bundle under a since-removed dotdir becomes unreachable.
+ * This gates what is OFFERED, never what is SEEN.
+ */
+export function isActivatedSkillRoot(base: string, scope: SkillScope, root: string): boolean {
+  if (!standardSkillRoots(scope).has(root)) return true;
+  return existsSync(join(base, skillRootActivationPath(root)));
+}
+
+/**
  * The `<root>/<name>` bundle dirs a cross-scope MOVE may remove from the source
  * scope — every occurrence that is THIS skill, and nothing else.
  *

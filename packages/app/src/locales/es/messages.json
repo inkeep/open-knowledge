@@ -1552,6 +1552,7 @@
     "IInnZo": ["Conflicto"],
     "IKoTAC": ["Dejarlo desactivado"],
     "IMLUBh": ["Valor de color no válido"],
+    "INN7OX": ["Mostrar ", ["hiddenCount"], " más"],
     "INp_z6": ["Comenta o pregunta a la IA sobre este ", ["0"]],
     "IO8REi": ["No se pudo abrir \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Página inexistente: haz clic para crearla"],
@@ -1663,7 +1664,6 @@
     "KDrbNG": ["OpenKnowledge consultó los enlaces de ", ["subject"]],
     "KDuPiY": ["Subiendo ", ["fileName"]],
     "KDw4GX": ["Inténtalo de nuevo"],
-    "KFd4xz": ["ausente"],
     "KGF42E": ["Se cerró el panel de agentes para mantener Terminal legible."],
     "KGJb9_": ["Conflictos"],
     "KH5bQi": [
@@ -1864,6 +1864,7 @@
     "MJuO1q": ["Ventana de contexto:"],
     "MKEPCY": ["Seguir"],
     "MLVPcm": [["0"], " versión ", ["1"]],
+    "MOAoFO": ["Aún no hay carpetas de agentes"],
     "MPpSAg": ["Crear proyecto a partir de ", ["selectedPackName"]],
     "MQ5LOx": [
       "Vuelve a convertir ",
@@ -3125,7 +3126,6 @@
     "b4itZn": ["Trabajando"],
     "b5aNbi": ["No se pudo abrir ", ["targetNoun"], ": prueba a ir hasta ahí manualmente."],
     "b6Fgpe": ["Cada paquete prepara tu proyecto con carpetas y plantillas ya hechas."],
-    "bBE5tC": ["Detectado en este equipo"],
     "bBcFK_": ["Abrir el selector de emojis de ", ["keyName"]],
     "bD8I7O": ["Completo"],
     "bDiiSM": ["Ya cubierta por una carpeta principal seleccionada"],
@@ -4258,7 +4258,6 @@
       ". Prueba <0>ok status</0> o revisa <1>.ok/local/last-spawn-error.log</1>."
     ],
     "np2zZM": ["Inicia sesión en ", ["agentName"], " para continuar."],
-    "np9pbC": ["Mostrar ", ["inAppHiddenCount"], " más"],
     "npcziF": ["Instalar en"],
     "nqV0Kk": [
       "Esta carpeta todavía no se ha sincronizado con GitHub. El enlace funcionará tras la próxima sincronización."

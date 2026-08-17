@@ -1184,10 +1184,6 @@ msgstr "{appName} के बारे में"
 msgid "Above"
 msgstr "ऊपर"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr "अनुपस्थित"
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr "स्वीकारें"
@@ -4267,10 +4263,6 @@ msgstr "अभी आपको मिली त्रुटि का विव�
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "{0} में पाया गया"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
-msgstr "इस मशीन पर पाया गया"
 
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Detected OpenKnowledge projects"
@@ -7904,6 +7896,10 @@ msgstr "अभी कोई <0>.markdownlint.*</0> फ़ाइल नहीं 
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr "कोई सक्रिय या हाल का OpenKnowledge प्रोजेक्ट नहीं मिला।"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr "अभी तक कोई एजेंट फ़ोल्डर नहीं"
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr "अभी कोई एजेंट सेट अप नहीं है — Configure agents खोला जा रहा है।"
@@ -11217,9 +11213,10 @@ msgstr "{0} और दिखाएँ"
 msgid "Show {hidden} more"
 msgstr "{hidden} और दिखाएँ"
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
-msgstr "{inAppHiddenCount} और दिखाएँ"
+msgid "Show {hiddenCount} more"
+msgstr "{hiddenCount} और दिखाएँ"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
@@ -11285,6 +11282,7 @@ msgid "Show in Explorer"
 msgstr "Explorer में दिखाएँ"
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr "कम दिखाएँ"

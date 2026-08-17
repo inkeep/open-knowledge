@@ -1184,10 +1184,6 @@ msgstr ""
 msgid "Above"
 msgstr ""
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr ""
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr ""
@@ -4266,10 +4262,6 @@ msgstr ""
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
-msgstr ""
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
 msgstr ""
 
 #: src/uninstall/UninstallPickerScreen.tsx
@@ -7904,6 +7896,10 @@ msgstr ""
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr ""
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr ""
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr ""
@@ -11217,8 +11213,9 @@ msgstr ""
 msgid "Show {hidden} more"
 msgstr ""
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
+msgid "Show {hiddenCount} more"
 msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
@@ -11285,6 +11282,7 @@ msgid "Show in Explorer"
 msgstr ""
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr ""

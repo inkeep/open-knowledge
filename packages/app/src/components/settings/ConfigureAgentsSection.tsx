@@ -37,7 +37,7 @@ import {
   isInAppAgentEnabled,
   isTerminalCliEnabled,
 } from '@/lib/acp/agent-visibility';
-import { type CatalogAgent, fetchAgentCatalog } from '@/lib/acp/catalog';
+import { type CatalogAgent, fetchAgentCatalog, harnessPresenceRank } from '@/lib/acp/catalog';
 import {
   desktopEnabledKey,
   inAppEnabledKey,
@@ -125,6 +125,11 @@ function AgentGroup({
 
 export function ConfigureAgentsSection(): ReactNode {
   const { t } = useLingui();
+  // Both group folds render through here so they extract as ONE message. Lingui
+  // puts the placeholder's variable name in the msgid, so labelling them inline
+  // would fork `Show {inAppHiddenCount} more` and `Show {terminalHiddenCount} more`
+  // into two catalog entries with two sets of translations to keep in step.
+  const showMoreLabel = (hiddenCount: number): string => t`Show ${hiddenCount} more`;
   const overrides = useEnabledOverrides();
   const registered = useRegisteredAgents();
   const { states, refresh } = useInstalledAgents();
@@ -135,6 +140,7 @@ export function ConfigureAgentsSection(): ReactNode {
   // In app list is collapsed to the harness-mapped agents by default; this
   // reveals the long tail.
   const [showInAppOverflow, setShowInAppOverflow] = useState(false);
+  const [showTerminalOverflow, setShowTerminalOverflow] = useState(false);
 
   const catalog = useQuery({
     queryKey: ['acp-catalog'],
@@ -165,19 +171,36 @@ export function ConfigureAgentsSection(): ReactNode {
   const matches = (text: string): boolean => q === '' || text.toLowerCase().includes(q);
 
   const inAppAgents = (catalogAgents ?? []).filter((agent) => matches(agent.name));
+  // Presence-first inside Terminal and Desktop too, on the same three-valued rule
+  // the In-app list uses: a probe that has positively answered `false` sinks, and
+  // pending sorts with present so a slow probe never buries a tool you have.
+  // Without this the Terminal group interleaved the not-installed CLIs among the
+  // installed ones in catalogue order.
+  // Fail-open: `installedClis` starts `{}` and fills from an async probe, so a
+  // missing key is pending, not absent. Only a positive `false` counts against a
+  // CLI. One definition drives the sort, the fold and the group ordering below.
+  const cliPresent = (cli: TerminalCli): boolean => installedClis[cli] !== false;
   const terminalClis =
     terminalLaunch !== null
-      ? TERMINAL_CLI_IDS.filter((cli) => matches(TERMINAL_CLIS[cli].displayName))
+      ? TERMINAL_CLI_IDS.filter((cli) => matches(TERMINAL_CLIS[cli].displayName)).sort(
+          (a, b) =>
+            Number(cliPresent(b)) - Number(cliPresent(a)) ||
+            TERMINAL_CLIS[a].displayName.localeCompare(TERMINAL_CLIS[b].displayName),
+        )
       : [];
   // Filter on the RENDERED label ("Claude Desktop"), not the bare brand, so a
   // search for "desktop" finds this group the way the eye does — plus the
   // target id, mirroring the command palette's keywords: the id preserves the
   // Codex lineage after the ChatGPT rebrand, so searching "codex" still finds
-  // that row.
+  // that row. Sorted present-first on the same rule as the other two groups.
+  // `.filter` already returns a fresh array, so the in-place `.sort` below cannot
+  // reach `VISIBLE_TARGETS` — no defensive copy needed.
   const desktopTargets = VISIBLE_TARGETS.filter((target) => {
     const { displayName } = target;
     return matches(t`${displayName} Desktop`) || matches(target.id);
-  });
+  }).sort(
+    (a, b) => Number(states[a.id]?.installed === false) - Number(states[b.id]?.installed === false),
+  );
 
   // With a query active, hide a group that has no matches; when every group is
   // empty, show a single no-results line instead of three empty boxes.
@@ -206,14 +229,246 @@ export function ConfigureAgentsSection(): ReactNode {
       agent.supported,
     );
   };
-  // Default view = the harness-mapped agents (the server attaches `harness`
-  // exactly for the `ACP_AGENT_HARNESS_CLIS` set, i.e. the ones that also appear
-  // in the Terminal section), plus any agent the user has turned on so an
-  // enabled agent never hides behind "Show more". Searching or expanding shows
-  // the full list.
-  const inAppPrimary = inAppAgents.filter((a) => a.harness !== undefined || inAppChecked(a));
-  const inAppShown = searching || showInAppOverflow ? inAppAgents : inAppPrimary;
+  // Default view = harness-mapped agents the probe has NOT ruled out (present or
+  // still pending), plus any agent the user has turned on so an enabled agent
+  // never hides behind "Show more". Searching or expanding shows the full list.
+  //
+  // The `harness !== undefined` test alone used to admit every agent in the
+  // `ACP_AGENT_HARNESS_CLIS` set regardless of what its probe found, so agents
+  // this machine cannot run occupied the default rows while the ones it can run
+  // sat below the fold. The probe result was already on the row; nothing read it.
+  // One predicate for both the fold and the sort, so "what stays visible" and
+  // "what floats to the top" can never disagree.
+  //
+  // Note `harnessPresenceRank` alone is NOT enough here: it returns 0 for an
+  // agent with no harness at all, so scoring on it left every harness-free
+  // catalogue agent tied with the real ones and only sank the explicitly
+  // not-found few.
+  const isPrimaryAgent = (a: CatalogAgent): boolean =>
+    (a.harness !== undefined && harnessPresenceRank(a) === 0) || inAppChecked(a);
+  const inAppPrimary = inAppAgents.filter(isPrimaryAgent);
+  // Expanding must not scatter the agents that run here back into catalogue
+  // order — they stay pinned at the top and everything else falls in
+  // alphabetically, which is the only order that means anything for a list of
+  // tools the machine has no opinion about. `sort` mutates, hence the copy.
+  const inAppShown = [...(searching || showInAppOverflow ? inAppAgents : inAppPrimary)].sort(
+    (a, b) => Number(isPrimaryAgent(b)) - Number(isPrimaryAgent(a)) || a.name.localeCompare(b.name),
+  );
   const inAppHiddenCount = searching ? 0 : inAppAgents.length - inAppPrimary.length;
+
+  // Terminal folds on the same rule. Most CLIs are not installed on any given
+  // machine, so the full list is the same wall of noise the In-app fold exists
+  // to cut, one group down.
+  const terminalPrimary = terminalClis.filter(cliPresent);
+  const terminalFoldable =
+    terminalPrimary.length > 0 && terminalPrimary.length < terminalClis.length;
+  const terminalShown =
+    !terminalFoldable || searching || showTerminalOverflow ? terminalClis : terminalPrimary;
+  const terminalHiddenCount =
+    terminalFoldable && !searching ? terminalClis.length - terminalPrimary.length : 0;
+
+  // Group ordering: a group holding something present sorts above one that does
+  // not. Two tiers, matching the rule this file already applies per row rather
+  // than inventing a third for ordering.
+  //
+  // Terminal is FAIL-OPEN (`cliPresent`, `!== false`): a terminal row only opens
+  // a shell we own, so a probe that has not answered holds its place rather than
+  // sinking and jumping back when it lands.
+  //
+  // External apps are STRICT (`=== true`), the same bar `isDesktopTargetEnabled`
+  // applies to the rows: those deep-link into another application, so an
+  // unresolved probe waits rather than asserting presence it cannot back.
+  //
+  // In app is held up entirely while its catalog is in flight — the rows arrive
+  // asynchronously, and scoring the group on a not-yet-populated list would sort
+  // it to the bottom and visibly jump it back on every open of this tab.
+  const inAppHasPresent =
+    !catalogReady || inAppAgents.some((a) => a.harness?.availability === 'present');
+  const terminalHasPresent = terminalClis.some(cliPresent);
+  const desktopHasPresent = desktopTargets.some((tg) => states[tg.id]?.installed === true);
+
+  // In app — server-hosted agents from the registry catalog.
+  const inAppGroup = showInApp ? (
+    <AgentGroup
+      key="in-app"
+      label={
+        <span className="inline-flex items-center gap-1.5">
+          {t`In app`}
+          <AgentBetaBadge />
+        </span>
+      }
+      labelId="settings-configure-agents-in-app"
+    >
+      {catalog.isLoading ? (
+        <div className="flex items-center justify-center gap-2 px-3 py-6 text-muted-foreground text-sm">
+          <Spinner className="size-4" aria-hidden="true" />
+          {t`Loading agents…`}
+        </div>
+      ) : catalog.isError ? (
+        <div className="flex flex-col items-center gap-2 px-3 py-6 text-center text-muted-foreground text-sm">
+          <WifiOff className="size-5" aria-hidden="true" />
+          <span>{t`Couldn't reach the agent registry.`}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void catalog.refetch()}>
+            {t`Retry`}
+          </Button>
+        </div>
+      ) : (catalogAgents?.length ?? 0) === 0 ? (
+        <p className="px-3 py-6 text-center text-muted-foreground text-sm">
+          {t`No agents available.`}
+        </p>
+      ) : (
+        <>
+          {inAppShown.map((agent: CatalogAgent) => {
+            // `inAppChecked` folds in registration + present-harness detection,
+            // matching the launcher menus so this toggle and the menus agree.
+            const checked = inAppChecked(agent);
+            // Muted subtitle: the platform gate wins (disabled rows say why),
+            // otherwise the catalog's own blurb (e.g. "ACP wrapper for Cursor").
+            // Deliberately NOT `license` (an SPDX string like "Apache-2.0") and
+            // NOT the harness probe (a flaky server-side PATH check) — only the
+            // human description belongs here.
+            const hint = !agent.supported ? t`Not available on this platform` : agent.description;
+            return (
+              <AgentRow
+                key={`${agent.source}:${agent.id}`}
+                icon={
+                  <RegisteredAgentIcon
+                    agentId={agent.id}
+                    iconUrl={agent.iconUrl}
+                    className="size-4"
+                  />
+                }
+                name={agent.name}
+                hint={hint}
+                checked={checked}
+                disabled={!agent.supported}
+                ariaLabel={t`Enable ${agent.name}`}
+                testId={`configure-agents-in-app-${agent.source}:${agent.id}`}
+                onToggle={(next) => {
+                  if (next) {
+                    // Enabling registers the agent for visibility only (caches
+                    // name/icon so the menus can render it) and records an
+                    // explicit override. `makeDefault: false` keeps the launch
+                    // default put — enabling here is a visibility action, not a
+                    // pick; only choosing an agent in a launcher sets the default.
+                    registerAgent(
+                      {
+                        source: agent.source,
+                        id: agent.id,
+                        name: agent.name,
+                        supported: agent.supported,
+                        featured: agent.featured,
+                        ...(agent.iconUrl !== undefined ? { iconUrl: agent.iconUrl } : {}),
+                      },
+                      { makeDefault: false },
+                    );
+                    setAgentEnabled(inAppEnabledKey(agent.source, agent.id), true);
+                  } else {
+                    setAgentEnabled(inAppEnabledKey(agent.source, agent.id), false);
+                    // If this agent was the launch default, move the default to
+                    // the next still-enabled agent (or clear it) so the composer
+                    // stops showing a just-disabled agent as selected. The
+                    // disabled agent is excluded by key, so the pre-toggle
+                    // `overrides` snapshot is accurate for the remaining agents.
+                    reassignDefaultIfDisabled(`${agent.source}:${agent.id}`, (a) =>
+                      isInAppAgentEnabled(overrides, a.source, a.id, true, a.supported),
+                    );
+                  }
+                }}
+              />
+            );
+          })}
+          {inAppHiddenCount > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowInAppOverflow((v) => !v)}
+              className="w-full justify-center rounded-none font-normal text-1sm text-muted-foreground"
+              data-testid="configure-agents-in-app-show-more"
+            >
+              {showInAppOverflow ? t`Show less` : showMoreLabel(inAppHiddenCount)}
+            </Button>
+          ) : null}
+        </>
+      )}
+    </AgentGroup>
+  ) : null;
+
+  // Terminal — docked-terminal CLI launchers. Desktop-only (no web shell).
+  const terminalGroup = showTerminal ? (
+    <AgentGroup key="terminal" label={t`Terminal`} labelId="settings-configure-agents-terminal">
+      {terminalShown.map((cli: TerminalCli) => {
+        const { displayName } = TERMINAL_CLIS[cli];
+        const notInstalled = installedClis[cli] === false;
+        return (
+          <AgentRow
+            key={cli}
+            icon={<TargetIcon id={cliIconTargetId(cli)} className="size-4" aria-hidden="true" />}
+            name={t`${displayName} CLI`}
+            hint={notInstalled ? t`Not installed` : undefined}
+            checked={isTerminalCliEnabled(overrides, cli, installedClis)}
+            ariaLabel={t`Enable ${displayName} CLI`}
+            testId={`configure-agents-terminal-${cli}`}
+            onToggle={(next) => setAgentEnabled(terminalEnabledKey(cli), next)}
+          />
+        );
+      })}
+      {terminalHiddenCount > 0 ? (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setShowTerminalOverflow((v) => !v)}
+          className="w-full justify-center rounded-none font-normal text-1sm text-muted-foreground"
+          data-testid="configure-agents-terminal-show-more"
+        >
+          {showTerminalOverflow ? t`Show less` : showMoreLabel(terminalHiddenCount)}
+        </Button>
+      ) : null}
+    </AgentGroup>
+  ) : null;
+
+  // External apps — detected desktop apps reached by deep-link handoff. Every
+  // installed one is on by default; the toggle is how a user hides one, or shows
+  // one they haven't installed yet (it routes to the installer).
+  const desktopGroup = showDesktop ? (
+    <AgentGroup
+      key="desktop"
+      label={t`External apps`}
+      labelId="settings-configure-agents-desktop"
+      labelIcon={<ArrowUpRight aria-hidden="true" className="size-3" />}
+    >
+      {desktopTargets.map((target) => {
+        const installed = states[target.id]?.installed ?? null;
+        const { displayName } = target;
+        return (
+          <AgentRow
+            key={target.id}
+            icon={<TargetIcon id={target.id} className="size-4" aria-hidden="true" />}
+            name={t`${displayName} Desktop`}
+            // Only show the hint once the probe positively reports absent;
+            // `null` is detection-pending, not "not installed".
+            hint={installed === false ? t`Not installed` : undefined}
+            checked={isDesktopTargetEnabled(overrides, target.id, installed)}
+            ariaLabel={t`Enable ${displayName} Desktop`}
+            testId={`configure-agents-desktop-${target.id}`}
+            onToggle={(next) => setAgentEnabled(desktopEnabledKey(target.id), next)}
+          />
+        );
+      })}
+    </AgentGroup>
+  ) : null;
+
+  // Present-bearing groups first; ties keep the declared order (In app,
+  // Terminal, Desktop) so the layout only moves when the machine says it should.
+  // Each group carries its own `key`, so React reconciles them across a reorder
+  // instead of remounting whichever section happens to land in a given slot.
+  const groups = [
+    { node: inAppGroup, hasPresent: inAppHasPresent },
+    { node: terminalGroup, hasPresent: terminalHasPresent },
+    { node: desktopGroup, hasPresent: desktopHasPresent },
+  ]
+    .sort((a, b) => Number(b.hasPresent) - Number(a.hasPresent))
+    .map((g) => g.node);
 
   const titleId = 'settings-configure-agents-title';
 
@@ -256,173 +511,7 @@ export function ConfigureAgentsSection(): ReactNode {
         </p>
       ) : null}
 
-      {/* In app — server-hosted agents from the registry catalog. */}
-      {showInApp ? (
-        <AgentGroup
-          label={
-            <span className="inline-flex items-center gap-1.5">
-              {t`In app`}
-              <AgentBetaBadge />
-            </span>
-          }
-          labelId="settings-configure-agents-in-app"
-        >
-          {catalog.isLoading ? (
-            <div className="flex items-center justify-center gap-2 px-3 py-6 text-muted-foreground text-sm">
-              <Spinner className="size-4" aria-hidden="true" />
-              {t`Loading agents…`}
-            </div>
-          ) : catalog.isError ? (
-            <div className="flex flex-col items-center gap-2 px-3 py-6 text-center text-muted-foreground text-sm">
-              <WifiOff className="size-5" aria-hidden="true" />
-              <span>{t`Couldn't reach the agent registry.`}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void catalog.refetch()}
-              >
-                {t`Retry`}
-              </Button>
-            </div>
-          ) : (catalogAgents?.length ?? 0) === 0 ? (
-            <p className="px-3 py-6 text-center text-muted-foreground text-sm">
-              {t`No agents available.`}
-            </p>
-          ) : (
-            <>
-              {inAppShown.map((agent: CatalogAgent) => {
-                // `inAppChecked` folds in registration + present-harness detection,
-                // matching the launcher menus so this toggle and the menus agree.
-                const checked = inAppChecked(agent);
-                // Muted subtitle: the platform gate wins (disabled rows say why),
-                // otherwise the catalog's own blurb (e.g. "ACP wrapper for Cursor").
-                // Deliberately NOT `license` (an SPDX string like "Apache-2.0") and
-                // NOT the harness probe (a flaky server-side PATH check) — only the
-                // human description belongs here.
-                const hint = !agent.supported
-                  ? t`Not available on this platform`
-                  : agent.description;
-                return (
-                  <AgentRow
-                    key={`${agent.source}:${agent.id}`}
-                    icon={
-                      <RegisteredAgentIcon
-                        agentId={agent.id}
-                        iconUrl={agent.iconUrl}
-                        className="size-4"
-                      />
-                    }
-                    name={agent.name}
-                    hint={hint}
-                    checked={checked}
-                    disabled={!agent.supported}
-                    ariaLabel={t`Enable ${agent.name}`}
-                    testId={`configure-agents-in-app-${agent.source}:${agent.id}`}
-                    onToggle={(next) => {
-                      if (next) {
-                        // Enabling registers the agent for visibility only (caches
-                        // name/icon so the menus can render it) and records an
-                        // explicit override. `makeDefault: false` keeps the launch
-                        // default put — enabling here is a visibility action, not a
-                        // pick; only choosing an agent in a launcher sets the default.
-                        registerAgent(
-                          {
-                            source: agent.source,
-                            id: agent.id,
-                            name: agent.name,
-                            supported: agent.supported,
-                            featured: agent.featured,
-                            ...(agent.iconUrl !== undefined ? { iconUrl: agent.iconUrl } : {}),
-                          },
-                          { makeDefault: false },
-                        );
-                        setAgentEnabled(inAppEnabledKey(agent.source, agent.id), true);
-                      } else {
-                        setAgentEnabled(inAppEnabledKey(agent.source, agent.id), false);
-                        // If this agent was the launch default, move the default to
-                        // the next still-enabled agent (or clear it) so the composer
-                        // stops showing a just-disabled agent as selected. The
-                        // disabled agent is excluded by key, so the pre-toggle
-                        // `overrides` snapshot is accurate for the remaining agents.
-                        reassignDefaultIfDisabled(`${agent.source}:${agent.id}`, (a) =>
-                          isInAppAgentEnabled(overrides, a.source, a.id, true, a.supported),
-                        );
-                      }
-                    }}
-                  />
-                );
-              })}
-              {inAppHiddenCount > 0 ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setShowInAppOverflow((v) => !v)}
-                  className="w-full justify-center rounded-none font-normal text-1sm text-muted-foreground"
-                  data-testid="configure-agents-in-app-show-more"
-                >
-                  {showInAppOverflow ? t`Show less` : t`Show ${inAppHiddenCount} more`}
-                </Button>
-              ) : null}
-            </>
-          )}
-        </AgentGroup>
-      ) : null}
-
-      {/* Terminal — docked-terminal CLI launchers. Desktop-only (no web shell). */}
-      {showTerminal ? (
-        <AgentGroup label={t`Terminal`} labelId="settings-configure-agents-terminal">
-          {terminalClis.map((cli: TerminalCli) => {
-            const { displayName } = TERMINAL_CLIS[cli];
-            const notInstalled = installedClis[cli] === false;
-            return (
-              <AgentRow
-                key={cli}
-                icon={
-                  <TargetIcon id={cliIconTargetId(cli)} className="size-4" aria-hidden="true" />
-                }
-                name={t`${displayName} CLI`}
-                hint={notInstalled ? t`Not installed` : undefined}
-                checked={isTerminalCliEnabled(overrides, cli, installedClis)}
-                ariaLabel={t`Enable ${displayName} CLI`}
-                testId={`configure-agents-terminal-${cli}`}
-                onToggle={(next) => setAgentEnabled(terminalEnabledKey(cli), next)}
-              />
-            );
-          })}
-        </AgentGroup>
-      ) : null}
-
-      {/* External apps — detected desktop apps reached by deep-link handoff.
-          Every installed one is on by default; the toggle is how a user hides
-          one, or shows one they haven't installed yet (it routes to the
-          installer). */}
-      {showDesktop ? (
-        <AgentGroup
-          label={t`External apps`}
-          labelId="settings-configure-agents-desktop"
-          labelIcon={<ArrowUpRight aria-hidden="true" className="size-3" />}
-        >
-          {desktopTargets.map((target) => {
-            const installed = states[target.id]?.installed ?? null;
-            const { displayName } = target;
-            return (
-              <AgentRow
-                key={target.id}
-                icon={<TargetIcon id={target.id} className="size-4" aria-hidden="true" />}
-                name={t`${displayName} Desktop`}
-                // Only show the hint once the probe positively reports absent;
-                // `null` is detection-pending, not "not installed".
-                hint={installed === false ? t`Not installed` : undefined}
-                checked={isDesktopTargetEnabled(overrides, target.id, installed)}
-                ariaLabel={t`Enable ${displayName} Desktop`}
-                testId={`configure-agents-desktop-${target.id}`}
-                onToggle={(next) => setAgentEnabled(desktopEnabledKey(target.id), next)}
-              />
-            );
-          })}
-        </AgentGroup>
-      ) : null}
+      {groups}
     </section>
   );
 }

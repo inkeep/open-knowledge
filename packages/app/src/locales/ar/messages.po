@@ -1188,10 +1188,6 @@ msgstr "حول {appName}"
 msgid "Above"
 msgstr "أعلى"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr "غائب"
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr "قبول"
@@ -4271,10 +4267,6 @@ msgstr "تفاصيل الخطأ الذي واجهته للتو مُدرجة. ت�
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "مكتشف في {0}"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
-msgstr "مكتشف على هذا الجهاز"
 
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Detected OpenKnowledge projects"
@@ -7908,6 +7900,10 @@ msgstr "لا يوجد ملف <0>.markdownlint.*</0> بعد — تعمل كل ق�
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr "لم يُعثر على مشاريع OpenKnowledge نشطة أو حديثة."
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr "لا توجد مجلدات وكلاء بعد"
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr "لم يُعدّ أي وكيل بعد — يجري فتح «إعداد الوكلاء»."
@@ -11221,9 +11217,10 @@ msgstr "إظهار {0} إضافية"
 msgid "Show {hidden} more"
 msgstr "إظهار {hidden} إضافية"
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
-msgstr "إظهار {inAppHiddenCount} إضافية"
+msgid "Show {hiddenCount} more"
+msgstr "إظهار {hiddenCount} إضافية"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
@@ -11289,6 +11286,7 @@ msgid "Show in Explorer"
 msgstr "الإظهار في المستعرض"
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr "إظهار أقل"

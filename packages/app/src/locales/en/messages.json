@@ -1325,6 +1325,7 @@
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
     "IMLUBh": ["Invalid color value"],
+    "INN7OX": ["Show ", ["hiddenCount"], " more"],
     "INp_z6": ["Comment or ask AI about this ", ["0"]],
     "IO8REi": ["Couldn't open \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Missing page — click to create"],
@@ -1420,7 +1421,6 @@
     "KDrbNG": ["OpenKnowledge looked up links for ", ["subject"]],
     "KDuPiY": ["Uploading ", ["fileName"]],
     "KDw4GX": ["Try again"],
-    "KFd4xz": ["absent"],
     "KGF42E": ["Agent panel closed to keep Terminal readable."],
     "KGJb9_": ["Conflicts"],
     "KH5bQi": [
@@ -1594,6 +1594,7 @@
     "MJuO1q": ["Context window:"],
     "MKEPCY": ["Follow"],
     "MLVPcm": [["0"], " version ", ["1"]],
+    "MOAoFO": ["No agent folders yet"],
     "MPpSAg": ["Create new project from ", ["selectedPackName"]],
     "MQ5LOx": [
       "Turn ",
@@ -2692,7 +2693,6 @@
     "b4itZn": ["Working"],
     "b5aNbi": ["The ", ["targetNoun"], " could not be opened — try navigating to it manually."],
     "b6Fgpe": ["Each pack scaffolds your project with ready-made folders and templates."],
-    "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
     "bD8I7O": ["Complete"],
     "bDiiSM": ["Already covered by a picked parent folder"],
@@ -3676,7 +3676,6 @@
       ". Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
     ],
     "np2zZM": ["Sign in to ", ["agentName"], " to continue."],
-    "np9pbC": ["Show ", ["inAppHiddenCount"], " more"],
     "npcziF": ["Install on"],
     "nqV0Kk": ["This folder hasn't synced to GitHub yet. The link will work after the next sync."],
     "nrGWJ7": [

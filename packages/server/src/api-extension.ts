@@ -480,7 +480,11 @@ import {
   isInternalBundleSkillName,
   USER_GLOBAL_BUNDLE_IDS,
 } from './skill-bundles.ts';
-import { buildAndOpenSkill, detectUserSkillHosts } from './skill-install.ts';
+import {
+  buildAndOpenSkill,
+  detectProjectSkillEditors,
+  detectUserSkillHosts,
+} from './skill-install.ts';
 import {
   projectSkill,
   readSkillBundledFiles,
@@ -614,6 +618,7 @@ import { validateBody, withValidation } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import {
   aliasedSourceRoots,
+  isActivatedSkillRoot,
   knownSkillRootsFor,
   removableSkillOccurrenceDirs,
   resolveDefaultSkillHomeRel,
@@ -14616,13 +14621,25 @@ export function createApiExtension(
         const projectSkillsRoot = resolveSkillsRoot('project');
         const project = resolveSkillsList(projectSkillsRoot, 'project');
         const globalSkills = resolveSkillsList(resolveSkillsRoot('global'), 'global');
-        // Editors the install menu may OFFER per scope on THIS machine.
-        // Project: every editor with a project skill root — install creates the
-        // dir, so all are installable. Global: only editors whose user-home skill
-        // dir EXISTS (`detectUserSkillHosts`) — a global install never creates a
-        // host home, so offering an undetected editor (e.g. Copilot with no
-        // `~/.copilot`) just no-ops and the checkmark reverts.
-        const projectInstallableEditors: string[] = [...PROJECT_SKILL_EDITOR_IDS];
+        // Editors the install menu may OFFER per scope on THIS machine — both
+        // scopes now gate on the SAME rule: the editor's home already exists.
+        // Global uses `detectUserSkillHosts`, project `detectProjectSkillEditors`.
+        // Offering an undetected editor either no-ops and reverts the checkmark,
+        // or worse, succeeds by creating a dotdir for a tool the user does not
+        // have — which OK's own detection then reports as installed.
+        //
+        // "Install creates the dir, so all are installable" describes the
+        // behaviour; it does not justify it. Both scopes gate.
+        //
+        // Probed against `projectDir`, not `contentDir`, because that is what
+        // `skillInstallBase('project')` resolves to — so this gate asks about the
+        // same base the install it gates will actually write into. The sibling
+        // gate on `folders[]` below uses `contentDir` instead, matching the scan
+        // it filters. The two coincide unless `content.dir` names a subdirectory
+        // of the project.
+        const projectInstallableEditors: string[] = projectDir
+          ? detectProjectSkillEditors(projectDir)
+          : [];
         const globalInstallableEditors: string[] = detectUserSkillHosts(skillsHome).map(
           (h) => h.editorId,
         );
@@ -18718,23 +18735,28 @@ export function createApiExtension(
           {
             targets,
             configured: false,
+            // Only folders OK may actually write to on this machine. A row here
+            // is a destination — the Folders surface links and unlinks it — so a
+            // root under a dotdir that does not exist is an offer to create that
+            // dotdir for a tool the user never installed. Custom roots are always
+            // kept; see `isActivatedSkillRoot`.
             folders: [
               ...(projectDir
-                ? scanSkillFolderStates(contentDir, knownSkillRootsFor(contentDir, 'project')).map(
-                    (f) => ({
+                ? scanSkillFolderStates(contentDir, knownSkillRootsFor(contentDir, 'project'))
+                    .filter((f) => isActivatedSkillRoot(contentDir, 'project', f.root))
+                    .map((f) => ({
                       ...f,
                       scope: 'project' as const,
                       ...withDrift(contentDir, f),
-                    }),
-                  )
+                    }))
                 : []),
-              ...scanSkillFolderStates(skillsHome, knownSkillRootsFor(skillsHome, 'global')).map(
-                (f) => ({
+              ...scanSkillFolderStates(skillsHome, knownSkillRootsFor(skillsHome, 'global'))
+                .filter((f) => isActivatedSkillRoot(skillsHome, 'global', f.root))
+                .map((f) => ({
                   ...f,
                   scope: 'global' as const,
                   ...withDrift(skillsHome, f),
-                }),
-              ),
+                })),
             ],
           },
           { handler: 'skill-targets-get' },

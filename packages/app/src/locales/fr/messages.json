@@ -1575,6 +1575,7 @@
     "IInnZo": ["Conflit"],
     "IKoTAC": ["Laisser désactivé"],
     "IMLUBh": ["Valeur de couleur non valide"],
+    "INN7OX": ["Afficher ", ["hiddenCount"], " de plus"],
     "INp_z6": ["Commenter ce ", ["0"], " ou interroger l’IA à son sujet"],
     "IO8REi": ["Impossible d'ouvrir « ", ["name"], " » : ", ["0"]],
     "IQPyrD": ["Page manquante — cliquez pour la créer"],
@@ -1690,7 +1691,6 @@
     "KDrbNG": ["OpenKnowledge a consulté les liens de ", ["subject"]],
     "KDuPiY": ["Envoi de ", ["fileName"]],
     "KDw4GX": ["Réessayer"],
-    "KFd4xz": ["absent"],
     "KGF42E": ["Le panneau des agents a été fermé pour que Terminal reste lisible."],
     "KGJb9_": ["Conflits"],
     "KH5bQi": [
@@ -1889,6 +1889,7 @@
     "MJuO1q": ["Fenêtre de contexte :"],
     "MKEPCY": ["Suivre"],
     "MLVPcm": [["0"], " version ", ["1"]],
+    "MOAoFO": ["Aucun dossier d'agent pour l'instant"],
     "MPpSAg": ["Créer un projet à partir de ", ["selectedPackName"]],
     "MQ5LOx": [
       "Retransformez ",
@@ -3155,7 +3156,6 @@
     "b4itZn": ["En cours"],
     "b5aNbi": [["targetNoun"], " n'a pas pu être ouvert — essayez d'y accéder manuellement."],
     "b6Fgpe": ["Chaque pack équipe votre projet de dossiers et de modèles prêts à l'emploi."],
-    "bBE5tC": ["Détecté sur cette machine"],
     "bBcFK_": ["Ouvrir le sélecteur d'émojis de ", ["keyName"]],
     "bD8I7O": ["Terminé"],
     "bDiiSM": ["Déjà couvert par un dossier parent sélectionné"],
@@ -4291,7 +4291,6 @@
       ". Essayez <0>ok status</0> ou consultez <1>.ok/local/last-spawn-error.log</1>."
     ],
     "np2zZM": ["Connectez-vous à ", ["agentName"], " pour continuer."],
-    "np9pbC": ["Afficher ", ["inAppHiddenCount"], " de plus"],
     "npcziF": ["Installer sur"],
     "nqV0Kk": [
       "Ce dossier n'est pas encore synchronisé avec GitHub. Le lien fonctionnera après la prochaine synchronisation."

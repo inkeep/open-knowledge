@@ -19,6 +19,7 @@
  * surfaces in.
  */
 
+import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core';
 import type { IpcMain } from 'electron';
 import type {
   IntegrationsComponentRef,
@@ -50,7 +51,6 @@ interface IntegrationsRemoveOutcome {
 export interface IntegrationsCliSurface {
   allEditorIds: readonly McpWiringEditorId[];
   editorLabel(editorId: McpWiringEditorId): string;
-  detectInstalledEditors(cwd: string, home?: string): McpWiringEditorId[];
   /** Discriminated read of the editor's user config — never throws for the
    *  expected absent/no-entry/decline cases. */
   classifyExistingMcpEntry(
@@ -121,6 +121,13 @@ export interface RegisterIntegrationsSettingsOpts {
   available: boolean;
   ipcMain: IpcMainLike;
   cli: IntegrationsCliSurface;
+  /**
+   * Unfakeable presence signals for the MCP editor list, injected so main can
+   * hand over the probes its launcher surfaces already run and cache rather than
+   * spawning a second set. See `detectedEditorsFromProbes` for why a
+   * config-directory check cannot stand in for these.
+   */
+  probeEditorPresence: () => Promise<EditorPresenceProbes>;
   path: IntegrationsPathSurface;
   skills: IntegrationsSkillsSurface;
   fs?: McpWiringFsOps;
@@ -148,30 +155,113 @@ export function classifyEditorState(
   }
 }
 
+/**
+ * Raw, unfakeable presence signals, keyed by the id each probe already uses.
+ * Every one of these is a fact about the machine that OpenKnowledge cannot
+ * write — which is the whole point of taking them instead of reading a config
+ * directory back.
+ */
+export interface EditorPresenceProbes {
+  /** Login-shell `command -v <bin>` per terminal CLI. */
+  readonly cliOnPath: Readonly<Partial<Record<string, boolean>>>;
+  /** OS URL-scheme handler resolution per desktop target (who owns `claude://`). */
+  readonly schemeHandler: Readonly<Partial<Record<string, boolean>>>;
+}
+
+/**
+ * Which editors are actually on this machine.
+ *
+ * Both signals come from outside OpenKnowledge: a binary resolvable on the
+ * user's login-shell PATH, and the application the OS says owns a URL scheme.
+ * Neither can be manufactured by writing a directory.
+ *
+ * That last property is the requirement, not a bonus. Presence must never be
+ * inferred from an editor's MCP config directory: OpenKnowledge writes those
+ * directories itself (the consent dialog does it for five editors with the
+ * availability check bypassed), so reading one back is circular — it reports
+ * an editor the user has never installed, and keeps reporting it after the
+ * user removes the entry.
+ *
+ * `lm-studio` is deliberately absent: it ships no CLI and registers no scheme OK
+ * can ask about, so there is nothing honest to probe. It reports undetected
+ * rather than falling back to the directory check — under-claiming is the safe
+ * direction, and no surface prints a presence claim anyway.
+ */
+export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<McpWiringEditorId> {
+  const scheme = (id: string): boolean => probes.schemeHandler[id] === true;
+  const detected = new Set<McpWiringEditorId>();
+  // Gated on the terminal-CLI registry that PRODUCES `cliOnPath`, so adding a
+  // CLI there detects it here with no second list to keep in step. The
+  // terminal-CLI ids and the editor ids coincide for every host that ships a
+  // CLI, which is what lets the key BE the lookup.
+  //
+  // The gate is load-bearing, not a type formality: `cliOnPath` is keyed by
+  // `string`, and an id outside this registry is one OK has no honest CLI
+  // signal for — `lm-studio` ships no CLI, so a caller handing us a `true` for
+  // it must not turn into a presence claim.
+  const cliIds = new Set<string>(TERMINAL_CLI_IDS);
+  for (const [id, onPath] of Object.entries(probes.cliOnPath)) {
+    if (onPath === true && cliIds.has(id)) detected.add(id as McpWiringEditorId);
+  }
+  // Desktop apps: the scheme handler is the only signal, and `claude-code` is
+  // the handoff-target id for the Claude desktop app.
+  if (scheme('claude-code')) {
+    detected.add('claude-desktop' as McpWiringEditorId);
+    // The CLI and the desktop app are separate installs; either proves Claude.
+    detected.add('claude' as McpWiringEditorId);
+  }
+  if (scheme('codex')) detected.add('codex' as McpWiringEditorId);
+  if (scheme('cursor')) detected.add('cursor' as McpWiringEditorId);
+  return detected;
+}
+
 export function registerIntegrationsSettings(
   opts: RegisterIntegrationsSettingsOpts,
 ): IntegrationsSettingsHandle {
-  const { home, available, ipcMain, cli, path, skills, fs, now, logger = DEFAULT_LOGGER } = opts;
+  const {
+    home,
+    available,
+    ipcMain,
+    cli,
+    probeEditorPresence,
+    path,
+    skills,
+    fs,
+    now,
+    logger = DEFAULT_LOGGER,
+  } = opts;
   const nowDate = (): Date => (now ? now() : new Date());
 
   /**
-   * Every editor with a host root on this machine. Home-scoped (cwd `''`)
-   * because a project-relative probe is meaningless for a user-global surface
-   * — and for the Create-new-project dialog, which reads this off the status
-   * snapshot, the project does not exist yet. NOT narrowed by
-   * `cli.allEditorIds`: that list is filtered to user-global targets, while
-   * this set must stay honest about project-scope-only ones (Pi) too.
+   * Every editor with a host root on this machine. The injected probes answer
+   * for the machine, not for a directory — there is no project to scope them
+   * to, and the Create-new-project dialog reads this off the status snapshot
+   * before its project exists. NOT narrowed by `cli.allEditorIds`: that list is
+   * filtered to user-global targets, while this set must stay honest about
+   * project-scope-only ones (Pi) too.
    */
-  function computeDetectedEditors(): Set<McpWiringEditorId> {
+  async function computeDetectedEditors(): Promise<Set<McpWiringEditorId>> {
     try {
-      return new Set(cli.detectInstalledEditors('', home));
+      return detectedEditorsFromProbes(await probeEditorPresence());
     } catch {
+      // A failed probe is unknown, not empty-and-not-installed — but unknown
+      // must not claim, and an empty set under-claims, which is the safe
+      // direction on every surface that reads this.
       return new Set();
     }
   }
 
-  function computeEditorStatuses(): IntegrationsEditorStatus[] {
-    const detected = computeDetectedEditors();
+  /**
+   * `detected` is optional so a caller that has already probed can pass its set
+   * in rather than paying a second pass. `probeEditorPresence` is not cached —
+   * each call re-runs the login-shell lookups and the OS scheme-handler
+   * queries — and two passes can straddle an install or removal, which is
+   * exactly the drift the status snapshot must not show.
+   */
+  async function computeEditorStatuses(
+    detected?: Set<McpWiringEditorId>,
+  ): Promise<IntegrationsEditorStatus[]> {
+    const resolved = detected ?? (await computeDetectedEditors());
     return cli.allEditorIds.map((id) => {
       let state: IntegrationsEditorState;
       try {
@@ -188,7 +278,7 @@ export function registerIntegrationsSettings(
       return {
         id,
         label: cli.editorLabel(id),
-        detected: detected.has(id),
+        detected: resolved.has(id),
         state,
         configPath: cli.editorConfigPath(id),
         entryLocator: cli.editorEntryLocator(id),
@@ -196,7 +286,7 @@ export function registerIntegrationsSettings(
     });
   }
 
-  function computeStatus(): IntegrationsStatus {
+  async function computeStatus(): Promise<IntegrationsStatus> {
     let pathStatus: IntegrationsPathStatus;
     try {
       pathStatus = path.computeStatus();
@@ -215,12 +305,16 @@ export function registerIntegrationsSettings(
       });
       skillStatuses = [];
     }
+    // One probe pass feeds both fields — same question, and letting them drift
+    // would put the settings list and the create-project dialog on different
+    // answers about the same machine.
+    const detected = await computeDetectedEditors();
     return {
       available,
-      editors: computeEditorStatuses(),
+      editors: await computeEditorStatuses(detected),
       path: pathStatus,
       skills: skillStatuses,
-      detectedEditorIds: [...computeDetectedEditors()],
+      detectedEditorIds: [...detected],
     };
   }
 
@@ -231,10 +325,10 @@ export function registerIntegrationsSettings(
    * dialog; a settings toggle on a marker-less install (possible only when
    * the consent dialog never delivered) doesn't claim that decision.
    */
-  function refreshMarkerEditors(): void {
+  async function refreshMarkerEditors(): Promise<void> {
     const marker = readMcpStatusMarker(home, fs);
     if (marker === null) return;
-    const installed = computeEditorStatuses()
+    const installed = (await computeEditorStatuses())
       .filter((e) => e.state === 'installed')
       .map((e) => e.id);
     const next: McpStatusMarker = {
@@ -270,7 +364,7 @@ export function registerIntegrationsSettings(
       switch (result.action) {
         case 'written':
         case 'overwritten':
-          refreshMarkerEditors();
+          await refreshMarkerEditors();
           logger.event({ event: 'integrations-editor-installed', editor: id });
           return { ok: true };
         case 'declined':
@@ -294,7 +388,7 @@ export function registerIntegrationsSettings(
     switch (outcome.kind) {
       case 'removed':
       case 'not-present':
-        refreshMarkerEditors();
+        await refreshMarkerEditors();
         logger.event({ event: 'integrations-editor-removed', editor: id, outcome: outcome.kind });
         return { ok: true };
       case 'left-foreign':
@@ -355,9 +449,9 @@ export function registerIntegrationsSettings(
           handler: 'integrationsDispatch',
           cause: { component: request?.component?.kind ?? 'unknown', error: result.error },
         });
-        return { ok: false, error: result.error, status: computeStatus() };
+        return { ok: false, error: result.error, status: await computeStatus() };
       }
-      return { ok: true, status: computeStatus() };
+      return { ok: true, status: await computeStatus() };
     });
     mutationChain = run.catch(() => {});
     return run;

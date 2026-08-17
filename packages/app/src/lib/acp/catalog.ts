@@ -40,6 +40,23 @@ export function detectedHarnessAgents(agents: readonly CatalogAgent[]): CatalogA
     .sort((a, b) => rank(a.id) - rank(b.id));
 }
 
+/**
+ * Sort rank by what the harness probe found: 0 for an agent whose CLI is on the
+ * host or whose probe has not landed yet, 1 for one the probe positively
+ * reported absent.
+ *
+ * `unknown` ranks WITH `present`, not with `not-found` — a probe that has not
+ * answered is pending, not a negative result, and burying an agent the user
+ * actually has behind a fold because a PATH check was slow is the worse failure.
+ * Same three-valued discipline the Desktop rows already apply to their own probe.
+ *
+ * Distinct from `detectedHarnessAgents`, which filters strictly to `present`
+ * because its callers need a positive answer; this one only orders.
+ */
+export function harnessPresenceRank(agent: CatalogAgent): number {
+  return agent.harness?.availability === 'not-found' ? 1 : 0;
+}
+
 export interface AgentCatalog {
   agents: CatalogAgent[];
   /** True when the server served its offline fallback cache. */

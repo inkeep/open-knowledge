@@ -724,6 +724,20 @@ export function SkillInstallMenuItems({
         </Hint>
       ))}
 
+      {/* Nothing to install into. Reachable only since destinations became
+          existence-gated: a project (or home) with no agent folder yet has no
+          host row, no custom root and no source row, and the menu would
+          otherwise open on nothing but its own footer. "Manage skill folders"
+          sits directly below and is the way to declare one. */}
+      {rows.length === 0 && customRootRows.length === 0 && sourceRow === null ? (
+        <div
+          className="px-2 py-1.5 text-[11px] text-muted-foreground leading-snug"
+          data-testid="skill-install-no-destinations"
+        >
+          <Trans>No agent folders yet</Trans>
+        </div>
+      ) : null}
+
       {/* Skill-wide form change, deliberately last and quiet. The per-row tag
           fixes ONE divergent location; this is the "make them all the same"
           verb, and the only place the whole set changes at once. It explains

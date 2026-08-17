@@ -1188,10 +1188,6 @@ msgstr "{appName} 정보"
 msgid "Above"
 msgstr "위"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "absent"
-msgstr "없음"
-
 #: src/components/DiffView.tsx
 msgid "Accept"
 msgstr "수락"
@@ -4271,10 +4267,6 @@ msgstr "방금 발생한 오류에 대한 자세한 진단이 포함됩니다. A
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "{0}에서 감지됨"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Detected on this machine"
-msgstr "이 컴퓨터에서 감지됨"
 
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Detected OpenKnowledge projects"
@@ -7908,6 +7900,10 @@ msgstr "아직 <0>.markdownlint.*</0> 파일이 없습니다. 모든 규칙은 V
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr "활성 상태이거나 최근에 사용한 OpenKnowledge 프로젝트가 없습니다."
 
+#: src/components/SkillInstallMenu.tsx
+msgid "No agent folders yet"
+msgstr "아직 에이전트 폴더 없음"
+
 #: src/comments/use-comment-delivery.ts
 msgid "No agent is set up yet — opening Configure agents."
 msgstr "에이전트 미설정. 에이전트 설정을 엽니다."
@@ -11221,9 +11217,10 @@ msgstr "{0}개 더 보기"
 msgid "Show {hidden} more"
 msgstr "{hidden}개 더 보기"
 
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Show {inAppHiddenCount} more"
-msgstr "{inAppHiddenCount}개 더 보기"
+msgid "Show {hiddenCount} more"
+msgstr "{hiddenCount}개 더 보기"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Show a preview card when you hover an external link in the editor. This setting applies only to this computer."
@@ -11289,6 +11286,7 @@ msgid "Show in Explorer"
 msgstr "탐색기에서 보기"
 
 #: src/components/PackCardGrid.tsx
+#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr "적게 보기"

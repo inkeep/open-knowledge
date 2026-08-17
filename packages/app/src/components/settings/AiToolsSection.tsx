@@ -71,6 +71,7 @@ export function AiToolsSection() {
   const [status, setStatus] = useState<OkIntegrationsStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [showAllEditors, setShowAllEditors] = useState(false);
 
   useEffect(() => {
     if (!bridge) return;
@@ -105,6 +106,35 @@ export function AiToolsSection() {
     }
     setPending(null);
   }
+
+  // Yours first, the rest folded. A row is primary when OK has WIRED it
+  // (`installed`, `foreign`, or `unmanageable` — its config file exists, which is
+  // what makes the tool real), or when the editor is detected.
+  //
+  // Detection ORDERS but never CLAIMS. That is one rule across every agent list:
+  // the external-apps group lets its probe pick a row's default, this one lets
+  // the probe pick a row's position, and neither prints an assertion of presence
+  // on the row. No surface prints `Detected on this machine`, precisely so the
+  // signal can stay useful for ranking without being read as a fact.
+  //
+  // The signal is a probe of the machine — a CLI on the login-shell PATH, or the
+  // app the OS says owns the URL scheme — and it answers "is this tool here",
+  // not "did the user set it up with us". Those are different questions, so
+  // ranking is the most it earns. A row it lifts still shows `How to set up`,
+  // never a presence claim.
+  const editors = status?.editors ?? [];
+  const isPrimaryEditor = (e: (typeof editors)[number]): boolean =>
+    e.state !== 'not-installed' || e.detected;
+  const primaryEditors = editors.filter(isPrimaryEditor);
+  // Nothing configured and nothing detected would otherwise fold the entire list
+  // away and leave an empty box under the heading. A fold that hides everything
+  // is not a fold.
+  const foldable = primaryEditors.length > 0 && primaryEditors.length < editors.length;
+  const shownEditors =
+    !foldable || showAllEditors
+      ? [...editors].sort((a, b) => Number(isPrimaryEditor(b)) - Number(isPrimaryEditor(a)))
+      : primaryEditors;
+  const hiddenCount = foldable ? editors.length - primaryEditors.length : 0;
 
   const header = (
     <div className="space-y-1">
@@ -219,13 +249,15 @@ export function AiToolsSection() {
           </Trans>
         </span>
         <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
-          {status.editors.map((editor) => {
+          {shownEditors.map((editor) => {
             const checked = editor.state === 'installed' || editor.state === 'foreign';
             const disabled = busy || editor.state === 'unmanageable';
-            // Undetected, never-configured tools get a setup-guide link instead
-            // of a dead-end "Not detected" — same contract as the first-launch
-            // consent dialog.
-            const showSetupLink = editor.state === 'not-installed' && !editor.detected;
+            // Every never-configured tool gets the setup-guide link, detected or
+            // not. A row offering to configure a tool must not also assert the
+            // user has it: those two claims on one row contradict each other, and
+            // the row is the weakest place to stake presence. `detected` orders
+            // the list below; it never speaks here.
+            const showSetupLink = editor.state === 'not-installed';
             const setupUrl = `https://openknowledge.ai/docs/integrations/${EDITOR_SETUP_DOC_SLUG[editor.id]}`;
             const statusLabel =
               editor.state === 'installed'
@@ -234,9 +266,7 @@ export function AiToolsSection() {
                   ? t`Custom open-knowledge entry — not managed by OpenKnowledge`
                   : editor.state === 'unmanageable'
                     ? t`Can't safely edit this tool's config`
-                    : editor.detected
-                      ? t`Detected on this machine`
-                      : null;
+                    : null;
             const statusClass =
               editor.state === 'foreign' || editor.state === 'unmanageable'
                 ? 'text-xs text-amber-600 dark:text-amber-400'
@@ -314,6 +344,26 @@ export function AiToolsSection() {
               </li>
             );
           })}
+          {hiddenCount > 0 ? (
+            <li>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowAllEditors((v) => !v)}
+                className="w-full justify-center rounded-none font-normal text-muted-foreground text-xs"
+                data-testid="ai-tools-editors-show-more"
+              >
+                {/* Never names what the probe thinks of the hidden rows: an
+                    "N not found" label would reassert the same unbacked detection
+                    claim this surface removed, one line lower. The noun is left off
+                    to reuse the
+                    Configure agents msgid verbatim — a counted noun would need
+                    plural forms in every locale to buy a word the "MCP
+                    connections" heading above already supplies. */}
+                {showAllEditors ? t`Show less` : t`Show ${hiddenCount} more`}
+              </Button>
+            </li>
+          ) : null}
         </ul>
       </div>
 

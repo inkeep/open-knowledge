@@ -7,7 +7,7 @@
 
 import type { InstallState } from '@inkeep/open-knowledge-core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentCatalog } from '@/lib/acp/catalog';
@@ -90,8 +90,15 @@ const catalog: AgentCatalog = {
   stale: false,
   maxThreads: 8,
 };
-vi.doMock('@/lib/acp/catalog', () => ({
-  fetchAgentCatalog: () => Promise.resolve(catalog),
+// Only the network call is stubbed. `harnessPresenceRank` is a pure ordering
+// helper the component's sort depends on, so it must stay REAL — re-declaring it
+// in the mock would test a copy of the rule instead of the rule.
+// Swappable per test, like `states` and `terminalLaunchValue` above: the error
+// path is a distinct ordering input, not just a different payload.
+let fetchCatalog: () => Promise<typeof catalog> = () => Promise.resolve(catalog);
+vi.doMock('@/lib/acp/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/acp/catalog')>()),
+  fetchAgentCatalog: () => fetchCatalog(),
 }));
 
 let states: Record<string, InstallState> = {};
@@ -113,6 +120,7 @@ vi.doMock('@/components/acp/RegisteredAgentIcon', () => ({
   RegisteredAgentIcon: () => <svg data-testid="registered-agent-icon" aria-hidden />,
 }));
 
+import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import {
   getDefaultRegisteredAgent,
   registerAgent,
@@ -142,6 +150,10 @@ function renderSection() {
 beforeEach(() => {
   localStorage.clear();
   reloadRegisteredAgentsFromStorage();
+  // Both agent stores cache at module scope. Clearing storage without re-reading
+  // them leaves a prior test's overrides live — every toggle test writes one.
+  reloadEnabledAgentsFromStorage();
+  fetchCatalog = () => Promise.resolve(catalog);
   states = { 'claude-code': { installed: true }, codex: { installed: false } } as Record<
     string,
     InstallState
@@ -149,6 +161,20 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+/** Open the In-app fold. Agents the harness probe reported `not-found` sit below
+ *  it, so a test that asserts on one has to expand first. */
+async function expandInApp(): Promise<void> {
+  fireEvent.click(await screen.findByTestId('configure-agents-in-app-show-more'));
+}
+
+/** Group headings in DOM order — what the group-ordering rule acts on. */
+function groupOrder(): string[] {
+  return screen
+    .getAllByRole('heading', { level: 4 })
+    .map((h) => h.textContent?.trim() ?? '')
+    .map((label) => (label.startsWith('In app') ? 'In app' : label));
+}
 
 describe('ConfigureAgentsSection', () => {
   test('renders In app + External apps groups (no Terminal on the web host)', async () => {
@@ -161,6 +187,8 @@ describe('ConfigureAgentsSection', () => {
 
   test('a platform-unsupported in-app agent renders disabled', async () => {
     renderSection();
+    // OpenCode's harness probe says not-found, so it sits below the fold.
+    await expandInApp();
     const toggle = await screen.findByTestId('configure-agents-in-app-registry:opencode-acp');
     expect(toggle.getAttribute('data-disabled')).toBe('');
   });
@@ -169,6 +197,7 @@ describe('ConfigureAgentsSection', () => {
     renderSection();
     // The human blurb, not the SPDX license. (A global "Not installed" check
     // would hit the external-apps group's own install hint, so scope to the license.)
+    await expandInApp();
     expect(await screen.findByText('ACP wrapper for Cursor')).toBeTruthy();
     expect(screen.getByText('ACP wrapper for Gemini')).toBeTruthy();
     expect(screen.queryByText('Apache-2.0')).toBeNull();
@@ -177,6 +206,8 @@ describe('ConfigureAgentsSection', () => {
   test('a present harness defaults on and a not-found one defaults off (toggle still operable)', async () => {
     renderSection();
     const present = await screen.findByTestId('configure-agents-in-app-registry:gemini');
+    // Below the fold now; being folded is not being gated.
+    await expandInApp();
     const notFound = await screen.findByTestId('configure-agents-in-app-registry:cursor');
     expect(present.getAttribute('aria-checked')).toBe('true');
     expect(notFound.getAttribute('aria-checked')).toBe('false');
@@ -184,21 +215,151 @@ describe('ConfigureAgentsSection', () => {
     expect(notFound.getAttribute('data-disabled')).toBeNull();
   });
 
-  test('collapses to the harness-mapped agents, with a Show more toggle for the rest', async () => {
+  test('collapses to agents the probe has not ruled out, with a Show more toggle for the rest', async () => {
     renderSection();
-    // Default view: harness-mapped agents (Claude/OpenCode/Cursor/Gemini) show;
-    // the non-mapped agent (Cline) is hidden behind the toggle.
+    // Default view = harness-mapped agents the probe did NOT rule out: Gemini
+    // (present) and Claude Agent (unknown — pending is not a negative result).
+    // Cursor and OpenCode (both not-found) join the un-mapped Cline below the
+    // fold. An agent this machine cannot run has no claim on a default row just
+    // because it is in the harness set.
     await screen.findByText('Claude Agent');
-    expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
+    expect(screen.getByText('ACP wrapper for Gemini')).toBeTruthy();
+    expect(screen.queryByText('ACP wrapper for Cursor')).toBeNull();
     expect(screen.queryByText('Cline')).toBeNull();
     const toggle = screen.getByTestId('configure-agents-in-app-show-more');
-    expect(toggle.textContent).toContain('Show 1 more');
+    expect(toggle.textContent).toContain('Show 3 more');
 
     fireEvent.click(toggle);
 
-    // Expanded: the collapsed agent appears; the toggle flips to Show less.
     expect(screen.getByText('Cline')).toBeTruthy();
+    expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
     expect(toggle.textContent).toContain('Show less');
+  });
+
+  test('an agent the probe ruled out stays above the fold once the user enables it', async () => {
+    // `isPrimaryAgent` is a disjunction: harness-present OR checked. The fold
+    // test above covers the harness arm; this covers the other one. A user who
+    // deliberately enables an agent this machine reports `not-found` must not
+    // have that agent hidden below a fold — the fold exists to cut catalogue
+    // noise, and an explicit choice is not noise.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'in-app:registry:cursor': true }));
+    // The override store caches at module scope, so a direct localStorage write
+    // needs the same re-read the cross-tab `storage` listener performs.
+    reloadEnabledAgentsFromStorage();
+    renderSection();
+
+    // Cursor is `availability: 'not-found'`, so without the override it sits
+    // below the fold (asserted by the preceding test).
+    expect(await screen.findByText('ACP wrapper for Cursor')).toBeTruthy();
+    expect(screen.getByTestId('configure-agents-in-app-show-more').textContent).toContain(
+      'Show 2 more',
+    );
+  });
+
+  test('expanding pins present agents on top and sorts the rest alphabetically', async () => {
+    renderSection();
+    await screen.findByText('Claude Agent');
+    await expandInApp();
+    // Scoped to the In-app section: the external-apps group also has a row whose
+    // text matches, and an unscoped query interleaves the two groups.
+    const inApp = within(
+      document.querySelector<HTMLElement>(
+        'section[aria-labelledby="settings-configure-agents-in-app"]',
+      ) as HTMLElement,
+    );
+    const names = inApp
+      .getAllByText(/^(Claude Agent|Gemini|Cursor|OpenCode|Cline)$/)
+      .map((n) => n.textContent ?? '');
+
+    const primary = names.slice(0, 2);
+    expect(primary).toContain('Claude Agent');
+    expect(primary).toContain('Gemini');
+
+    const tail = names.slice(2);
+    expect(tail).toEqual([...tail].sort((a, b) => a.localeCompare(b)));
+    // Regression guard: an agent with NO harness used to tie with the present
+    // ones (`undefined === 'not-found'` is false), so the whole catalogue kept
+    // its original order and only explicitly not-found agents sank.
+    expect(tail).toContain('Cline');
+  });
+
+  test('a group with something installed sorts above one with nothing', async () => {
+    const gemini = catalog.agents.find((a) => a.id === 'gemini');
+    const claude = catalog.agents.find((a) => a.id === 'claude-acp');
+    const restore = { g: gemini?.harness?.availability, c: claude?.harness?.availability };
+    if (gemini?.harness) gemini.harness.availability = 'not-found';
+    if (claude?.harness) claude.harness.availability = 'not-found';
+    try {
+      renderSection();
+      // Until the catalog lands the In-app group is held in place (pending, not
+      // empty), so the reorder is only observable after it loads.
+      await screen.findByTestId('configure-agents-in-app-show-more');
+      expect(groupOrder()).toEqual(['External apps', 'In app']);
+    } finally {
+      if (gemini?.harness && restore.g) gemini.harness.availability = restore.g;
+      if (claude?.harness && restore.c) claude.harness.availability = restore.c;
+    }
+  });
+
+  test('groups keep their declared order when both have something present', async () => {
+    renderSection();
+    await screen.findByText('Claude Agent');
+    expect(groupOrder()).toEqual(['In app', 'External apps']);
+  });
+
+  test('an external-apps group whose probe has not answered does NOT claim presence', async () => {
+    // External apps are strict on purpose: these rows deep-link into another
+    // application, so an unresolved probe waits rather than asserting presence.
+    // That is the same bar `isDesktopTargetEnabled` applies to the rows, and it
+    // is deliberately unlike the fail-open rule the Terminal CLIs use.
+    states = {};
+    const gemini = catalog.agents.find((a) => a.id === 'gemini');
+    const claude = catalog.agents.find((a) => a.id === 'claude-acp');
+    const restore = { g: gemini?.harness?.availability, c: claude?.harness?.availability };
+    if (gemini?.harness) gemini.harness.availability = 'not-found';
+    if (claude?.harness) claude.harness.availability = 'not-found';
+    try {
+      renderSection();
+      await screen.findByTestId('configure-agents-in-app-show-more');
+      // Neither group can claim anything, so the declared order stands.
+      expect(groupOrder()).toEqual(['In app', 'External apps']);
+    } finally {
+      if (gemini?.harness && restore.g) gemini.harness.availability = restore.g;
+      if (claude?.harness && restore.c) claude.harness.availability = restore.c;
+    }
+  });
+
+  test('a failed catalog holds the In app group in place rather than sinking it', async () => {
+    // `catalogReady` is `!isLoading && !isError`, so a failed fetch scores the
+    // group the same way a pending one does: it holds its declared position.
+    // The group renders its own error state, so the user is told what happened
+    // there — demoting it as well would move the section under a machine answer
+    // that never arrived, which is the flicker the ordering rule exists to stop.
+    fetchCatalog = () => Promise.reject(new Error('catalog unreachable'));
+    renderSection();
+    await screen.findByText(/Couldn't reach the agent registry/i);
+    expect(groupOrder()).toEqual(['In app', 'External apps']);
+  });
+
+  test('a group whose every member is positively absent still sorts down', async () => {
+    // The other half of the rule: `!== false` must not collapse into always-true.
+    // A probe that has answered NO for every member is a real negative.
+    states = { 'claude-code': { installed: false }, codex: { installed: false } } as Record<
+      string,
+      InstallState
+    >;
+    renderSection();
+    await screen.findByText('Claude Agent');
+    expect(groupOrder()).toEqual(['In app', 'External apps']);
+  });
+
+  test('the In app group does not sort down and jump back while its catalog loads', async () => {
+    renderSection();
+    // Asserted BEFORE the catalog resolves: the group has no rows yet, and
+    // scoring it on that empty list would drop it below external apps for a frame.
+    expect(groupOrder()).toEqual(['In app', 'External apps']);
+    await screen.findByText('Claude Agent');
+    expect(groupOrder()).toEqual(['In app', 'External apps']);
   });
 
   test('enabling an in-app agent is visibility-only and does not change the launch default', async () => {
@@ -300,15 +461,36 @@ describe('ConfigureAgentsSection — Terminal group (docked terminal present)', 
     terminalLaunchValue = null;
   });
 
+  /** Open the Terminal fold — CLIs the probe reported absent sit below it. */
+  async function expandTerminal(): Promise<void> {
+    fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
+  }
+
   test('renders the Terminal group with per-CLI rows', async () => {
     renderSection();
     await screen.findByTestId('configure-agents-terminal-claude');
     expect(screen.getByText('Terminal')).toBeTruthy();
+    // codex probes absent, so it now sits below the fold.
+    await expandTerminal();
     expect(screen.getByTestId('configure-agents-terminal-codex')).toBeTruthy();
+  });
+
+  test('Terminal sorts installed CLIs first and folds the not-installed ones', async () => {
+    // This group used to render every CLI in catalogue order, so the absent ones
+    // sat interleaved among the real ones.
+    renderSection();
+    const fold = await screen.findByTestId('configure-agents-terminal-show-more');
+    expect(screen.queryByTestId('configure-agents-terminal-codex')).toBeNull();
+    expect(screen.getByTestId('configure-agents-terminal-claude')).toBeTruthy();
+
+    fireEvent.click(fold);
+    expect(screen.getByTestId('configure-agents-terminal-codex')).toBeTruthy();
+    expect(fold.textContent).toContain('Show less');
   });
 
   test('an absent CLI shows the Not installed hint; a present one does not', async () => {
     renderSection();
+    await expandTerminal();
     await screen.findByTestId('configure-agents-terminal-codex');
     // codex CLI probed absent -> hint; claude probed present -> no hint. The
     // desktop rows also render "Not installed" hints in other states, so

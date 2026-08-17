@@ -1274,6 +1274,7 @@
     "IInnZo": ["충돌"],
     "IKoTAC": ["사용 안 함 유지"],
     "IMLUBh": ["잘못된 색상 값"],
+    "INN7OX": [["hiddenCount"], "개 더 보기"],
     "INp_z6": ["이 ", ["0"], "에 댓글을 남기거나 AI에 질문"],
     "IO8REi": ["\"", ["name"], "\" 열기 실패: ", ["0"]],
     "IQPyrD": ["누락된 페이지, 클릭하여 만들기"],
@@ -1368,7 +1369,6 @@
     "KDrbNG": ["OpenKnowledge에서 ", ["subject"], " 링크 조회"],
     "KDuPiY": [["fileName"], " 업로드 중"],
     "KDw4GX": ["다시 시도"],
-    "KFd4xz": ["없음"],
     "KGF42E": ["Terminal을 읽기 쉽게 에이전트 패널을 닫았습니다."],
     "KGJb9_": ["충돌"],
     "KH5bQi": [
@@ -1533,6 +1533,7 @@
     "MJuO1q": ["컨텍스트 창:"],
     "MKEPCY": ["팔로우"],
     "MLVPcm": [["0"], " 버전 ", ["1"]],
+    "MOAoFO": ["아직 에이전트 폴더 없음"],
     "MPpSAg": [["selectedPackName"], "에서 새 프로젝트 만들기"],
     "MQ5LOx": [
       ["display"],
@@ -2599,7 +2600,6 @@
     "b4itZn": ["작업 중"],
     "b5aNbi": [["targetNoun"], " 열기에 실패했습니다. 직접 이동해 보세요."],
     "b6Fgpe": ["각 팩은 바로 사용할 수 있는 폴더와 템플릿으로 프로젝트의 뼈대를 만듭니다."],
-    "bBE5tC": ["이 컴퓨터에서 감지됨"],
     "bBcFK_": [["keyName"], " 이모지 선택기 열기"],
     "bD8I7O": ["완료"],
     "bDiiSM": ["선택한 상위 폴더에 이미 포함됨"],
@@ -3542,7 +3542,6 @@
       ". <0>ok status</0> 실행 또는 <1>.ok/local/last-spawn-error.log</1> 확인."
     ],
     "np2zZM": ["계속하려면 ", ["agentName"], " 로그인."],
-    "np9pbC": [["inAppHiddenCount"], "개 더 보기"],
     "npcziF": ["설치 대상"],
     "nqV0Kk": ["이 폴더는 아직 GitHub와 동기화되지 않았습니다. 다음 동기화 후 링크가 작동합니다."],
     "nrGWJ7": [
