@@ -1,6 +1,5 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import { CreatePageSuccessSchema } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -33,14 +32,13 @@ import {
   type TemplateMenuEntry,
   useFolderConfig,
 } from '@/hooks/use-folder-config';
-import { emitDocumentsChanged } from '@/lib/documents-events';
+import { createPageRequest, openCreatedPage } from '@/lib/create-page-request';
 import {
   isEditableShortcutTarget,
   matchesKeyboardShortcut,
   type ShortcutEventLike,
   type ShortcutPlatform,
 } from '@/lib/keyboard-shortcuts';
-import { parseServerResponse } from '@/lib/parse-server-response';
 import { cn } from '@/lib/utils';
 import { type DocExtension, detectExtension } from './extension-picker-utils';
 import { sortTemplatesForPicker } from './template-picker-utils';
@@ -265,10 +263,15 @@ export function NewItemDialog({
     const sorted = sortTemplatesForPicker(folderConfig.state.data.folder.templates_available ?? []);
     if (sorted.length > 0) setSelectedTemplate(sorted[0].name);
   }, [open, defaultToTemplate, initialTemplate, templateUserPicked, folderConfig.state]);
-  const showTemplatePicker = kind === 'file';
   const templatesLoading =
     folderConfig.state.status === 'loading' || folderConfig.state.status === 'idle';
   const templatesError = folderConfig.state.status === 'error' ? folderConfig.state.message : null;
+  // With no templates resolved there is nothing to start *from*, so the
+  // picker is pure chrome — hide it and let the dialog be name-only. Hidden
+  // while the cascade loads too, so the common (no-template) case never
+  // flashes a disabled combobox that then vanishes. Kept on error, since the
+  // inline "could not load templates" notice hangs off this block.
+  const showTemplatePicker = kind === 'file' && (templates.length > 0 || !!templatesError);
 
   function handleFileNameChange(next: string) {
     setFileName(next);
@@ -300,7 +303,15 @@ export function NewItemDialog({
     return null;
   }
 
-  const isSubmitDisabled = busy || !fileName.trim() || (kind === 'folder' && !folderName.trim());
+  // Submit waits out the cascade for files. The picker is hidden while it
+  // loads, so in a template-bearing folder a fast typist would otherwise
+  // submit before the choice ever rendered and get a blank doc, never knowing
+  // a template was on offer.
+  const isSubmitDisabled =
+    busy ||
+    !fileName.trim() ||
+    (kind === 'folder' && !folderName.trim()) ||
+    (kind === 'file' && templatesLoading);
 
   async function handleCreate() {
     const clientError = getClientError();
@@ -318,46 +329,16 @@ export function NewItemDialog({
     // today's blank-doc behavior). Otherwise forward the template name.
     const templateParam =
       kind === 'file' && selectedTemplate !== BLANK_TEMPLATE_VALUE ? selectedTemplate : undefined;
-    const requestBody: { path: string; template?: string } = { path };
-    if (templateParam !== undefined) requestBody.template = templateParam;
-
-    try {
-      const res = await fetch('/api/create-page', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-      // Mutation flow — use the canonical parseServerResponse helper
-      // for consistency with sibling FileTree.tsx mutations (rename,
-      // delete). Surfaces the typed RFC 9457 title on error and the
-      // schema-parsed success body on success in one pass.
-      const status = res.status;
-      const parsed = await parseServerResponse(res, t`Server error (HTTP ${status})`);
-      if (!parsed.ok) {
-        setBusy(false);
-        setError(parsed.title);
-        setErrorField('form');
-        return;
-      }
-      const success = CreatePageSuccessSchema.safeParse(parsed.body);
-      setBusy(false);
-      if (!success.success) {
-        setError(kind === 'folder' ? t`Failed to create folder` : t`Failed to create file`);
-        setErrorField('form');
-        return;
-      }
-      const docName = success.data.docName;
-      onOpenChange(false);
-      window.location.hash = `#/${docName}`;
-      addPage(docName);
-      emitDocumentsChanged(['files', 'backlinks', 'graph']);
-      onCreated?.(docName);
-    } catch (err) {
-      console.warn('[NewItemDialog] create failed:', err);
-      setBusy(false);
-      setError(t`Network error — please try again`);
+    const result = await createPageRequest({ path, template: templateParam, kind });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
       setErrorField('form');
+      return;
     }
+    onOpenChange(false);
+    openCreatedPage(result.docName, addPage);
+    onCreated?.(result.docName);
   }
 
   const dirDisplay = initialDir || t`(root)`;
@@ -420,19 +401,6 @@ export function NewItemDialog({
                 templates={templates}
                 loading={templatesLoading}
               />
-              {!templatesLoading && !templatesError && templates.length === 0 ? (
-                // Discoverability signpost: cmdk's CommandEmpty only fires
-                // on a search miss, not on a structurally-empty list. With
-                // the sidebar shortcut also hidden when no templates
-                // resolve, the user has no in-product hint about where
-                // templates come from.
-                <p className="text-1sm text-muted-foreground">
-                  <Trans>
-                    No templates yet. Add one in this folder's Templates section, or in Settings →
-                    Templates.
-                  </Trans>
-                </p>
-              ) : null}
             </div>
           )}
           {kind === 'folder' && (

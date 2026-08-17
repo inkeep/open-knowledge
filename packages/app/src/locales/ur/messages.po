@@ -5181,12 +5181,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "زیرِ التوا {kind} کی صفائی نہیں ہو سکی"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "فائل نہیں بن سکی"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "فولڈر نہیں بن سکا"
 
@@ -7798,7 +7798,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "نیٹ ورک کی خرابی - {kind} «{createdPath}» اب بھی ڈسک پر موجود ہے"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "نیٹ ورک کی خرابی — براہِ کرم دوبارہ کوشش کریں"
 
@@ -8332,10 +8332,6 @@ msgstr "کوئی ٹیمپلیٹ دستیاب نہیں"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "کوئی ٹیمپلیٹ نہیں ملا۔"
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "ابھی کوئی ٹیمپلیٹ نہیں۔ اس فولڈر کے «ٹیمپلیٹس» سیکشن میں، یا ترتیبات ← ٹیمپلیٹس میں ایک شامل کریں۔"
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11116,7 +11112,7 @@ msgstr "علیحدہ کنندہ"
 msgid "Server can't open documents"
 msgstr "سرور دستاویزات نہیں کھول سکتا"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "سرور کی خرابی (HTTP {status})"
 

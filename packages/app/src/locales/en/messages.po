@@ -5181,12 +5181,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "Failed to clean up pending {kind}"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "Failed to create file"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "Failed to create folder"
 
@@ -7798,7 +7798,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Network error - {kind} \"{createdPath}\" still exists on disk"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "Network error — please try again"
 
@@ -8332,10 +8332,6 @@ msgstr "No templates available"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "No templates found."
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11116,7 +11112,7 @@ msgstr "Separator"
 msgid "Server can't open documents"
 msgstr "Server can't open documents"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "Server error (HTTP {status})"
 

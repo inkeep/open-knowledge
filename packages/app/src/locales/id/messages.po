@@ -5177,12 +5177,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "Gagal membersihkan {kind} yang tertunda"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "Gagal membuat berkas"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "Gagal membuat folder"
 
@@ -7794,7 +7794,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Galat jaringan - {kind} \"{createdPath}\" masih ada di disk"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "Galat jaringan — silakan coba lagi"
 
@@ -8328,10 +8328,6 @@ msgstr "Tidak ada templat yang tersedia"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "Tidak ada templat yang ditemukan."
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "Belum ada templat. Tambahkan satu di bagian Templat folder ini, atau di Pengaturan → Templat."
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11112,7 +11108,7 @@ msgstr "Pemisah"
 msgid "Server can't open documents"
 msgstr "Server tidak bisa membuka dokumen"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "Galat server (HTTP {status})"
 

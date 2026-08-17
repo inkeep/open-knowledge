@@ -5181,12 +5181,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "清理待处理的{kind}失败"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "创建文件失败"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "创建文件夹失败"
 
@@ -7798,7 +7798,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "网络错误 - {kind}“{createdPath}”在磁盘上仍然存在"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "网络错误——请重试"
 
@@ -8332,10 +8332,6 @@ msgstr "没有可用的模板"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "没有找到模板。"
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "还没有模板。可在这个文件夹的「模板」区域添加，或在「设置 → 模板」中添加。"
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11116,7 +11112,7 @@ msgstr "分隔符"
 msgid "Server can't open documents"
 msgstr "服务器无法打开文档"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "服务器错误（HTTP {status}）"
 

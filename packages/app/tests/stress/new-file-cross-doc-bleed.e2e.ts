@@ -92,32 +92,70 @@ const CM6_BODY = [
 const CANARY = 'CANARY_CROSS_DOC_BLEED_TOKEN_XYZ_123456789ABCDEF';
 
 /**
- * Trigger NewItemDialog via the browser-safe Cmd+Alt+N (or Ctrl+Alt+N) shortcut,
- * submit a brand-new docName, and wait for the new file's editor to mount.
- *
- * Settlement: wait for the new doc's HocuspocusProvider to finish initial
- * sync (`window.__activeProvider?.isSynced`), then yield two paint frames so
- * React's commit + TipTap's `EditorContent.componentDidMount` + the
- * move-all-siblings code path complete before the caller asserts. This is
- * the condition-based equivalent of the empirical-driver's 2500ms wall-clock
- * settle — STOP-rule compliant and still observing only user-visible
- * state (the provider's synced flag is the standard editor-ready signal per
- * `_helpers/provider.ts`).
+ * Defocus the editor so the global shortcut isn't suppressed by an INPUT /
+ * TEXTAREA / contenteditable target (per isNewItemShortcut's guard in
+ * components/NewItemDialog.tsx). Waits for focus to actually land on body —
+ * browser focus dispatch is async on some platforms.
  */
-async function newFileViaShortcut(page: Page, newDocName: string): Promise<void> {
-  // Defocus the editor so the global shortcut isn't suppressed by an INPUT /
-  // TEXTAREA / contenteditable target (per isNewItemShortcut's guard in
-  // components/NewItemDialog.tsx). Wait for focus to actually land on body —
-  // browser focus dispatch is async on some platforms.
+async function blurToBody(page: Page): Promise<void> {
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.waitForFunction(
     () => document.activeElement === null || document.activeElement === document.body,
     null,
     { timeout: 1_000 },
   );
+}
+
+/**
+ * Settle the freshly-created doc: wait for its HocuspocusProvider to finish
+ * initial sync (`window.__activeProvider?.isSynced`), then yield two paint
+ * frames so React's commit + TipTap's `EditorContent.componentDidMount` + the
+ * move-all-siblings code path complete before the caller asserts. This is
+ * the condition-based equivalent of the empirical-driver's 2500ms wall-clock
+ * settle — STOP-rule compliant and still observing only user-visible
+ * state (the provider's synced flag is the standard editor-ready signal per
+ * `_helpers/provider.ts`).
+ */
+async function settleNewFile(page: Page): Promise<void> {
+  await waitForActiveProviderSynced(page);
+  await yieldFramesInPage(page);
+  await yieldFramesInPage(page);
+}
+
+/**
+ * Create a file via the browser-safe Cmd+Alt+N (or Ctrl+Alt+N) shortcut and
+ * wait for the new file's editor to mount. The worker fixture's contentDir
+ * carries no templates, so the shortcut skips the dialog and drops straight
+ * into a fresh `untitled` doc. The tests here assert on the new doc's editor,
+ * not its name, so the name it picked is not surfaced.
+ */
+async function newFileViaShortcut(page: Page): Promise<void> {
+  await blurToBody(page);
+  const beforeHash = await page.evaluate(() => window.location.hash);
 
   const modKey = process.platform === 'darwin' ? 'Meta' : 'Control';
   await page.keyboard.press(`${modKey}+Alt+KeyN`);
+
+  await page.waitForFunction((prev) => window.location.hash !== prev, beforeHash, {
+    timeout: 10_000,
+  });
+  await expect(page.getByRole('dialog', { name: /New file/i })).toBeHidden();
+
+  await settleNewFile(page);
+}
+
+/**
+ * Create a file at a caller-chosen docName via the command palette's "New
+ * file" command, which still routes through NewItemDialog. The keyboard
+ * shortcut can't drive this case — it names the doc itself.
+ */
+async function newFileViaPalette(page: Page, newDocName: string): Promise<void> {
+  await blurToBody(page);
+  await page.keyboard.press('ControlOrMeta+KeyK');
+  await page
+    .getByRole('option', { name: /^New file/ })
+    .first()
+    .click();
 
   await expect(page.getByRole('dialog', { name: /New file/i })).toBeVisible({
     timeout: 5_000,
@@ -134,11 +172,7 @@ async function newFileViaShortcut(page: Page, newDocName: string): Promise<void>
     timeout: 10_000,
   });
 
-  // New doc's provider finished handshake + initial Y.Doc sync.
-  await waitForActiveProviderSynced(page);
-  // Two paint frames for React commit + TipTap mount + DOM-vacuum settlement.
-  await yieldFramesInPage(page);
-  await yieldFramesInPage(page);
+  await settleNewFile(page);
 }
 
 /**
@@ -220,8 +254,7 @@ test.describe('new-file cross-doc bleed', () => {
     ).toHaveCount(1);
 
     // Trigger the New File flow.
-    const newDocName = `newfile-${randomUUID()}`;
-    await newFileViaShortcut(page, newDocName);
+    await newFileViaShortcut(page);
 
     // Bug assertion: exactly one empty PM in the visible Activity.
     await assertVisibleActivityHasOnlyEmptyEditor(page);
@@ -253,8 +286,7 @@ test.describe('new-file cross-doc bleed', () => {
     await waitForActiveProviderSynced(page);
 
     // Trigger New File from B's view.
-    const newDocName = `newfile-${randomUUID()}`;
-    await newFileViaShortcut(page, newDocName);
+    await newFileViaShortcut(page);
 
     await assertVisibleActivityHasOnlyEmptyEditor(page);
   });
@@ -291,7 +323,7 @@ test.describe('new-file cross-doc bleed', () => {
     // Trigger New File with the SAME docName the deleted file had — the
     // docName-reuse-after-delete path is the worst case for the in-memory
     // pool entry that may still reference the prior doc's editor instance.
-    await newFileViaShortcut(page, reusedDocName);
+    await newFileViaPalette(page, reusedDocName);
 
     await assertVisibleActivityHasOnlyEmptyEditor(page);
   });

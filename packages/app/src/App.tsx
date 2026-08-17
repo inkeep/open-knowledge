@@ -1,5 +1,6 @@
 import { mediaKindForSidebarAssetExtension, SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { CommentQueueShortcut } from '@/comments/CommentQueueShortcut';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConnectingBanner } from '@/components/ConnectingBanner';
@@ -39,9 +40,11 @@ import {
 import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
 import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs';
 import { previewOpenDisposition } from '@/editor/preview-open-disposition';
+import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
 import { ConfigProvider, useConfigContext } from '@/lib/config-provider';
+import { createPageRequest, nextUntitledDocName, openCreatedPage } from '@/lib/create-page-request';
 import {
   assetPathFromHash,
   docNameFromHash,
@@ -539,9 +542,21 @@ function ActiveTargetBridgePush() {
 
 function NewItemShortcutHandler() {
   const { activeDocName, activeTarget } = useDocumentContext();
+  const { pages, addPage } = usePageList();
   const [dialogOpen, setDialogOpen] = useState(false);
   const initialDir =
     activeTarget?.kind === 'folder' ? activeTarget.folderPath : defaultInitialDir(activeDocName);
+  // Hoisted out of the dialog so the keydown path can read the resolved
+  // cascade synchronously and decide whether the dialog has anything to ask.
+  // Threaded back in via `folderConfig`, which puts the dialog's own
+  // `useFolderConfig` on its null (no-fetch) branch — same one request.
+  const folderConfig = useFolderConfig(initialDir);
+  const folderState = folderConfig.state;
+  // Held-down Cmd+N (or an impatient double-press) repeats the keydown while
+  // the first create is still in flight. `pages` cannot grow until `addPage`
+  // runs in the `.then`, so every repeat would pick the same name and lose to
+  // the first with a 409 — a burst of error toasts for one intended doc.
+  const createInFlightRef = useRef(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -550,7 +565,7 @@ function NewItemShortcutHandler() {
       // ShortcutEventLike shape used by the pure predicate.
       const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
       if (
-        isNewItemShortcut({
+        !isNewItemShortcut({
           target,
           metaKey: e.metaKey,
           ctrlKey: e.ctrlKey,
@@ -559,14 +574,54 @@ function NewItemShortcutHandler() {
           key: e.key,
         })
       ) {
-        e.preventDefault();
-        setDialogOpen(true);
+        return;
       }
+      e.preventDefault();
+      // Nothing to start *from* and nothing else the dialog would ask about:
+      // skip it and drop straight into an `untitled` doc. Any other state
+      // (still loading, fetch failed, templates resolved) opens the dialog,
+      // so the decision never blocks on a request from inside the keydown.
+      if (
+        folderState.status !== 'ready' ||
+        (folderState.data.folder.templates_available ?? []).length > 0
+      ) {
+        setDialogOpen(true);
+        return;
+      }
+      if (createInFlightRef.current) return;
+      createInFlightRef.current = true;
+      const docName = nextUntitledDocName(initialDir, pages);
+      // `.md` is pinned here: the dialog's `.mdx` affordance is a typed-in
+      // extension, and this path never takes a typed name.
+      void createPageRequest({ path: `${docName}.md`, kind: 'file' })
+        .then((result) => {
+          // A create that loses a race (name taken since the page list last
+          // refreshed) or fails on the wire toasts the reason and falls back to
+          // the dialog rather than swallowing the keypress — the toast keeps the
+          // first failure legible even though the reopened dialog starts clean.
+          if (!result.ok) {
+            toast.error(result.error);
+            setDialogOpen(true);
+            return;
+          }
+          openCreatedPage(result.docName, addPage);
+        })
+        // `createPageRequest` never throws, but `openCreatedPage` fans out a
+        // synchronous `documents-changed` dispatch — a throwing listener would
+        // otherwise surface as an unhandled rejection with the doc already
+        // created and navigated to.
+        .catch((err: unknown) => {
+          console.warn('[NewItemShortcutHandler] create tail failed:', err);
+          setDialogOpen(true);
+        })
+        .finally(() => {
+          createInFlightRef.current = false;
+        });
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [folderState, initialDir, pages, addPage]);
 
   return (
     <NewItemDialog
@@ -574,6 +629,7 @@ function NewItemShortcutHandler() {
       onOpenChange={setDialogOpen}
       kind="file"
       initialDir={initialDir}
+      folderConfig={folderConfig}
     />
   );
 }

@@ -5181,12 +5181,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "فشل تنظيف {kind} المعلق"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "فشل إنشاء الملف"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "فشل إنشاء المجلد"
 
@@ -7798,7 +7798,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "خطأ في الشبكة - لا يزال {kind} «{createdPath}» موجودًا على القرص"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "خطأ في الشبكة — يرجى المحاولة مرة أخرى"
 
@@ -8332,10 +8332,6 @@ msgstr "لا توجد قوالب متاحة"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "لم يُعثر على قوالب."
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "لا توجد قوالب بعد. أضف واحدًا في قسم «القوالب» لهذا المجلد، أو في الإعدادات ← القوالب."
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11116,7 +11112,7 @@ msgstr "فاصل"
 msgid "Server can't open documents"
 msgstr "لا يستطيع الخادم فتح المستندات"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "خطأ في الخادم (HTTP {status})"
 

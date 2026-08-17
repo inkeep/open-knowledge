@@ -5177,12 +5177,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr ""
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr ""
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr ""
 
@@ -7794,7 +7794,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr ""
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr ""
 
@@ -8327,10 +8327,6 @@ msgstr ""
 
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
-msgstr ""
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
 msgstr ""
 
 #: src/components/TemplatesCard.tsx
@@ -11112,7 +11108,7 @@ msgstr ""
 msgid "Server can't open documents"
 msgstr ""
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr ""
 

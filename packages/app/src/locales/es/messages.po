@@ -5181,12 +5181,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "No se pudo limpiar {kind} pendiente"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "No se pudo crear el archivo"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "No se pudo crear la carpeta"
 
@@ -7798,7 +7798,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Error de red - {kind} \"{createdPath}\" sigue existiendo en el disco"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "Error de red: inténtalo de nuevo"
 
@@ -8332,10 +8332,6 @@ msgstr "No hay plantillas disponibles"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "No se encontraron plantillas."
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "Todavía no hay plantillas. Añade una en la sección Plantillas de esta carpeta o en Ajustes → Plantillas."
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11116,7 +11112,7 @@ msgstr "Separador"
 msgid "Server can't open documents"
 msgstr "El servidor no puede abrir documentos"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "Error del servidor (HTTP {status})"
 

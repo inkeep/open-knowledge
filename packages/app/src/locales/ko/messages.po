@@ -5181,12 +5181,12 @@ msgid "Failed to clean up pending {kind}"
 msgstr "대기 중인 {kind} 정리에 실패했습니다"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create file"
 msgstr "파일을 만들지 못했습니다"
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Failed to create folder"
 msgstr "폴더를 만들지 못했습니다"
 
@@ -7798,7 +7798,7 @@ msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "{kind} “{createdPath}”에 대한 네트워크 오류입니다. 해당 항목이 디스크에 여전히 있습니다."
 
 #: src/components/FileTree.tsx
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Network error — please try again"
 msgstr "네트워크 오류입니다. 다시 시도하세요."
 
@@ -8332,10 +8332,6 @@ msgstr "템플릿을 사용할 수 없습니다"
 #: src/components/NewItemDialog.tsx
 msgid "No templates found."
 msgstr "템플릿을 찾지 못했습니다."
-
-#: src/components/NewItemDialog.tsx
-msgid "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
-msgstr "아직 템플릿이 없습니다. 이 폴더의 템플릿 섹션이나 설정 → 템플릿에서 하나를 추가하세요."
 
 #: src/components/TemplatesCard.tsx
 msgid "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -11116,7 +11112,7 @@ msgstr "구분선"
 msgid "Server can't open documents"
 msgstr "서버에서 문서를 열 수 없습니다"
 
-#: src/components/NewItemDialog.tsx
+#: src/lib/create-page-request.ts
 msgid "Server error (HTTP {status})"
 msgstr "서버 오류 (HTTP {status})"
 
